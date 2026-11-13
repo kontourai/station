@@ -522,6 +522,15 @@ export interface ProviderAdapterShape {
     input: string,
   ): Promise<ProviderChildSteerResult>;
   /**
+   * A child this adapter reports running still takes a steer after the turn
+   * that launched it ended (Muse: a workflow's turn ends at launch while its
+   * children run). Orchestration then admits a child steer with no active
+   * parent turn, but only for a child the child-work projection holds
+   * running with that steer token (`controls.steer.turnId`). Absent: a child
+   * steer needs a running parent turn.
+   */
+  readonly childSteerOutlivesParentTurn?: true;
+  /**
    * Stop ONE provider-reported subagent, targeted rather than a blanket
    * turn interrupt.
    *

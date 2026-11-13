@@ -26,7 +26,10 @@ import {
   type AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
 import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
-import { projectDelegateChildWork } from '@kontourai/station-contracts/child-work';
+import {
+  type ChildWorkItem,
+  projectDelegateChildWork,
+} from '@kontourai/station-contracts/child-work';
 import type {
   ClientOrigin,
   ClientOriginActor,
@@ -10853,7 +10856,28 @@ export class OrchestrationService {
               .listEventsByMethods(command.threadId, ACTIVE_TURN_FOLD_METHODS)
               .map((stored) => stored.payload),
           );
-          if (!parentTurnId || this.isDormantSessionThread(command.threadId)) {
+          const dormant = this.isDormantSessionThread(command.threadId);
+          // With no running parent turn, only a child its adapter declares
+          // outlives that turn, and that the projection still holds running
+          // under this steer token, is steerable.
+          let earlyAdapter: ProviderAdapterShape | undefined;
+          let outlivingChild: ChildWorkItem | undefined;
+          if (!parentTurnId && !dormant) {
+            try {
+              earlyAdapter = await resolveOrchestrationAdapterForThread({
+                threadId: command.threadId,
+                threadProviders: this.threadProviders,
+                requireAdapter: (provider) => this.requireAdapter(provider),
+                adapters: this.options.adapterRegistry.list(),
+              });
+            } catch {
+              earlyAdapter = undefined;
+            }
+            outlivingChild =
+              earlyAdapter &&
+              this.outlivingSteerableChild(earlyAdapter, command);
+          }
+          if ((!parentTurnId && !outlivingChild) || dormant) {
             this.persistReceipt(receipt);
             return {
               receipt,
@@ -10863,7 +10887,13 @@ export class OrchestrationService {
               } as SteerChildWorkResult,
             };
           }
-          if (this.ranUnconfinedNowConfined(command.threadId, parentTurnId)) {
+          // The turn whose confinement the child runs under: the running
+          // parent turn, else the turn that launched the outliving child.
+          const confinementTurnId =
+            parentTurnId ?? outlivingChild?.parent?.turnId;
+          if (
+            this.ranUnconfinedNowConfined(command.threadId, confinementTurnId)
+          ) {
             this.persistReceipt(receipt);
             return {
               receipt,
@@ -10873,12 +10903,14 @@ export class OrchestrationService {
               } as SteerChildWorkResult,
             };
           }
-          const adapter = await resolveOrchestrationAdapterForThread({
-            threadId: command.threadId,
-            threadProviders: this.threadProviders,
-            requireAdapter: (provider) => this.requireAdapter(provider),
-            adapters: this.options.adapterRegistry.list(),
-          });
+          const adapter =
+            earlyAdapter ??
+            (await resolveOrchestrationAdapterForThread({
+              threadId: command.threadId,
+              threadProviders: this.threadProviders,
+              requireAdapter: (provider) => this.requireAdapter(provider),
+              adapters: this.options.adapterRegistry.list(),
+            }));
           this.assertAdapterCurrent(adapter);
           if (!adapter.steerChildWork) {
             this.persistReceipt(receipt);
@@ -10897,7 +10929,7 @@ export class OrchestrationService {
               context.userId,
               context.tenantExecutionContext,
             ) ||
-            this.ranUnconfinedNowConfined(command.threadId, parentTurnId)
+            this.ranUnconfinedNowConfined(command.threadId, confinementTurnId)
           ) {
             this.persistReceipt(receipt);
             return {
@@ -10946,15 +10978,20 @@ export class OrchestrationService {
                 context.userId,
                 context.tenantExecutionContext,
               ) ||
-              this.ranUnconfinedNowConfined(command.threadId, parentTurnId) ||
-              activeTurnIdForEvents(
-                store
-                  .listEventsByMethods(
-                    command.threadId,
-                    ACTIVE_TURN_FOLD_METHODS,
-                  )
-                  .map((stored) => stored.payload),
-              ) !== parentTurnId
+              this.ranUnconfinedNowConfined(
+                command.threadId,
+                confinementTurnId,
+              ) ||
+              (parentTurnId
+                ? activeTurnIdForEvents(
+                    store
+                      .listEventsByMethods(
+                        command.threadId,
+                        ACTIVE_TURN_FOLD_METHODS,
+                      )
+                      .map((stored) => stored.payload),
+                  ) !== parentTurnId
+                : !this.outlivingSteerableChild(adapter, command))
             ) {
               this.persistReceipt(receipt);
               return { receipt, result: uncertain };
@@ -15013,6 +15050,28 @@ export class OrchestrationService {
    * recorded `never`, a grant given back) is not stale: the turn ran
    * stricter than what applies now.
    */
+  /**
+   * The running child a steer targets when no parent turn runs: only for an
+   * adapter that declares its children outlive that turn
+   * (`childSteerOutlivesParentTurn`), and only while the child-work
+   * projection holds the child running with this steer token.
+   */
+  private outlivingSteerableChild(
+    adapter: ProviderAdapterShape,
+    target: { threadId: string; childId: string; turnId: string },
+  ): ChildWorkItem | undefined {
+    if (adapter.childSteerOutlivesParentTurn !== true) return undefined;
+    const view = this.readChildWork(target.threadId, adapter.provider);
+    if (view?.observability !== 'reported') return undefined;
+    return view.running.find(
+      (item) =>
+        item.producer === 'engine-subagent' &&
+        item.childId === target.childId &&
+        item.status === 'running' &&
+        item.controls?.steer?.turnId === target.turnId,
+    );
+  }
+
   private ranUnconfinedNowConfined(threadId: string, turnId?: string): boolean {
     const accepted = this.acceptedTurnConfinement.get(threadId);
     const ran =

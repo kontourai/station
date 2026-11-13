@@ -713,9 +713,13 @@ describe('#2452 muse serve: workflow children are child work', () => {
           status: 'running',
           kindLabel: 'workflow',
           parent: { turnId: STATION_TURN, toolCallId: WORKFLOW_CALL },
-          // The launching turn had already ended.
+          // The launching turn had already ended; the child still takes a
+          // steer, its token that turn.
           backgrounded: true,
-          controls: { stop: 'provider-task-stop' },
+          controls: {
+            stop: 'provider-task-stop',
+            steer: { turnId: STATION_TURN },
+          },
         }),
       ],
     });
@@ -3745,18 +3749,32 @@ function nativeSubagentCapture() {
 }
 
 describe('Muse parity: subagents and background tasks are child work', () => {
-  test("a workflow child's own subagent item names its result; no steer is offered once the launching turn ended", async () => {
+  test("a workflow child's own subagent item names its result, and it takes a steer after the launching turn ended", async () => {
     const h = harness();
     const host = await startServe(h);
-    await replayMuseServeCapture(
+    let sent: Promise<{ turnId: string }> | undefined;
+    let steered: Promise<unknown> | undefined;
+    const driven = await replayMuseServeCapture(
       host,
       loadMuseServeCapture('workflow-child-steer'),
       {
-        notDriven: new Set(['subagent/sendMessage']),
-        onDrivenRequest: (method) =>
-          method === 'turn/start'
-            ? h.adapter.sendTurn({ threadId: THREAD, input: 'go' })
-            : undefined,
+        onDrivenRequest: (method, _occurrence, captured) => {
+          if (method === 'turn/start') {
+            sent = h.adapter.sendTurn({ threadId: THREAD, input: 'go' });
+            return sent;
+          }
+          if (method === 'subagent/sendMessage') {
+            steered = (async () =>
+              h.adapter.steerChildWork(
+                THREAD,
+                String(captured.subagentId),
+                (await sent!).turnId,
+                OWNER_NOTE,
+              ))();
+            return steered;
+          }
+          return undefined;
+        },
       },
     );
     await settle();
@@ -3769,27 +3787,44 @@ describe('Muse parity: subagents and background tasks are child work', () => {
       kindLabel: 'workflow',
       result: { summary: 'CHILDDONE ZEBRA', source: 'provider-summary' },
     });
-    // muse ends the launching turn before it lists the child, and a child
-    // steer is admitted only inside a running parent turn.
-    for (const delta of childWorkDeltas(h.events)) {
-      const items =
-        delta.kind === 'snapshot'
-          ? delta.running
-          : delta.kind === 'upsert'
-            ? [delta.item]
-            : [];
-      for (const item of items) expect(item.controls?.steer).toBeUndefined();
-    }
-    const sent = host.sent.length;
-    await expect(
-      h.adapter.steerChildWork(
-        THREAD,
-        WORKFLOW_CHILD_1418,
-        WORKFLOW_TURN_1418,
-        OWNER_NOTE,
-      ),
-    ).resolves.toEqual({ outcome: 'no-active-task' });
-    expect(host.sent.slice(sent)).toEqual([]);
+    // muse ends the launching turn before it lists the child; the child is
+    // still offered a steer, its token the launching turn, because the
+    // adapter declares its children outlive that turn.
+    expect(h.adapter.childSteerOutlivesParentTurn).toBe(true);
+    const turnEnded = h.events.findIndex(
+      (event) =>
+        event.method === 'turn.completed' &&
+        event.turnId === WORKFLOW_TURN_1418,
+    );
+    const offeredAfterEnd = h.events
+      .slice(turnEnded + 1)
+      .flatMap((event) =>
+        event.method !== 'child-work.updated'
+          ? []
+          : event.delta.kind === 'snapshot'
+            ? event.delta.running
+            : event.delta.kind === 'upsert'
+              ? [event.delta.item]
+              : [],
+      )
+      .filter((item) => item.childId === WORKFLOW_CHILD_1418);
+    expect(turnEnded).toBeGreaterThanOrEqual(0);
+    expect(offeredAfterEnd.length).toBeGreaterThan(0);
+    for (const item of offeredAfterEnd)
+      expect(item.controls?.steer).toEqual({ turnId: WORKFLOW_TURN_1418 });
+    // The live send, made after that turn ended, is the steer.
+    await expect(steered).resolves.toEqual({
+      outcome: 'steered',
+      turnId: WORKFLOW_TURN_1418,
+    });
+    expect(
+      driven.find((frame) => frame.method === 'subagent/sendMessage')?.params,
+    ).toEqual({
+      commandId: expect.any(String),
+      sessionId: SESSION_1418,
+      subagentId: WORKFLOW_CHILD_1418,
+      body: OWNER_NOTE,
+    });
   });
 
   test('a native subagent is running child work with a steer; the steer is subagent/sendMessage, and its terminal settles it with its result', async () => {

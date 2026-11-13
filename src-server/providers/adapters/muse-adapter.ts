@@ -1037,6 +1037,13 @@ export class MuseAdapter implements ProviderAdapterShape {
    * ({@link MUSE_SERVE_COMMANDS}). Absent where no session can run serve.
    */
   readonly getCommands?: ProviderAdapterShape['getCommands'];
+  /**
+   * A serve session's children keep running, and keep taking a steer
+   * (`subagent/sendMessage`), after the turn that launched them ended: muse
+   * ends a workflow's turn at launch (`muse-serve-1.4.18-workflow-child-steer`).
+   * Absent on an exec-only adapter, whose sessions name no child.
+   */
+  readonly childSteerOutlivesParentTurn?: true;
   private catalogCache?: {
     observedAt: number;
     catalog: ProviderAdapterModelCatalog;
@@ -1109,6 +1116,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       refusal = refused;
     });
     this.providerRefusal = refusal;
+    if (options.serve) this.childSteerOutlivesParentTurn = true;
     if (options.serve && this.providerOverride !== 'echo') {
       const discovery = this.discoveryDeps(options.serve);
       this.metadata = { ...this.metadata, abortSettlement: 'await' };

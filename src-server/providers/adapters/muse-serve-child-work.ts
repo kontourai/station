@@ -380,13 +380,13 @@ function baseItem(
     controls: {
       stop: 'provider-task-stop',
       // `subagent/sendMessage` reaches a running workflow child (live: queued,
-      // delivered, and the child's reply carried it). Offered while the turn
-      // that launched the workflow runs, which is also when orchestration
-      // admits a child steer; that turn is the token, the send names the
-      // child.
-      ...(workflow.turnId && turnLive
-        ? { steer: { turnId: workflow.turnId } }
-        : {}),
+      // delivered, and the child's reply carried it, after the launching turn
+      // had ended). Offered for as long as the child runs: muse ends that
+      // turn at launch, and the adapter declares its children outlive it
+      // (`childSteerOutlivesParentTurn`), so orchestration admits the steer
+      // without a running parent turn. The launching turn is the token; the
+      // send names the child.
+      ...(workflow.turnId ? { steer: { turnId: workflow.turnId } } : {}),
     },
   };
 }
@@ -705,7 +705,9 @@ function nativeSubagentItem(
     ...(usage ? { usage } : {}),
     controls: {
       stop: 'provider-task-stop',
-      ...(turnId && turnLive ? { steer: { turnId } } : {}),
+      // As for a workflow child: steerable while it runs, its launching turn
+      // live or not.
+      ...(turnId ? { steer: { turnId } } : {}),
     },
   };
 }
