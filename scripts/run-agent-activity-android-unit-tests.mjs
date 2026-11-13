@@ -193,7 +193,9 @@ function stageRustWebView(root) {
     'utf8',
   );
   const extension =
-    /^WRY_RUSTWEBVIEW_CLASS_EXTENSION\s*=\s*'''([\s\S]*?)'''/m.exec(config)?.[1];
+    /^WRY_RUSTWEBVIEW_CLASS_EXTENSION\s*=\s*'''([\s\S]*?)'''/m.exec(
+      config,
+    )?.[1];
   if (
     !extension ||
     ![
