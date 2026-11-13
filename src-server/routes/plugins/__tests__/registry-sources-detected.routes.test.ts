@@ -38,6 +38,7 @@ import { registerManifestRegistryProvider } from '../../../providers/registries/
 import {
   clearAll,
   registerAgentRegistryProvider,
+  registerSkillRegistryProvider,
 } from '../../../providers/registries/registry.js';
 import {
   detectRegistrySourceTree,
@@ -1175,5 +1176,30 @@ describe('an earlier Station can still read the configuration', () => {
     );
     expect(file.sources[0].ref).toBe('main');
     expect(legacyConfigurationReader().safeParse(file).success).toBe(false);
+  });
+});
+
+describe('default sources have names that tell them apart', () => {
+  test('each default local skill folder is named for its engine and owner, not "Local skills"', async () => {
+    const { json } = setup();
+    const home = '/home/someone';
+    registerSkillRegistryProvider(
+      new FilesystemSkillRegistryProvider([
+        `${home}/.codex/skills`,
+        `${home}/.claude/.agents/skills`,
+        `${home}/station/app-homes/codex/skills`,
+        `${home}/station/app-homes/claude/skills`,
+      ]),
+    );
+    const names = (await json<{ data: RegistrySource[] }>('/sources')).data
+      .filter((source) => source.adapter === 'directory')
+      .map((source) => source.displayName);
+    expect(names).toEqual([
+      'Codex skills · user',
+      'Claude skills · user',
+      'Codex skills · Station',
+      'Claude skills · Station',
+    ]);
+    expect(new Set(names).size).toBe(names.length);
   });
 });

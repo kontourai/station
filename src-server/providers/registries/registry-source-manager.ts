@@ -160,6 +160,26 @@ export function registrySourceSupplies(
   );
 }
 
+/**
+ * A name for a local skill folder that tells the default folders apart: the
+ * engine whose folder it is, and whose (`· user` for one in the person's
+ * home, `· Station` for an app home Station manages). Any other folder is
+ * named by its parent folder.
+ */
+export function localSkillFolderName(path: string): string {
+  const parts = path.split(/[\\/]+/).filter(Boolean);
+  const title = (word: string) =>
+    word.charAt(0).toLocaleUpperCase() + word.slice(1);
+  const appHome = parts.lastIndexOf('app-homes');
+  if (appHome >= 0 && parts[appHome + 1])
+    return `${title(parts[appHome + 1]!)} skills · Station`;
+  const engine = parts.find(
+    (part) => part.startsWith('.') && part !== '.agents',
+  );
+  if (engine) return `${title(engine.slice(1))} skills · user`;
+  return `Local skills · ${parts.at(-2) ?? parts.at(-1) ?? path}`;
+}
+
 /** Catalog kinds, in the order a source's primary kind is chosen. */
 const CATALOG_KINDS: readonly CatalogKind[] = ['skills', 'plugins', 'agents'];
 
@@ -587,7 +607,7 @@ export class RegistrySourceManager {
               : provider instanceof GitHubSkillRegistryProvider
                 ? key.replace(/^github:/, '')
                 : provider instanceof FilesystemSkillRegistryProvider
-                  ? 'Local skills'
+                  ? localSkillFolderName(key)
                   : label,
           origin,
           owner: origin === 'plugin' ? label : undefined,
