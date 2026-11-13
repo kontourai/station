@@ -298,7 +298,11 @@ for (const theme of ['light', 'dark'] as const) {
       ).toBeVisible();
       await expectNoHorizontalScroll(page);
       await page.screenshot({
-        path: testInfo.outputPath(`installed-${theme}-${viewport}.png`),
+        path: resolve(
+          REPO_ROOT,
+          'gallery/diagnostics/ux-lane-e',
+          `installed-${theme}-${viewport}.png`,
+        ),
       });
     });
   }
