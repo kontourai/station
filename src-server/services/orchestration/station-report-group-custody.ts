@@ -1332,10 +1332,17 @@ export class StationReportGroupCustody {
           const assertPrepared = (scope: ReportRoundsScope): undefined => {
             const state = states.get(scope);
             if (!state) refuse();
-            return scope.check(() => {
-              for (const location of state.locations) location.assertCurrent();
-              return undefined;
-            });
+            // The parent may still hold Home after this transaction child retires.
+            scope.current();
+            return scope.owner.runWithLease(scope.lease, () =>
+              this.owners.environment.withCurrentAuthority(() =>
+                scope.check(() => {
+                  for (const location of state.locations)
+                    location.assertCurrent();
+                  return undefined;
+                }),
+              ),
+            );
           };
           const build = (
             scope?: ReportRoundsScope,

@@ -96,6 +96,44 @@ test('authority composition refuses a Home replacement before returning the obse
   ).toBe(true);
 });
 
+test('authority composition refuses an external registry rewrite before returning the observation', async () => {
+  const { home, service } = await setup();
+  const offer = service.devicePairing.createOffer({
+    endpoint: 'http://127.0.0.1:43979',
+  });
+  const request = service.devicePairing.requestPairing({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    deviceName: 'registry-currency-control',
+    requesterPosition: 'unproven',
+  });
+  service.devicePairing.confirmRequest(request.requestId, {
+    kind: 'presented-credential',
+  });
+  const paired = service.devicePairing.exchange({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    requestId: request.requestId,
+  });
+  const path = join(home, 'security', 'paired-devices.json');
+  const original = fs.readFileSync(path);
+  try {
+    expect(() =>
+      service.withCurrentAuthority(() => {
+        fs.writeFileSync(path, Buffer.concat([original, Buffer.from('\n')]));
+        return 'must not be disclosed';
+      }),
+    ).toThrow('Paired-device registry revision changed');
+  } finally {
+    fs.writeFileSync(path, original);
+  }
+  expect(
+    service.withCurrentAuthority(() =>
+      service.verifyCredential(paired.credential),
+    ),
+  ).toBe(true);
+});
+
 test('authority composition rejects thenables and does not lend a synchronous span across await', async () => {
   const { service, record } = await setup();
   expect(() =>
