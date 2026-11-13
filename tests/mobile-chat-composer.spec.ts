@@ -9,7 +9,10 @@ import {
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
-import { buildLongSessionTurns } from './fixtures/long-session';
+import {
+  buildLongSessionTurns,
+  createLongSessionEventWindowHandler,
+} from './fixtures/long-session';
 import { expectNoBlockingAccessibilityViolations } from './helpers/accessibility';
 import {
   mockChatShell,
@@ -3136,6 +3139,36 @@ for (const viewport of [
     test.setTimeout(20_000);
     await page.setViewportSize(viewport);
     await mockChatShell(page);
+    // The Home summary also reads this delegated session; declare its transcript.
+    const delegatedTurns = buildLongSessionTurns({
+      threadId: 'delegated-review',
+      provider: 'codex',
+      turnCount: 1,
+      replyText: () => 'Delegated review is ready.',
+    });
+    await page.route(
+      '**/api/orchestration/sessions/delegated-review/event-window**',
+      createLongSessionEventWindowHandler({
+        threadId: 'delegated-review',
+        provider: 'codex',
+        availableTurns: () => delegatedTurns,
+      }),
+    );
+    await page.route('**/api/projects/default/chat-defaults', async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      await route.fulfill(
+        json({
+          success: true,
+          data: {
+            version: 'station.project-chat-defaults/v1',
+            projectSlug: 'default',
+            model: { selection: 'fixed', lastUsed: [] },
+            approvalMode: { selection: 'fixed', resolved: { source: 'none' } },
+          },
+        }),
+      );
+    });
     const textarea = await openComposer(page, true);
 
     // Nothing may widen the document past the viewport with the dock open.
@@ -3164,11 +3197,11 @@ for (const viewport of [
     expect(draftsBox!.x + draftsBox!.width).toBeLessThanOrEqual(viewport.width);
     await drafts.click();
     await expect(
-      page.getByRole('dialog', { name: 'Portable drafts' }),
+      page.getByRole('dialog', { name: 'Saved drafts' }),
     ).toBeVisible();
-    await page.getByRole('button', { name: 'Close portable drafts' }).click();
+    await page.getByRole('button', { name: 'Close saved drafts' }).click();
     await expect(
-      page.getByRole('dialog', { name: 'Portable drafts' }),
+      page.getByRole('dialog', { name: 'Saved drafts' }),
     ).toBeHidden();
 
     // Row 2: the controls strip sits below the textarea and every visible

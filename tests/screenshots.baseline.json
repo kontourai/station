@@ -137,7 +137,7 @@
       "name": "mobile-conversation-resync",
       "width": 390,
       "height": 844,
-      "sha256": "5bc5522327ef5074ff59196f306e492b1c54d89bbe0ba2239290d423a3c48a1f"
+      "sha256": "e4b7b942e78d28c0c31d284f1c3330e6b017c5257f8e2d231a4aeaed0663c999"
     },
     {
       "name": "mobile-home",
@@ -342,6 +342,48 @@
       "width": 412,
       "height": 915,
       "sha256": "63bb7ff4947ebfd1816c7a6f78f1c0fbd6018110b774d70e1b939381e540f7e2"
+    },
+    {
+      "name": "run-setup-filled-dark-1440",
+      "width": 1440,
+      "height": 900,
+      "sha256": "cecd92e3d3413fe1d9fbdefb0d166d832b004b921e1914c4bf10bdd84c2b4198"
+    },
+    {
+      "name": "run-setup-filled-dark-390",
+      "width": 390,
+      "height": 844,
+      "sha256": "1404fa2138d4576372de1d6cdbe10bd574d9fbffdd52c9f2a3635568aebf72ae"
+    },
+    {
+      "name": "run-setup-filled-dark-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "7548ef6021377c8f7c49b77ea8730255402c7f4682553fd23bf2f53a0afb06b2"
+    },
+    {
+      "name": "run-setup-filled-light-1440",
+      "width": 1440,
+      "height": 900,
+      "sha256": "2c2dfe2737436a907889bda7449553598b49d010bb78314af372bc523a7db4fc"
+    },
+    {
+      "name": "run-setup-filled-light-390",
+      "width": 390,
+      "height": 844,
+      "sha256": "a7441752a6e43181e70f0e242aaa747e899b5c9adf2ee4cc0ae0ffb1f7f1dccf"
+    },
+    {
+      "name": "run-setup-filled-light-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "6bdfb446bd1df885410bcfccba82ac23ea9d5ad541afcae879d7d499080e97b2"
+    },
+    {
+      "name": "run-setup-full-access-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "04104779827364f03d092f4b7445db1b8517b63f5f0da0279452663074dbac25"
     },
     {
       "name": "run-setup-light-1440",
