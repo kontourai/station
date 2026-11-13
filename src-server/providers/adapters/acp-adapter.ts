@@ -93,6 +93,7 @@ import { createACPBridgeClient } from '../../services/acp/acp-bridge-client.js';
 import type { ManagedTerminal } from '../../services/acp/acp-bridge-types.js';
 import {
   registryLaunchEnvFor,
+  resolveManagedRuntimeLaunch,
   stationOwnsEngineSignIn,
 } from '../../services/acp/acp-engine-descriptors.js';
 import {
@@ -963,6 +964,23 @@ function mergeAcpConfigOption(
 
 /** Turns whose engine prompt ids one ACP session keeps for rewind and fork. */
 export const ACP_TURN_MESSAGES_MAX = 500;
+
+/**
+ * For a managed-runtime connection, the installed runtime readiness should
+ * run (`null` when it is not installed or cannot launch); undefined for any
+ * other connection.
+ */
+function managedRuntimeReadiness(config: {
+  command: string;
+  args?: readonly string[];
+}): { runtime: string | null } | undefined {
+  try {
+    const launch = resolveManagedRuntimeLaunch(config);
+    return launch ? { runtime: launch.command } : undefined;
+  } catch {
+    return { runtime: null };
+  }
+}
 
 export class AcpAdapter implements ProviderAdapterShape {
   readonly provider = 'acp' as const;
@@ -3235,11 +3253,16 @@ export class AcpAdapter implements ProviderAdapterShape {
     }
 
     const results = await Promise.all(
-      scoped.map((config) =>
-        buildCliRuntimePrerequisites({
+      scoped.map((config) => {
+        // A managed engine is not a program on PATH: its runtime is the
+        // install's, or there is none until it is installed.
+        const managed = managedRuntimeReadiness(config);
+        const ownsSignIn = stationOwnsEngineSignIn(config);
+        return buildCliRuntimePrerequisites({
           command: config.command,
           displayName: config.name,
           versionArgs: ['--version'],
+          ...(managed ? { findBinary: () => managed.runtime } : {}),
           // #1940: no generic engine command proves sign-in (a `--version`
           // exit 0 used to read as signed in), and a handshake does not
           // either: some engines refuse only at the first prompt. Only the
@@ -3250,10 +3273,14 @@ export class AcpAdapter implements ProviderAdapterShape {
           unverifiedAuthDescription: engineStatusCheckable(config)
             ? `Station could not tell whether ${config.name} is signed in.`
             : `Station has no way to check whether ${config.name} is signed in. If a chat reports that it needs a sign-in, sign in from this engine's page.`,
-          installStep: `Install ${config.name} and ensure \`${config.command}\` is on PATH.`,
-          authStep: `Sign in with ${config.name} itself if it asks you to.`,
-        }),
-      ),
+          installStep: managed
+            ? `Install ${config.name} from its sign-in panel in Connections.`
+            : `Install ${config.name} and ensure \`${config.command}\` is on PATH.`,
+          authStep: ownsSignIn
+            ? `Sign in to ${config.name} from its sign-in panel in Connections.`
+            : `Sign in with ${config.name} itself if it asks you to.`,
+        });
+      }),
     );
 
     return results.flat();

@@ -1,9 +1,10 @@
 /**
  * Engine host auth through the chat adapter's own client, across a real
- * process boundary. The fake ACP agent (a recorded kiro-cli v3 profile) asks
- * for `_kiro/auth/getAccessToken` before it answers `initialize`, as Kiro's
- * agent service does under `--auth=acp-callback`, and records what Station
- * answered and announced.
+ * process boundary. The fake ACP agent replays a recorded profile: for the
+ * bundle, Kiro's agent service itself (`kas-bundle`, which asks for
+ * `_kiro/auth/getAccessToken` before it answers `initialize` under
+ * `--auth=acp-callback`); for the kiro-cli routes, kiro-cli v3 made to ask
+ * the same. It records what Station answered and announced.
  *
  * - Launched from the built-in "Kiro (KAS, no CLI)" descriptor (its managed
  *   runtime pointed at the fake), the session receives the vault's access
@@ -44,6 +45,18 @@ const KIRO_V3 = JSON.parse(
   readFileSync(
     fileURLToPath(
       new URL('./fixtures/acp-scripted-profiles/kiro-v3.json', import.meta.url),
+    ),
+    'utf8',
+  ),
+) as Record<string, unknown>;
+
+const KAS_BUNDLE = JSON.parse(
+  readFileSync(
+    fileURLToPath(
+      new URL(
+        './fixtures/acp-scripted-profiles/kas-bundle.json',
+        import.meta.url,
+      ),
     ),
     'utf8',
   ),
@@ -98,16 +111,16 @@ async function signIn(connectionId: string) {
  * whatever arguments the launch itself passed (the managed argv, kiro-cli's
  * `acp --agent-engine ...`).
  */
-function fakeEngineScript(dir: string): { script: string; record: string } {
+function fakeEngineScript(
+  dir: string,
+  engineProfile: Record<string, unknown> = {
+    ...KIRO_V3,
+    initializeRequests: [{ method: '_kiro/auth/getAccessToken', params: {} }],
+  },
+): { script: string; record: string } {
   const profile = join(dir, 'profile.json');
   const record = join(dir, 'record.jsonl');
-  writeFileSync(
-    profile,
-    JSON.stringify({
-      ...KIRO_V3,
-      initializeRequests: [{ method: '_kiro/auth/getAccessToken', params: {} }],
-    }),
-  );
+  writeFileSync(profile, JSON.stringify(engineProfile));
   writeFileSync(record, '');
   const script = join(dir, 'engine.mjs');
   writeFileSync(
@@ -167,7 +180,10 @@ describe.skipIf(process.platform === 'win32')(
   'engine host auth through the chat adapter',
   () => {
     test('the bundle launch receives the vault token before initialize answers, and is offered secret storage', async () => {
-      const { script, record } = fakeEngineScript(makeTempDir('kas-bundle-'));
+      const { script, record } = fakeEngineScript(
+        makeTempDir('kas-bundle-'),
+        KAS_BUNDLE,
+      );
       registerManagedRuntimeInstalls({
         installed: (installId) =>
           installId === 'kiro-kas'
@@ -192,6 +208,36 @@ describe.skipIf(process.platform === 'win32')(
       });
       expect(announced(entries)?.kiro).toMatchObject({ secretStorage: true });
       expect(JSON.stringify(entries)).not.toContain('vault-refresh-token');
+    }, 60_000);
+
+    test('a signed-out bundle is refused with the fixed signed-out answer, never a token, and still initializes', async () => {
+      const { script, record } = fakeEngineScript(
+        makeTempDir('kas-bundle-signed-out-'),
+        KAS_BUNDLE,
+      );
+      registerManagedRuntimeInstalls({
+        installed: (installId) =>
+          installId === 'kiro-kas'
+            ? { runtime: process.execPath, script }
+            : undefined,
+      });
+      await startChat({
+        id: 'kiro-kas-bundle',
+        name: 'Kiro (KAS, no CLI)',
+        command: managedRuntimeCommand('kiro-kas'),
+        args: [],
+        enabled: true,
+      });
+      const entries = recorded(record);
+      expect(tokenAnswer(entries)).toMatchObject({
+        phase: 'initialize',
+        error: {
+          code: -32000,
+          message: 'Station has no signed-in credential for this engine',
+        },
+      });
+      expect(tokenAnswer(entries)).not.toHaveProperty('result');
+      expect(entries.some((entry) => entry.method === 'initialize')).toBe(true);
     }, 60_000);
 
     test.each([
