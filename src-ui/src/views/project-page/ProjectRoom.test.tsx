@@ -1879,3 +1879,34 @@ test('an immediate Enter on a legacy thread draft submits the migrated revision,
     client.clear();
   }
 });
+
+test('a live delete reaches a row kept from a history window the room has moved past (#4797)', async () => {
+  messages = Array.from({ length: 25 }, (_, i) =>
+    storedMessage(i + 1, `Original ${i + 1}`),
+  );
+  const first = messages[0]!;
+  const { client } = mount();
+  await screen.findByText('Original 1');
+  messages.push(
+    ...Array.from({ length: 25 }, (_, i) =>
+      storedMessage(i + 26, `New ${i + 26}`),
+    ),
+  );
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['project-room'] });
+  });
+  await screen.findByText('New 50');
+  expect(screen.getByText('Original 1')).toBeTruthy();
+  messages[0] = { ...first, text: '', deletedAt: at };
+  await waitFor(() => expect(streams.length).toBeGreaterThan(0));
+  await act(async () => {
+    for (const stream of streams)
+      stream.enqueue(
+        new TextEncoder().encode(
+          `event: changed\ndata: ${JSON.stringify({ roomId, lastSeq: 50 })}\n\n`,
+        ),
+      );
+  });
+  await waitFor(() => expect(screen.queryByText('Original 1')).toBeNull());
+  expect(screen.getByText('Message deleted')).toBeTruthy();
+});

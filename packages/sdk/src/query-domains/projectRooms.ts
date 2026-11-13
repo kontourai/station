@@ -13,7 +13,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StationHttpError } from '../client/api-error-message';
 import type { ApiRequestScope } from '../client/http';
 import {
@@ -106,6 +106,125 @@ export function isProjectRoomAccessError(error: unknown) {
   );
 }
 /**
+ * One history window, `after` < seq <= `end`. The byte cap can split even a
+ * 25-message window; its forward continuations are finished before the caller
+ * moves backward, without overlapping newer windows.
+ */
+async function readProjectRoomWindow(
+  scope: ApiRequestScope,
+  slug: string,
+  identity: { projectId: string; roomId: string },
+  { after: start, end }: { after: number; end: number },
+  signal: AbortSignal,
+  channelId: string | undefined,
+) {
+  let after = start;
+  const messages: Awaited<
+    ReturnType<typeof fetchProjectRoomHistory>
+  >['messages'] = [];
+  for (let requests = 0; requests < 25; requests++) {
+    signal.throwIfAborted();
+    const page = await fetchProjectRoomHistory(
+      scope,
+      slug,
+      identity,
+      after,
+      Math.max(1, end - after),
+      signal,
+      channelId,
+    );
+    signal.throwIfAborted();
+    messages.push(...page.messages.filter((item) => item.seq <= end));
+    const last = page.messages[page.messages.length - 1]?.seq ?? after;
+    if (
+      last >= end ||
+      (page.nextAfter === null && last >= page.checkpoint.lastSeq)
+    )
+      return { ...page, messages };
+    if (page.nextAfter === null || page.nextAfter <= after)
+      throw new ProjectRoomProtocolError('Project room history is incomplete.');
+    after = page.nextAfter;
+  }
+  throw new ProjectRoomProtocolError(
+    'Project room history exceeded its window budget.',
+  );
+}
+/** Messages with `after` < seq <= `end`. */
+export interface ProjectRoomHistorySpan {
+  after: number;
+  end: number;
+}
+/**
+ * Re-reads the messages a room still shows from history windows it has moved
+ * past (#4797). The history query is keyed by the room's latest sequence, so
+ * when a new message moves the tail, rows read under the old key are kept on
+ * screen but no query owns them; a reaction, edit or delete of one of them
+ * would otherwise never reach the screen.
+ *
+ * This query lives under the room's key, so every live `changed` event and
+ * every mutation that invalidates the room re-reads the span; it reads nothing
+ * until then. `span` is asked at read time, for the rows shown at that moment.
+ * At most {@link PROJECT_ROOM_HISTORY_MAX_PAGES} windows are read, newest
+ * first.
+ */
+export function useProjectRoomRetainedHistory(
+  incomingScope: ApiRequestScope,
+  slug: string,
+  projectId: string,
+  channelId: string | undefined,
+  roomId: string | undefined,
+  span: () => ProjectRoomHistorySpan | undefined,
+) {
+  const { apiBase, authorityKey } = incomingScope;
+  const scope = useMemo(
+    () => ({ apiBase, authorityKey }),
+    [apiBase, authorityKey],
+  );
+  const asked = useRef(span);
+  asked.current = span;
+  return useQuery({
+    queryKey: [
+      ...(channelId === undefined
+        ? projectRoomKey(scope, projectId)
+        : projectRoomChannelKey(scope, projectId, channelId)),
+      roomId ?? 'unopened',
+      'history',
+      'retained',
+    ],
+    enabled: !!roomId,
+    retry: false,
+    gcTime: 0,
+    staleTime: Number.POSITIVE_INFINITY,
+    // Rows were current when shown: nothing is read until the room changes.
+    // A room that is not open holds no data at all, even an empty list.
+    initialData: roomId ? { messages: [] } : undefined,
+    initialDataUpdatedAt: 0,
+    queryFn: async ({ signal }) => {
+      const wanted = asked.current();
+      const messages: Awaited<
+        ReturnType<typeof readProjectRoomWindow>
+      >['messages'] = [];
+      if (!roomId || !wanted || wanted.end <= wanted.after) return { messages };
+      const floor = Math.max(
+        wanted.after,
+        wanted.end - PROJECT_ROOM_HISTORY_MAX_PAGES * 25,
+      );
+      for (let end = wanted.end; end > floor; end -= 25) {
+        const window = await readProjectRoomWindow(
+          scope,
+          slug,
+          { projectId, roomId },
+          { after: Math.max(floor, end - 25), end },
+          signal,
+          channelId,
+        );
+        messages.unshift(...window.messages);
+      }
+      return { messages };
+    },
+  });
+}
+/**
  * One room's discovery, history, sends, note and live stream. Without
  * `channelId` it is the Project's default room (`/room`); with it, that
  * channel (`/channels/:channelId`).
@@ -154,43 +273,15 @@ export function useProjectRoom(
     retry: false,
     gcTime: 0,
     initialPageParam: { after: tailAfter, end: tailAfter + 25 },
-    queryFn: async ({ pageParam, signal }) => {
-      // The byte cap can split even a 25-message window. Finish its forward
-      // continuations before moving backward, without overlapping newer windows.
-      const { end } = pageParam;
-      let after = pageParam.after;
-      const messages: Awaited<
-        ReturnType<typeof fetchProjectRoomHistory>
-      >['messages'] = [];
-      for (let requests = 0; requests < 25; requests++) {
-        signal.throwIfAborted();
-        const page = await fetchProjectRoomHistory(
-          scope,
-          slug,
-          { projectId, roomId: roomId! },
-          after,
-          Math.max(1, end - after),
-          signal,
-          channelId,
-        );
-        signal.throwIfAborted();
-        messages.push(...page.messages.filter((item) => item.seq <= end));
-        const last = page.messages[page.messages.length - 1]?.seq ?? after;
-        if (
-          last >= end ||
-          (page.nextAfter === null && last >= page.checkpoint.lastSeq)
-        )
-          return { ...page, messages };
-        if (page.nextAfter === null || page.nextAfter <= after)
-          throw new ProjectRoomProtocolError(
-            'Project room history is incomplete.',
-          );
-        after = page.nextAfter;
-      }
-      throw new ProjectRoomProtocolError(
-        'Project room history exceeded its window budget.',
-      );
-    },
+    queryFn: ({ pageParam, signal }) =>
+      readProjectRoomWindow(
+        scope,
+        slug,
+        { projectId, roomId: roomId! },
+        pageParam,
+        signal,
+        channelId,
+      ),
     getNextPageParam: (_last, _pages, { after }) =>
       after > 0 ? { after: Math.max(0, after - 25), end: after } : undefined,
     maxPages: PROJECT_ROOM_HISTORY_MAX_PAGES,

@@ -91,6 +91,9 @@ export function RoomReactionBar({
             disabled={disabled}
             onPointerDown={(event) => {
               if (event.pointerType !== 'touch' || !onShowWho) return;
+              // A hold on a pill is this pill's: the row's own hold (its
+              // action menu) must not start too, or both open at once.
+              event.stopPropagation();
               longPressed.current = false;
               cancel();
               const anchor = event.currentTarget;

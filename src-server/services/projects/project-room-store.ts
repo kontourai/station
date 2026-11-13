@@ -1071,6 +1071,48 @@ export class ProjectRoomStore {
     );
   }
   /**
+   * The files a stored message names, with its room and author, read from
+   * its original row: a deleted message's projection withholds them, but
+   * its files still have to be released (#4812).
+   */
+  messageFiles(
+    scope: ProjectMembershipScope,
+    messageId: string,
+    channelId?: string,
+  ): { roomId: string; author: ProjectRoomActor; ids: string[] } {
+    const { roomId } = this.room(scope, channelId);
+    const message = this.message(roomId, messageId);
+    return {
+      roomId,
+      author: { ...message.actor },
+      ids: (message.attachments ?? []).map((attachment) => attachment.id),
+    };
+  }
+  /**
+   * Of `ids` in `roomId`: those linked to any message, and those whose
+   * message still stands (not deleted).
+   */
+  attachmentLinks(
+    roomId: string,
+    ids: readonly string[],
+  ): { linked: Set<string>; standing: Set<string> } {
+    const linked = new Set<string>();
+    const standing = new Set<string>();
+    const query = this.db.prepare(
+      'SELECT message_id FROM project_room_attachments WHERE attachment_id=? AND room_id=?',
+    );
+    for (const id of ids) {
+      const row = query.get(id, roomId);
+      if (!row) continue;
+      linked.add(id);
+      if (
+        this.latestRevision(roomId, String(row.message_id))?.kind !== 'delete'
+      )
+        standing.add(id);
+    }
+    return { linked, standing };
+  }
+  /**
    * The room and author of the message that carries `attachmentId`, when that
    * message is readable: a deleted message's files are withheld with its text.
    */

@@ -19,7 +19,15 @@ import type {
   ProjectRoomBrowserView,
   ProjectRoomPresence,
 } from '@kontourai/station-contracts/project-room-browser';
+import { createLogger } from '../../utils/logger.js';
 import { ProjectRoomRefusal, ProjectRoomStore } from './project-room-store.js';
+
+const logger = createLogger({ name: 'project-room-service' });
+/**
+ * How long an upload no message names is kept for its send (#4812). A send
+ * that fails or is discarded leaves it behind; after this it is released.
+ */
+export const PROJECT_ROOM_UNSENT_FILE_TTL_MS = 24 * 60 * 60 * 1000;
 export type ProjectRoomCapabilities = ProjectRoomView['capabilities'];
 export interface ProjectRoomAccessPort {
   withAction<T>(
@@ -69,6 +77,14 @@ export interface ProjectRoomAttachmentPort {
     binding: readonly string[],
     attachments: ProjectRoomAttachment[],
   ): unknown;
+  /** Gives up these files; a blob goes once no binding names it. */
+  release(binding: readonly string[], ids: readonly string[]): void;
+  /** Releases files no standing message needs (see `RoomAttachments.sweep`). */
+  sweep(
+    binding: readonly string[],
+    unsentBefore: number,
+    links: (ids: string[]) => { standing: Set<string>; linked: Set<string> },
+  ): void;
 }
 /**
  * A file belongs to the person who uploaded it, in one room of one Project
@@ -401,15 +417,34 @@ export class ProjectRoomService {
       slug,
       'discuss',
       guard,
-      (scope, actor, _caps, assertCurrent) =>
-        this.store.deleteMessage(
+      (scope, actor, _caps, assertCurrent) => {
+        const deleted = this.store.deleteMessage(
           scope,
           actor,
           messageId,
           input,
           assertCurrent,
           channelId,
-        ),
+        );
+        // The tombstone already withholds the files; their bytes and their
+        // place in the uploader's quota go with them. A failure here is
+        // logged, and the next upload's sweep releases them instead.
+        if (this.attachments) {
+          const files = this.store.messageFiles(scope, messageId, channelId);
+          if (files.ids.length)
+            try {
+              this.attachments.release(
+                attachmentBinding(scope, files.roomId, files.author),
+                files.ids,
+              );
+            } catch (error) {
+              logger.warn('Project room files of a deleted message were kept', {
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+        }
+        return deleted;
+      },
       channelId,
     );
   }
@@ -429,9 +464,22 @@ export class ProjectRoomService {
       (scope, actor, _caps, assertCurrent) => {
         const roomId = this.store.writableRoomId(scope, channelId);
         assertCurrent();
-        return this.files((port) =>
-          port.store(attachmentBinding(scope, roomId, actor), inputs),
-        );
+        const binding = attachmentBinding(scope, roomId, actor);
+        // Before counting the quota, release what no standing message needs:
+        // a deleted message's files and old unsent uploads.
+        if (this.attachments)
+          try {
+            this.attachments.sweep(
+              binding,
+              Date.now() - PROJECT_ROOM_UNSENT_FILE_TTL_MS,
+              (ids) => this.store.attachmentLinks(roomId, ids),
+            );
+          } catch (error) {
+            logger.warn('Project room upload sweep did not finish', {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        return this.files((port) => port.store(binding, inputs));
       },
       channelId,
     );

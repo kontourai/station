@@ -47,6 +47,8 @@ let messages: Message[];
 let supported: boolean;
 let calls: { path: string; body: Record<string, unknown> }[];
 let failReaction: number | undefined;
+/** When set, an upload answers only after it settles. */
+let uploadGate: Promise<void> | undefined;
 
 function message(seq: number, actor: typeof me, text: string): Message {
   return {
@@ -97,6 +99,7 @@ function fixture() {
           headers: { 'Content-Type': 'text/event-stream' },
         });
       if (path.endsWith('/presence')) return ok([]);
+      if (path.endsWith('/attachments') && body && uploadGate) await uploadGate;
       if (path.endsWith('/attachments') && body)
         return ok(
           body.attachments.map(
@@ -206,6 +209,7 @@ beforeEach(() => {
   supported = true;
   calls = [];
   failReaction = undefined;
+  uploadGate = undefined;
   messages = [
     message(1, jo, 'Pricing copy is ready.'),
     message(2, scout, 'Two numbers differ from the plan.'),
@@ -502,4 +506,127 @@ test('on a touch phone, ⋯ opens a labelled menu: focus moves in, Delete is des
   expect(
     await screen.findByRole('alertdialog', { name: 'Delete this message?' }),
   ).toBeTruthy();
+});
+
+function threadTree(client: QueryClient, rootId?: string) {
+  return (
+    <QueryClientProvider client={client}>
+      <ProjectRoom
+        slug="team"
+        projectId="project"
+        requestScope={{ apiBase, authorityKey: 'one' }}
+        routeChannel={{ id: undefined }}
+        thread={{ rootId, open: () => {} }}
+      />
+    </QueryClientProvider>
+  );
+}
+const pngFile = (name: string) =>
+  new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], name, {
+    type: 'image/png',
+  });
+const pasteFile = (field: HTMLElement, file: File) =>
+  fireEvent.paste(field, {
+    clipboardData: { types: ['Files'], files: [file], items: [] },
+  });
+
+test('a file staged in a thread stays with that thread: the channel sends without it, and the thread still has it', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const ui = render(threadTree(client, uuid(1)));
+  const reply = await screen.findByRole('textbox', { name: 'Reply in thread' });
+  await screen.findByRole('button', { name: 'Attach files' });
+  pasteFile(reply, pngFile('thread-only.png'));
+  await screen.findByRole('img', { name: 'thread-only.png' });
+  ui.rerender(threadTree(client));
+  const channel = await screen.findByRole('textbox', {
+    name: 'Message the project',
+  });
+  expect(screen.queryByRole('img', { name: 'thread-only.png' })).toBeNull();
+  fireEvent.change(channel, { target: { value: 'channel-only text' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await waitFor(() =>
+    expect(calls.some((c) => c.path.endsWith('/messages'))).toBe(true),
+  );
+  const posted = calls.find((c) => c.path.endsWith('/messages'))!;
+  expect(posted.body.text).toBe('channel-only text');
+  expect(posted.body.replyTo).toBeUndefined();
+  expect(posted.body.attachments).toBeUndefined();
+  expect(calls.some((c) => c.path.endsWith('/attachments'))).toBe(false);
+  // Back in the thread, its file is still staged and goes with its reply.
+  ui.rerender(threadTree(client, uuid(1)));
+  await screen.findByRole('img', { name: 'thread-only.png' });
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await waitFor(() =>
+    expect(
+      calls.filter((c) => c.path.endsWith('/messages')).at(-1)?.body,
+    ).toMatchObject({
+      replyTo: uuid(1),
+      attachments: [{ name: 'thread-only.png' }],
+    }),
+  );
+});
+
+test('a send keeps its files when the reader leaves the thread before the upload finishes', async () => {
+  let release!: () => void;
+  uploadGate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const ui = render(threadTree(client, uuid(1)));
+  const reply = await screen.findByRole('textbox', { name: 'Reply in thread' });
+  await screen.findByRole('button', { name: 'Attach files' });
+  pasteFile(reply, pngFile('in-flight.png'));
+  await screen.findByRole('img', { name: 'in-flight.png' });
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await waitFor(() =>
+    expect(calls.some((c) => c.path.endsWith('/attachments'))).toBe(true),
+  );
+  ui.rerender(threadTree(client));
+  const channel = await screen.findByRole('textbox', {
+    name: 'Message the project',
+  });
+  pasteFile(channel, pngFile('channel.png'));
+  await screen.findByRole('img', { name: 'channel.png' });
+  release();
+  await waitFor(() =>
+    expect(
+      calls.filter((c) => c.path.endsWith('/messages')).at(-1)?.body,
+    ).toMatchObject({
+      replyTo: uuid(1),
+      attachments: [{ name: 'in-flight.png' }],
+    }),
+  );
+  // The channel's own file is neither sent nor cleared by the thread's send.
+  expect(screen.getByRole('img', { name: 'channel.png' })).toBeTruthy();
+  ui.rerender(threadTree(client, uuid(1)));
+  await screen.findByRole('textbox', { name: 'Reply in thread' });
+  expect(screen.queryByRole('img', { name: 'in-flight.png' })).toBeNull();
+});
+
+test('a long press on a pill opens only Who reacted, and closing it returns focus to the pill', async () => {
+  emulatePhone();
+  mount();
+  const pill = await screen.findByRole('button', { name: '👍 2: Jo and You' });
+  const down = new Event('pointerdown', { bubbles: true });
+  Object.defineProperties(down, {
+    pointerType: { value: 'touch' },
+    clientX: { value: 20 },
+    clientY: { value: 20 },
+  });
+  fireEvent(pill, down);
+  const sheet = await screen.findByRole('dialog', { name: 'Reactions' });
+  // Past the row's own hold too: its action menu never opened.
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  expect(screen.queryByRole('menu')).toBeNull();
+  fireEvent.click(
+    within(sheet).getByRole('button', { name: 'Close reactions' }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog', { name: 'Reactions' })).toBeNull(),
+  );
+  await waitFor(() => expect(document.activeElement).toBe(pill));
 });

@@ -4,12 +4,15 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import {
   type ChatAttachmentInput,
   parseChatAttachmentDataUrl,
+  sniffChatImageMimeType,
   validateChatAttachments,
 } from '@kontourai/station-contracts/chat-attachment';
 import {
@@ -47,6 +50,19 @@ export class RoomAttachments {
   ): TaskRoomAttachment[] {
     const error = validateChatAttachments(inputs);
     if (error) throw new Error(error);
+    // A declared image type is a claim the bytes must make too: bytes that
+    // are not that image are never stored and served as one.
+    for (const input of inputs)
+      if (
+        input.kind === 'image' &&
+        sniffChatImageMimeType(
+          Buffer.from(
+            parseChatAttachmentDataUrl(input.dataUrl)!.base64.slice(0, 24),
+            'base64',
+          ),
+        ) !== input.mimeType
+      )
+        throw new Error(`${input.name} is not a ${input.mimeType} image.`);
     const directory = this.directory(binding);
     mkdirSync(directory, { recursive: true });
     if (readdirSync(directory).length + inputs.length > FILES_PER_BINDING)
@@ -93,6 +109,78 @@ export class RoomAttachments {
       bytes,
       dataUrl: `data:${attachment.mimeType};base64,${bytes.toString('base64')}`,
     };
+  }
+  /**
+   * Gives up files of this binding: their bindings go, and each blob goes
+   * once no binding in this store still names it (the byte store is
+   * deduplicated, so the same bytes may back another file). Synchronous, so
+   * no store or release in this process interleaves with the reference scan.
+   */
+  release(binding: readonly string[], ids: readonly string[]) {
+    const directory = this.directory(binding);
+    const refs = new Set<string>();
+    for (const id of ids) {
+      if (!/^[0-9a-f-]{36}$/.test(id)) continue;
+      const path = join(directory, `${id}.json`);
+      const ref = this.blobRef(path);
+      rmSync(path, { force: true });
+      if (ref) refs.add(ref);
+    }
+    if (!refs.size) return;
+    const bindings = join(this.root, 'bindings');
+    for (const key of existsSync(bindings) ? readdirSync(bindings) : [])
+      for (const name of readdirSync(join(bindings, key))) {
+        const ref = this.blobRef(join(bindings, key, name));
+        // A binding that cannot be read might name any blob: keep them all.
+        if (!ref) return;
+        refs.delete(ref);
+        if (!refs.size) return;
+      }
+    for (const ref of refs) this.blobs.removeByRef(ref);
+  }
+  /**
+   * Releases this binding's files that no standing message needs: any whose
+   * message was deleted, and unsent uploads older than `unsentBefore` (epoch
+   * ms). `standing` names, of the ids it is asked about, those linked to a
+   * message that still stands; `linked`, those linked to any message.
+   */
+  sweep(
+    binding: readonly string[],
+    unsentBefore: number,
+    links: (ids: string[]) => { standing: Set<string>; linked: Set<string> },
+  ) {
+    const directory = this.directory(binding);
+    if (!existsSync(directory)) return;
+    const ids = readdirSync(directory)
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => name.slice(0, -'.json'.length));
+    if (!ids.length) return;
+    const { standing, linked } = links(ids);
+    this.release(
+      binding,
+      ids.filter((id) => {
+        if (standing.has(id)) return false;
+        if (linked.has(id)) return true;
+        try {
+          return statSync(join(directory, `${id}.json`)).mtimeMs < unsentBefore;
+        } catch {
+          return false;
+        }
+      }),
+    );
+  }
+  private blobRef(path: string): string | undefined {
+    try {
+      const stored: unknown = JSON.parse(readFileSync(path, 'utf8'));
+      return stored &&
+        typeof stored === 'object' &&
+        'blobRef' in stored &&
+        typeof stored.blobRef === 'string'
+        ? stored.blobRef
+        : undefined;
+    } catch {
+      return undefined;
+    }
   }
   /** Each descriptor must name a stored file of this binding, field for field. */
   resolve(

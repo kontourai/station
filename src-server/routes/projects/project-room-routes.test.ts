@@ -1320,3 +1320,209 @@ test('read markers: a reaction, an edit and a delete in a named channel leave it
     });
   }
 });
+
+/** Where alice's files in the default room live, and how to read them. */
+async function aliceFiles(h: Awaited<ReturnType<typeof harness>>) {
+  const { existsSync, readdirSync, readFileSync } = await import('node:fs');
+  const a = await h.discover('alice');
+  const root = join(h.home, 'project-room-attachments');
+  const binding = [
+    h.scope.stationId,
+    h.scope.localProjectId,
+    h.scope.portableProjectId,
+    a.roomId,
+    a.actor.kind,
+    a.actor.id,
+  ];
+  const directory = () => {
+    const bindings = join(root, 'bindings');
+    const [key] = existsSync(bindings) ? readdirSync(bindings) : [];
+    return key ? join(bindings, key) : undefined;
+  };
+  const blobOf = (id: string) => {
+    const { blobRef } = JSON.parse(
+      readFileSync(join(directory()!, `${id}.json`), 'utf8'),
+    ) as { blobRef: string };
+    const digest = blobRef.slice('sha256-'.length);
+    return join(root, 'blobs', digest.slice(0, 2), digest);
+  };
+  const upload = async (...files: Record<string, unknown>[]) => {
+    const response = await h.request('alice', '/attachments', 'POST', {
+      ...guard(a),
+      attachments: files,
+    });
+    return response.status === 200
+      ? ((await data(response)) as { id: string }[])
+      : response.status;
+  };
+  const send = async (attachments: unknown[]) =>
+    parseProjectRoomMessage(
+      await data(
+        await h.request('alice', '/messages', 'POST', {
+          ...guard(a),
+          intentId: randomUUID(),
+          text: '',
+          attachments,
+        }),
+      ),
+    );
+  const remove = async (messageId: string) =>
+    (
+      await h.request('alice', `/messages/${messageId}/delete`, 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+      })
+    ).status;
+  return { a, root, binding, directory, blobOf, upload, send, remove };
+}
+
+test('message files: deleting a message removes its files from disk, and shared bytes stay while another file names them (#4812)', async () => {
+  const { existsSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  // The same bytes twice: two files, one deduplicated blob.
+  const [first, second] = (await f.upload(png('one.png'), png('two.png'))) as {
+    id: string;
+  }[];
+  const blob = f.blobOf(first!.id);
+  expect(f.blobOf(second!.id)).toBe(blob);
+  const one = await f.send([first]);
+  const two = await f.send([second]);
+  expect(await f.remove(one.messageId)).toBe(200);
+  expect(existsSync(join(f.directory()!, `${first!.id}.json`))).toBe(false);
+  // The other message still names the bytes, so they stay readable.
+  expect(existsSync(blob)).toBe(true);
+  expect((await h.request('bob', `/attachments/${second!.id}`)).status).toBe(
+    200,
+  );
+  expect(await f.remove(two.messageId)).toBe(200);
+  expect(existsSync(join(f.directory()!, `${second!.id}.json`))).toBe(false);
+  expect(existsSync(blob)).toBe(false);
+  // A repeated delete (the same message again) changes nothing and still answers.
+  expect(await f.remove(two.messageId)).toBe(200);
+});
+
+test('message files: a full quota recovers from deleted messages and old unsent uploads, but keeps sent files and recent uploads (#4812)', async () => {
+  const { existsSync, readdirSync, utimesSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const [kept] = (await f.upload(png('kept.png'))) as { id: string }[];
+  await f.send([kept]);
+  const [gone] = (await f.upload(png('gone.png'))) as { id: string }[];
+  const deleted = await f.send([gone]);
+  const [recent] = (await f.upload(png('recent.png'))) as { id: string }[];
+  // Fill the binding to its 1280 files with uploads no message names.
+  const bytes = new RoomAttachments(f.root, 'room');
+  const unsent = Array.from(
+    { length: 1280 - 3 },
+    () => bytes.store(f.binding, [png()])[0]!.id,
+  );
+  expect(await f.upload(png('over.png'))).toBe(400);
+  // Deleting a message frees its file's place at once.
+  expect(await f.remove(deleted.messageId)).toBe(200);
+  const [freed] = (await f.upload(png('freed.png'))) as { id: string }[];
+  expect(freed).toBeTruthy();
+  expect(await f.upload(png('full-again.png'))).toBe(400);
+  // Unsent uploads older than a day are released by the next upload. The
+  // sent file is made as old, to show it stays for its message, not its age.
+  const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
+  for (const id of [...unsent, kept!.id])
+    utimesSync(join(f.directory()!, `${id}.json`), old, old);
+  const [after] = (await f.upload(png('after.png'))) as { id: string }[];
+  expect(after).toBeTruthy();
+  expect(readdirSync(f.directory()!).sort()).toEqual(
+    [kept!.id, recent!.id, freed!.id, after!.id]
+      .map((id) => `${id}.json`)
+      .sort(),
+  );
+  expect((await h.request('bob', `/attachments/${kept!.id}`)).status).toBe(200);
+  // The recent unsent upload is still there to send.
+  await f.send([recent]);
+  expect(existsSync(f.blobOf(recent!.id))).toBe(true);
+});
+
+test('message files: bytes that are not the declared image are refused (#4812)', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const declared = (bytes: Buffer, mimeType = 'image/png') => ({
+    kind: 'image',
+    name: 'claimed.png',
+    mimeType,
+    size: bytes.length,
+    dataUrl: `data:${mimeType};base64,${bytes.toString('base64')}`,
+  });
+  const upload = async (file: Record<string, unknown>) =>
+    (
+      await h.request('alice', '/attachments', 'POST', {
+        ...guard(a),
+        attachments: [file],
+      })
+    ).status;
+  expect(await upload(declared(Buffer.from('<html>not a PNG</html>')))).toBe(
+    400,
+  );
+  // A real image of another type is refused under the wrong name too.
+  expect(await upload(declared(Buffer.from('GIF89a\x01\x00\x01\x00')))).toBe(
+    400,
+  );
+  // The control: the same route takes a real PNG.
+  expect(await upload(declared(PNG))).toBe(200);
+});
+
+test('viewers cannot react, edit, delete or upload, and a file is read only through its own channel', async () => {
+  const h = await harness('viewer');
+  const a = await h.discover('alice');
+  const b = await h.discover('bob');
+  const files = await data(
+    await h.request('alice', '/attachments', 'POST', {
+      ...guard(a),
+      attachments: [png()],
+    }),
+  );
+  const message = parseProjectRoomMessage(
+    await data(
+      await h.request('alice', '/messages', 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+        text: 'owner',
+        attachments: files,
+      }),
+    ),
+  );
+  for (const [leaf, extra] of [
+    ['reactions', { emoji: '👍', reacted: true }],
+    ['edit', { intentId: randomUUID(), text: 'mine' }],
+    ['delete', { intentId: randomUUID() }],
+  ] as const)
+    expect(
+      (
+        await h.request(
+          'bob',
+          `/messages/${message.messageId}/${leaf}`,
+          'POST',
+          { ...guard(b), ...extra },
+        )
+      ).status,
+    ).toBe(403);
+  expect(
+    (
+      await h.request('bob', '/attachments', 'POST', {
+        ...guard(b),
+        attachments: [png()],
+      })
+    ).status,
+  ).toBe(403);
+  const channel = h.runtime.store.createChannel(
+    h.scope,
+    { name: 'other' },
+    () => {},
+  );
+  const fileId = message.attachments![0]!.id;
+  const read = await h.app.request(
+    `/api/projects/example/channels/${channel.channelId}/attachments/${fileId}`,
+    { headers: { authorization: 'Bearer bob-session' } },
+  );
+  expect(read.status).toBe(404);
+  const original = await h.request('bob', `/attachments/${fileId}`);
+  expect(original.status).toBe(200);
+});

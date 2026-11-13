@@ -17,19 +17,39 @@ export interface RoomAttachmentTarget {
   upload(inputs: ChatAttachmentInput[]): Promise<TaskRoomAttachment[]>;
 }
 
+/** What one destination has staged: its files, whose room they are for, and its refusal. */
+interface Staged {
+  readonly files: FileAttachment[];
+  /** The target owner the files were chosen under. */
+  readonly owner?: string;
+  readonly error: string | null;
+}
+const NOTHING: Staged = { files: [], error: null };
+
 /**
  * Files a person picks, pastes or drops for their next room message: read
  * locally, uploaded once when sent, and bound to the room they were chosen in.
+ *
+ * `destination` names where the next message goes, the same key its draft is
+ * kept under: a thread and its channel each keep their own files, so a file
+ * chosen in a thread is never sent to the channel (#4812). `prepare` and
+ * `clear` act on the destination they are asked for, which stays the one a
+ * send started in even if the reader moves on before the upload finishes.
  */
 export function useRoomAttachments(
   target: RoomAttachmentTarget | undefined,
   onChange: () => void,
+  destination = '',
 ) {
-  const [files, setFiles] = useState<FileAttachment[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [reading, setReading] = useState(false);
-  const currentFiles = useRef(files);
-  currentFiles.current = files;
+  const [staged, setStaged] = useState<ReadonlyMap<string, Staged>>(
+    () => new Map(),
+  );
+  const current = useRef(staged);
+  current.current = staged;
+  const [readingIn, setReadingIn] = useState<ReadonlyMap<string, number>>(
+    () => new Map(),
+  );
+  const here = staged.get(destination) ?? NOTHING;
   const owner = JSON.stringify(target?.owner ?? null);
   const label = target?.label ?? 'Room';
   const changed = `${label} connection changed.`;
@@ -37,26 +57,42 @@ export function useRoomAttachments(
   const currentOwner = useRef(owner);
   currentOwner.current = owner;
   const mounted = useRef(true);
-  const cache = useRef<
-    { files: FileAttachment[]; attachments: TaskRoomAttachment[] } | undefined
-  >(undefined);
+  const cache = useRef(new WeakMap<FileAttachment[], TaskRoomAttachment[]>());
   const queue = useRef(Promise.resolve());
-  const pendingReads = useRef(0);
-  const generation = useRef(0);
-  const fileOwner = useRef<string | undefined>(undefined);
+  const generations = useRef(new Map<string, number>());
+  const generation = (to: string) => generations.current.get(to) ?? 0;
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
     };
   }, []);
+  const update = (to: string, change: (entry: Staged) => Staged) => {
+    const next = new Map(current.current);
+    const entry = change(next.get(to) ?? NOTHING);
+    if (entry.files.length || entry.error) next.set(to, entry);
+    else next.delete(to);
+    current.current = next;
+    setStaged(next);
+  };
+  const reading = (to: string, by: number) =>
+    setReadingIn((counts) => {
+      const next = new Map(counts);
+      const count = (next.get(to) ?? 0) + by;
+      if (count > 0) next.set(to, count);
+      else next.delete(to);
+      return next;
+    });
   const upload = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (to: string) => {
       if (!target?.isCurrent()) throw new Error(changed);
+      const entry = current.current.get(to) ?? NOTHING;
+      const { files } = entry;
       if (!files.length) return [];
-      if (fileOwner.current !== owner) throw new Error(choose);
-      const uploadGeneration = generation.current;
-      if (cache.current?.files === files) return cache.current.attachments;
+      if (entry.owner !== owner) throw new Error(choose);
+      const uploadGeneration = generation(to);
+      const cached = cache.current.get(files);
+      if (cached) return cached;
       const attachments = await target.upload(
         inlineComposerAttachments(files).map(
           ({ kind, name, mimeType, size, dataUrl }) => ({
@@ -71,82 +107,82 @@ export function useRoomAttachments(
       if (
         !mounted.current ||
         currentOwner.current !== owner ||
-        generation.current !== uploadGeneration ||
+        generation(to) !== uploadGeneration ||
         !target.isCurrent()
       )
         throw new Error(changed);
-      cache.current = { files, attachments };
+      cache.current.set(files, attachments);
       return attachments;
     },
     retry: false,
   });
   const selectFiles = (selected: File[]) => {
     onChange();
-    if (fileOwner.current && fileOwner.current !== owner) {
-      setError(choose);
+    const to = destination;
+    const entry = current.current.get(to) ?? NOTHING;
+    if (entry.owner && entry.owner !== owner) {
+      update(to, (was) => ({ ...was, error: choose }));
       return Promise.resolve();
     }
-    fileOwner.current = owner;
-    const readGeneration = generation.current;
-    setReading(true);
-    pendingReads.current += 1;
+    const readGeneration = generation(to);
+    reading(to, 1);
     queue.current = queue.current
       .then(async () => {
-        if (
-          !mounted.current ||
-          generation.current !== readGeneration ||
-          currentOwner.current !== owner ||
-          !target?.isCurrent()
-        )
-          return;
+        const live = () =>
+          mounted.current &&
+          generation(to) === readGeneration &&
+          currentOwner.current === owner &&
+          !!target?.isCurrent();
+        if (!live()) return;
         const result = await readChatAttachmentFiles(
           selected,
-          currentFiles.current,
+          (current.current.get(to) ?? NOTHING).files,
           { images: true, files: true },
         );
-        if (
-          !mounted.current ||
-          generation.current !== readGeneration ||
-          currentOwner.current !== owner ||
-          !target.isCurrent()
-        )
-          return;
-        const next = [...currentFiles.current, ...result.attachments];
-        currentFiles.current = next;
-        setFiles(next);
-        setError(result.errors.join(' ') || null);
+        if (!live()) return;
+        update(to, (was) => ({
+          files: [...was.files, ...result.attachments],
+          owner,
+          error: result.errors.join(' ') || null,
+        }));
       })
       .catch((cause: unknown) => {
         if (mounted.current && currentOwner.current === owner)
-          setError(describeStationFailure(cause).body);
+          update(to, (was) => ({
+            ...was,
+            error: describeStationFailure(cause).body,
+          }));
       })
       .finally(() => {
-        pendingReads.current -= 1;
-        if (mounted.current) setReading(pendingReads.current > 0);
+        if (mounted.current) reading(to, -1);
       });
     return queue.current;
   };
   return {
-    files,
-    error,
-    setError,
+    /** The destination these files and errors belong to. */
+    destination,
+    files: here.files,
+    error: here.error,
+    setError: (error: string | null, to = destination) =>
+      update(to, (was) => ({ ...was, error })),
     selectFiles,
-    busy: reading || upload.isPending,
-    prepare: () => (files.length ? upload.mutateAsync() : Promise.resolve([])),
+    busy:
+      (readingIn.get(destination) ?? 0) > 0 ||
+      (upload.isPending && upload.variables === destination),
+    prepare: (to = destination) =>
+      (current.current.get(to)?.files.length ?? 0)
+        ? upload.mutateAsync(to)
+        : Promise.resolve([]),
     remove: (id: string) => {
       onChange();
-      const next = currentFiles.current.filter((file) => file.id !== id);
-      currentFiles.current = next;
-      setFiles(next);
-      if (!next.length) fileOwner.current = undefined;
+      update(destination, (was) => {
+        const files = was.files.filter((file) => file.id !== id);
+        return files.length ? { ...was, files } : { files, error: was.error };
+      });
     },
-    clear: () => {
-      generation.current += 1;
-      fileOwner.current = undefined;
-      setFiles([]);
-      currentFiles.current = [];
-      cache.current = undefined;
-      setError(null);
+    clear: (to = destination) => {
+      generations.current.set(to, generation(to) + 1);
+      update(to, () => NOTHING);
     },
   };
 }

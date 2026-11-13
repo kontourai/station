@@ -510,3 +510,31 @@ describe('Project room schema version 2 migration', () => {
     }
   });
 });
+
+it('a version-1 upgrade that fails part way rolls back its tables and user_version, and the file reopens', async () => {
+  const { ProjectRoomStore } = await import('./project-room-store.js');
+  const home = makeTempDir('project-room-v1-partial-');
+  const fixture = writeVersion1Fixture(home);
+  const db = openPrivateSqlite(roomsPath(home), 'Project rooms');
+  const exec = db.exec.bind(db);
+  const originalTables = tables(db);
+  const originalExec = db.exec;
+  db.exec = ((sql: string) => {
+    if (sql.startsWith('CREATE TABLE IF NOT EXISTS project_room_revisions')) {
+      exec(sql.slice(0, sql.indexOf(';') + 1));
+      throw new Error('simulated mid-DDL failure');
+    }
+    return exec(sql);
+  }) as typeof db.exec;
+  expect(() => new ProjectRoomStore(db)).toThrow('simulated mid-DDL failure');
+  db.exec = originalExec;
+  expect(version(db)).toBe(1);
+  expect(tables(db)).toEqual(originalTables);
+  db.close();
+  const runtime = createProjectRoomRuntime(home);
+  try {
+    expect(runtime.store.history(scope).messages).toEqual(fixture.messages);
+  } finally {
+    runtime.close();
+  }
+});

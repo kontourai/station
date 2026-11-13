@@ -22,6 +22,7 @@ import {
   useProjectRoom,
   useProjectRoomAgent,
   useProjectRoomChannels,
+  useProjectRoomRetainedHistory,
 } from '@kontourai/station-sdk/project-rooms';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
@@ -312,16 +313,46 @@ type RoomMessage = NonNullable<
  * room's latest sequence, so each new message starts a fresh query; keeping
  * the rows already read stops the list from emptying and losing the reader's
  * place while the new window loads.
+ *
+ * Rows kept from a window the room has moved past are owned by no history
+ * query, so `reread` brings them up to date (#4797): each new read of that
+ * span is applied once, and the live windows always win over it.
  */
-function useRoomMessages(roomId: string | undefined, fetched: RoomMessage[]) {
-  const retained = useRef<{ roomId?: string; byId: Map<string, RoomMessage> }>({
-    byId: new Map(),
-  });
+function useRoomMessages(
+  roomId: string | undefined,
+  fetched: RoomMessage[],
+  reread: { messages: RoomMessage[]; at: number },
+) {
+  const retained = useRef<{
+    roomId?: string;
+    byId: Map<string, RoomMessage>;
+    rereadAt?: number;
+  }>({ byId: new Map() });
   if (retained.current.roomId !== roomId)
-    retained.current = { roomId, byId: new Map() };
+    retained.current = { roomId, byId: new Map(), rereadAt: reread.at };
+  if (retained.current.rereadAt !== reread.at) {
+    retained.current.rereadAt = reread.at;
+    for (const message of reread.messages)
+      retained.current.byId.set(message.messageId, message);
+  }
   for (const message of fetched)
     retained.current.byId.set(message.messageId, message);
   return [...retained.current.byId.values()].sort((a, b) => a.seq - b.seq);
+}
+/**
+ * The shown rows older than every live history window: the span the retained
+ * re-read covers, through the message just before the oldest live one.
+ */
+function retainedSpan(
+  shown: RoomMessage[],
+  fetched: RoomMessage[],
+): { after: number; end: number } | undefined {
+  if (!fetched.length) return undefined;
+  const oldestLive = Math.min(...fetched.map((message) => message.seq));
+  const oldestShown = shown[0]?.seq;
+  return oldestShown !== undefined && oldestShown < oldestLive
+    ? { after: oldestShown - 1, end: oldestLive - 1 }
+    : undefined;
 }
 
 /** What a Project room keeps for an unsent message (#4810 review 3). */
@@ -544,8 +575,12 @@ function ProjectRoomSession({
     };
   }, []);
   // Reactions, edits, deletes and files (#4796, #4797, #4812) need a host
-  // that serves them; an older one keeps the room as it was.
-  const messageActions = useProjectRoomMessageActions(requestScope.apiBase);
+  // that serves them; an older one keeps the room as it was. Only an open
+  // room asks: one that is missing or unavailable has nothing to act on.
+  const messageActions = useProjectRoomMessageActions(
+    requestScope.apiBase,
+    !!view,
+  );
   const [editing, setEditing] = useState<ProjectRoomEdit>();
   const [picker, setPicker] = useState<string>();
   const [reactionsFor, setReactionsFor] = useState<string>();
@@ -596,7 +631,13 @@ function ProjectRoomSession({
       channelId,
     ],
   );
-  const files = useRoomAttachments(fileTarget, () => setNotice(''));
+  // Staged files go where the draft goes: a thread and its channel each keep
+  // their own, so a file chosen in a thread never rides a channel send.
+  const files = useRoomAttachments(
+    fileTarget,
+    () => setNotice(''),
+    JSON.stringify([channelId ?? null, threadRoot ?? null]),
+  );
   const fileSource = useMemo<RoomAttachmentSource>(
     () => ({
       key: [
@@ -762,10 +803,25 @@ function ProjectRoomSession({
     }
     discoveredActor.current = actorId;
   }, [actorId, storageKey, setDraft]);
-  const messages = useRoomMessages(
-    room.stopped ? undefined : view?.roomId,
-    room.history.data?.pages.flatMap((page) => page.messages) ?? [],
+  const shownRoomId = room.stopped ? undefined : view?.roomId;
+  const fetchedMessages =
+    room.history.data?.pages.flatMap((page) => page.messages) ?? [];
+  // Asked when the room changes (a live event or a mutation), for the rows
+  // shown at the last render.
+  const olderShown = useRef<{ after: number; end: number }>(undefined);
+  const reread = useProjectRoomRetainedHistory(
+    requestScope,
+    slug,
+    projectId,
+    channelId,
+    shownRoomId,
+    () => olderShown.current,
   );
+  const messages = useRoomMessages(shownRoomId, fetchedMessages, {
+    messages: reread.data?.messages ?? [],
+    at: reread.dataUpdatedAt,
+  });
+  olderShown.current = retainedSpan(messages, fetchedMessages);
   // Every send and Agent ask from an open thread replies to its root, read
   // from the route on each send rather than kept in the draft (#4795).
   const replyTarget = threadRoot ?? replyTo;
@@ -854,12 +910,18 @@ function ProjectRoomSession({
       return;
     if (proposal && !retry) return;
     // Files upload first; the message then names them by their stored ids.
+    // The files are the ones staged where this send started, even if the
+    // reader moves to another thread or channel before the upload finishes.
+    const filesFor = files.destination;
     let attachments: ProjectRoomAttachment[] = [];
     if (!retry && files.files.length) {
       try {
-        attachments = await files.prepare();
+        attachments = await files.prepare(filesFor);
       } catch {
-        files.setError('The files were not uploaded. Try sending again.');
+        files.setError(
+          'The files were not uploaded. Try sending again.',
+          filesFor,
+        );
         return;
       }
       if (!mounted.current) return;
@@ -887,7 +949,7 @@ function ProjectRoomSession({
       // The message now lives in the conversation as a pending row.
       setText('');
       setReplyTo(undefined);
-      files.clear();
+      files.clear(filesFor);
     }
     setNotice('');
     try {
