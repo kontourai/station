@@ -163,6 +163,8 @@ export interface KiroSocialCallback {
 
 export interface KiroSocialListener {
   readonly port: number;
+  /** The address the socket is bound to, as the socket reports it. */
+  readonly address: string;
   /** Settles once: the callback, or a {@link KiroSocialCallbackError}. */
   readonly result: Promise<KiroSocialCallback>;
   /** Resolves when the socket is closed. */
@@ -341,8 +343,10 @@ export async function openSocialCallbackListener(input: {
     server.once('close', () => resolve());
   });
 
+  const bound = server.address();
   return {
     port,
+    address: typeof bound === 'object' && bound ? bound.address : '',
     result,
     closed,
     cancel: () => {

@@ -12,7 +12,10 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { REVIEWED_ENGINE_CREDENTIAL_BINDINGS } from '../../acp/acp-inbound-extension-policy.js';
 import { KIRO_CREDENTIAL_KIND } from '../kiro-oidc/kiro-sign-in.js';
-import { KIRO_SOCIAL_CALLBACK_PORTS } from '../kiro-oidc/social.js';
+import {
+  KIRO_SOCIAL_CALLBACK_PORTS,
+  openSocialCallbackListener,
+} from '../kiro-oidc/social.js';
 import { EngineHostAuthService } from '../service.js';
 import {
   SOCIAL_PROFILE_ARN,
@@ -386,6 +389,20 @@ describe('Kiro social sign-in against a stub portal and service', () => {
     ).toMatchObject({
       refreshToken: 'refresh-2',
     });
+  });
+
+  test('the listener binds IPv4 loopback only', async () => {
+    const [port] = await freePorts(1);
+    const listener = await openSocialCallbackListener({
+      ports: [port!],
+      state: 'abc',
+      timeoutMs: 60_000,
+    });
+    cleanups.push(() => listener.cancel());
+    expect(listener.address).toBe('127.0.0.1');
+    listener.cancel();
+    await listener.closed;
+    expect(await accepting(port!)).toBe(false);
   });
 
   test('the production ports are the ones Kiro allowlists', () => {
