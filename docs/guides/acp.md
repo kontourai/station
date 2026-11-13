@@ -245,6 +245,7 @@ mechanism. Station's answer is a spec-conformant refusal:
 |---|---|
 | `cursor/ask_question`, `cursor/create_plan` (chat sessions only) | Answered with what a person decided; see [Cursor's blocking requests](#cursors-blocking-requests) |
 | `_kiro/userInput`, `_kiro/mcp/elicitation`, core `elicitation/create`, `_kiro/openExternalUrl` (chat sessions only) | Put to the person as one `station.input-request/v1`; see [Engine questions and links](#engine-questions-and-links) |
+| `_x.ai/ask_user_question` (chat sessions only) | Grok's model asking the person; the harness-question form, see [Grok Build extensions](#grok-build-extensions) |
 | `_kiro/terminal/shell_type` | `{ shellType: 'sh' }` (`client.terminal-facts`); see [Engine questions and links](#engine-questions-and-links) |
 | A reviewed engine-credential or engine-secret binding's method, on a process it was registered for | Answered from Station's engine host-auth vault; see [reviewed credential bindings](#reviewed-credential-and-secret-bindings) |
 | Unrecognized extension **request** | JSON-RPC `-32601` (Method not found), plus a `warn` log naming the method and a `station.acp.inbound_extension_requests` increment |
@@ -509,10 +510,12 @@ Each consumer is a generic Station mechanism any engine can feed:
 | Mechanism | Contract | Kiro wire shapes |
 |---|---|---|
 | URL input request | `station.input-request/v1` body `{ kind: 'url', url, purpose, elicitationId? }`, answered `{ action: 'accept' \| 'cancel' }` (the same words as every other answer; the transcript records an accepted link as `opened`); https only, no user info, at most 2,048 characters, never opened automatically | `_kiro/openExternalUrl`; `_kiro.dev/mcp/oauth_request` has a row, but `input-request.url` is not marked implemented and the older binding still renders it as the **Open authentication page** link (see [Extension Rendering](#extension-rendering)) |
-| Form and choice input requests | existing `form` body | `_kiro/mcp/elicitation`, core `elicitation/create`, `_kiro/userInput` (always answered `answered`, with explicit text for decline or no person) |
-| Engine MCP status | `engine-mcp.status` event: `servers[]` with `starting \| ready \| failed \| needs-auth \| disabled`, and `complete` | `_kiro.dev/mcp/server_initialized\|server_init_failure` (partial), `_kiro/mcp/status` (full; `failedAuthorization` reads `needs-auth`, `_meta.kiro.resource.source.origin: client` reads scope `session`); Codex `mcpServer/startupStatus/updated` (partial) |
+| Form and choice input requests | existing `form` body | `_kiro/mcp/elicitation`, core `elicitation/create`, `_kiro/userInput` (always answered `answered`, with explicit text for decline or no person); Grok `_x.ai/ask_user_question` |
+| Engine MCP status | `engine-mcp.status` event: `servers[]` with `starting \| ready \| failed \| needs-auth \| disabled`, and `complete` | `_kiro.dev/mcp/server_initialized\|server_init_failure` (partial), `_kiro/mcp/status` (full; `failedAuthorization` reads `needs-auth`, `_meta.kiro.resource.source.origin: client` reads scope `session`); Codex `mcpServer/startupStatus/updated` (partial); Grok `_x.ai/mcp/server_status` (partial) |
 | Model reroute | `model.rerouted` event: `fromModel`, `toModel?`, `trigger`, `scope`, `childWorkId?` | v2 `_kiro.dev/session/update` `model_fallback` (the hop is scope `turn`; the `promoted: true` notice is scope `session`); v3 `model_fallback` kind (declared by `modelFallbackReporting`); Codex `model/rerouted` (scope `turn`, trigger `other`) |
-| Reported cost and context | `token-usage.updated` `reportedCost { amount, unit, scope }` (never converted) and `contextPercent` | v3 `turn_completion` (credits, scope `turn`), `session_usage` (scope `session`), `context_usage`; v2 `_kiro.dev/metadata` `contextUsagePercentage`; core ACP `usage_update.cost` (scope `session`, unit = its `currency`) |
+| Reported cost and context | `token-usage.updated` `reportedCost { amount, unit, scope }` (never converted) and `contextPercent` | v3 `turn_completion` (credits, scope `turn`), `session_usage` (scope `session`), `context_usage`; v2 `_kiro.dev/metadata` `contextUsagePercentage`; core ACP `usage_update.cost` (scope `session`, unit = its `currency`); Grok `turn_completed` (USD, scope `turn`, with the turn's token counts) |
+| Child work | `child-work.updated` (subagents, background commands, monitors); a session whose engine reports none states `not-reported` once at start | Grok's subagent, background-task and monitor frames; see [Grok Build extensions](#grok-build-extensions) |
+| Engine-opened turns | `turn.started` / its terminal with `metadata.trigger: 'provider'` (`PROVIDER_TURN_TRIGGER`) | Grok's wake prompts (`_x.ai/queue/changed` `runningPromptId`, ended by `turn_completed`) |
 | Engine commands | `@kontourai/station-contracts/engine-commands` routes | see [agent extension bindings](../decisions/agent-extension-bindings.md) |
 | Managed runtime | built-in descriptor `managedRuntime { installId, argv }`, with exactly one `{script}` argument; plugin entries carrying one are refused. The entry's command is `station-managed:<installId>`; `ACPProcess` resolves it at launch to the installed runtime and the argv (refusing extra arguments, and failing before spawn when not installed). Descriptor lookups key it by install id, never by the runtime's executable name. Installs: [`services/engines/managed-install.ts`](../../src-server/services/engines/managed-install.ts) | the Kiro agent-service bundle (`kiro-kas-bundle`, install `kiro-kas` 0.66.104) |
 | Declared features | `declaredHandshake.engineVariant`, `declaredFeatures`, `logChannels` (names only; paths stay server-side) | `agentCapabilities._meta.kiro` |
@@ -698,6 +701,69 @@ shown as a transcript notice in the chat.
 | `executionTargets` `cloud-sandbox`, `sessionSources` `remote`, `_kiro/environment/*`, `_kiro/sourceProviders/*` | They leave the host's confinement; Station pins `local` where it can. |
 | `_kiro/memory/create\|update\|delete\|import\|export\|sync` | Station's knowledge stores stay authoritative (ADR 0009); `list` and `get` are read-only and engine-attributed. |
 | `_kiro/session/rename` | No consumer. |
+
+### Grok Build extensions
+
+Grok Build (`grok agent stdio`, connection `grok-build`) sends no `agentInfo`
+and lists no extension methods. Its `initialize` result sets
+`_meta.grokShell: true`, which resolves the engine variant `grok-build`
+([acp-handshake-facts.ts](../../src-server/services/acp/acp-handshake-facts.ts)).
+Every Grok row of `ENGINE_EXTENSION_BINDINGS` is therefore
+`undeclared-engine`, and each was observed in a live grok 1.0.77 run, scrubbed
+into
+[`grok-1.0.77-session-frames.jsonl`](../../src-server/services/acp/__tests__/fixtures/grok-1.0.77-session-frames.jsonl).
+A test checks every such row against that capture, and that every
+notification the engine sent there is bound.
+
+| Grok wire (engine to client) | Station mechanism |
+|---|---|
+| `_x.ai/session_notification` `subagent_spawned`, `subagent_progress`, `subagent_finished` | Child work: one `agent` child per `subagent_id`, with its type, description, model (`spawn-result`) and depth 1; progress carries its tokens, tool calls, duration and latest tool; the end carries `completed`, `failed` or `cancelled` (anything else is `unresolved`) and its output as the result |
+| `_x.ai/task_backgrounded`, `background_tasks`, `_x.ai/task_completed` | Child work: one backgrounded `command` (or `monitor`) child per `task_id`, parented to the tool call that started it; exit 0 is `completed`, a non-zero exit or a signal `failed`, a kill `cancelled`, anything else `unresolved`; the output, redacted and cut to 4,000 characters, is the result |
+| `_x.ai/monitor_event` | That monitor child's progress line |
+| `_x.ai/queue/changed` `runningPromptId` | A prompt Station did not send, run while no turn is open, opens a provider turn: Grok wakes itself after a monitor line (`notifications-<id>`) or a finished task or subagent (`task-completed-<id>`, `subagent-completed-<id>`) |
+| `_x.ai/session_notification` `turn_completed` | Ends that prompt's provider turn (`end_turn` completes it, `cancelled` aborts it, `error` fails it with the engine's `agent_result`), and states its usage once: tokens and `costUsdTicks` (10^10 ticks to the dollar; 0 means the price is unknown, not free). The turn's figure includes its subagents' calls |
+| `_x.ai/mcp/server_status` | `engine-mcp.status` for that server: `ready`, or `unavailable` as `failed` with Grok's `detail`. Grok calls every server `local`, so a server Station passed on `session/new` is scope `session` by name |
+| `_x.ai/session/setup`, `_x.ai/session/interjection`, `_x.ai/models/update`, `_x.ai/settings/update`, `_x.ai/announcements/update`, `_x.ai/sessions/changed`, `_x.ai/session/prompt_complete`, the other `_x.ai/session_notification` kinds | Host chrome: forwarded as `extension.notification`, no fact derived |
+| `_x.ai/mcp/init_progress`, `_x.ai/mcp_initialized`, `_x.ai/mcp/servers_updated` | Host chrome for the MCP status display (counts only; no per-server state) |
+| `_x.ai/ask_user_question` (request) `{ toolCallId, questions[{ question, options[{ label, description }], multiSelect }], mode }` | The harness-question form (source `harness:grok`), one choice or multi-choice field per question. Answered `{ outcome: 'accepted', answers: { <question>: [<label>, ...] } }`; a decline, a cancel, a question Station cannot show (two with the same text, one without options) or one no person may answer goes back `{ outcome: 'cancelled' }`, which Grok tells its model is a decline. Before this binding Station's `-32601` failed the tool and the model asked in plain text instead |
+
+| Station to Grok | Use |
+|---|---|
+| `session/set_config_option` `model`, `reasoning_effort` (category `thought_level`) | Model and effort selection, through the generic config-option path |
+| `_x.ai/interject` `{ sessionId, text }` | Steer: answered `{ result: { status: 'queued' } }`, echoed as `_x.ai/session/interjection`, read by the model at its next step |
+| `authenticate` `grok.com` | Engine sign-in. Grok runs its own browser sign-in; a signed-out engine lists only `grok.com` and answers `session/new` `-32000 Authentication required`. The descriptor reads `grok models` for the sign-in state ("You are logged in with" / "You are not authenticated") |
+
+A subagent runs as an engine session of its own on the same connection, and
+Grok streams that child's prompt, replies and usage there under the child's
+`sessionId`. The adapter drops any session-scoped frame naming another
+session than its process's own, for every ACP engine, so a child's
+transcript and spend never land in the parent; the child reaches Station only
+through the parent's child-work frames.
+
+A failed Grok prompt answers `-32603 Internal error` and puts the reason in
+the JSON-RPC error's `data.message`. Station quotes `data.message`, redacted
+and bounded to 1,000 characters, after the error's own message for every ACP
+engine.
+
+A wake turn holds the session like any turn: a send while it runs is refused
+`busy`, and an interrupt aborts it as a provider turn. An ACP session whose
+engine reports no child work (every engine but Grok today) publishes one
+`child-work.updated` `not-reported` at start, so the ACP capability cell can
+be `declared` without any other engine reading "nothing running".
+
+### Grok extensions Station does not support
+
+| Extension | Why not |
+|---|---|
+| Rewind and fork (`x.ai/rewind/*`, `x.ai/session/fork`, `_meta.cancelRewind`) | Grok does not declare `sessionCapabilities.fork`, and no request or answer shape was observed. Station has no caller for engine rewind or fork either (see [Engine session actions](#engine-session-actions)). |
+| `x.ai/exit_plan_mode` | Not observed live; only T3 Code's own code names it. A plan approval needs evidence of the request and the answer Grok reads before it is bound. |
+| `x.ai/fs/*`, `x.ai/git/*`, `x.ai/git/worktree/*`, `x.ai/search/*`, `x.ai/terminal/*`, `x.ai/fs_notify`, `x.ai/fs/index` | Client-side services for Grok's own IDE clients. Station announces none of them, and its own terminal bridge, file tools and worktrees govern the host. |
+| `x.ai/auth/get_url`, `x.ai/auth/submit_code` | Station signs Grok in through ACP `authenticate`; it never relays a sign-in code or token. |
+| `x.ai/hooks` (`agentCapabilities._meta`) | Station's tool-policy seam governs instead of engine hooks. |
+| `_meta.yoloMode`, `_meta.autoMode` on `session/new`; the `/always-approve` command | They let the engine approve calls without asking, bypassing Station's `requestPermission` policy. |
+| `x.ai/feedback`, `x.ai/telemetry/*` | Telemetry to xAI; no Station consumer. |
+| A context reading | Grok reports no context occupancy for the session; deriving one from `totalTokens` and a model's `totalContextTokens` would be Station's claim, not the engine's. |
+| Grok's own prompt queue (`_x.ai/queue/changed` `entries`) | Station queues its own sends; only the running prompt is read, to find wake turns. |
 
 ## Tool Execution
 

@@ -13,6 +13,10 @@ evidence:
     ref: packages/contracts/src/engine-commands.ts
   - kind: doc
     ref: src-server/services/acp/__tests__/fixtures/kiro-v3-2.35.0-session-frames.jsonl
+  - kind: doc
+    ref: src-server/services/acp/__tests__/fixtures/grok-1.0.77-session-frames.jsonl
+  - kind: doc
+    ref: src-server/providers/adapters/acp-child-work.ts
 ---
 
 # Agent extension bindings
@@ -22,7 +26,8 @@ still decides how Station consumes agent extensions. A binding is data: an
 id, the exact wire method or flag, a basis and its evidence. "Delivered"
 means this session's `initialize` declares the method or flag, or a reviewed
 handshake-identity entry matches. Station never infers support from method
-names or launch commands. This record amends it in three places.
+names or launch commands. This record amends it in three places, and section 4
+records what Grok Build's evidence changed.
 
 ## 1. Credential requests: superseded
 
@@ -86,3 +91,41 @@ host paths, session ids and private agent names, are the repository fixtures
 - The v3 `autopilot` config option (`on` by default) did not self-approve.
   With it on and off, the engine still sent `session/request_permission`,
   and a reject was honored. Station treats it as an ordinary engine option.
+
+## 4. Live grok 1.0.77 evidence
+
+grok 1.0.77 (`grok agent stdio`) was run signed in on 2026-11-13, with a
+background command, a background subagent, a monitor, an MCP server Station
+passed that fails, and a model question answered, declined and refused. The
+frames, scrubbed of host paths, ids and private names, are
+`src-server/services/acp/__tests__/fixtures/grok-1.0.77-session-frames.jsonl`.
+
+- Grok's `initialize` result sets `_meta.grokShell: true` and sends no
+  `agentInfo`. That flag is a reviewed handshake identity: engine variant
+  `grok-build`. Grok lists no extension methods, so its rows are
+  `undeclared-engine`.
+- **Child work is the engine's.** ACP has no subagent concept, so the ACP
+  capability cell for subagent observability is now `declared`, and the
+  adapter decides per session from the handshake: a variant listed in
+  `ACP_CHILD_WORK_REPORTERS` reports, and any other session states
+  `not-reported` once at start. The `child-work` consumer is implemented.
+  Kiro's two child-work rows carry `pending` (test-vector evidence only, and
+  tool-call `_meta` kinds are not dispatched), so they still bind nothing.
+- **One frame, several facts.** A row may name `also` consumers it feeds.
+  Grok's `turn_completed` ends a turn and states that turn's tokens and cost,
+  so its row is `session.turn-boundary` with `also` `usage.reported-cost` and
+  `usage.tokens`. A row runs only when every consumer it names is
+  implemented.
+- **Engine-opened turns.** `session.turn-boundary` is implemented: a prompt
+  the engine runs while no turn is open, and that Station never sent, opens a
+  `PROVIDER_TURN_TRIGGER` turn. `_x.ai/session/prompt_complete` follows only
+  Station's own prompts, so it does not close one.
+- **Another session's frames are not this session's.** A Grok subagent
+  streams as its own session on the same connection. The adapter drops any
+  session-scoped frame naming another session than its process's own.
+- `_x.ai/ask_user_question` is a reviewed inbound request, answered from the
+  person's choice.
+
+What Station leaves unbound, and why, is listed in
+[the ACP guide](../guides/acp.md#grok-extensions-station-does-not-support).
+
