@@ -53,7 +53,9 @@ export function BackgroundTaskActivity({
       ) : (
         KIND_LABEL[entry.kind]
       )}
-      {elapsedMs !== undefined && ` · ${formatChildWorkElapsed(elapsedMs)}`}
+      {/* A flex item drops a leading plain space; keep the gap before "·". */}
+      {elapsedMs !== undefined &&
+        ` · ${formatChildWorkElapsed(elapsedMs)}`}
     </span>
   );
 }
