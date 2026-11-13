@@ -718,12 +718,12 @@
     {
       "path": "docs/learn/media/updates-after-390-dark.png",
       "kind": "image",
-      "digest": "34678c9c84e678df77f6f6883948a1c7f8c56c8e380ecffbec197c5a89930304",
+      "digest": "c0ea65a9258344aba9c10034644af71dfad8d2b0c8f02bb2dc74a01997e1325f",
       "alt": "Installed and available server changelogs in Updates.",
       "caption": "Installed and available server changelogs in Updates.",
       "scenario": "Updates: status hierarchy and changelogs",
-      "evidence": "Actual production React components and shipped styles in the controlled server-older-banner Chromium fixture, using reduced motion for static capture. The full 18-case spec passed at source 12600ae8497696f4065aebfa5bcde6d784cabed7. GitHub release responses, connection identity and update state are controlled data. Inspected this PNG and the 390/412/1440 dark/light panel matrix; no horizontal overflow or page errors in the four learning captures. The history case selected an earlier version and focused a release picker at least 44px high. The installed-version dialog is a controlled presentation; automatic trigger/queue behavior is covered separately by mounted tests and fault injection. No native shell, real download/restart, provider delivery or hosted release publication is established. Retain until these Updates states are superseded.",
-      "capturedRevision": "12600ae8497696f4065aebfa5bcde6d784cabed7",
+      "evidence": "Current production components and styles in the controlled server-older-banner Chromium fixture. The four learning-media tests passed and these PNGs were inspected after changelog normalization. GitHub responses, update state and connection identity are controlled. No horizontal overflow or page errors; history selection and keyboard focus retained. This is presentation evidence only, with no native shell, real update/restart, provider or release publication qualification. Retain until these Updates states are superseded.",
+      "capturedRevision": "8b530ce0c6d30c35a7f3fa1bf4a52f80f0b4c901",
       "documents": [
         "docs/guides/nightly.md",
         "docs/patterns/frontend.md"
@@ -746,12 +746,12 @@
     {
       "path": "docs/learn/media/updates-after-1440-light.png",
       "kind": "image",
-      "digest": "c7a73438c70eaee67faedce5ae43617eeb892b1be0c64d9bda08327cf8f1be20",
+      "digest": "5bdc5f8738a3382e27eeaf9ba6a9e3e7007d62a14991254419c150eb8565c0a1",
       "alt": "Installed and available server changelogs in Updates.",
       "caption": "Installed and available server changelogs in Updates.",
       "scenario": "Updates: status hierarchy and changelogs",
-      "evidence": "Actual production React components and shipped styles in the controlled server-older-banner Chromium fixture, using reduced motion for static capture. The full 18-case spec passed at source 12600ae8497696f4065aebfa5bcde6d784cabed7. GitHub release responses, connection identity and update state are controlled data. Inspected this PNG and the 390/412/1440 dark/light panel matrix; no horizontal overflow or page errors in the four learning captures. The history case selected an earlier version and focused a release picker at least 44px high. The installed-version dialog is a controlled presentation; automatic trigger/queue behavior is covered separately by mounted tests and fault injection. No native shell, real download/restart, provider delivery or hosted release publication is established. Retain until these Updates states are superseded.",
-      "capturedRevision": "12600ae8497696f4065aebfa5bcde6d784cabed7",
+      "evidence": "Current production components and styles in the controlled server-older-banner Chromium fixture. The four learning-media tests passed and these PNGs were inspected after changelog normalization. GitHub responses, update state and connection identity are controlled. No horizontal overflow or page errors; history selection and keyboard focus retained. This is presentation evidence only, with no native shell, real update/restart, provider or release publication qualification. Retain until these Updates states are superseded.",
+      "capturedRevision": "8b530ce0c6d30c35a7f3fa1bf4a52f80f0b4c901",
       "documents": [
         "docs/guides/nightly.md",
         "docs/patterns/frontend.md"
@@ -764,8 +764,8 @@
       "alt": "Release history selected through the shared release picker.",
       "caption": "Release history selected through the shared release picker.",
       "scenario": "Updates: status hierarchy and changelogs",
-      "evidence": "Actual production React components and shipped styles in the controlled server-older-banner Chromium fixture, using reduced motion for static capture. The full 18-case spec passed at source 12600ae8497696f4065aebfa5bcde6d784cabed7. GitHub release responses, connection identity and update state are controlled data. Inspected this PNG and the 390/412/1440 dark/light panel matrix; no horizontal overflow or page errors in the four learning captures. The history case selected an earlier version and focused a release picker at least 44px high. The installed-version dialog is a controlled presentation; automatic trigger/queue behavior is covered separately by mounted tests and fault injection. No native shell, real download/restart, provider delivery or hosted release publication is established. Retain until these Updates states are superseded.",
-      "capturedRevision": "12600ae8497696f4065aebfa5bcde6d784cabed7",
+      "evidence": "Current production components and styles in the controlled server-older-banner Chromium fixture. The four learning-media tests passed and these PNGs were inspected after changelog normalization. GitHub responses, update state and connection identity are controlled. No horizontal overflow or page errors; history selection and keyboard focus retained. This is presentation evidence only, with no native shell, real update/restart, provider or release publication qualification. Retain until these Updates states are superseded.",
+      "capturedRevision": "8b530ce0c6d30c35a7f3fa1bf4a52f80f0b4c901",
       "documents": [
         "docs/guides/nightly.md",
         "docs/patterns/frontend.md"
@@ -778,8 +778,8 @@
       "alt": "Installed server release notes in the what\u2019s new dialog.",
       "caption": "Installed server release notes in the what\u2019s new dialog.",
       "scenario": "Updates: status hierarchy and changelogs",
-      "evidence": "Actual production React components and shipped styles in the controlled server-older-banner Chromium fixture, using reduced motion for static capture. The full 18-case spec passed at source 12600ae8497696f4065aebfa5bcde6d784cabed7. GitHub release responses, connection identity and update state are controlled data. Inspected this PNG and the 390/412/1440 dark/light panel matrix; no horizontal overflow or page errors in the four learning captures. The history case selected an earlier version and focused a release picker at least 44px high. The installed-version dialog is a controlled presentation; automatic trigger/queue behavior is covered separately by mounted tests and fault injection. No native shell, real download/restart, provider delivery or hosted release publication is established. Retain until these Updates states are superseded.",
-      "capturedRevision": "12600ae8497696f4065aebfa5bcde6d784cabed7",
+      "evidence": "Current production components and styles in the controlled server-older-banner Chromium fixture. The four learning-media tests passed and these PNGs were inspected after changelog normalization. GitHub responses, update state and connection identity are controlled. No horizontal overflow or page errors; history selection and keyboard focus retained. This is presentation evidence only, with no native shell, real update/restart, provider or release publication qualification. Retain until these Updates states are superseded.",
+      "capturedRevision": "8b530ce0c6d30c35a7f3fa1bf4a52f80f0b4c901",
       "documents": [
         "docs/guides/nightly.md",
         "docs/patterns/frontend.md"
