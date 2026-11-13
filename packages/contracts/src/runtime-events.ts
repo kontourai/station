@@ -1123,14 +1123,16 @@ export interface TokenUsageUpdatedEvent extends CanonicalRuntimeEventBase {
    * must declare its scope there.
    *
    * A currency other than USD has no home here: an adapter whose engine
-   * reports, say, EUR must not convert (Station has no rate policy) and so
-   * reports no cost at all — see the ACP `usage_update` mapping.
+   * reports, say, EUR must not convert (Station has no rate policy). Such a
+   * cost, and any cost whose scope is the engine's own (ACP `usage_update`
+   * reports a cumulative session cost in any currency), rides
+   * `reportedCost` instead.
    */
   reportedCostUsd?: number;
   /**
-   * A cost the engine reported in its own unit (an ISO currency other than
-   * USD, or a vendor unit such as Kiro's `credit`), carried as reported and
-   * never converted. `scope` says what it covers: `turn` is this turn alone
+   * A cost the engine reported in its own unit (an ISO currency, USD
+   * included, or a vendor unit such as Kiro's `credit`), carried as reported
+   * and never converted or added to `reportedCostUsd`. `scope` says what it covers: `turn` is this turn alone
    * (the latest report for a turn replaces earlier ones); `session` is the
    * engine session's running total. Absent means none was reported, which
    * is different from a reported zero.
