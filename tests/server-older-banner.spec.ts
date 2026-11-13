@@ -460,8 +460,8 @@ for (const theme of ['light', 'dark'] as const) {
           notice === 'lost'
             ? "The server didn't answer in time. Reconnecting…"
             : 'Server connection restored.';
-        await expect(page.getByText(message, { exact: true })).toBeVisible();
         const card = page.locator('.toast-card');
+        await expect(card).toContainText(message);
         await expect(card).toBeVisible();
         const box = await card.boundingBox();
         expect(box).not.toBeNull();
