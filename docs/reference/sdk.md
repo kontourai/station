@@ -832,7 +832,9 @@ transport. They never select an ambient operator connection.
 
 Discovery reads an existing shared room, authenticated actor, capabilities,
 note, and presence. It does not create a room. `room.unprovisioned` identifies
-only the specific room-not-found response; `room.initialize.mutate()` explicitly
+only the specific room-not-found response, and `room.projectMissing` a Project
+this Station does not have (`project_room_project_not_found`, also read by
+`useProjectRoomChannels`, which keeps `unsupported` for a bare 404); `room.initialize.mutate()` explicitly
 opens the room using the expected local Project ID. Access denial remains a
 separate state. Message and note writes pin the discovered room, Project, and
 actor with server guards. History is ordered by sequence in 25-message windows.
@@ -847,12 +849,21 @@ session storage before sending, per channel. Until it is confirmed, the message 
 conversation; a lost acknowledgement or reload offers an explicit retry of that
 exact payload and UUID and never resends automatically. The retained intent
 settles once room history shows a message with its intent ID. The unsent draft
-(text, reply target and Agent recipient) is kept per channel in the same tab's
+(text, reply target and Agent recipient) is kept per channel, and an open
+thread keeps its own, in the same tab's
 session storage, keyed by the shell's reload partition rather than its
 per-reload authority epoch; `#general` keeps the key the room used before
 channels, and the channel on screen is remembered the same way, so a reload
-returns to it. Messages, `@agent` asks and retained Agent requests are addressed
-to the channel on screen; a restored recipient must still be an available
+returns to it. A host can own the channel through the route instead
+(`routeChannel` and `onRouteChannel`), and the open thread (`thread`): replies
+whose `replyTo` chain reaches a loaded message then sit in that message's
+thread, and every send or Agent ask from the open thread replies to its root. A
+thread whose root is older than the loaded history pages back to it, up to
+`PROJECT_ROOM_HISTORY_MAX_PAGES` windows of 25 messages. `screen` gives a
+phone's full-screen bar. The full channel marks itself read through the newest
+message of a history read that succeeded, while it is on screen; a held or
+failed read, or an open thread, marks nothing. Messages, `@agent` asks and
+retained Agent requests are addressed to the channel on screen; a restored recipient must still be an available
 Agent, shown under its current catalog name. While an Agent request is
 unsettled, Ask is disabled and shows which Agent it is waiting for; ordinary
 messages still send. A new `@agent` ask never reuses a retained Agent intent,

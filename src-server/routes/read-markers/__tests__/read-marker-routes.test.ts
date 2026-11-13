@@ -283,12 +283,14 @@ function station(
       },
     }),
     projectRooms: projectRoomVersionSource({
-      async discover(request, slug) {
+      // The room service looks the id up as one of the Project's channels.
+      async discover(request, slug, channelId) {
         const room = options.room;
         if (slug === 'missing') throw new FileStorageNotFoundError('missing');
         if (
           !room ||
           slug !== 'alpha' ||
+          channelId !== room.roomId ||
           !room.members.includes(personOf(request))
         )
           throw new ProjectRoomRefusal('not_found');

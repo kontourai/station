@@ -257,6 +257,9 @@ function localService() {
     currentConversationSessionId: vi.fn(
       (conversationId: string) => conversationId,
     ),
+    // Every conversation a test names already has a Session, unless a test
+    // says it is new.
+    conversationSessionIds: vi.fn((conversationId: string) => [conversationId]),
     // #4512: an ordinary conversation's Session works for its person.
     sessionDispatchFacts: vi.fn((_threadId: string) => ({
       taskBound: false,
@@ -2533,6 +2536,68 @@ describe('Station Control canonical Environment + Agent execution', () => {
       (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
     );
     expect(sendTurn?.[2]).toMatchObject({ dispatchOrigin: 'delegation' });
+  });
+
+  test('#4830: a delegated send naming a fresh conversation id is delegation, not unknown', async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    // No Session holds the id yet: the send starts the delegated child.
+    service.conversationSessionIds.mockImplementation(() => []);
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+    await executeExecutionTargetMessage(
+      {
+        userId: 'test-user',
+        target: currentTarget(),
+        message: 'Delegated to a named new conversation',
+        conversationId: 'conversation-fresh',
+        delegation: {
+          mode: 'isolated-child',
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: 'parent' as never,
+          rootAgentSlug: 'root' as never,
+        },
+        delegationProvenance: 'caller-derived',
+        readAuthority: hostedAuthority('alpha'),
+      },
+      service as never,
+    );
+    const sendTurn = service.dispatchWithReceipt.mock.calls.find(
+      (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
+    );
+    expect(sendTurn?.[2]).toMatchObject({ dispatchOrigin: 'delegation' });
+  });
+
+  test("#4830: a delegated send into a person's existing chat keeps that chat the person's", async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+    await executeExecutionTargetMessage(
+      {
+        userId: 'test-user',
+        target: currentTarget(),
+        message: 'A message into a person chat',
+        conversationId: 'conversation-person',
+        delegation: {
+          mode: 'isolated-child',
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: 'parent' as never,
+          rootAgentSlug: 'root' as never,
+        },
+        delegationProvenance: 'caller-derived',
+        readAuthority: hostedAuthority('alpha'),
+      },
+      service as never,
+    );
+    const sendTurn = service.dispatchWithReceipt.mock.calls.find(
+      (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
+    );
+    expect(sendTurn?.[2]).toMatchObject({ dispatchOrigin: 'unknown' });
   });
 
   test("#4512: a requester's own delegation claim does not classify the turn as delegation", async () => {

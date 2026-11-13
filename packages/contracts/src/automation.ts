@@ -529,6 +529,8 @@ export const AUTOMATION_EXECUTION_LIMITS = {
  * Operator-facing Automation verbs. API, SDK and CLI must expose this exact
  * set. Station-control MCP exposes only the read verbs: an agent must never
  * create, widen or enable its own triggers, so a mutation's `mcp` is `null`.
+ * An agent may instead PROPOSE a source or rule (#4830,
+ * {@link AutomationProposal}); only a person's confirmation creates it.
  */
 export const AUTOMATION_OPERATOR_OPERATIONS = [
   'list-sources',
@@ -635,3 +637,135 @@ export const AUTOMATION_OPERATOR_SURFACE: Readonly<
     path: '/automations/episodes/:target/retry',
   },
 };
+
+/**
+ * #4830: an agent proposes, a person confirms. An agent in a person's chat
+ * may ask for an Automation source or rule; Station validates it, renders a
+ * plain description of what it would do, and creates nothing until a person
+ * confirms it. What a proposal may name is narrower than what an operator may
+ * create: a credential-free `github-poll` source, and a `dispatch-task` rule
+ * that never pins `auto` approval. Every Project/Agent it names must be one
+ * the proposing chat could dispatch work to itself.
+ */
+export const AUTOMATION_PROPOSAL_KINDS = ['source', 'rule'] as const;
+
+export type AutomationProposalKind = (typeof AUTOMATION_PROPOSAL_KINDS)[number];
+
+/**
+ * `open` waits for a person; `confirmed` created the source or rule
+ * (`createdId`); `declined` created nothing.
+ */
+export type AutomationProposalState = 'open' | 'confirmed' | 'declined';
+
+/** The source an agent may propose: polling only, with no credential. */
+export type AutomationSourceProposalInput = Readonly<{
+  kind: 'github-poll';
+  name: string;
+  repository: string;
+  pollIntervalMs?: number;
+  /** Each grant may list only `dispatch-task`. */
+  grants?: readonly AutomationGrant[];
+}>;
+
+/**
+ * The rule an agent may propose. It names exactly one of an existing
+ * `sourceId` or a source proposal from the same chat (`sourceProposalId`),
+ * which must be confirmed first.
+ */
+export type AutomationRuleProposalInput = Readonly<{
+  name: string;
+  sourceId?: string;
+  sourceProposalId?: string;
+  match: AutomationMatcher;
+  episode?: AutomationEpisodePolicy;
+  action: Readonly<{
+    kind: 'dispatch-task';
+    projectId: string;
+    agentId: string;
+    instructions: string;
+    /** Only `ask`; omitted also runs as `ask`. */
+    approvalMode?: 'ask';
+    budget: AutomationBudget;
+  }>;
+  rateLimit: Readonly<{ maxStartsPerHour: number }>;
+}>;
+
+/**
+ * Plain sentences Station renders from a validated proposal, so the person
+ * confirms what will happen rather than reading JSON. `untrusted` is present
+ * only when the proposing chat had read content written by others.
+ */
+export type AutomationProposalDescription = Readonly<{
+  title: string;
+  watches: string;
+  opens: string;
+  wakes: string;
+  authority: string;
+  startsAs: string;
+  /** What confirming with `enable: true` would do instead. */
+  ifEnabled: string;
+  untrusted?: string;
+}>;
+
+type AutomationProposalBase = Readonly<{
+  id: string;
+  conversationId: string;
+  description: AutomationProposalDescription;
+  /**
+   * The proposing chat had read untrusted content (#3483) when it proposed
+   * this. Kept as recorded.
+   */
+  untrustedContent: boolean;
+  /**
+   * The chat is marked now, as read when this was listed. Absent when it was
+   * not read. A person sees a warning when this or `untrustedContent` is set.
+   */
+  untrustedContentNow?: boolean;
+  /** The chat's mark when a person confirmed it; present once confirmed. */
+  untrustedContentAtConfirm?: boolean;
+  rationale?: string;
+  state: AutomationProposalState;
+  /** The created source's or rule's id, once confirmed. */
+  createdId?: string;
+  createdAt: string;
+  updatedAt: string;
+}>;
+
+export type AutomationProposal =
+  | (AutomationProposalBase &
+      Readonly<{ kind: 'source'; source: AutomationSourceProposalInput }>)
+  | (AutomationProposalBase &
+      Readonly<{ kind: 'rule'; rule: AutomationRuleProposalInput }>);
+
+/**
+ * A person's confirmation. `enable` defaults to false: the source is created
+ * disabled, the rule in `observe` mode. `true` creates an enabled source, or
+ * a `live` rule, in the same step.
+ */
+export type AutomationProposalConfirmation = Readonly<{ enable?: boolean }>;
+
+/** Shown when the proposing chat had read untrusted content before proposing. */
+export const AUTOMATION_PROPOSAL_UNTRUSTED_COPY =
+  'This chat had read content written by others (such as email or web pages) before the agent proposed this. That content may have steered it: check it is what you asked for.';
+
+/** Shown when the chat was marked only after the agent proposed this. */
+export const AUTOMATION_PROPOSAL_UNTRUSTED_SINCE_COPY =
+  'This chat has read content written by others (such as email or web pages) since the agent proposed this. Check it is still what you asked for.';
+
+export const AUTOMATION_PROPOSAL_LIMITS = {
+  maxOpenPerConversation: 3,
+  maxCreatedPerHour: 10,
+  maxRationaleLength: 2_000,
+} as const;
+
+export const AUTOMATION_PROPOSAL_REFUSAL_CODES = [
+  'automation_proposal_invalid',
+  'automation_proposal_exceeds_authority',
+  'automation_proposal_unattended',
+  'automation_proposal_limit_reached',
+  'automation_proposal_rate_limited',
+  'automation_proposal_unavailable',
+] as const;
+
+export type AutomationProposalRefusalCode =
+  (typeof AUTOMATION_PROPOSAL_REFUSAL_CODES)[number];

@@ -112,6 +112,8 @@ import {
   isPrincipalScopedAgentRequest,
   stationControlRequestAuthority,
 } from '../../security/station-control-request-authority.js';
+import { proposingTurnId } from '../../services/automation/automation-proposals.js';
+import { AutomationStore } from '../../services/automation/automation-store.js';
 import {
   type BrowserProjectAuthorizer,
   createBrowserOperatorAuthorizer,
@@ -544,6 +546,7 @@ import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-a
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
+import { createAutomationProposalRoutes } from '../../routes/orchestration/automation-proposals.js';
 import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createDeclarePullRequestRoutes } from '../../routes/orchestration/declare-pull-request.js';
 import {
@@ -7425,6 +7428,69 @@ export function configureRuntimeRoutes(
       ),
     agentProject: async (agentSlug) =>
       (await context.agentService.getAgent(agentSlug)).project,
+    // #4830: an agent proposes Automation sources and rules; a person
+    // confirms. Not hosted: Automations have no tenant binding.
+    ...(hostedTenantRegistry === undefined
+      ? {
+          automationProposals: {
+            store: context.orchestrationEventStore?.automationProposalStore(),
+            // Stateless per call (it re-reads the file under its own lock),
+            // so this instance and the runtime's never disagree.
+            automations: new AutomationStore(
+              context.configLoader.getProjectHomeDir(),
+            ),
+            projectSlugForId: (projectId: string) =>
+              context.projectService
+                .listProjects()
+                .find((project) => project.id === projectId)?.slug,
+            projectName: (projectId: string) =>
+              context.projectService
+                .listProjects()
+                .find((project) => project.id === projectId)?.name,
+            agentDefinition: async (agentSlug: string) =>
+              context.agentService.getAgent(agentSlug),
+            proposingTurn: (sessionId: string) => {
+              const eventStore = context.orchestrationEventStore;
+              if (!eventStore) return undefined;
+              return proposingTurnId(
+                {
+                  callingTurn: (id) =>
+                    context.orchestrationService.stationControlCallingTurn(id),
+                  store: eventStore,
+                },
+                sessionId,
+              );
+            },
+            untrustedContent: async (conversationId: string) =>
+              (await sharedUntrustedContentLedger.conversationHasRead(
+                conversationId,
+              )) ||
+              sharedUntrustedContentLedger.hasDescendantRead(conversationId),
+            // The isolated-repair setup's operator gate: the operator in
+            // person, never an agent, re-checked inside the store's lock.
+            operator: async (request: Request) => {
+              const assertCurrent = async () => {
+                if (
+                  isHostedTenantExecutionRequired() ||
+                  !isOperatorInPersonNotAgent(request) ||
+                  !isRuntimeRequestPrincipalCurrent(
+                    request,
+                    context.environmentSecurityService,
+                  )
+                )
+                  throw new Error('Operator access required');
+                await projectMembershipAuthority(request).operator();
+              };
+              try {
+                await assertCurrent();
+              } catch {
+                return undefined;
+              }
+              return { id: getCachedUser().alias, assertCurrent };
+            },
+          },
+        }
+      : {}),
     // Read when a chat asks, after the scheduler below exists.
     ...(hostedTenantRegistry === undefined
       ? {
@@ -7469,6 +7535,10 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/orchestration',
     createAgentScheduleRoutes(agentSchedule.routeDeps),
+  );
+  context.app.route(
+    '/api/orchestration',
+    createAutomationProposalRoutes(agentSchedule.automationProposalRouteDeps),
   );
   // #3628: a person's coordinator Session, woken through the same inbox when
   // work they can read needs them, finished or failed. Not on a hosted

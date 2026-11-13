@@ -1488,6 +1488,10 @@
       "cli": ["agents list"],
       "note": "Different route: MCP GET /agents, CLI GET /api/agents."
     },
+    "list_automation_proposals": {
+      "exempt": "agent-self",
+      "reason": "Lists the caller's own Automation proposals."
+    },
     "list_conversations": {
       "cli": ["agents conversations"]
     },
@@ -1598,6 +1602,14 @@
     },
     "preview_schedule": {
       "cli": ["schedule preview"]
+    },
+    "propose_automation_rule": {
+      "exempt": "agent-proposal",
+      "reason": "Agent asks a person; the operator creates rules directly through the Automation operator API."
+    },
+    "propose_automation_source": {
+      "exempt": "agent-proposal",
+      "reason": "Agent asks a person; the operator creates sources directly through the Automation operator API."
     },
     "propose_job": {
       "exempt": "agent-proposal",

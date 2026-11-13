@@ -15574,6 +15574,28 @@ export class OrchestrationService {
     return this.stationControlPullRequests.declare(input);
   }
 
+  /**
+   * #4830: the turn a station-control call from `threadId` is inferred to
+   * be made in. An engine's call names no turn, so this infers the turn the
+   * Session is running, as Station's persisted lifecycle fold answers (the
+   * lease `declare_pull_request` uses too); #4882 replaces the inference
+   * with a turn-bound credential. A concurrent steer can clear a send's
+   * pending reservation (#4850 review), so `pending` is not exhaustive. `pending` while a send's start is not
+   * yet stored (in flight, accepted but not arrived, or held), when the
+   * stored newest start is not the turn now running; `none` when no turn
+   * runs. Callers deciding authority from it refuse anything but `turn`.
+   */
+  stationControlCallingTurn(
+    threadId: string,
+  ):
+    | { readonly kind: 'turn'; readonly turnId: string }
+    | { readonly kind: 'pending' | 'none' } {
+    if (this.clientOriginTurns.holdsTurnStart(threadId))
+      return { kind: 'pending' };
+    const turnId = this.activeTurnIdOfThread(threadId);
+    return turnId ? { kind: 'turn', turnId } : { kind: 'none' };
+  }
+
   /** The turn the session is running, as the lease for what it declares. */
   private activeStationControlTurn(
     threadId: string,
