@@ -48,6 +48,7 @@
   top: -3px;
   font-size: var(--k-text-xs);
   line-height: 1;
+  color: var(--k-caution);
   background: var(--k-panel);
   border-radius: var(--k-radius-full);
 }
@@ -58,11 +59,19 @@
   display: flex;
   min-width: 0;
 }
+/* The agent name gives way first; a long model id still ellipsizes instead of
+   being clipped mid-word once the agent part is gone. */
 .composer-run-control__agent {
+  flex: 0 1000 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .composer-run-control__model {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: pre;
 }
