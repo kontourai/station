@@ -44,10 +44,13 @@
 </li>
 <li>check-backs the agent scheduled (<code>schedule_wake_up</code>): one follow-up at most a day ahead, at most 3 waiting and 20 per hour per chat,
 </li>
-<li>automations the agent proposed (<code>propose_job</code>), waiting for your approval.
+<li>automations the agent proposed (<code>propose_job</code>), waiting for your approval,
+</li>
+<li>GitHub Automation sources and rules the agent proposed (<code>propose_automation_source</code>, <code>propose_automation_rule</code>), waiting for you to confirm.
 </li>
 </ul>
 <p>An approved proposal runs in the chat that proposed it.</p>
+<p>A GitHub source or rule proposal is a card that says, in Station's words, what it watches, what it opens, which agent it wakes, and with what limits. What the agent wrote (its name for it, its conditions, its reason, and the complete instructions a rule gives) is shown apart, under <strong>Written by the agent</strong>. Open <strong>Instructions the agent will be given</strong> to read them in full. If the chat had read content written by others, such as email, before the agent proposed this or at any time since, the card says so first. Confirming checks again that the agent's chat could still start that work, and refuses if an Agent it names has moved, changed or been removed. <strong>Confirm</strong> creates it, and only the Station operator can confirm. A confirmed source starts disabled and a confirmed rule starts observing: it records what it would do but starts nothing. Tick <strong>Turn it on now</strong> to enable the source, or set the rule live, in the same step. <strong>Decline</strong> creates nothing. Proposals are meant to come only from a message you typed into Station's chat. Work that an automation, another agent's result, the CLI or another Station started is refused. Station works out which message the agent is answering from the chat's state, and a known timing race (a steer sent while another agent's result is starting) can let an agent's continuation create a card. Nothing is created unless you confirm it, so read each card before confirming. The fix is tracked in <a href="https://github.com/kontourai/station/issues/4882">#4882</a>.</p>
 <h2 id="failures-missed-runs-and-turning-off">Failures, missed runs and turning off</h2>
 <ul>
 <li>A run that fails is listed as failed and notifies you. The notice is generic; open Automations to see the jobs and runs you can access.
