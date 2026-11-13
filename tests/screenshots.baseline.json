@@ -131,7 +131,7 @@
       "name": "detected-project-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "8e409ff856e7a4a6ae871ef340c47c30db1dbbf558df1a4dcba883745e347b1c"
+      "sha256": "9923b661722f382ef8d4d411bdad3fc7c845ec3bb37a9e5859d9aef2a2bf2bce"
     },
     {
       "name": "detected-project-phone",
@@ -263,7 +263,7 @@
       "name": "mobile-home",
       "width": 390,
       "height": 844,
-      "sha256": "bbd6e1641449b010d97b20ec18004078a4880d722672a1d0191443315360e800"
+      "sha256": "a26177013bad0b4a315ab58a2763176707efab90352e857a72c5dc84b61a44dc"
     },
     {
       "name": "mobile-http-consent-320",
@@ -323,7 +323,7 @@
       "name": "new-chat-dark-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "392f161c9be2b0ca38fb4e699686f137921d402ad5439b4b4622d78f1749e739"
+      "sha256": "734335e8d0c5acc3ddb76120db8482fc08ad9d83c9bda67307075e8ed4a20e0b"
     },
     {
       "name": "new-chat-dark-mobile",
@@ -341,7 +341,7 @@
       "name": "new-chat-light-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "71ef3daf71b1e4a28518f24abad195927710cde9690a606f2ae20bf7bbf0dee7"
+      "sha256": "8597831ad634eec6e47eaed54ce37558e174291798e38e988b25d3c008545621"
     },
     {
       "name": "new-chat-light-mobile",
@@ -389,13 +389,13 @@
       "name": "overlay-dock-project-bound",
       "width": 1440,
       "height": 900,
-      "sha256": "0d733e063424229b9d7e5ec334249b6e94eb2e7a20bba79a908fd962556c3b9e"
+      "sha256": "404a07c1e326950ca78ebe6c829c34eaea6e858b24d8330d0a17e75898d543b9"
     },
     {
       "name": "overlay-dock-project-mismatch",
       "width": 1440,
       "height": 900,
-      "sha256": "97212f5f6376caa42cc0948c2e3cef0a153a3439d45ece6ba315cf52c3202069"
+      "sha256": "2910dafd8e55ce139adaf07c2198054efa6dc4f5a2eff5ed69a2858dc616e461"
     },
     {
       "name": "overlay-mobile-sheet",
