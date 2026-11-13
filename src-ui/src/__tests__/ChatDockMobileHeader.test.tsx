@@ -721,6 +721,7 @@ describe('first-run bar without a chat (#4404 A44)', () => {
 
   test('keeps Back to chat and Chat actions once a chat exists', () => {
     renderHeader({ hasConversation: true, inboxActive: true });
+    expect(screen.getAllByText('Inbox', { exact: true })).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'Back to chat' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
   });
