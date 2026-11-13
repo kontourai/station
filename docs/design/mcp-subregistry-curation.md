@@ -310,6 +310,111 @@ checks newer state and stale grants is follow-up work, not an available command.
 - **Built-in tools.** Station's bash, file editor and HTTP request use their
   integration's per-tool permission when their loader-owned identity is
   available. An unknown tool without verified identity asks by default.
+- **Engine-native web reads (#4828).** Reading the web with an engine's own
+  tools sets the same mark as an `untrusted` integration's result
+  ([native-web-read-marks.ts](../../src-server/services/plugins/native-web-read-marks.ts)).
+  `GET /api/integrations/untrusted-content/coverage` returns
+  `nativeWebReads` (`NativeWebReadCoverage` in the tool contract) per
+  engine. An engine Station cannot see is `uncovered`, never assumed safe:
+
+  | Engine | Coverage | Marked from | Not seen |
+  | --- | --- | --- | --- |
+  | Station | covered | `afterToolCall` of the HTTP request built-in; marks the turn and the conversation | |
+  | Claude Code | covered | an in-process `PostToolUse` hook Station registers, when `WebFetch` or `WebSearch` returns, in a subagent too | |
+  | Codex | covered | a completed `webSearch` item (search, page open, find in page) on the app-server stream, the session's or a subagent's | after the mark, Station's pre-tool policy still does not run for Codex's own file changes and commands |
+  | ACP | partial | a tool call the agent reports with kind `fetch` | a web tool the agent reports as another kind |
+  | muse | uncovered | nothing: Station does not know which muse tools read the web, and muse has no hook Station can install | every web read |
+
+  On every engine, a shell command that downloads (`curl`, `wget`) is not
+  recognised as a web read. Station's browser tools mark the caller's session
+  and conversation at the browser-agent route, for every engine they are
+  delivered to, on each authorized call except `browser_status` and
+  `browser_close` (the call is marked before it runs). The mark is recorded
+  before the hook or handler returns, so the engine's next pre-tool check
+  sees it; Claude Code may still run a call it batched alongside the read.
+- **Instructions and git hooks after a mark (#4828): a best-effort early
+  check, not containment.** For the rest of a marked conversation, and in
+  every conversation it delegates to, Station denies writes to known
+  instruction-file and git-hook locations by path, before the tool runs.
+  **This does not contain git hook execution.** A path check before a tool
+  runs cannot see every place git will run a hook from; six ways around it
+  have run a planted hook (below). Enforcement at the OS level is
+  [#4860](https://github.com/kontourai/station/issues/4860).
+
+  The staged pre-tool evaluator refuses a write, move, rename or copy with
+  any endpoint at one of these locations:
+  - an agent-instruction file (`AGENTS.md`, `AGENTS.override.md`,
+    `CLAUDE.md`, `CLAUDE.local.md`), at any depth;
+  - anything under `.agents/`, `.claude/` or `.codex/`;
+  - a project's `.mcp.json`;
+  - a repository's `.git/hooks/**` or `.git/config` (a worktree's or
+    submodule's under `.git/` too);
+  - the conventional hook folders `.githooks/` and `.husky/`;
+  - the `core.hooksPath` git reports for the repository that contains an
+    absolute write target.
+
+  The checks are in
+  [untrusted-persistence-protection.ts](../../src-server/services/plugins/untrusted-persistence-protection.ts).
+  The hooks path comes from git (`git -C <root> config --type=path --get
+  core.hooksPath`, a fixed argument list with no shell, prompt or pager, and
+  a short timeout). That command reads configuration only and runs no hook,
+  `core.fsmonitor` or other program the repository names; a test pins this.
+  When git is missing or cannot answer, every folder a raw `hooksPath` line
+  names is checked instead, and every `git config` shell command asks.
+
+  A shell command asks the person, because Station cannot tell what a shell
+  command does, when it:
+  - names one of these locations;
+  - sets a value with `git config`;
+  - gives git a global option before its subcommand that configures it or
+    points it elsewhere (`-c`, `--config-env`, `--git-dir`, `--work-tree`,
+    `--exec-path`, `--namespace`), or any global option Station does not
+    recognise;
+  - or assigns `GIT_DIR` or `GIT_CONFIG*`.
+
+  A loaded MCP tool is classified by its original name from the loader, and
+  tool names compare without case or separators. Paths are compared by
+  segment, case-insensitively.
+
+  A delegated child gets the check when its parent or root is marked. A
+  child's untrusted read reaches its parent with the child's result: when
+  the parent reads it through a delegation tool (the Station engine's
+  `afterToolCall`, Claude Code's `PostToolUse`, and the station-control
+  guard for any engine), or when Station delivers the result into the
+  parent's conversation. Either marks the parent durably.
+
+  The check runs wherever the staged evaluator runs: the Station engine,
+  Claude Code's `PreToolUse` and ACP's named permission requests. ACP edit,
+  move and delete requests are also checked from their kind, locations and
+  input, whether or not the agent named the tool.
+
+  Known gaps, each shown in verification to run a planted hook after a mark
+  ([#4860](https://github.com/kontourai/station/issues/4860)):
+  - a `core.hooksPath` naming an absolute directory outside the repository,
+    set locally or globally;
+  - a bare repository's hooks, where a receive hook runs on push;
+  - a repository nested inside another repository's hooks folder;
+  - a hooks folder reached through a symlink (paths compare lexically);
+  - a writable `[include]` file that retargets `core.hooksPath` (only the
+    value at check time is known, and the fallback without git does not read
+    includes);
+  - git invoked inside a quoted `sh -c "…"` payload or through a shell
+    alias.
+
+  Other limits:
+  - a write through any other link whose name is not checked;
+  - a path a command builds at run time;
+  - a relative path's effective hooks folder (only its name is checked);
+  - Codex's own file changes and commands, which never reach the evaluator;
+  - the child-to-parent record is held in memory until the parent reads the
+    result. A restart in between leaves only the child marked; the delivery
+    path then marks the parent from the child's durable mark.
+
+  Flow Agents config protection (linter configuration in opted-in
+  workspaces) is unchanged. A confined session's sandbox keeps `.git/hooks`
+  and `.git/config` read-only whether or not the conversation is marked. To
+  make such a change after a mark, make it yourself or clear the
+  conversation's mark.
 - **Earlier turns.** Covered: a conversation stays marked until a person
   clears it (above).
 - **Settings UI.** The Content trust settings Feature Preview exposes the

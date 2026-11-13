@@ -2823,6 +2823,10 @@ export function configureRuntimeRoutes(
         });
         return verdict.allowed ? undefined : verdict.reason;
       },
+      // #4828: a delegated child's untrusted read reaches its parent with
+      // the child's result.
+      delegatedResultRead: (conversationIds) =>
+        sharedUntrustedContentLedger.carryDescendantRead(...conversationIds),
       // #4769: a session whose start ran with a restricted network is
       // refused the tools that would have Station act outside its sandbox.
       networkRestrictedSession: (sessionId) =>

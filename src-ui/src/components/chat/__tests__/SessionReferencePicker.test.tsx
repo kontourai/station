@@ -78,7 +78,7 @@ describe('SessionReferencePicker', () => {
       />,
       { wrapper },
     );
-    expect(await screen.findByText('No conversations yet')).toBeTruthy();
+    expect(await screen.findByText('No chats yet')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
@@ -110,7 +110,7 @@ describe('SessionReferencePicker', () => {
 
     expect(
       await screen.findByText(
-        'No referenceable conversations in the 25 most recent. Older conversations aren’t shown.',
+        'None of the 25 most recent chats can be referenced. Older chats aren’t shown.',
       ),
     ).toBeTruthy();
   });
@@ -142,12 +142,12 @@ describe('SessionReferencePicker', () => {
       { wrapper },
     );
 
-    fireEvent.change(await screen.findByLabelText('Find conversations'), {
+    fireEvent.change(await screen.findByLabelText('Find chats'), {
       target: { value: 'older title' },
     });
     expect(
       screen.getByText(
-        'No matches in the 1 most recent conversations. Older conversations aren’t searched.',
+        'No matches in the 1 most recent chats. Older chats aren’t searched.',
       ),
     ).toBeTruthy();
   });
@@ -229,8 +229,7 @@ describe('SessionReferencePicker', () => {
       { wrapper },
     );
     expect(
-      (screen.getByLabelText('Find conversations') as HTMLInputElement)
-        .disabled,
+      (screen.getByLabelText('Find chats') as HTMLInputElement).disabled,
     ).toBe(true);
     expect(fetchInventory).not.toHaveBeenCalled();
     expect(onChange).not.toHaveBeenCalled();

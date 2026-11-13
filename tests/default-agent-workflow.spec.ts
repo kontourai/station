@@ -1011,6 +1011,6 @@ test.describe('Default agent workflow', () => {
 
     await page.getByRole('button', { name: 'Clear all' }).click();
     await page.getByRole('button', { name: 'Clear all' }).last().click();
-    await expect(history).toContainText('No conversations yet');
+    await expect(history).toContainText('No chats yet');
   });
 });

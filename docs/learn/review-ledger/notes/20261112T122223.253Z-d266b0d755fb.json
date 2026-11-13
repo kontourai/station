@@ -1,0 +1,11 @@
+{
+  "revision": "0138959afff5356c243425b9e24146c388ab707d",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"#4828 fix round 2: vitest-resource-manifest.mjs only adds two git-spawning test files to PROCESS_HEAVY_VITEST_FILES with a reason; the guide's description of the resource groups and how files are classified is unchanged and accurate.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"#4828 fix round 2: vitest-resource-manifest.mjs only adds two src-server test files to PROCESS_HEAVY_VITEST_FILES; nothing in agent-runtime's context depends on those entries.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"#4828 fix round 2: vitest-resource-manifest.mjs only adds two classified entries to PROCESS_HEAVY_VITEST_FILES; the routed resource-classification rules this file states still hold.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

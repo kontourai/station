@@ -1,0 +1,7 @@
+{
+  "revision": "38fc9ec80dd877cfb6638a832702551f7fc65542",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"chat.css change removes decorative gradients, the avatar hover ring and the from-prompt glow. placement.md cites chat.css for placement geometry; its backdrop mentions (chooser dismiss backdrop, position fixed inset 0, press/release handling) are invisible hit-test layers and not the removed blur or gradient. Nothing stale.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]}
+  ]
+}

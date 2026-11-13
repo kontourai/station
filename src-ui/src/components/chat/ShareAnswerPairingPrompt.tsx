@@ -54,11 +54,10 @@ export function ShareAnswerPairingPrompt() {
   return (
     <span className="share-answer__pairing">
       <span className="share-answer__status">
-        Pairing this browser grants it{' '}
-        <strong>full access to this Station</strong> — reading and controlling
-        sessions, opening terminals, and managing devices — not just sharing.
-        Station asks for it here because a share link keeps working after you
-        close this tab.
+        Pairing gives this browser <strong>full access to this Station</strong>,
+        including reading and controlling chats, opening terminals and managing
+        devices. Share links need it because they keep working after you close
+        this tab.
       </span>
 
       {state.phase === 'idle' && (
@@ -80,9 +79,7 @@ export function ShareAnswerPairingPrompt() {
       {state.phase === 'requested' && (
         <>
           <span className="share-answer__status" role="status">
-            Request sent. Station will not grant anything until you approve it
-            yourself — open Connections, approve this browser, then use Share
-            answer again.
+            Request sent. Approve this browser in Connections, then share again.
           </span>
           <button
             type="button"

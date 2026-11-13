@@ -35,16 +35,15 @@ export function ChatSetupHelper({
 }) {
   const [choosingStationEngine, setChoosingStationEngine] = useState(false);
   return (
-    <section className="chat-start__setup" aria-label="Set up an AI connection">
+    <section className="chat-start__setup" aria-label="Set up an engine">
       <div className="chat-start__recent-heading">
-        <h4>Let’s connect your AI</h4>
+        <h4>Connect an engine or model</h4>
         <Button variant="link" pending={busy} onClick={onCheck}>
           Check again
         </Button>
       </div>
       <p>
-        Connect an AI app or a model account. Your message stays here while you
-        finish setup.
+        Set up an engine or add a model connection. Your message stays here.
       </p>
       {agents.map((agent) => {
         const connection = connections.find(
@@ -113,13 +112,11 @@ export function ChatSetupHelper({
       })}
       {choosingStationEngine && (
         <Suspense
-          fallback={
-            <SkeletonBlock count={1} label="Opening assistant choices" />
-          }
+          fallback={<SkeletonBlock count={1} label="Opening engine choices" />}
         >
           <EnginePicker
-            title="Choose what powers the Station assistant"
-            description="Choose an AI connection for the Station assistant."
+            title="Choose what powers the Station agent"
+            description="Choose an engine or model connection for the Station agent."
             onDismiss={() => setChoosingStationEngine(false)}
             onChosen={() => {
               setChoosingStationEngine(false);
@@ -129,14 +126,14 @@ export function ChatSetupHelper({
         </Suspense>
       )}
       <div className="chat-start__controls">
-        <Button onClick={() => onSetup()}>Set up an AI app</Button>
+        <Button onClick={() => onSetup()}>Set up an engine</Button>
         <Button variant="link" onClick={onModels}>
-          Connect a model account
+          Add a model connection
         </Button>
       </div>
       <p>
-        Apps run on the computer hosting Station. Follow its installation guide
-        there, then return to recheck detection and sign-in.
+        Install engines on the computer running Station, then select Check
+        again.
       </p>
     </section>
   );

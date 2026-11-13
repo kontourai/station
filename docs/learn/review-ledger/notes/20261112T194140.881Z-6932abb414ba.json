@@ -1,0 +1,7 @@
+{
+  "revision": "38fc9ec80dd877cfb6638a832702551f7fc65542",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"ScheduleView.css and chat.css changed visually only: schedule title is plain text instead of gradient text, stat cards are flat with no hover lift, chat avatar ring and from-prompt styling removed. Checked schedule instructions (scheduled-job draft, readiness check) and the chat message grouping text (shared name/avatar, day dividers, square agent avatars vs round people avatars): shapes and behavior unchanged, no visual claim about gradients or glow. Nothing stale.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css","src-ui/src/index.css","src-ui/src/views/ScheduleView.css"]}
+  ]
+}
