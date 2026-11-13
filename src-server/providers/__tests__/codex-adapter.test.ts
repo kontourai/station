@@ -6695,13 +6695,19 @@ describe('CodexAdapter', () => {
     test('station#2072: model discovery DOES receive the connection env — a routed connection lists its own catalog', async () => {
       processHandle = new FakeCodexProcess();
       const processFactory = vi.fn(() => processHandle!);
+      const launch = vi.fn(async (session?: { threadId: string }) => ({
+        env: {
+          CODEX_HOME: '/Users/me/.codex_vibe',
+          STATION_ENGINE_PROXY_KEY: session
+            ? 'wrong-scoped-route'
+            : 'metadata-route',
+        },
+        args: [],
+      }));
       const adapter = new CodexAdapter({
         processFactory,
-        getConnectionEnv: async () => ({
-          CODEX_HOME: '/Users/me/.codex_vibe',
-          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
-        }),
-      } as any);
+        getConnectionLaunch: launch,
+      });
 
       const discoveryPromise = adapter.listModelCatalog();
       await flushIo();
@@ -6720,24 +6726,34 @@ describe('CodexAdapter', () => {
 
       expect(processFactory).toHaveBeenCalledWith({
         CODEX_HOME: '/Users/me/.codex_vibe',
-        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+        STATION_ENGINE_PROXY_KEY: 'metadata-route',
       });
     });
 
     test('station#2072: startSession layers the connection env UNDER the app-home home key', async () => {
       processHandle = new FakeCodexProcess();
       const processFactory = vi.fn(() => processHandle!);
+      const launch = vi.fn(
+        async (session?: {
+          threadId: string;
+          cwd?: string;
+          modelId?: string;
+        }) => ({
+          env: {
+            CODEX_HOME: '/Users/me/.codex_vibe',
+            STATION_ENGINE_PROXY_KEY: `route:${session?.threadId}`,
+          },
+          args: [],
+        }),
+      );
       const adapter = new CodexAdapter({
         processFactory,
         getAppHomeEnv: async () => ({
           env: { CODEX_HOME: '/station/app-homes/codex' },
           profileRef: null,
         }),
-        getConnectionEnv: async () => ({
-          CODEX_HOME: '/Users/me/.codex_vibe',
-          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
-        }),
-      } as any);
+        getConnectionLaunch: launch,
+      });
 
       const startSessionPromise = adapter.startSession({
         provider: 'codex',
@@ -6763,12 +6779,46 @@ describe('CodexAdapter', () => {
 
       expect(processFactory).toHaveBeenCalledWith(
         {
-          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+          STATION_ENGINE_PROXY_KEY: 'route:thread-connection-env',
           CODEX_HOME: '/station/app-homes/codex',
           STATION_WORKLOAD_SESSION_ID: 'thread-connection-env',
         },
         undefined,
       );
+      expect(launch).toHaveBeenCalledWith({
+        threadId: 'thread-connection-env',
+        cwd: '/tmp/project',
+        modelId: 'gpt-5-codex',
+      });
+      await adapter.stopAll();
+    });
+
+    test('a Session route refusal never starts an unscoped Codex process', async () => {
+      const refused = Error('Session model admission withdrawn');
+      const processFactory = vi.fn(() => {
+        throw Error('unscoped native launch attempted');
+      });
+      const launch = vi.fn(async (session?: { threadId: string }) => {
+        if (session?.threadId === 'denied-session-route') throw refused;
+        return {
+          env: { STATION_ENGINE_PROXY_KEY: 'unscoped-route' },
+          args: [],
+        };
+      });
+      const adapter = new CodexAdapter({
+        processFactory,
+        getConnectionLaunch: launch,
+      });
+      await expect(
+        adapter.startSession({
+          provider: 'codex',
+          confinement: 'host',
+          threadId: 'denied-session-route',
+          cwd: '/tmp/project',
+          modelId: 'gpt-5-codex',
+        }),
+      ).rejects.toBe(refused);
+      expect(processFactory).not.toHaveBeenCalled();
       await adapter.stopAll();
     });
 

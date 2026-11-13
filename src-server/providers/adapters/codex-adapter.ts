@@ -50,7 +50,10 @@ import {
   observedConfinementRecord,
 } from '../../security/confinement/confinement-provider.js';
 import { managedEnginePrerequisites } from '../../security/managed-engine-limits.js';
-import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
+import type {
+  EngineSessionLaunchContext,
+  engineProxyLaunch,
+} from '../../services/connections/engine-proxy-routing.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import { prepareManagedEngineWorkspace } from '../../services/infra/managed-engine-workspace.js';
 import {
@@ -260,7 +263,9 @@ interface CodexAdapterOptions {
    * credentials, so it never blocks a spawn.
    */
   getConnectionEnv?: () => Promise<Record<string, string> | undefined>;
-  getConnectionLaunch?: () => Promise<ReturnType<typeof engineProxyLaunch>>;
+  getConnectionLaunch?: (
+    session?: EngineSessionLaunchContext,
+  ) => Promise<ReturnType<typeof engineProxyLaunch>>;
   /**
    * Readiness seams, injectable so the installed branch and the probe's
    * environment are exercised on any host (a host without `codex` would
@@ -2270,7 +2275,13 @@ export class CodexAdapter implements ProviderAdapterShape {
     // the ambient env. An explicit configHome lands here exactly when no
     // profile/affinity home did (the runtime resolves only one of
     // configHome/useAppHome into these layers).
-    const connectionLaunch = await this.resolveConnectionLaunch();
+    const connectionLaunch = await this.resolveConnectionLaunch(
+      Object.freeze({
+        threadId: input.threadId,
+        cwd: input.cwd,
+        modelId: input.modelId,
+      }),
+    );
     const connectionEnv = connectionLaunch.env;
     const spawnEnv =
       connectionEnv && appHomeEnv
@@ -3318,11 +3329,13 @@ export class CodexAdapter implements ProviderAdapterShape {
    * block a spawn (the credential-profile branch of `resolveAppHomeEnv`
    * above stays the only fail-closed one).
    */
-  private async resolveConnectionLaunch(): Promise<
-    ReturnType<typeof engineProxyLaunch>
-  > {
+  private async resolveConnectionLaunch(
+    session?: EngineSessionLaunchContext,
+  ): Promise<ReturnType<typeof engineProxyLaunch>> {
     if (this.options.getConnectionLaunch)
-      return this.options.getConnectionLaunch();
+      return session
+        ? this.options.getConnectionLaunch(session)
+        : this.options.getConnectionLaunch();
     return { env: await this.resolveConnectionEnv(), args: [] };
   }
 

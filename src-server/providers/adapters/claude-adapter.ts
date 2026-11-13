@@ -120,7 +120,10 @@ import {
   managedEngineBinaryPath,
   managedEnginePrerequisites,
 } from '../../security/managed-engine-limits.js';
-import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
+import type {
+  EngineSessionLaunchContext,
+  engineProxyLaunch,
+} from '../../services/connections/engine-proxy-routing.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   commitEngineLaunch,
@@ -1127,7 +1130,9 @@ export interface ClaudeAdapterOptions {
    * {@link claudeArtifactsSpawnEnv} for what reaches the spawn.
    */
   getArtifactsEnabled?: () => Promise<boolean>;
-  getConnectionLaunch?: () => Promise<ReturnType<typeof engineProxyLaunch>>;
+  getConnectionLaunch?: (
+    session?: EngineSessionLaunchContext,
+  ) => Promise<ReturnType<typeof engineProxyLaunch>>;
   /**
    * Station#1157 review fix (MEDIUM): the running instance's own
    * station-control operational env (`stationControlSpawnEnv(port)`'s
@@ -1831,7 +1836,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // is deliberately absent (adoption and source-affinity resume —
       // archive#896 decision 2's config-root orphaning concern: running the
       // child under a different config home would strand it there).
-      const connectionLaunch = await this.options.getConnectionLaunch?.();
+      const connectionLaunch = await this.options.getConnectionLaunch?.(
+        Object.freeze({
+          threadId: input.threadId,
+          cwd: input.cwd,
+          modelId: input.modelId,
+        }),
+      );
       const connectionEnv = claudeConnectionEnvForSpawn(
         connectionLaunch
           ? connectionLaunch.env
@@ -2333,7 +2344,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // the same line for the connection env: its routing keys apply, its
       // config-home key does not (same orphaning concern as the app-home
       // env above).
-      const connectionLaunch = await this.options.getConnectionLaunch?.();
+      const connectionLaunch = await this.options.getConnectionLaunch?.(
+        Object.freeze({
+          threadId: input.threadId,
+          cwd: input.cwd,
+          modelId: input.modelId,
+        }),
+      );
       const connectionEnv = claudeConnectionEnvForSpawn(
         connectionLaunch
           ? connectionLaunch.env

@@ -11083,13 +11083,21 @@ echo '{"loggedIn":true}'
         ANTHROPIC_BASE_URL: 'https://ambient.example.internal',
       });
       mockQuery.mockReturnValue(createMockQuery([]));
-      const adapter = new ClaudeAdapter({
-        getConnectionEnv: async () => ({
-          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
-          ANTHROPIC_AUTH_TOKEN: 'cliproxy-local',
-          ANTHROPIC_API_KEY: '',
+      const launch = vi.fn(
+        async (session?: {
+          threadId: string;
+          cwd?: string;
+          modelId?: string;
+        }) => ({
+          env: {
+            ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+            ANTHROPIC_AUTH_TOKEN: `route:${session?.threadId}`,
+            ANTHROPIC_API_KEY: '',
+          },
+          args: [],
         }),
-      });
+      );
+      const adapter = new ClaudeAdapter({ getConnectionLaunch: launch });
       const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
       await adapter.startSession({
@@ -11101,12 +11109,37 @@ echo '{"loggedIn":true}'
       const call = mockQuery.mock.calls.at(-1)?.[0];
       expect(call.options.env).toMatchObject({
         ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
-        ANTHROPIC_AUTH_TOKEN: 'cliproxy-local',
+        ANTHROPIC_AUTH_TOKEN: 'route:thread-connection-env',
         ANTHROPIC_API_KEY: '',
+      });
+      expect(launch).toHaveBeenCalledWith({
+        threadId: 'thread-connection-env',
+        cwd: '/workspace/project',
+        modelId: undefined,
       });
       expect(call.options.env.TMPDIR).toBe(engineSpawnTmpDirPath());
       await iterator.next(); // session.started
       await iterator.next(); // session.configured
+    });
+
+    test('a Session route refusal never falls back to an unscoped model connection', async () => {
+      const refused = Error('Session model admission withdrawn');
+      mockQuery.mockImplementation(() => {
+        throw Error('unscoped native launch attempted');
+      });
+      const launch = vi.fn(async (session?: { threadId: string }) => {
+        if (session?.threadId === 'denied-session-route') throw refused;
+        return { env: { ANTHROPIC_AUTH_TOKEN: 'unscoped-route' }, args: [] };
+      });
+      const adapter = new ClaudeAdapter({ getConnectionLaunch: launch });
+      await expect(
+        adapter.startSession({
+          provider: 'claude',
+          threadId: 'denied-session-route',
+          cwd: '/workspace/project',
+        }),
+      ).rejects.toBe(refused);
+      expect(mockQuery).not.toHaveBeenCalled();
     });
 
     test('a selected credential profile still owns CLAUDE_CONFIG_DIR; connection routing keys survive', async () => {
@@ -11182,12 +11215,15 @@ echo '{"loggedIn":true}'
       try {
         mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
         mockQuery.mockReturnValue(createMockQuery([]));
-        const adapter = new ClaudeAdapter({
-          getConnectionEnv: async () => ({
+        const launch = vi.fn(async (session?: { threadId: string }) => ({
+          env: {
             ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+            ANTHROPIC_AUTH_TOKEN: `route:${session?.threadId}`,
             CLAUDE_CONFIG_DIR: '/user/chosen/home',
-          }),
-        });
+          },
+          args: [],
+        }));
+        const adapter = new ClaudeAdapter({ getConnectionLaunch: launch });
 
         await adapter.adoptSession?.({
           provider: 'claude',
@@ -11200,6 +11236,7 @@ echo '{"loggedIn":true}'
         const call = mockQuery.mock.calls.at(-1)?.[0];
         expect(call.options.env).toMatchObject({
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+          ANTHROPIC_AUTH_TOKEN: 'route:station-child-connection-env',
         });
         expect(call.options.env.CLAUDE_CONFIG_DIR).toBe('/operator/own/home');
       } finally {
@@ -11209,15 +11246,23 @@ echo '{"loggedIn":true}'
 
     test('model discovery sees the connection env — a routed connection lists its own catalog', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
-      const adapter = new ClaudeAdapter({
-        getConnectionEnv: async () => ({
+      const launch = vi.fn(async (session?: { threadId: string }) => ({
+        env: {
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
-        }),
-      });
+          ANTHROPIC_AUTH_TOKEN: session
+            ? 'wrong-scoped-route'
+            : 'metadata-route',
+        },
+        args: [],
+      }));
+      const adapter = new ClaudeAdapter({ getConnectionLaunch: launch });
 
       await adapter.listModelCatalog?.();
 
       const catalogCall = mockQuery.mock.calls.at(-1)?.[0];
+      expect(catalogCall.options.env.ANTHROPIC_AUTH_TOKEN).toBe(
+        'metadata-route',
+      );
       expect(catalogCall.options.env.ANTHROPIC_BASE_URL).toBe(
         'http://127.0.0.1:8318',
       );
