@@ -4,7 +4,12 @@ import { test } from './helpers/fixture-audit';
 test('new project icon choices and Home scope render at desktop and phone widths', async ({
   page,
 }, testInfo) => {
-  await page.goto('/');
+  await page.goto('/?dock=open');
+  const showInbox = page.getByRole('button', { name: /^Show inbox/ });
+  await expect(
+    showInbox.or(page.getByRole('button', { name: /^Hide inbox/ })),
+  ).toBeVisible();
+  if (await showInbox.isVisible()) await showInbox.click();
   const scope = page.getByRole('combobox', { name: 'Inbox scope' });
   await expect(scope).toHaveValue('current-project');
   await scope.selectOption('all');
