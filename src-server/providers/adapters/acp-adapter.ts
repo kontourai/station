@@ -41,7 +41,10 @@ import {
   type StopReason,
 } from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
-import { engineId } from '@kontourai/station-contracts/agent-identity';
+import {
+  type EngineId,
+  engineId,
+} from '@kontourai/station-contracts/agent-identity';
 import {
   ACP_ENGINE_DURABILITY,
   ACP_MODEL_OVERRIDE_PER_TURN,
@@ -196,6 +199,11 @@ import {
   findCliBinaryAsync,
 } from '../auth/cli-auth.js';
 import {
+  dispatchEngineCommand,
+  type EngineCommandPort,
+  readSlashCommand,
+} from '../engine-command-dispatch.js';
+import {
   effectiveModelMetadata,
   reportedModelMetadata,
 } from '../llm/effective-model-metadata.js';
@@ -239,9 +247,7 @@ import {
 import {
   acpCommandAnswer,
   acpCommandFailure,
-  acpCommandUnsupported,
   acpDeclaredCommands,
-  readAcpSlashCommand,
   resolveAcpCommandRoute,
 } from './acp-command-routes.js';
 import {
@@ -289,6 +295,7 @@ import {
   requestedAcpSessionMode,
 } from './acp-session-mode.js';
 import {
+  acpSteerDeclined,
   acpSteerParams,
   isAcpMethodNotFound,
   resolveAcpSteerChannel,
@@ -568,6 +575,18 @@ export function acpEngineExitEndsLaunch(input: {
 }
 
 export interface AcpAdapterOptions {
+  /**
+   * The engine id this adapter's sessions and events carry. `acp` (the
+   * default) for the registered ACP adapter; an engine that runs one of its
+   * transports over ACP (OpenCode's fallback) holds an unregistered one
+   * under its own id.
+   */
+  provider?: EngineId;
+  /**
+   * Which saved connections this adapter runs. Absent: every one
+   * `getConnections` lists.
+   */
+  connectionFilter?: (config: ACPConnectionConfig) => boolean;
   /** #4828: where untrusted reads are looked up; the shared ledger by default. */
   untrustedContentLedger?: UntrustedContentLedger;
   getConnections: () => Promise<ACPConnectionConfig[]>;
@@ -1076,7 +1095,7 @@ function mergeAcpConfigOption(
 export const ACP_TURN_MESSAGES_MAX = 500;
 
 export class AcpAdapter implements ProviderAdapterShape {
-  readonly provider = 'acp' as const;
+  readonly provider: EngineId;
   readonly metadata = {
     // #2880: the protocol has no acknowledgement of a decision; delivery is
     // not reported.
@@ -1127,9 +1146,16 @@ export class AcpAdapter implements ProviderAdapterShape {
   >();
 
   constructor(private readonly options: AcpAdapterOptions) {
+    this.provider = options.provider ?? 'acp';
     this.now = options.now ?? Date.now;
     this.approvalRelaunchTimeoutMs =
       options.approvalRelaunchTimeoutMs ?? COLD_START_OPERATION_TIMEOUT_MS;
+  }
+
+  private async connections(): Promise<ACPConnectionConfig[]> {
+    const all = await this.options.getConnections();
+    const filter = this.options.connectionFilter;
+    return filter ? all.filter(filter) : all;
   }
 
   private async resolvePreToolPolicy(
@@ -1212,7 +1238,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         : isAcpResumeCursor(input.resumeCursor)
           ? input.resumeCursor.connectionId
           : undefined;
-    const config = (await this.options.getConnections()).find(
+    const config = (await this.connections()).find(
       (candidate) => candidate.id === connectionId,
     );
     // #4520: before the start boundary is claimed, so the refusal is
@@ -1275,7 +1301,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         : isAcpResumeCursor(input.resumeCursor)
           ? input.resumeCursor.connectionId
           : undefined;
-    const connections = await this.options.getConnections();
+    const connections = await this.connections();
     const config = connections.find(
       (candidate) => candidate.id === connectionId,
     );
@@ -2910,29 +2936,36 @@ export class AcpAdapter implements ProviderAdapterShape {
     // to have, is prompt text (acp-command-routes.ts).
     const invocation =
       decodedAttachments.length === 0
-        ? readAcpSlashCommand(input.input)
+        ? readSlashCommand(input.input)
         : undefined;
-    const routed = invocation
-      ? resolveAcpCommandRoute(record.process.initResult, invocation)
-      : undefined;
-    const sessionId = record.process.sessionId;
+    const asPromptText = () => record.process.prompt(content);
+    let settlement: Promise<PromptResponse>;
+    if (invocation) {
+      const routed = resolveAcpCommandRoute(
+        record.process.initResult,
+        invocation,
+      );
+      const sessionId = record.process.sessionId;
+      settlement = dispatchEngineCommand(
+        this.engineCommandPort(record, turnId, asPromptText),
+        invocation,
+        {
+          route: routed.route,
+          ...(routed.params && sessionId
+            ? { params: routed.params(sessionId) }
+            : {}),
+          ...(routed.refusal ? { refusal: routed.refusal } : {}),
+        },
+      );
+    } else {
+      settlement = asPromptText();
+    }
     this.bindPromptSettlement(
       record,
       input.threadId,
       turnId,
       record.promptEpoch,
-      invocation && routed?.refusal
-        ? this.refuseEngineCommand(record, turnId, routed.refusal)
-        : invocation && routed?.params && sessionId
-          ? this.runEngineCommand(
-              record,
-              turnId,
-              invocation.name,
-              routed.route,
-              routed.params(sessionId),
-              () => record.process.prompt(content),
-            )
-          : record.process.prompt(content),
+      settlement,
     );
 
     return {
@@ -2943,70 +2976,42 @@ export class AcpAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * A slash command whose subcommand Station does not run: nothing reaches
-   * the engine, and the turn shows why (acp-command-routes.ts `refusal`).
+   * How a slash command reaches this session's engine
+   * (`engine-command-dispatch.ts`): a routed request is an ACP extension
+   * method, and what it answers, or why nothing was sent, is shown as the
+   * engine's output on this turn. ACP performs no adapter action itself.
    */
-  private async refuseEngineCommand(
+  private engineCommandPort(
     record: AcpSessionRecord,
     turnId: string,
-    text: string,
-  ): Promise<PromptResponse> {
-    this.publishForTurn(record, {
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId: record.session.threadId,
-      createdAt: new Date().toISOString(),
-      turnId,
-      itemId: `${turnId}:command`,
-      method: 'content.text-delta',
-      delta: text,
-    });
-    return { stopReason: 'end_turn' };
-  }
-
-  /**
-   * Run a routed slash command as its request and show what came back as the
-   * engine's output on this turn. A refusal that means "no such command"
-   * runs the command as prompt text instead.
-   */
-  private async runEngineCommand(
-    record: AcpSessionRecord,
-    turnId: string,
-    name: string,
-    route: EngineCommandRoute,
-    params: Record<string, unknown>,
     asPromptText: () => Promise<PromptResponse>,
-  ): Promise<PromptResponse> {
-    if (route.kind !== 'engine-request') return asPromptText();
-    let outcome: EngineCommandOutcome;
-    try {
-      outcome = acpCommandAnswer(
-        await record.process.extMethod(route.method, params),
-      );
-    } catch (error) {
-      if (acpCommandUnsupported(error)) return asPromptText();
-      outcome = acpCommandFailure(error);
-    }
-    const engine = record.engineName;
-    const text =
-      outcome.kind === 'answered'
-        ? outcome.success === false
-          ? `${engine} could not run /${name}${outcome.text ? `: ${outcome.text}` : '.'}`
-          : outcome.text || `${engine} ran /${name}.`
-        : outcome.kind === 'failed'
-          ? `${engine} refused /${name}: ${outcome.message}`
-          : `${engine} did not run /${name}.`;
-    this.publishForTurn(record, {
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId: record.session.threadId,
-      createdAt: new Date().toISOString(),
-      turnId,
-      itemId: `${turnId}:command`,
-      method: 'content.text-delta',
-      delta: text,
-    });
-    return { stopReason: 'end_turn' };
+  ): EngineCommandPort<PromptResponse> {
+    return {
+      engineName: record.engineName,
+      asPromptText,
+      request: async (route, params) => {
+        try {
+          return acpCommandAnswer(
+            await record.process.extMethod(route.method, params),
+          );
+        } catch (error) {
+          return acpCommandFailure(error);
+        }
+      },
+      answerTurn: (text) => {
+        this.publishForTurn(record, {
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId: record.session.threadId,
+          createdAt: new Date().toISOString(),
+          turnId,
+          itemId: `${turnId}:command`,
+          method: 'content.text-delta',
+          delta: text,
+        });
+        return { stopReason: 'end_turn' };
+      },
+    };
   }
 
   async interruptTurn(threadId: string, turnId?: string) {
@@ -3352,7 +3357,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     signal?: AbortSignal;
     connectionId?: string;
   }): Promise<Prerequisite[]> {
-    const connections = await this.options.getConnections();
+    const connections = await this.connections();
     if (connections.length === 0) {
       return [];
     }
@@ -5139,7 +5144,13 @@ export class AcpAdapter implements ProviderAdapterShape {
     record.activeTurnId = undefined;
   }
 
-  private publish(event: CanonicalRuntimeEvent): void {
+  private publish(incoming: CanonicalRuntimeEvent): void {
+    // The mappers build events as the ACP adapter's; one built for another
+    // engine (`AcpAdapterOptions.provider`) carries that engine's id.
+    const event =
+      incoming.provider === this.provider
+        ? incoming
+        : { ...incoming, provider: this.provider };
     // chat-host-images: which launch this exit ends, taken now (see
     // `stampLaunchExit`).
     stampLaunchExit(event);
@@ -5362,15 +5373,18 @@ export class AcpAdapter implements ProviderAdapterShape {
     const sessionId = record.process.sessionId;
     if (!sessionId || selection.channel === 'cancel-reprompt') return false;
     for (const method of selection.methods) {
+      let result: unknown;
       try {
-        await record.process.extMethod(
+        result = await record.process.extMethod(
           method,
           acpSteerParams(selection.channel, sessionId, text),
         );
-        return true;
       } catch (error) {
         if (!isAcpMethodNotFound(error)) throw error;
+        continue;
       }
+      if (acpSteerDeclined(result)) throw new ProviderTurnEndedError();
+      return true;
     }
     return false;
   }

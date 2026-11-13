@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import {
   isAcpMethodNotFound,
@@ -26,7 +27,35 @@ const GROK = {
   _meta: { grokShell: true, agentVersion: '1.0.50' },
 };
 
+/** OpenCode 2.3.0's own `initialize` answer, from its scrubbed capture. */
+function openCodeInitialize() {
+  const line = readFileSync(
+    new URL('./fixtures/opencode-serve-2.3.0-crossload.jsonl', import.meta.url),
+    'utf8',
+  )
+    .split('\n')
+    .filter(Boolean)
+    .map((entry) => JSON.parse(entry))
+    .find(
+      (entry) =>
+        entry.kind === 'acp' &&
+        entry.dir === '<-' &&
+        entry.msg.result?.protocolVersion !== undefined,
+    );
+  return line.msg.result;
+}
+
 describe('resolveAcpSteerChannel', () => {
+  test("OpenCode 2.x's live handshake selects _session/steering, undeclared", () => {
+    const handshake = openCodeInitialize();
+    expect(handshake.agentInfo).toEqual({ name: 'OpenCode', version: '2.3.0' });
+    expect(resolveAcpSteerChannel(handshake)).toEqual({
+      channel: 'session-steering',
+      methods: ['_session/steering'],
+      basis: 'undeclared-engine',
+    });
+  });
+
   test('a declared native method is used whoever declares it', () => {
     expect(
       resolveAcpSteerChannel({

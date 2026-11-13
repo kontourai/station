@@ -547,6 +547,26 @@ export interface ProviderAdapterShape {
     serverName: string,
     options: { startOAuth: boolean },
   ): Promise<EngineCommandOutcome>;
+  /**
+   * Move the session's engine back to the end of `toTurnId` in place: later
+   * turns stay in the transcript but are hidden from the engine. The
+   * `rewind` adapter action of a slash command (`engine-command-dispatch.ts`)
+   * runs through this. Present only where some engine the adapter runs can
+   * rewind; a session whose engine cannot answers `not-declared`.
+   */
+  rewindSession?(
+    threadId: string,
+    toTurnId: string,
+  ): Promise<EngineCommandOutcome>;
+  /**
+   * The continuity one live session's engine declared, for an adapter whose
+   * engines differ (ACP reads it from each engine's `initialize`). Callers
+   * read this before `metadata.continuity`, which then speaks only for the
+   * adapter as a whole. Absent: `metadata.continuity` decides.
+   */
+  sessionContinuity?(
+    threadId: string,
+  ): Pick<ProviderContinuityCapabilities, 'fork' | 'rewind'>;
   respondToRequest(
     threadId: string,
     requestId: string,

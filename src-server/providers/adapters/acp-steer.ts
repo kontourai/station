@@ -14,7 +14,11 @@ import { errorMessage } from '../../utils/error-message.js';
  * cancels that prompt and re-prompts on the same Station turn id —
  * interruptive, but still a steer (same turn), not a queued follow-up.
  */
-export type AcpSteerChannel = 'session-steer' | 'interject' | 'cancel-reprompt';
+export type AcpSteerChannel =
+  | 'session-steer'
+  | 'session-steering'
+  | 'interject'
+  | 'cancel-reprompt';
 
 const NATIVE_STEER_METHODS: ReadonlyArray<{
   channel: Exclude<AcpSteerChannel, 'cancel-reprompt'>;
@@ -75,6 +79,17 @@ const ACP_UNDECLARED_STEER_ENGINES: ReadonlyArray<{
     channel: 'interject',
     methods: ['_x.ai/interject', 'x.ai/interject'],
     observed: 'grok 1.0.50 `agent stdio`',
+  },
+  {
+    // OpenCode 2.x flags `_meta.steering.supported` but lists no method. A
+    // second `session/prompt` mid-turn is refused -32603; this one is not.
+    // An OpenCode without it answers -32601 and degrades to cancel +
+    // re-prompt.
+    identity: { agentInfoName: 'OpenCode' },
+    channel: 'session-steering',
+    methods: ['_session/steering'],
+    observed:
+      'opencode 2.3.0 `acp` (2026-11-13): `{sessionId, prompt}` answered {outcome: "injected"} mid-stream and during a held permission, and the text reached the model; idle answered {outcome: "promptRequired", reason: "noRunningTurn"} (cli/src/acp/turn.ts)',
   },
 ];
 
@@ -151,9 +166,24 @@ export function acpSteerParams(
   sessionId: string,
   input: string,
 ): Record<string, unknown> {
-  return channel === 'session-steer'
-    ? acpSessionSteerParams(sessionId, input)
-    : acpInterjectParams(sessionId, input);
+  if (channel === 'session-steer')
+    return acpSessionSteerParams(sessionId, input);
+  if (channel === 'session-steering')
+    return { sessionId, prompt: [{ type: 'text', text: input }] };
+  return acpInterjectParams(sessionId, input);
+}
+
+/**
+ * Whether an engine's answer to a native steer says it did not take the
+ * input: OpenCode answers `{outcome: 'promptRequired'}` once no turn runs,
+ * so the steer reached nothing and the turn it was meant for has ended.
+ */
+export function acpSteerDeclined(result: unknown): boolean {
+  return (
+    result !== null &&
+    typeof result === 'object' &&
+    (result as { outcome?: unknown }).outcome === 'promptRequired'
+  );
 }
 
 function acpSessionSteerParams(
