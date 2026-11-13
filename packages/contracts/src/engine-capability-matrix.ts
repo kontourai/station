@@ -1106,7 +1106,28 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // Steering is native on `muse serve` (see `midTurnSteer` below); the
     // Station runtime runs every Muse session there unless its host cannot
     // be used, and that exec-fallback session refuses a steer itself.
+    //
+    // Continuity (`MuseAdapter.metadata.continuity`, not a matrix cell): a
+    // serve session resumes after a Station restart. Its resume cursor is
+    // the durable muse session id, re-attached on a fresh host with
+    // `session/resume` (live 1.4.18 across two `muse serve` processes;
+    // `muse-serve-1.4.18-resume-goal-fork`, which also captures the
+    // `sessionNotFound` refusal Station reports as a dead binding). Exec
+    // sessions do not resume. `session/fork` is captured there too, but
+    // the conversation fork route is replay-only, so no native fork is
+    // declared. Goals (`ProviderAdapterShape.goals`): read, `goal/pause`
+    // and `goal/clear` on serve; `goal/set` and `goal/resume` start a goal
+    // turn on an idle session (`muse-serve-1.4.18-goal-set-pause`) and are
+    // not offered.
     durability: STEERING_ENGINE_DURABILITY,
+    // Adopting a muse session Station did not start needs an
+    // attached-session source that lists them (`session/list`); none
+    // exists for Muse, so nothing reaches `adoptSession`.
+    externalSessionContinuation: {
+      state: 'unsupported',
+      reason:
+        'Station lists no Muse sessions it did not start, so none can be continued here.',
+    },
     // Slice 1 is deliberately narrow. `muse exec` is a one-prompt-per-process
     // headless runner; nothing in its flag surface or its observed JSONL
     // stream delivers an authored system prompt, MCP tool servers, skills, or
@@ -1217,10 +1238,12 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       //
       // Not a matrix cell, but wired: `steerChildWork` sends
       // `subagent/sendMessage` (live 1.4.18: queued, delivered, and the
-      // child's reply carried it). It is offered only while the launching
-      // turn runs, which is when orchestration admits a child steer; a
-      // workflow's turn ends at launch, so its children are not offered one.
-      // `subagent/interrupt` maps to no adapter seam and is not sent.
+      // child's reply carried it, sent after the launching turn ended;
+      // `muse-serve-1.4.18-workflow-child-steer`). A workflow's turn ends at
+      // launch, so the serve adapter declares `childSteerOutlivesParentTurn`
+      // and orchestration admits the steer for a child still running under
+      // its steer token. `subagent/interrupt` maps to no adapter seam and is
+      // not sent.
       stop: {
         state: 'available',
         invocation: 'client-request',
