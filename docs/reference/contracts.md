@@ -873,7 +873,9 @@ requests.
 
 `blockingOpenRequestIds` lists the requests that suspend progress. The additive
 `openRequestKinds` map distinguishes `input` (questions and forms) from `approval`
-(tool permissions) for unresolved IDs, including after reload. Unknown request kinds retain conservative approval display.
+(tool permissions and plan approval) for unresolved IDs, including after reload.
+This display hint never changes request types, lifecycle folding, or exact request
+routing. Unknown request kinds retain conservative approval display.
 
 `OrchestrationSessionSummary.currentSessionId` names the current durable
 execution child for the row's conversation, including when no turn is open.
