@@ -9,6 +9,7 @@
  * vetted before extraction ({@link unsafeArchiveEntry}) and the extracted
  * tree, symlinks included, after it ({@link findEscapingEntry}).
  */
+
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -18,6 +19,7 @@ import {
   realpathSync,
 } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
+import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 export type PinnedArtifactFailure =
@@ -110,11 +112,7 @@ export async function downloadPinnedArtifact(
   const file = createWriteStream(input.dest);
   const closed = new Promise<void>((resolve) => file.once('close', resolve));
   try {
-    await pipeline(
-      response.body as unknown as AsyncIterable<Uint8Array>,
-      checked,
-      file,
-    );
+    await pipeline(Readable.fromWeb(response.body), checked, file);
   } catch (error) {
     // pipeline settles once the stream is destroyed, which can be before its
     // asynchronous open has finished: wait for the descriptor to close, or

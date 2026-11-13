@@ -275,11 +275,10 @@ function projectDeclaredFeatures(
   );
   if (!namespace) return undefined;
   const flags = meta[namespace] as Record<string, unknown>;
-  const fork = (
-    agentCapabilities?.sessionCapabilities as unknown as {
-      fork?: unknown;
-    } | null
-  )?.fork;
+  const sessionCapabilities: unknown = agentCapabilities?.sessionCapabilities;
+  const fork = isRecord(sessionCapabilities)
+    ? sessionCapabilities.fork
+    : undefined;
   const forkMeta = isRecord(fork) && isRecord(fork._meta) ? fork._meta : null;
   const forkFlags =
     forkMeta && isRecord(forkMeta[namespace]) ? forkMeta[namespace] : null;
@@ -304,11 +303,12 @@ function projectDeclaredFeatures(
     policyNotifications: declaredFlag(flags.policyNotifications),
     forkAtMessage: declaredFlag(forkFlags?.messageId),
   };
-  const features: ProviderDeclaredFeatures = { namespace };
-  for (const [key, value] of Object.entries(booleans)) {
-    if (value !== undefined)
-      (features as unknown as Record<string, unknown>)[key] = value;
-  }
+  const features: ProviderDeclaredFeatures = Object.assign(
+    { namespace },
+    Object.fromEntries(
+      Object.entries(booleans).filter(([, value]) => value !== undefined),
+    ),
+  );
   if (autoCompactionThreshold)
     features.autoCompactionThreshold = autoCompactionThreshold;
   if (executionTargets) features.executionTargets = executionTargets;

@@ -252,7 +252,7 @@ export function parseConversationStatsResponse(
         0,
         CONVERSATION_REPORTED_COST_UNITS_MAX,
       ),
-    } as unknown as ConversationStatsResponse;
+    } as ConversationStatsResponse;
   return candidate as unknown as ConversationStatsResponse;
 }
 

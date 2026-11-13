@@ -63,25 +63,100 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+const IDENTITY_KINDS: ReadonlySet<string> = new Set([
+  'builder-id',
+  'identity-center',
+  'external-idp',
+  'social',
+]);
+
+function optionalString(value: unknown): string | undefined | null {
+  if (value === undefined) return undefined;
+  return typeof value === 'string' ? value : null;
+}
+
+function readIdentity(value: unknown): EngineHostAuthIdentity | undefined {
+  if (!isRecord(value) || typeof value.kind !== 'string') return undefined;
+  if (!IDENTITY_KINDS.has(value.kind)) return undefined;
+  const provider = optionalString(value.provider);
+  const startUrl = optionalString(value.startUrl);
+  const region = optionalString(value.region);
+  if (provider === null || startUrl === null || region === null)
+    return undefined;
+  return {
+    kind: value.kind as EngineHostAuthIdentity['kind'],
+    ...(provider !== undefined ? { provider } : {}),
+    ...(startUrl !== undefined ? { startUrl } : {}),
+    ...(region !== undefined ? { region } : {}),
+  };
+}
+
+function readAttributes(
+  value: unknown,
+): Readonly<Record<string, string>> | undefined | null {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return null;
+  const entries = Object.entries(value);
+  return entries.every(([, entry]) => typeof entry === 'string')
+    ? (Object.fromEntries(entries) as Record<string, string>)
+    : null;
+}
+
+/**
+ * Reads a credential Station itself wrote, field by field: a record whose
+ * shape no longer matches (an older or hand-edited file) reads as absent.
+ */
 function readCredential(
   raw: string | undefined,
 ): StoredEngineCredential | undefined {
   if (raw === undefined) return undefined;
+  let value: unknown;
   try {
-    const value = JSON.parse(raw) as unknown;
-    if (
-      !isRecord(value) ||
-      typeof value.accessToken !== 'string' ||
-      typeof value.expiresAt !== 'string' ||
-      !Number.isFinite(Date.parse(value.expiresAt)) ||
-      !isRecord(value.identity) ||
-      typeof value.identity.kind !== 'string'
-    )
-      return undefined;
-    return value as unknown as StoredEngineCredential;
+    value = JSON.parse(raw);
   } catch {
     return undefined;
   }
+  if (
+    !isRecord(value) ||
+    typeof value.accessToken !== 'string' ||
+    typeof value.expiresAt !== 'string' ||
+    !Number.isFinite(Date.parse(value.expiresAt)) ||
+    typeof value.signedInAt !== 'string'
+  )
+    return undefined;
+  const identity = readIdentity(value.identity);
+  const refreshToken = optionalString(value.refreshToken);
+  const clientId = optionalString(value.clientId);
+  const clientSecret = optionalString(value.clientSecret);
+  const refreshRejectedAt = optionalString(value.refreshRejectedAt);
+  const attributes = readAttributes(value.attributes);
+  const clientSecretExpiresAt = value.clientSecretExpiresAt;
+  if (
+    !identity ||
+    refreshToken === null ||
+    clientId === null ||
+    clientSecret === null ||
+    refreshRejectedAt === null ||
+    attributes === null ||
+    (clientSecretExpiresAt !== undefined &&
+      (typeof clientSecretExpiresAt !== 'number' ||
+        !Number.isFinite(clientSecretExpiresAt)))
+  )
+    return undefined;
+  return {
+    identity,
+    accessToken: value.accessToken,
+    expiresAt: value.expiresAt,
+    signedInAt: value.signedInAt,
+    ...(refreshToken !== undefined ? { refreshToken } : {}),
+    ...(clientId !== undefined ? { clientId } : {}),
+    ...(clientSecret !== undefined ? { clientSecret } : {}),
+    ...(typeof clientSecretExpiresAt === 'number'
+      ? { clientSecretExpiresAt }
+      : {}),
+    ...(attributes !== undefined ? { attributes } : {}),
+    ...(refreshRejectedAt !== undefined ? { refreshRejectedAt } : {}),
+  };
 }
 
 /** A read credential and the exact stored text it came from, for compare-and-swap. */

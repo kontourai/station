@@ -1509,12 +1509,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-server/services/browser/chromium-acquisition.ts",
-      "rule": "as-unknown",
-      "fingerprint": "f79afb9e2784796f0c64b2c7e3411fab059ce52a92301f5a8f5eb9075187b3bf",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-server/services/browser/local-port-scanner.ts",
       "rule": "as-unknown",
       "fingerprint": "a1197a0814ea20cf1832bc80b28a55a36fd17abd7945fba6fcc4f2b57349df74",
