@@ -186,7 +186,10 @@ test('the nightly fallback warning names the failed request without GitHub diagn
         { message: 'upstream detail' },
         {
           status: 502,
-          headers: { 'x-oauth-scopes': 'repo, workflow', 'x-ratelimit-remaining': '4999' },
+          headers: {
+            'x-oauth-scopes': 'repo, workflow',
+            'x-ratelimit-remaining': '4999',
+          },
         },
       ),
     ),
