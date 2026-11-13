@@ -1067,6 +1067,10 @@ test('pop-out retains a bounded failure and returns focus to the invoking comman
   });
   const command = screen.getByRole('menuitem', { name: 'Pop out pane' });
   command.focus();
+  // jsdom reports a disabled element's focus as the body only while it is
+  // disabled, so assert the component's explicit hand-back, which a browser
+  // needs after its focus fixup moved focus away.
+  const handBack = vi.spyOn(command, 'focus');
   await act(async () => {
     fireEvent.click(command);
     await Promise.resolve();
@@ -1078,9 +1082,8 @@ test('pop-out retains a bounded failure and returns focus to the invoking comman
     'Station could not open this pane in a separate window. Try again.',
   );
   expect(screen.getByRole('alert').textContent).not.toContain(nativeDetails);
-  // The command is disabled while the request is pending, which moves focus
-  // to the body; the component hands it back on the next animation frame.
-  await waitFor(() => expect(globalThis.document.activeElement).toBe(command));
+  await waitFor(() => expect(handBack).toHaveBeenCalled());
+  expect(globalThis.document.activeElement).toBe(command);
 });
 
 test('layout catalog placement opens through the controller as the sole document writer', async () => {
