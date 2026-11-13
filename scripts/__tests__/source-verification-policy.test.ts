@@ -802,7 +802,9 @@ describe('source verification reconciler API boundary', () => {
     });
     expect(workflow.on.workflow_run).toEqual({
       workflows: ['PR: CI'],
-      types: ['requested', 'in_progress', 'completed'],
+      // `requested` publishes pending for a new run or attempt and
+      // `completed` its verdict; `in_progress` could only republish pending.
+      types: ['requested', 'completed'],
     });
     const steps = workflow.jobs.reconcile.steps;
     expect(steps.filter((step) => step.run).map((step) => step.run)).toEqual([

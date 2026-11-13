@@ -797,8 +797,10 @@ also receives `statuses:write`. It checks out trusted policy, never candidate
 code, and publishes only `Source verification policy` from existing GitHub run
 and job evidence. `PR: CI` calls it after core source checks and before optional
 delivery work for source-changing PR events. Lifecycle reconciliation handles
-requested, in-progress and completed source runs; metadata start events allocate
-no publisher, while metadata completion can reconcile existing proof.
+requested and completed source runs: a requested run or attempt publishes
+pending and completion publishes its verdict, so a start event would only
+republish pending. Metadata request events allocate no publisher, while
+metadata completion can reconcile existing proof.
 
 The policy binds the exact head, repository and every current main-target PR
 sharing that head. It checks recorded base ancestry and the current run attempt;

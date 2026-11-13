@@ -3183,7 +3183,7 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
       .update(JSON.stringify(canonicalValue(document)))
       .digest('hex');
     return digest ===
-      '7bdd49ac2e268b43fb9f91352e42af18a431b487213987351077b45f44b67c7d'
+      '1ad1ad73dacfb7c8501e6e62de9ffdb746e39e16ca8232c9f9c8c6113a222271'
       ? []
       : [
           {
@@ -3199,7 +3199,7 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
       .update(JSON.stringify(canonicalValue(document)))
       .digest('hex');
     return digest ===
-      'e6f5b25c8215c2d8f03aceb3060818f5b93de0b8f610d09b2bd2e96272b6129e'
+      'd314fb363a3fc8ef8605e60a2c0033a0e41f40beae223989f3490db7586622e7'
       ? []
       : [
           {

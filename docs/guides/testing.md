@@ -356,7 +356,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 
 | Workflow file | Previous sidebar name | Sidebar name | When it runs |
 | --- | --- | --- | --- |
-| [`pr-ci-supersession.yml`](../../.github/workflows/pr-ci-supersession.yml) | — | **Repo: Superseded PR checks** | after `PR: CI` is requested; same-repository main-target PR merged close. |
+| [`pr-ci-supersession.yml`](../../.github/workflows/pr-ci-supersession.yml) | — | **Repo: Superseded PR checks** | after a source `PR: CI` run is requested (metadata-only runs skip at job level); same-repository main-target PR merged close. |
 | [`add-to-project.yml`](../../.github/workflows/add-to-project.yml) | Add issue to org project | **Repo: Add to project** | issue events: opened, reopened, closed. |
 | [`agent-context-budget.yml`](../../.github/workflows/agent-context-budget.yml) | — | **PR: Agent context budget** | PR events, including label changes. |
 | [`android-test.yml`](../../.github/workflows/android-test.yml) | Android Tests | **Main: Android tests** | after `Main: Android build`; manual dispatch. |

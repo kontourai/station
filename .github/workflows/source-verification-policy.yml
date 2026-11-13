@@ -9,7 +9,10 @@ on:
         type: string
   workflow_run:
     workflows: ["PR: CI"]
-    types: [requested, in_progress, completed]
+    # A new run or attempt is `requested` (publishes pending) and its verdict
+    # arrives with `completed`; `in_progress` could only republish pending,
+    # so it no longer takes a runner hop.
+    types: [requested, completed]
   workflow_dispatch:
     inputs:
       source_sha:
