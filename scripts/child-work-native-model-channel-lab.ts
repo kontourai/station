@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  createReadStream,
   createWriteStream,
   mkdirSync,
   mkdtempSync,
@@ -10,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { build } from 'esbuild';
@@ -91,13 +92,25 @@ try {
     receipt.engines = engines;
     for (const engine of engines) {
       const signal = AbortSignal.timeout(120_000);
-      const response = await fetch(engine.url, { signal, redirect: 'error' });
-      assert.equal(response.status, 200);
-      assert.ok(response.body);
+      const source = await (async () => {
+        const retainedRoot = process.env.CHILD_WORK_NATIVE_BINARY_CACHE_ROOT;
+        if (retainedRoot) {
+          assert.ok(isAbsolute(retainedRoot));
+          receipt.binarySource = 'retained-pinned-local-artifacts';
+          return createReadStream(
+            join(realpathSync(retainedRoot), engine.name),
+          );
+        }
+        receipt.binarySource = 'public-download';
+        const response = await fetch(engine.url, { signal, redirect: 'error' });
+        assert.equal(response.status, 200);
+        assert.ok(response.body);
+        return Readable.from(response.body);
+      })();
       let bytes = 0;
       const hash = createHash('sha256');
       await pipeline(
-        Readable.from(response.body),
+        source,
         new Transform({
           transform(chunk: Buffer, _encoding, callback) {
             bytes += chunk.length;
