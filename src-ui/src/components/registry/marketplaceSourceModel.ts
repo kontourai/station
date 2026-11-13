@@ -100,11 +100,38 @@ export function labelKey(label: string): string {
 }
 
 /**
+ * A local path with any home folder replaced by `~` before anything is
+ * shortened, so no label or hint can name an account. The browser cannot
+ * tell which home is the Station's, so every home (`/Users/<name>`,
+ * `/home/<name>`, `/root`, `C:\Users\<name>`) becomes the same neutral `~`.
+ */
+export function redactHome(location: string): string {
+  const home = location.match(
+    /^(?:[A-Za-z]:)?[\\/](?:(?:Users|home)[\\/][^\\/]+|root)(?=[\\/]|$)(.*)$/i,
+  );
+  if (!home) return location;
+  const rest = home[1]!.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  return rest ? `~/${rest}` : '~';
+}
+
+/** A stable short tag for a source, used when its path cannot tell it apart. */
+function stableTag(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(36).padStart(4, '0').slice(-4);
+}
+
+/**
  * Labels that tell sources apart. Station names its default sources by
  * engine, owner and scope; a name that still repeats (two sources a person
- * named alike) gets the shortest tail of its location that no other source
- * with that name shares once punctuation is ignored, so `…/.codex/skills`
- * and `…/codex/skills` never pass as different.
+ * named alike) gets the shortest tail of its home-redacted location that no
+ * other source with that name shares once punctuation is ignored. When the
+ * paths run out (they differ only by punctuation, or are the same), a
+ * stable tag from the source's identity tells them apart. Every label is
+ * finally checked to be unique ignoring punctuation.
  */
 export function distinctLabels(
   sources: readonly RegistrySource[],
@@ -116,7 +143,7 @@ export function distinctLabels(
     groups.set(key, [...(groups.get(key) ?? []), source]);
   }
   const segmentsOf = (source: RegistrySource) =>
-    pathSegments(source.location ?? source.owner ?? source.id);
+    pathSegments(redactHome(source.location ?? source.owner ?? source.id));
   for (const group of groups.values()) {
     if (group.length === 1) {
       labels.set(group[0]!.id, group[0]!.displayName);
@@ -124,7 +151,7 @@ export function distinctLabels(
     }
     for (const source of group) {
       const segments = segmentsOf(source);
-      let tail = segments.join('/');
+      let tail: string | undefined;
       for (let length = 1; length <= segments.length; length += 1) {
         const candidate = segments.slice(-length).join('/');
         const clash = group.some(
@@ -138,18 +165,31 @@ export function distinctLabels(
           break;
         }
       }
+      const shown = segments.slice(-2).join('/');
       labels.set(
         source.id,
-        `${source.displayName} · ${tail === segments.join('/') ? '' : '…/'}${tail}`,
+        tail === undefined
+          ? `${source.displayName} · ${shown} #${stableTag(source.id)}`
+          : `${source.displayName} · ${tail === segments.join('/') || tail.startsWith('~') ? '' : '…/'}${tail}`,
       );
     }
+  }
+  // Last guard: no two labels may be equal ignoring punctuation.
+  const seen = new Map<string, string>();
+  for (const source of sources) {
+    const label = labels.get(source.id)!;
+    const key = labelKey(label);
+    if (seen.has(key) && seen.get(key) !== source.id)
+      labels.set(source.id, `${label} #${stableTag(source.id)}`);
+    else seen.set(key, source.id);
   }
   return labels;
 }
 
 /**
  * The part of a source's location a selector option shows beside its label:
- * a repository with its branch and folder, or the last folders of a path.
+ * a repository with its branch and folder, or the last folders of a
+ * home-redacted path. It never names a home folder's account.
  */
 export function locationHint(source: RegistrySource): string | undefined {
   const location = source.location;
@@ -159,10 +199,18 @@ export function locationHint(source: RegistrySource): string | undefined {
     return `github.com/${key[1]}/${key[2]}${key[4] ? `/${key[4]}` : ''} @ ${key[3]}`;
   const url = location.match(/^https:\/\/(github\.com\/[^/]+\/[^/]+)/);
   if (url) return `${url[1]}${source.ref ? ` @ ${source.ref}` : ''}`;
-  // The last two folders: enough to tell default folders apart, and never
-  // the home folder's own name.
-  const segments = pathSegments(location);
-  return segments.length > 2 ? `…/${segments.slice(-2).join('/')}` : location;
+  const redacted = redactHome(location);
+  const segments = pathSegments(redacted);
+  if (segments[0] === '~') {
+    const below = segments.slice(1);
+    if (below.length === 0) return '~';
+    return below.length > 2
+      ? `~/…/${below.slice(-2).join('/')}`
+      : `~/${below.join('/')}`;
+  }
+  return segments.length > 2
+    ? `…/${segments.slice(-2).join('/')}`
+    : segments.join('/') || location;
 }
 
 /** The repository or folder a location names, for overlap checks. */

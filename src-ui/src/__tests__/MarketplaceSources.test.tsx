@@ -457,7 +457,7 @@ test('default sources have unique labels that do not differ only by punctuation,
   expect(labels).toContain(
     'anthropics/skills (default) — github.com/anthropics/skills/skills @ main',
   );
-  expect(labels).toContain('Codex skills · user — …/.codex/skills');
+  expect(labels).toContain('Codex skills · user — ~/.codex/skills');
   // No option names the home folder.
   expect(options.some((option) => option.includes('someone'))).toBe(false);
   const keys = labels.map((label) => labelKey(label.split(' — ')[0]!));
