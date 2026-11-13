@@ -19,7 +19,50 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
-### Latest request-fence and recovery checkpoint (2026-11-12)
+### Latest SDK and caller checkpoint (2026-11-13)
+
+Main through `ce8952d1da67` is merged at `7829440dcfd8`.
+`c8f316721af2` avoids redundant Project reloads while retaining the captured
+revision guard and live manifest, binding, layout and file-witness checks.
+The two-member roster read drops from six Project content reads to at most
+two. All 23 affected cases and server-test types pass. Reintroducing the
+reload, freezing metadata witnesses and caching the layout list each fail the
+intended controls; byte-exact restoration passes all nine roster cases.
+The complete lost-reappraisal scenario still fails its original 60-second
+limit after this repair.
+
+The first current mixed-model caller attempt refused before any Session or
+provider call: the Google preparation pinned SDK 3.0.139 while the frozen
+install supplied 3.0.141. At `d051ec2d5dd0`, the preparation binds reviewed
+3.0.141 bytes and reports that version. Published archives were checked
+against the existing lockfile integrity values and the installed files;
+source and compiled text-path changes were reviewed. Pricing, model,
+wire restrictions and snapshot validity dates remain unchanged. All eight
+Google cases and server-test types pass. Retryable streamed `UNAVAILABLE`
+and `RESOURCE_EXHAUSTED` controls retain unknown usage and allocation after
+one physical request, with no relay or second request.
+
+The complete three-seat mixed-model HTTP/SDK caller passes in the restored
+two-case run at `d051ec2d5dd0`. An earlier post-fix attempt reached canonical
+input but failed during response at the 120-second product deadline. The
+Flow-input caller also retains deadline failures: the restored two-case run
+reached the later missing-terminal control but failed before its canonical
+terminal read at 120.3 seconds. A separate full Flow-input diagnostic passes
+with unchanged workload, assertions and deadlines; its original fixture was
+restored byte-exactly. That pass does not establish a causal timing repair or
+qualify the combined cohort. Source tests use controlled provider responses;
+no live billing, native engine, peer or SSH acceptance follows.
+
+Explicit-SHA readiness from `ce8952d1da67` to `d051ec2d5dd0` evaluates 978
+changed files. Governance, lint, hygiene, component style, session-transition,
+connected-agent and verification-policy checks pass. Documentation truth
+fails on outstanding document/source reviews. Semantic review and current
+readiness remain required; no blanket review or baseline advance was made.
+Both production qualification flags remain false. Native inherited authority,
+remaining topology/continuity, native wrong-ACK/retry and full recovery remain
+unfinished.
+
+### Earlier request-fence and recovery checkpoint (2026-11-12)
 
 At `b76e8a78a367`, a single-delegation final-fetch fence joins a real V3
 reservation, current envelope and exact wire to a durable no-resend intent.
