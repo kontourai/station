@@ -111,7 +111,9 @@ shows `refused` or an unreadable catalog. A regular file with more than
 one hard link is refused too, both as checked and as opened. A hard link is
 an ordinary name inside the folder for a file that may live outside it, and
 it cannot be told apart from its "original", so the policy is to refuse every
-multiply linked file. That covers detection, the skill provider (and each
+multiply linked file. That covers detection (a `SKILL.md` it counts without
+reading is refused by the link count the scan saw, and the source shows
+`refused` with the file named), the skill provider (and each
 skill package before it is hashed or copied), the manifest provider's
 `registry.json`, and each local package directory before it is resolved or
 copied. Residual: the package checks run before the copy starts, so a hard
@@ -139,12 +141,17 @@ without picking a winner. Each row names its catalog. An id that two catalogs
 offer is listed from both, marked `ambiguous-source`, and installing it is
 refused (409) with the catalogs named. Ownership is decided only when every
 catalog answers: if one cannot be read, a plain-id install is refused (503,
-naming it) rather than given to another catalog that offers the same id. One
-shared check applies this on every acquisition path. The agent route always
-refuses an unknown owner. Package paths (plugin install, preview, update,
-dependency resolution) refuse an ambiguous id, and an unknown owner when a
-readable catalog offers the id as an agent, so an ordinary plugin is not
-blocked by an unrelated catalog outage. Agents from added sources are listed beside
+naming it) rather than given to another catalog that offers the same id. The
+check is a precondition of the one resolver every registry entry resolution
+goes through, which takes a required purpose. An `acquire` resolution of a
+plain id settles the owner first: plugin install, preview, update, dependency
+preflight and installation, the legacy dependency policy lookup, and
+acquisition capture. A `lookup` resolution (removal, alias migration) reads
+only what is already installed or recorded. The agent route always refuses
+an unknown owner. Package paths refuse an ambiguous id, and an unknown owner
+when a readable catalog offers the id as an agent, so an ordinary plugin is
+not blocked by an unrelated catalog outage. Update answers the same status
+and code as install. Agents from added sources are listed beside
 these rows with source-qualified ids, and they install through the plugin
 pipeline, because a manifest agent entry is a package. A plugin-contributed
 JSON agent registry now gets the manifest's agent view, not its whole plugin

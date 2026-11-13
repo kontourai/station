@@ -5002,8 +5002,9 @@ A plain ID that more than one registered Agent catalog offers is refused with
 409 (`agent-catalog-ambiguous`), and one that cannot be matched because a
 catalog could not be read is refused with 503 (`agent-catalog-unavailable`,
 naming it), before any install path runs. The same rule applies on every
-package acquisition path (`/plugins/install`, preview, update and dependency
-resolution) through `resolvePluginRegistryInstall`. There an unreadable catalog
+package acquisition path (`/plugins/install`, preview, update, and dependency
+preflight and installation), because the check is a precondition of the one
+registry resolver they all go through. Update answers the same status and code. There an unreadable catalog
 refuses only an ID that a readable catalog offers as an agent. A source-qualified ID from an added source
 installs through the plugin path, because a manifest agent entry is a package.
 When the ID resolves to a plugin, it uses the plugin install/consent path below.
