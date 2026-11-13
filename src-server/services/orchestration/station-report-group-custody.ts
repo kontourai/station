@@ -38,12 +38,14 @@ import { reservedStationSessionRecipient } from '../../runtime/conversation/rese
 import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import {
   type CurrentRuntimeRequestPrincipalSecurity,
+  getRuntimeAuthenticatedRequestPrincipal,
   runtimeRequestPrincipalMayAccessHttpRoute,
 } from '../../security/runtime-request-security.js';
 import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
 import {
   type HomeWriterLease,
   HomeWriterOwner,
+  HomeWriterUnavailableError,
 } from '../ssh/home-writer-owner.js';
 import {
   DelegationPersistenceError,
@@ -155,6 +157,7 @@ function refuse(): never {
  * No method issues a live source/SDK capability from persisted references. */
 export class StationReportGroupCustody {
   readonly #personal = createPersonalRuntimeRequestGuard();
+  readonly #activeContinuationFinalizers = new Set<string>();
   constructor(
     private readonly owners: {
       persistence: StationDelegationPersistence;
@@ -1216,6 +1219,7 @@ export class StationReportGroupCustody {
       >,
     ) => T,
   ) {
+    input = structuredClone(input);
     id(groupId);
     id(input.operationKey);
     id(input.continuationOperationKey);
@@ -1226,6 +1230,24 @@ export class StationReportGroupCustody {
       refuse();
     if (!isRuntimePublicationParticipant(participant)) refuse();
     participant.assertHome(this.owners.environment.getProjectHomeDir());
+    context.req.raw.signal.throwIfAborted();
+    context = this.bindRequest(context);
+    const principal =
+      this.#personal(context.req.raw) &&
+      isOperatorInPersonNotAgent(context.req.raw)
+        ? getRuntimeAuthenticatedRequestPrincipal(context.req.raw)
+        : undefined;
+    // Refuse duplicate in-process work; this marker never grants authority.
+    const activeKey = principal
+      ? canonicalJson([
+          reportCredentialDigest(principal.credential),
+          groupId,
+          input.operationKey,
+        ])
+      : undefined;
+    if (activeKey && this.#activeContinuationFinalizers.has(activeKey))
+      throw new HomeWriterUnavailableError('busy');
+    if (activeKey) this.#activeContinuationFinalizers.add(activeKey);
     let published = false;
     try {
       return await withReportRoundsPublication(
@@ -1462,6 +1484,8 @@ export class StationReportGroupCustody {
         );
       }
       throw error;
+    } finally {
+      if (activeKey) this.#activeContinuationFinalizers.delete(activeKey);
     }
   }
 

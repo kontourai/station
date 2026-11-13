@@ -61,9 +61,9 @@ test('active finalizer duplicates refuse before Home queuing while other operati
       return acquire.call(this, signal);
     });
   const pending: Promise<unknown>[] = [];
-  const run = (operationKey: string) =>
+  const run = (operationKey: string, request = requestFor(h, 'POST')) =>
     h.custody.finalizeContinuation(
-      h.f.context(requestFor(h, 'POST')),
+      h.f.context(request),
       'missing-finalizer-group',
       { operationKey, expectedRevision: 1, continuationOperationKey: 'lost' },
       dispatch,
@@ -82,6 +82,19 @@ test('active finalizer duplicates refuse before Home queuing while other operati
   try {
     const first = keep(run('finalize-one'));
     await vi.waitFor(() => assert.equal(admissions, 1));
+    const abort = new AbortController();
+    const cancelled = Error('cancelled duplicate finalizer');
+    const original = requestFor(h, 'POST');
+    const request = new Request(original, { signal: abort.signal });
+    const principal = getRuntimeAuthenticatedRequestPrincipal(original);
+    assert.ok(principal);
+    setRuntimeAuthenticatedRequestPrincipal(request, principal);
+    bindRuntimeLocalOperator(request);
+    abort.abort(cancelled);
+    await assert.rejects(
+      run('finalize-one', request),
+      (error) => error === cancelled,
+    );
     await assert.rejects(run('finalize-one'), {
       name: 'HomeWriterUnavailableError',
       reason: 'busy',
