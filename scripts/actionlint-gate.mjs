@@ -424,6 +424,20 @@ const SECURITY_SARIF_OUTPUT = `\${{ runner.temp }}/codeql-sarif`;
 const SECURITY_NORMALIZED_SARIF = `\${{ runner.temp }}/codeql-sarif-normalized/javascript.sarif`;
 const SECURITY_ANALYSIS_TIMEOUT_MINUTES = 30;
 /**
+ * CodeQL analyses each landing once, in its merge group. On pull_request_target
+ * the job is skipped, which its required status context accepts; dropping or
+ * loosening this guard would run the analysis on every PR push again.
+ */
+const SECURITY_ANALYSIS_CODEQL_GUARD = `\${{ github.event_name != 'pull_request_target' }}`;
+const SECURITY_ANALYSIS_CODEQL_GUARD_MESSAGE =
+  'security-analysis CodeQL must keep its exact job guard: skipped under pull_request_target, run in the merge group, on schedule and on dispatch';
+/**
+ * The daily main run that replaced the per-push run. With manual dispatch it
+ * is where a stale baseline entry fails rather than warns, and it uploads the
+ * default-branch TRAP cache that merge groups restore.
+ */
+const SECURITY_ANALYSIS_SCHEDULE_CRON = '11 9 * * *';
+/**
  * The only CodeQL configuration the scan accepts: test code out, nothing else.
  * Exported so the workflow test and the baseline test share one copy.
  */
@@ -574,9 +588,10 @@ if [ "\${#SARIF_FILES[@]}" -ne 1 ]; then
   exit 1
 fi
 node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-normalize.mjs" --input="\${SARIF_FILES[0]}" --output="$CODEQL_NORMALIZED_SARIF"
-# PRs read the baseline from the BASE checkout, so an entry a PR
-# removes is invisible here; warn instead of failing or the baseline
-# could never shrink through a green gate. Push-to-main enforces.
+# A merge group reads the baseline from the BASE checkout, so an
+# entry its candidate removes is invisible here; warn instead of
+# failing or the baseline could never shrink through a green gate.
+# The daily run on main enforces.
 STALE_BASELINE_MODE=fail
 if [ "$GITHUB_EVENT_NAME" = "pull_request_target" ] || [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then
   STALE_BASELINE_MODE=warn
@@ -1875,8 +1890,9 @@ function hasExactSecurityAnalysisSteps(job) {
   const [base, setupNode, isolateBasePolicy, candidate, init, analyze, policy] =
     job?.steps ?? [];
   return (
-    hasExactKeys(job, ['name', 'runs-on', 'timeout-minutes', 'steps']) &&
+    hasExactKeys(job, ['name', 'if', 'runs-on', 'timeout-minutes', 'steps']) &&
     job?.name === 'CodeQL JavaScript and TypeScript' &&
+    job?.if === SECURITY_ANALYSIS_CODEQL_GUARD &&
     job?.['runs-on'] === 'ubuntu-22.04' &&
     job?.['timeout-minutes'] === SECURITY_ANALYSIS_TIMEOUT_MINUTES &&
     (job?.steps?.length ?? 0) === 7 &&
@@ -2049,6 +2065,15 @@ function securityAnalysisTopologyFindings(file, jobs) {
         message: 'security-analysis must not add unreviewed jobs',
       });
   }
+  if (
+    Object.hasOwn(jobs, SECURITY_ANALYSIS_CODEQL_JOB) &&
+    jobs[SECURITY_ANALYSIS_CODEQL_JOB]?.if !== SECURITY_ANALYSIS_CODEQL_GUARD
+  )
+    findings.push({
+      file,
+      jobId: SECURITY_ANALYSIS_CODEQL_JOB,
+      message: SECURITY_ANALYSIS_CODEQL_GUARD_MESSAGE,
+    });
   return findings;
 }
 
@@ -2401,12 +2426,15 @@ function hasExactSecurityAnalysisWorkflow(document) {
     ]) &&
     document?.name === 'PR: Security analysis' &&
     hasExactKeys(document?.on, [
-      'push',
       PULL_REQUEST_TARGET,
       MERGE_GROUP,
+      'schedule',
       'workflow_dispatch',
     ]) &&
-    hasExactMainBranchTrigger(document.on.push) &&
+    Array.isArray(document.on.schedule) &&
+    document.on.schedule.length === 1 &&
+    hasExactKeys(document.on.schedule[0], ['cron']) &&
+    document.on.schedule[0].cron === SECURITY_ANALYSIS_SCHEDULE_CRON &&
     hasExactSecurityAnalysisPrTargetTrigger(document) &&
     hasExactMergeGroupTrigger(document) &&
     document.on.workflow_dispatch === null &&

@@ -352,6 +352,9 @@ describe('CI verification workflow contracts', () => {
       '.github/workflows/secret-scan.yml',
       '.github/workflows/android-test.yml',
       '.github/workflows/dependency-advisory.yml',
+      // Its scheduled main run replaced a per-push run that stayed red for
+      // 8 days with no tracker.
+      '.github/workflows/security-analysis.yml',
     ];
     const intendedTargetNames = intendedTargetFiles.map((targetFile) => {
       const target = workflowDocuments.find(({ file }) => file === targetFile)
@@ -668,7 +671,7 @@ describe('CI verification workflow contracts', () => {
     );
   });
 
-  it('closes delivery and Gallery health only after their terminal proof, despite expected skips', async () => {
+  it('closes delivery, Gallery and CodeQL health only after their terminal proof, despite expected skips', async () => {
     const document = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/main-health.yml',
     )?.document as {
@@ -696,6 +699,13 @@ describe('CI verification workflow contracts', () => {
         workflowName: 'Nightly: Gallery',
         requiredNames: ['Capture and diff screenshot gallery'],
         optionalName: 'Review gallery usability',
+      },
+      {
+        // Dependency review is skipped in every run on main, so the generic
+        // skip-bearing rule would never clear this tracker.
+        workflowName: 'PR: Security analysis',
+        requiredNames: ['CodeQL JavaScript and TypeScript'],
+        optionalName: 'Dependency review',
       },
     ];
     for (const { workflowName, requiredNames, optionalName } of scenarios) {

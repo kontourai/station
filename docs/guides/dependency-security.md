@@ -456,7 +456,11 @@ semantic enforcement. Its 30-minute job limit is deliberate headroom over a
 10m55 successful security-extended analysis, not an unbounded retry window. It
 runs on a disposable GitHub-hosted runner and deliberately uses
 `upload: never`: this repository does **not** claim that GitHub ingests or
-displays the result.
+displays the result. The analysis runs once per landing, on the merge-group
+candidate; on pull-request events its required context reports skipped while
+dependency review still runs. A daily schedule (`11 9 * * *` UTC) and manual
+dispatch analyse `main` and warm its TRAP cache; a red scheduled run opens
+**Main pipeline red: PR: Security analysis** through `main-health.yml`.
 
 When a CodeQL SARIF file is available locally, validate its evidence before
 using it in a review:
@@ -471,8 +475,9 @@ valid rule references, result messages, and severity resolved from the result
 or its referenced rule. Structural evidence failures and unbaselined error-level
 results block. Exact error entries in `scripts/codeql-error-baseline.json` are
 reported as baselined; warning/note results are advisory. A nonempty result list
-therefore need not fail. Stale baseline entries fail on main pushes but warn on
-PR/merge-group checks, which read the protected base baseline. The owner is
+therefore need not fail. Stale baseline entries fail on the scheduled or
+dispatched run on `main` but warn on merge-group checks, which read the
+protected base baseline. The owner is
 [`codeql-sarif-policy.mjs`](../../scripts/codeql-sarif-policy.mjs). A clean
 completed scan may legitimately have an empty result list.
 
