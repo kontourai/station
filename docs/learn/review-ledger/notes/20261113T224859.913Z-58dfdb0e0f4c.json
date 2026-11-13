@@ -1,0 +1,7 @@
+{
+  "revision": "739e7d4a02959aafb6936aec820a96ab53166fef",
+
+  "notes": [
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Scoped semantic review at 739e7d4a0295 of the unchanged Agent Runtime Context against the publication guard delta. The runtime/operation parent, exact Home transaction facade, metadata scopes and failed-cleanup retention contracts remain intact. Lifetime-only proof now precedes fresh physical admission; the initial source check reuses that entered span using the exact Home synchronous validator. Body entry, physical check before post-source validation, return fencing, pending runtime cleanup and all prepared-parent handling remain. Existing inspection bound tightened from five to four; 24owner cases pass and independent lifetime-order,thenable-assimilation,postphysical mutants each fail intended assertion before byteexact restoration with 24 passes. Server-test types passed at b0f063c62d36 before final test-only refinement. Full lost-reappraisal 60s and projection 10s failures remain unresolved and qualification stays false. Source review does not establish all-writer, native/peer/SSH/provider/device or full-epic readiness. No prose change required for this context.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/services/orchestration/report-rounds-publication.ts"]}
+  ]
+}
