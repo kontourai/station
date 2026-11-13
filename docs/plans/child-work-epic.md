@@ -19,6 +19,42 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
+### Confined native model-channel prerequisite (2026-11-13)
+
+At `1af6b32efb47`, the new stdio model channel keeps model requests and
+response delivery with a required host owner. The worker receives a scoped
+bridge key, never the provider key. It has no provider fetch fallback. Host
+request handles retain separate response and terminal/accounting promises;
+response completion and worker retirement do not settle unfinished accounting.
+Every actual response-frame write re-enters the captured delivery port.
+
+Six real-worker process cases pass. Independent source review found that
+unexpected channel loss waited for worker cleanup before cancelling host work.
+A regression holding cleanup pending fails on the old ordering; the repair
+closes admission and aborts active owner signals before awaiting cleanup.
+Independent delta review closes that finding in source. Scripts and server-test
+types pass; read-only lint has only inherited manifest warnings. The first lint
+invocation failed from an extra launcher argument; the corrected invocation
+ran the intended files.
+
+The opt-in
+[`child-work-native-model-channel-lab.ts`](../../scripts/child-work-native-model-channel-lab.ts)
+then passes against an actual Docker namespace at that revision. Its pinned
+Node image runs a UID 10000 bridge and a UID 10001 probe with no network,
+read-only root, private tmpfs staging, dropped capabilities and bounded resources.
+The probe receives one synthetic model response, writes staged data, observes
+`ENETUNREACH` for external egress and `EROFS` for root writes, and sees neither
+the host canary nor a Docker socket. Three host delivery checks execute.
+The retained receipt in `child-work-native-model-container-nJ5qGg` records
+worker settlement, zero pending requests and confirmed owned-container removal.
+
+This is a kernel/channel prerequisite. No native engine executes in that image,
+and its synthetic host callback supplies no authenticated delegation issuance,
+provider pricing, budget enforcement or effect publication. Startup ambiguity
+and cancellation/create races still need executable controls. Inherited-native
+admission remains refused and both production qualification flags stay false.
+The full epic remains NOT_READY.
+
 ### Current native wrong-ACK/retry checkpoint (2026-11-13)
 
 Main through `ce3f22639a3d` is merged normally at `5b9e52de11d0`.

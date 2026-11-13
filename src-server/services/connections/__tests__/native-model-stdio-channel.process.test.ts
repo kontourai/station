@@ -208,29 +208,60 @@ test('oversized native request is refused before host admission and does not poi
 
 test('each actual response write re-enters the captured host delivery port and revocation withholds private bytes', async () => {
   let writes = 0;
+  let finish!: () => void;
+  const ending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let cancelled = false;
   const retired = new Error('captured delivery authority revoked');
   const f = await fixture(() => ({
-    response: Promise.resolve(new Response('PRIVATE_NATIVE_RESPONSE')),
+    response: Promise.resolve(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(Buffer.from('PRIVATE_NATIVE_RESPONSE'));
+            void ending.then(() => {
+              if (!cancelled) controller.close();
+            });
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+      ),
+    ),
     settled: Promise.resolve(),
     invokeDelivery: async (write) => {
       if (++writes > 1) throw retired;
       write();
     },
   }));
-  await expect(
-    fetch(`${f.url}/v1/responses`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${f.channel.token}` },
-      body: '{}',
-    }).then((response) => response.text()),
-  ).rejects.toThrow();
-  await expect(f.channel.settled).rejects.toBe(retired);
-  expect(writes).toBe(2);
-  expect(f.channel.inspect()).toMatchObject({
-    workerSettled: true,
-    pending: 0,
-    failure: retired,
-  });
+  const received: Buffer[] = [];
+  try {
+    await expect(
+      fetch(`${f.url}/v1/responses`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${f.channel.token}` },
+        body: '{}',
+      }).then(async (response) => {
+        if (!response.body) throw new Error('response body unavailable');
+        for await (const chunk of response.body) {
+          received.push(Buffer.from(chunk));
+          finish();
+        }
+      }),
+    ).rejects.toThrow();
+    expect(Buffer.concat(received).length).toBe(0);
+    await expect(f.channel.settled).rejects.toBe(retired);
+    expect(writes).toBe(2);
+    expect(f.channel.inspect()).toMatchObject({
+      workerSettled: true,
+      pending: 0,
+      failure: retired,
+    });
+  } finally {
+    finish();
+  }
 });
 
 test('native disconnect aborts the host request but keeps a nonsettled owner visible after worker retirement', async () => {
