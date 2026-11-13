@@ -17,8 +17,13 @@ import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from '@playwright/test';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { createRef } from 'react';
+import {
+  cleanup,
+  fireEvent,
+  render as renderUI,
+  screen,
+} from '@testing-library/react';
+import { createRef, type ReactElement } from 'react';
 import {
   afterAll,
   afterEach,
@@ -48,6 +53,16 @@ import { ChatDockInboxPanel } from '../../chat-dock/ChatDockInboxPanel';
 import { InboxRow } from '../../chat-dock/ChatDockInboxRows';
 import { ChatDockMobileHeader } from '../../chat-dock/ChatDockMobileHeader';
 import { MobileInboxPanel } from '../../chat-dock/MobileInboxPanel';
+
+// Inbox scope now reads Projects through the shared query boundary.
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderUI(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
+}
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../../../');
 const css = [
