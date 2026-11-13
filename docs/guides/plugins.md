@@ -575,7 +575,8 @@ GitHub repository. Station detects what it provides from its content:
 `SKILL.md` packages, a Station manifest's plugins and agents, and a Claude Code
 marketplace index or MCP definitions, which are recognized but not yet
 installable ([decision](../decisions/registry-sources-detected-by-structure.md)). Each
-source under **Manage sources**, below the catalog, shows its trust tier
+source under **Manage sources** (opened from the Registry toolbar, so the
+catalog comes first) shows its trust tier
 (Station, Default, Plugin, or Unverified for one a person added), what it was
 detected to provide with counts (a default catalog shows its last count, or
 that it has not been scanned yet), and when it was last read and last changed
