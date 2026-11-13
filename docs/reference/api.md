@@ -4868,7 +4868,9 @@ changes requiring a preview decision must be completed through preview/install.
 Missing update source or managed update refusal returns 409; pending lifecycle
 or activation returns 202. A managed update answers install trust refusals as
 install does: 409 `plugin-install-trust-refused` or `plugin-trust-record-newer`,
-and 503 `plugin-trust-records-unavailable`.
+and 503 `plugin-trust-records-unavailable`. A registry update answers registry
+refusals as install does too, such as 409 `agent-catalog-ambiguous` or 503
+`agent-catalog-unavailable`.
 
 The legacy path can still use git/registry update with a backup and restoration
 on failure. Before either path it runs the install trust migration (#2998); when
@@ -5002,8 +5004,9 @@ A plain ID that more than one registered Agent catalog offers is refused with
 409 (`agent-catalog-ambiguous`), and one that cannot be matched because a
 catalog could not be read is refused with 503 (`agent-catalog-unavailable`,
 naming it), before any install path runs. The same rule applies on every
-package acquisition path (`/plugins/install`, preview, update and dependency
-resolution) through `resolvePluginRegistryInstall`. There an unreadable catalog
+package acquisition path (`/plugins/install`, preview, update, and dependency
+preflight and installation), because the check is a precondition of the one
+registry resolver they all go through. Update answers the same status and code. There an unreadable catalog
 refuses only an ID that a readable catalog offers as an agent. A source-qualified ID from an added source
 installs through the plugin path, because a manifest agent entry is a package.
 When the ID resolves to a plugin, it uses the plugin install/consent path below.
