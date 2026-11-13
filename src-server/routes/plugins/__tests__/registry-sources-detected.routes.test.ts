@@ -1328,6 +1328,45 @@ describe.skipIf(process.platform === 'win32')(
       expect(JSON.stringify(rows)).not.toContain(OUTSIDE_SECRET);
     });
 
+    test('a hard-linked file inside a package is refused before the package is resolved, hashed or copied', async () => {
+      const outside = await outsideFolder();
+      const root = await stationFolder({
+        plugins: ['hello'],
+        skills: ['clarify'],
+      });
+      const plugins = () =>
+        new JsonManifestRegistryProvider(
+          join(root, 'registry.json'),
+          temporary('hardlink-package-home-'),
+          undefined,
+          undefined,
+          { root },
+        );
+      const skills = () =>
+        new FilesystemSkillRegistryProvider([join(root, 'skills')], {
+          confineTo: root,
+        });
+      expect(await plugins().resolvePackage('hello')).toBeTruthy();
+      expect(await skills().getPackageRevision('clarify')).toBeTruthy();
+      // A second name for a package's own file, kept outside the source.
+      await link(
+        join(root, 'packages/hello/plugin.json'),
+        join(outside, 'plugin-second-name'),
+      );
+      await expect(plugins().resolvePackage('hello')).rejects.toThrow(
+        'more than one hard link',
+      );
+      // A file other than SKILL.md in a skill package counts too.
+      await writeFile(join(root, 'skills/clarify/notes.md'), 'notes');
+      await link(
+        join(root, 'skills/clarify/notes.md'),
+        join(outside, 'notes-second-name'),
+      );
+      await expect(skills().getPackageRevision('clarify')).rejects.toThrow(
+        'more than one hard link',
+      );
+    });
+
     test('a hard-linked SKILL.md is refused by the confined skill provider', async () => {
       const outside = await outsideFolder();
       const root = temporary('hardlink-skill-');
