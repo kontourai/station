@@ -27,7 +27,55 @@ export type AgentCatalogOwnership =
   | { state: 'none' }
   /** `reason` is a fixed sentence naming the catalogs by their labels. */
   | { state: 'ambiguous'; catalogs: string[]; reason: string }
-  | { state: 'unavailable'; catalogs: string[]; reason: string };
+  | {
+      state: 'unavailable';
+      catalogs: string[];
+      /** Readable catalogs that do offer the id. */
+      offeredBy: string[];
+      reason: string;
+    };
+
+/**
+ * A plain agent id refused before any acquisition, because its catalog owner
+ * is ambiguous (409) or cannot be established while a catalog is unreadable
+ * (503). `reason` is a fixed sentence naming catalogs by their labels.
+ */
+export class AgentCatalogOwnershipRefusal extends Error {
+  readonly status: 409 | 503;
+  readonly code: 'agent-catalog-ambiguous' | 'agent-catalog-unavailable';
+  constructor(
+    readonly state: 'ambiguous' | 'unavailable',
+    readonly reason: string,
+  ) {
+    super(reason);
+    this.name = 'AgentCatalogOwnershipRefusal';
+    this.status = state === 'ambiguous' ? 409 : 503;
+    this.code =
+      state === 'ambiguous'
+        ? 'agent-catalog-ambiguous'
+        : 'agent-catalog-unavailable';
+  }
+}
+
+/**
+ * The one ownership rule for every acquisition of a plain id. The agent face
+ * refuses whenever ownership is unknown. A package face (plugin install,
+ * preview, update, dependency) refuses an ambiguous id, and an unknown owner
+ * only when a readable catalog offers the id as an agent: an ordinary plugin
+ * is not blocked because some agent catalog is down.
+ */
+export function assertAgentOwnershipFor(
+  ownership: AgentCatalogOwnership,
+  face: 'agent' | 'package',
+): void {
+  if (ownership.state === 'ambiguous')
+    throw new AgentCatalogOwnershipRefusal('ambiguous', ownership.reason);
+  if (
+    ownership.state === 'unavailable' &&
+    (face === 'agent' || ownership.offeredBy.length > 0)
+  )
+    throw new AgentCatalogOwnershipRefusal('unavailable', ownership.reason);
+}
 
 async function readCatalogs(
   catalogs: readonly AgentCatalog[],
@@ -62,6 +110,9 @@ export async function agentCatalogOwnership(
     return {
       state: 'unavailable',
       catalogs: failed,
+      offeredBy: lists
+        .filter(({ items }) => items?.some((item) => item.id === id))
+        .map(({ catalog }) => catalog.source),
       reason: `The agent catalog ${failed.join(', ')} could not be read, so ${id} cannot be matched to one catalog. Try again when it is available.`,
     };
   const owners = lists

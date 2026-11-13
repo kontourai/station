@@ -8,6 +8,7 @@
 import { createHash } from 'node:crypto';
 import {
   access,
+  link,
   mkdir,
   readFile,
   rename,
@@ -30,14 +31,23 @@ import { withOperatorPrincipal } from '../../../__test-utils__/operator-principa
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
-import { AMBIGUOUS_AGENT_SOURCE_STATUS } from '../../../providers/registries/agent-registry-provider.js';
-import { LocalSourceFileTooLargeError } from '../../../providers/registries/confined-local-read.js';
+import {
+  AgentCatalogOwnershipRefusal,
+  AMBIGUOUS_AGENT_SOURCE_STATUS,
+} from '../../../providers/registries/agent-registry-provider.js';
+import {
+  LocalSourceConfinementError,
+  LocalSourceFileTooLargeError,
+  readConfinedFile,
+} from '../../../providers/registries/confined-local-read.js';
 import { FilesystemSkillRegistryProvider } from '../../../providers/registries/filesystem-skill-registry.js';
+import { GitHubSkillRegistryProvider } from '../../../providers/registries/github-skill-registry.js';
 import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
 import { registerManifestRegistryProvider } from '../../../providers/registries/register-manifest-registry.js';
 import {
   clearAll,
   registerAgentRegistryProvider,
+  registerSkillRegistryProvider,
 } from '../../../providers/registries/registry.js';
 import {
   detectRegistrySourceTree,
@@ -1175,5 +1185,209 @@ describe('an earlier Station can still read the configuration', () => {
     );
     expect(file.sources[0].ref).toBe('main');
     expect(legacyConfigurationReader().safeParse(file).success).toBe(false);
+  });
+});
+
+describe('default sources have names that tell them apart', () => {
+  const normalized = (name: string) =>
+    name.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
+  test('every default source has a unique name that does not differ only by punctuation', async () => {
+    const { json } = setup();
+    const home = '/home/someone';
+    registerSkillRegistryProvider(
+      new FilesystemSkillRegistryProvider([
+        `${home}/.codex/skills`,
+        `${home}/.claude/.agents/skills`,
+        `${home}/station/app-homes/codex/skills`,
+        `${home}/station/app-homes/claude/skills`,
+      ]),
+    );
+    registerSkillRegistryProvider(
+      new GitHubSkillRegistryProvider({
+        owner: 'anthropics',
+        repo: 'skills',
+        path: 'skills',
+        branch: 'main',
+      }),
+    );
+    const defaults = (
+      await json<{ data: RegistrySource[] }>('/sources')
+    ).data.filter((source) => source.origin === 'configured');
+    expect(defaults.map((source) => source.displayName)).toEqual([
+      'Codex skills · user',
+      'Claude skills · user',
+      'Codex skills · Station app home',
+      'Claude skills · Station app home',
+      'anthropics/skills (default)',
+    ]);
+    const keys = defaults.map((source) => normalized(source.displayName));
+    expect(new Set(keys).size).toBe(keys.length);
+    // The location that tells them apart stays on the row.
+    expect(defaults.every((source) => source.location)).toBe(true);
+  });
+});
+
+describe.skipIf(process.platform === 'win32')(
+  'a multiply linked file in a local source is refused',
+  () => {
+    test('a hard link added after the check is caught on the opened file', async () => {
+      const root = await folder({
+        'registry.json': '{"version":1,"plugins":[]}',
+      });
+      const outside = await outsideFolder();
+      const read = await readConfinedFile(
+        root,
+        join(root, 'registry.json'),
+        REGISTRY_SOURCE_SCAN_LIMITS.maxFileBytes,
+        {
+          beforeOpenForTest: () =>
+            link(join(root, 'registry.json'), join(outside, 'second-name')),
+        },
+      ).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      expect(read).toBeInstanceOf(LocalSourceConfinementError);
+      expect((read as Error).message).toContain(
+        'cannot be told apart from the file it links to',
+      );
+    });
+
+    test('a hard-linked registry.json neither passes detection nor reaches the plugin catalog', async () => {
+      const { add, list } = setup();
+      const outside = await outsideFolder();
+      await writeFile(
+        join(outside, 'registry.json'),
+        JSON.stringify({
+          version: 1,
+          plugins: [
+            {
+              id: 'leaked',
+              displayName: 'leaked',
+              description: OUTSIDE_SECRET,
+              version: '1.0.0',
+              source: './leaked',
+            },
+          ],
+        }),
+      );
+      // Linked in before the source is added: detection refuses it.
+      const linkedRoot = temporary('hardlink-before-');
+      await link(
+        join(outside, 'registry.json'),
+        join(linkedRoot, 'registry.json'),
+      );
+      const refused = await add({ location: linkedRoot });
+      expect(refused.detection).toMatchObject({ state: 'refused', kinds: [] });
+      expect(refused.detection?.reason).toContain('more than one hard link');
+      // Swapped in after detection: the manifest read refuses it.
+      const root = await stationFolder({ plugins: ['hello'] });
+      const source = await add({ location: root });
+      expect(
+        (await list('plugins')).some(
+          (item) => item.catalog?.sourceId === source.id,
+        ),
+      ).toBe(true);
+      await rename(join(root, 'registry.json'), join(root, 'moved.json'));
+      await link(join(outside, 'registry.json'), join(root, 'registry.json'));
+      const rows = await list('plugins');
+      expect(JSON.stringify(rows)).not.toContain(OUTSIDE_SECRET);
+      expect(rows.some((item) => item.catalog?.itemId === 'leaked')).toBe(
+        false,
+      );
+    });
+
+    test('a hard-linked SKILL.md is refused by the confined skill provider', async () => {
+      const outside = await outsideFolder();
+      const root = temporary('hardlink-skill-');
+      await mkdir(join(root, 'linked'));
+      await link(
+        join(outside, 'outside/SKILL.md'),
+        join(root, 'linked/SKILL.md'),
+      );
+      await expect(
+        new FilesystemSkillRegistryProvider([root], {
+          confineTo: root,
+        }).listAvailable(),
+      ).rejects.toThrow('more than one hard link');
+      await expect(
+        new FilesystemSkillRegistryProvider([root], {
+          confineTo: root,
+        }).getPackageRevision('linked'),
+      ).rejects.toThrow('more than one hard link');
+    });
+  },
+);
+
+describe('every install path applies the same agent ownership rule', () => {
+  async function catalogs(kind: 'unavailable' | 'ambiguous') {
+    const home = temporary(`detected-${kind}-home-`);
+    await ensureStationHomeSchema(home);
+    const { request } = setup(home);
+    const configured = await stationFolder({
+      agents: ['shared'],
+      plugins: ['hello'],
+    });
+    registerManifestRegistryProvider(
+      new JsonManifestRegistryProvider(join(configured, 'registry.json'), home),
+    );
+    registerAgentRegistryProvider(
+      {
+        listAvailable: async () => {
+          if (kind === 'unavailable') throw new Error('catalog host is down');
+          return [{ id: 'shared', installed: false }];
+        },
+        listInstalled: async () => [],
+        install: async () => ({ success: true, message: 'should not run' }),
+        uninstall: async () => ({ success: false, message: 'none' }),
+      },
+      'Team plugin',
+    );
+    const install = (path: string, id: string) =>
+      request(path, 'POST', {
+        id,
+        dataPolicy: 'preserve',
+        consent: {
+          permissions: [],
+          contentDigest: computePluginContentDigest(
+            join(configured, 'packages'),
+            id,
+          ),
+          dependencies: [],
+        },
+      });
+    return { home, install };
+  }
+
+  test.each([
+    ['unavailable', 503, 'agent-catalog-unavailable'],
+    ['ambiguous', 409, 'agent-catalog-ambiguous'],
+  ] as const)(
+    'an %s agent catalog owner refuses the agent and plugin install routes and the shared acquisition lookup',
+    async (kind, status, code) => {
+      const { home, install } = await catalogs(kind);
+      for (const path of ['/agents/install', '/plugins/install']) {
+        const response = await install(path, 'shared');
+        const body = (await response.json()) as { code?: string };
+        expect(response.status, `${path} ${JSON.stringify(body)}`).toBe(status);
+        expect(body.code).toBe(code);
+      }
+      // Preview, update and dependency resolution all acquire through this.
+      await expect(
+        resolvePluginRegistryInstall('shared'),
+      ).rejects.toBeInstanceOf(AgentCatalogOwnershipRefusal);
+      expect(
+        resolveInstalledPluginRoot(join(home, 'plugins'), 'shared'),
+      ).toBeNull();
+    },
+  );
+
+  test('an ordinary plugin is not blocked because an agent catalog is down', async () => {
+    const { install } = await catalogs('unavailable');
+    const response = await install('/plugins/install', 'hello');
+    const body = (await response.json()) as { code?: string };
+    expect(body.code).not.toBe('agent-catalog-unavailable');
+    expect(response.status, JSON.stringify(body)).toBe(200);
   });
 });

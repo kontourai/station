@@ -160,6 +160,40 @@ export function registrySourceSupplies(
   );
 }
 
+/**
+ * A name for a local skill folder that tells the default folders apart: the
+ * engine whose folder it is, and whose (`· user` for one in the person's
+ * home, `· Station app home` for an app home Station manages). Any
+ * other folder is named by its parent folder.
+ */
+export function localSkillFolderName(path: string): string {
+  const parts = path.split(/[\\/]+/).filter(Boolean);
+  const title = (word: string) =>
+    word.charAt(0).toLocaleUpperCase() + word.slice(1);
+  const appHome = parts.lastIndexOf('app-homes');
+  if (appHome >= 0 && parts[appHome + 1])
+    return `${title(parts[appHome + 1]!)} skills · Station app home`;
+  const engine = parts.find(
+    (part) => part.startsWith('.') && part !== '.agents',
+  );
+  if (engine) return `${title(engine.slice(1))} skills · user`;
+  return `Local skills · ${parts.at(-2) ?? parts.at(-1) ?? path}`;
+}
+
+/**
+ * A GitHub skill catalog's name: its repository, marked `(default)` when it
+ * is one of Station's own default or configured catalogs rather than a
+ * plugin's. The branch and folder stay visible in its location.
+ */
+export function githubCatalogName(
+  registryKey: string,
+  isDefault: boolean,
+): string {
+  const [owner, repo] = registryKey.replace(/^github:/, '').split('/');
+  const name = owner && repo ? `${owner}/${repo}` : registryKey;
+  return isDefault ? `${name} (default)` : name;
+}
+
 /** Catalog kinds, in the order a source's primary kind is chosen. */
 const CATALOG_KINDS: readonly CatalogKind[] = ['skills', 'plugins', 'agents'];
 
@@ -585,9 +619,9 @@ export class RegistrySourceManager {
             origin === 'station'
               ? 'Station'
               : provider instanceof GitHubSkillRegistryProvider
-                ? key.replace(/^github:/, '')
+                ? githubCatalogName(key, origin !== 'plugin')
                 : provider instanceof FilesystemSkillRegistryProvider
-                  ? 'Local skills'
+                  ? localSkillFolderName(key)
                   : label,
           origin,
           owner: origin === 'plugin' ? label : undefined,

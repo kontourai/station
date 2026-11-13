@@ -29,13 +29,14 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { unregisterPluginEngineConnections } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { PROTOTYPE_AFFECTING_KEYS } from '../../domain/skill-paths.js';
+import { AgentCatalogOwnershipRefusal } from '../../providers/registries/agent-registry-provider.js';
 import { UnsupportedRegistrySkillFormatError } from '../../providers/registries/github-skill-registry.js';
 import { mcpSubregistryIntegrationProviders } from '../../providers/registries/mcp-subregistry-provider.js';
 import {
+  assertRegisteredAgentOwnership,
   getAgentRegistryProvider,
   getIntegrationRegistryProvider,
   integrationCatalogManagedDenial,
-  registeredAgentCatalogOwnership,
 } from '../../providers/registries/registry.js';
 import {
   ManagedRegistryRefusal,
@@ -650,28 +651,21 @@ export function createRegistryRoutes(
       const { id } = body;
       registryOps.add(1, { operation: 'install-agent', item: id });
 
-      // A plain id is installed only when one agent catalog owns it. Two
-      // owners, or a catalog that could not be read (it might be the second
-      // owner), refuse here, before the plugin path below could install it
-      // from whichever plugin registry resolves it first. A source-qualified
-      // id names its source and skips this.
+      // A plain id is installed only when one agent catalog owns it: two
+      // owners (409), or a catalog that could not be read and might be the
+      // second owner (503), refuse before any install path runs. The same
+      // rule guards every package path in `resolvePluginRegistryInstall`;
+      // this face is the strict one. A source-qualified id names its source.
       if (!readRegistryCatalogSelection(id)) {
-        const ownership = await registeredAgentCatalogOwnership(id);
-        if (
-          ownership.state === 'ambiguous' ||
-          ownership.state === 'unavailable'
-        )
+        try {
+          await assertRegisteredAgentOwnership(id, 'agent');
+        } catch (error) {
+          if (!(error instanceof AgentCatalogOwnershipRefusal)) throw error;
           return c.json(
-            {
-              success: false,
-              code:
-                ownership.state === 'ambiguous'
-                  ? 'agent-catalog-ambiguous'
-                  : 'agent-catalog-unavailable',
-              message: ownership.reason,
-            },
-            ownership.state === 'ambiguous' ? 409 : 503,
+            { success: false, code: error.code, message: error.reason },
+            error.status,
           );
+        }
       }
 
       if (pluginInstallDeps) {

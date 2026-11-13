@@ -62,6 +62,7 @@ import {
 } from '../../providers/provider-interfaces.js';
 import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import {
+  assertRegisteredAgentOwnership,
   getIntegrationRegistryProvider,
   getPluginRegistryProviders,
   getRegisteredPluginRegistryProviders,
@@ -5312,6 +5313,11 @@ async function lookupPluginRegistryInstall(
 export async function resolvePluginRegistryInstall(
   id: string,
 ): Promise<{ source: string; registryKey: string } | null> {
+  // A plain id may name an agent package: its catalog owner must be known
+  // before any acquisition, on every face (install, preview, update,
+  // dependency). A source-qualified selection names its owner already.
+  if (!readRegistryCatalogSelection(id))
+    await assertRegisteredAgentOwnership(id, 'package');
   const match = await lookupPluginRegistryInstall(id);
   if (!match) return null;
   admitRegistryAcquisition(match);

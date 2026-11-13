@@ -69,10 +69,8 @@ vi.mock('../../../providers/registries/registry.js', () => {
       .fn()
       .mockReturnValue([{ provider: skillProvider, source: 'test' }]),
     getAgentRegistryProvider: vi.fn().mockReturnValue(agentProvider),
-    // The mocked agent catalog offers nothing, so no plain id is owned.
-    registeredAgentCatalogOwnership: vi
-      .fn()
-      .mockResolvedValue({ state: 'none' }),
+    // The mocked agent catalog offers nothing, so no plain id is refused.
+    assertRegisteredAgentOwnership: vi.fn().mockResolvedValue(undefined),
     getIntegrationRegistryProvider: vi
       .fn()
       .mockReturnValue(integrationProvider),

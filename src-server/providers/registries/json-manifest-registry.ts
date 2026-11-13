@@ -55,6 +55,7 @@ import type {
   IPluginRegistryProvider,
 } from '../provider-interfaces.js';
 import { readBoundedJson } from './catalog-http.js';
+import { assertNoLinksBelow, readConfinedFile } from './confined-local-read.js';
 import { fetchRegistryResource, managedRegistryHop } from './registry-fetch.js';
 import {
   type RegistryInstallAliases,
@@ -337,6 +338,9 @@ function isGitSource(source: string): boolean {
  */
 const MANIFEST_FETCH_TIMEOUT_MS = 20_000;
 
+/** Bytes of a folder source's `registry.json`, the source read bound. */
+const REGISTRY_SOURCE_MANIFEST_MAX_BYTES = 1024 * 1024;
+
 export class JsonManifestRegistryProvider
   implements
     IAgentRegistryProvider,
@@ -419,7 +423,19 @@ export class JsonManifestRegistryProvider
     // substitute its catalog between this source and claim observation.
     let manifest: Manifest;
     // Support both URLs and local file paths
-    if (this.isLocalManifest()) {
+    if (this.isLocalManifest() && this.origin.root !== undefined) {
+      // A folder added as a source: its manifest is read confined to the
+      // folder, so a link or a hard link cannot stand in for an outside file.
+      manifest = JSON.parse(
+        (
+          await readConfinedFile(
+            this.origin.root,
+            resolve(this.manifestUrl),
+            REGISTRY_SOURCE_MANIFEST_MAX_BYTES,
+          )
+        ).toString('utf8'),
+      ) as Manifest;
+    } else if (this.isLocalManifest()) {
       const bounded = readPluginManifestBytesBounded(this.manifestUrl);
       if (!bounded.ok)
         throw new Error(
@@ -501,6 +517,7 @@ export class JsonManifestRegistryProvider
       throw new Error('Registry package identity is ambiguous');
     const plugin = matches[0];
     if (!plugin) return null;
+    await this.assertConfinedPackage(plugin.source);
     return {
       source: this.resolveManifestSource(plugin.source).location,
       ...(plugin.claim === undefined
@@ -651,7 +668,19 @@ export class JsonManifestRegistryProvider
     writeRegistryInstallAliases(this.projectHomeDir, aliases);
   }
 
+  /**
+   * For a folder added as a source, refuses a local package that holds a
+   * link or a multiply linked file, before anything resolves or copies it.
+   */
+  private async assertConfinedPackage(source: string): Promise<void> {
+    if (this.origin.root === undefined) return;
+    const resolved = this.resolveManifestSource(source);
+    if (resolved.kind === 'local')
+      await assertNoLinksBelow(this.origin.root, resolved.location);
+  }
+
   private async materializeSource(source: string): Promise<string> {
+    await this.assertConfinedPackage(source);
     const resolved = this.resolveManifestSource(source);
     // Copy or clone from the path the containment check validated, so a
     // symlink swapped into the manifest's spelling of it after the check is

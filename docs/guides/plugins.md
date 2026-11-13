@@ -1198,7 +1198,8 @@ Alternatively, point `module` at a JSON file and the server auto-wraps it with
 `catalogSourceName`, and an ID that two registries offer is marked
 `ambiguous-source` and refused at install rather than taken from the first. A
 plain-ID install is also refused while any agent registry cannot be read, since
-it might offer the same ID.
+it might offer the same ID. The same rule holds on the plugin install, preview
+and update paths for an ID that a readable registry offers as an agent.
 
 ### integrationRegistry
 

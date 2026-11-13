@@ -185,7 +185,10 @@ a closed `reason`, such as `stale-review`, `missing-claim`,
 `receipt-unavailable`. Messages contain no raw claim URLs or key material.
 The managed policy's signature requirement is the exception: it answers the
 managed `403` (`managed-policy-capability-disabled`) with reason
-`managed-signature-required` and the policy sentence.
+`managed-signature-required` and the policy sentence. A plain ID whose agent
+catalog owner cannot be settled is refused before any trust check, with
+`agent-catalog-ambiguous` (409) or `agent-catalog-unavailable` (503) and a
+sentence naming the catalogs.
 Preview/review can resolve a stale observation. A continuity or unavailable
 receipt refusal retains data and requires the indicated inspection or reviewed
 migration; automatic retries cannot provide that authority. Aggregate

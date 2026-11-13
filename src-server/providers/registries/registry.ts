@@ -54,6 +54,7 @@ import { PROVIDER_TYPE_META } from '../provider-interfaces.js';
 import {
   type AgentCatalogOwnership,
   agentCatalogOwnership,
+  assertAgentOwnershipFor,
   createAgentRegistryProvider,
 } from './agent-registry-provider.js';
 import { createIntegrationRegistryProvider } from './integration-registry-provider.js';
@@ -840,6 +841,19 @@ export function registerAgentRegistryProvider(
   source = 'Core',
 ) {
   registerProvider('agentRegistry', provider, { source });
+}
+
+/**
+ * Refuses an acquisition of plain `id` whose agent catalog owner is ambiguous
+ * or unknown, per {@link assertAgentOwnershipFor}. Every install path calls
+ * this one function (the agent route directly, every package path through
+ * `resolvePluginRegistryInstall`).
+ */
+export async function assertRegisteredAgentOwnership(
+  id: string,
+  face: 'agent' | 'package',
+): Promise<void> {
+  assertAgentOwnershipFor(await registeredAgentCatalogOwnership(id), face);
 }
 
 /** Which registered agent catalog owns a plain agent id (see the provider). */

@@ -3415,7 +3415,9 @@ The server obtains the claim and signing policy from host owners and returns
 `registry-trust-refused` with a closed reason when the review or continuity no
 longer matches. A managed policy's signature requirement instead answers `403`
 with `managed-policy-capability-disabled` and reason
-`managed-signature-required`. See [registry trust policy](../design/registry-trust-policy.md).
+`managed-signature-required`. A plain ID whose agent catalog owner is
+ambiguous or unknown answers `agent-catalog-ambiguous` (409) or
+`agent-catalog-unavailable` (503). See [registry trust policy](../design/registry-trust-policy.md).
 
 `consent` is required (archive#4288). It records the operator's decision from
 the preview they read: the permission set the preview derived, the digest of

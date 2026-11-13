@@ -12,6 +12,7 @@ import { appHomeProfileDir } from '../app-home/app-home-profiles.js';
 import type { ISkillRegistryProvider } from '../provider-interfaces.js';
 import {
   assertConfinedPath,
+  assertNoLinksBelow,
   readBoundedFile,
   readConfinedFile,
 } from './confined-local-read.js';
@@ -96,7 +97,11 @@ export class FilesystemSkillRegistryProvider implements ISkillRegistryProvider {
       if (!(await assertConfinedPath(confineTo, directory)).isDirectory())
         return null;
       const document = await lstat(join(directory, 'SKILL.md'));
-      return document.isFile() ? directory : null;
+      if (!document.isFile()) return null;
+      // Before its files are hashed, read or copied: no link and no
+      // multiply linked file anywhere in the package.
+      await assertNoLinksBelow(confineTo, directory);
+      return directory;
     } catch (error) {
       if (missing(error)) return null;
       throw error;
