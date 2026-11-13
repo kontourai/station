@@ -3694,6 +3694,82 @@ describe('Muse parity: a host that cannot enforce its sandbox', () => {
     });
   }
 
+  test('a host refused for an unverified fingerprint still teaches "no sandbox": an ask start is refused rather than falling back to exec', async () => {
+    const h = harness();
+    const starting = h.adapter.startSession({
+      provider: 'muse',
+      threadId: THREAD,
+      modelOptions: { approvalMode: 'ask' },
+    });
+    starting.catch(() => {});
+    for (let attempt = 0; attempt < 100 && !h.hosts[0]; attempt += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    const host = h.hosts[0];
+    const init = await host.nextRequest('initialize', new Set());
+    // A Muse upgrade: a fingerprint this adapter never verified, on a machine
+    // whose host says it cannot enforce a sandbox.
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: init.id,
+      result: {
+        serverInfo: { name: 'muse', version: '9.9.9' },
+        schema: { version: 1, fingerprint: 'sha256:unverified' },
+        sessionDurability: 'durable',
+        sandboxAvailability: 'unavailable',
+      },
+    });
+    await expect(starting).rejects.toMatchObject({
+      code: 'sandbox_unavailable',
+    });
+    expect(h.execSpawns).toEqual([]);
+    expect(await h.adapter.hasSession(THREAD)).toBe(false);
+  });
+
+  test('an unverified host reporting its sandbox available does not clear a learned "no sandbox"', async () => {
+    const h = harness();
+    const beforeTurn = captureIndex(
+      'steer',
+      (msg) => msg.method === 'turn/start',
+    );
+    const learning = h.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-learn',
+      modelOptions: { approvalMode: 'ask' },
+    });
+    for (let attempt = 0; attempt < 100 && !h.hosts[0]; attempt += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    await replayMuseServeCapture(h.hosts[0], sandboxlessFrames(), {
+      stopAt: beforeTurn,
+    });
+    await learning;
+    const starting = h.adapter.startSession({
+      provider: 'muse',
+      threadId: THREAD,
+      modelOptions: { approvalMode: 'ask' },
+    });
+    starting.catch(() => {});
+    for (let attempt = 0; attempt < 100 && !h.hosts[1]; attempt += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    const init = await h.hosts[1].nextRequest('initialize', new Set());
+    h.hosts[1].writeFrame({
+      jsonrpc: '2.0',
+      id: init.id,
+      result: {
+        serverInfo: { name: 'muse', version: '9.9.9' },
+        schema: { version: 1, fingerprint: 'sha256:unverified' },
+        sessionDurability: 'durable',
+        sandboxAvailability: 'available',
+      },
+    });
+    await expect(starting).rejects.toMatchObject({
+      code: 'sandbox_unavailable',
+    });
+    expect(h.execSpawns).toEqual([]);
+  });
+
   test('a later host that does not report sandbox availability keeps the learned "no sandbox", so a failed serve start still refuses exec', async () => {
     const h = harness({
       // Host 2 dies before its handshake, so its start falls back to exec.

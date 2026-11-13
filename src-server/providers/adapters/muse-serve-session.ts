@@ -1535,6 +1535,23 @@ export class MuseServeSession {
           : `initialize failed: ${errorMessage(error)}`,
       );
     }
+    // A property of the machine (MSP: probed once at host construction), not
+    // of the protocol, so `unavailable` is recorded BEFORE the fingerprint
+    // and durability refusals below: a host refused as unverified (e.g. after
+    // a Muse upgrade) still reported that this machine has no sandbox, and
+    // the exec fallback must not run unsandboxed on the strength of that
+    // refusal. Absent or unknown values read as unknown.
+    if (isRecord(result) && result.sandboxAvailability === 'unavailable') {
+      const reason = readString(result.sandboxUnavailableReason);
+      host.sandbox = {
+        unavailable: true,
+        ...(reason ? { reason: truncate(reason, 80) } : {}),
+      };
+      this.reportedSandboxValue = {
+        availability: 'unavailable',
+        ...(host.sandbox.reason ? { reason: host.sandbox.reason } : {}),
+      };
+    }
     if (!verifiedMuseServeFingerprint(result)) {
       const schema =
         isRecord(result) && isRecord(result.schema) ? result.schema : {};
@@ -1550,19 +1567,10 @@ export class MuseServeSession {
         `the host reports ${String(durability)} sessions`,
       );
     }
-    // A property of the host process (MSP: probed once at construction).
-    // Only `unavailable` changes anything; absent reads as unknown.
-    if (isRecord(result) && result.sandboxAvailability === 'unavailable') {
-      const reason = readString(result.sandboxUnavailableReason);
-      host.sandbox = {
-        unavailable: true,
-        ...(reason ? { reason: truncate(reason, 80) } : {}),
-      };
-      this.reportedSandboxValue = {
-        availability: 'unavailable',
-        ...(host.sandbox.reason ? { reason: host.sandbox.reason } : {}),
-      };
-    } else if (isRecord(result) && result.sandboxAvailability === 'available') {
+    // `available` is trusted only from a host this adapter verified: it is
+    // the one report that relaxes the exec-fallback refusal. `unavailable`
+    // was recorded above, before any refusal.
+    if (isRecord(result) && result.sandboxAvailability === 'available') {
       this.reportedSandboxValue = { availability: 'available' };
     }
     host.connection.notify('initialized');
