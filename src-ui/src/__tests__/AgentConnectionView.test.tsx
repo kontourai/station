@@ -2785,7 +2785,13 @@ describe('AgentConnectionView', () => {
     expect(
       screen.getByText('The engine list could not be loaded.'),
     ).toBeTruthy();
-    expect(screen.getAllByText('Not loaded').length).toBeGreaterThan(0);
+    const badges = screen.getAllByText('Not loaded');
+    expect(badges.length).toBeGreaterThan(0);
+    // Not Ready's colour either.
+    for (const badge of badges)
+      expect(
+        badge.closest('[class*="positive"], [data-tone="positive"]'),
+      ).toBeNull();
     expect(screen.queryByText('Ready')).toBeNull();
   });
 

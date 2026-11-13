@@ -525,6 +525,8 @@ export function AgentConnectionView({
       ? {
           ...derivedHealth,
           label: 'Not loaded',
+          // Neutral, as on the Overview tile: never Ready's colour.
+          tone: 'neutral' as const,
           reason: 'The engine list could not be loaded.',
           action: undefined,
         }
