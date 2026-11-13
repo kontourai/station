@@ -63,6 +63,11 @@ type Phase = {
   restricted: boolean;
   marker: string;
   requests: number;
+  change?:
+    | 'replace-permissions'
+    | 'clear-permissions'
+    | 'default-mode'
+    | 'bypass-mode';
 };
 let phase: Phase | undefined;
 const requests: {
@@ -134,7 +139,7 @@ const server = createServer(async (request, response) => {
     const body = Buffer.concat(chunks);
     const value = JSON.parse(body.toString('utf8'));
     requests.push({
-      phase: `${phase.kind}:${phase.restricted ? 'restricted' : 'ordinary'}`,
+      phase: `${phase.kind}:${phase.restricted ? 'restricted' : 'ordinary'}:${phase.change ?? 'unchanged'}`,
       bytes,
       sha256: createHash('sha256').update(body).digest('hex'),
       toolNames: (value.tools ?? []).map(
@@ -327,6 +332,23 @@ async function runPhase(input: Phase, resume?: string): Promise<string> {
     assert.equal(initialized.claude_code_version, manifest.version);
     const mcp = await session.setMcpServers({ probe: sdkMcp });
     assert.deepEqual(mcp.errors, {});
+    switch (input.change) {
+      case 'replace-permissions':
+        await session.applyFlagSettings({
+          permissions: { allow: ['*'], deny: [] },
+        });
+        break;
+      case 'clear-permissions':
+        await session.applyFlagSettings({ permissions: null });
+        break;
+      case 'default-mode':
+        await session.setPermissionMode('default');
+        break;
+      case 'bypass-mode':
+        await session.setPermissionMode('default');
+        await session.setPermissionMode('bypassPermissions');
+        break;
+    }
     ready();
     for await (const message of session) {
       messages.push(message);
@@ -395,6 +417,7 @@ try {
     .digest('hex');
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
+  const nativeSessions = new Map<Phase['kind'], string>();
   for (const kind of ['write', 'sdk-mcp'] as const) {
     const native = await runPhase({
       kind,
@@ -402,6 +425,7 @@ try {
       marker: join(workspace, `${kind}-ordinary.txt`),
       requests: 0,
     });
+    nativeSessions.set(kind, native);
     await runPhase(
       {
         kind,
@@ -420,6 +444,27 @@ try {
       },
       native,
     );
+  }
+  if (process.argv.includes('--exercise-settings')) {
+    const native = nativeSessions.get('sdk-mcp');
+    assert.ok(native);
+    for (const change of [
+      'replace-permissions',
+      'clear-permissions',
+      'default-mode',
+      'bypass-mode',
+    ] as const) {
+      await runPhase(
+        {
+          kind: 'sdk-mcp',
+          restricted: true,
+          change,
+          marker: join(workspace, `sdk-mcp-${change}.txt`),
+          requests: 0,
+        },
+        native,
+      );
+    }
   }
   assert.equal(receipt.transportFailure, undefined);
   receipt.status = 'PASS_SCOPED_ENGINE_EFFECTS';
