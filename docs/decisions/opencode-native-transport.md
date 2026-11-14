@@ -196,8 +196,8 @@ emits the terminal event if the execution ended while the feed was down.
   (`GET /api/session/{id}/permission`, `/form`), which follow it to wherever it
   moved.
 - Descendants (children, and their children at any depth) are looked up by
-  `parentID` from the session down, at most 200 in all. Past that the walk
-  stops and a warning says so. Every descendant is looked up, including one
+  `parentID` from the session down, four lookups at a time and at most 200
+  descendants in all. Past that the walk stops and a warning says so. Every descendant is looked up, including one
   that was idle before and after the gap: OpenCode's subagent tool resumes an
   existing child (`sessionID`), so a parent may have woken it during the gap,
   and it may have started a child of its own and gone idle again. One running
@@ -217,6 +217,8 @@ descendant's own lists, and the inbox. One that fails is reported in a warning
 of its own and the others still run. A failed lookup leaves out only that
 descendant's children. What needs a failed read is left as it was: without
 the running list, no child and no turn is settled and no steer is resolved.
+The bookkeeping between the reads is guarded the same way, so an error there
+is a warning and the feed that just reconnected stays open.
 
 ## Governance
 
@@ -275,10 +277,22 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   already gone): a `once` is put to the person, so the ask never waits
   hidden. A rejection (the policy's deny, the agent's kept deny, the #4828
   decline, a delegated session's decline) is sent once more. Refused again,
-  it fails closed: it is never shown to a person who could allow it. Station
-  interrupts the session's execution, and the asking descendant's, which
-  drops the ask. It ends the turn with a `runtime.error` that gives the reason
-  for the rejection. A later re-list does not reopen the ask.
+  it fails closed: it is never shown to a person who could allow it, and a
+  later re-list does not reopen it. Station interrupts the execution that
+  asked, which drops the ask. For the session's own ask, or one from a
+  descendant started during the live turn, that is the asking descendant (a
+  2.3.0 subagent is a background job that the root's interrupt does not
+  stop) and the session. The turn then ends with a `runtime.error` that gives
+  the reason. It ends once OpenCode reports the execution ended, or after
+  three seconds if OpenCode does not. Until then the turn is still live, so a
+  next turn is refused as busy and a steer as too late, rather than delivered
+  into the execution being stopped. An ask from a descendant that an earlier
+  turn started, and that still runs in the background, interrupts only that
+  descendant, with a `runtime.warning`; the live turn goes on. An interrupt
+  that fails gets a warning of its own, and the error says OpenCode may still
+  be running the turn. Until OpenCode reports the asking session's execution
+  ended, stopping the session counts the ask as running work: it interrupts
+  that session again and repeats the rejection.
 - **After an untrusted read** (#4828), an `edit` ask from the session or a
   descendant that names a known agent-instruction or git-hook file, as a
   resource or in `metadata.files`, is rejected before any deny check, staged
