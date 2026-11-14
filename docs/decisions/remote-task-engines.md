@@ -85,8 +85,10 @@ The second, stacked on the first, composes the chat adapter:
   or steer its person-typed mark, so a public command start, a delegation, a
   task dispatch, a schedule, an automation, a review, a station-control tool
   and an agent-origin or internal-principal request are all refused before the
-  adapter. Which requests carry those marks is pinned by the person-authorship
-  ingress suites.
+  adapter. A delegation or a Task dispatch to the engine's Agent is refused
+  earlier too, in the shared execution path, before an approval pick or a
+  worktree. Which requests carry those marks is pinned by the
+  person-authorship ingress suites.
 - **Adapter.** `RemoteTaskAdapter` over the service. The first turn creates
   the task (claimed before the vendor call, so concurrent first sends create
   one) and later turns send follow-ups. Only `personText`, the typed text
@@ -287,6 +289,9 @@ Tests:
 - [Person-only engines](../../src-server/services/orchestration/__tests__/person-only-engine.test.ts):
   orchestration refuses public, delegated, scheduled, automation, task
   dispatch and review starts and sends, and passes only the typed text.
+- [Execution path](../../src-server/services/execution-target/__tests__/execution-target-execution.test.ts):
+  a start that is not a person's own chat, or a message they did not type, is
+  refused before an approval pick, a worktree or the engine.
 
 ## Not verified
 

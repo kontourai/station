@@ -863,6 +863,13 @@ is not a retry candidate. Staged uploads the refused send had bound are released
 from that turn, so the same references can be sent on another turn. Codex and Muse refuse a non-image file with a plain
 error that carries no code.
 
+A start or send to an engine that takes only a person's own chat (the
+remote task engine, behind its Feature Preview) answers 400 with
+`code: "person-authored-turn-required"` before any approval pick, worktree or
+engine effect, unless the request is the composer's own `/chat` with a message
+the person typed. A delegated send, a Task dispatch, an automatic background
+send or an agent's request is refused the same way.
+
 A start or send on a chat whose recorded approval pick is above the machine's
 managed approval ceiling is refused before any engine effect with
 `code: "managed-policy-approval-ceiling"` until the mode is lowered
