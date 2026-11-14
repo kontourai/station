@@ -1,4 +1,5 @@
-import { RELEASE_TAG_PATTERN, releaseVariants } from './release-variants.mjs';
+import { parseReleaseTag } from './release-tag.mjs';
+import { releaseVariants } from './release-variants.mjs';
 
 export { releaseVariants } from './release-variants.mjs';
 
@@ -73,8 +74,18 @@ const DEFAULT_MANIFEST_KEYS = new URL(
   import.meta.url,
 );
 
+/**
+ * Every tagged release, candidate or final, is the Stable ring (#4929).
+ * Throws for a tag that is not a release tag.
+ */
 function tagChannel(tag) {
-  return tag.includes('-preview.') ? 'preview' : 'stable';
+  parseReleaseTag(tag);
+  return 'stable';
+}
+
+/** The version the release's bytes carry: the tag's bare base version. */
+function tagVersion(tag) {
+  return parseReleaseTag(tag).baseVersion;
 }
 
 /**
@@ -411,7 +422,11 @@ export function createReleaseInventory({
   containerDescriptor,
   dependencyLifecycle,
 }) {
-  if (!RELEASE_TAG_PATTERN.test(tag)) fail(`invalid tag ${tag}`);
+  try {
+    parseReleaseTag(tag);
+  } catch {
+    fail(`invalid tag ${tag}`);
+  }
   if (!SHA.test(sourceSha)) fail(`invalid source SHA ${sourceSha}`);
   const descriptorPath =
     containerDescriptor ?? join(assetsDir, 'station-container-release.json');
@@ -424,7 +439,7 @@ export function createReleaseInventory({
   const inventory = {
     schemaVersion: 2,
     tag,
-    version: tag.slice(1),
+    version: tagVersion(tag),
     sourceSha,
     channel: tagChannel(tag),
     generatedAt,
@@ -608,7 +623,9 @@ function validateSidecars(inventory, assetsDir) {
       JSON.stringify(expectedKeys) ||
     ring.schemaVersion !== 1 ||
     ring.channel !== inventory.channel ||
-    ring.prerelease !== (inventory.channel === 'preview') ||
+    // `prerelease` is a property of the ring, and Stable is not one; a
+    // candidate is still the Stable ring (#4929).
+    ring.prerelease !== false ||
     ring.ref !== inventory.tag ||
     ring.sha !== inventory.sourceSha ||
     ring.createdAt !== inventory.generatedAt ||
@@ -654,7 +671,10 @@ function validateHostStream(inventory, assetsDir, manifestKeys) {
   if (
     payload.channel !== inventory.channel ||
     payload.version !== inventory.version ||
-    payload.releaseTag !== inventory.tag ||
+    // The payload names the release by its base version (the shared payload
+    // contract binds releaseTag to v<version>); the artifact URLs below name
+    // where the bytes live, which is this release's tag (#4929).
+    payload.releaseTag !== `v${inventory.version}` ||
     payload.sourceSha !== inventory.sourceSha
   )
     fail('host manifest payload does not name this release');
@@ -724,12 +744,9 @@ export function validateReleaseInventory(
   { assetsDir, updaterPublicKey, containerDescriptor, manifestKeys } = {},
 ) {
   validateSchema(inventory);
-  if (inventory.version !== inventory.tag.slice(1))
+  if (inventory.version !== tagVersion(inventory.tag))
     fail('version does not match tag');
-  if (
-    inventory.channel !==
-    (inventory.tag.includes('-preview.') ? 'preview' : 'stable')
-  )
+  if (inventory.channel !== tagChannel(inventory.tag))
     fail('channel does not match tag');
   validateVariants(inventory);
   validateAssets(inventory, assetsDir);

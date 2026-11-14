@@ -808,6 +808,10 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'packages/shared/src/__tests__/turn-provenance-ref-slot-producers.test.ts',
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
   'scripts/__tests__/classify-ci-change.scan.test.ts',
+  // Its iOS coverage tests walk src-ui and every package the UI bundle can
+  // import, so a new import that no iOS build covers fails on the pull
+  // request that adds it. No import edge connects those sources to the test.
+  'scripts/__tests__/classify-ci-change.test.ts',
   'scripts/__tests__/content-integrity-gate.scan.test.ts',
   // Scans source trees for coordinator product names outside their copy owner.
   'scripts/__tests__/coordinator-product-names.test.ts',
