@@ -369,16 +369,29 @@ jobs:
     permissions:
       contents: read
     concurrency:
-      # Three bounded PR shard groups retain every planned matrix leg.
-      # Keep the two existing names so old and new runs share their slots;
-      # route odd-numbered shards of PRs ending in 0, 1 or 2 to the third.
+      # Five bounded PR shard groups retain every planned matrix leg. The
+      # group is (last PR digit mod 5 + shard - 1) mod 5, so one PR's shards
+      # never share a group and shard 1, which every plan has, spreads over
+      # all five. Measured 2026-11-12/14, three groups left PR shards waiting
+      # a median 44 minutes for a group, the busiest occupied 93% of the time.
+      #   last digit | shard 1 | shard 2 | shard 3 | shard 4
+      #   0 or 5     | even    | odd     | third   | fourth
+      #   1 or 6     | odd     | third   | fourth  | fifth
+      #   2 or 7     | third   | fourth  | fifth   | even
+      #   3 or 8     | fourth  | fifth   | even    | odd
+      #   4 or 9     | fifth   | even    | odd     | third
+      # The odd/even/third names are kept, now as plain labels, so runs
+      # created under the previous mapping share those slots while both run.
+      # Shard 4 is each row's last arm; the planner never emits more than 4.
       # Required integration and diagnostics use separate source identities.
       group: >-
-        ${{ github.event_name == 'pull_request_target' && (matrix.shard == 1 || matrix.shard == 3) && (endsWith(format('{0}', github.event.pull_request.number), '0') || endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '2')) && 'ci-pr-shards-third' || github.event_name == 'pull_request_target' && format('ci-pr-shards-{0}', ((endsWith(format('{0}',
-        github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') ||
-        endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}',
-        github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) !=
-        (matrix.shard == 1 || matrix.shard == 3)) && 'odd' || 'even') || format('ci-fast-shard-{0}-{1}-{2}-{3}-{4}',
+        ${{ github.event_name == 'pull_request_target' && (
+        (endsWith(format('{0}', github.event.pull_request.number), '0') || endsWith(format('{0}', github.event.pull_request.number), '5')) && (matrix.shard == 1 && 'ci-pr-shards-even' || matrix.shard == 2 && 'ci-pr-shards-odd' || matrix.shard == 3 && 'ci-pr-shards-third' || 'ci-pr-shards-fourth') ||
+        (endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '6')) && (matrix.shard == 1 && 'ci-pr-shards-odd' || matrix.shard == 2 && 'ci-pr-shards-third' || matrix.shard == 3 && 'ci-pr-shards-fourth' || 'ci-pr-shards-fifth') ||
+        (endsWith(format('{0}', github.event.pull_request.number), '2') || endsWith(format('{0}', github.event.pull_request.number), '7')) && (matrix.shard == 1 && 'ci-pr-shards-third' || matrix.shard == 2 && 'ci-pr-shards-fourth' || matrix.shard == 3 && 'ci-pr-shards-fifth' || 'ci-pr-shards-even') ||
+        (endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '8')) && (matrix.shard == 1 && 'ci-pr-shards-fourth' || matrix.shard == 2 && 'ci-pr-shards-fifth' || matrix.shard == 3 && 'ci-pr-shards-even' || 'ci-pr-shards-odd') ||
+        (endsWith(format('{0}', github.event.pull_request.number), '4') || endsWith(format('{0}', github.event.pull_request.number), '9')) && (matrix.shard == 1 && 'ci-pr-shards-fifth' || matrix.shard == 2 && 'ci-pr-shards-even' || matrix.shard == 3 && 'ci-pr-shards-odd' || 'ci-pr-shards-third')
+        ) || format('ci-fast-shard-{0}-{1}-{2}-{3}-{4}',
         matrix.shard, github.event_name, github.event.pull_request.number || github.ref,
         github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}
       queue: max

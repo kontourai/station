@@ -299,8 +299,15 @@ not a cross-workflow reservation or a guarantee that another repository will
 leave capacity unused. The merge queue builds up to two candidates at a time,
 each on top of the one ahead of it, with up to three entries per merge batch.
 One merge-group build peaked at seven concurrent jobs when measured on
-2026-11-13, so two concurrent builds can exceed the twelve-runner reserve; the
-reserve stays a planning bound. Background callers share the native FIFO
+2026-11-13. Measured across all workflows from 06:46Z to 17:30Z on 2026-11-14,
+two concurrent builds peaked at ten jobs and no macOS runner, inside the
+twelve-runner reserve; the reserve stays a planning bound. PR source
+computation is bounded separately at seven shared slots (five shard, two
+statics; see [testing](testing.md)). Ten merge-group jobs, the Free
+qualification peak of four and those seven already total 21 before unbounded per-PR
+lanes, so the PR slots bound how many PR source jobs can wait for a runner
+ahead of a merge-group job, not a share of the twenty. GitHub has no priority
+between them. Background callers share the native FIFO
 group described above; integration uses source-specific groups and release
 qualification has its own group. The class input is validated before fanout.
 These groups do not reserve slots across other repositories.

@@ -33,7 +33,7 @@ function lint(source: string) {
 }
 
 describe('reviewed GitHub FIFO schema compatibility', () => {
-  test('routes PR shards into three shared groups while retaining old group identities', () => {
+  test('routes PR shards into five shared groups while retaining the three old group identities', () => {
     const ci = readWorkflowDocuments().find(
       (workflow) => workflow.file === '.github/workflows/ci.yml',
     );
@@ -84,17 +84,22 @@ describe('reviewed GitHub FIFO schema compatibility', () => {
           sha: 'sha',
         };
         const group = evaluate(github, { shard }, endsWith, format) as string;
-        const third = [0, 1, 2].includes(number % 10) && [1, 3].includes(shard);
-        const old =
-          (number % 2 === 1) !== [1, 3].includes(shard) ? 'odd' : 'even';
-        expect(group).toBe(
-          third ? 'ci-pr-shards-third' : `ci-pr-shards-${old}`,
-        );
+        // Independent restatement of ci.yml's table, not read from it.
+        const slot = ['even', 'odd', 'third', 'fourth', 'fifth'][
+          (((number % 10) % 5) + shard - 1) % 5
+        ];
+        expect(group).toBe(`ci-pr-shards-${slot}`);
         groups.add(group);
       }
     }
     expect(groups).toEqual(
-      new Set(['ci-pr-shards-odd', 'ci-pr-shards-even', 'ci-pr-shards-third']),
+      new Set([
+        'ci-pr-shards-odd',
+        'ci-pr-shards-even',
+        'ci-pr-shards-third',
+        'ci-pr-shards-fourth',
+        'ci-pr-shards-fifth',
+      ]),
     );
     expect(job.concurrency.queue).toBe('max');
     expect(job.concurrency['cancel-in-progress']).toBe(false);
