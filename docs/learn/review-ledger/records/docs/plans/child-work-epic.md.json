@@ -78,7 +78,9 @@
 
     "src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts",
 
-    "scripts/child-work-native-model-channel-lab.ts"
+    "scripts/child-work-native-model-channel-lab.ts",
+
+    "src-server/services/orchestration/delegation-group-source-admission.ts"
   ],
 
   "checks": [

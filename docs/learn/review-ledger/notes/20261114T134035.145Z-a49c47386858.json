@@ -1,0 +1,7 @@
+{
+  "revision": "b7ee3c9cea49cdf434c364459f5e1a73d3950e6a",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Scoped native contributor guide review only. The docs index still describes an opt-in kernel/channel prerequisite with owned cleanup and explicit authority limits. The new native text approval profile validates supplied producer-bound records but configures no production registry and issues no source grant or paid authority, so that index description remains accurate. No prose change or other subsystem approval is claimed.","inputs":["docs/README.md","docs/guides/native-model-channel-lab.md"]}
+  ]
+}
