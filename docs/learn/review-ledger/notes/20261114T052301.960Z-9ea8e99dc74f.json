@@ -1,0 +1,29 @@
+{
+  "revision": "c6f3d267bb15a7eb566a30fe233d2b6a37fc8127",
+
+  "notes": [
+    {"path":".agents/skills/documentation-audit/SKILL.md","note":"Added the --input route for a widely cited source and the rule that an edited document or record still needs its own note; checked against the record command's --input refusals and the store's input-note join.","inputs":[".agents/skills/documentation-audit/SKILL.md"]},
+
+    {"path":"docs/guides/documentation.md","note":"Added the --input option to the keep-reviews-fresh bullet; checked against record-documentation-review.mjs parsing and the freshness hint text. Existing note and gate-limit claims unchanged.","inputs":["docs/guides/documentation.md","docs/guides/documentation-review-ledger.md","scripts/lib/documentation-freshness.mjs","scripts/lib/review-ledger-store.mjs","scripts/record-documentation-review.mjs"]},
+
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Added input notes: catch-up and scoped rules, command and batch shape, refusals, the new section on what an input note does and does not cover, the notes layout row and the older-branch compatibility limit. Checked each against parseInputNote, notesByPath/citedNotes, the history replay branch, the record command and the new fixture tests; compaction, redaction, path budget and rollback text still holds unchanged.","inputs":["docs/guides/documentation-review-ledger.md","scripts/lib/documentation-freshness.mjs","scripts/lib/review-history.mjs","scripts/lib/review-ledger-store.mjs","scripts/migrate-review-ledger.mjs","scripts/record-documentation-review.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"The reader still shows a covering note per document: an input note joins each listed record as a note on that input. Review-out-of-date and record-command claims unchanged; checked against compileReviewState and deriveReviewHistory.","inputs":["docs/learn/README.md","scripts/lib/documentation-freshness.mjs","scripts/lib/review-history.mjs","scripts/lib/review-ledger-store.mjs","scripts/record-documentation-review.mjs"]},
+
+    {"path":".veritas/README.md","note":"Checked the documentation maintenance section: the skill and guide still require tracing claims and recording limits; freshness hint wording and the input-note option do not change what the checks prove.","inputs":[".veritas/README.md",".agents/skills/documentation-audit/SKILL.md","docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked the freshness job description: input notes change neither which jobs run nor that freshness cannot establish prose accuracy; only the hint text gained the --input route.","inputs":["docs/guides/code-quality.md",".agents/skills/documentation-audit/SKILL.md","docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"AGENTS.md","note":"Input review notes only add an option to the review-note workflow this page routes to; checked its references to the documentation-audit skill and maintenance guide, and none states that every citing document needs its own note. No claim changed.","inputs":["AGENTS.md",".agents/skills/documentation-audit/SKILL.md"]},
+
+    {"path":"docs/README.md","note":"Input review notes only add an option to the review-note workflow this page routes to; checked its references to the documentation-audit skill and maintenance guide, and none states that every citing document needs its own note. No claim changed.","inputs":["docs/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Input review notes only add an option to the review-note workflow this page routes to; checked its references to the documentation-audit skill and maintenance guide, and none states that every citing document needs its own note. No claim changed.","inputs":["docs/architecture/abstraction-review.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/development.md","note":"Input review notes only add an option to the review-note workflow this page routes to; checked its references to the documentation-audit skill and maintenance guide, and none states that every citing document needs its own note. No claim changed.","inputs":["docs/guides/development.md",".agents/skills/documentation-audit/SKILL.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Input review notes only add an option to the review-note workflow this page routes to; checked its references to the documentation-audit skill and maintenance guide, and none states that every citing document needs its own note. No claim changed.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Input review notes only add an option to the review-note workflow this page routes to; checked its references to the documentation-audit skill and maintenance guide, and none states that every citing document needs its own note. No claim changed.","inputs":["docs/guides/testing.md",".agents/skills/documentation-audit/SKILL.md","docs/guides/documentation.md"]}
+  ]
+}
