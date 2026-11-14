@@ -35,6 +35,8 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
 import { STATION_UNMAPPED_SUBAGENT_ENGINES } from '../../services/orchestration/child-work-projection.js';
+import { harness } from '../../services/remote-task-engines/__tests__/harness.js';
+import { devinFake } from '../../services/remote-task-engines/__tests__/vendor-fakes.js';
 import {
   type AcpMapperContext,
   mapAcpExtensionNotification,
@@ -43,6 +45,7 @@ import {
 import { AcpToolUpdateSupervisor } from '../adapters/acp-tool-update-supervisor.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
+import { RemoteTaskAdapter } from '../adapters/remote-task-adapter.js';
 import {
   CLAUDE_TASK_CAPTURES,
   replayClaudeTaskCapture,
@@ -369,6 +372,57 @@ async function stationAdapterStructural(): Promise<CanonicalRuntimeEvent[]> {
   return [];
 }
 
+/**
+ * A remote task's work runs at the vendor: one whole chat turn through the
+ * real adapter and service, against the Devin HTTP fake. It publishes
+ * session, turn and reply events, never child work.
+ */
+async function remoteTaskAdapterRun(): Promise<CanonicalRuntimeEvent[]> {
+  const devin = devinFake('org-abc123def456');
+  const h = harness(devin.fake.fetch);
+  const connectionId = await h.readyConnection(
+    'devin',
+    'cog_test_token_devin_0001',
+    { orgId: 'org-abc123def456' },
+  );
+  const adapter = new RemoteTaskAdapter({
+    service: h.service,
+    resolveRepository: async () => undefined,
+    setTimer: (run) => setTimeout(run, 0),
+    clearTimer: (handle) =>
+      clearTimeout(handle as ReturnType<typeof setTimeout>),
+  });
+  const events: CanonicalRuntimeEvent[] = [];
+  const controller = new AbortController();
+  const reading = (async () => {
+    for await (const event of adapter.streamEvents({
+      signal: controller.signal,
+    }))
+      events.push(event);
+  })().catch(() => {});
+  await adapter.startSession({
+    threadId: 'remote-task-conformance',
+    provider: 'remote-task',
+    modelId: connectionId,
+  });
+  const turn = await adapter.sendTurn({
+    threadId: 'remote-task-conformance',
+    input: 'Fix the flaky test',
+  });
+  const taskId = (turn.resumeCursor as { taskId: string }).taskId;
+  devin.reply(taskId, 'Fixed it.');
+  devin.setStatus(taskId, 'running', 'finished');
+  for (let i = 0; i < 500; i += 1) {
+    if (events.some((event) => event.method === 'turn.completed')) break;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  await adapter.stopAll();
+  controller.abort();
+  await reading;
+  expect(events.some((event) => event.method === 'turn.completed')).toBe(true);
+  return events;
+}
+
 const DRIVERS: Record<string, Driver> = {
   station: { run: stationAdapterStructural },
   claude: {
@@ -385,6 +439,7 @@ const DRIVERS: Record<string, Driver> = {
     run: replayMuseServeCaptures,
   },
   acp: { run: replayAcpKiroSubagents, formats: ACP_FORMATS },
+  'remote-task': { run: remoteTaskAdapterRun },
 };
 
 /**

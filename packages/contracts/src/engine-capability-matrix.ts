@@ -406,6 +406,42 @@ export const STATION_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   },
 };
 
+/**
+ * A remote task keeps running at the vendor whatever Station does: Station
+ * recovers nothing itself, and the vendor keeps the work and its context.
+ */
+export const REMOTE_TASK_ENGINE_DURABILITY: ProviderDurabilityProfile = {
+  steerPlacement: {
+    state: 'none',
+    detail: 'A follow-up is a new turn; a running remote task is not steered.',
+  },
+  crashContinuation: {
+    state: 'none',
+    detail: 'The task keeps running at the vendor; Station only catches up.',
+  },
+  toolReplay: { state: 'none', detail: 'No tool runs on this host.' },
+  pendingApprovals: { state: 'none', detail: 'No Station approval is opened.' },
+  contextCarriage: {
+    state: 'none',
+    detail: 'The vendor keeps the task context; Station sends only messages.',
+  },
+  fork: { state: 'none', detail: 'A remote task cannot be forked.' },
+  compaction: {
+    state: 'none',
+    owner: 'engine',
+    detail: 'The vendor manages its own context.',
+  },
+  partialOutput: {
+    state: 'none',
+    detail:
+      'Station stores messages the vendor has finished, not partial text.',
+  },
+  usage: {
+    state: 'none',
+    detail: "Usage is reported in the vendor's own unit, not as tokens.",
+  },
+};
+
 export const UNKNOWN_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   ...EXTERNAL_ENGINE_DURABILITY,
   compaction: {
@@ -1302,6 +1338,39 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       // No client request stops or resumes one engine subagent on ACP.
       reason: 'No ACP engine offers a per-subagent stop Station has wired.',
     },
+    builtInTools: { state: 'unenumerated' },
+    builtInToolControl: { state: 'none' },
+  },
+  // docs/decisions/remote-task-engines.md: a cloud coding agent working on
+  // the vendor's machines. Station sends the person's message and nothing
+  // else: no instructions, tools, skills or commands leave the host with it,
+  // and no approval or confinement applies there. The model picker lists the
+  // remote task connections; a chat runs on the one it picked.
+  'remote-task': {
+    engineId: toEngineId('remote-task'),
+    durability: REMOTE_TASK_ENGINE_DURABILITY,
+    subagentObservability: {
+      state: 'none',
+      reason: 'A remote task engine reports no subagents of its own.',
+    },
+    subagentControl: {
+      state: 'none',
+      reason: 'Station cannot act on work inside a remote task.',
+    },
+    systemPrompt: { state: 'unsupported' },
+    instructionsInFirstTurn: { state: 'unsupported' },
+    toolServers: { state: 'unsupported' },
+    skills: { state: 'unsupported' },
+    commands: { state: 'unsupported' },
+    // The picker's "model" is the remote task connection, fixed at start.
+    modelSelection: { state: 'session', channel: 'flag' },
+    toolPolicy: { state: 'unsupported' },
+    imageInput: {
+      state: 'unsupported',
+      reason: 'Station sends a remote task text only.',
+    },
+    // A follow-up reaches a running task only through the next turn.
+    midTurnSteer: false,
     builtInTools: { state: 'unenumerated' },
     builtInToolControl: { state: 'none' },
   },

@@ -33,6 +33,7 @@ import { AcpAdapter } from '../adapters/acp-adapter.js';
 import { ClaudeAdapter } from '../adapters/claude-adapter.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
+import { RemoteTaskAdapter } from '../adapters/remote-task-adapter.js';
 import { StationAgentAdapter } from '../adapters/station-agent-adapter.js';
 
 function stationAgentApprovalDeps() {
@@ -82,6 +83,17 @@ const INTERACTIVE_DISPATCH_ADAPTERS: {
       .capabilities,
   },
   { matrixKey: 'muse', capabilities: new MuseAdapter().metadata.capabilities },
+  {
+    matrixKey: 'remote-task',
+    capabilities: new RemoteTaskAdapter({
+      // No vendor is reached: these tests read declarations only.
+      service: {
+        readyConnections: () => [],
+        previewEnabled: () => false,
+      } as never,
+      resolveRepository: async () => undefined,
+    }).metadata.capabilities,
+  },
 ];
 
 describe('engine imageInput declaration', () => {

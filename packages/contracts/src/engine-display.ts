@@ -20,6 +20,8 @@ export function engineDisplayLabel(engineId: EngineId): string | null {
       return 'OpenCode';
     case 'acp':
       return 'Custom engine';
+    case 'remote-task':
+      return 'Remote task engine';
     default:
       return null;
   }
