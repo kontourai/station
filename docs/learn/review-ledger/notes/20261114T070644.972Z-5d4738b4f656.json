@@ -1,0 +1,9 @@
+{
+  "revision": "5a1786fcc7d0b14dd7e105a7a7e098daabca8754",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"orchestration-service.ts changed only in its first-turn context readers (authored prompt, Station instructions, Task brief are also due after an acp.session-started-fresh engine restart). The captured request-inspection flow does not depend on first-turn context, so the capture still shows current behavior.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"orchestration-service.ts changed only in its first-turn context readers (authored prompt, Station instructions, Task brief are also due after an acp.session-started-fresh engine restart). The captured request-inspection flow does not depend on first-turn context, so the capture still shows current behavior.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
