@@ -1519,16 +1519,31 @@ merge conflict fails the job and asks for `main` to be merged. Composition
 reflects `main` as of the PR's last event only: in the week to 2026-11-14, 94 of
 127 landed, captured PRs had gallery-relevant commits land after their last
 capture (median 1.2 hours, p90 8.2 hours), and nothing re-captures them; a push
-or a merge of `main` does. When the composed capture fails, the job captures
-the failing screens again on the bare base, from a worktree of it, and judges
-both with the base's `scripts/gallery-main-attribution.mjs` and findings judge.
-If every failure (screen and finding identity) also fails on `main`, the job
-passes with a warning naming that `main` commit, so a break already on `main`
-does not turn unrelated PRs red. A crash or test-level assertion with no
-failing screen, a failing screen `main` lacks, more than 40 failing screens, or
-an attribution that cannot run stays red. A PR failure hidden behind an earlier
-failing assertion in the same test is not seen until `main` is fixed, and an
-excused run has no pixel report. Merge-queue candidates still report the
+or a merge of `main` does. Re-running a job does not: a re-run keeps the original
+event's `github.sha`, so it composes with `main` as it was then. When the
+composed capture fails, the job captures the failing screens again on the bare
+base, from a worktree of it, and judges both with the base's
+`scripts/gallery-main-attribution.mjs` and findings judge. The job passes with a
+warning naming that `main` commit only when the composed capture is complete
+(a full selection that recorded every expected screen), every failure also fails
+on `main` the same way, and the screens that rendered still pass the
+report-only comparison's integrity checks. "The same way" is the screen and
+finding identity and, for a screen that did not render or whose audit threw,
+its error text after removing only ANSI codes, the appended console-error line,
+Playwright's call log, loopback ports, runner paths and the numbers on
+`Received` lines; the assertion message, matcher, `Expected` bound, locator and
+timeout bound must match. So a break already on `main` does not turn unrelated
+PRs red, while breaking the same screen another way stays red. A crash or
+test-level assertion with no failing screen, a failing screen `main` lacks,
+more than 40 failing screens, an incomplete capture, or an attribution that
+cannot run also stays red. A PR failure hidden behind an earlier failing
+assertion in the same test is not seen until `main` is fixed, a different
+console error on an otherwise identical failure is not distinguished, and the
+excused screens get no pixel report. The base judge is authoritative for honest
+PRs but is not a security boundary: the candidate's code has already run on the
+runner and could subvert it, which gives a malicious PR nothing it could not
+already forge through its own spec. Nothing may trust the PR Gallery
+conclusion, which is one reason it is not a required check. Merge-queue candidates still report the
 workflow's contexts, but the capture job skips there: Gallery is not a required
 context, so a candidate's capture could not stop a landing. Combined changes
 are otherwise captured after landing by `Nightly: Gallery` once a day, which
