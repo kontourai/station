@@ -24,13 +24,32 @@ name: "PR: Gallery"
 # rule that decides whether its own screens are photographed, and every
 # failure of it answers relevant=true.
 #
-# PRs compare their exact head with its own baseline. Merge groups compare
-# the synthesized candidate with that candidate's baseline, so independently
-# accepted visual changes must also work together before landing.
+# PRs compare their exact head with its own baseline. The capture does NOT
+# run on merge-queue candidates. Gallery is not a required ruleset context, so
+# a merge-group verdict could never stop a landing, and in one week 4 of the 9
+# candidates it failed landed anyway, each after ~18 minutes in a saturated
+# runner pool. Whether independently accepted visual changes work together is
+# therefore learned AFTER landing: Nightly: Gallery captures main once a day
+# (requested 07:30 UTC, observed hours late) and fails on a capture that does
+# not complete or an invalid comparison, with pixel differences advisory. It
+# does not run this job's product assertions (gallery-ui-findings.mjs); a
+# combination that breaks one is seen by the next gallery-relevant PR whose
+# head contains both changes, and by nothing earlier.
+#
+# The merge_group trigger stays, with the capture skipped at job level, so the
+# workflow still reports its contexts on every candidate: making Gallery a
+# required context later would otherwise leave the queue waiting on a check
+# that never arrives. Whoever makes it required must also drop that skip, or
+# the requirement passes vacuously. The classifier and the allowlist ceiling
+# take seconds and keep running there.
+#
+# The capture also skips on PR events while a PR is a draft, and for the
+# automation app's same-repository release PR; `ready_for_review` and later
+# pushes to a non-draft PR capture.
 on:
   pull_request_target:
     branches: [main]
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     branches: [main]
     types: [checks_requested]
@@ -148,7 +167,10 @@ jobs:
   gallery-diff:
     name: Gallery product assertions and pixel report
     needs: classify
-    if: always() && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')
+    # The draft and release-PR guard is identical in build-ios.yml and
+    # windows-pr-verification.yml (scripts/__tests__/ci-workflow-contract.test.ts).
+    # pull_request_target only: see the header for why merge groups skip it.
+    if: always() && github.event_name == 'pull_request_target' && (github.event_name != 'pull_request_target' || (!github.event.pull_request.draft && (github.event.pull_request.head.ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login != 'station-automation[bot]'))) && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')
     runs-on: ubuntu-22.04
     container:
       image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:9beb546099e11f52d62e505537914870e01a67e0e6b00ae41da4775324e73dbe

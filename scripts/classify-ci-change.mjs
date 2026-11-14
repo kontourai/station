@@ -39,7 +39,40 @@ const DEPENDENCY_FILES = new Set([
   'npm-shrinkwrap.json',
 ]);
 
-const IOS_VERIFICATION_FILES = new Set([
+/**
+ * iOS has two answers, because the macOS build (build-ios.yml, ~25 minutes on
+ * a 5-slot pool) is the long pole of every merge-queue candidate.
+ *
+ * NATIVE (`--scope ios`, pull_request_target and merge_group): inputs whose
+ * break is specific to the native app, so no Linux lane would see it first.
+ * - this workflow, its classifier, and the runtime smoke with its fixtures;
+ * - src-desktop/ (the Tauri crate, iOS project and configs), the Cargo
+ *   manifests/lockfiles/toolchain files and `.cargo/` config anywhere, and
+ *   patches/ (npm patches and the keyring crate's path dependency);
+ * - the dependency/toolchain manifests that pin the Tauri CLI and plugins
+ *   (package.json, pnpm-lock.yaml, pnpm-workspace.yaml, .nvmrc);
+ * - the native-client build inputs the job runs itself: vite.config.ts (its
+ *   `--mode native` branch), the native/iOS build-manifest writers, the
+ *   launch-screen stager and the channel-icon verifier;
+ * - the slice of src-ui that IS the native shell: src-ui/src/platform/ (the
+ *   Tauri bridges, native relay, `pluginBundleCapability.js` that lib.rs
+ *   `include_str!`s), src-ui/public/ (lib.rs `include_bytes!`s the channel
+ *   favicons; startup-theme.js runs before the bundle), and the boot path
+ *   every WKWebView launch runs first: index.html, main.tsx, boot.ts,
+ *   build-info.ts and the src-ui tsconfig.
+ *
+ * BROAD adds the rest of src-ui/ and the packages the bundle compiles
+ * (connect, contracts, sdk). They are product code that every Linux lane
+ * already builds, typechecks and drives in Chromium; what only the macOS
+ * build adds for them is "the same bundle still leaves startup in WKWebView",
+ * which breaks rarely and lands no worse than a red main. So a change touching
+ * only BROAD-minus-NATIVE paths is built after landing, by the coalesced main
+ * push run (`--scope ios-post-merge`), not before. That is a real trade: a
+ * WKWebView-only regression in, say, the pairing screens the smoke drives is
+ * caught on main (tracked by main-health.yml) instead of on the PR, and until
+ * it is fixed it also fails the next native candidate's merge-group build.
+ */
+const IOS_NATIVE_FILES = new Set([
   '.github/workflows/build-ios.yml',
   'scripts/classify-ci-change.mjs',
   'scripts/ios-simulator-runtime-smoke.mjs',
@@ -47,15 +80,32 @@ const IOS_VERIFICATION_FILES = new Set([
   'package.json',
   'pnpm-lock.yaml',
   'pnpm-workspace.yaml',
+  '.nvmrc',
+  'vite.config.ts',
+  'scripts/write-native-client-build-manifest.mjs',
+  'scripts/lib/desktop-build-manifest.mjs',
+  'scripts/write-ios-build-manifest.mjs',
+  'scripts/lib/ios-launch-screen.mjs',
+  'scripts/ios-channel-icons.mjs',
+  'src-ui/index.html',
+  'src-ui/src/main.tsx',
+  'src-ui/src/boot.ts',
+  'src-ui/src/build-info.ts',
+  'src-ui/tsconfig.json',
 ]);
-const IOS_VERIFICATION_PREFIXES = Object.freeze([
+const IOS_NATIVE_PREFIXES = Object.freeze([
   'src-desktop/',
+  'tests/ios-runtime-smoke/',
+  'patches/',
+  'src-ui/src/platform/',
+  'src-ui/public/',
+]);
+/** What only the post-merge build covers (see above). */
+const IOS_POST_MERGE_PREFIXES = Object.freeze([
   'src-ui/',
   'packages/connect/',
   'packages/contracts/',
   'packages/sdk/',
-  'tests/ios-runtime-smoke/',
-  'patches/',
 ]);
 
 /**
@@ -99,14 +149,18 @@ const DESKTOP_RUST_BASENAMES = new Set([
   'rust-toolchain.toml',
 ]);
 
-function isDesktopRustInput(changedPath) {
-  if (DESKTOP_RUST_FILES.has(changedPath)) return true;
-  if (DESKTOP_RUST_PREFIXES.some((prefix) => changedPath.startsWith(prefix)))
-    return true;
+function isCargoManifestOrConfig(changedPath) {
   if (changedPath.startsWith('.cargo/') || changedPath.includes('/.cargo/'))
     return true;
   const base = changedPath.slice(changedPath.lastIndexOf('/') + 1);
   return DESKTOP_RUST_BASENAMES.has(base);
+}
+
+function isDesktopRustInput(changedPath) {
+  if (DESKTOP_RUST_FILES.has(changedPath)) return true;
+  if (DESKTOP_RUST_PREFIXES.some((prefix) => changedPath.startsWith(prefix)))
+    return true;
+  return isCargoManifestOrConfig(changedPath);
 }
 
 /**
@@ -331,15 +385,44 @@ function isIosTestOnlyPath(path) {
   );
 }
 
+function isIosNativeInput(path) {
+  if (IOS_NATIVE_FILES.has(path) || isCargoManifestOrConfig(path)) return true;
+  return (
+    IOS_NATIVE_PREFIXES.some((prefix) => path.startsWith(prefix)) &&
+    !isIosTestOnlyPath(path)
+  );
+}
+
+function isIosBroadInput(path) {
+  if (isIosNativeInput(path)) return true;
+  return (
+    IOS_POST_MERGE_PREFIXES.some((prefix) => path.startsWith(prefix)) &&
+    !isIosTestOnlyPath(path)
+  );
+}
+
+/** Pre-landing: does this change need the macOS build before it lands? */
 export function classifyIosChangedPaths(paths) {
   const normalized = [...new Set(paths.filter(Boolean))];
   return {
-    relevant: normalized.some(
-      (path) =>
-        IOS_VERIFICATION_FILES.has(path) ||
-        (IOS_VERIFICATION_PREFIXES.some((prefix) => path.startsWith(prefix)) &&
-          !isIosTestOnlyPath(path)),
-    ),
+    relevant: normalized.some(isIosNativeInput),
+    classification: 'classified',
+    changedFiles: normalized.length,
+  };
+}
+
+/**
+ * Post-landing, over one main push's `before..after`: build only what the
+ * merge queue deliberately did not. The queue fast-forwards main to the
+ * candidate it tested, and that candidate's range is this push's range, so
+ * when any native input changed the merge group already built this exact
+ * tree. Only a range with a broad input and no native one is left unbuilt.
+ */
+export function classifyIosPostMergeChangedPaths(paths) {
+  const normalized = [...new Set(paths.filter(Boolean))];
+  return {
+    relevant:
+      normalized.some(isIosBroadInput) && !normalized.some(isIosNativeInput),
     classification: 'classified',
     changedFiles: normalized.length,
   };
@@ -380,6 +463,10 @@ export function classifyIosGitRange(options) {
   return classifyScopedGitRange(classifyIosChangedPaths, options);
 }
 
+export function classifyIosPostMergeGitRange(options) {
+  return classifyScopedGitRange(classifyIosPostMergeChangedPaths, options);
+}
+
 export function classifyDesktopRustGitRange(options) {
   return classifyScopedGitRange(classifyDesktopRustChangedPaths, options);
 }
@@ -391,6 +478,10 @@ export function classifyGalleryGitRange(options) {
 /** `--scope` values that answer a single relevant=true|false question. */
 const RELEVANCE_SCOPES = Object.freeze({
   ios: { label: 'iOS', classify: classifyIosGitRange },
+  'ios-post-merge': {
+    label: 'iOS post-merge',
+    classify: classifyIosPostMergeGitRange,
+  },
   'desktop-rust': {
     label: 'desktop Rust',
     classify: classifyDesktopRustGitRange,

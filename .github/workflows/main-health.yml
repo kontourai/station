@@ -18,6 +18,10 @@ on:
       # (two levels, within GitHub's limit of three). Its green runs have no
       # skipped jobs, so the close guard below can clear its tracker (#1315).
       - "Main: Android tests"
+      # Its main push run is the only iOS build of a UI-only change (see
+      # build-ios.yml). PR and merge-group runs fail the head_branch guard below;
+      # a push run that skipped its build never closes the tracker.
+      - "PR: iOS build"
     types: [completed]
 
 permissions:
