@@ -1322,7 +1322,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       state: 'declared',
       signals: ['lifecycle', 'usage', 'result'],
       evidence:
-        'SDK session events subagent.started (a snapshot of running children) / subagent.completed / subagent.failed (totalTokens, totalToolCalls, durationMs, error), and the task tool\'s tool.execution_complete as the reply (shared toolCallId); replayed by child-work-conformance',
+        "SDK session events subagent.started (a snapshot of running children) / subagent.completed / subagent.failed (totalTokens, totalToolCalls, durationMs, error), and the task tool's tool.execution_complete as the reply (shared toolCallId); replayed by child-work-conformance",
       adapterModule: 'copilot-sdk-events.ts',
     },
     subagentControl: {
