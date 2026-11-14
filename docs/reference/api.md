@@ -1107,8 +1107,10 @@ reacted. The stored message row is never rewritten.
   signature. Each uploader may hold 1280 files in a room. Deleting a message
   releases its files, and each upload first releases that uploader's unsent
   files older than a day; shared bytes are removed once no file names them.
-  Account-bound devices may upload and read room files; unlike Task-room
-  files, these never reach an Agent request.
+  Account-bound devices may read room files, and send messages, reactions,
+  edits and files once the operator grants the device operate scope (account
+  binding starts read-only); unlike Task-room files, these never reach an
+  Agent request.
 - **Read state.** Reactions, edits and deletes do not move the room's
   `checkpoint.lastSeq`, which read markers count, so they never mark a channel
   unread. They do wake `/events`, which sends `changed` with the same `lastSeq`

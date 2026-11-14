@@ -95,7 +95,12 @@ async function send(room: Locator, text: string) {
   const composer = room.getByRole('textbox', { name: 'Message the project' });
   await composer.fill(text);
   await room.getByRole('button', { name: 'Send message' }).click();
-  await expect(rowOf(room, text)).toBeVisible();
+  // Wait for the server's row, not the pending one: confirming can regroup it
+  // under the previous message and move the rows under a resting pointer.
+  const row = rowOf(room, text);
+  await expect(row).toBeVisible();
+  await expect(row).not.toHaveClass(/room-row--pending/);
+  await expect(row.getByRole('button', { name: /^React to / })).toHaveCount(1);
 }
 
 function rowOf(room: Locator, text: string) {
@@ -104,10 +109,14 @@ function rowOf(room: Locator, text: string) {
     .filter({ has: room.page().getByText(text, { exact: true }) });
 }
 
-/** Desktop rows show their actions on hover or focus. */
+/**
+ * Desktop rows show their actions on hover or focus. Playwright counts an
+ * `opacity: 0` bar as visible, so wait until the hover has really shown it.
+ */
 async function rowAction(room: Locator, text: string, name: string | RegExp) {
   const row = rowOf(room, text);
   await row.hover();
+  await expect(row.locator('.room-row__actions')).toHaveCSS('opacity', '1');
   return row.getByRole('button', { name });
 }
 
@@ -213,7 +222,9 @@ test.describe
         });
         await expect(composer).toHaveValue('Shipping on Friday.');
         await composer.fill('Shipping on Monday.');
-        await a.room.getByRole('button', { name: 'Save edit' }).click();
+        await a.room
+          .getByRole('button', { name: 'Save edit', exact: true })
+          .click();
         const edited = rowOf(a.room, 'Shipping on Monday.');
         await expect(edited.getByText('edited', { exact: true })).toBeVisible();
         await expect(
@@ -238,7 +249,9 @@ test.describe
         const confirm = a.page.getByRole('alertdialog', {
           name: 'Delete this message?',
         });
-        await confirm.getByRole('button', { name: 'Delete' }).click();
+        await confirm
+          .getByRole('button', { name: 'Delete', exact: true })
+          .click();
         await expect(a.room.getByText('Wrong channel, sorry.')).toHaveCount(0);
         await expect(b.room.getByText('Wrong channel, sorry.')).toHaveCount(0);
         await expect(b.room.getByText('Message deleted')).toBeVisible();
@@ -314,12 +327,29 @@ test.describe
         await react.click();
         const picker = a.page.getByRole('dialog', { name: 'Add reaction' });
         await expect(picker).toBeInViewport({ ratio: 1 });
+        await picker.getByRole('searchbox').fill('party');
         await picker.getByRole('button', { name: '🎉', exact: true }).click();
         await expect(
           rowOf(a.room, 'Narrow check.').getByRole('button', {
             name: /^🎉 1:/,
           }),
         ).toBeVisible();
+        // Keyboard and focus reach the actions without a pointer: move the
+        // pointer away, then focus the row's action.
+        await a.page.mouse.move(1, 1);
+        await a.room
+          .getByRole('textbox', { name: 'Message the project' })
+          .focus();
+        const row = rowOf(a.room, 'Narrow check.');
+        await expect(row.locator('.room-row__actions')).toHaveCSS(
+          'opacity',
+          '0',
+        );
+        await row.getByRole('button', { name: /^React to / }).focus();
+        await expect(row.locator('.room-row__actions')).toHaveCSS(
+          'opacity',
+          '1',
+        );
         await expectNoHorizontalScroll(a.page);
       } finally {
         await a.context.close();
@@ -430,6 +460,36 @@ test.describe
           }[]
         ).find((message) => message.text === 'Only I may change this.')!;
         expect(operatorMessage).toBeTruthy();
+        // Account binding starts read-only: a room write is refused by the
+        // device's transport scope until the operator grants operate to it.
+        const readOnly = await asGuest(`/api/projects/${SLUG}/room/messages`, {
+          ...guards,
+          intentId: randomUUID(),
+          text: 'Before the grant.',
+        });
+        expect(readOnly.status, readOnly.text).toBe(403);
+        expect(readOnly.text).toContain('insufficient_scope');
+        const devices = await operatorJson('/api/pairing/devices');
+        const bound = (
+          devices.body.devices as {
+            id: string;
+            revokedAt: number | null;
+            principalBinding?: { kind?: string };
+          }[]
+        ).filter(
+          (device) =>
+            device.revokedAt === null &&
+            device.principalBinding?.kind === 'account',
+        );
+        expect(bound).toHaveLength(1);
+        const granted = await operatorJson(
+          `/api/pairing/devices/${bound[0]!.id}/scope`,
+          {
+            method: 'POST',
+            body: { scope: ['orchestration:read', 'orchestration:operate'] },
+          },
+        );
+        expect(granted.status, JSON.stringify(granted.body)).toBe(200);
         const posted = await asGuest(`/api/projects/${SLUG}/room/messages`, {
           ...guards,
           intentId: randomUUID(),
@@ -472,10 +532,10 @@ test.describe
           theirs.getByRole('button', { name: /^React to / }),
         ).toBeVisible();
         await expect(
-          theirs.getByRole('button', { name: 'Edit message' }),
+          theirs.getByRole('button', { name: 'Edit message', exact: true }),
         ).toHaveCount(0);
         await expect(
-          theirs.getByRole('button', { name: 'Delete message' }),
+          theirs.getByRole('button', { name: 'Delete message', exact: true }),
         ).toHaveCount(0);
         // Nor does the server let the operator change it.
         const operatorView = await operatorJson(`/api/projects/${SLUG}/room`);

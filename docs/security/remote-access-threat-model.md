@@ -343,7 +343,8 @@ they flow into Agent requests that run on the operator's credentials (#4136).
 Project-room files differ: an Agent request there captures only message text,
 and each file is bound to the person who uploaded it, so account-bound members
 may upload and read Project-room files under the room's `discuss` and `view`
-checks. A changed membership revision
+checks; an upload, like any room write, also needs the Device's operate scope,
+which account binding does not grant by default. A changed membership revision
 invalidates the captured stream admission; an in-process notification prompts
 closure and the idle cadence rechecks within its 15-second interval. Per-delivery
 checks remain. Neither the member preview nor a Task share grants host execution
