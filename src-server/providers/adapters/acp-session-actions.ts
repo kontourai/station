@@ -9,7 +9,7 @@
  * Engines name their rewind and fork points two ways. Kiro names a turn by
  * the id it assigned the turn's user message; Grok Build names it by the
  * prompt's index in the conversation, listed by `x.ai/rewind/points` with
- * the time the prompt started (`created_at`). Grok 1.0.77 gives every prompt
+ * the time the point was made (`created_at`). Grok 1.0.77 gives every prompt
  * it runs an index, a wake included, and lists points only for prompts a
  * client sent (live: points 0, 1, 2 and 4 after a wake ran as 3). Each
  * binding says which, and the adapter resolves a Station turn to that point.
@@ -86,7 +86,7 @@ const REWIND_BINDINGS: ReadonlyArray<
     method: '_x.ai/rewind/execute',
     pointsMethod: '_x.ai/rewind/points',
     evidence:
-      'grok 1.0.77 live captures (grok-1.0.77-session-frames.jsonl): `rewind-preview-commit` (one point per client prompt, none for a mid-turn interject; each point created_at 10-22 ms after the queue/changed naming that prompt running; force:false answered success:false with clean_files and no conflicts; force:true answered success:true reverted_files and removed the file) and `rewind-points-after-wake` (points 0, 1, 2, 4: the wake ran as index 3 with no point). xai-org/grok-build session/acp_session_impl/rewind.rs, helpers/rewind_preview.rs',
+      'grok 1.0.77 live captures (grok-1.0.77-session-frames.jsonl): `rewind-preview-commit` (one point per client prompt, none for a mid-turn interject; each point created_at 10-22 ms after the first queue/changed naming that prompt running, measured on the raw capture, whose relative times the scrubbed fixture does not keep; force:false answered success:false with clean_files and no conflicts; force:true answered success:true reverted_files and removed the file) and `rewind-points-after-wake` (points 0, 1, 2, 4: the wake ran as index 3 with no point). xai-org/grok-build session/acp_session_impl/rewind.rs, helpers/rewind_preview.rs',
   },
 ];
 
@@ -179,8 +179,8 @@ const REWIND_PREVIEW_MAX_CHARS = 1024;
  * `{rewind_points: [{prompt_index, prompt_preview?, created_at?}]}`. The
  * indexes are the engine's own and need not be consecutive (a wake takes one
  * and lists no point), but they must rise; anything else is unreadable
- * (`undefined`). `createdAt` is when the prompt started, in epoch ms; a point
- * copied from another session (a fork, a load) carries none.
+ * (`undefined`). `createdAt` is when the engine made the point, in epoch ms;
+ * a point copied into a fork carries none.
  */
 export function readAcpRewindPoints(
   result: unknown,

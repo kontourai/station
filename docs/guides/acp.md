@@ -726,21 +726,29 @@ session's own continuity, which
   id. Observed on grok 1.0.77: every prompt Grok runs takes an index, a wake
   included, but it lists a point only for a prompt a client sent (points 0,
   1, 2 and 4, the wake having run as 3), and a mid-turn steer takes neither.
-  So counting points cannot locate a turn. Each point carries the time its
-  prompt started (`created_at`, live 10 to 22 ms after the
-  `_x.ai/queue/changed` notice naming that prompt running), and the ledger
-  keeps, for a Grok turn, when Station saw that notice and the start of the
-  turn's prompt text. A rewind reads `_x.ai/rewind/points` and takes the one
-  point started within a second of the chosen turn's notice; that point's
-  preview must also be the one Grok lists for the turn's text (its first
-  non-empty line, cut to 57 characters plus `...` when longer than 60). No
-  such point, two of them, or a preview that differs fails the rewind with
-  nothing changed: a point copied by a fork or load carries no time, an
-  engine on another host may not share Station's clock, and a prompt that
-  opens with a tag block Grok strips from its preview never matches. The
-  preview alone rarely tells turns apart, since Station puts the same
-  ambient line (the timezone) first in every prompt. The chosen point's
-  `prompt_index` is the one sent. It then sends `_x.ai/rewind/execute { sessionId,
+  So counting points cannot locate a turn. Each point carries `created_at`,
+  the time Grok made it: in a raw live capture on one host (not checked in;
+  the scrubbed fixture keeps the points' times but not the capture's), 10 to
+  22 ms after the `_x.ai/queue/changed` notice first naming that prompt
+  running, and later when a prompt hook runs first. Grok runs one prompt at
+  a time, so the adapter keeps when it first saw each prompt Grok reported
+  running (a wake's too), and a turn's point is the one point made between
+  its prompt's first notice, less a second for Station reading the notice
+  late, and the next prompt's first notice. Only a prompt's first notice
+  counts: Grok restates the running prompt, and while a cancel finishes it
+  still names the old one. That point's preview must also be the one Grok
+  lists for the turn's text (its first non-empty line, cut to 57 characters
+  plus `...` when longer than 60); Station puts the same ambient line (the
+  timezone) first in every prompt, so the preview alone rarely tells turns
+  apart. Every turn from the chosen one to the last must resolve this way,
+  each to its own point, except that a later turn that is a slash command
+  may have none (Grok can run one itself). Otherwise the rewind fails with
+  nothing changed: no point in a window, two, or a preview that differs. A
+  point copied into a fork carries no time and never matches, and a clock
+  offset between Station and an engine on another host that moves points
+  out of their windows leaves some turn without one. A prompt that opens
+  with a tag block Grok strips from its preview never matches either. The
+  chosen point's `prompt_index` is the one sent. It then sends `_x.ai/rewind/execute { sessionId,
   targetPromptIndex, force: false, mode: 'all' }`, Grok's dry run. When that
   names `conflicts` (files changed outside Grok since the turn, which
   applying would overwrite), the rewind fails, naming them, and nothing is

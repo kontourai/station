@@ -879,6 +879,13 @@ export interface AcpSessionRecord {
    * so a late repeat of one never opens a provider turn.
    */
   knownEnginePromptIds?: string[];
+  /**
+   * When Station first saw the engine report each prompt it ran (a Station
+   * turn's or its own), by engine prompt id, oldest first and bounded. The
+   * engine runs one prompt at a time, so a prompt's rewind point was created
+   * between its first notice and the next prompt's.
+   */
+  enginePromptStarts?: Map<string, number>;
   /** Whether a frame naming another session was dropped (logged once). */
   droppedForeignFrame?: boolean;
   /** Drops `session/update` while a relaunch replays history (`session/load`). */
@@ -1111,10 +1118,11 @@ export const ACP_TURN_MESSAGES_MAX = 500;
 /** How much of a turn's prompt text the ledger keeps to check a rewind point. */
 const ACP_TURN_PROMPT_TEXT_MAX = 1024;
 /**
- * How far a rewind point's start may be from when Station saw the engine
- * start that turn's prompt (live: 10-22 ms on one host).
+ * How long before Station read a prompt's first notice its rewind point may
+ * have been created: Station reads the notice late when its own event loop
+ * is busy (live, on one host, the point came 10-22 ms after the notice).
  */
-const ACP_REWIND_POINT_TIME_TOLERANCE_MS = 1000;
+const ACP_REWIND_POINT_EARLY_MS = 1000;
 
 /**
  * For a managed-runtime connection, the installed runtime readiness should
@@ -3637,7 +3645,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         ...(record.activePromptText !== undefined
           ? { promptText: record.activePromptText }
           : {}),
-        startedAt: Date.now(),
+        startedAt: record.enginePromptStarts?.get(messageId) ?? Date.now(),
       });
       if (record.turnMessages.length > ACP_TURN_MESSAGES_MAX)
         record.turnMessages.splice(
@@ -3739,15 +3747,20 @@ export class AcpAdapter implements ProviderAdapterShape {
 
   /**
    * Resolve a Station turn to the engine's prompt index, on an engine that
-   * names rewind and fork points by index. Each point says when its prompt
-   * started (`created_at`; live, 10-22 ms after the engine's own notice that
-   * it was running it), and the ledger keeps when Station saw that notice
-   * for each turn, so the turn's point is the one point started within
-   * `ACP_REWIND_POINT_TIME_TOLERANCE_MS` of it. Counting points is no anchor:
-   * a wake takes an index without a point, and a prompt the engine handles
-   * itself (a built-in slash command) takes neither. The point's preview must
-   * also be this turn's. No such point, or more than one, resolves nothing;
-   * so does an engine whose clock is not Station's (a remote host).
+   * names rewind and fork points by index. Counting points is no anchor: a
+   * wake takes an index without a point, and a prompt the engine handles
+   * itself (a built-in slash command) takes neither. Each point says when it
+   * was created (`created_at`; live, 10-22 ms after the engine's first notice
+   * of its prompt, and later when a prompt hook runs first), and the engine
+   * runs one prompt at a time, so a turn's point is the one point created
+   * between its prompt's first notice (less `ACP_REWIND_POINT_EARLY_MS`, for
+   * Station's own lag in reading it) and the next prompt's first notice. Its
+   * preview must also be the turn's. Every turn from the chosen one to the
+   * last must resolve so, each to its own point: no point, two, or a preview
+   * that differs resolves nothing, and a clock offset that moves points out
+   * of their windows leaves some turn without one rather than choosing a
+   * neighbour. The one exception is a later turn whose text is a slash
+   * command: the engine may have run it itself, without a point.
    */
   private async promptIndexForTurn(
     record: AcpSessionRecord,
@@ -3768,27 +3781,48 @@ export class AcpAdapter implements ProviderAdapterShape {
       return {
         failed: `${record.engineName} listed its rewind points in a shape Station cannot read. Nothing was changed.`,
       };
-    const turn = turns[position];
-    const startedAt = turn?.startedAt;
-    const near =
-      startedAt === undefined
-        ? []
-        : points.filter(
-            (point) =>
-              point.createdAt !== undefined &&
-              Math.abs(point.createdAt - startedAt) <=
-                ACP_REWIND_POINT_TIME_TOLERANCE_MS,
-          );
-    const [point] = near;
-    if (
-      near.length !== 1 ||
-      !point ||
-      !acpRewindPointMatches(point, turn?.promptText)
-    )
-      return {
-        failed: `${record.engineName}'s rewind points do not line up with this conversation's turns, so Station cannot tell which one is this turn. Nothing was changed.`,
-      };
-    return { index: point.index };
+    const starts = [...(record.enginePromptStarts?.values() ?? [])];
+    const resolved: number[] = [];
+    for (const turn of turns.slice(position)) {
+      const startedAt = turn.startedAt;
+      const next = starts.find(
+        (at) => startedAt !== undefined && at > startedAt,
+      );
+      const inWindow =
+        startedAt === undefined
+          ? []
+          : points.filter(
+              (point) =>
+                point.createdAt !== undefined &&
+                point.createdAt >= startedAt - ACP_REWIND_POINT_EARLY_MS &&
+                (next === undefined || point.createdAt < next),
+            );
+      const [point] = inWindow;
+      // A later turn that was a slash command the engine ran itself has no
+      // point, and that does not move the others.
+      if (
+        inWindow.length === 0 &&
+        resolved.length > 0 &&
+        turn.promptText?.trimStart().startsWith('/')
+      )
+        continue;
+      if (
+        inWindow.length !== 1 ||
+        !point ||
+        !acpRewindPointMatches(point, turn.promptText) ||
+        point.index <= (resolved.at(-1) ?? -1)
+      )
+        return {
+          failed: `${record.engineName}'s rewind points do not line up with this conversation's turns, so Station cannot tell which one is this turn. Nothing was changed.`,
+        };
+      resolved.push(point.index);
+    }
+    const [index] = resolved;
+    return index === undefined
+      ? {
+          failed: `${record.engineName}'s rewind points do not line up with this conversation's turns, so Station cannot tell which one is this turn. Nothing was changed.`,
+        }
+      : { index };
   }
 
   /** Race `answer` against the rewind deadline; read-only steps only. */
@@ -5561,12 +5595,21 @@ export class AcpAdapter implements ProviderAdapterShape {
     enginePromptId: string,
   ): void {
     if (record.stopping) return;
+    const starts = (record.enginePromptStarts ??= new Map());
+    // Only a prompt's first notice says it started: the engine restates the
+    // running prompt, and while a cancel finishes it still names the old one.
+    const first = !starts.has(enginePromptId);
+    if (first) {
+      starts.set(enginePromptId, Date.now());
+      if (starts.size > ACP_TURN_MESSAGES_MAX)
+        starts.delete(starts.keys().next().value as string);
+    }
     if (record.activeTurnId) {
       if (!record.providerTurn) {
         rememberEnginePrompt(record, enginePromptId);
         // The engine started this turn's prompt: it is a rewind and fork
         // point, in the order the engine ran it.
-        this.recordTurnPrompt(record, enginePromptId);
+        if (first) this.recordTurnPrompt(record, enginePromptId);
       }
       return;
     }

@@ -134,11 +134,12 @@ frames, scrubbed of host paths, ids and private names, are
 - **Rewind and fork name a prompt by index.** Grok declares neither, so both
   are keyed on its handshake identity (`acp-session-actions.ts`). On 1.0.77
   every prompt it runs takes an index but only a client's is listed as a
-  point, so points cannot be counted. A Station turn's point is the one whose
-  `created_at` is within a second of when Station saw Grok start that
-  turn's prompt, and its `prompt_preview` must also match; otherwise nothing
-  is sent. Previews alone do not tell turns apart: Station's ambient
-  timezone line opens every prompt. A rewind is a dry run
+  point, so points cannot be counted. Grok runs one prompt at a time, so a
+  Station turn's point is the one made between its prompt's first notice
+  and the next prompt's, and its `prompt_preview` must also match; every
+  later turn must resolve the same way, or nothing is sent. Previews alone
+  do not tell turns apart: Station's ambient timezone line opens every
+  prompt. A rewind is a dry run
   (`force: false`) first; files changed outside the engine since then fail
   it rather than being overwritten. A fork copies through the named prompt,
   inclusive.
