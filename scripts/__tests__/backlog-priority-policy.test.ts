@@ -1,7 +1,13 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterAll, describe, expect, test } from 'vitest';
 import {
   BACKLOG_POLICY,
@@ -191,21 +197,29 @@ describe('backlog priority policy', () => {
      * exit status: the summary is printed from `main`, and the refusal only
      * exists there.
      */
-    function runWithStubbedGh(response: string) {
+    function runWithStubbedGh(
+      response: string,
+      { failure = false, summary = '' } = {},
+    ) {
       const directory = mkdtempSync(join(tmpdir(), 'backlog-gate-'));
       directories.push(directory);
       writeFileSync(
         join(directory, 'gh'),
-        `#!/bin/sh\ncat <<'JSON'\n${response}\nJSON\n`,
+        failure
+          ? // The transport failure shape gh prints for a 5xx answer.
+            `#!/bin/sh\necho 'gh: Server Error (HTTP 502)' >&2\nexit 1\n`
+          : `#!/bin/sh\ncat <<'JSON'\n${response}\nJSON\n`,
         { mode: 0o755 },
       );
+      const { GITHUB_STEP_SUMMARY: _dropped, ...env } = process.env;
       return spawnSync(
         process.execPath,
         ['scripts/backlog-priority-policy.mjs'],
         {
           encoding: 'utf8',
           env: {
-            ...process.env,
+            ...env,
+            ...(summary ? { GITHUB_STEP_SUMMARY: summary } : {}),
             GITHUB_REPOSITORY: 'kontourai/station',
             PATH: `${directory}:${process.env.PATH}`,
           },
@@ -234,17 +248,92 @@ describe('backlog priority policy', () => {
       expect(result.stderr).toContain('Read 1 of 361');
     });
 
-    test('a complete read is still accepted, with its findings', () => {
-      // Without this, the two above are satisfied by a gate that refuses
-      // everything. An unclassified issue also has to still be REPORTED, so
-      // the completeness check cannot be swallowing the findings it guards.
+    // Report-only: findings are reported (annotation and job summary) and
+    // exit 0. Without this, the two above are satisfied by a gate that
+    // refuses everything; an unclassified issue also has to still be
+    // REPORTED, so the completeness check cannot swallow the findings.
+    test('a complete read reports its findings and exits 0', () => {
+      const directory = mkdtempSync(join(tmpdir(), 'backlog-summary-'));
+      directories.push(directory);
+      const summary = join(directory, 'summary.md');
       const result = runWithStubbedGh(
         connection([node(1, [p2]), node(2, [])], 2),
+        { summary },
       );
 
       expect(result.stdout).toContain('"open":2');
-      expect(result.stderr).toContain('Unclassified open issues: #2');
+      expect(result.stderr).toContain(
+        '::warning title=Backlog policy::Unclassified open issues: #2.',
+      );
+      const written = readFileSync(summary, 'utf8');
+      expect(written).toContain('Unclassified: 1.');
+      expect(written).toContain('- Unclassified open issues: #2.');
+      expect(result.status).toBe(0);
+    });
+
+    test('an API failure still fails', () => {
+      const result = runWithStubbedGh('', { failure: true });
+
+      expect(result.stderr).toContain('HTTP 502');
+      expect(result.stdout).toBe('');
       expect(result.status).not.toBe(0);
+    });
+
+    // The workflow runs the label check first in the same `bash -e` step;
+    // live-label drift and a malformed manifest exit non-zero there, before
+    // the report-only policy runs.
+    test('label drift and a malformed manifest still fail the label check', () => {
+      const directory = mkdtempSync(join(tmpdir(), 'backlog-labels-'));
+      directories.push(directory);
+      const manifest = JSON.parse(
+        readFileSync('.github/labels.json', 'utf8'),
+      ) as { labels: { name: string; color: string; description: string }[] };
+      // The shape the labels API returns, as the workflow saves it.
+      const live = manifest.labels.map((label, index) => ({
+        id: index + 1,
+        node_id: `LA_${index + 1}`,
+        url: `https://api.github.com/repos/kontourai/station/labels/${encodeURIComponent(label.name)}`,
+        default: false,
+        ...label,
+      }));
+      const check = (labels: object[]) => {
+        const input = join(directory, `live-${labels.length}.json`);
+        writeFileSync(input, JSON.stringify(labels));
+        return spawnSync(
+          process.execPath,
+          ['scripts/label-manifest.mjs', `--input=${input}`],
+          { encoding: 'utf8' },
+        );
+      };
+      expect(check(live).status).toBe(0);
+      const drifted = check([
+        ...live,
+        { ...live[0], id: 999, name: 'surprise' },
+      ]);
+      expect(drifted.status).not.toBe(0);
+      expect(drifted.stderr).toContain('Unexpected live labels: surprise.');
+      const truncated = check(live.slice(1));
+      expect(truncated.status).not.toBe(0);
+      expect(truncated.stderr).toContain('Missing live labels: P1.');
+      // The manifest itself is read from the working directory.
+      const root = mkdtempSync(join(tmpdir(), 'backlog-manifest-'));
+      directories.push(root);
+      mkdirSync(join(root, '.github'));
+      writeFileSync(join(root, '.github', 'labels.json'), '{"labels": 1}');
+      const malformed = spawnSync(
+        process.execPath,
+        [resolve('scripts/label-manifest.mjs')],
+        { cwd: root, encoding: 'utf8' },
+      );
+      expect(malformed.status).not.toBe(0);
+      expect(malformed.stderr).toContain('schemaVersion 1');
+      const workflow = readFileSync(
+        '.github/workflows/backlog-priority-policy.yml',
+        'utf8',
+      );
+      expect(workflow.indexOf('node scripts/label-manifest.mjs')).toBeLessThan(
+        workflow.indexOf('node scripts/backlog-priority-policy.mjs'),
+      );
     });
 
     test('a complete and fully classified read exits clean', () => {

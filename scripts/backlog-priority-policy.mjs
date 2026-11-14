@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import process from 'node:process';
 import { validateIssueLabelAxes } from './label-manifest.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -255,12 +255,34 @@ function parseInputPath(argv) {
   return argv[index + 1];
 }
 
+/**
+ * Report-only: policy findings are printed, annotated and written to the job
+ * summary, and the process still exits 0. A permanently red daily run was
+ * ignored, so the red no longer carries information. An unreadable or
+ * partial backlog is not a finding: `readIssues` throws, and the process
+ * exits non-zero, as does the label-manifest check the workflow runs first.
+ */
 function main() {
   const issues = readIssues(parseInputPath(process.argv.slice(2)));
   const result = evaluateBacklogPriorityPolicy(issues);
   console.log(JSON.stringify(result.summary));
-  for (const finding of result.findings) console.error(`FAIL: ${finding}`);
-  if (result.findings.length > 0) process.exitCode = 1;
+  for (const finding of result.findings)
+    console.error(`::warning title=Backlog policy::${finding}`);
+  const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+  if (summaryPath)
+    appendFileSync(
+      summaryPath,
+      [
+        '## Backlog policy',
+        '',
+        `Open issues: ${result.summary.open}. Actionable P1: ${result.summary.actionableP1}. Unclassified: ${result.summary.unclassified}.`,
+        '',
+        ...(result.findings.length
+          ? result.findings.map((finding) => `- ${finding}`)
+          : ['No findings.']),
+        '',
+      ].join('\n'),
+    );
 }
 
 if (invokedDirectly(import.meta.url)) main();
