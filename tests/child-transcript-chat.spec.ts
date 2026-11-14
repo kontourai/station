@@ -115,6 +115,11 @@ async function seed(page: import('@playwright/test').Page) {
                     role: 'assistant',
                     text: '## Child review\n\nThe files are ready.',
                   },
+                  {
+                    kind: 'tool-result',
+                    message: 2,
+                    text: '',
+                  },
                 ],
               },
             },
@@ -161,6 +166,7 @@ for (const viewport of [
         childLog.getByRole('heading', { name: 'Child review' }),
       ).toBeVisible();
       await expect(childLog).toContainText('Read the child files');
+      await expect(childLog).toContainText('Text output unavailable.');
       await page.screenshot({
         path: testInfo.outputPath(`child-chat-${viewport.width}-${theme}.png`),
       });
