@@ -656,10 +656,16 @@ test.describe
       // Space, until the room says it keeps no more.
       const pageBack = async (client: Client) => {
         for (let press = 0; press < 25; press++) {
-          if (await limit(client).count()) break;
           const older = client.room.getByRole('button', {
             name: 'Load earlier messages',
+            exact: true,
           });
+          // A page the list loads on its own (scrolling to the top) can be
+          // the last one: wait for either the button or the limit note.
+          await expect(older.or(limit(client))).toBeVisible({
+            timeout: 30_000,
+          });
+          if (await limit(client).count()) break;
           await older.focus();
           await client.page.keyboard.press(press % 2 ? 'Space' : 'Enter');
           // The button names itself "Loading earlier messages" while a page
