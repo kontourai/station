@@ -2994,8 +2994,10 @@ every other engine-to-client Kiro extension (requests and
 `ENGINE_EXTENSION_BINDINGS`: each names its exact wire shape, its basis
 (`declared`, `client-announced` or `undeclared-engine`), what it was observed
 against (the scrubbed kiro-cli 2.35.0 capture in
-`src-server/services/acp/__tests__/fixtures/`, or a kirodotdev/kirocrew
-fixture path) and its consumer. A row's notification tuple binds only once
+`src-server/services/acp/__tests__/fixtures/`, a kirodotdev/kirocrew
+fixture path, or, for another engine's row, the vendor's own source at a
+named commit) and its consumer. Qwen Code's subagent marker is such a row:
+a `tool-call-meta-field` wire (top-level `_meta.provenance: 'subagent'`). A row's notification tuple binds only once
 `ENGINE_EXTENSION_CONSUMERS` marks its consumer implemented, and never over a
 tuple the table above already binds. Today eleven bind: Kiro v2's
 `mcp/server_initialized` and `mcp/server_init_failure` (`engine-mcp.status`)
@@ -3006,9 +3008,10 @@ should replace it. The `child-work` consumer is implemented in
 [`acp-child-work.ts`](../../src-server/providers/adapters/acp-child-work.ts):
 kiro-cli's `subagent/list_update` keeps its host-chrome notification row while
 its engine row reads the roster into `child-work.updated`, and a `tool_call`
-whose `_meta.kiro.kind` is `agent-subtask` is read the same way. An ACP
-engine whose handshake names neither reporter publishes `not-reported` at
-session start. The matrix cell's `perConnection` reason is what
+whose `_meta.kiro.kind` is `agent-subtask` is read the same way. Qwen Code's
+nested subagent tool calls list the subagent under the Agent tool call that
+runs it, until that call ends. An ACP engine whose handshake names no reporter
+publishes `not-reported` at session start. The matrix cell's `perConnection` reason is what
 `child-work-projection.ts` and the Agents pane fall back to for an ACP
 session with no report seen in this process.
 
