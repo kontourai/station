@@ -639,6 +639,18 @@ suites that import that package by name are selected (#3149). A version bump
 changes no source file, and both files escalate, so these explicit targets are
 what such a diff runs. Transitive lockfile changes are not followed, and a
 package imported by more than 16 suites defers them to `test-full`.
+A test-runtime environment package is the exception to both the sibling scope
+and that limit (#4631): when a manifest or the lockfile importers change the
+version of the package behind a Vitest environment (`jsdom` for the
+`@vitest-environment jsdom` docblock, by Vitest's own environment-to-package
+rule, with the root config's `test.environment` as the default), every suite
+running in that environment is selected, so the hosted plan runs the whole
+jsdom corpus in fast-checks and the merge queue instead of deferring it. The
+manifest edits' own `ci-fast` and global-rerun `test-full` deferrals remain
+and stay provisional. Vitest itself is not in that set: a Vitest bump affects
+every suite, which stays the full corpus `test-full` owns. The scan refuses a
+root config whose environment it cannot read exactly (a computed value,
+`environmentMatchGlobs`, `projects`).
 A workspace `package.json` must not reach related discovery: Vitest's default
 `forceRerunTriggers` match every `package.json`, so a hosted checkout selects
 the whole corpus and overruns the shard budget, while a checkout under a

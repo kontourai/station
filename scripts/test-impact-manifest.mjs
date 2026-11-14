@@ -2,8 +2,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   changedDependencies,
+  DEPENDENCY_IMPACT_SCOPE,
   DEPENDENCY_TEST_FANOUT_LIMIT,
   directImporterTests,
+  vitestEnvironmentSuites,
 } from './lib/dependency-change-scan.mjs';
 import {
   invertPathReadPins,
@@ -2288,6 +2290,7 @@ const DEPENDENCY_DEFERRAL_REASON =
  *   readBase: (path: string) => string | null,
  *   readHead?: (path: string) => string | null,
  *   testFiles?: readonly string[],
+ *   environmentSuites?: () => Map<string, string[]>,
  * }} options
  * @returns {readonly ImpactEdge[]}
  */
@@ -2300,16 +2303,55 @@ export function dependencyChangeEdges({
     return existsSync(absolute) ? readFileSync(absolute, 'utf8') : null;
   },
   testFiles,
+  environmentSuites = () =>
+    vitestEnvironmentSuites({ root, ...(testFiles ? { testFiles } : {}) }),
 }) {
-  const changes = changedDependencies({ root, paths, readBase, readHead });
-  if (!changes.size) return Object.freeze([]);
+  const everyChange = changedDependencies({
+    root,
+    paths,
+    readBase,
+    readHead,
+    scope: null,
+  });
+  if (!everyChange.size) return Object.freeze([]);
+  const changes = new Map(
+    [...everyChange].filter(([name]) =>
+      name.startsWith(DEPENDENCY_IMPACT_SCOPE),
+    ),
+  );
+  // #4631: a changed test-runtime environment package runs every suite in
+  // its environment. No fan-out limit: a hosted plan keeps every mapped
+  // target, and those suites are exactly what the bump can break. The
+  // broader deferrals the manifest edits raise (ci-fast, the global rerun's
+  // test-full) remain; this narrows what they leave unrun.
+  // Only a name outside the sibling scope can be an environment package;
+  // without one, no suite environment is read.
+  const runtimeSuites =
+    changes.size < everyChange.size ? environmentSuites() : new Map();
+  const runtimeEdges = [...everyChange].flatMap(([name, sources]) => {
+    const suites = runtimeSuites.get(name) ?? [];
+    if (!suites.length) return [];
+    return [...sources].sort().map((pattern) =>
+      Object.freeze({
+        pattern,
+        supplemental: true,
+        tests: Object.freeze(suites),
+        reason:
+          `test runtime dependency ${name} changed and this suite runs in ` +
+          'its Vitest environment; a version bump changes no source file ' +
+          'the import graph could follow (#4631)',
+      }),
+    );
+  });
+  if (!changes.size) return Object.freeze(runtimeEdges);
   const importers = directImporterTests({
     root,
     names: changes.keys(),
     ...(testFiles ? { testFiles } : {}),
   });
-  return Object.freeze(
-    [...changes].flatMap(([name, sources]) => {
+  return Object.freeze([
+    ...runtimeEdges,
+    ...[...changes].flatMap(([name, sources]) => {
       const tests = importers.get(name) ?? [];
       if (!tests.length) return [];
       return [...sources].sort().map((pattern) =>
@@ -2331,7 +2373,7 @@ export function dependencyChangeEdges({
             }),
       );
     }),
-  );
+  ]);
 }
 
 /**
