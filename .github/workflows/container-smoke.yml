@@ -103,7 +103,7 @@ jobs:
       - name: Build, pair, persist, and clean up
         env:
           STATION_RELEASE_SHA: ${{ github.sha }}
-          STATION_RELEASE_REF: v0.0.0-preview.1
+          STATION_RELEASE_REF: v0.0.0-rc.1
           STATION_RELEASE_CREATED_AT: ${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}
         run: scripts/container-smoke.sh
       - name: Verify public-ingress protocol and port isolation
