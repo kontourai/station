@@ -640,7 +640,23 @@ jobs:
       - name: Run Android viewport tests
         env:
           PW_REPORTER: line,html
+          # The job failure manifest goes outside the workspace; see
+          # scripts/lib/qualification-failure-manifest.mjs.
+          STATION_QUALIFICATION_MANIFEST_DIR: ${{ runner.temp }}/qualification-manifest
+          STATION_QUALIFICATION_JOB_LABEL: Mobile Playwright (Android viewport)
         run: npm run test:android
+
+      # Read only for failed jobs: the failure signal treats a failed job
+      # without a manifest as unexplained. Uploading never changes the verdict.
+      - name: Retain the qualification failure manifest
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qualification-manifest-${{ github.job }}-${{ strategy.job-index }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qualification-manifest/job-manifest.json
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Retain failure diagnostics
         if: failure()

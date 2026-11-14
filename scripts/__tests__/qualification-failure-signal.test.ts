@@ -640,10 +640,18 @@ describe('workflow wiring', () => {
 
   it('writes a labelled manifest from every driver job and uploads it on failure', () => {
     const { jobs } = workflow('full-regression.yml');
-    for (const id of ['static', 'ordinary', 'process-heavy', 'exclusive']) {
+    for (const id of [
+      'static',
+      'ordinary',
+      'process-heavy',
+      'exclusive',
+      'android-viewport',
+    ]) {
       const steps = jobs[id].steps;
       const run = steps.find(
-        (step: any) => step.name === 'Run full-regression phases',
+        (step: any) =>
+          step.name === 'Run full-regression phases' ||
+          step.name === 'Run Android viewport tests',
       );
       expect(run.env.STATION_QUALIFICATION_JOB_LABEL, id).toBe(jobs[id].name);
       expect(run.env.STATION_QUALIFICATION_MANIFEST_DIR, id).toBe(

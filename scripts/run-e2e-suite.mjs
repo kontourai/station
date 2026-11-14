@@ -56,6 +56,14 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from './lib/owned-process.mjs';
+import { playwrightGroup } from './lib/playwright-failure-manifest.mjs';
+import {
+  buildJobManifest,
+  clipText,
+  JOB_LABEL_ENV,
+  JOB_MANIFEST_FILE,
+  MANIFEST_DIR_ENV,
+} from './lib/qualification-failure-manifest.mjs';
 
 installNodeHttpCompatibility();
 
@@ -368,7 +376,129 @@ async function run(command, args, options = {}) {
   const execution = startOwned(command, args, options, command);
   const result = await settleE2EExecution(execution, command);
   if (result.status === 0) return;
-  throw new Error(`${command} ${args.join(' ')} exited with ${result.status}`);
+  const error = new Error(
+    `${command} ${args.join(' ')} exited with ${result.status}`,
+  );
+  error.exitStatus = result.status;
+  throw error;
+}
+
+/**
+ * Each Playwright phase's report, read as soon as the phase ends: cleanup
+ * removes the test-results directory before the suite returns.
+ */
+const e2eManifestPhases = [];
+
+function recordE2EManifestPhase(name, reportPath, runError) {
+  let report;
+  let reportError;
+  try {
+    report = JSON.parse(readFileSync(reportPath, 'utf8'));
+  } catch (error) {
+    reportError = error instanceof Error ? error.message : String(error);
+  }
+  e2eManifestPhases.push({
+    name,
+    report,
+    reportError,
+    runError,
+    exitStatus: runError
+      ? Number.isSafeInteger(runError.exitStatus)
+        ? runError.exitStatus
+        : null
+      : 0,
+  });
+}
+
+/**
+ * The e2e job's failure manifest. The suite's own thrown error is explained
+ * only when it is exactly the recorded Playwright failures; a startup,
+ * cleanup or lease failure is listed as a runner phase, which never
+ * explains anything.
+ */
+export function e2eJobManifest(
+  phases,
+  thrown,
+  { identity, cwd = process.cwd() },
+) {
+  const recorded = new Set(
+    phases.map((phase) => phase.runError).filter(Boolean),
+  );
+  const explainedThrow =
+    !thrown ||
+    recorded.has(thrown) ||
+    (thrown instanceof AggregateError &&
+      thrown.errors.length > 0 &&
+      thrown.errors.every((error) => recorded.has(error)));
+  return buildJobManifest({
+    producer: 'e2e-suite',
+    identity,
+    complete: true,
+    phases: [
+      ...phases.map((phase) => ({
+        phase: `e2e-${phase.name}`,
+        exitStatus: phase.exitStatus,
+        error: null,
+        corpus: true,
+        groups: [
+          playwrightGroup(phase.report, {
+            group: phase.name,
+            exitStatus: phase.exitStatus,
+            reportError: phase.reportError,
+            cwd,
+          }),
+        ],
+      })),
+      ...(explainedThrow && phases.length > 0
+        ? []
+        : [
+            {
+              phase: 'e2e-runner',
+              exitStatus: null,
+              error: clipText(
+                thrown
+                  ? thrown instanceof Error
+                    ? thrown.message
+                    : String(thrown)
+                  : 'the suite ran no Playwright phase',
+              ),
+              corpus: false,
+              groups: [],
+            },
+          ]),
+    ],
+  });
+}
+
+function writeE2EManifest(thrown) {
+  const directory = process.env[MANIFEST_DIR_ENV];
+  if (!directory) return;
+  try {
+    let sourceSha = '';
+    try {
+      sourceSha = spawnSync('git', ['rev-parse', 'HEAD'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      }).stdout.trim();
+    } catch {}
+    const manifest = e2eJobManifest(e2eManifestPhases, thrown, {
+      identity: {
+        jobLabel: process.env[JOB_LABEL_ENV] ?? '',
+        sourceSha,
+        runId: String(process.env.GITHUB_RUN_ID ?? ''),
+        runAttempt: String(process.env.GITHUB_RUN_ATTEMPT ?? ''),
+      },
+    });
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      join(directory, JOB_MANIFEST_FILE),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+    );
+  } catch (error) {
+    console.error(
+      `[e2e] could not write the failure manifest: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 export async function runE2EExecutionPhases(phases, execute) {
@@ -2811,70 +2941,82 @@ async function main() {
       console.log(
         `[e2e] ${suite} phase ${phase.name}: ${phase.specs.length} spec(s), ${phase.workers} worker(s)`,
       );
-      await run(
-        'npx',
-        [
-          'playwright',
-          'test',
-          `--workers=${phase.workers}`,
-          `--retries=${retries}`,
-          `--reporter=${reporter}`,
-          ...(grep ? [`--grep=${grep}`] : []),
-          ...phase.specs,
-        ],
-        {
-          env: {
-            ...process.env,
-            PLAYWRIGHT_JSON_OUTPUT_FILE: join(outputRoot, 'report.json'),
-            PLAYWRIGHT_BROWSERS_PATH:
-              process.env.PLAYWRIGHT_BROWSERS_PATH ?? '0',
-            PW_BASE_URL: `http://localhost:${uiPort}`,
-            PW_API_BASE_URL: `http://localhost:${serverPort}`,
-            STATION_PORT: String(serverPort),
-            STATION_E2E_RUNNER: '1',
-            STATION_E2E_HOST_CREDENTIAL: operatorCredential,
-            STATION_E2E_BROWSER_SESSION_CREDENTIAL: browserSessionCredential,
-            // Test-process-only authority for filesystem-backed clean-home
-            // journeys. The runner owns and removes this exact temporary home.
-            STATION_E2E_HOME: stationHome,
-            // station#4464 arbiter fix: an explicit key (not a conditional
-            // spread) so a stray `STATION_E2E_SCREENS` sitting in the
-            // runner's own `process.env` (already inherited above via
-            // `...process.env`) can never silently partial an unflagged run
-            // — including a coordinated full-coverage evidence run.
-            // `undefined` here is not stringified: Node's `spawn` env
-            // omits any key whose value is `undefined`, so no `--screens`
-            // flag means the child never sees the var at all.
-            STATION_E2E_SCREENS: screens ? screens.join(',') : undefined,
-            ...stationE2EEnv,
-            ...establishedUserPlaywrightEnv(suite),
-            CLAUDE_CONFIG_DIR: claudeConfigDir,
-            CODEX_HOME: codexConfigDir,
-            ...(humanOnly
-              ? e2eProviderConfigEnv(
-                  suite,
-                  {
-                    claude: claudeConfigDir,
-                    codex: codexConfigDir,
-                    opencode: openCodeDataDir,
-                    grok: grokHomeDir,
-                  },
-                  process.env,
-                  specs,
-                )
-              : {}),
-            STATION_E2E_UI_DIR: join(process.cwd(), `dist-ui-${instance}`),
-            STATION_CRITICAL_BROWSER_REPORT: criticalSmoke
-              ? join(
-                  process.cwd(),
-                  '.kontourai/browser-evidence',
-                  `${instance}.json`,
-                )
-              : undefined,
-            STATION_E2E_OUTPUT_DIR: outputRoot,
+      let runError = null;
+      try {
+        await run(
+          'npx',
+          [
+            'playwright',
+            'test',
+            `--workers=${phase.workers}`,
+            `--retries=${retries}`,
+            `--reporter=${reporter}`,
+            ...(grep ? [`--grep=${grep}`] : []),
+            ...phase.specs,
+          ],
+          {
+            env: {
+              ...process.env,
+              PLAYWRIGHT_JSON_OUTPUT_FILE: join(outputRoot, 'report.json'),
+              PLAYWRIGHT_BROWSERS_PATH:
+                process.env.PLAYWRIGHT_BROWSERS_PATH ?? '0',
+              PW_BASE_URL: `http://localhost:${uiPort}`,
+              PW_API_BASE_URL: `http://localhost:${serverPort}`,
+              STATION_PORT: String(serverPort),
+              STATION_E2E_RUNNER: '1',
+              STATION_E2E_HOST_CREDENTIAL: operatorCredential,
+              STATION_E2E_BROWSER_SESSION_CREDENTIAL: browserSessionCredential,
+              // Test-process-only authority for filesystem-backed clean-home
+              // journeys. The runner owns and removes this exact temporary home.
+              STATION_E2E_HOME: stationHome,
+              // station#4464 arbiter fix: an explicit key (not a conditional
+              // spread) so a stray `STATION_E2E_SCREENS` sitting in the
+              // runner's own `process.env` (already inherited above via
+              // `...process.env`) can never silently partial an unflagged run
+              // — including a coordinated full-coverage evidence run.
+              // `undefined` here is not stringified: Node's `spawn` env
+              // omits any key whose value is `undefined`, so no `--screens`
+              // flag means the child never sees the var at all.
+              STATION_E2E_SCREENS: screens ? screens.join(',') : undefined,
+              ...stationE2EEnv,
+              ...establishedUserPlaywrightEnv(suite),
+              CLAUDE_CONFIG_DIR: claudeConfigDir,
+              CODEX_HOME: codexConfigDir,
+              ...(humanOnly
+                ? e2eProviderConfigEnv(
+                    suite,
+                    {
+                      claude: claudeConfigDir,
+                      codex: codexConfigDir,
+                      opencode: openCodeDataDir,
+                      grok: grokHomeDir,
+                    },
+                    process.env,
+                    specs,
+                  )
+                : {}),
+              STATION_E2E_UI_DIR: join(process.cwd(), `dist-ui-${instance}`),
+              STATION_CRITICAL_BROWSER_REPORT: criticalSmoke
+                ? join(
+                    process.cwd(),
+                    '.kontourai/browser-evidence',
+                    `${instance}.json`,
+                  )
+                : undefined,
+              STATION_E2E_OUTPUT_DIR: outputRoot,
+            },
           },
-        },
-      );
+        );
+      } catch (error) {
+        runError = error;
+        throw error;
+      } finally {
+        recordE2EManifestPhase(
+          phase.name,
+          join(outputRoot, 'report.json'),
+          runError,
+        );
+      }
     });
   } catch (error) {
     if (existsSync(serverLog)) {
@@ -2954,8 +3096,11 @@ async function main() {
 // launched the whole e2e runner inside Vitest, and its process.exit(1) surfaced
 // as an unhandled rejection that failed verify:static with every test passing.
 if (invokedDirectly(import.meta.url)) {
-  main().catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+  main()
+    .then(() => writeE2EManifest(null))
+    .catch((error) => {
+      writeE2EManifest(error);
+      console.error(error);
+      process.exit(1);
+    });
 }

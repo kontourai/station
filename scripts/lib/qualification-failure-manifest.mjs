@@ -83,6 +83,27 @@ export function phaseExplained(phase) {
   );
 }
 
+/** A job manifest from already-built phases; `explained` is derived here. */
+export function buildJobManifest({ producer, identity, complete, phases }) {
+  const manifest = {
+    schemaVersion: MANIFEST_SCHEMA_VERSION,
+    kind: JOB_MANIFEST_KIND,
+    producer,
+    jobLabel: clipText(identity.jobLabel ?? ''),
+    sourceSha: identity.sourceSha,
+    runId: identity.runId,
+    runAttempt: identity.runAttempt,
+    complete,
+    phases: phases.map((phase) => ({
+      ...phase,
+      explained: phaseExplained(phase),
+    })),
+    explained: false,
+  };
+  manifest.explained = jobExplained(manifest);
+  return manifest;
+}
+
 export function jobExplained(manifest) {
   return (
     manifest.complete === true &&

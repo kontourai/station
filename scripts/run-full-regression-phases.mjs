@@ -21,14 +21,11 @@ import {
   waitForSuiteSettlement,
 } from './lib/owned-process.mjs';
 import {
+  buildJobManifest,
   clipText,
   JOB_LABEL_ENV,
   JOB_MANIFEST_FILE,
-  JOB_MANIFEST_KIND,
-  jobExplained,
   MANIFEST_DIR_ENV,
-  MANIFEST_SCHEMA_VERSION,
-  phaseExplained,
 } from './lib/qualification-failure-manifest.mjs';
 import {
   collectWorkspaceProvenance,
@@ -325,37 +322,28 @@ export function readPhaseGroups(directory) {
  * error, and `complete` is false unless every planned phase reported.
  */
 export function phaseJobManifest(plan, results, phaseGroups, identity) {
-  const phases = plan.map((step) => {
-    const result = results.find((entry) => entry.id === step.id);
-    const collected = phaseGroups.get(step.id) ?? { groups: [], errors: [] };
-    const errors = [
-      ...(result ? (result.error ? [result.error] : []) : ['not run']),
-      ...collected.errors,
-    ];
-    const phase = {
-      phase: step.id,
-      exitStatus: result?.status ?? null,
-      error: errors.length ? clipText(errors.join('; ')) : null,
-      corpus: step.id.startsWith(CORPUS_PHASE_PREFIX),
-      groups: collected.groups,
-      explained: false,
-    };
-    phase.explained = phaseExplained(phase);
-    return phase;
-  });
-  const manifest = {
-    schemaVersion: MANIFEST_SCHEMA_VERSION,
-    kind: JOB_MANIFEST_KIND,
+  return buildJobManifest({
     producer: 'full-regression-phases',
-    ...identity,
+    identity,
     complete:
       results.length === plan.length &&
       plan.every((step) => results.some((entry) => entry.id === step.id)),
-    phases,
-    explained: false,
-  };
-  manifest.explained = jobExplained(manifest);
-  return manifest;
+    phases: plan.map((step) => {
+      const result = results.find((entry) => entry.id === step.id);
+      const collected = phaseGroups.get(step.id) ?? { groups: [], errors: [] };
+      const errors = [
+        ...(result ? (result.error ? [result.error] : []) : ['not run']),
+        ...collected.errors,
+      ];
+      return {
+        phase: step.id,
+        exitStatus: result?.status ?? null,
+        error: errors.length ? clipText(errors.join('; ')) : null,
+        corpus: step.id.startsWith(CORPUS_PHASE_PREFIX),
+        groups: collected.groups,
+      };
+    }),
+  });
 }
 
 /**

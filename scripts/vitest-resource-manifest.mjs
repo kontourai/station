@@ -323,6 +323,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Runs the repair prepare CLI against a loopback API with on-disk
   // failure manifests and a temporary known-failure list.
   'scripts/__tests__/qualification-failure-signal.test.ts',
+  // Runs the real Playwright test runner on tiny fixture projects (no
+  // browser) to assert the e2e failure manifest built from its JSON report.
+  'scripts/__tests__/playwright-failure-manifest.test.ts',
   // #3101: runs the dequeue report as a child against temporary Git remotes
   // (git fetch + merge-tree) and a loopback GitHub API.
   'scripts/__tests__/merge-queue-dequeue.test.ts',
