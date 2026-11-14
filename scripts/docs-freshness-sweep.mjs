@@ -12,8 +12,6 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { documentationCatchUp } from './documentation-impact.mjs';
-import { checkDocumentationFreshness } from './lib/documentation-freshness.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { runGh, upsertTrackingIssue } from './lib/tracking-issue.mjs';
 
@@ -98,6 +96,16 @@ export function upsertFreshnessIssue({ repo, reportPath, gh = runGh }) {
 }
 
 export async function collectFreshnessReport({ root = process.cwd() } = {}) {
+  // Loaded here, not at the top: the report needs installed packages
+  // (`yaml`, `@kontourai/corpus`), while `--upsert` runs in the workflow job
+  // that holds `issues: write` and installs nothing (#4270). Keeping the
+  // upsert path's static import graph to Node built-ins is what lets it run
+  // there.
+  const [{ documentationCatchUp }, { checkDocumentationFreshness }] =
+    await Promise.all([
+      import('./documentation-impact.mjs'),
+      import('./lib/documentation-freshness.mjs'),
+    ]);
   const catchUp = await documentationCatchUp({ root });
   const media = await checkDocumentationFreshness({
     root,

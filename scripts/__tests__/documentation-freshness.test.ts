@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildFreshnessReport,
@@ -1786,5 +1787,56 @@ describe('Nightly freshness sweep (#2923)', () => {
     expect(() =>
       upsertFreshnessIssue({ repo: '--bad', reportPath, gh: gh('') }),
     ).toThrow('--repo must be owner/name');
+  });
+
+  // #4270: the upsert runs in the workflow job that holds `issues: write` and
+  // installs nothing. A child process that refuses every package import (as
+  // a job without node_modules would) loads the sweep script and upserts.
+  it('upserts from a process that can load no installed package', () => {
+    const root = makeTempDir('station-doc-sweep-nodeps-');
+    const reportPath = join(root, 'report.md');
+    writeFileSync(reportPath, report(2).body);
+    const child = `
+      import { isBuiltin, registerHooks } from 'node:module';
+      registerHooks({
+        resolve(specifier, context, next) {
+          if (!isBuiltin(specifier) && !/^(\\.|\\/|file:)/.test(specifier))
+            throw new Error('refused package import: ' + specifier);
+          return next(specifier, context);
+        },
+      });
+      const sweep = await import(process.argv[1]);
+      const calls = [];
+      const result = sweep.upsertFreshnessIssue({
+        repo: 'owner/repo',
+        reportPath: process.argv[2],
+        gh: (args) => (calls.push(args), args.includes('GET') ? '' : '7'),
+      });
+      console.log(JSON.stringify({ result, last: calls.at(-1) }));
+    `;
+    // The script is passed as a file URL, which `invokedDirectly` never
+    // matches, so importing it does not also run its CLI body.
+    const run = (script: string) =>
+      spawnSync(
+        process.execPath,
+        ['--input-type=module', '-e', child, script, reportPath],
+        { encoding: 'utf8', timeout: 30_000, windowsHide: true },
+      );
+    const result = run(
+      pathToFileURL(resolve('scripts/docs-freshness-sweep.mjs')).href,
+    );
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.result).toEqual({ action: 'created', number: 7 });
+    expect(parsed.last).toEqual(
+      expect.arrayContaining(['POST', `title=${SWEEP_ISSUE_TITLE}`]),
+    );
+    // The refusal is live: the report module needs installed packages.
+    const control = run(
+      pathToFileURL(resolve('scripts/documentation-impact.mjs')).href,
+    );
+    expect(control.status).not.toBe(0);
+    expect(control.stderr).toContain('refused package import');
   });
 });

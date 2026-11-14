@@ -289,14 +289,11 @@ describe('documentation freshness sweep contract', () => {
     expect(workflow.permissions).toEqual({ contents: 'read' });
     expect(Object.keys(workflow.jobs)).toEqual([
       'sweep',
+      'sweep-issue',
       'hygiene',
       'hygiene-issue',
     ]);
     expect(workflow.jobs.sweep.if).toBeUndefined();
-    expect(workflow.jobs.sweep.permissions).toEqual({
-      contents: 'read',
-      issues: 'write',
-    });
     const text = JSON.stringify(workflow);
     expect(text).not.toMatch(/secrets\./);
     for (const job of Object.values(workflow.jobs) as {
@@ -325,5 +322,49 @@ describe('documentation freshness sweep contract', () => {
     expect(runs(hygiene)).toContain('npm run hygiene:report');
     expect(runs(issue)).not.toMatch(/dependencies:ci|npm (ci|install)|pnpm/);
     expect(runs(issue)).toContain('scripts/hygiene-report.mjs --upsert');
+  });
+
+  // #4270: the freshness report needs installed packages, so it follows the
+  // same split. The issue job runs only after a successful report, so a
+  // failed sweep cannot close the issue on a missing report.
+  it('reports freshness from a read-only installing job and writes the issue from a dependency-free one', () => {
+    const workflow = parse(
+      readFileSync('.github/workflows/docs-freshness-sweep.yml', 'utf8'),
+    );
+    const { sweep, 'sweep-issue': issue } = workflow.jobs;
+    type Step = { run?: string; uses?: string; with?: Record<string, string> };
+    const runs = (job: { steps: Step[] }) =>
+      job.steps.map((step) => step.run ?? '').join('\n');
+    expect(sweep.permissions).toEqual({ contents: 'read' });
+    expect(sweep.steps[0].with?.['fetch-depth']).toBe(0);
+    const install = sweep.steps.findIndex(
+      (step: Step) => step.run === 'npm run dependencies:ci',
+    );
+    const reportStep = sweep.steps.findIndex((step: Step) =>
+      step.run?.startsWith('node scripts/docs-freshness-sweep.mjs --report'),
+    );
+    expect(install).toBeGreaterThan(0);
+    expect(reportStep).toBeGreaterThan(install);
+    const upload = sweep.steps.find((step: Step) =>
+      step.uses?.startsWith('actions/upload-artifact@'),
+    );
+    expect(upload?.with).toMatchObject({
+      name: 'docs-freshness-report',
+      path: '.artifacts/docs-freshness-report.md',
+    });
+    expect(issue.needs).toBe('sweep');
+    expect(issue.if).not.toMatch(/always\(\)|!cancelled\(\)|failure\(\)/);
+    expect(issue.permissions).toEqual({ contents: 'read', issues: 'write' });
+    const download = issue.steps.find((step: Step) =>
+      step.uses?.startsWith('actions/download-artifact@'),
+    );
+    expect(download?.with).toMatchObject({
+      name: 'docs-freshness-report',
+      path: '.artifacts',
+    });
+    expect(runs(issue)).not.toMatch(/dependencies:ci|npm (ci|install)|pnpm/);
+    expect(runs(issue)).toContain(
+      'scripts/docs-freshness-sweep.mjs --upsert --report .artifacts/docs-freshness-report.md',
+    );
   });
 });
