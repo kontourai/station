@@ -51,6 +51,9 @@ const ENV = {
   GIT_COMMITTER_NAME: 't',
   GIT_COMMITTER_EMAIL: 't@example.invalid',
   GIT_CONFIG_NOSYSTEM: '1',
+  // A developer's global config (hooksPath, useReplaceRefs, gpgsign) must
+  // not decide these fixtures.
+  GIT_CONFIG_GLOBAL: '/dev/null',
 };
 
 function gitIn(root: string) {
@@ -437,14 +440,16 @@ function attributionFixture({
   capture = 'failure',
   diffStatus = 0,
   nodeBin = process.execPath,
-  shimNode = false,
+  shimNode,
+  gitTamper,
 }: {
   composed: unknown[];
   composedManifest?: string;
   capture?: string;
   diffStatus?: number;
   nodeBin?: string;
-  shimNode?: boolean;
+  shimNode?: 'compare' | 'plan';
+  gitTamper?: string;
   baseCapture: string | null;
   baseScreens?: string[];
   baseAllowlist?: Record<string, string[]>;
@@ -511,20 +516,61 @@ function attributionFixture({
   );
   chmodSync(join(bin, 'npm'), 0o755);
   if (shimNode) {
-    // A `node` on PATH that forges an excuse, as GITHUB_PATH could plant.
+    // A `node` on PATH that forges an excuse, as GITHUB_PATH could plant:
+    // either the comparison, or a plan whose failures equal main's.
+    const forgedPlan = JSON.stringify({
+      failures: [
+        {
+          screen: 'child-chat-dark-390',
+          identity: 'capture-failed',
+          signature: 'breadcrumb stays before actions',
+        },
+      ],
+      screens: ['child-chat-dark-390'],
+      passing: ['home'],
+    });
     writeFileSync(
       join(bin, 'node'),
       [
         '#!/usr/bin/env bash',
-        'case " $* " in',
-        "  *' plan '*) echo screens=child-chat-dark-390 ;;",
-        "  *' compare '*) printf 'FORGED\\nverdict=main\\n' ;;",
-        '  *) printf home ;;',
-        'esac',
+        shimNode === 'compare'
+          ? `case " $* " in *' plan '*) echo screens=child-chat-dark-390 ;; *' compare '*) printf 'FORGED\\nverdict=main\\n' ;; *) printf home ;; esac`
+          : [
+              `if [[ " $* " == *' plan '* ]]; then`,
+              '  for arg in "$@"; do case "$arg" in --out=*) out="${arg#--out=}" ;; esac; done',
+              `  printf '%s' '${forgedPlan}' > "$out"`,
+              '  echo screens=child-chat-dark-390',
+              '  exit 0',
+              'fi',
+              `exec '${process.execPath}' "$@"`,
+            ].join('\n'),
         '',
       ].join('\n'),
     );
     chmodSync(join(bin, 'node'), 0o755);
+  }
+  if (gitTamper) {
+    // A `git` on PATH that tampers with the base checkout right after
+    // `worktree add`, to prove the HEAD and clean checks on their own.
+    const realGit = execFileSync('bash', ['-c', 'command -v git'], {
+      encoding: 'utf8',
+      windowsHide: true,
+    }).trim();
+    writeFileSync(
+      join(bin, 'git'),
+      [
+        '#!/usr/bin/env bash',
+        `'${realGit}' "$@"`,
+        'status=$?',
+        'if [[ " $* " == *" worktree add "* && $status -eq 0 ]]; then',
+        '  wt="${@: -2:1}"',
+        `  (cd "$wt" && REAL_GIT='${realGit}' bash -c '${gitTamper.replaceAll("'", "'\\''")}')`,
+        'fi',
+        'exit $status',
+        '',
+      ].join('\n'),
+    );
+    chmodSync(join(bin, 'git'), 0o755);
   }
   const temp = runner();
   const run = () => {
@@ -1098,108 +1144,128 @@ describe('an excuse needs a complete capture and a sound comparison', () => {
   });
 });
 
-describe('the base checkout is exactly main, and node is the one resolved first', () => {
-  it('ignores refs/replace for the base commit', () => {
-    const fixture = attributionFixture({
-      composed: [failedCapture('child-chat-dark-390'), screen('home')],
-      // main renders the screen, so the honest answer is pr.
-      baseCapture: manifest(
-        [screen('child-chat-dark-390')],
-        ['child-chat-dark-390'],
-      ),
-    });
-    // A forged base whose attribution script always excuses.
-    const forged = join(fixture.root, 'scripts/gallery-main-attribution.mjs');
-    const honest = readFileSync(forged, 'utf8');
-    writeFileSync(
-      forged,
-      "console.log(process.argv[2] === 'plan' ? 'screens=child-chat-dark-390' : 'FORGED\\nverdict=main');\n",
-    );
-    fixture.git('add', '.');
-    const tree = fixture.git('write-tree');
-    const forgedCommit = fixture.git('commit-tree', tree, '-m', 'forged base');
-    fixture.git('replace', fixture.base, forgedCommit);
-    writeFileSync(forged, honest);
-    fixture.git('add', '.');
-    const result = fixture.run();
-    expect(result.out).not.toContain('FORGED');
-    expect(result.output, result.out).toBe('verdict=pr\n');
-  });
+// A base attribution script that always excuses, and writes a plan so the
+// workflow's own steps would carry the excuse through.
+const FORGER =
+  "const a = process.argv; const out = (a.find((x) => x.startsWith('--out=')) ?? '').slice(6); if (a[2] === 'plan') { if (out) (await import('node:fs')).writeFileSync(out, JSON.stringify({ passing: ['home'] })); console.log('screens=child-chat-dark-390'); } else console.log('FORGED\\nverdict=main');";
 
-  // A hook in the shared .git runs in the new worktree after its checkout.
-  const plantHook = (
-    fixture: ReturnType<typeof attributionFixture>,
-    body: string,
-  ) => {
-    const hooks = join(fixture.root, '.git/hooks');
-    mkdirSync(hooks, { recursive: true });
-    writeFileSync(
-      join(hooks, 'post-checkout'),
-      `#!/usr/bin/env bash\n[[ -n "$PLANTED" ]] && exit 0\nexport PLANTED=1\n${body}\n`,
-    );
-    chmodSync(join(hooks, 'post-checkout'), 0o755);
-    // The shared config is the candidate's to write too; pin it here so a
-    // developer's global hooksPath does not hide the planted hook.
-    fixture.git('config', 'core.hooksPath', hooks);
-  };
-  const honestIsPr = () =>
+describe('the base checkout is exactly main, and node is the one resolved first', () => {
+  // main renders the screen, so the honest answer is pr.
+  const honestIsPr = (options: { gitTamper?: string } = {}) =>
     attributionFixture({
       composed: [failedCapture('child-chat-dark-390'), screen('home')],
       baseCapture: manifest(
         [screen('child-chat-dark-390')],
         ['child-chat-dark-390'],
       ),
+      ...options,
     });
-  const forger =
-    "console.log(process.argv[2] === 'plan' ? 'screens=child-chat-dark-390' : 'FORGED\\nverdict=main');";
-
-  it('refuses a base checkout a hook rewrote', () => {
-    const fixture = honestIsPr();
-    plantHook(
-      fixture,
-      `printf '%s\\n' "${forger}" > scripts/gallery-main-attribution.mjs`,
-    );
-    const result = fixture.run();
-    expect(result.out).not.toContain('FORGED');
-    expect(result.out).toContain('Cannot check out a clean copy of main');
-    expect(result.output).toBe('verdict=pr\n');
-  });
-
-  it('refuses a base checkout a hook moved to another commit', () => {
-    const fixture = honestIsPr();
-    const forged = join(fixture.root, 'scripts/gallery-main-attribution.mjs');
-    const honest = readFileSync(forged, 'utf8');
-    writeFileSync(forged, `${forger}\n`);
+  /** A commit whose attribution script is the forger, on top of the base. */
+  const forgedCommit = (fixture: ReturnType<typeof attributionFixture>) => {
+    const script = join(fixture.root, 'scripts/gallery-main-attribution.mjs');
+    const honest = readFileSync(script, 'utf8');
+    writeFileSync(script, `${FORGER}\n`);
     fixture.git('add', '.');
-    const forgedCommit = fixture.git(
+    const commit = fixture.git(
       'commit-tree',
       fixture.git('write-tree'),
       '-p',
       fixture.base,
       '-m',
-      'forged',
+      'forged base',
     );
-    writeFileSync(forged, honest);
+    writeFileSync(script, honest);
     fixture.git('add', '.');
-    plantHook(fixture, `git checkout -q --detach ${forgedCommit}`);
+    return commit;
+  };
+
+  it('ignores refs/replace for the base commit', () => {
+    const fixture = honestIsPr();
+    fixture.git('replace', fixture.base, forgedCommit(fixture));
+    const result = fixture.run();
+    expect(result.out).not.toContain('FORGED');
+    expect(result.output, result.out).toBe('verdict=pr\n');
+  });
+
+  // Hooks in the shared .git are the candidate's to plant; the checkout
+  // runs none of them. Each variant would otherwise leave HEAD equal and
+  // status empty while the forger runs.
+  it.each([
+    [
+      'rewrites a tracked file and hides it with skip-worktree',
+      `printf '%s\\n' "$FORGER" > scripts/gallery-main-attribution.mjs && git update-index --skip-worktree scripts/gallery-main-attribution.mjs`,
+    ],
+    [
+      'adds an untracked file listed in info/exclude',
+      `printf '%s\\n' 'scripts/planted.mjs' >> "$(git rev-parse --git-common-dir)/info/exclude" && printf 'planted\\n' > scripts/planted.mjs`,
+    ],
+  ])('runs no post-checkout hook that %s', (_name, body) => {
+    const fixture = honestIsPr();
+    const marker = join(fixture.runnerTemp, 'hook-ran');
+    const hooks = join(fixture.root, '.git/hooks');
+    mkdirSync(hooks, { recursive: true });
+    writeFileSync(
+      join(hooks, 'post-checkout'),
+      `#!/usr/bin/env bash\n[[ -n "$PLANTED" ]] && exit 0\nexport PLANTED=1\ntouch '${marker}'\nFORGER=${JSON.stringify(FORGER).replaceAll('$', '\\$')}\n${body}\n`,
+    );
+    chmodSync(join(hooks, 'post-checkout'), 0o755);
+    const result = fixture.run();
+    expect(existsSync(marker), 'the planted hook ran').toBe(false);
+    expect(result.out).not.toContain('FORGED');
+    expect(result.output, result.out).toBe('verdict=pr\n');
+  });
+
+  // The second layer, against a tamper no flag prevents (a `git` shim).
+  it('refuses a base checkout whose tracked file was rewritten', () => {
+    const result = honestIsPr({
+      gitTamper: `printf '%s\\n' ${JSON.stringify(FORGER).replaceAll('$', '\\$')} > scripts/gallery-main-attribution.mjs`,
+    }).run();
+    expect(result.out).not.toContain('FORGED');
+    expect(result.out).toContain('Cannot check out a clean copy of main');
+    expect(result.output).toBe('verdict=pr\n');
+  });
+
+  it('refuses a base checkout with an untracked file', () => {
+    const result = honestIsPr({
+      gitTamper: `printf 'planted\\n' > scripts/planted.mjs`,
+    }).run();
+    expect(result.out).toContain('Cannot check out a clean copy of main');
+    expect(result.output).toBe('verdict=pr\n');
+  });
+
+  it('refuses a base checkout moved to another commit', () => {
+    const fixture = honestIsPr({
+      gitTamper: '"$REAL_GIT" checkout -q --detach refs/forged',
+    });
+    fixture.git('update-ref', 'refs/forged', forgedCommit(fixture));
     const result = fixture.run();
     expect(result.out).not.toContain('FORGED');
     expect(result.out).toContain('Cannot check out a clean copy of main');
     expect(result.output).toBe('verdict=pr\n');
   });
 
-  it('runs the node resolved before candidate code, not one on PATH', () => {
-    const result = attributionFixture({
-      composed: [failedCapture('child-chat-dark-390'), screen('home')],
-      baseCapture: manifest(
-        [screen('child-chat-dark-390')],
-        ['child-chat-dark-390'],
-      ),
-      shimNode: true,
-    }).run();
-    expect(result.out).not.toContain('FORGED');
-    expect(result.output, result.out).toBe('verdict=pr\n');
-  });
+  it.each([
+    ['the comparison', 'compare'],
+    ['the plan', 'plan'],
+  ] as const)(
+    'runs %s with the node resolved before candidate code, not one on PATH',
+    (_name, shimNode) => {
+      const result = attributionFixture({
+        composed: [
+          failedCapture('child-chat-dark-390', 'dock does not overflow'),
+          screen('home'),
+        ],
+        // main fails the screen another way, so the honest answer is pr.
+        baseCapture: manifest(
+          [failedCapture('child-chat-dark-390')],
+          ['child-chat-dark-390'],
+        ),
+        shimNode,
+      }).run();
+      expect(result.out).not.toContain('FORGED');
+      expect(result.output, result.out).toBe('verdict=pr\n');
+    },
+  );
 
   it('refuses a node that is not an absolute path', () => {
     const result = attributionFixture({
