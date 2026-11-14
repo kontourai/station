@@ -87,49 +87,42 @@ the legacy Zod 3 dependency paths tracked in
 bound unconstrained input. The advisory floor still evaluates the complete
 candidate graph under its existing policy.
 
-## RSA signature verification backport (2026-10)
+## RSA signature verification (2026-10 backport, 2026-11 release)
 
-Station applies a [managed node-forge 1.4.0 patch](../../patches/node-forge-1.4.0.patch)
-for [GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv).
-It backports the nested DigestAlgorithm element-count check from
-[upstream PR #1152](https://github.com/digitalbazaar/forge/pull/1152), commit
-`ceba34402e329f0365134f23fe19898756527d65`, to `lib/rsa.js` and both shipped
-browser bundles. The threat is an attacker without the private key forging an
-RSA PKCS#1 v1.5 signature, particularly with a low public exponent. The parser
-now requires the algorithm OID plus only its optional NULL parameter, retaining
-the existing outer DigestInfo and padding checks.
-The pnpm patch recreates the two bundles with equivalent `\x01` string escapes
-for their published literal control bytes, keeping the patch visible to text
-scanners without changing those string values.
+[GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv) lets an
+attacker without the private key forge an RSA PKCS#1 v1.5 signature,
+particularly with a low public exponent, because the verifier tolerated extra
+nested DigestAlgorithm elements. From 2026-10 Station carried a managed
+node-forge 1.4.0 patch backporting the element-count check from
+[upstream PR #1152](https://github.com/digitalbazaar/forge/pull/1152), bound to
+the installed bytes by a `remediations` record in the
+[advisory ledger](../../scripts/dependency-advisory-exceptions.json).
+
+The workspace override now selects the official node-forge 1.4.3 release, and
+the patch, its `patchedDependencies` entry, its secret-scan allowlist and the
+`remediations` record are removed. Release 1.4.1 re-encodes the DigestInfo and
+requires a byte-identical canonical DER value with or without the NULL
+parameter, which also rejects the nested-element form; the advisory lists 1.4.1
+as patched. 1.4.3 is the smallest release that also clears the other Forge
+advisories the registry reports against 1.4.0 (PEM, ASN.1 and TLS-record
+denial of service, PKCS#12 MAC forgery, X.509 chain checks, and AES-GCM tag
+length, among others).
 
 The [installed-library controls](../../scripts/__tests__/node-forge-rsa-backport.test.ts)
-exercise the package entrypoint and both browser globals. A retained signature
-constructed using only an exponent-3 public key passes pristine 1.4.0 and fails
-the patched verifier; Node crypto independently rejects it. Valid SHA-256
-signatures with exponents 3 and 65537, wrong-message rejection, and the
-supported omitted-NULL form remain covered. These are dependency API checks,
-not a reproduced Station endpoint exploit or full browser/native qualification.
+are unchanged and exercise the package entrypoint and both browser globals. The
+retained signature constructed using only an exponent-3 public key fails the
+1.4.3 verifier and pristine 1.4.0 accepts it; Node crypto independently rejects
+it. Valid SHA-256 signatures with exponents 3 and 65537, wrong-message
+rejection, and the omitted-NULL form remain covered. These are dependency API
+checks, not a reproduced Station endpoint exploit or full browser/native
+qualification. The PKCS#12 path that SAP connectivity reaches through
+`jks-js` still converts a keystore to PEM and refuses a wrong password.
 
-The registry still reports version 1.4.0 as **high**. A separate `remediations`
-record in the [advisory ledger](../../scripts/dependency-advisory-exceptions.json)
-replaces this advisory's temporary risk exception. The policy prints `PATCHED`
-only after checking the exact advisory/version, Node 24, workspace registration,
-patch SHA-256, locked graph edges, and the installed main, RSA implementation,
-and both bundles for every accounted copy. Missing or changed bytes,
-unaccounted copies, and changed entrypoint contracts block the finding. This
-checks the installed tree at decision time; it does not defend against a
-same-user writer changing code afterward. Other advisories retain their own
-dispositions and deadlines.
-
-The remediation has no risk-acceptance expiry: it requires current installed
-proof on every decision. An absent advisory makes its record unused and fails
-the gate, requiring cleanup rather than silently retaining an allowance.
-[Issue #3122](https://github.com/kontourai/station/issues/3122) tracks replacement
-with an independently verified official release. Recheck after every Forge,
-VoltAgent, SAP/JKS, patch, or provider-boundary change. Optional provider
-packaging is tracked by [issue #3745](https://github.com/kontourai/station/issues/3745);
-this patch preserves SAP functionality and makes
-no universal nonreachability claim.
+The patch-binding verifier keeps its node-forge fixture tests but has no live
+record. [Issue #3122](https://github.com/kontourai/station/issues/3122) tracked
+this replacement. Optional provider packaging is tracked by
+[issue #3745](https://github.com/kontourai/station/issues/3745); the upgrade
+makes no universal nonreachability claim.
 
 ## Proxy, copy, and numeric formatter advisories (2026-10)
 
@@ -637,7 +630,8 @@ network reachability determine which advisory conditions apply.
 
 ## 2026-10 Axios redirect credential boundary
 
-The workspace pins `axios>follow-redirects` to 1.16.1 for
+The workspace pinned `axios>follow-redirects` to 1.16.1 (since raised to 1.16.2,
+see [the 2026-11 floor](#2026-11-advisory-floor)) for
 [GHSA-q3jh-wrc6-jgq8](https://github.com/advisories/GHSA-q3jh-wrc6-jgq8) and
 [GHSA-8r9p-f939-6h3c](https://github.com/advisories/GHSA-8r9p-f939-6h3c).
 Both affect 1.16.0. The threat is an attacker-controlled redirect destination
@@ -741,10 +735,13 @@ The latest published `@voltagent/core` (`2.11.0`) still declares the `0.203`
 trace exporter, the `0.204` logs exporter, and `uuid ^9.0.1`; no compatible
 VoltAgent update currently removes these resolutions. The three exact residuals
 in [`dependency-advisory-exceptions.json`](../../scripts/dependency-advisory-exceptions.json)
-carry an owner-approved, 30-day risk acceptance through **2026-11-07**, tracked
+carried an owner-approved, 30-day risk acceptance through **2026-11-07**, tracked
 by [issue #3510](https://github.com/kontourai/station/issues/3510). Their
-GHSA severity remains **moderate**; the issue's P1 label prioritizes removing
-the blocker and closing the residuals, not reclassifying those advisories.
+GHSA severity remains **moderate**. That acceptance has expired and was not
+renewed, so the floor fails on these records until the owner decides; the
+2026-11 recheck found no compatible upstream release. The issue's P1 label
+prioritizes removing the blocker and closing the residuals, not reclassifying
+those advisories.
 This acceptance does not claim the paths are unreachable or fixed. Remove each
 record as soon as its compatible upstream remediation lands, and run
 `npm run audit:policy` after VoltAgent or OpenTelemetry updates. Station's own
@@ -852,3 +849,50 @@ brace-expansion input safe. The prior threat model was untrusted deeply nested
 patterns exhausting the Node stack; the dependency graph and runtime controls
 are unchanged. Historical acceptance and investigation remain in
 [#3150](https://github.com/kontourai/station/issues/3150).
+
+## 2026-11 advisory floor
+
+The scheduled scan had failed since 2026-10-23. These upgrades clear its
+findings that have a compatible release; none adds or renews an exception.
+
+| Package | Advisory | From → to | How | Path |
+| --- | --- | --- | --- | --- |
+| `node-forge` | Seven high Forge advisories plus moderate/low production findings | 1.4.0 → 1.4.3 | Override floor, managed patch removed | SAP connectivity → `jks-js` |
+| `follow-redirects` | [GHSA-mrwp-f3q8-3g9p](https://github.com/advisories/GHSA-mrwp-f3q8-3g9p) (high) | 1.16.1 → 1.16.2 | `axios>follow-redirects` pin | SAP Cloud SDK → Axios |
+| `qs` | [GHSA-6pq8-jhm2-2vcw](https://github.com/advisories/GHSA-6pq8-jhm2-2vcw) | 6.16.0 → 6.16.1 | Exact override | Both body-parser lines |
+| `@hono/node-server` | [GHSA-rmxm-3fg6-px4f](https://github.com/advisories/GHSA-rmxm-3fg6-px4f), [GHSA-jpvv-r467-5p4w](https://github.com/advisories/GHSA-jpvv-r467-5p4w) | 1.19.15 → 2.1.7 | `@voltagent/server-hono` child override | VoltAgent Hono provider |
+| `glob` / `minimatch` | [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4), [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) | 13.0.6 / 10.2.5 → 14.0.4 / 11.0.6 | `cacache@20` and `cacache@21` child overrides | Sigstore signing → `make-fetch-happen` |
+
+The follow-redirects threat is a caller-declared credential header reaching a
+cross-origin redirect target when `sensitiveHeaders` is an array from another
+JavaScript realm. A loopback probe forwarded the header on 1.16.1 and stripped it
+on the installed 1.16.2, keeping an unrelated header.
+
+The two `@hono/node-server` advisories have no fix on the 1.x line for the
+`serveStatic` double-decoding issue. VoltAgent's Hono package declares `^1.14.0`
+but uses only `serve()`; Station's own provider binds with the root 2.x copy.
+Version 2 drops Node 18 and the Vercel adapter, neither of which applies, so the
+nested copy now resolves to the same 2.1.7 that Station already loads. A probe
+through VoltAgent's resolution context served a Hono app on 2.1.7.
+
+Glob 14 replaces regular expressions with a non-recursive matcher. Cacache
+21.0.2 adopted glob 14 with library code identical to 21.0.1, and cacache
+20.0.4's glob calls match it, so both installed copies take the release
+upstream already ships. Put, verify and `rm.all` probes behaved the same on both
+copies and on the untouched optional cacache 19 copy. Development-only glob 10
+and minimatch 9 copies are unchanged.
+
+Two findings have no compatible upgrade and still fail the floor:
+
+- `zod` 3.25.76, [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)
+  (high), is patched only in 4.6.6. GitLab's AI provider 3.6.1, VoltAgent's A2A
+  server 2.0.3 and VoltAgent's v3 JSON Schema converter declare Zod 3, and
+  VoltAgent core still requires the GitLab provider's 3.x line. A Zod 3 to 4
+  override changes those consumers' runtime contract
+  ([#4210](https://github.com/kontourai/station/issues/4210)).
+- The three VoltAgent residuals above expired on 2026-11-07. VoltAgent core
+  2.11.1 keeps uuid `^9.0.1` and the 0.203 and 0.204 OpenTelemetry exporters,
+  which pin core 2.0.1 and 2.1.0
+  ([#3510](https://github.com/kontourai/station/issues/3510)).
+
+Both need an owner decision; this change does not record one.

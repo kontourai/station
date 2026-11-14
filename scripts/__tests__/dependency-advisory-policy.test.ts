@@ -454,6 +454,62 @@ overrides:
     }
   });
 
+  it('admits a cacache glob major only through its own reviewed override', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'station-remediation-'));
+    const put = (directory: string, manifest: object) => {
+      mkdirSync(path.join(root, directory), { recursive: true });
+      writeFileSync(
+        path.join(root, directory, 'package.json'),
+        JSON.stringify(manifest),
+      );
+    };
+    const workspace = (overrides: string) =>
+      writeFileSync(
+        path.join(root, 'pnpm-workspace.yaml'),
+        `packages: []\nnodeLinker: hoisted\noverrides:\n  brace-expansion@^2.0.2: ^2.1.4\n${overrides}`,
+      );
+    try {
+      put('.', { name: 'fixture', dependencies: { cacache: '^21.0.0' } });
+      put('node_modules/cacache', {
+        name: 'cacache',
+        version: '21.0.1',
+        dependencies: { glob: '^13.0.0' },
+      });
+      put('node_modules/glob', {
+        name: 'glob',
+        version: '14.0.4',
+        dependencies: { minimatch: '^11.0.0' },
+      });
+      put('node_modules/minimatch', {
+        name: 'minimatch',
+        version: '11.0.6',
+        dependencies: { 'brace-expansion': '^5.0.12' },
+      });
+      put('node_modules/brace-expansion', {
+        name: 'brace-expansion',
+        version: '5.0.12',
+      });
+      workspace('  cacache@21>glob: ^14.0.3\n');
+      expect(
+        validateInstalledRemediationGraph(root).find(
+          (edge) => edge.parent === 'cacache',
+        ),
+      ).toMatchObject({ name: 'glob', version: '14.0.4' });
+      // Another major's override does not admit this cacache's edge.
+      workspace('  cacache@20>glob: ^14.0.3\n');
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'Invalid installed dependency: cacache@21.0.1 -> glob@14.0.4; expected ^13.0.0',
+      );
+      // The override still bounds the installed copy.
+      workspace('  cacache@21>glob: ^14.0.5\n');
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'expected ^14.0.5',
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('rejects an unaccepted high advisory and names it in the production report', () => {
     const result = evaluateAuditPolicy(
       [{ scope: 'root', audit: auditWithHighAdvisory() }],
