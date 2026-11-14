@@ -38,6 +38,12 @@ export type CopilotPermissionModeResult =
 
 /** How often a live runtime's connection is checked with `ping()`. */
 export const COPILOT_CONNECTION_CHECK_MS = 5_000;
+/**
+ * How long one `ping()` may go unanswered before the runtime counts as lost:
+ * a hung runtime never fails a ping, it just never answers. A liveness bound,
+ * generous so a busy runtime is not mistaken for a dead one.
+ */
+export const COPILOT_PING_TIMEOUT_MS = 120_000;
 
 /** One live Copilot session, as the adapter uses it. */
 export interface CopilotSdkSessionPort {
@@ -72,7 +78,8 @@ export interface CopilotSdkClientPort {
   listModels(): Promise<ModelInfo[]>;
   /**
    * Calls `onLost` once when the runtime connection stops answering (its
-   * process died or its pipe closed). The SDK has no public disconnect
+   * process died or its pipe closed, or a ping went unanswered for
+   * {@link COPILOT_PING_TIMEOUT_MS}). The SDK has no public disconnect
    * event, so this checks `ping()` every {@link COPILOT_CONNECTION_CHECK_MS}.
    * Returns a function that stops the watch.
    */
@@ -115,7 +122,16 @@ function sessionPort(session: CopilotSession): CopilotSdkSessionPort {
   };
 }
 
-function clientPort(client: CopilotClient): CopilotSdkClientPort {
+/** The SDK client methods the port uses. */
+type CopilotClientSlice = Pick<
+  CopilotClient,
+  'createSession' | 'resumeSession' | 'listModels' | 'ping' | 'stop'
+>;
+
+/** Exported for the port's own tests; `createCopilotSdkClient` is the caller. */
+export function copilotSdkClientPort(
+  client: CopilotClientSlice,
+): CopilotSdkClientPort {
   return {
     createSession: async (config) =>
       sessionPort(await client.createSession(config)),
@@ -128,16 +144,26 @@ function clientPort(client: CopilotClient): CopilotSdkClientPort {
       const timer = setInterval(() => {
         if (stopped || checking) return;
         checking = true;
+        const lost = (error: unknown) => {
+          if (stopped) return;
+          stopped = true;
+          clearInterval(timer);
+          clearTimeout(deadline);
+          onLost(error);
+        };
+        const deadline = setTimeout(
+          () => lost(new Error('The Copilot runtime stopped answering.')),
+          COPILOT_PING_TIMEOUT_MS,
+        );
+        deadline.unref?.();
         client.ping().then(
           () => {
             checking = false;
+            clearTimeout(deadline);
           },
           (error: unknown) => {
             checking = false;
-            if (stopped) return;
-            stopped = true;
-            clearInterval(timer);
-            onLost(error);
+            lost(error);
           },
         );
       }, COPILOT_CONNECTION_CHECK_MS);
@@ -185,5 +211,5 @@ export const createCopilotSdkClient: CopilotSdkClientFactory = async (
     await client.forceStop().catch(() => undefined);
     throw error;
   }
-  return clientPort(client);
+  return copilotSdkClientPort(client);
 };

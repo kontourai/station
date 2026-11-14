@@ -184,8 +184,13 @@ interface ActiveTurn {
   turnId: string;
   /** The runtime echoed this turn's `user.message` (its `clientTurnId`). */
   consumed: boolean;
-  /** That `user.message`'s `messageId`, which `session.error` names. */
+  /**
+   * The submitted message's id (from `send()`, or its `user.message` echo),
+   * which `session.error` and `session.warning` name as their origin.
+   */
   messageId?: string;
+  /** An interrupt was asked for: an aborted idle ends the turn even unechoed. */
+  interruptRequested: boolean;
   settled: Promise<void>;
   settle: () => void;
 }
@@ -211,7 +216,20 @@ interface CopilotSessionRecord {
   rewinding: boolean;
   stopWatch: () => void;
   ended: boolean;
+  /**
+   * Terminal signals (a policy block or a root error) for a message id the
+   * running turn has not learned yet: `send()` resolves after the runtime
+   * admits the message, and the signal can arrive first.
+   */
+  earlyTerminals: Map<string, string>;
 }
+
+/** Strictness of an applied mode: a lower rank asks a person for more. */
+const MODE_RANK: Record<CopilotAppliedApprovalMode, number> = {
+  ask: 0,
+  auto: 1,
+  never: 2,
+};
 
 /**
  * On Windows an npm-installed `copilot` is a `.cmd` shim, which the SDK
@@ -545,6 +563,7 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
       rewinding: false,
       stopWatch: () => undefined,
       ended: false,
+      earlyTerminals: new Map(),
     };
     record = created;
     this.sessions.set(threadId, created);
@@ -555,9 +574,15 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
       threadId,
       sessionTmpDir ? { own: sessionTmpDir } : undefined,
     );
+    // Recovery replays the start from this event's metadata (connection,
+    // agent) and reads the binding key back from it to resume under it.
     this.publish(threadId, undefined, {
       method: 'session.started',
       sessionId: copilot.sessionId,
+      metadata: {
+        ...input.metadata,
+        [NATIVE_RESUME_BINDING_METADATA_KEY]: this.bindingKey(),
+      },
     });
     this.publish(threadId, undefined, {
       method: 'session.configured',
@@ -594,9 +619,10 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
       readApprovalMode(modelOptions) ?? record.requestedMode;
     const next = copilotAppliedApprovalMode(record.requestedMode, confinement);
     if (next === record.mode) return;
+    // A stricter mode also drops the grants a person gave under the looser
+    // one; a looser mode keeps them, since it only asks a person for less.
+    if (MODE_RANK[next] < MODE_RANK[record.mode]) record.grants.clear();
     record.mode = next;
-    // A narrower mode also drops the grants a person gave under the wider one.
-    if (next !== 'never') record.grants.clear();
   }
 
   async sendTurn(
@@ -622,7 +648,14 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
     const settled = new Promise<void>((resolve) => {
       settle = resolve;
     });
-    record.activeTurn = { turnId, consumed: false, settled, settle };
+    record.activeTurn = {
+      turnId,
+      consumed: false,
+      interruptRequested: false,
+      settled,
+      settle,
+    };
+    record.earlyTerminals.clear();
     record.session = { ...record.session, status: 'running' };
     this.publish(input.threadId, turnId, {
       method: 'turn.started',
@@ -635,11 +668,23 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
       ? `${input.ambientContext}\n\n${input.input}`
       : input.input;
     try {
-      await record.copilot.send({
+      const messageId = await record.copilot.send({
         prompt,
         mode: 'enqueue',
         clientTurnId: turnId,
       });
+      const active = record.activeTurn;
+      if (active?.turnId === turnId) {
+        active.messageId ??= messageId;
+        const early = record.earlyTerminals.get(messageId);
+        if (early !== undefined)
+          this.settleTurn(record, {
+            method: 'turn.aborted',
+            turnId,
+            reason: early,
+          });
+      }
+      record.earlyTerminals.clear();
     } catch (error) {
       this.settleTurn(record, {
         method: 'turn.aborted',
@@ -691,6 +736,7 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
     if (turnId && turnId !== active.turnId)
       return { outcome: 'target-mismatch', activeTurnId: active.turnId };
     this.declineOpenRequests(record);
+    active.interruptRequested = true;
     try {
       await record.copilot.abort();
     } catch (error) {
@@ -770,11 +816,34 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
       this.onSessionError(record, event);
       return;
     }
+    // A prompt hook blocked the message: the runtime never runs it, so no
+    // `user.message` follows and the turn ends here (as the SDK's own
+    // `sendAndWait` reads `policy_blocked`).
+    if (
+      event.type === 'session.warning' &&
+      event.data.warningType === 'policy_blocked' &&
+      !event.agentId
+    ) {
+      this.publish(threadId, turnId, {
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: 'copilot_sdk_prompt_blocked',
+        message: event.data.message,
+      });
+      this.endTurnForOrigin(
+        record,
+        event.data.originatingMessageId,
+        event.data.message,
+      );
+      return;
+    }
     // Only the idle after this turn's own message ends it: an idle left over
-    // from an earlier run must not complete a turn that has not started.
+    // from an earlier run must not complete a turn that has not started. An
+    // interrupted turn the runtime never echoed ends on its aborted idle.
     if (
       event.type === 'session.idle' &&
-      active?.consumed &&
+      active &&
+      (active.consumed || (active.interruptRequested && event.data.aborted)) &&
       event.data.mode !== 'autopilot'
     ) {
       this.settleTurn(
@@ -832,15 +901,45 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
       code: 'copilot_sdk_session_error',
       details,
     });
+    this.endTurnForOrigin(
+      record,
+      event.data.originatingMessageId,
+      event.data.message,
+    );
+  }
+
+  /**
+   * Ends the running turn for a terminal signal naming `origin`: when it is
+   * the turn's message, or, with no origin, once the turn's message was
+   * echoed. A signal for a message the turn has not learned yet is held until
+   * `send()` returns its id; one for any other message is left alone.
+   */
+  private endTurnForOrigin(
+    record: CopilotSessionRecord,
+    origin: string | undefined,
+    reason: string,
+  ): void {
+    const active = record.activeTurn;
     if (!active) return;
-    const origin = event.data.originatingMessageId;
-    const forThisTurn = origin ? origin === active.messageId : active.consumed;
-    if (forThisTurn)
+    if (!origin) {
+      if (active.consumed)
+        this.settleTurn(record, {
+          method: 'turn.aborted',
+          turnId: active.turnId,
+          reason,
+        });
+      return;
+    }
+    if (origin === active.messageId) {
       this.settleTurn(record, {
         method: 'turn.aborted',
         turnId: active.turnId,
-        reason: event.data.message,
+        reason,
       });
+      return;
+    }
+    if (active.messageId === undefined && record.earlyTerminals.size < 16)
+      record.earlyTerminals.set(origin, reason);
   }
 
   private settleTurn(

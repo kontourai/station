@@ -31,12 +31,14 @@ import type {
 } from '@github/copilot-sdk';
 import type { ProviderRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
-import { afterAll, describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test, vi } from 'vitest';
+import { startRecoveredOrchestrationSession } from '../../services/orchestration/orchestration-session-state.js';
 import { SessionStartRefusedError } from '../adapter-shape.js';
 import {
   CopilotSdkAdapter,
   resolveCopilotCliLaunchPath,
 } from '../adapters/copilot-sdk-adapter.js';
+import { copilotRealPath } from '../adapters/copilot-sdk-approval.js';
 import type {
   CopilotHistoryRewindRequest,
   CopilotHistoryRewindResult,
@@ -44,6 +46,11 @@ import type {
   CopilotSdkClientPort,
   CopilotSdkLaunch,
   CopilotSdkSessionPort,
+} from '../adapters/copilot-sdk-port.js';
+import {
+  COPILOT_CONNECTION_CHECK_MS,
+  COPILOT_PING_TIMEOUT_MS,
+  copilotSdkClientPort,
 } from '../adapters/copilot-sdk-port.js';
 import { nativeResumeBindingKey } from '../adapters/native-resume-binding.js';
 
@@ -56,6 +63,8 @@ writeFileSync(join(OUTSIDE, 'secret'), 'secret');
 // A directory link inside the working directory that leads outside it. A
 // junction needs no extra privilege on Windows.
 symlinkSync(OUTSIDE, join(CWD, 'link'), 'junction');
+// A dangling link: it points outside, at a directory that does not exist yet.
+symlinkSync(join(OUTSIDE, 'not-yet'), join(CWD, 'dangling'), 'junction');
 const COPILOT_HOME = join(ROOT, 'copilot-home');
 const BINDING = nativeResumeBindingKey('copilot-sdk', COPILOT_HOME, null);
 
@@ -116,9 +125,14 @@ class FakeCopilotSession implements CopilotSdkSessionPort {
   async getEvents(): Promise<SessionEvent[]> {
     return this.persisted;
   }
+  /** Runs before `send()` resolves: the runtime can answer before admission returns. */
+  onSend?: (messageId: string, options: MessageOptions) => void;
+
   async send(options: MessageOptions): Promise<string> {
     this.sends.push(options);
-    return `msg-${this.sends.length}`;
+    const messageId = `msg-${this.sends.length}`;
+    this.onSend?.(messageId, options);
+    return messageId;
   }
   async abort(): Promise<void> {
     this.aborts += 1;
@@ -481,6 +495,54 @@ describe('Copilot SDK adapter: session create and resume', () => {
     });
   });
 
+  test('session.started carries the start metadata and the binding key recovery reads back', async () => {
+    const h = harness();
+    await start(h, {
+      metadata: { connectionId: 'copilot-sdk', agentSlug: 'a' },
+    });
+    await h.settle();
+    expect(h.events.find((e) => e.method === 'session.started')).toMatchObject({
+      metadata: {
+        connectionId: 'copilot-sdk',
+        agentSlug: 'a',
+        nativeResumeBindingKey: BINDING,
+      },
+    });
+  });
+
+  test('a restart recovery resumes the session through the generic recovery path', async () => {
+    const h = harness();
+    const recover = (readKey?: (threadId: string) => string | undefined) =>
+      startRecoveredOrchestrationSession({
+        session: {
+          provider: 'copilot-sdk',
+          threadId: 'thread-1',
+          status: 'ready',
+          cwd: CWD,
+          resumeCursor: { copilotSessionId: 'earlier-session' },
+          createdAt: at(0),
+          updatedAt: at(0),
+        },
+        adapter: h.adapter,
+        options: {
+          assertAdapterReady: async () => {},
+          trackStartedSession: () => {},
+          logger: { warn: vi.fn() },
+          readSessionStartMetadata: () => ({ connectionId: 'copilot-sdk' }),
+          ...(readKey ? { readNativeResumeBindingKey: readKey } : {}),
+        },
+      });
+    // Without the recorded key the adapter cannot show the session is its.
+    await expect(recover()).rejects.toThrow(/configuration home/);
+    await expect(recover(() => BINDING)).resolves.toMatchObject({
+      threadId: 'thread-1',
+      resumeCursor: { copilotSessionId: 'earlier-session' },
+    });
+    expect(h.client.resumed.map((entry) => entry.id)).toEqual([
+      'earlier-session',
+    ]);
+  });
+
   test('binds a resume to the runtime configuration home in COPILOT_HOME', async () => {
     const other = harness({
       env: { COPILOT_HOME: join(ROOT, 'another-home'), PATH: '/usr/bin' },
@@ -764,6 +826,97 @@ describe('Copilot SDK adapter: turns', () => {
     ]);
   });
 
+  test("a root error for the turn's message ends it even before the echo", async () => {
+    const h = harness();
+    const session = await start(h);
+    const turn = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'go',
+    });
+    // `send()` returned msg-1; no user.message has been echoed yet.
+    session.emit(sessionError(session, { originatingMessageId: 'msg-1' }));
+    await h.settle();
+    expect(h.events.at(-1)).toMatchObject({
+      method: 'turn.aborted',
+      turnId: turn.turnId,
+    });
+  });
+
+  test('a root error that arrives before send() returns still ends its turn', async () => {
+    const h = harness();
+    const session = await start(h);
+    session.onSend = (messageId) =>
+      session.emit(sessionError(session, { originatingMessageId: messageId }));
+    const turn = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'go',
+    });
+    await h.settle();
+    expect(h.events.at(-1)).toMatchObject({
+      method: 'turn.aborted',
+      turnId: turn.turnId,
+    });
+  });
+
+  test('an error for another message does not end this turn', async () => {
+    const h = harness();
+    const { session, turnId } = await startedTurn(h);
+    session.emit(sessionError(session, { originatingMessageId: 'msg-old' }));
+    await h.settle();
+    expect(methods(h.events.filter((e) => e.turnId === turnId))).toEqual([
+      'turn.started',
+      'runtime.error',
+    ]);
+    expect(h.adapter.hasOpenEngineWork('thread-1')).toBe(true);
+  });
+
+  test('a prompt a policy hook blocked ends its turn and frees the session', async () => {
+    const h = harness();
+    const session = await start(h);
+    const turn = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'go',
+    });
+    session.emit({
+      type: 'session.warning',
+      id: session.nextEventId(),
+      parentId: null,
+      timestamp: at(2),
+      data: {
+        warningType: 'policy_blocked',
+        message: 'A prompt hook blocked this message.',
+        originatingMessageId: 'msg-1',
+      },
+    } as SessionEvent);
+    session.emit(idle(session));
+    await h.settle();
+    expect(methods(h.events.filter((e) => e.turnId === turn.turnId))).toEqual([
+      'turn.started',
+      'runtime.warning',
+      'turn.aborted',
+    ]);
+    await expect(
+      h.adapter.sendTurn({ threadId: 'thread-1', input: 'next' }),
+    ).resolves.toMatchObject({ threadId: 'thread-1' });
+  });
+
+  test('an interrupted turn the runtime never echoed ends on its aborted idle', async () => {
+    const h = harness();
+    const session = await start(h);
+    const turn = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'go',
+    });
+    const result = h.adapter.interruptTurn('thread-1', turn.turnId);
+    await h.settle();
+    session.emit(idle(session, true));
+    await expect(result).resolves.toEqual({
+      outcome: 'cancelled',
+      turnId: turn.turnId,
+    });
+    expect(h.adapter.hasOpenEngineWork('thread-1')).toBe(false);
+  });
+
   test('a recoverable root error is a warning and the turn runs on', async () => {
     const h = harness();
     const { session, turnId } = await startedTurn(h);
@@ -990,7 +1143,7 @@ describe('Copilot SDK adapter: approvals', () => {
     expect(opened(h)).toHaveLength(2);
   });
 
-  test('a read granted for the session covers that directory only', async () => {
+  test('a read granted for the session covers that exact directory only', async () => {
     const h = harness();
     const session = await start(h);
     const first = session.ask(read('secret', join(OUTSIDE, 'secret')));
@@ -1004,7 +1157,25 @@ describe('Copilot SDK adapter: approvals', () => {
     await expect(
       session.ask(read('other', join(OUTSIDE, 'other'))),
     ).resolves.toEqual({ kind: 'approve-once' });
+    // Not the directory's parent, a subdirectory, or a sibling that merely
+    // shares its name as a prefix.
     void session.ask(read('elsewhere', join(ROOT, 'elsewhere')));
+    void session.ask(read('deeper', join(OUTSIDE, 'sub', 'deeper')));
+    void session.ask(read('prefix', join(`${OUTSIDE}-sibling`, 'file')));
+    await h.settle();
+    expect(opened(h)).toHaveLength(4);
+  });
+
+  test('a write through a dangling link that points outside asks a person', async () => {
+    const h = harness();
+    const session = await start(h, {
+      modelOptions: { approvalMode: 'auto' },
+    });
+    // Both the link itself and a path below it resolve to where it points.
+    void session.ask(write('dangling', join(CWD, 'dangling')));
+    void session.ask(
+      write('dangling/evil.ts', join(CWD, 'dangling', 'evil.ts')),
+    );
     await h.settle();
     expect(opened(h)).toHaveLength(2);
   });
@@ -1088,6 +1259,39 @@ describe('Copilot SDK adapter: approval mode per turn', () => {
     void session.ask(shell);
     await h.settle();
     expect(opened(h)).toHaveLength(1);
+  });
+
+  test('a stricter turn drops the session grants; a looser one keeps them', async () => {
+    const h = harness();
+    const session = await start(h);
+    const grant = async (index: number) => {
+      const answer = session.ask(shell);
+      await h.settle();
+      await h.adapter.respondToRequest(
+        'thread-1',
+        opened(h)[index]!.requestId,
+        'acceptForSession',
+      );
+      await answer;
+    };
+    // Ask → Auto is looser: the grant made under Ask still applies.
+    await grant(0);
+    await sendAndEcho(h, session, 'one', {
+      modelOptions: { approvalMode: 'auto' },
+      confinement: 'workspace',
+    });
+    await expect(session.ask(shell)).resolves.toEqual({
+      kind: 'approve-once',
+    });
+    session.emit(idle(session));
+    // Auto → Ask is stricter: the same command asks again.
+    await sendAndEcho(h, session, 'two', {
+      modelOptions: { approvalMode: 'ask' },
+      confinement: 'workspace',
+    });
+    void session.ask(shell);
+    await h.settle();
+    expect(opened(h)).toHaveLength(2);
   });
 
   test('a turn that grants full access in a host session stops asking', async () => {
@@ -1304,6 +1508,94 @@ describe('Copilot SDK adapter: rewind', () => {
     expect(session.rewinds).toEqual([
       { eventId: 'persisted-evt', mode: 'conversation-and-files' },
     ]);
+  });
+});
+
+describe('Copilot SDK approvals: real-path resolution fails closed', () => {
+  const missing = (code: string) =>
+    Object.assign(new Error(code), { code }) as NodeJS.ErrnoException;
+
+  test('a path that cannot be resolved for any reason but absence is unresolvable', () => {
+    const denied = {
+      realpath: () => {
+        throw missing('EACCES');
+      },
+      lstat: () => ({ isSymbolicLink: () => false }),
+      readlink: () => '',
+    };
+    expect(copilotRealPath('x', CWD, denied)).toBeUndefined();
+    const lstatDenied = {
+      realpath: () => {
+        throw missing('ENOENT');
+      },
+      lstat: () => {
+        throw missing('EACCES');
+      },
+      readlink: () => '',
+    };
+    expect(copilotRealPath('x', CWD, lstatDenied)).toBeUndefined();
+  });
+
+  test('a chain of links longer than the bound is unresolvable', () => {
+    let hop = 0;
+    const endless = {
+      realpath: () => {
+        throw missing('ENOENT');
+      },
+      lstat: () => ({ isSymbolicLink: () => true }),
+      readlink: () => `link-${++hop}`,
+    };
+    expect(copilotRealPath('start', CWD, endless)).toBeUndefined();
+  });
+});
+
+describe('Copilot SDK port: connection watch', () => {
+  test('reports a lost runtime once: a failed ping, or one that never answers', async () => {
+    vi.useFakeTimers();
+    try {
+      const pings: Array<'ok' | 'fail' | 'hang'> = ['ok', 'fail'];
+      const fakeClient = {
+        ping: () => {
+          const next = pings.shift() ?? 'hang';
+          if (next === 'ok')
+            return Promise.resolve({ message: '', timestamp: '' });
+          if (next === 'fail')
+            return Promise.reject(new Error('Connection is closed.'));
+          return new Promise<never>(() => undefined);
+        },
+      };
+      const failed = vi.fn();
+      const port = copilotSdkClientPort(fakeClient as never);
+      port.watchConnection(failed);
+      await vi.advanceTimersByTimeAsync(COPILOT_CONNECTION_CHECK_MS);
+      expect(failed).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(COPILOT_CONNECTION_CHECK_MS);
+      expect(failed).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(COPILOT_CONNECTION_CHECK_MS * 3);
+      expect(failed).toHaveBeenCalledTimes(1);
+
+      // A runtime that never answers is lost after the ping timeout.
+      const hung = vi.fn();
+      const hungPort = copilotSdkClientPort({
+        ping: () => new Promise<never>(() => undefined),
+      } as never);
+      hungPort.watchConnection(hung);
+      await vi.advanceTimersByTimeAsync(COPILOT_CONNECTION_CHECK_MS);
+      expect(hung).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(COPILOT_PING_TIMEOUT_MS);
+      expect(hung).toHaveBeenCalledTimes(1);
+
+      // A stopped watch reports nothing.
+      const quiet = vi.fn();
+      const stop = copilotSdkClientPort({
+        ping: () => Promise.reject(new Error('gone')),
+      } as never).watchConnection(quiet);
+      stop();
+      await vi.advanceTimersByTimeAsync(COPILOT_CONNECTION_CHECK_MS * 2);
+      expect(quiet).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

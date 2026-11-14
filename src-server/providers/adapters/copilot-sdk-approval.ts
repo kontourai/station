@@ -29,7 +29,7 @@
  * `dist/generated/session-events.d.ts` (1.0.32), mirrored in
  * github/copilot-sdk `nodejs/src/generated/session-events.ts`.
  */
-import { realpathSync } from 'node:fs';
+import { lstatSync, readlinkSync, realpathSync } from 'node:fs';
 import {
   basename,
   dirname,
@@ -64,26 +64,64 @@ export function copilotAppliedApprovalMode(
   return 'ask';
 }
 
+/** The filesystem reads `copilotRealPath` makes; replaceable in tests. */
+export interface CopilotRealPathFs {
+  realpath(path: string): string;
+  lstat(path: string): { isSymbolicLink(): boolean };
+  readlink(path: string): string;
+}
+
+const NODE_REAL_PATH_FS: CopilotRealPathFs = {
+  realpath: (path) => realpathSync.native(path),
+  lstat: (path) => lstatSync(path),
+  readlink: (path) => readlinkSync(path),
+};
+
+/** Symlinks followed for one path before it counts as unresolvable. */
+const SYMLINK_HOPS_MAX = 32;
+
+function errorCode(error: unknown): string | undefined {
+  return (error as NodeJS.ErrnoException | undefined)?.code;
+}
+
 /**
  * The real path of `target` (absolute, or relative to `base`): every symlink
  * resolved, also for a file that does not exist yet, through its nearest
- * existing parent. `undefined` when it cannot be resolved for any reason
+ * existing parent. A dangling symlink is followed to where it points, since
+ * a write through it lands there; more than {@link SYMLINK_HOPS_MAX} links is
+ * unresolvable. `undefined` when the path cannot be resolved for any reason
  * other than not existing, so the caller asks a person.
+ *
+ * Time of check only: the runtime acts after Station answers, so a link
+ * swapped in between is not seen. This narrows what Station approves without
+ * a person; it does not confine the engine.
  */
 export function copilotRealPath(
   target: string,
   base: string,
+  fs: CopilotRealPathFs = NODE_REAL_PATH_FS,
+  hops = 0,
 ): string | undefined {
+  if (hops > SYMLINK_HOPS_MAX) return undefined;
   const absolute = resolve(base, target);
   try {
-    return realpathSync.native(absolute);
+    return fs.realpath(absolute);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return undefined;
-    const parent = dirname(absolute);
-    if (parent === absolute) return undefined;
-    const real = copilotRealPath(parent, base);
-    return real === undefined ? undefined : join(real, basename(absolute));
+    if (errorCode(error) !== 'ENOENT') return undefined;
   }
+  // Missing: a dangling symlink, or a name not created yet.
+  let link: string | undefined;
+  try {
+    if (fs.lstat(absolute).isSymbolicLink()) link = fs.readlink(absolute);
+  } catch (error) {
+    if (errorCode(error) !== 'ENOENT') return undefined;
+  }
+  if (link !== undefined)
+    return copilotRealPath(link, dirname(absolute), fs, hops + 1);
+  const parent = dirname(absolute);
+  if (parent === absolute) return undefined;
+  const real = copilotRealPath(parent, base, fs, hops);
+  return real === undefined ? undefined : join(real, basename(absolute));
 }
 
 function within(directory: string, real: string): boolean {
@@ -149,7 +187,8 @@ export interface CopilotApprovalScope {
  * The key a person's "allow for this session" answer is remembered under, or
  * `undefined` when that answer is taken as a one-call allow. A shell grant
  * covers the exact command text only; an MCP grant one server's tool; a read
- * grant the real directory the file is in; a write grant writes inside the
+ * grant the files directly in the file's real directory (not below it); a
+ * write grant writes inside the
  * working directory. A managed request never records a grant.
  */
 export function copilotSessionGrantKey(
@@ -176,11 +215,13 @@ export function copilotSessionGrantKey(
   }
 }
 
+/**
+ * Whether a person's read grant covers `real`: the grant names one real
+ * directory, and covers the files directly in it, never its subdirectories
+ * (a grant for `~/notes.txt` must not reach `~/.ssh`).
+ */
 function readGranted(grants: ReadonlySet<string>, real: string): boolean {
-  for (const grant of grants)
-    if (grant.startsWith('read-dir:') && within(grant.slice(9), real))
-      return true;
-  return false;
+  return grants.has(`read-dir:${dirname(real)}`);
 }
 
 /** Whether Station allows this request without asking a person. */
