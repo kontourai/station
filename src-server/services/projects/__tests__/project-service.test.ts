@@ -315,6 +315,9 @@ describe('ProjectService', () => {
     expect(svc.getProject(project.slug).repositoryDisplay).toBe(
       'github.com/kontourai/station',
     );
+    // An update response names the same repository a later read would.
+    const renamed = await svc.updateProject(project.slug, { name: 'Acme 2' });
+    expect(renamed.repositoryDisplay).toBe('github.com/kontourai/station');
     expect(record.schemaVersion).toBe(1);
     expect(record.id).toMatch(/^prj_/);
     // NOT the local project id: the manifest's id is the portable join key.

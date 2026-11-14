@@ -2,7 +2,8 @@
 
 ## Project display metadata
 
-Operator Project list and detail reads include `repositoryDisplay` from the
+Operator Project list and detail reads, and create and update responses,
+include `repositoryDisplay` from the
 manifest's primary Git resource, or acquisition metadata when no manifest exists.
 Detected repository artwork is `derivedIcon` (at most 12 KiB before base64), not
 saved `icon`. Clearing `icon` through the update route saves `iconDisabled: true`;

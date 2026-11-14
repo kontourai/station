@@ -553,9 +553,9 @@ export class ProjectService {
       operation: 'create',
       project: project.slug || project.id,
     });
-    // Readers never see a field a lock hides, the create response included,
-    // and every response names the same repository a later read would.
-    return this.withRepositoryDisplay(withoutLockedProjectOverrides(project));
+    // Readers never see a field a lock hides, the create response included.
+    // Its only caller keeps the id and slug, so no repository label here.
+    return withoutLockedProjectOverrides(project);
   }
 
   private async prepareProjectConfig(
