@@ -26,6 +26,11 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigationActions: () => ({ navigate: vi.fn() }),
 }));
 
+// This panel fixture supplies the scope catalogue without connection queries.
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
+}));
+
 const NOW = Date.parse('2026-10-28T18:00:00Z');
 const thread: HomeWorkItem = {
   id: 'conversation',
