@@ -915,7 +915,12 @@ gh api repos/kontourai/station/rules/branches/main
   capture) skip on PR events and report `skipped`. Marking the PR ready for
   review runs them on its head, and every later push to the ready PR runs them
   again, so open the PR as a draft (`gh pr create --draft`) and run
-  `gh pr ready <n> --repo kontourai/station` when you intend to land it. The
+  `gh pr ready <n> --repo kontourai/station` when you intend to land it. Let
+  the ready run's checks appear on the PR before arming auto-merge: until they
+  do, the newest check on that head is the draft's `skipped`, which GitHub
+  counts as passing, so arming at once can enqueue without the PR-level run.
+  The merge queue is the gate either way; the post-ready run is early
+  feedback. The
   merge queue runs the Windows floor, and the iOS build when native inputs
   changed, for every candidate either way; the Gallery capture runs on ready
   PRs only. Pre-landing iOS builds

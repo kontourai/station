@@ -15,12 +15,19 @@ name: "PR: iOS build"
 #
 # Before landing (pull_request_target, merge_group) the classifier builds
 # only for NATIVE inputs: src-desktop, the iOS project and configs, Rust and
-# Cargo, the runtime smoke and its fixtures, this workflow, the native-client
-# build inputs, and the slice of src-ui that is the native shell. The exact
-# set and why each part is in or out live in scripts/classify-ci-change.mjs.
+# Cargo, dependency manifests, the runtime smoke and its fixtures, this
+# workflow, vite.config.ts and every executed file named for iOS or the
+# native client, and the slice of src-ui that is the native shell.
 #
-# After landing, a `push` to main builds the rest: a change to the remaining
-# src-ui/ or the bundled packages is built on main instead of on its PR.
+# After landing, a `push` to main builds the POST-MERGE inputs: every source
+# root the UI bundle can import (src-ui/, src-shared/, and the workspace
+# packages it reaches) and the generic tooling this job executes (dependency
+# install, bundle budget, vite plugins, shared script libraries). The exact
+# sets, and the rule that splits them, live in scripts/classify-ci-change.mjs;
+# classify-ci-change.test.ts derives what this job executes and what the UI
+# imports, and fails on a reached file neither set covers. Not seen by that
+# derivation: files read at run time (readFileSync, child processes, dynamic
+# import specifiers) unless listed by hand.
 #
 # The push trigger was removed once because it rebuilt the identical commit:
 # the merge queue lands one entry at a time and fast-forwards main to the
@@ -40,9 +47,12 @@ name: "PR: iOS build"
 # push with cancel-in-progress off, so at most one runs and one waits, a
 # newer pending build replaces an older pending one (the newer tree contains
 # it), and a running build is never cancelled. A red push run on main opens
-# a tracker through main-health.yml. A commit that reaches main without the
-# queue is still not built before landing; dispatch this workflow on main to
-# build one.
+# a tracker through main-health.yml.
+#
+# The acknowledged gap: a commit pushed to main WITHOUT the merge queue gets
+# no pre-landing build, and if its range has a native input the push run
+# also skips it, because it cannot tell that commit from a queue landing the
+# merge group already built. Dispatch this workflow on main to build one.
 #
 # Draft pull requests, and the same-repository release PR the automation app
 # regenerates on every main push, do not build on PR events (see the build
@@ -143,7 +153,12 @@ jobs:
     # head living in this repository (a fork can name a branch anything) AND
     # by its author being the app's bot account (a `[bot]` login no person can
     # register), so a human PR from that branch name still builds.
-    if: needs.classify.outputs.relevant == 'true' && (github.event_name != 'pull_request_target' || (!github.event.pull_request.draft && (github.event.pull_request.head.ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login != 'station-automation[bot]')))
+    # `!cancelled()` lets the build run when the classify JOB failed (a
+    # checkout or runner failure, which the step's fail_closed cannot answer):
+    # an unknown answer builds, as everywhere else in this workflow. It is not
+    # `always()`, which would also start a 25-minute build in a run that was
+    # cancelled (a superseded PR head, a dropped merge group).
+    if: "!cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.relevant == 'true') && (github.event_name != 'pull_request_target' || (!github.event.pull_request.draft && (github.event.pull_request.head.ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login != 'station-automation[bot]')))"
     # One running plus one pending post-merge build on main; a newer push
     # replaces the pending one and never cancels the running one. A job whose
     # `if` is false never joins the group. Every other event gets a group of
