@@ -135,8 +135,10 @@ confinement change.
 nearest existing parent, against the working directory's real path. It needs
 the runtime's `resolvedPath` (optional and experimental in the SDK), and a
 write's every `fileEdits` path must be inside too; otherwise a person decides.
-A dangling symlink is followed to where it points, since a write through it
-lands there. These are checks at the time Station answers: a link swapped in
+The path is resolved one segment at a time, as the kernel does: `..` leaves
+the real directory reached so far, and a dangling symlink is followed to where
+it points, its relative target read from the link's real directory, since a
+write through it lands there. These are checks at the time Station answers: a link swapped in
 before the runtime acts is not seen, so they narrow what Station approves
 without a person and do not confine the engine. A request managed policy
 marks (`managedApprovalRequired`, on the request or on the derived prompt)
