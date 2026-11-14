@@ -1,7 +1,0 @@
-{
-  "revision": "54880d0b3de53fd483615a221aa5b917b6829b4b",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Reviewed the regenerated station-docs-content.ts: it re-embeds the edited terminal design, config, API, SDK and CLI references (retention settings, restore after restart, doctor shell host) unchanged from their reviewed sources. This document describes how the shipped docs are generated and served, which this regeneration does not change.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

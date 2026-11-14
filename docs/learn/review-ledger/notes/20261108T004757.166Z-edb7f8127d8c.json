@@ -1,7 +1,0 @@
-{
-  "revision": "6d24a3afcdae185bf6a3c83de81d231783f95cc8",
-
-  "notes": [
-    {"path":"docs/guides/connections.md","note":"Checked the engine capability matrix reference (system prompt, tools, skills, images) and engine launch claims against claude-adapter.ts: the matrix is unchanged and the instructions use an existing channel (append or first turn). No connection setup behavior changed.","inputs":["docs/guides/connections.md","src-server/providers/adapters/claude-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/runtime/agents/request-delegation.ts","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

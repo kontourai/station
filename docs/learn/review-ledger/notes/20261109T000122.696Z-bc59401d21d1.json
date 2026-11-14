@@ -1,7 +1,0 @@
-{
-  "revision": "3895c5630f1cc95f3aea61fd72edc8ce5d93b9af",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Upstream development.md only gained the self-contained Free scripted turns section (scripts/dev-scripted-model.mjs); no claim here depends on it.","inputs":["docs/guides/testing.md","docs/guides/development.md"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "d5e3c3757b2dfb3fd2d38d801292f5c5a3bbfed6",
-
-  "notes": [
-    {"path":"docs/design/settings-launch-triage.md","note":"Reviewed device-settings contract change; triage claims about existing settings remain accurate. Density and motion are documented in settings-architecture and theming.","inputs":["docs/design/settings-launch-triage.md","packages/contracts/src/device-settings.ts"]}
-  ]
-}

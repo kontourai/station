@@ -1,7 +1,0 @@
-{
-  "revision": "fa4c7a8b0cc049e9c7d11c0996915bfe25d70e65",
-
-  "notes": [
-    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Re-checked after merging the input-notice lane with the shared viewer lane: LiveSurfaceCanvas keeps the input-failure notice over the unzoomed stage with Retry, adds the viewer-only zoom layer, held touch presses and immersive mode with renderImmersiveActions; this document's live-surface claims match the combined file.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-ui/src/live-surface/LiveSurfaceCanvas.tsx"]}
-  ]
-}

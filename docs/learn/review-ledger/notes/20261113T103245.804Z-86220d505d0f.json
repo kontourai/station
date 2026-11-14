@@ -1,7 +1,0 @@
-{
-  "revision": "2c476418da94a8ee6d20ce91c9e0fe55f8f44b1d",
-
-  "notes": [
-    {"path":"docs/guides/code-quality.md","note":"Checked against the testing.md diff in this PR: only the Gallery digest-pin rationale sentence changed (stale v1.64.1-noble example replaced by the vX.Y.Z-noble tag shape); no heading or anchor changed, and this document's testing.md citations and claims do not depend on that sentence.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]}
-  ]
-}

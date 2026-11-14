@@ -1,7 +1,0 @@
-{
-  "revision": "2a598b444266e80e5106ec751b8f9ada0ce2af6d",
-
-  "notes": [
-    {"path":"docs/design/chat-composer.md","note":"Reviewed the child-reader title breadcrumb, retained dock controls, engine call/result identity pairing, live settlement, and trusted browser Back against the dock owner and seven running-app gallery scenes. Provider-backed fixtures and browser evidence do not qualify physical Android or external engines.","inputs":["docs/design/chat-composer.md","packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/views/home/HomeSurface.tsx","src-ui/src/views/home/__tests__/HomeSurface.test.tsx"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "5ff4b10e24f3d8cabc6940ea79ba5c6dba8ce082",
-
-  "notes": [
-    {"path":"docs/reference/contracts.md","note":"Re-checked against 5ff4b10e24f3, which changes only how StationRuntime hands two Claude resolvers to the confinement preflight factory: as closures read when a preflight runs, no longer as field references read while routes are composed. A preflight still calls the same resolvers. Re-read the execution-confinement row: it describes the contract shapes and the parser, which this commit does not touch. No claim is affected.","inputs":["docs/reference/contracts.md","src-server/runtime/bootstrap/station-runtime.ts"]}
-  ]
-}

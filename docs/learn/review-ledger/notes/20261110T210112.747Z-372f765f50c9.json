@@ -1,7 +1,0 @@
-{
-  "revision": "4ea454137e3fdcc8509d9a11a77f367c7c967947",
-
-  "notes": [
-    {"path":"docs/guides/responsive-ui.md","note":"Re-reviewed after PlatformProfileContext now lazy-imports platform/installedAppZoom (dynamic import in the profile effect, released on cleanup) to keep the lock and its stylesheet out of the entry chunk; behaviour unchanged. responsive-ui's installed-app zoom paragraph names installedAppZoom.ts and remains accurate.","inputs":["docs/guides/responsive-ui.md","src-ui/src/index.css","src-ui/src/platform/PlatformProfileContext.tsx"]}
-  ]
-}

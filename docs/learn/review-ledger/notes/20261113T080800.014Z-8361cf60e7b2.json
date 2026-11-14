@@ -1,7 +1,0 @@
-{
-  "revision": "03d40ad8a0ab1271734953b5fbef22d5169b88cc",
-
-  "notes": [
-    {"path":"packages/agent-runtime/CONTEXT.md","note":"Resource manifest only gained the station-weight process test in the process-heavy group; nothing this context states about agent-runtime tests changed.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]}
-  ]
-}

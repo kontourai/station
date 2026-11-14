@@ -1,7 +1,0 @@
-{
-  "revision": "d5e3c3757b2dfb3fd2d38d801292f5c5a3bbfed6",
-
-  "notes": [
-    {"path":"docs/design/placement.md","note":"Reviewed device-settings contract and store change; placement and region preferences are unchanged, density and motion are separate appearance keys.","inputs":["docs/design/placement.md","packages/contracts/src/device-settings.ts","src-ui/src/lib/device-settings-store.ts"]}
-  ]
-}

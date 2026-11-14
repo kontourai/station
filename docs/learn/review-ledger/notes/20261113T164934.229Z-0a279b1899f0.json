@@ -1,7 +1,0 @@
-{
-  "revision": "7796c326ae21e797aef2d5edcafff978aaaad051",
-
-  "notes": [
-    {"path":"docs/guides/nightly.md","note":"Checked server release-notes claims against desktop-release-notes.mjs: Nightly fallback now logs only a fixed reason category (no GitHub diagnostics or token scopes); the rate-limit reset is honored only when x-ratelimit-remaining is 0; predecessor selection, caps, omitted counts and fail-closed stable behavior unchanged. Updated both sentences.","inputs":["docs/guides/nightly.md","scripts/lib/desktop-release-notes.mjs"]}
-  ]
-}

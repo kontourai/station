@@ -1,7 +1,0 @@
-{
-  "revision": "e105e2dd278ab325d702f8b551ab6af40d3d9cf0",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Re-read the custody, shell host, journal, transport, Verification and NOT_VERIFIED text against command-process.ts, windows-command-guard.ts, the guard's --session mode, terminal-journal.ts (resize records, segment-start sizes), terminal-sessions.ts and pty-workload-host.ts (recorded in the same turn as a resize), terminal-channel-connection.ts/terminal-gateway.ts (v2 resize frames, v1 empty frames), the SDK store and controller (replay at recorded sizes), and the retention test and Ghostty fixture. Evidence is from cd72116f20 on Windows 11 26200: baseline, three injections that each failed their named tests, and a passing restored run. Desktop's missing guard and the open #4626 worker death stay NOT_VERIFIED.","inputs":["docs/design/terminal.md","docs/reference/api.md","packages/contracts/src/terminal-transport.ts","packages/sdk/src/__tests__/terminal-view/replay-plain-text.ts","packages/sdk/src/client/terminal-session-store.ts","src-server/services/terminal/__tests__/terminal-retention.process.test.ts","src-server/services/terminal/pty-workload-host.ts","src-server/services/terminal/shell-host.ts","src-server/services/terminal/terminal-channel-connection.ts","src-server/services/terminal/terminal-gateway.ts","src-server/services/terminal/terminal-journal.ts","src-server/services/terminal/terminal-sessions.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "2a598b444266e80e5106ec751b8f9ada0ce2af6d",
-
-  "notes": [
-    {"path":"docs/strategy/dogfood/first-run-ritual.md","note":"Repointed the obsolete Activity chord exercise to Chat and parent/child navigation. This remains a human dogfood checklist, not a claim that the ritual was executed.","inputs":["docs/strategy/dogfood/first-run-ritual.md"]}
-  ]
-}

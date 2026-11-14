@@ -1,7 +1,0 @@
-{
-  "revision": "9c08e082f40516d60b3e1637b02c84a5b5ea7300",
-
-  "notes": [
-    {"path":"docs/guides/feature-previews.md","note":"Reviewed the feature-preview route test, createFeaturePreviewRoutes and FeaturePreviewRegistry.list against this guide. The route regression now verifies complete service-catalog serialization plus an independent bound-consumer/default-off probe, unknown-entry absence and unknown-toggle refusal. Literal production catalog membership, including the inline preview default-off value, remains checked in the registry owner tests rather than copied into the HTTP test. Catalog offering, saved state, binding and availability behavior are unchanged; the four relevant owner files passed 86 tests and both UI/server-test typechecks passed. This is a source/test-evidence review, not hosted, deployment, native or release qualification.","inputs":["docs/guides/feature-previews.md","src-server/routes/system/__tests__/feature-previews.routes.test.ts"]}
-  ]
-}

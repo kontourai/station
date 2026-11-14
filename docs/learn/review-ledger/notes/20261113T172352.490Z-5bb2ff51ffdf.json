@@ -1,7 +1,0 @@
-{
-  "revision": "2ec68ac53bbb2d601289d5fe18ad164313c002e1",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Re-read the owned-process claims (scenario cleanup, owned-command runner Windows settlement, heavy-check slot groups) and the station-weight paragraph against scripts/lib/owned-process.mjs at this change: the only change is the forceTerminate doc comment, which now states that strict onlyWhileLeaderUnreaped mode must not be called inside another child's exit handler (#4920). No behavior changed, so every claim stays accurate.","inputs":["docs/guides/testing.md","scripts/lib/owned-process.mjs"]}
-  ]
-}

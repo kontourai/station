@@ -1,7 +1,0 @@
-{
-  "revision": "1dbe54f77a577f6b67c526bb0ce84a6a1fb4e8dd",
-
-  "notes": [
-    {"path":"docs/design/isolated-agent-runs.md","note":"Re-read the kept-base paragraph against 1dbe54f77a57 and f2e89611f8ab: only a name that prints as HEAD in some case is base-detached; ORIG_HEAD/FETCH_HEAD and other non-ref names are now base-unresolvable, and remote-tracking and slash-named branches are accepted (now pinned by tests). The paragraph says exactly that.","inputs":["docs/design/isolated-agent-runs.md","src-server/services/projects/__tests__/worktree-output-settlement.test.ts","src-server/services/projects/worktree-provisioning-service.ts"]}
-  ]
-}

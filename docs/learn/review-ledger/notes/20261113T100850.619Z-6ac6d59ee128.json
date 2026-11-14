@@ -1,7 +1,0 @@
-{
-  "revision": "5f1eae7495c1da2cd13ffdb9055ee36f28d1dc09",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Checked against the vitest-resource-manifest change: the only change is a new process-heavy entry (station-weight.end-to-end.process.test.ts) beside the existing station-weight process test; the worker counts and resource-group claims here (ordinary four, process-heavy two) are unchanged, and the station-weight subsection now names the uncompared-budget failure and the Linux full-regression run.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
-  ]
-}

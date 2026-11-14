@@ -1,9 +1,0 @@
-{
-  "revision": "1e3824a4935b3ac68dad360ada5cf4e158d3439b",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the subsequent shared lookup decoder and owning SDK test: malformed records now fail the read rather than appearing absent. Personal requests and runtime mounting remain unchanged; the test uses the SDK transport seam and does not prove hosted operation.","inputs":["docs/design/task-room-agent-requests.md","packages/sdk/src/__tests__/task-room-work.test.ts","packages/sdk/src/client/task-room-work.ts"]},
-
-    {"path":"docs/reference/sdk.md","note":"Reviewed the subsequent shared lookup decoder and owning SDK test: malformed records now fail the read rather than appearing absent. Personal requests and runtime mounting remain unchanged; the test uses the SDK transport seam and does not prove hosted operation.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/task-room-work.ts"]}
-  ]
-}

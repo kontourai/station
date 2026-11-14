@@ -1,7 +1,0 @@
-{
-  "revision": "3e172cd7e7834d2a3fae75db485c1286a7f86a1f",
-
-  "notes": [
-    {"path":"docs/guides/acp.md","note":"Updated send-mode default: Steer where sessionSteeringPlacement is native (Claude Code, Codex; ConversationBody busySteeringKind), Queue for safe-stop/ACP and no steering; explicit choice resets on session change (ChatInputArea chosenSendMode). chat-composer also: inbox read retries twice at 400ms keeping last rows, 401/403/404 final (useConversationInbox). Focused jsdom tests with fault injection.","inputs":["docs/guides/acp.md"]}
-  ]
-}

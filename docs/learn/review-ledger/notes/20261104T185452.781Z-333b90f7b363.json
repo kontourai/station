@@ -1,7 +1,0 @@
-{
-  "revision": "32b56f46ef91059872a62fc8ab7a7f210e1ac145",
-
-  "notes": [
-    {"path":".github/pull_request_template.md","note":"Added Agent sessions subsection with versioned agent-sessions:v1 markers under AI-assisted work; asks for identifiers, models, token totals and session count, never transcripts; existing required headings and phrases unchanged; public-contribution gate pins the subsection and marker.","inputs":[".github/pull_request_template.md"]}
-  ]
-}

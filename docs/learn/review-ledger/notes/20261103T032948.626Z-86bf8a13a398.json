@@ -1,7 +1,0 @@
-{
-  "revision": "702f988b2d4230902452d35e51ce89e3ba84e315",
-
-  "notes": [
-    {"path":"docs/learn/media/inspect-request.webm","note":"Change under review (#4480): the start-session hook binds the accepted start's server-stamped owner for the command gate until the durable session.started owner resolves. Checked this request-inspector capture: it shows a pending request's inspector (Request identity, Deny / Approve once) on an already-started, already-owned session, with no decision taken; neither the rendered UI, the request routes nor the session's owner differ under this change, so the capture remains accurate.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

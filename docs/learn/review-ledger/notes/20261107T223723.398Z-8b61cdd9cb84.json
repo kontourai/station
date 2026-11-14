@@ -1,7 +1,0 @@
-{
-  "revision": "d5e3c3757b2dfb3fd2d38d801292f5c5a3bbfed6",
-
-  "notes": [
-    {"path":"docs/guides/responsive-ui.md","note":"Density sets only base text tokens and never shrinks touch targets; 44px floors unchanged. Device-settings-store change does not affect layout claims.","inputs":["docs/guides/responsive-ui.md","src-ui/src/lib/device-settings-store.ts","src-ui/src/tokens.css"]}
-  ]
-}

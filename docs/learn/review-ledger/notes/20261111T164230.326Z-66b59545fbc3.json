@@ -1,7 +1,0 @@
-{
-  "revision": "62707e5ddb3e6caaa54c3abfc4f4c87caa334a27",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Task-room chat paragraph updated for the shared RoomConversation and RoomComposer (#4790, #4793): Enter and Shift+Enter on hardware keyboards and Return as a new line on touch keyboards (composerKeys.ts, RoomComposer.test.tsx), per-room and per-thread drafts in tab session storage (useRoomDraft), author and day grouping (groupRows.ts), square agent and round person avatars (RoomAvatar), and follow-bottom with a held place, New divider and N new messages control (RoomConversation, room-conversation-follow.browser.test.tsx). Other guide sections were not re-reviewed.","inputs":["docs/user/getting-started.md","src-ui/src/components/conversation/SharedTaskHistoryList.tsx","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx","src-ui/src/workspace-panes/TaskRoomComposer.tsx","src-ui/src/components/room/RoomComposer.tsx","src-ui/src/components/room/RoomConversation.tsx"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "eafe6607e1f8f28d7ac77df022a0be5048cefddc",
-
-  "notes": [
-    {"path":"docs/reference/connect.md","note":"Re-reviewed checkedAt after 9c14eec02887: managed-loopback runs now publish checkedAt null (pinned by the coordinator test that probes first, then resolves to managed-loopback), matching the updated reference text.","inputs":["docs/reference/connect.md","packages/connect/src/core/ConnectionHealthCoordinator.ts"]}
-  ]
-}

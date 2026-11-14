@@ -1,7 +1,0 @@
-{
-  "revision": "aef25f7d166f1730859f0026acf268024dc8f671",
-
-  "notes": [
-    {"path":"docs/guides/starter-work.md","note":"Re-reviewed the Tasks list paragraph after #4695: ProjectTasksSection rows and ProjectTaskBoard cards still show title, status and Agent; the added sentence states they can show the Session's agent-reported plan progress (TaskPlanProgress, projected by taskPlanProgress.ts from the latest-turn plan.updated) and that it never changes Task status; verified no status mutation path reads it (focused tests incl. a 5/5 plan staying In progress). Other Starter Work claims unchanged by this diff.","inputs":["docs/guides/starter-work.md","src-ui/src/__tests__/ProjectTasksSection.test.tsx","src-ui/src/components/ProjectTaskBoard.tsx","src-ui/src/views/project-page/ProjectTasksSection.tsx"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "86eb350aab7717090b7910cdd15b2ac753821714",
-
-  "notes": [
-    {"path":"docs/guides/local-speech.md","note":"Checked the media-tools backup and rollback section against the registry change adding engines/ as external; media-tools classification and behaviour are unchanged.","inputs":["docs/guides/local-speech.md","packages/shared/src/station-home-store-registry.ts"]}
-  ]
-}

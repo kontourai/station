@@ -1,9 +1,0 @@
-{
-  "revision": "fd69875a74a75b980d65e5c7751b08dc377d3e62",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the shared SDK capability, intent and acknowledgement validation extraction against the existing transport/currentness order and owner tests. The planned placement capture of implicit published thread history is distinct from frozen explicit context; no shared receiver, provider or UI runtime is established.","inputs":["docs/design/task-room-agent-requests.md","packages/sdk/src/client/task-room-work.ts"]},
-
-    {"path":"docs/reference/sdk.md","note":"Reviewed the shared SDK capability, intent and acknowledgement validation extraction against the existing transport/currentness order and owner tests. The planned placement capture of implicit published thread history is distinct from frozen explicit context; no shared receiver, provider or UI runtime is established.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/task-room-work.ts"]}
-  ]
-}

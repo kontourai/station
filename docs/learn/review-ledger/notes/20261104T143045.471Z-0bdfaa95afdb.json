@@ -1,7 +1,0 @@
-{
-  "revision": "866055529be6db00b5ebed579464b2a070f1bb82",
-
-  "notes": [
-    {"path":"packages/agent-runtime/CONTEXT.md","note":"Bounded review of the scripts/vitest-resource-manifest.mjs dependency delta at866055529be6db00b5ebed579464b2a070f1bb82: the only new entry classifies local-restart-notice.browser.test.tsx as process-heavy. The documented turn-retention.test.ts ordinary10×80 and turn-retention.process.test.ts process-heavy60×80 owners and shared fixture remain unchanged. No runtime retention, scheduling, durability, real-engine or device claim is requalified. This is a direct shared-file dependency with no impact on that documented resource split; unrelated source history is not reviewed.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]}
-  ]
-}

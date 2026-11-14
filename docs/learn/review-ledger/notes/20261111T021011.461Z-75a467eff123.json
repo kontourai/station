@@ -1,7 +1,0 @@
-{
-  "revision": "5ff4b10e24f3d8cabc6940ea79ba5c6dba8ce082",
-
-  "notes": [
-    {"path":"docs/reference/agent-smoke-confidence.md","note":"Re-checked against 5ff4b10e24f3, which changes only how StationRuntime hands two Claude resolvers to the confinement preflight factory: as closures read when a preflight runs, no longer as field references read while routes are composed. A preflight still calls the same resolvers. Searched this document for the confinement preflight, its factory and resolvers, and for route-composition or configureRoutes claims: it mentions none of them, so no claim is affected.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/runtime/bootstrap/station-runtime.ts"]}
-  ]
-}

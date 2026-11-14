@@ -1,7 +1,0 @@
-{
-  "revision": "1982fe6b9288664ff170928061202129b4e27a95",
-
-  "notes": [
-    {"path":"docs/guides/connections.md","note":"#4828: re-checked the web-read paragraph after renaming the ACP subject to an ACP engine; claims unchanged against native-web-read-marks.ts.","inputs":["docs/guides/connections.md"]}
-  ]
-}

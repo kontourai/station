@@ -1,7 +1,0 @@
-{
-  "revision": "be8c3fe46a5f41ee6b02d698dc2eb259ae0287a1",
-
-  "notes": [
-    {"path":"docs/learn/media/inspect-request.png","note":"Inspected the historical request inspector PNG: scope, Request identity and Approve once/Deny controls remain its claim. The only service delta is unknown steer fidelity returning pending; request inspection and response authorization are untouched. Retain original capture revision and historical navigation qualification; no new execution or decision is claimed.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

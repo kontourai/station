@@ -1,9 +1,0 @@
-{
-  "revision": "969ac95e332dd9a4174a77d0727c3f3bf7ee735e",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"After merging #4810, Paste image lives in RoomComposer (the one composer Task rooms and agent-thread replies use) beside its Attach IconButton, routing clipboard images through the room's attachment port (selectFiles; setError for no-image and refusal messages). It appears only when the room passes that port, so the Project room shows none. Checked RoomComposer.tsx, TaskRoomComposer.tsx and ProjectTaskRoomConversation.tsx callers, and clipboardImagePaste.test.tsx. The document's Paste image sentence remains accurate.","inputs":["docs/design/task-room-agent-requests.md","src-ui/src/components/room/RoomComposer.tsx"]},
-
-    {"path":"docs/user/getting-started.md","note":"After merging #4810, Paste image lives in RoomComposer (the one composer Task rooms and agent-thread replies use) beside its Attach IconButton, routing clipboard images through the room's attachment port (selectFiles; setError for no-image and refusal messages). It appears only when the room passes that port, so the Project room shows none. Checked RoomComposer.tsx, TaskRoomComposer.tsx and ProjectTaskRoomConversation.tsx callers, and clipboardImagePaste.test.tsx. The document's Paste image sentence remains accurate.","inputs":["docs/user/getting-started.md","src-ui/src/components/room/RoomComposer.tsx"]}
-  ]
-}

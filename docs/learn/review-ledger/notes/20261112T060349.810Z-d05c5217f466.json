@@ -1,7 +1,0 @@
-{
-  "revision": "eafe6607e1f8f28d7ac77df022a0be5048cefddc",
-
-  "notes": [
-    {"path":"docs/guides/connections.md","note":"Re-reviewed after 9c14eec02887..eafe6607e1f8: StationSwitcherMenu now derives the refused-row mark from the needsAccess predicate (same Needs access condition the guide states); switching screen keyed on the observation key, Back to falls back to 'previous Station' for the seeded name (guide says the most recently used other Station, still true); layout-only CSS changes. No prose change needed.","inputs":["docs/guides/connections.md","src-ui/src/components/header/StationSwitcherMenu.tsx"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "947c4ffcd582c07b606062dc66923914599ef0bf",
-
-  "notes": [
-    {"path":"docs/design/approval-posture-server-ordered.md","note":"Re-checked after bubblewrap.ts made its restricted-network refusal text module-private: the refusal wording the restricted-network section quotes ('restricted network is not available with the bubblewrap sandbox yet') is unchanged, and no other claim depends on the export.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/security/confinement/bubblewrap.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "72c69f7c6e6fba5bf72ecc3e5f8c7d5fb8c465c1",
-
-  "notes": [
-    {"path":"docs/reference/session-api.md","note":"Reviewed the typed stop fixture correction after the start-contract tests were consolidated: the provider fixture now implements stop with a compatible optional thread argument and removes the actual tracked session; the replacement test spies on that real fixture operation. Server-test typecheck and all six start/publication tests pass. Durable-event, recorded-owner, indeterminate refusal, deferred fallback and failed-stop inspection claims are unchanged. This is fixture fidelity and error compatibility evidence, not provider, performance or release qualification.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/__tests__/start-owner-publication-contention.test.ts"]}
-  ]
-}

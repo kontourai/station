@@ -1,9 +1,0 @@
-{
-  "revision": "6ceddbe4d4aca6ee5a98b6c835c4543cf6a3859a",
-
-  "notes": [
-    {"path":"docs/guides/connections.md","note":"Reviewed the bounded per-Station authentication consumer opt-out: ProjectRepositoryAccess now explicitly passes keepPreviousData:false, matching the SDK hook that already forced false after spreading query config. Preview admission, requestScope/query identity, error withdrawal, legacy Not confirmed state, reported account/scopes and repository-permission limits are unchanged. The unchanged consumer-policy scanner failed this exact missing call-site declaration on the clean pre-fix head; repair plus mounted auth and real SDK query owners passed all10 tests in2.90s. Current authentication explanation remains accurate; no visual, installed, provider or fleet qualification is added.","inputs":["docs/guides/connections.md","src-ui/src/views/project-settings/ProjectRepositoryAccess.tsx"]},
-
-    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the one-line repository-auth consumer configuration against the SDK forced keepPreviousData:false and existing requestScope API/authority-key identity. This makes the prior query behavior explicit at its caller; it changes no machine relationship, delegation, enrollment, credential scope, transport or host authority. Existing per-Station observation and separate repository-permission limits remain intact. Consumer policy baseline failed as intended; three focused owners passed10 tests after repair. No prose change or new remote/native qualification is warranted.","inputs":["docs/guides/machine-relationships.md"]}
-  ]
-}

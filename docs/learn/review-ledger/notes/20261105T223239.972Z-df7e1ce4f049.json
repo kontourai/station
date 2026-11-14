@@ -1,7 +1,0 @@
-{
-  "revision": "0532a3f4a0df84289eada6cdf15677942c5a2dda",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Read step 2 (open the Station name in the computer window): the desktop chip is unchanged; the chat.css edit only changes phone label rules and hides the label in desktop action states.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css"]}
-  ]
-}

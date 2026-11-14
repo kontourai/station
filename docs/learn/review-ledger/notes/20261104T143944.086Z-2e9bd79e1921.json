@@ -1,9 +1,0 @@
-{
-  "revision": "846f3810e7f3b61a5a04b9c75424e1bbc706d5a1",
-
-  "notes": [
-    {"path":"docs/reference/contracts.md","note":"provider-failure.ts delta (#4563): adds managed_setting_locked -> permission_denied (not retryable) to PROVIDER_FAILURE_KINDS, pinned in provider-failure.test.ts. Added the row to the failure-code table; the surrounding kind list and retry rules are unchanged and still accurate.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts","packages/contracts/src/provider-failure.ts"]},
-
-    {"path":"docs/reference/sdk.md","note":"provider-failure.ts delta: adds managed_setting_locked -> permission_denied to PROVIDER_FAILURE_KINDS. Searched this reference for failure-kind claims; it describes the kinds and their retry behaviour generally, which still holds, and lists no per-code table to update.","inputs":["docs/reference/sdk.md","packages/contracts/src/provider-failure.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "227b0eb2bf5681e07099ac020947534c299f4e19",
-
-  "notes": [
-    {"path":"docs/design/placement.md","note":"Reviewed RegionModelContext deep-link regression after the redirect allowlist decision: legacy Activity keeps its session Chat intent but drops message-anchor parameters; current Chat links retain the exact anchor. Consumption cannot replay either intent. The retirement amendment remains accurate.","inputs":["docs/design/placement.md","src-ui/src/contexts/__tests__/RegionModelContext-deep-link.test.tsx"]}
-  ]
-}

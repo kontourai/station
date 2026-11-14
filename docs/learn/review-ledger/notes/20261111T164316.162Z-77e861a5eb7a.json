@@ -1,7 +1,0 @@
-{
-  "revision": "62707e5ddb3e6caaa54c3abfc4f4c87caa334a27",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"Scoped review of the Images and files and Conversation-view paragraphs after the Task room moved onto the shared RoomConversation and RoomComposer (#4790, #4793). Main and thread composers still accept drops, pastes and picker files through useTaskRoomAttachments, now via RoomComposer's attachment port instead of TaskRoomAttachmentComposer (deleted). Agent answers keep Show more and Keep; thread replies still continue the same Session with a retained draft and Not delivered state. ProjectTaskRoomConversation.test.tsx and TaskRoomComposer.test.tsx pass unchanged on these paths. Other sections were not re-reviewed.","inputs":["docs/design/task-room-agent-requests.md","src-ui/src/__tests__/ProjectTaskRoomConversation.test.tsx","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx","src-ui/src/workspace-panes/TaskRoomAttachmentComposer.tsx","src-ui/src/workspace-panes/TaskRoomComposer.css","src-ui/src/workspace-panes/TaskRoomComposer.tsx","src-ui/src/components/room/RoomComposer.tsx"]}
-  ]
-}

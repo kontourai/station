@@ -1,7 +1,0 @@
-{
-  "revision": "4fc42742e13cb7a2ac1da908560e1d186a5c9786",
-
-  "notes": [
-    {"path":"docs/design/approval-posture-server-ordered.md","note":"Checked the Claude escalation bullet against turnNeedsEngineRelaunch, parkIdleSession/isParkableIdleSession and the EngineParkedDuringDispatchError restart; the requires-restart warning now fires only where parking refuses.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "c3d5d242c7a742e1133a336e347ec863ef990e83",
-
-  "notes": [
-    {"path":"README.md","note":"docs/reference/cli.md change only: the doctor section now says External-agent readiness reads agent connections with the installed managed policy applied and that an unusable policy is a fail-level Managed policy check (lifecycle-doctor.ts collectDoctorReport, test lifecycle-doctor-managed.test.ts). README only points to station doctor for local diagnosis and links the CLI reference; both remain accurate.","inputs":["README.md","docs/reference/cli.md"]}
-  ]
-}

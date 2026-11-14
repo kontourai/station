@@ -1,7 +1,0 @@
-{
-  "revision": "442c8b6394c0e04cb894914d9fefa3e1a401ffa6",
-
-  "notes": [
-    {"path":"docs/learn/media/shared-task-document.png","note":"Scoped review (#4810 gallery delta): opened the 1440 dark capture; it shows the Task Plan tab (Brief, Goal, Done when). This round changes only the Conversation tab (phone/touch More actions, scroll-region name) and code-block controls under a clamped answer, none of which appear in the frame.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/views/TaskWorkspaceView.css","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]}
-  ]
-}

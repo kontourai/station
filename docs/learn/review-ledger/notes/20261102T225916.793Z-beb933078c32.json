@@ -1,7 +1,0 @@
-{
-  "revision": "37257f3163b4b8a98a50553d5bdc85b09b0d1b62",
-
-  "notes": [
-    {"path":"docs/design/chat-composer.md","note":"Reviewed Opus touchups: remote-start errors stay in the draft, completed history clears failed Stop, unchosen Project has no selection, and bridge errors preserve send certainty and JSON refusals.","inputs":["docs/design/chat-composer.md"]}
-  ]
-}
