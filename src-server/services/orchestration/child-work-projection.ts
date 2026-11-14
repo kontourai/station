@@ -124,12 +124,18 @@ export class ChildWorkProjection {
     events: readonly CanonicalRuntimeEvent[],
   ): void {
     if (this.historicalSeeded.has(threadId)) return;
-    const { settlements, lastReportAt } = settledChildWorkFromHistory(
-      threadId,
-      events,
-    );
+    const { settlements, lastReportAt, notReported } =
+      settledChildWorkFromHistory(threadId, events);
     for (const settlement of settlements)
       this.state = applyChildWorkDelta(this.state, settlement);
+    // A session that said once, at its start, that it reports no child work
+    // must not read "nothing running" after a restart.
+    if (notReported !== undefined && !this.observedAt.has(threadId))
+      this.state = applyChildWorkDelta(this.state, {
+        kind: 'not-reported',
+        reporterThreadId: threadId,
+        reason: notReported,
+      });
     if (lastReportAt && !this.observedAt.has(threadId))
       this.observedAt.set(threadId, lastReportAt);
     this.historicalSeeded.add(threadId);

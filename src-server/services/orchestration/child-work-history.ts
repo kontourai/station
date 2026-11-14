@@ -16,6 +16,8 @@ export function settledChildWorkFromHistory(
 ): {
   settlements: Array<Extract<ChildWorkDelta, { kind: 'settle' }>>;
   lastReportAt?: string;
+  /** The session's own statement that it reports no child work, if it made one. */
+  notReported?: string;
 } {
   let historical = createEmptyChildWorkRegistry();
   let lastReportAt: string | undefined;
@@ -45,12 +47,19 @@ export function settledChildWorkFromHistory(
         : delta.reporterThreadId;
     if (reporter !== threadId) continue;
     historical = applyChildWorkDelta(historical, delta);
-    lastReportAt = event.createdAt;
+    // As in the live fold: saying children are not reported is not a report
+    // that nothing is running.
+    if (delta.kind !== 'not-reported') lastReportAt = event.createdAt;
   }
   const settlements: Array<Extract<ChildWorkDelta, { kind: 'settle' }>> = [];
   for (const item of childWorkForReporter(historical, threadId)) {
     const settle = childWorkSettleFromItem(item);
     if (settle) settlements.push(settle);
   }
-  return { settlements, ...(lastReportAt ? { lastReportAt } : {}) };
+  const notReported = historical.notReported[threadId];
+  return {
+    settlements,
+    ...(lastReportAt ? { lastReportAt } : {}),
+    ...(notReported !== undefined ? { notReported } : {}),
+  };
 }
