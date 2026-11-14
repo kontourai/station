@@ -15,6 +15,7 @@ import {
   type ProviderAdapterShape,
   type ProviderSessionStartInput,
   ProviderTurnEndedError,
+  SendTurnRefusedError,
 } from '../adapter-shape.js';
 import type { AcpAdapterOptions } from '../adapters/acp-adapter.js';
 import { nativeResumeBindingKey } from '../adapters/native-resume-binding.js';
@@ -32,6 +33,7 @@ import {
   type OpenCodeReplayRecord,
   OpenCodeServeReplay,
   type OpenCodeServeReplayOptions,
+  pageOpenCodeHistory,
   recordedPromptIds,
   replayLeaser,
 } from './opencode-serve-replay.js';
@@ -699,9 +701,12 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
       expect.arrayContaining([
         { action: 'shell', resource: '*', effect: 'ask' },
         { action: 'edit', resource: '*', effect: 'ask' },
-        { action: 'subagent', resource: '*', effect: 'deny' },
+        { action: 'subagent', resource: '*', effect: 'ask' },
       ]),
     );
+    // Station only ever asks: an allow or a deny of its own would change
+    // what the agent's rules decide.
+    expect(body.permissions.every((rule) => rule.effect === 'ask')).toBe(true);
     expect(
       h.replay.made('GET', '/api/permission/saved').length,
     ).toBeGreaterThan(0);
@@ -782,6 +787,44 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
   });
 });
 
+/** The whole captured long history, oldest first (66 messages). */
+function capturedLongHistory(): Array<Record<string, unknown>> {
+  const pages = loadOpenCodeFixture('history').filter(
+    (line) =>
+      line.kind === 'http' &&
+      line.status === 200 &&
+      line.path?.includes('/message?') === true &&
+      !line.path.includes('order=asc'),
+  );
+  return pages
+    .flatMap(
+      (page) =>
+        (page.response as { data: Array<Record<string, unknown>> }).data,
+    )
+    .reverse();
+}
+
+/** `count` earlier messages of the captured shape, each with its own id. */
+function olderMessages(count: number): Array<Record<string, unknown>> {
+  const source = capturedLongHistory();
+  return Array.from({ length: count }, (_, index) => {
+    const message = source[index % source.length] as Record<string, unknown>;
+    return { ...message, id: `${message.id as string}o${index}` };
+  });
+}
+
+/** `count` captured assistant messages with no content: steps with no text. */
+function silentSteps(count: number): Array<Record<string, unknown>> {
+  const assistant = capturedLongHistory().find(
+    (message) => message.type === 'assistant',
+  ) as Record<string, unknown>;
+  return Array.from({ length: count }, (_, index) => ({
+    ...assistant,
+    id: `${assistant.id as string}s${index}`,
+    content: [],
+  }));
+}
+
 /** The rules a fixture's `GET /api/agent/<id>` answered with. */
 function recordedAgentRules(scenario: string, agent: string) {
   const record = loadOpenCodeFixture(scenario).find(
@@ -816,18 +859,26 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     await h.start({ approvalMode: 'never' }, { confinement: 'host' });
     const build = recordedAgentRules('mode-switch', 'build');
     const created = h.replay.made('POST', '/api/session')[0]?.body as {
-      permissions: OpenCodeNativeRule[];
+      permissions?: OpenCodeNativeRule[];
     };
+    // Full access sends no rules: the agent's own decide, and this one asks
+    // for shell, which Station answers `once` without a person.
+    expect(created.permissions).toBeUndefined();
     expect(
       evaluateOpenCodeRules(
         { action: 'shell', resources: ['echo hi'] },
-        [...build, ...created.permissions],
+        build,
         [],
       ),
-    ).toBe('allow');
+    ).toBe('ask');
     const full = await h.turn('DO_BASH full');
     await h.waitFor(completedFor(full.turnId));
     expect(opened(h.events)).toHaveLength(0);
+    expect(
+      h.replay
+        .made('POST', '/api/session/:id/permission/:id/reply')
+        .map((reply) => reply.body),
+    ).toEqual([{ decision: 'once' }]);
 
     const ask = await h.turn('DO_BASH ask', { approvalMode: 'ask' });
     const patches = h.replay.made('PATCH', '/api/session/:id');
@@ -876,6 +927,99 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     expect(
       h.events.filter((event) => event.method === 'session.configured').at(-1),
     ).toMatchObject({ metadata: { mode: 'plan' } });
+  });
+
+  /** Fails the first `count` requests `match` names with a 500. */
+  const failFirst = (
+    match: (request: { method: string; path: string }) => boolean,
+    count = 1,
+  ) => {
+    let left = count;
+    return (request: { method: string; path: string }) => {
+      if (!match(request) || left <= 0) return undefined;
+      left -= 1;
+      return { status: 500, body: { _tag: 'UnknownError', message: 'boom' } };
+    };
+  };
+  /** The writes that reached OpenCode, as `METHOD last-segment`, from `from` on. */
+  const wire = (h: { replay: OpenCodeServeReplay }, from = 0) =>
+    h.replay.requests
+      .slice(from)
+      .filter((request) => request.method !== 'GET')
+      .map(
+        (request) =>
+          `${request.method} ${request.path.split('?')[0]?.split('/').at(-1)}`,
+      );
+
+  test('a failed agent switch refuses the turn, and the next turn switches again before its prompt', async () => {
+    const h = await setup({
+      scenario: 'mode-switch',
+      respond: failFirst(
+        (request) =>
+          request.method === 'POST' && request.path.endsWith('/agent'),
+      ),
+    });
+    await h.start({ approvalMode: 'ask' });
+    const refused = h.turn('hello plan', { approvalMode: 'ask', mode: 'plan' });
+    await expect(refused).rejects.toBeInstanceOf(SendTurnRefusedError);
+    await expect(refused).rejects.toThrow('did not switch to the plan agent');
+    expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(0);
+    // OpenCode may have switched anyway: the next turn, naming nothing,
+    // applies the agent and the rules again before its prompt.
+    const from = h.replay.requests.length;
+    await h.turn('DO_BASH full');
+    expect(wire(h, from).slice(0, 3)).toEqual([
+      'POST agent',
+      expect.stringMatching(/^PATCH /),
+      'POST prompt',
+    ]);
+    expect(
+      h.replay.made('POST', '/api/session/:id/agent').at(-1)?.body,
+    ).toEqual({ agent: 'build' });
+  });
+
+  test('an agent switch whose rules then fail to apply refuses the turn with what failed, and the next turn applies both again', async () => {
+    const h = await setup({
+      scenario: 'mode-switch',
+      respond: failFirst(
+        (request) =>
+          request.method === 'PATCH' &&
+          /^\/api\/session\/[^/]+$/.test(request.path),
+      ),
+    });
+    await h.start({ approvalMode: 'never' }, { confinement: 'host' });
+    const refused = h.turn('hello plan', { approvalMode: 'ask', mode: 'plan' });
+    await expect(refused).rejects.toBeInstanceOf(
+      ApprovalGovernanceRefusedError,
+    );
+    await expect(refused).rejects.toThrow(
+      /^Couldn't switch OpenCode to Station's approval rules; it is still running with full access, so this message was not sent/,
+    );
+    expect(h.replay.made('POST', '/api/session/:id/agent')).toHaveLength(1);
+    expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(0);
+    // The agent did switch; the rules did not. The next turn, naming
+    // nothing, does not take that as settled: it applies both again.
+    const from = h.replay.requests.length;
+    await h.turn('DO_BASH full');
+    expect(wire(h, from).slice(0, 3)).toEqual([
+      'POST agent',
+      expect.stringMatching(/^PATCH /),
+      'POST prompt',
+    ]);
+  });
+
+  test('two turns sent at once: the second is refused as busy before it applies anything', async () => {
+    const h = await setup({ scenario: 'mode-switch' });
+    await h.start({ approvalMode: 'never' }, { confinement: 'host' });
+    const first = h.turn('DO_BASH ask', { approvalMode: 'ask' });
+    const second = h.turn('DO_BASH ask', { approvalMode: 'ask' });
+    await expect(second).rejects.toMatchObject({
+      name: 'SendTurnRefusedError',
+      kind: 'busy',
+    });
+    await first;
+    expect(h.replay.made('PATCH', '/api/session/:id')).toHaveLength(1);
+    expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(1);
   });
 
   test('a turn that names an agent the modes do not cover is refused before anything is sent', async () => {
@@ -1050,7 +1194,7 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     ).toMatchObject({ status: 'cancelled' });
   });
 
-  test("the plan agent's deny survives Station's rules under Auto", async () => {
+  test("the plan agent's deny survives Station's rules under Auto: OpenCode asks and Station rejects", async () => {
     const h = await setup({ scenario: 'plan-deny' });
     await h.start({ approvalMode: 'auto', mode: 'plan' });
     const plan = recordedAgentRules('plan-deny', 'plan');
@@ -1059,22 +1203,93 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
       permissions: OpenCodeNativeRule[];
     };
     expect(body.agent).toBe('plan');
+    // With Station's asks after them the agent's deny no longer decides in
+    // OpenCode, so the edit is asked...
     expect(
       evaluateOpenCodeRules(
         { action: 'edit', resources: ['edit-me.txt'] },
         [...plan, ...body.permissions],
         [],
       ),
-    ).toBe('deny');
+    ).toBe('ask');
     const { turnId } = await h.turn('DO_EDIT plan');
     await h.waitFor(completedFor(turnId));
+    // ...and Station rejects it on the agent's rules alone, though Auto
+    // answers edits: nobody is asked.
     expect(opened(h.events)).toHaveLength(0);
     expect(
-      h.replay.made('POST', '/api/session/:id/permission/:id/reply'),
-    ).toHaveLength(0);
+      h.replay
+        .made('POST', '/api/session/:id/permission/:id/reply')
+        .map((reply) => reply.body),
+    ).toEqual([{ decision: 'reject' }]);
     expect(
       h.events.find((event) => event.method === 'tool.completed'),
     ).toMatchObject({ toolName: 'edit', status: 'error' });
+  });
+
+  /** Answers `GET /api/agent/build` with the captured agent and `rules`. */
+  const withBuildRules = (rules: OpenCodeNativeRule[]) => {
+    const record = loadOpenCodeFixture('catalog').find(
+      (line) =>
+        line.kind === 'http' &&
+        line.method === 'GET' &&
+        line.path === '/api/agent/build' &&
+        line.status === 200,
+    );
+    if (!record) throw new Error('catalog recorded no build agent');
+    const data = (record.response as { data: Record<string, unknown> }).data;
+    return (request: { method: string; path: string }) =>
+      request.method === 'GET' && request.path === '/api/agent/build'
+        ? { status: 200, body: { data: { ...data, permissions: rules } } }
+        : undefined;
+  };
+
+  test('a lockdown agent (deny all but shell and read) keeps its edit deny under Ask, and its shell is still asked', async () => {
+    const h = await setup({
+      scenario: 'governed',
+      respond: withBuildRules([
+        { action: '*', resource: '*', effect: 'deny' },
+        { action: 'shell', resource: '*', effect: 'allow' },
+        { action: 'read', resource: '*', effect: 'allow' },
+      ]),
+    });
+    await h.start({ approvalMode: 'ask' });
+    const edit = await h.turn('DO_EDIT one');
+    await h.waitFor(completedFor(edit.turnId));
+    expect(opened(h.events)).toHaveLength(0);
+    expect(
+      h.replay
+        .made('POST', '/api/session/:id/permission/:id/reply')
+        .map((reply) => reply.body),
+    ).toEqual([{ decision: 'reject' }]);
+    // The agent allows shell; Ask still asks the person, as Station's rule says.
+    const shell = await h.turn('DO_BASH two');
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.opened' && event.turnId === shell.turnId,
+      ),
+    ).toMatchObject({ payload: { toolName: 'shell' } });
+  });
+
+  test('a narrower allow after a deny (`edit * deny, edit ? allow`) does not let Auto answer an edit the deny covers', async () => {
+    const h = await setup({
+      scenario: 'governed',
+      respond: withBuildRules([
+        { action: '*', resource: '*', effect: 'allow' },
+        { action: 'edit', resource: '*', effect: 'deny' },
+        { action: 'edit', resource: '?', effect: 'allow' },
+      ]),
+    });
+    await h.start({ approvalMode: 'auto' });
+    const edit = await h.turn('DO_EDIT one');
+    await h.waitFor(completedFor(edit.turnId));
+    expect(opened(h.events)).toHaveLength(0);
+    expect(
+      h.replay
+        .made('POST', '/api/session/:id/permission/:id/reply')
+        .map((reply) => reply.body),
+    ).toEqual([{ decision: 'reject' }]);
   });
 
   test('a feed drop between the prompt and its execution start does not wedge the turn', async () => {
@@ -1092,6 +1307,103 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     const completed = await h.waitFor(completedFor(turnId), 10_000);
     expect(completed).toMatchObject({ finishReason: 'stop' });
     expect(turnText(h.events, turnId)).toBe(finalAssistantText('reconnect'));
+  });
+
+  test('the replay pages history exactly as the captured 2.3.0 handler did', () => {
+    const reads = loadOpenCodeFixture('history').filter(
+      (line) => line.kind === 'http' && line.path?.includes('/message?'),
+    );
+    const all = capturedLongHistory();
+    expect(all.length).toBeGreaterThan(50);
+    for (const read of reads) {
+      const page = pageOpenCodeHistory(
+        all,
+        new URL(read.path as string, 'http://replay').searchParams,
+      );
+      expect(page.status).toBe(read.status);
+      if (read.status === 200) expect(page.body).toEqual(read.response);
+    }
+  });
+
+  test('past 50 messages, a turn that ended while the feed was down is caught up and settled from history', async () => {
+    const h = await setup({
+      scenario: 'reconnect',
+      fallbacks: ['basic', 'catalog', 'mcp'],
+      omit: (record) =>
+        (record.tap === 'B' &&
+          record.kind === 'sse' &&
+          record.event?.type !== 'server.connected') ||
+        (record.kind === 'http' &&
+          record.method === 'GET' &&
+          record.t < 6000 &&
+          (record.path === '/api/session/active' ||
+            record.path?.includes('/message?order=asc') === true)),
+      historyRewrite: (recorded) => [...olderMessages(132), ...recorded],
+    });
+    await h.start();
+    const { turnId } = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'DO_SLOW stream',
+    });
+    const completed = await h.waitFor(completedFor(turnId), 10_000);
+    expect(turnText(h.events, turnId)).toBe(finalAssistantText('reconnect'));
+    expect(completed).toMatchObject({ finishReason: 'stop' });
+  });
+
+  test('past 50 messages, a prompt whose execution started in a feed gap is adopted', async () => {
+    const promptAt = loadOpenCodeFixture('reconnect').find(
+      (line) => line.kind === 'http' && line.path?.endsWith('/prompt') === true,
+    )?.t as number;
+    const h = await setup({
+      scenario: 'reconnect',
+      omit: (record) =>
+        record.tap === 'A' && record.kind === 'sse' && record.t >= promptAt,
+      historyRewrite: (recorded) => [...olderMessages(132), ...recorded],
+    });
+    await h.start();
+    const { turnId } = await h.turn('DO_SLOW stream');
+    const completed = await h.waitFor(completedFor(turnId), 10_000);
+    expect(completed).toMatchObject({ finishReason: 'stop' });
+    expect(turnText(h.events, turnId)).toBe(finalAssistantText('reconnect'));
+  });
+
+  test('a turn longer than a history page is read back to its own message through the page cursor', async () => {
+    const promptId = recordedPromptIds('reconnect')[0] as string;
+    const h = await setup({
+      scenario: 'reconnect',
+      fallbacks: ['basic', 'catalog', 'mcp'],
+      omit: (record) =>
+        (record.tap === 'B' &&
+          record.kind === 'sse' &&
+          record.event?.type !== 'server.connected') ||
+        (record.kind === 'http' &&
+          record.method === 'GET' &&
+          record.t < 6000 &&
+          (record.path === '/api/session/active' ||
+            record.path?.includes('/message?order=asc') === true)),
+      // 150 steps of the turn's own, with no text, after its prompt.
+      historyRewrite: (recorded) => {
+        const at = recorded.findIndex(
+          (message) => (message as { id?: string }).id === promptId,
+        );
+        return [
+          ...olderMessages(60),
+          ...recorded.slice(0, at + 1),
+          ...silentSteps(150),
+          ...recorded.slice(at + 1),
+        ];
+      },
+    });
+    await h.start();
+    const { turnId } = await h.turn('DO_SLOW stream');
+    const completed = await h.waitFor(completedFor(turnId), 10_000);
+    expect(completed).toMatchObject({ finishReason: 'stop' });
+    expect(turnText(h.events, turnId)).toBe(finalAssistantText('reconnect'));
+    const reads = h.replay
+      .made('GET', '/api/session/:id/message')
+      .map((read) => new URL(read.path, 'http://replay').searchParams);
+    expect(reads[0]?.get('order')).toBe('desc');
+    expect(reads.some((query) => query.has('cursor'))).toBe(true);
   });
 
   test('a steer delivered before its prompt returns is acknowledged', async () => {

@@ -22,7 +22,14 @@
  * `ungated` keeps a request's answer but lets the frames after it flow
  * without it; `rewrite` changes a record as it is loaded; `holdUntil` holds
  * a request's answer until a given frame has been written to the feed (the
- * engine reporting something before the request that caused it returns).
+ * engine reporting something before the request that caused it returns);
+ * History reads (`GET /api/session/{id}/message`) are answered from the
+ * recorded history (each recorded read was `order=asc` with no limit, so it
+ * is the whole history then; `historyRewrite` can lengthen it), paged as 2.3.0's handler pages it ({@link pageOpenCodeHistory}): a
+ * read without a cursor takes the next recording, a cursor read pages the
+ * same one.
+ * `respond` answers a request itself (a failure, or an answer computed the
+ * way the real handler computes it), ahead of anything recorded.
  */
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
@@ -115,6 +122,12 @@ export interface OpenCodeServeReplayOptions {
   holdUntil?: (
     request: OpenCodeReplayRequest,
   ) => ((record: OpenCodeReplayRecord) => boolean) | undefined;
+  /** Changes each recorded history (oldest first) before it is paged. */
+  historyRewrite?: (recorded: unknown[]) => unknown[];
+  /** Answers a request instead of the recording; undefined: not this one. */
+  respond?: (
+    request: OpenCodeReplayRequest,
+  ) => { status: number; body?: unknown } | undefined;
   password?: string;
 }
 
@@ -142,10 +155,15 @@ export class OpenCodeServeReplay {
   private connections = 0;
   private closed = false;
   private readonly holdUntil: OpenCodeServeReplayOptions['holdUntil'];
+  private readonly respond: OpenCodeServeReplayOptions['respond'];
+  private readonly historyRewrite: (recorded: unknown[]) => unknown[];
+  private history: readonly unknown[] = [];
 
   private constructor(options: OpenCodeServeReplayOptions) {
     this.password = options.password ?? 'replay-password';
     this.holdUntil = options.holdUntil;
+    this.respond = options.respond;
+    this.historyRewrite = options.historyRewrite ?? ((recorded) => recorded);
     const seen = new Map<string, number>();
     for (const loaded of loadOpenCodeFixture(options.scenario)) {
       if (options.omit?.(loaded)) continue;
@@ -251,7 +269,11 @@ export class OpenCodeServeReplay {
       return;
     }
     const key = keyOf(method, path);
-    const count = (this.counts.get(key) ?? 0) + 1;
+    const query = new URL(path, 'http://replay').searchParams;
+    const historyRead = method === 'GET' && key.endsWith('/message');
+    const pagesOn = historyRead && query.has('cursor');
+    // A cursor pages the history the read it continues was answered from.
+    const count = (this.counts.get(key) ?? 0) + (pagesOn ? 0 : 1);
     this.counts.set(key, count);
     for (const wake of this.waiters.splice(0)) wake();
     // Counted first, so the frames it gates can flow while its answer waits.
@@ -259,12 +281,32 @@ export class OpenCodeServeReplay {
     if (hold)
       while (!this.closed && !this.written.some(hold))
         await new Promise<void>((resolve) => this.waiters.push(resolve));
+    const own = this.respond?.({ method, path, body });
+    if (own) {
+      if (own.body === undefined) res.writeHead(own.status).end();
+      else {
+        res.writeHead(own.status, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(own.body));
+      }
+      return;
+    }
     const list = this.answers.get(key) ?? this.fallbackAnswers.get(key);
     const record = list?.[Math.min(count, list.length) - 1];
     if (!record) {
       this.misses.push({ method, path });
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: 'replay: nothing recorded' }));
+      return;
+    }
+    if (historyRead && (record.status ?? 200) === 200) {
+      if (!pagesOn)
+        this.history = this.historyRewrite([
+          ...((record.response as { data?: unknown[] } | undefined)?.data ??
+            []),
+        ]);
+      const page = pageOpenCodeHistory(this.history, query);
+      res.writeHead(page.status, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(page.body));
       return;
     }
     const status = record.status ?? 200;
@@ -349,4 +391,94 @@ export function replayLeaser(
     exit: () => markExited(),
   };
   return leaser;
+}
+
+function encodeHistoryCursor(
+  id: string,
+  order: 'asc' | 'desc',
+  direction: 'previous' | 'next',
+): string {
+  return Buffer.from(JSON.stringify({ id, order, direction })).toString(
+    'base64url',
+  );
+}
+
+/**
+ * One page of `history` (oldest first, in the store's `seq` order) as
+ * OpenCode 2.3.0 answers `GET /api/session/{id}/message`
+ * (`server/src/handlers/message.ts`, `core/src/session/store.ts`
+ * `messageRows`): `order` (default `desc`) and `limit` (default 50), or an
+ * opaque `cursor` that carries its own order and must not be combined with
+ * one; the page's `cursor.previous`/`cursor.next` name its first and last
+ * message.
+ */
+export function pageOpenCodeHistory(
+  history: readonly unknown[],
+  query: URLSearchParams,
+): { status: number; body: unknown } {
+  const rawCursor = query.get('cursor');
+  if (rawCursor && query.has('order'))
+    return {
+      status: 400,
+      body: {
+        _tag: 'InvalidCursorError',
+        message: 'Cursor cannot be combined with order',
+      },
+    };
+  let decoded:
+    | { id: string; order: 'asc' | 'desc'; direction: 'previous' | 'next' }
+    | undefined;
+  if (rawCursor) {
+    try {
+      decoded = JSON.parse(
+        Buffer.from(rawCursor, 'base64url').toString('utf8'),
+      );
+    } catch {
+      return {
+        status: 400,
+        body: { _tag: 'InvalidCursorError', message: 'Invalid cursor' },
+      };
+    }
+  }
+  const order =
+    decoded?.order ?? (query.get('order') === 'asc' ? 'asc' : 'desc');
+  const limit = Number(query.get('limit') ?? 50);
+  const direction = decoded?.direction ?? 'next';
+  const effective =
+    direction === 'previous' ? (order === 'asc' ? 'desc' : 'asc') : order;
+  const idOf = (message: unknown) =>
+    (message as { id?: unknown } | null)?.id as string | undefined;
+  const indexed = history.map((message, index) => ({ message, index }));
+  let rows = indexed;
+  if (decoded) {
+    const anchor = indexed.find((row) => idOf(row.message) === decoded?.id);
+    if (!anchor) rows = [];
+    else
+      rows = indexed.filter((row) =>
+        effective === 'asc'
+          ? row.index > anchor.index
+          : row.index < anchor.index,
+      );
+  }
+  if (effective === 'desc') rows = [...rows].reverse();
+  rows = rows.slice(0, limit);
+  if (direction === 'previous') rows = rows.reverse();
+  const data = rows.map((row) => row.message);
+  const first = data[0];
+  const last = data.at(-1);
+  return {
+    status: 200,
+    body: {
+      data,
+      // An empty page names neither end (`null`, as 2.3.0 encodes it).
+      cursor: {
+        previous: first
+          ? encodeHistoryCursor(idOf(first) as string, order, 'previous')
+          : null,
+        next: last
+          ? encodeHistoryCursor(idOf(last) as string, order, 'next')
+          : null,
+      },
+    },
+  };
 }

@@ -43,7 +43,7 @@ import {
   type OpenCodeNativeFloor,
   type OpenCodeNativeRule,
   type OpenCodeSavedApproval,
-  openCodeNativeSessionRules,
+  openCodeNativeApprovalRules,
   openCodeSavedApprovalOverrides,
   openCodeSavedApprovalRefusal,
 } from '../../services/acp/opencode-approval-native.js';
@@ -226,6 +226,13 @@ interface NativeRecord {
   agent: string | undefined;
   /** The session ruleset last applied to the engine. */
   rules: OpenCodeNativeRule[];
+  /**
+   * A settings change failed part way, so what the engine runs is not
+   * known: the next turn applies the agent and the rules again.
+   */
+  dirty: boolean;
+  /** A turn is being set up (settings, prompt): a second one is refused. */
+  busy: boolean;
 }
 
 interface NativePlan {
@@ -535,7 +542,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     floor: OpenCodeNativeFloor,
     agent: string,
   ): Promise<OpenCodeNativeRule[]> {
-    if (floor !== 'confined') return this.agentRules(client, agent);
+    if (floor !== 'confined') return [];
     const code = await (this.options.findProjectCode ?? defaultFindProjectCode)(
       cwd,
     );
@@ -775,18 +782,18 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       throw new ApprovalGovernanceRefusedError(
         governedModeRefusal(sessionAgent),
       );
-    const permissions =
-      floor && sessionAgent
-        ? openCodeNativeSessionRules(
+    // The agent's own rules, read (and the start checked) only when
+    // Station's confined rules govern it.
+    const agentRules =
+      floor === 'confined' && sessionAgent
+        ? await this.assertGovernable(
+            lease.client,
+            lease.cwd,
             floor,
-            await this.assertGovernable(
-              lease.client,
-              lease.cwd,
-              floor,
-              sessionAgent,
-            ),
+            sessionAgent,
           )
         : undefined;
+    const permissions = floor ? openCodeNativeApprovalRules(floor) : undefined;
     const model = readModelRef(input.modelId);
     if (cursor) {
       sessionId = cursor.sessionId;
@@ -808,7 +815,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
           location: { directory: lease.cwd },
           ...(sessionAgent ? { agent: sessionAgent } : {}),
           ...(model ? { model } : {}),
-          ...(permissions ? { permissions } : {}),
+          ...(permissions && permissions.length > 0 ? { permissions } : {}),
         },
       );
       const id = readString(ownRecord(created?.data)?.id);
@@ -823,6 +830,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       sessionId,
       publish: (event) => this.publish(event),
       ...(mode ? { approvalMode: mode } : {}),
+      ...(agentRules ? { agentRules } : {}),
       ...(this.options.reconnectFirstMs
         ? { reconnectFirstMs: this.options.reconnectFirstMs }
         : {}),
@@ -865,6 +873,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       cursor: resumeCursor,
       agent: sessionAgent,
       rules: permissions ?? [],
+      dirty: false,
+      busy: false,
     };
     this.native.set(input.threadId, record);
     void lease.exited.then(() => this.onServerExit(input.threadId, record));
@@ -935,7 +945,26 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       throw new AttachmentInputUnsupportedError(
         'OpenCode over its own server does not take attachments in Station yet.',
       );
+    // Busy from here, before anything is awaited: a second turn sent while
+    // this one applies its settings is refused, not set up alongside it.
+    if (record.busy)
+      throw new SendTurnRefusedError(
+        'This OpenCode session is already running a turn.',
+        'busy',
+      );
     record.native.assertIdle();
+    record.busy = true;
+    try {
+      return await this.sendNativeTurn(record, input);
+    } finally {
+      record.busy = false;
+    }
+  }
+
+  private async sendNativeTurn(
+    record: NativeRecord,
+    input: ProviderSendTurnInput,
+  ): Promise<ProviderTurnStartResult> {
     await this.applyTurnSettings(record, input);
     const turnId = crypto.randomUUID();
     const displayText = input.displayInput ?? input.input;
@@ -1017,11 +1046,14 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
   /**
    * #3290 on the native transport: a turn that names an approval mode or an
    * agent moves the live OpenCode session to it before its prompt is sent,
-   * as the ACP adapter does at its turn boundary. The session's ruleset is
-   * replaced (`PATCH`), the agent switched, and the grants made under the old
-   * mode dropped. Anything that cannot be applied refuses the turn before
-   * the prompt, except a failed move to a looser mode, which runs under the
-   * stricter rules it already has, with a warning.
+   * as the ACP adapter does at its turn boundary. The agent is switched, the
+   * session's ruleset replaced (`PATCH`; it depends on the mode only), and
+   * the grants made under the old mode dropped. Station's record of the
+   * agent, rules and mode changes only as each is applied; a failure part
+   * way marks the record dirty, so the next turn applies everything again.
+   * Anything that cannot be applied refuses the turn before the prompt,
+   * except a failed move to a looser mode, which runs under the stricter
+   * rules it already has, with a warning.
    */
   private async applyTurnSettings(
     record: NativeRecord,
@@ -1034,8 +1066,9 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       ? acpAppliedApprovalMode(requestedMode, input.confinement)
       : current;
     const agent = requestedAgent ?? record.agent;
-    if (mode === current && agent === record.agent) return;
+    if (!record.dirty && mode === current && agent === record.agent) return;
     const floor = acpApprovalFloor(mode);
+    const currentFloor = acpApprovalFloor(current);
     const sessionAgent = agent ?? (floor ? 'build' : undefined);
     if (floor && sessionAgent && !isOpenCodeGovernedMode(sessionAgent))
       throw new ApprovalGovernanceRefusedError(
@@ -1043,49 +1076,70 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       );
     const client = record.lease.client;
     const sessionId = record.cursor.sessionId;
-    const rules =
-      floor && sessionAgent
-        ? openCodeNativeSessionRules(
-            floor,
-            await this.assertGovernable(
+    const agentChanged = record.dirty || sessionAgent !== record.agent;
+    // The new agent's own rules, for whichever of the old and the new mode
+    // the confined rules govern (a failed PATCH leaves the old one).
+    const newAgentRules =
+      sessionAgent && (floor === 'confined' || currentFloor === 'confined')
+        ? floor === 'confined'
+          ? await this.assertGovernable(
               client,
               record.lease.cwd,
               floor,
               sessionAgent,
-            ),
-          )
-        : [];
-    const agentChanged = sessionAgent !== record.agent;
+            )
+          : await this.agentRules(client, sessionAgent)
+        : undefined;
+    const rules = floor ? openCodeNativeApprovalRules(floor) : [];
     if (sessionAgent && agentChanged) {
       try {
         await client.request('POST', `/api/session/${sessionId}/agent`, {
           agent: sessionAgent,
         });
       } catch (error) {
+        // OpenCode may have switched anyway: the next turn asks again.
+        record.dirty = true;
         throw new SendTurnRefusedError(
           `OpenCode did not switch to the ${sessionAgent} agent, so this message was not sent: ${redactSecrets(errorMessage(error))}.`,
           'unavailable',
         );
       }
       record.agent = sessionAgent;
+      // The engine runs the new agent under the rules it still has: Station
+      // keeps that agent's denies under them from now on.
+      record.native.setApprovalMode(
+        current,
+        currentFloor === 'confined' ? newAgentRules : undefined,
+      );
     }
-    if (JSON.stringify(rules) !== JSON.stringify(record.rules)) {
+    if (
+      record.dirty ||
+      JSON.stringify(rules) !== JSON.stringify(record.rules)
+    ) {
       try {
         await client.request('PATCH', `/api/session/${sessionId}`, {
           permissions: rules,
         });
       } catch (error) {
+        record.dirty = true;
         const reason = redactSecrets(errorMessage(error));
-        const currentFloor = acpApprovalFloor(current);
-        const message =
+        // What was asked for, and what OpenCode still runs under.
+        const target =
+          floor === 'full'
+            ? "Station's full-access rules"
+            : floor === 'confined'
+              ? "Station's approval rules"
+              : 'its own approval settings';
+        const remains =
           currentFloor === 'full'
-            ? "Couldn't switch OpenCode to Station's approval rules; it is still running with full access"
+            ? 'it is still running with full access'
             : currentFloor === 'confined'
-              ? "Couldn't switch OpenCode to Station's full-access rules; it's still asking first as before"
-              : "Couldn't switch OpenCode to Station's approval rules; it's still using its own settings";
+              ? "it's still asking first as before"
+              : "it's still using its own settings";
+        const message = `Couldn't switch OpenCode to ${target}; ${remains}`;
         // A turn may run only under rules at least as strict as the pick:
         // only a failed move from Ask or Auto to full access still runs.
-        if (currentFloor !== 'confined' || floor !== 'full' || agentChanged)
+        if (currentFloor !== 'confined' || floor !== 'full')
           throw new ApprovalGovernanceRefusedError(
             `${message}, so this message was not sent: ${reason}.`,
           );
@@ -1103,7 +1157,11 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       }
       record.rules = rules;
     }
-    record.native.setApprovalMode(mode);
+    record.dirty = false;
+    record.native.setApprovalMode(
+      mode,
+      floor === 'confined' ? newAgentRules : undefined,
+    );
   }
 
   /** `/rewind <turnId>`, or with none the turn before the last. */

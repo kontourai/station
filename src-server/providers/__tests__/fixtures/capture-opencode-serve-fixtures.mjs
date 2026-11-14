@@ -8,7 +8,7 @@
 //   node src-server/providers/__tests__/fixtures/capture-opencode-serve-fixtures.mjs \
 //     --opencode <path-to-opencode-2.x> --work <empty-scratch-dir> \
 //     [--out <fixtures-dir>] [--port-base 47300] [--only basic,tools]
-//     [--config plain]   (only for the plan-deny scenarios)
+//     [--config plain]   (only for the plan-deny scenario)
 //
 // Isolation: OpenCode runs with HOME, XDG_* and TMPDIR inside --work, a
 // fresh git project at <work>/proj, an inline mock OpenAI-compatible model on
@@ -1172,19 +1172,18 @@ S['debug-agents'] = async (rec) => {
 // ---------------------------------------------------------------- governed sessions
 
 // Station's session rulesets as `openCodeNativeApprovalRules`
-// (opencode-approval-native.ts) builds them; kept in step by hand.
-const FULL_RULES = [{ action: '*', resource: '*', effect: 'allow' }];
+// (opencode-approval-native.ts) builds them; kept in step by hand. Asks
+// only: full access sends none, and Station answers what is asked.
+const FULL_RULES = [];
 const CONFINED_RULES = [
-  ...[
-    'shell',
-    'edit',
-    'webfetch',
-    'websearch',
-    'external_directory',
-    '*_*',
-  ].map((action) => ({ action, resource: '*', effect: 'ask' })),
-  { action: 'subagent', resource: '*', effect: 'deny' },
-];
+  'shell',
+  'edit',
+  'webfetch',
+  'websearch',
+  'external_directory',
+  '*_*',
+  'subagent',
+].map((action) => ({ action, resource: '*', effect: 'ask' }));
 
 async function askAndAnswer(rec, tap, s, text, decision = 'once') {
   const before = tap.count(is('permission.asked', s));
@@ -1238,10 +1237,11 @@ S['mode-switch'] = async (rec) => {
     agent: 'build',
     permissions: FULL_RULES,
   });
-  await rec.api('POST', `/api/session/${s}/prompt`, { text: 'DO_BASH full' });
-  await settled(A, s);
+  // With no session rules the agent's decide; this capture's config asks
+  // for shell, and Station's full access answers `once`.
+  await askAndAnswer(rec, A, s, 'DO_BASH full');
   rec.finding(
-    `full access: ${A.count(is('permission.asked', s))} permission asks for DO_BASH`,
+    `full access: ${A.count(is('permission.asked', s))} permission asks for DO_BASH, answered once`,
   );
   await rec.api('GET', '/api/agent/build');
   await rec.api('GET', '/api/permission/saved');
@@ -1335,65 +1335,69 @@ S['stop-pending'] = async (rec) => {
   );
 };
 
-/**
- * The plan agent's own rules after Station's, as
- * `openCodeNativeSessionRules` keeps them: its effective deny, and the
- * narrower exception after it no looser than Station's rule (here, ask).
- */
-function planGuard(agentRules) {
-  const at = agentRules.findIndex(
-    (r) => r.action === 'edit' && r.resource === '*' && r.effect === 'deny',
-  );
-  if (at < 0) return [];
-  return agentRules
-    .slice(at)
-    .filter((r) => r.action === 'edit')
-    .map((r) => (r.effect === 'allow' ? { ...r, effect: 'ask' } : r));
-}
-
-// Run with `--config plain`: the plan agent's `edit * deny` decides. With
-// Station's rules alone after it, the session's `edit * ask` wins (last
-// match) and the edit is asked instead of denied.
-S['plan-deny-override'] = async (rec) => {
+// Run with `--config plain`: the plan agent's `edit * deny` decides on its
+// own, but with Station's asks after it the session's `edit * ask` wins
+// (last match), so OpenCode asks; Station evaluates the agent's rules alone,
+// finds the deny, and rejects the ask without a person.
+S['plan-deny'] = async (rec) => {
   const A = await rec.tap('A');
-  await rec.api('GET', '/api/agent/plan');
-  const s = await createSession(rec, 'plan-override', {
+  // The first scenario on a fresh server: its agent catalog may still be
+  // loading (404, as `boot` records); a replay repeats the last answer.
+  for (let i = 0; i < 100; i += 1) {
+    if ((await rec.api('GET', '/api/agent/plan')).status === 200) break;
+    await sleep(50);
+  }
+  const s = await createSession(rec, 'plan-deny', {
     agent: 'plan',
     permissions: CONFINED_RULES,
   });
   await rec.api('POST', `/api/session/${s}/prompt`, { text: 'DO_EDIT plan' });
-  await A.waitFor(
-    (e) =>
-      sid(e) === s && (e.type === 'permission.asked' || TERMINAL.has(e.type)),
-  );
-  const asked = A.events.find(is('permission.asked', s));
-  if (asked)
-    await rec.api(
-      'POST',
-      `/api/session/${s}/permission/${asked.data.id}/reply`,
-      {
-        decision: 'reject',
-      },
-    );
-  await settled(A, s);
-  rec.finding(
-    `plan agent with Station's rules only: edit ${asked ? 'was ASKED (deny overridden)' : 'was not asked'}`,
-  );
-};
-
-S['plan-deny'] = async (rec) => {
-  const A = await rec.tap('A');
-  const agent = await rec.api('GET', '/api/agent/plan');
-  const guard = planGuard(agent.json?.data?.permissions ?? []);
-  const s = await createSession(rec, 'plan-deny', {
-    agent: 'plan',
-    permissions: [...CONFINED_RULES, ...guard],
+  const asked = await A.waitFor(is('permission.asked', s));
+  await rec.api('POST', `/api/session/${s}/permission/${asked.data.id}/reply`, {
+    decision: 'reject',
   });
-  await rec.api('POST', `/api/session/${s}/prompt`, { text: 'DO_EDIT plan' });
   await settled(A, s);
   const failed = A.events.find(is('session.tool.failed', s));
   rec.finding(
-    `plan agent with its deny after Station's rules: asks ${A.count(is('permission.asked', s))}, edit failed: ${JSON.stringify(failed?.data?.error ?? null)}`,
+    `plan agent with Station's asks after its deny: asks ${A.count(is('permission.asked', s))} (${asked.data.action} ${JSON.stringify(asked.data.resources)}), Station rejected; edit failed: ${JSON.stringify(failed?.data?.error ?? null)}`,
+  );
+};
+
+// A long session: more messages than one history page (OpenCode's default
+// is 50), then the reads a reconnect makes, newest first, following each
+// page's `cursor.next` to the start. Their shape (`data`, `cursor.previous`,
+// `cursor.next`) is what the replay pages a synthesized history with.
+S.history = async (rec) => {
+  const A = await rec.tap('A');
+  const s = await createSession(rec, 'history');
+  for (let i = 0; i < 22; i += 1) {
+    await rec.api('POST', `/api/session/${s}/prompt`, { text: `turn ${i}` });
+    await settled(A, s, { minExecutions: i + 1, quietMs: 200 });
+  }
+  const defaultPage = await rec.api(
+    'GET',
+    `/api/session/${s}/message?order=asc`,
+  );
+  let page = await rec.api(
+    'GET',
+    `/api/session/${s}/message?order=desc&limit=30`,
+  );
+  let total = page.json?.data?.length ?? 0;
+  let pages = 1;
+  while (page.json?.cursor?.next && (page.json?.data?.length ?? 0) > 0) {
+    page = await rec.api(
+      'GET',
+      `/api/session/${s}/message?cursor=${encodeURIComponent(page.json.cursor.next)}&limit=30`,
+    );
+    total += page.json?.data?.length ?? 0;
+    pages += 1;
+  }
+  const mixed = await rec.api(
+    'GET',
+    `/api/session/${s}/message?order=desc&cursor=x`,
+  );
+  rec.finding(
+    `history: default page ${defaultPage.json?.data?.length} messages; newest first in ${pages} pages of 30: ${total} messages; cursor with order -> ${mixed.status}`,
   );
 };
 
@@ -1419,9 +1423,10 @@ const ORDER = [
   'interrupt-pending',
   'stop-pending',
   'permission-saved',
+  'history',
 ];
-// Captured separately, with `--config plain --only plan-deny-override,plan-deny`.
-const PLAIN_ONLY = new Set(['plan-deny-override', 'plan-deny']);
+// Captured separately, with `--config plain --only plan-deny`.
+const PLAIN_ONLY = new Set(['plan-deny']);
 
 // ---------------------------------------------------------------- main
 

@@ -49,6 +49,7 @@ describe('OpenCode serve captures', () => {
         'crossload',
         'debug-agents',
         'governed',
+        'history',
         'interrupt',
         'interrupt-pending',
         'mcp',
@@ -57,7 +58,6 @@ describe('OpenCode serve captures', () => {
         'permission-reject',
         'permission-saved',
         'plan-deny',
-        'plan-deny-override',
         'question',
         'reconnect',
         'revert',
@@ -273,17 +273,46 @@ describe('OpenCode serve captures', () => {
     ).toBe(404);
   });
 
-  test("(g) a session's rules outrank the plan agent's deny unless the deny follows them", () => {
-    const asked = (scenario: string) =>
-      lines(scenario).some((line) => line.event?.type === 'permission.asked');
-    const failed = (scenario: string) =>
-      lines(scenario).find(
-        (line) => line.event?.type === 'session.tool.failed',
-      );
-    expect(asked('plan-deny-override')).toBe(true);
-    expect(asked('plan-deny')).toBe(false);
-    expect(failed('plan-deny')?.event.data.error.message).toContain(
-      'Cannot use edit',
+  test("(g) Station's asks after the plan agent's deny make OpenCode ask; a reject fails the edit", () => {
+    const scenario = lines('plan-deny');
+    const asked = scenario.find(
+      (line) => line.event?.type === 'permission.asked',
     );
+    expect(asked?.event?.data).toMatchObject({
+      action: 'edit',
+      resources: ['edit-me.txt'],
+    });
+    expect(
+      scenario.find((line) => line.event?.type === 'session.tool.failed')?.event
+        ?.data,
+    ).toMatchObject({ error: { message: 'The user declined this tool call' } });
+  });
+
+  test('(h) history is paged: 50 messages by default, newest first with a cursor that carries its order', () => {
+    const reads = lines('history').filter(
+      (line) => line.kind === 'http' && line.path?.includes('/message?'),
+    );
+    const first = reads[0]?.response as { data: unknown[] };
+    expect(first.data).toHaveLength(50);
+    const pages = reads.slice(1, -1) as Array<{
+      response: { data: Array<{ id: string }>; cursor: { next?: string } };
+    }>;
+    const total = pages.reduce(
+      (sum, page) => sum + page.response.data.length,
+      0,
+    );
+    expect(total).toBeGreaterThan(50);
+    const cursor = JSON.parse(
+      Buffer.from(pages[0]?.response.cursor.next ?? '', 'base64url').toString(
+        'utf8',
+      ),
+    );
+    expect(cursor).toEqual({
+      id: pages[0]?.response.data.at(-1)?.id,
+      order: 'desc',
+      direction: 'next',
+    });
+    // A cursor cannot be combined with an order.
+    expect(reads.at(-1)?.status).toBe(400);
   });
 });

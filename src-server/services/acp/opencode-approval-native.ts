@@ -115,70 +115,42 @@ export type OpenCodeNativeFloor = 'confined' | 'full';
 
 /**
  * The session ruleset for a floor (the v2 counterpart of
- * `stationOpenCodeApprovalConfig`):
+ * `stationOpenCodeApprovalConfig`). Station only ever adds `ask` rules: an
+ * `allow` would let an action past the agent's own rules, and a `deny`
+ * appended after them would change what they decide for other resources.
  *
  * - `confined` (Ask, Auto, and full access confined to Auto): each governed
- *   action asks, and Station answers by the mode. `subagent` is denied: a
- *   child session is created with its own agent's rules, not these.
- * - `full` (full access in a host session): everything is allowed.
+ *   action asks, and `subagent` asks (a child session runs its own agent's
+ *   rules, not these, so Station rejects it; {@link openCodeNativeStationRejects}).
+ *   Because OpenCode lets the last matching rule decide, these asks also
+ *   reach Station for actions the agent's own rules deny; Station rejects
+ *   those itself ({@link openCodeNativeStationRejects}).
+ * - `full` (full access in a host session): none. The agent's rules decide,
+ *   OpenCode asks only where they say ask, and Station answers `once`.
  */
 export function openCodeNativeApprovalRules(
   floor: OpenCodeNativeFloor,
 ): OpenCodeNativeRule[] {
-  if (floor === 'full')
-    return [{ action: '*', resource: '*', effect: 'allow' }];
-  return [
-    ...OPENCODE_NATIVE_ASK_ACTIONS.map((action) => ({
-      action,
-      resource: '*',
-      effect: 'ask' as const,
-    })),
-    { action: 'subagent', resource: '*', effect: 'deny' },
-  ];
+  if (floor === 'full') return [];
+  return [...OPENCODE_NATIVE_ASK_ACTIONS, 'subagent'].map((action) => ({
+    action,
+    resource: '*',
+    effect: 'ask' as const,
+  }));
 }
 
-const STRICTNESS: Record<OpenCodeRuleEffect, number> = {
-  allow: 0,
-  ask: 1,
-  deny: 2,
-};
-
 /**
- * The session ruleset Station sends for `floor` on an agent whose own rules
- * are `agentRules`. OpenCode evaluates the agent's rules and then the
- * session's, last match wins, so Station's rules alone would outrank an
- * agent's deny: the plan agent's `edit * deny` would become Station's
- * `edit * ask` (or full access's allow), and a mode that answers edits would
- * then let them run. Station's rules never weaken a deny: each deny the
- * agent's rules still decide by is appended after them, followed by the
- * agent's later, narrower rules for the same action (the plan agent's own
- * plan-file exception), each made no looser than Station's rule for it.
+ * Whether Station rejects an ask, without a person, in a session governed
+ * by the confined rules: a child session would run outside them, and an
+ * action the agent's own rules deny (evaluated alone, as OpenCode would
+ * without Station's asks after them) stays denied.
  */
-export function openCodeNativeSessionRules(
-  floor: OpenCodeNativeFloor,
+export function openCodeNativeStationRejects(
   agentRules: readonly OpenCodeNativeRule[],
-): OpenCodeNativeRule[] {
-  const station = openCodeNativeApprovalRules(floor);
-  const kept: OpenCodeNativeRule[] = [];
-  agentRules.forEach((rule, index) => {
-    if (rule.effect !== 'deny') return;
-    // A deny a later agent rule overrides does not decide; restoring it
-    // would make Station stricter than the agent itself.
-    if (evaluateOne(rule.action, rule.resource, agentRules) !== 'deny') return;
-    kept.push(rule);
-    for (const later of agentRules.slice(index + 1)) {
-      if (later.action !== rule.action || later.effect === 'deny') continue;
-      const stationEffect = evaluateOne(later.action, later.resource, station);
-      kept.push({
-        ...later,
-        effect:
-          STRICTNESS[stationEffect] > STRICTNESS[later.effect]
-            ? stationEffect
-            : later.effect,
-      });
-    }
-  });
-  return [...station, ...kept];
+  request: { readonly action: string; readonly resources: readonly string[] },
+): boolean {
+  if (request.action === 'subagent') return true;
+  return evaluateOpenCodeRules(request, agentRules, []) === 'deny';
 }
 
 /**
@@ -213,12 +185,11 @@ export function openCodeSavedApprovalOverrides(
   saved: readonly OpenCodeSavedApproval[],
 ): OpenCodeSavedApproval[] {
   if (floor === 'full') return [];
-  const configured = [
-    ...agentRules,
-    ...openCodeNativeSessionRules(floor, agentRules),
-  ];
+  const configured = [...agentRules, ...openCodeNativeApprovalRules(floor)];
+  // `subagent` too: Station's rules only ask for it, so a saved allow would
+  // start a child session without reaching Station.
   return saved.filter((approval) =>
-    OPENCODE_NATIVE_ASK_ACTIONS.some((governed) => {
+    [...OPENCODE_NATIVE_ASK_ACTIONS, 'subagent'].some((governed) => {
       // The saved action names a concrete action or a pattern; the governed
       // name is checked both ways, since either may be the wider one.
       const action = openCodeWildcard(approval.action, governed)
@@ -259,4 +230,34 @@ export function openCodeNativeModeAllows(
 ): boolean {
   if (mode === 'never') return true;
   return mode === 'auto' && action === 'edit';
+}
+
+/**
+ * How Station answers an ask from the session it runs (not a child's):
+ * `reject` without a person when the confined rules govern it and Station
+ * keeps a deny ({@link openCodeNativeStationRejects}; checked first, so no
+ * grant or mode outranks it), `once` when a session grant or the mode covers
+ * it, else the person decides.
+ */
+export function openCodeNativeAskAnswer(input: {
+  readonly mode: AcpAppliedApprovalMode | undefined;
+  /** The agent's own rules while the confined rules govern; else undefined. */
+  readonly agentRules: readonly OpenCodeNativeRule[] | undefined;
+  readonly request: {
+    readonly action: string;
+    readonly resources: readonly string[];
+  };
+  readonly granted: boolean;
+}): 'reject' | 'once' | 'person' {
+  if (
+    input.agentRules &&
+    openCodeNativeStationRejects(input.agentRules, input.request)
+  )
+    return 'reject';
+  if (
+    input.granted ||
+    openCodeNativeModeAllows(input.mode, input.request.action)
+  )
+    return 'once';
+  return 'person';
 }

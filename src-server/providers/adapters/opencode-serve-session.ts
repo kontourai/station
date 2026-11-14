@@ -53,8 +53,9 @@ import {
 } from '@kontourai/station-shared/input-request';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
+  type OpenCodeNativeRule,
   openCodeGrantCovers,
-  openCodeNativeModeAllows,
+  openCodeNativeAskAnswer,
 } from '../../services/acp/opencode-approval-native.js';
 import { errorMessage } from '../../utils/error-message.js';
 import {
@@ -96,6 +97,13 @@ const TURN_MESSAGES_MAX = 500;
 const STOP_ENGINE_WORK_MS = 3_000;
 /** Request ids closed without an answer, remembered to refuse a late one. */
 const CLOSED_REQUESTS_MAX = 200;
+/** Messages per page of a reconnect's history read (OpenCode takes 1-200). */
+const HISTORY_PAGE = 100;
+/**
+ * Pages a reconnect reads, newest first, looking for the live turn's start;
+ * past this it works from what it read.
+ */
+const HISTORY_PAGES_MAX = 20;
 
 /**
  * An answer to a request OpenCode no longer holds: its execution ended (an
@@ -159,6 +167,11 @@ export interface OpenCodeNativeSessionDeps {
   readonly publish: (event: CanonicalRuntimeEvent) => void;
   /** Station's applied approval mode; answers asks it covers without a person. */
   approvalMode?: AcpAppliedApprovalMode;
+  /**
+   * The session agent's own rules while Station's confined rules govern it
+   * (Ask, Auto); undefined otherwise. An ask they deny is rejected.
+   */
+  agentRules?: readonly OpenCodeNativeRule[];
   readonly now?: () => Date;
   readonly reconnectFirstMs?: number;
   readonly heartbeatTimeoutMs?: number;
@@ -317,10 +330,17 @@ export class OpenCodeNativeSession {
     return this.deps.approvalMode;
   }
 
-  /** A changed mode starts over: the grants made under the old one go. */
-  setApprovalMode(mode: AcpAppliedApprovalMode | undefined): void {
+  /**
+   * A changed mode starts over: the grants made under the old one go.
+   * `agentRules` are the agent's own rules while the confined rules govern.
+   */
+  setApprovalMode(
+    mode: AcpAppliedApprovalMode | undefined,
+    agentRules?: readonly OpenCodeNativeRule[],
+  ): void {
     if (mode !== this.deps.approvalMode) this.grants.splice(0);
     this.deps.approvalMode = mode;
+    this.deps.agentRules = agentRules;
   }
 
   /** Refuse, before anything reaches the engine, while a turn runs. */
@@ -790,12 +810,9 @@ export class OpenCodeNativeSession {
         ownRecord(active?.data) ?? {},
         this.sessionId,
       );
-      const history = await client.request<{ data?: unknown }>(
-        'GET',
-        `${base}/message?order=asc`,
-      );
-      this.adoptStartedDuringGap(history?.data);
-      this.catchUpText(history?.data);
+      const history = await this.readHistory();
+      this.adoptStartedDuringGap(history);
+      this.catchUpText(history);
       const permissions = await client.request<{ data?: unknown }>(
         'GET',
         `${base}/permission`,
@@ -825,7 +842,7 @@ export class OpenCodeNativeSession {
       }
       const turn = this.turn;
       if (!running && turn && !turn.settled && turn.executing)
-        this.settleFromHistory(turn, history?.data);
+        this.settleFromHistory(turn, history);
     } catch (error) {
       this.emit({
         method: 'runtime.warning',
@@ -833,6 +850,67 @@ export class OpenCodeNativeSession {
         message: `Station reconnected to OpenCode but could not re-read the session: ${redactSecrets(errorMessage(error))}`,
       });
     }
+  }
+
+  /**
+   * The session's latest history, oldest first, reaching back to the live
+   * turn's start. OpenCode pages its history (50 messages unless asked
+   * otherwise), so it is read newest first, following each page's
+   * `cursor.next`, until the oldest message a reconnect needs is in it: the
+   * running turn's own message (or, for a turn with none, a message from
+   * before its execution started), or for a prompt not yet seen to start,
+   * the last earlier prompt Station sent. At most {@link HISTORY_PAGES_MAX}
+   * pages.
+   */
+  private async readHistory(): Promise<unknown[]> {
+    const base = `/api/session/${this.sessionId}/message`;
+    const reached = this.historyStart();
+    const newestFirst: unknown[] = [];
+    let path = `${base}?order=desc&limit=${HISTORY_PAGE}`;
+    for (let page = 0; page < HISTORY_PAGES_MAX; page += 1) {
+      const answer = await this.deps.client.request<{
+        data?: unknown;
+        cursor?: unknown;
+      }>('GET', path);
+      const items = ownArray(answer?.data) ?? [];
+      newestFirst.push(...items);
+      if (!reached || items.some((item) => reached(ownRecord(item) ?? {})))
+        break;
+      const next = readString(ownRecord(answer?.cursor)?.next);
+      if (items.length < HISTORY_PAGE || !next) break;
+      // A cursor carries its own order; OpenCode refuses both together.
+      path = `${base}?cursor=${encodeURIComponent(next)}&limit=${HISTORY_PAGE}`;
+    }
+    return newestFirst.reverse();
+  }
+
+  /**
+   * Whether a history message is as far back as a reconnect must read;
+   * undefined when nothing live needs more than the newest page.
+   */
+  private historyStart():
+    | ((message: Record<string, unknown>) => boolean)
+    | undefined {
+    const turn = this.turn && !this.turn.settled ? this.turn : undefined;
+    if (turn?.messageId) {
+      const id = turn.messageId;
+      return (message) => message.id === id;
+    }
+    if (turn?.sinceMs !== undefined) {
+      const since = turn.sinceMs;
+      return (message) => {
+        const created = ownRecord(message.time)?.created;
+        return typeof created === 'number' && created < since;
+      };
+    }
+    const pending = this.pendingStart;
+    if (!pending || pending.settled || !pending.messageId) return undefined;
+    // Its message, if delivered, follows every earlier prompt's.
+    const earlier = this.turnMessages
+      .filter((entry) => entry.messageId !== pending.messageId)
+      .at(-1)?.messageId;
+    const own = pending.messageId;
+    return (message) => message.id === own || message.id === earlier;
   }
 
   /**
@@ -1498,19 +1576,26 @@ export class OpenCodeNativeSession {
     const save = (ownArray(data.save) ?? []).filter(
       (item): item is string => typeof item === 'string',
     );
-    // A grant or Station's mode answers it without a person, `once`.
-    if (
-      own &&
-      (this.grants.some((grant) =>
-        openCodeGrantCovers(grant, { action, resources }),
-      ) ||
-        openCodeNativeModeAllows(this.deps.approvalMode, action))
-    ) {
+    // Under Station's confined rules every governed action asks, also one
+    // the agent's own rules deny: Station keeps that deny (and refuses a
+    // child session) before any grant or mode answers it. A child's ask
+    // comes from its own agent's rules alone, so a person answers it.
+    const answer = own
+      ? openCodeNativeAskAnswer({
+          mode: this.deps.approvalMode,
+          agentRules: this.deps.agentRules,
+          request: { action, resources },
+          granted: this.grants.some((grant) =>
+            openCodeGrantCovers(grant, { action, resources }),
+          ),
+        })
+      : 'person';
+    if (answer !== 'person') {
       void this.deps.client
         .request(
           'POST',
           `/api/session/${sessionId}/permission/${nativeId}/reply`,
-          { decision: 'once' },
+          { decision: answer },
         )
         .catch(() => undefined);
       return;
