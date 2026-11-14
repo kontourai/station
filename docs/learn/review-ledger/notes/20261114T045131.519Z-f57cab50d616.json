@@ -1,0 +1,21 @@
+{
+  "revision": "e75a9e7947e577263096de6c72814af2467a7346",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Checked the ingress verification steps. The unauthenticated-Project refusal is the generic runtime-http.ts authentication gate, and the identity path and terminal-only upgrade forward live in the CLI lifecycle proxy (already cited); nothing in the README depends on a hub mount, default or inline route.","inputs":["deploy/public-ingress/README.md","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/README.md","note":"The docs index only links and one-line-summarises the browser/device guides; it restates no route, mount, gate or default from the runtime route hub, so the hub citation (part of a copied browser source set) supports no claim here.","inputs":["docs/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"The ADR states no /api/knowledge path; its current-state claims (explicit-only rebuild, sqlite-vec index, built-in conversation root) are owned by the index routes, the index adapter registry (sole built-in sqlite-vec) and the conversation-root bootstrap, so those replace the route hub.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","src-server/routes/knowledge/knowledge-index-routes.ts","src-server/knowledge-index/index-adapter-registry.ts","src-server/knowledge-store/conversation-root-bootstrap.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"The only route-related claim is that the exception route and policy own access; that route is createFlowRunRoutes in flow-runs.ts, and the doc names no path, guard or mount the hub sets, so flow-runs.ts replaces the hub (copied from the shared operations source set).","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/routes/evidence/flow-runs.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"The doc only describes CI runner labels and workflow routing; it makes no claim about HTTP routes or runtime composition.","inputs":["docs/guides/private-runner-partition.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"The guide describes product-law observation semantics owned by the product-law gate scripts; nothing in it depends on route registration.","inputs":["docs/guides/product-law-authoring.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Naming 'runtime composition' as a responsibility of src-server/ is a directory description, not a claim about the hub's content.","inputs":["docs/guides/repository-layout.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"The doc never names a URL or mount; it relies on the Project create route's behavior (owned by routes/projects/projects.ts, reached via the cited SDK client) and on the git config refusal list in git-repository-config.ts. Nothing in it depends on hub-only content.","inputs":["docs/guides/workspace-packages.md","src-server/routes/projects/projects.ts","src-server/services/projects/git-repository-config.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

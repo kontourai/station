@@ -166,8 +166,6 @@
 
     "src-server/services/orchestration/__tests__/delegation-result-delivery.test.ts",
 
-    "docs/architecture/module-map.md",
-
     "src-server/services/orchestration/delegation-result-delivery.ts",
 
     "packages/contracts/src/orchestration.ts",
