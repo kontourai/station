@@ -32,6 +32,7 @@ import {
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
 import { chooseChatRegionRow } from './helpers/region-placement';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import { installVisualViewportFixture } from './helpers/visual-viewport';
@@ -770,6 +771,7 @@ async function sendDraft(
   { dialog, draft }: Awaited<ReturnType<typeof openNewChatDraft>>,
   message: string,
 ) {
+  await closeRunSetup(draft);
   await draft
     .getByRole('textbox', { name: 'What would you like done?', exact: true })
     .fill(message);
@@ -782,11 +784,15 @@ async function sendDraft(
  * the Agent chip's list, then that Agent row's Model control.
  */
 async function openComposerModelPicker(page: Page, composer: Locator) {
-  await composer.getByRole('button', { name: /^Agent: / }).click();
+  await (
+    await runSetupControl(composer, (panel) =>
+      panel.getByRole('button', { name: /^Agent: / }),
+    )
+  ).click();
   const agents = page.getByRole('dialog', { name: 'Choose agent' });
   await expect(agents).toBeVisible();
   await agents
-    .getByRole('button', { name: /^Model: / })
+    .getByRole('button', { name: /^(?:Model:|Engine & model:) / })
     .first()
     .click();
   const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
@@ -965,14 +971,20 @@ async function expectStartedChatRuns(
     chat.getByRole('log', { name: 'Conversation transcript' }),
   ).toContainText(prompt);
   await expect(
-    chat.getByRole('button', {
-      name: new RegExp(`^Agent: ${literal(agent)}(?:\\.|$)`),
-    }),
+    await runSetupControl(chat, (panel) =>
+      panel.getByRole('button', {
+        name: new RegExp(`^Agent: ${literal(agent)}(?:\\.|$)`),
+      }),
+    ),
   ).toBeVisible();
   await expect(
-    chat.getByRole('button', {
-      name: new RegExp(`^Model: (?:.+ — )?${literal(model)}(?: \\(|$)`),
-    }),
+    await runSetupControl(chat, (panel) =>
+      panel.getByRole('button', {
+        name: new RegExp(
+          `^(?:Model:|Engine & model:).*${literal(model)}(?: \\(|$)`,
+        ),
+      }),
+    ),
   ).toBeVisible();
 }
 
@@ -990,10 +1002,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
     const form = page.getByRole('form', { name: 'Start work' });
     await expect(form).toHaveClass(/start-composer--compact/);
     const start = form.getByRole('button', { name: 'Start', exact: true });
-    const advertised = form.getByRole('button', {
-      name: 'Agent: Codex · gpt-5.3-codex',
-      exact: true,
-    });
+    const advertised = await runSetupControl(form, (panel) =>
+      panel.getByRole('button', {
+        name: 'Agent: Codex · gpt-5.3-codex',
+        exact: true,
+      }),
+    );
     await expect(advertised).toBeVisible();
     // The composer is Home's only start: no second "New chat" beside it.
     await expect(
@@ -1004,6 +1018,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     )
       .replace(/^Agent: /, '')
       .split(' · ');
+    await closeRunSetup(page);
     await page
       .getByRole('textbox', { name: 'What would you like done?' })
       .fill(prompt);
@@ -1064,11 +1079,14 @@ test.describe('Task-first Home (#332, mocked)', () => {
       }),
     ).toBeVisible();
     await expect(
-      form.getByRole('button', {
-        name: 'Agent: Codex · GPT 5.4',
-        exact: true,
-      }),
+      await runSetupControl(form, (panel) =>
+        panel.getByRole('button', {
+          name: 'Agent: Codex · GPT 5.4',
+          exact: true,
+        }),
+      ),
     ).toBeVisible();
+    await closeRunSetup(page);
     await page
       .getByRole('textbox', { name: 'What would you like done?' })
       .fill(prompt);
@@ -1188,10 +1206,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // The draft's Agent chip names the Agent and Model; the provider is read
     // in the picker's selection and, after Start, on the dock's qualified
     // chip. The picker is the Agent list's Model control for that Agent.
-    const agentChip = draft.getByRole('button', {
-      name: 'Agent: Station Agent · Shared model',
-      exact: true,
-    });
+    const agentChip = await runSetupControl(draft, (panel) =>
+      panel.getByRole('button', {
+        name: 'Agent: Station Agent · Shared model',
+        exact: true,
+      }),
+    );
     await expect(agentChip).toBeVisible();
     const openPicker = async () => {
       const picker = await openComposerModelPicker(page, draft);
@@ -1212,7 +1232,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
     const expectPickerClosed = async (picker: Locator) => {
       await expect(picker).toHaveCount(0);
       await expect(
-        draft.getByRole('button', { name: /^Agent: / }),
+        await runSetupControl(draft, (panel) =>
+          panel.getByRole('button', { name: /^Agent: / }),
+        ),
       ).toBeFocused();
     };
     const bedrockOption = (picker: Locator) =>
@@ -1275,9 +1297,11 @@ test.describe('Task-first Home (#332, mocked)', () => {
       },
     });
     await expect(
-      page.getByRole('button', {
-        name: /Model: Bedrock · Prod — Shared model/,
-      }),
+      await runSetupControl(page, (panel) =>
+        panel.getByRole('button', {
+          name: /(?:Model:|Engine & model:).* Bedrock · Prod — Shared model/,
+        }),
+      ),
     ).toBeVisible();
   });
 
@@ -1290,9 +1314,11 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await page.goto('/');
     await startProjectTask(page, { settle: true });
 
-    const modelButton = page.getByRole('button', {
-      name: /Model: Codex · Work — Shared model/,
-    });
+    const modelButton = await runSetupControl(page, (panel) =>
+      panel.getByRole('button', {
+        name: /(?:Model:|Engine & model:).* Codex · Work — Shared model/,
+      }),
+    );
     await modelButton.click();
     const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
     await expect(picker).toBeVisible();
@@ -1307,21 +1333,29 @@ test.describe('Task-first Home (#332, mocked)', () => {
       .click();
 
     await expect(
-      page.getByRole('button', {
-        name: /Model: Bedrock · Prod — Shared model/,
-      }),
+      await runSetupControl(page, (panel) =>
+        panel.getByRole('button', {
+          name: /(?:Model:|Engine & model:).* Bedrock · Prod — Shared model/,
+        }),
+      ),
     ).toBeFocused();
-    await page
-      .getByRole('button', { name: /Model: Bedrock · Prod — Shared model/ })
-      .click();
+    await (
+      await runSetupControl(page, (panel) =>
+        panel.getByRole('button', {
+          name: /(?:Model:|Engine & model:).* Bedrock · Prod — Shared model/,
+        }),
+      )
+    ).click();
     await page
       .getByRole('dialog', { name: MODEL_PICKER_NAME })
       .getByRole('button', { name: 'Use agent default' })
       .click();
     await expect(
-      page.getByRole('button', {
-        name: /Model: Codex · Work — Shared model/,
-      }),
+      await runSetupControl(page, (panel) =>
+        panel.getByRole('button', {
+          name: /(?:Model:|Engine & model:).* Codex · Work — Shared model/,
+        }),
+      ),
     ).toBeVisible();
   });
 
@@ -1356,10 +1390,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // asserted below. Home has no second "New chat" start.
     const homeComposer = page.getByRole('form', { name: 'Start work' });
     await expect(homeComposer).toHaveClass(/start-composer--compact/);
-    const advertised = homeComposer.getByRole('button', {
-      name: 'Agent: Codex · gpt-5.3-codex',
-      exact: true,
-    });
+    const advertised = await runSetupControl(homeComposer, (panel) =>
+      panel.getByRole('button', {
+        name: 'Agent: Codex · gpt-5.3-codex',
+        exact: true,
+      }),
+    );
     await expect(advertised).toBeVisible();
     await expect(page.getByText(/^Using /)).toHaveCount(0);
     await expect(
@@ -1411,10 +1447,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
     ).toBeVisible();
     const { dialog, draft } = await openNewChatDraft(page);
     await expect(
-      draft.getByRole('button', {
-        name: 'Agent: Codex · gpt-5.3-codex',
-        exact: true,
-      }),
+      await runSetupControl(draft, (panel) =>
+        panel.getByRole('button', {
+          name: 'Agent: Codex · gpt-5.3-codex',
+          exact: true,
+        }),
+      ),
     ).toBeVisible();
     await expect(
       draft.getByRole('button', {
@@ -1925,9 +1963,11 @@ test.describe('Task-first Home (#332, mocked)', () => {
       // closing it returns focus there.
       await sendDraft(opened, 'Start the project task.');
       await completeStartedTurn(page, 'Start the project task.');
-      const modelButton = page.getByRole('button', {
-        name: /Model: Codex · Work — Shared model/,
-      });
+      const modelButton = await runSetupControl(page, (panel) =>
+        panel.getByRole('button', {
+          name: /(?:Model:|Engine & model:).* Codex · Work — Shared model/,
+        }),
+      );
       await modelButton.click();
       const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
       await expect(picker).toBeVisible();
@@ -2147,6 +2187,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       expect(geometry.bottom).toBeLessThanOrEqual(geometry.visualBottom + 1);
       expect(geometry.overflows).toBe(false);
 
+      await closeRunSetup(page);
       await composer.fill('Continue from my phone');
       const continueButton = page
         .getByTestId('session-detail')

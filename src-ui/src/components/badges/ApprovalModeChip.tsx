@@ -14,6 +14,7 @@ import { useAccountPreferences } from '../../contexts/AccountPreferencesContext'
 import { useManagedPolicySummary } from '../../contexts/ManagedPolicyContext';
 import {
   type ApprovalMode,
+  approvalChoiceIndicators,
   approvalModeChipLabel,
   approvalModeKnobSupported,
   approvalModeLabel,
@@ -292,6 +293,12 @@ function ApprovalModeChipContent({
     <>
       <ComposerChoice
         ref={triggerRef}
+        {...approvalChoiceIndicators({
+          mode: displayedMode,
+          override: isOverride,
+          refused: isRefused,
+          pending: isPendingApply || isPendingRestrict || notApplied,
+        })}
         className={`chat-input__approval-chip ${
           isPendingApply || isPendingRestrict || isRefused || notApplied
             ? 'chat-input__approval-chip--pending'

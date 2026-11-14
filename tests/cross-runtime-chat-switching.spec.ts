@@ -18,6 +18,7 @@ import {
   installMockOrchestrationSse,
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 type ExecutionRequest = {
@@ -1021,9 +1022,11 @@ async function openNewChatDraft(page: Page) {
 /** Opens the draft's project-scoped Agent list. */
 async function openNewChatModal(page: Page) {
   await openNewChatDraft(page);
-  await dockComposer(page)
-    .getByRole('button', { name: /^Agent:/ })
-    .click();
+  await (
+    await runSetupControl(dockComposer(page), (panel) =>
+      panel.getByRole('button', { name: /^Agent:/ }),
+    )
+  ).click();
   const agents = page.getByRole('dialog', { name: 'Choose agent' });
   await expect(agents).toBeVisible();
   return agents;
@@ -1144,6 +1147,7 @@ async function submitExactTurn({
   executionRequests: ExecutionRequest[];
 }) {
   const requestsBeforeSubmit = executionRequests.length;
+  await closeRunSetup(textarea);
   await textarea.fill(path.prompt);
   await send.click();
   await expect
@@ -1499,6 +1503,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     await alphaAgents.press('Escape');
     await expect(alphaAgents).toHaveCount(0);
 
+    await closeRunSetup(page);
     await dockComposer(page)
       .getByRole('button', { name: /^Project: / })
       .click();
@@ -1513,9 +1518,11 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       }),
     ).toBeVisible();
 
-    await dockComposer(page)
-      .getByRole('button', { name: /^Agent:/ })
-      .click();
+    await (
+      await runSetupControl(dockComposer(page), (panel) =>
+        panel.getByRole('button', { name: /^Agent:/ }),
+      )
+    ).click();
     const betaAgents = page.getByRole('dialog', { name: 'Choose agent' });
     await expect(
       betaAgents
@@ -1543,10 +1550,13 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       .filter({ has: page.getByText('Codex Runtime', { exact: true }) })
       .click();
     await expect(
-      dockComposer(page).getByRole('button', {
-        name: /^Agent: Codex Runtime(?: · [^,]+)?$/,
-      }),
+      await runSetupControl(dockComposer(page), (panel) =>
+        panel.getByRole('button', {
+          name: /^Agent: Codex Runtime(?: · [^,]+)?$/,
+        }),
+      ),
     ).toBeVisible();
+    await closeRunSetup(page);
     await page
       .getByRole('region', { name: 'New chat', exact: true })
       .press('Escape');
@@ -1737,6 +1747,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
         exact: true,
       }),
     ).toBeVisible();
+    await closeRunSetup(page);
     await draft.press('Escape');
     await expect(draft).toHaveCount(0);
     expect(new URL(page.url()).searchParams.get('chat')).toBe(activeBefore);
@@ -1895,6 +1906,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
           exact: true,
         }),
       ).toBeVisible();
+      await closeRunSetup(page);
       await draft.press('Escape');
       await expect(draft).toHaveCount(0);
       expect(new URL(page.url()).searchParams.get('chat')).toBe(activeBefore);

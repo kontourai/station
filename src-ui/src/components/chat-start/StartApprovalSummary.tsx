@@ -6,6 +6,7 @@ import { useConfig } from '../../contexts/ConfigContext';
 import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
 import {
   type ApprovalMode,
+  approvalChoiceIndicators,
   approvalModeChipLabel,
   approvalModeDescription,
   approvalModeSourceNote,
@@ -111,6 +112,10 @@ export function StartApprovalSummary({
     return (
       <ComposerChoice
         className="start-composer__chip"
+        {...approvalChoiceIndicators({
+          mode: startMode,
+          override: resolved.source === 'session override',
+        })}
         caption="Permissions"
         value={label}
         aria-label={`${visible}. ${title}`}
@@ -128,6 +133,10 @@ export function StartApprovalSummary({
         aria-label={`${visible}. ${title}`}
         title={title}
         onClick={() => setIsSheetOpen((open) => !open)}
+        {...approvalChoiceIndicators({
+          mode: startMode,
+          override: resolved.source === 'session override',
+        })}
         caption="Permissions"
         value={label}
       />

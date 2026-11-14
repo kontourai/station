@@ -1,0 +1,7 @@
+{
+  "revision": "fcb5f62b955175ed599aa08ac51e56ae14811063",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Executed both reconnect layout journeys at 320x568 and 390x844: PASS. Closed setup trigger owns the geometry measurement; 320px evidence has setup closed. Repaired Saved drafts selectors and declared delegated-history and Project-default reads. Agent mark and caret are asserted separately; setup closes before actions. Evidence is controlled browser execution, not device or provider proof.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

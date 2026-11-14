@@ -18,8 +18,8 @@ without adding a model API key:
    **Check connection** sends a short message using your model allowance.
 3. An empty Home guides you through choosing an agent and optionally adding
    files. **View available agents** opens the agent list; **Set up an agent
-   engine** opens Connections when no agent is runnable. On Home, choose **Codex** in the Agent picker, write a request, and choose
-   **Start**. You can start without a Project. The detected Codex Agent is
+   engine** opens Connections when no agent is runnable. On Home, open the Agent/model control beside **Start**. Choose
+   **Agent**, then **Codex**, write a request, and choose **Start**. You can start without a Project. The detected Codex Agent is
    enough; creating a custom Agent is optional.
 4. Choose **New Project** on Home, enter a name, and choose **Repository or
    folder**, **Documents and knowledge**, **Connected tools**, or **Blank
@@ -38,8 +38,8 @@ without adding a model API key:
    and [document import](https://github.com/kontourai/station/blob/main/docs/guides/knowledge.md#import-documents-from-your-computer).
 5. To talk to the built-in **Station Assistant** using the same Codex account,
    open **Settings → General → Built-in agent engine → Change…**, choose
-   **Codex**, choose **Use this engine**, then **Save**. Select **Station
-   Assistant** in the chat's Agent picker. Ask it to list your projects to exercise a read-only
+   **Codex**, choose **Use this engine**, then **Save**. Open the Agent/model control beside **Start** or **Send**. Under **Agent**,
+   select **Station Assistant**. Ask it to list your projects to exercise a read-only
    Station tool as well as chat.
 
 For a customized Codex Agent, open **Customize → Agents → New agent → Use an
@@ -477,9 +477,9 @@ would. Write what you want done
 and choose **Start**. You do not need to choose anything first; the controls
 show what **Start** will use:
 
-- The **Agent** chip shows the Agent's icon and name. Open it to
-  list **Station**, **Coding apps**, and **My agents**, with readiness and setup
-  actions. The separate Model chip shows the Model's name and opens the
+- The combined **Agent · Model** button opens **Run setup**. Its Agent choice
+  lists **Station**, **Coding apps**, and **My agents**, with readiness and setup
+  actions. Its Model choice opens the
   **Engine & model** picker, which also offers alternative engines when they
   are available. An engine choice overrides this conversation's execution
   while retaining the selected Agent's profile and saved defaults. Search or
@@ -491,6 +491,8 @@ show what **Start** will use:
   returns to, such as **Use project default** for a model-only choice or
   **Use Agent defaults** for an engine override. In an existing conversation,
   changing or resetting the engine opens a handoff confirmation that keeps your draft.
+  Full access, a pending or refused approval change, and a conversation override
+  add a warning glyph to the combined button; open Run setup for details.
   In the model picker, while a reply you sent is still running, the other
   engines and **Use Agent defaults** are shown but unavailable until it
   finishes. When Station reports that the conversation can't be changed right
@@ -1092,17 +1094,17 @@ unavailable.
 
 ## Start Your First Task
 
-1. Open a Project and choose **New Task**. The normal chat composer opens in **New Task** mode, focused for your idea. Use its existing Project and Agent chips if you want different choices.
+1. Open a Project and choose **New Task**. The normal chat composer opens in **New Task** mode, focused for your idea. Use its Project control or **Run setup** to change the Agent, Model or Approval settings.
 2. Refine the idea in chat, or accept an immediate proposal for a clear one-liner.
 3. Choose **Create Task** on the proposal to keep its brief and linked chat. The Task opens with its brief and references; accepting does not assign an Agent or start an execution Session.
 
 In new chats and New Task conversations, drop an image onto the composer or paste
-a screenshot. On a phone, use **Paste image** beside Attach. In the Android app
+a screenshot into the text field (Ctrl/Cmd+V on desktop). On a phone, use **Attach** to choose an image. In the Android app
 you can also share images from another app to Station, then pick a
 conversation or **New chat** in a project. Review its thumbnail and remove it
 before sending if needed.
 The existing Task room and agent-thread replies accept images the same way,
-including messages with only an image. You can attach up to five files, 5 MiB
+including messages with only an image; their room composer also retains **Paste image** on supported touch devices. You can attach up to five files, 5 MiB
 each and 15 MiB combined. Keep unsent local files in the open draft; reloading
 does not restore them. An older image in history may become unavailable after
 the server's attachment retention expires.

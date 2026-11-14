@@ -1,0 +1,33 @@
+{
+  "revision": "2081f1a8ca16389fd1e4673eca28c635fa57cb2d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the fix-round delta from 27fe4222617c: ConversationBody passes observed engine identity only to the shared reply composer mark. Conversation controller, transport and authority ownership remain unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/__tests__/HomeView.test.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed ApprovalModeChip delta: passive safety summary reports its existing effective mode and pending/refused/override state. No approval resolution, request dispatch, policy ceiling or grant behavior changed; original focused approval-owner tests passed.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/badges/ApprovalModeChip.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"Reviewed added gallery entries and screenshots against the motion claims: ordinary picker actions and geometry assertions were added; no motion implementation or timing contract changed. Captures do not establish latency performance.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed ConversationBody delta: an engine-mark identity prop is the only caller change. Region, board, navigation and conversation authority ownership are unchanged.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed HomeView test delta: queries now find the combined setup trigger by its visible name/test id. Home-role recovery, plugin registration and distribution source are unchanged.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Reviewed ConversationBody engine identity prop and ChatInputArea consumption. It is presentation only, derived from existing binding/session facts. No routing, capability decision, Station identity, request scope or transport behavior changed.","inputs":["docs/design/station-connection.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed changed tests as representative fixture/browser routes. They now enter the portaled setup through a shared real-action helper. Product execution still has failures at legacy controls and unmodeled fixture requests; the table remains a coverage route and does not certify a green run.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/default-agent-workflow.spec.ts","tests/mobile-chat-composer.spec.ts","tests/task-first-home.spec.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed the only affected input, HomeView test queries. They change setup-trigger selection without changing plugin behavior, loading, CSP, pane ownership or recovery. Existing plugin guide claims do not need a prose change for this delta.","inputs":["docs/guides/plugins.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Updated the composer paragraph to describe one Agent/model trigger, full choices in Run setup, and the shared phone action row. Inspected dark/light 390/412/1440 setup and 412x915 stacked model captures. Native physical-device behavior remains unverified.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ComposerChoice.tsx","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Used the documented focused test and e2e runner routes. Reviewed partial baseline merge behavior: failed captures are skipped, then successful ready-model stacked captures were added. Four injected regressions failed and all 94 restored component tests passed. Per-file product failures remain in PR evidence.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed added gallery entries and Home captures against the gallery-evidence description. Telemetry implementation, consent and persistence are unchanged; the gallery continues to use its live-status projection plus bounded named fixtures.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed the migrated pr-smoke selectors and actual execution: initial selected run was 10 passed and 1 failed because setup blocked a Project click; the close was added. A subsequent startup timeout is not a browser pass. No admission, report retention or suite selection policy changed.","inputs":["docs/testing/browser-smoke.md","tests/cross-runtime-chat-switching.spec.ts","tests/pr-smoke-live-chat-send.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Updated the chat-start instructions from separate Agent/Model chips to the combined Agent/model trigger and Run setup choices; documented the exceptional safety warning. Model picker, start/send and engine handoff owners remain the same.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/ChatInputArea.tsx","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed ConversationBody fix-round delta against the local scope rules: engine identity is passed to canonical ChatInputArea for its mark, with no new conversation surface or authority derivation. Shared owners and capability/transport boundaries remain intact.","inputs":["src-ui/AGENTS.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

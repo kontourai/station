@@ -1,5 +1,5 @@
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { identiconHue } from '../../utils/identicon';
 import { getInitials } from '../../utils/layout';
 import { LazyBoundary } from '../LazyBoundary';
@@ -30,7 +30,7 @@ const BRAND_KEYS = [
 ] as const satisfies readonly BrandKey[];
 
 /** Exact engine-id-to-mark lookup. Engine display names never participate. */
-function resolveBrandKey(engineId: EngineId): BrandKey | undefined {
+export function resolveBrandKey(engineId: EngineId): BrandKey | undefined {
   if (
     engineId === 'station-agent' ||
     engineId === 'bedrock' ||
@@ -183,6 +183,7 @@ interface BrandIconProps {
    * change to `BrandIcon` itself.
    */
   identiconSeed?: string;
+  fallback?: ReactNode;
 }
 
 /**
@@ -201,6 +202,7 @@ export function BrandIcon({
   style,
   alt = '',
   identiconSeed,
+  fallback: fallbackContent,
 }: BrandIconProps) {
   const [failedImageSource, setFailedImageSource] = useState<string>();
   const explicitBrandKey = explicitBrand(icon);
@@ -273,7 +275,9 @@ export function BrandIcon({
       ) : brand ? (
         <Mark brand={brand} />
       ) : (
-        <span className="brand-icon__initials">{fallback}</span>
+        (fallbackContent ?? (
+          <span className="brand-icon__initials">{fallback}</span>
+        ))
       )}
     </span>
   );

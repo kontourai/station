@@ -3,6 +3,7 @@ import { contrastRatio } from './helpers/color-contrast';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import { MODEL_PICKER_NAME } from './helpers/model-picker';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import { installVisualViewportFixture } from './helpers/visual-viewport';
 
@@ -269,6 +270,7 @@ async function chooseProject(
   page: import('@playwright/test').Page,
   name: string | RegExp,
 ) {
+  await closeRunSetup(page);
   await startComposer(page)
     .getByRole('button', { name: /^Project: / })
     .click();
@@ -289,9 +291,11 @@ async function selectNoWorkspace(page: import('@playwright/test').Page) {
 
 /** Opens the composer's Agent chip list and returns it. */
 async function openAgentList(page: import('@playwright/test').Page) {
-  await startComposer(page)
-    .getByRole('button', { name: /^Agent:/ })
-    .click();
+  await (
+    await runSetupControl(startComposer(page), (panel) =>
+      panel.getByRole('button', { name: /^Agent:/ }),
+    )
+  ).click();
   const agents = page.getByRole('dialog', { name: 'Choose agent' });
   await expect(agents).toBeVisible();
   return agents;
@@ -398,14 +402,16 @@ test('provider-managed project ignores a stale unsupported project model even wh
     .click();
   // The chip names the provider-managed default, not the stale project Model.
   await expect(
-    startComposer(page).getByRole('button', {
-      name: /^Agent: Station · Llama 3\.2$/,
-    }),
+    await runSetupControl(startComposer(page), (panel) =>
+      panel.getByRole('button', {
+        name: /^Agent: Station · Llama 3\.2$/,
+      }),
+    ),
   ).toBeVisible();
   const again = await openAgentList(page);
   await again
     .locator('.new-chat-modal__agent-row', { hasText: 'Station' })
-    .getByRole('button', { name: /^Model: / })
+    .getByRole('button', { name: /^(?:Model:|Engine & model:) / })
     .click();
   const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
   await expect(picker.getByRole('option', { name: /Llama 3.2/ })).toBeVisible();
@@ -513,7 +519,9 @@ test('new chat lists persisted engine defaults and keeps selected and hovered te
   await selectNoWorkspace(page);
   // The Agent chip opens on the remembered engine default (#3362).
   await expect(
-    startComposer(page).getByRole('button', { name: /^Agent: Codex/ }),
+    await runSetupControl(startComposer(page), (panel) =>
+      panel.getByRole('button', { name: /^Agent: Codex/ }),
+    ),
   ).toBeVisible();
   const modal = await openAgentList(page);
   await expect(modal.getByText('Bedrock')).toHaveCount(0);
@@ -647,9 +655,11 @@ test('new chat preserves context, search, keyboard, pointer, and close interacti
   await listSearch.press('Enter');
   await expect(agents).toHaveCount(0);
   await expect(
-    startComposer(page).getByRole('button', {
-      name: new RegExp(`^Agent: ${firstName}`),
-    }),
+    await runSetupControl(startComposer(page), (panel) =>
+      panel.getByRole('button', {
+        name: new RegExp(`^Agent: ${firstName}`),
+      }),
+    ),
   ).toBeVisible();
 
   // Pointer: hover highlights, a click chooses and closes the list.
@@ -662,11 +672,14 @@ test('new chat preserves context, search, keyboard, pointer, and close interacti
   await station.click();
   await expect(agents).toHaveCount(0);
   await expect(
-    startComposer(page).getByRole('button', { name: /^Agent: Station/ }),
+    await runSetupControl(startComposer(page), (panel) =>
+      panel.getByRole('button', { name: /^Agent: Station/ }),
+    ),
   ).toBeVisible();
 
   // Close: Escape in the draft. It sits in the dock body, so there is no
   // outside overlay to click.
+  await closeRunSetup(page);
   await startComposer(page)
     .getByRole('textbox', { name: 'What would you like done?' })
     .press('Escape');
@@ -850,9 +863,7 @@ test('new chat remains touch-usable and scrollable at 390x844', async ({
   const projectChip = startComposer(page).getByRole('button', {
     name: /^Project: /,
   });
-  const agentChip = startComposer(page).getByRole('button', {
-    name: /^Agent:/,
-  });
+  const agentChip = startComposer(page).getByTestId('run-setup-trigger');
   const start = startComposer(page).getByRole('button', {
     name: 'Start',
     exact: true,
@@ -926,6 +937,7 @@ test('new chat remains touch-usable and scrollable at 390x844', async ({
   await expect(agents).toHaveCount(0);
 
   // Escape dismisses the draft (a phone leaves it for a chat instead).
+  await closeRunSetup(page);
   await startComposer(page)
     .getByRole('textbox', { name: 'What would you like done?' })
     .press('Escape');
@@ -1020,7 +1032,9 @@ test('OpenCode chooses its model where the chat starts, and says it is fixed aft
   const row = agents.locator('.new-chat-modal__agent-row', {
     hasText: 'OpenCode',
   });
-  const rowModel = row.getByRole('button', { name: /^Model: / });
+  const rowModel = row.getByRole('button', {
+    name: /^(?:Model:|Engine & model:) /,
+  });
   await expect(rowModel).toContainText('Big Pickle');
   // Glossary vocabulary only (docs/design/chat-composer.md §3.3).
   await expect(rowModel).not.toContainText('runtime');
@@ -1029,7 +1043,9 @@ test('OpenCode chooses its model where the chat starts, and says it is fixed aft
   await picker.getByRole('option', { name: /GPT-5.5/ }).click();
   // Choosing the Model closes the picker; nothing is left to dismiss.
   await expect(picker).toBeHidden();
-  const chip = startComposer(page).getByRole('button', { name: /^Agent: / });
+  const chip = await runSetupControl(startComposer(page), (panel) =>
+    panel.getByRole('button', { name: /^Agent: / }),
+  );
   await expect(chip).toHaveAccessibleName('Agent: OpenCode · GPT-5.5');
 
   // Start carries the chosen model to the engine.
@@ -1047,6 +1063,7 @@ test('OpenCode chooses its model where the chat starts, and says it is fixed aft
       ),
     });
   });
+  await closeRunSetup(page);
   await startComposer(page)
     .getByRole('textbox', { name: 'What would you like done?' })
     .fill('Plan the change');
@@ -1060,7 +1077,9 @@ test('OpenCode chooses its model where the chat starts, and says it is fixed aft
 
   // In the started chat the model is named and honestly not changeable:
   // the engine cannot switch it inside a conversation.
-  const activeModel = page.locator('.chat-input__model-btn');
+  const activeModel = await runSetupControl(page, (panel) =>
+    panel.locator('.chat-input__model-btn'),
+  );
   await expect(activeModel).toContainText('GPT-5.5');
   await expect(activeModel).toHaveAttribute('aria-disabled', 'true');
   await expect(activeModel).toHaveAttribute(
@@ -1153,13 +1172,17 @@ test('new chat keeps engine diagnostics out of the mobile Agent chooser', async 
   await runtime.click();
   await expect(agents).toHaveCount(0);
   await expect(
-    startComposer(page).getByRole('button', {
-      name: 'Agent: Codex · GPT-5 Codex',
-      exact: true,
-    }),
+    await runSetupControl(startComposer(page), (panel) =>
+      panel.getByRole('button', {
+        name: 'Agent: Codex · GPT-5 Codex',
+        exact: true,
+      }),
+    ),
   ).toBeVisible();
   const again = await openAgentList(page);
-  await again.getByRole('button', { name: /^Model: GPT-5 Codex/ }).click();
+  await again
+    .getByRole('button', { name: /^(?:Model:|Engine & model:) GPT-5 Codex/ })
+    .click();
   await expect(
     page.getByRole('dialog', { name: MODEL_PICKER_NAME }),
   ).toBeVisible();

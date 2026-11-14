@@ -31,6 +31,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { StartComposer } from '../components/chat-start/StartComposer';
 import { displayableProjectIcon } from '../components/icons/ProjectIcon';
 import { projectAccents } from '../components/project-sidebar/projectAccent';
 import type { AgentData } from '../contexts/AgentsContext';
@@ -372,8 +373,14 @@ function renderBoth(projectSlug?: string) {
 
 const formOf = (root: HTMLElement) =>
   within(root).getByRole('form', { name: 'Start work' });
+function setupOf(root: HTMLElement) {
+  const trigger = within(formOf(root)).getByTestId('run-setup-trigger');
+  if (trigger.getAttribute('aria-expanded') !== 'true')
+    fireEvent.click(trigger);
+  return document.getElementById(trigger.getAttribute('aria-controls')!)!;
+}
 const agentChip = (root: HTMLElement) =>
-  within(formOf(root)).getByRole('button', { name: /^Agent:/ });
+  within(setupOf(root)).getByRole('button', { name: /^Agent:/ });
 const projectChip = (root: HTMLElement) =>
   within(formOf(root)).getByRole('button', { name: /^Project:/ });
 
@@ -491,14 +498,14 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = { station: lastUsed('last-used', 'sonnet') };
     const ui = renderBoth();
     const dock = ui.dock();
-    const model = await within(formOf(dock)).findByRole('button', {
+    const model = await within(setupOf(dock)).findByRole('button', {
       name: /^Model: Sonnet/,
     });
     expect(model.getAttribute('title')).toBe(
       'The model your last chat in this project started with.',
     );
     // The Project layer replaces the account default (Full access here).
-    expect(within(formOf(dock)).getByText('Auto')).toBeTruthy();
+    expect(within(setupOf(dock)).getByText('Auto')).toBeTruthy();
     startInDock(dock);
     expect(ui.dockSelect).toHaveBeenCalledTimes(1);
     expect(ui.dockSelect.mock.calls[0][1]).toBe('station');
@@ -512,11 +519,11 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = { station: lastUsed('fixed', 'sonnet') };
     const ui = renderBoth();
     const dock = ui.dock();
-    const model = await within(formOf(dock)).findByRole('button', {
+    const model = await within(setupOf(dock)).findByRole('button', {
       name: /^Model: Opus/,
     });
     expect(model.getAttribute('title')).toBeNull();
-    expect(within(formOf(dock)).getByText('Full access')).toBeTruthy();
+    expect(within(setupOf(dock)).getByText('Full access')).toBeTruthy();
     startInDock(dock);
     expect(ui.dockSelect.mock.calls[0][4]).toBe('opus');
     ui.cleanupListener();
@@ -528,7 +535,7 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = { station: null };
     const ui = renderBoth();
     expect(
-      await within(formOf(ui.dock())).findByText('Full access'),
+      await within(setupOf(ui.dock())).findByText('Full access'),
     ).toBeTruthy();
     ui.cleanupListener();
     cleanup();
@@ -536,7 +543,7 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = {};
     const unread = renderBoth();
     expect(
-      await within(formOf(unread.dock())).findByText('Set at start'),
+      await within(setupOf(unread.dock())).findByText('Set at start'),
     ).toBeTruthy();
     unread.cleanupListener();
   });
@@ -551,7 +558,7 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = { station: lastUsed('last-used', 'retired-model') };
     const ui = renderBoth();
     const dock = ui.dock();
-    const model = await within(formOf(dock)).findByRole('button', {
+    const model = await within(setupOf(dock)).findByRole('button', {
       name: /^Model: Opus/,
     });
     expect(model.getAttribute('title')).toBe(
@@ -586,12 +593,12 @@ describe('Home and the dock start the same way', () => {
     ];
     const ui = renderBoth();
     expect(
-      await within(formOf(screen.getByTestId('home'))).findByText(
+      await within(setupOf(screen.getByTestId('home'))).findByText(
         'Full access',
       ),
     ).toBeTruthy();
     expect(
-      await within(formOf(ui.dock())).findByText('Full access'),
+      await within(setupOf(ui.dock())).findByText('Full access'),
     ).toBeTruthy();
   });
 
@@ -636,13 +643,13 @@ describe('Home and the dock start the same way', () => {
 
     // Home: Ask, chosen in the picker, is what the start sends.
     fireEvent.click(
-      await within(formOf(home)).findByRole('button', {
+      await within(setupOf(home)).findByRole('button', {
         name: /^Permissions: Full access/,
       }),
     );
     fireEvent.click(await screen.findByRole('radio', { name: /^Ask first/ }));
     expect(
-      await within(formOf(home)).findByRole('button', {
+      await within(setupOf(home)).findByRole('button', {
         name: /^Permissions: Ask\. Chosen for this chat/,
       }),
     ).toBeTruthy();
@@ -654,10 +661,10 @@ describe('Home and the dock start the same way', () => {
 
     // Default delegates to engine settings and explains the unknown startup mode.
     fireEvent.click(
-      within(formOf(home)).getByRole('button', { name: /^Permissions: Ask/ }),
+      within(setupOf(home)).getByRole('button', { name: /^Permissions: Ask/ }),
     );
     fireEvent.click(await screen.findByRole('radio', { name: /^Default/ }));
-    const engineDefault = await within(formOf(home)).findByRole('button', {
+    const engineDefault = await within(setupOf(home)).findByRole('button', {
       name: /^Permissions: Default/,
     });
     expect(within(engineDefault).getByText('Permissions')).toBeTruthy();
@@ -672,13 +679,13 @@ describe('Home and the dock start the same way', () => {
 
     // The dock: full access takes its confirmation, then reaches onSelect.
     fireEvent.click(
-      within(formOf(ui.dock())).getByRole('button', {
+      within(setupOf(ui.dock())).getByRole('button', {
         name: /^Permissions: /,
       }),
     );
     fireEvent.click(await screen.findByRole('radio', { name: /^Auto/ }));
     fireEvent.click(
-      within(formOf(ui.dock())).getByRole('button', {
+      within(setupOf(ui.dock())).getByRole('button', {
         name: /^Permissions: Auto/,
       }),
     );
@@ -703,7 +710,7 @@ describe('Home and the dock start the same way', () => {
       'Project: No project',
     );
     expect(
-      within(formOf(home)).getByRole('button', {
+      within(setupOf(home)).getByRole('button', {
         name: 'Model: Opus',
       }),
     ).toBeTruthy();
@@ -2379,4 +2386,35 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
     expect(menu.querySelector('.start-menu__hint')?.textContent).toBe(reason);
     ui.cleanupListener();
   }, 30_000);
+});
+
+test('start setup exposes an execution override independently of approval state', () => {
+  render(
+    <StartComposer
+      prompt=""
+      onPromptChange={vi.fn()}
+      agent={{
+        status: 'ready',
+        needsSetup: false,
+        agent: {
+          slug: 'profile',
+          name: 'Writer',
+          engineId: 'station-agent',
+        } as AgentData,
+        executionAgentId: 'other-engine',
+      }}
+      onOpenAgents={vi.fn()}
+      project={{ status: 'ready', label: 'No project', isGlobal: true }}
+      onOpenProject={vi.fn()}
+      canStart={false}
+      pending={false}
+      onStart={vi.fn()}
+    />,
+  );
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(trigger.textContent).not.toContain('⚠');
+  expect(trigger.textContent).toContain('·');
+  expect(trigger.getAttribute('aria-label')).toContain(
+    'changed for this conversation',
+  );
 });

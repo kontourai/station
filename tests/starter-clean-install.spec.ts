@@ -6,6 +6,7 @@ import {
   closeFixtureServer,
   startOllamaFixture,
 } from './helpers/ollama-fixture';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 
 const MODEL = 'station-clean-install:latest';
 const USER_MESSAGE = 'Confirm this clean Station can complete real work.';
@@ -81,7 +82,11 @@ test('fresh Station completes real Work', async ({
     // Home's start composer is the one way to start a chat (#3371); the
     // Station Agent's own Connect action on its Agent menu leads to setup.
     const homeDraft = page.getByRole('form', { name: 'Start work' });
-    await homeDraft.getByRole('button', { name: /^Agent:/ }).click();
+    await (
+      await runSetupControl(homeDraft, (panel) =>
+        panel.getByRole('button', { name: /^Agent:/ }),
+      )
+    ).click();
     const agentMenu = page.getByRole('dialog', { name: 'Choose agent' });
     await expect(agentMenu).toBeVisible();
     await agentMenu.getByRole('button', { name: 'Connect Station' }).click();
@@ -158,7 +163,11 @@ test('fresh Station completes real Work', async ({
         { timeout: 30_000 },
       )
       .toBe(true);
-    await draft.getByRole('button', { name: /^Agent:/ }).click();
+    await (
+      await runSetupControl(draft, (panel) =>
+        panel.getByRole('button', { name: /^Agent:/ }),
+      )
+    ).click();
     const chooseAgent = page.getByRole('dialog', { name: 'Choose agent' });
     const stationAgent = chooseAgent.locator(
       '.new-chat-modal__agent[data-agent-slug="station"]',
@@ -167,8 +176,11 @@ test('fresh Station completes real Work', async ({
     await stationAgent.click();
     await expect(chooseAgent).toHaveCount(0);
     await expect(
-      draft.getByRole('button', { name: /^Agent: Station/ }),
+      await runSetupControl(draft, (panel) =>
+        panel.getByRole('button', { name: /^Agent: Station/ }),
+      ),
     ).not.toHaveAttribute('aria-label', /needs setup/);
+    await closeRunSetup(page);
     await draft
       .getByRole('textbox', { name: 'What would you like done?', exact: true })
       .fill(USER_MESSAGE);

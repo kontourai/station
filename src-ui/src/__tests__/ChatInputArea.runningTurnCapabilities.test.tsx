@@ -257,6 +257,7 @@ describe('ChatInputArea: Agent chip identity', () => {
       onOpenAgentHandoff: vi.fn(),
       turnInFlight: false,
     });
+    fireEvent.click(screen.getByTestId('run-setup-trigger'));
     const chip = screen.getByRole('button', { name: /^Agent: / });
     expect(chip.getAttribute('aria-label')).toBe(
       'Agent: Codex · via model-proxy (home-server · Claude + Codex). Change Agent',

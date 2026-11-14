@@ -1,0 +1,7 @@
+{
+  "revision": "c48f924e77e934e5ca1001343555ab2142404350",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the shared pill and safety badge token correction: radius derives from published k-radius-md, warning uses k-text-sm, and full-value accessible/title behavior and geometry ownership remain unchanged. No source-scan exceptions or ceilings changed.","inputs":["docs/design/chat-composer.md","src-ui/src/components/ComposerRunControl.css"]}
+  ]
+}

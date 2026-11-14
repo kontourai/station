@@ -3,6 +3,7 @@ import {
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import { BrandIcon } from './BrandIcon';
+import { AgentGlyph } from './Glyph';
 
 interface AgentIconProps {
   agent: {
@@ -18,6 +19,7 @@ interface AgentIconProps {
   style?: React.CSSProperties;
   /** Set only when the icon has no adjacent text describing the agent. */
   accessibleLabel?: string;
+  fallbackGlyph?: boolean;
 }
 
 const SIZE_MAP = { small: 24, medium: 32, large: 48 };
@@ -28,6 +30,7 @@ export function AgentIcon({
   className,
   style,
   accessibleLabel,
+  fallbackGlyph,
 }: AgentIconProps) {
   const px = typeof size === 'number' ? size : SIZE_MAP[size];
   const engineId = agent.engineId ?? parseEngineId(agent.slug ?? agent.id);
@@ -43,6 +46,7 @@ export function AgentIcon({
       className={className}
       style={style}
       alt={accessibleLabel}
+      fallback={fallbackGlyph ? <AgentGlyph /> : undefined}
       // archive#1424: deterministic identicon fallback — same agent always
       // gets the same hue, so two unbranded agents without artwork stay
       // visually distinguishable instead of rendering the same flat tile.

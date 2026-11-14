@@ -1,3 +1,4 @@
+import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import type {
   AcpApprovalControl,
   ToolPolicyDelivery,
@@ -39,10 +40,12 @@ import {
   resolvedModelLabel,
   type SelectableModel,
 } from '../../utils/modelCapabilities';
+import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { ApprovalModeChip } from '../badges/ApprovalModeChip';
 import { EngineApprovalDisclosureChip } from '../badges/EngineApprovalDisclosureChip';
 import { ComposerChoice } from '../ComposerChoice';
+import { ComposerRunControl } from '../ComposerRunControl';
 import {
   ComposerActionsMenu,
   type ComposerActionsMenuProps,
@@ -51,7 +54,6 @@ import { ConversationStopControl } from '../conversation/ConversationStopControl
 import { ArrowDownGlyph } from '../icons/Glyph';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
-import { ClipboardImagePasteButton } from './ClipboardImagePasteButton';
 import { ComposerIconAction } from './ComposerIconAction';
 import {
   appendComposerSessionReference,
@@ -222,6 +224,7 @@ interface ChatInputAreaProps {
    */
   modelProviderLabel?: string;
   executionEngineLabel?: string;
+  executionEngineId?: string;
   /**
    * The engine this chat's Agent is configured for now, when it differs from
    * the engine `executionEngineLabel` names for the live Session.
@@ -493,6 +496,7 @@ export function ChatInputArea({
   fileAttachmentsSupported = modelSupportsAttachments,
   modelProviderLabel,
   executionEngineLabel,
+  executionEngineId,
   agentEngineMove,
   fontSize,
   dockHeight,
@@ -1146,7 +1150,7 @@ export function ChatInputArea({
         </ResponsiveDialogSurface>
       )}
 
-      {/* Settings stay in a scrollable rail; activity and reader controls move together. */}
+      {/* Destination notices and conversation status stay above the draft. */}
       <div className="chat-input__meta">
         {agentEngineMove?.nextTurn && (
           // A narrow composer's chip cannot hold a destination name, so the
@@ -1159,162 +1163,6 @@ export function ChatInputArea({
             </span>
           </p>
         )}
-        <div className="composer-choices chat-input__settings">
-          {onOpenAgentHandoff && (
-            <ComposerChoice
-              ref={agentHandoffTriggerRef}
-              className="chat-input__agent-btn"
-              onClick={agentHandoffDisabled ? undefined : onOpenAgentHandoff}
-              aria-disabled={agentHandoffDisabled}
-              aria-haspopup="dialog"
-              aria-label={agentAccessibleLabel}
-              title={agentAccessibleLabel}
-              caption="Agent"
-              icon={agentIcon}
-              valueClassName="chat-input__agent-name"
-              value={
-                <>
-                  {agentLabel ?? 'Current Agent'}
-                  {agentRoute && (
-                    <span className="chat-input__agent-route">
-                      {' · '}
-                      {agentRoute}
-                    </span>
-                  )}
-                </>
-              }
-            />
-          )}
-          <ComposerChoice
-            ref={modelButtonRef}
-            onClick={canModelSelect ? onModelOpen : undefined}
-            aria-disabled={!canModelSelect}
-            className={`chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
-            aria-haspopup="dialog"
-            aria-expanded={modelQuery !== null && !input.startsWith('/model ')}
-            aria-label={modelAccessibleLabel}
-            title={modelAccessibleLabel}
-            caption={
-              <>
-                {/* The engine name gives way first, so a narrow chip keeps
-                    the move hint rather than cutting it to an ellipsis. */}
-                <span className="chat-input__chip-caption-engine">
-                  {executionEngineLabel ?? 'Engine & model'}
-                </span>
-                {agentEngineMove && (
-                  <>
-                    <span className="chat-input__engine-moved--full">
-                      {agentEngineMove.nextTurn
-                        ? ` · Next turn on ${agentEngineMove.to}`
-                        : ` · Agent now on ${agentEngineMove.to}`}
-                    </span>
-                    {/* A narrow composer states the next-turn move in the
-                        notice above the chips instead (no chip has room for
-                        a destination name). */}
-                    {!agentEngineMove.nextTurn && (
-                      <span className="chat-input__engine-moved--short">
-                        {' · Agent moved'}
-                      </span>
-                    )}
-                  </>
-                )}
-                {currentExecutionAgentId ? (
-                  <span className="chat-input__chip-caption-engine">
-                    {' · Conversation override'}
-                  </span>
-                ) : null}
-              </>
-            }
-            value={modelLabel}
-            valueClassName="chat-input__model-name"
-          />
-          {/* A reset the conversation cannot take at all is not offered. While
-              the reset is only temporarily blocked (any shared handoff reason:
-              a turn running, queued or offline messages unresolved, or their
-              state still being checked or unavailable) it stays in place,
-              disabled, so the row does not shift every turn, and carries the
-              reason as its description: the composer row has no room for the
-              sentence, and the picker states the same reason as text. */}
-          {isOverride && modelResetOffered && (
-            <>
-              <button
-                type="button"
-                className="chat-input__model-reset"
-                aria-disabled={modelResetDisabledReason ? true : undefined}
-                aria-describedby={
-                  modelResetDisabledReason ? modelResetReasonId : undefined
-                }
-                onClick={modelResetDisabledReason ? undefined : onModelReset}
-                title={
-                  modelResetDisabledReason ??
-                  'Reset this chat to its default model'
-                }
-              >
-                Use {modelResetSourceLabel(defaultModelSource)}
-              </button>
-              {modelResetDisabledReason && (
-                <span id={modelResetReasonId} className="sr-only">
-                  {modelResetDisabledReason}
-                </span>
-              )}
-            </>
-          )}
-          {modeChoices.length > 0 && onAcpSessionModeChange ? (
-            <React.Suspense fallback={null}>
-              <AcpSessionModeChip
-                key={sessionId}
-                modes={modeChoices}
-                currentModeId={
-                  typeof modelRuntimeOptions?.mode === 'string'
-                    ? modelRuntimeOptions.mode
-                    : acpCurrentModeId
-                }
-                onChange={onAcpSessionModeChange}
-              />
-            </React.Suspense>
-          ) : null}
-          {/* #3290: an ACP engine's Mode (OpenCode's build or plan agent) is a
-              choice beside the approval control, not a second one: an engine
-              Station governs gets Station's modes, and one that decides for
-              itself says so instead of offering a mode nothing applies. */}
-          {executionMode === EXECUTION_MODE.EXTERNAL &&
-          acpApproval?.control === 'engine' ? (
-            <EngineApprovalDisclosureChip
-              key={sessionId}
-              engineName={acpApproval.engineName}
-              engineHasModes={acpSessionModes.length > 0}
-            />
-          ) : (
-            executionMode === EXECUTION_MODE.EXTERNAL &&
-            approvalModeKnobSupported(approvalEngineId) && (
-              <ApprovalModeChip
-                // Structural reset (not blur-dependent) for the chip's local
-                // confirm state when the active session changes — this
-                // subtree persists across session switches with no natural
-                // remount otherwise (archive#727 3).
-                key={sessionId}
-                engineConnectionId={approvalEngineId}
-                toolPolicyDelivery={toolPolicyDelivery}
-                sessionOverride={approvalModeOverride?.mode}
-                sessionOverrideState={approvalModeOverride?.state}
-                isNewSession={approvalModeIsNewSession}
-                agentDefault={approvalModeAgentDefault}
-                projectDefault={
-                  approvalModeIsNewSession
-                    ? approvalModeProjectDefault
-                    : undefined
-                }
-                projectDefaultUnavailable={
-                  approvalModeIsNewSession &&
-                  approvalModeProjectDefaultUnavailable
-                }
-                stationDefault={approvalModeStationDefault}
-                lastAppliedApprovalMode={lastAppliedApprovalMode}
-                onChange={onApprovalModeChange}
-              />
-            )
-          )}
-        </div>
         <div className="chat-input__activity" ref={activityRef}>
           {activity}
         </div>
@@ -1735,16 +1583,6 @@ export function ChatInputArea({
           )}
         </fieldset>
         <div className="chat-controls-row">
-          {secondaryActions && (
-            <ComposerActionsMenu
-              {...secondaryActions}
-              onOpenConversationReference={
-                mentionAuthority && mentionRequestScope?.isCurrent() === true
-                  ? () => setSessionReferencesOpen(true)
-                  : undefined
-              }
-            />
-          )}
           <React.Suspense fallback={null}>
             <FileAttachmentInput
               attachments={attachments}
@@ -1765,14 +1603,6 @@ export function ChatInputArea({
               onUnavailable={onAttachUnavailable}
             />
           </React.Suspense>
-          {modelSupportsAttachments && (
-            <ClipboardImagePasteButton
-              className="attachment-btn"
-              disabled={disabled}
-              onFiles={selectAttachmentFiles}
-              onMessage={onAttachUnavailable}
-            />
-          )}
           {voiceState !== undefined && onVoiceStart && onVoiceStop && (
             <VoiceOrb
               state={voiceState}
@@ -1785,8 +1615,19 @@ export function ChatInputArea({
               onStop={onVoiceStop}
             />
           )}
+          {secondaryActions && (
+            <ComposerActionsMenu
+              {...secondaryActions}
+              onOpenConversationReference={
+                mentionAuthority && mentionRequestScope?.isCurrent() === true
+                  ? () => setSessionReferencesOpen(true)
+                  : undefined
+              }
+            />
+          )}
           <React.Suspense fallback={null}>
             <PortableDraftsMenu
+              hideTrigger={isMobile}
               input={input}
               quotes={quoteContext}
               attachments={attachments}
@@ -1801,7 +1642,28 @@ export function ChatInputArea({
               }}
             />
           </React.Suspense>
-          {input && (
+          {isMobile && (
+            <ActionOverflowMenu
+              label="More draft options"
+              actions={[
+                {
+                  key: 'drafts',
+                  label: 'Saved drafts',
+                  onSelect: () => setPortableDraftsOpen(true),
+                },
+                ...(input
+                  ? [
+                      {
+                        key: 'clear',
+                        label: 'Clear message',
+                        onSelect: onClearInput,
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          )}
+          {input && !isMobile && (
             <ComposerIconAction
               label="Clear message"
               className="chat-input__clear"
@@ -1846,6 +1708,184 @@ export function ChatInputArea({
           )}
           <span className="chat-controls-row__spacer" />
           {contextMeter}
+          <div className="composer-choices chat-input__settings">
+            <ComposerRunControl
+              label={[
+                agentLabel ?? 'Current Agent',
+                modelLabel !== 'Model' ? modelLabel : undefined,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+              icon={agentIcon}
+              engineId={parseEngineId(
+                acpApproval?.engineId ?? executionEngineId,
+              )}
+            >
+              {onOpenAgentHandoff && (
+                <ComposerChoice
+                  ref={agentHandoffTriggerRef}
+                  className="chat-input__agent-btn"
+                  onClick={
+                    agentHandoffDisabled ? undefined : onOpenAgentHandoff
+                  }
+                  aria-disabled={agentHandoffDisabled}
+                  aria-haspopup="dialog"
+                  aria-label={agentAccessibleLabel}
+                  title={agentAccessibleLabel}
+                  caption="Agent"
+                  icon={agentIcon}
+                  valueClassName="chat-input__agent-name"
+                  value={
+                    <>
+                      {agentLabel ?? 'Current Agent'}
+                      {agentRoute && (
+                        <span className="chat-input__agent-route">
+                          {' · '}
+                          {agentRoute}
+                        </span>
+                      )}
+                    </>
+                  }
+                />
+              )}
+              <ComposerChoice
+                ref={modelButtonRef}
+                changedForConversation={Boolean(
+                  currentExecutionAgentId || isOverride,
+                )}
+                onClick={canModelSelect ? onModelOpen : undefined}
+                aria-disabled={!canModelSelect}
+                className={`chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
+                aria-haspopup="dialog"
+                aria-expanded={
+                  modelQuery !== null && !input.startsWith('/model ')
+                }
+                aria-label={modelAccessibleLabel}
+                title={modelAccessibleLabel}
+                caption={
+                  <>
+                    {/* The engine name gives way first, so a narrow chip keeps
+                    the move hint rather than cutting it to an ellipsis. */}
+                    <span className="chat-input__chip-caption-engine">
+                      {executionEngineLabel ?? 'Engine & model'}
+                    </span>
+                    {agentEngineMove && (
+                      <>
+                        <span className="chat-input__engine-moved--full">
+                          {agentEngineMove.nextTurn
+                            ? ` · Next turn on ${agentEngineMove.to}`
+                            : ` · Agent now on ${agentEngineMove.to}`}
+                        </span>
+                        {/* A narrow composer states the next-turn move in the
+                        notice above the chips instead (no chip has room for
+                        a destination name). */}
+                        {!agentEngineMove.nextTurn && (
+                          <span className="chat-input__engine-moved--short">
+                            {' · Agent moved'}
+                          </span>
+                        )}
+                      </>
+                    )}
+                    {currentExecutionAgentId ? (
+                      <span className="chat-input__chip-caption-engine">
+                        {' · Conversation override'}
+                      </span>
+                    ) : null}
+                  </>
+                }
+                value={modelLabel}
+                valueClassName="chat-input__model-name"
+              />
+              {/* A reset the conversation cannot take at all is not offered. While
+              the reset is only temporarily blocked (any shared handoff reason:
+              a turn running, queued or offline messages unresolved, or their
+              state still being checked or unavailable) it stays in place,
+              disabled, so the row does not shift every turn, and carries the
+              reason as its description: the composer row has no room for the
+              sentence, and the picker states the same reason as text. */}
+              {isOverride && modelResetOffered && (
+                <>
+                  <button
+                    type="button"
+                    className="chat-input__model-reset"
+                    aria-disabled={modelResetDisabledReason ? true : undefined}
+                    aria-describedby={
+                      modelResetDisabledReason ? modelResetReasonId : undefined
+                    }
+                    onClick={
+                      modelResetDisabledReason ? undefined : onModelReset
+                    }
+                    title={
+                      modelResetDisabledReason ??
+                      'Reset this chat to its default model'
+                    }
+                  >
+                    Use {modelResetSourceLabel(defaultModelSource)}
+                  </button>
+                  {modelResetDisabledReason && (
+                    <span id={modelResetReasonId} className="sr-only">
+                      {modelResetDisabledReason}
+                    </span>
+                  )}
+                </>
+              )}
+              {modeChoices.length > 0 && onAcpSessionModeChange ? (
+                <React.Suspense fallback={null}>
+                  <AcpSessionModeChip
+                    key={sessionId}
+                    modes={modeChoices}
+                    currentModeId={
+                      typeof modelRuntimeOptions?.mode === 'string'
+                        ? modelRuntimeOptions.mode
+                        : acpCurrentModeId
+                    }
+                    onChange={onAcpSessionModeChange}
+                  />
+                </React.Suspense>
+              ) : null}
+              {/* #3290: an ACP engine's Mode (OpenCode's build or plan agent) is a
+              choice beside the approval control, not a second one: an engine
+              Station governs gets Station's modes, and one that decides for
+              itself says so instead of offering a mode nothing applies. */}
+              {executionMode === EXECUTION_MODE.EXTERNAL &&
+              acpApproval?.control === 'engine' ? (
+                <EngineApprovalDisclosureChip
+                  key={sessionId}
+                  engineName={acpApproval.engineName}
+                  engineHasModes={acpSessionModes.length > 0}
+                />
+              ) : (
+                executionMode === EXECUTION_MODE.EXTERNAL &&
+                approvalModeKnobSupported(approvalEngineId) && (
+                  <ApprovalModeChip
+                    // Structural reset (not blur-dependent) for the chip's local
+                    // confirm state when the active session changes — this
+                    // subtree persists across session switches with no natural
+                    // remount otherwise (archive#727 3).
+                    key={sessionId}
+                    engineConnectionId={approvalEngineId}
+                    toolPolicyDelivery={toolPolicyDelivery}
+                    sessionOverride={approvalModeOverride?.mode}
+                    sessionOverrideState={approvalModeOverride?.state}
+                    isNewSession={approvalModeIsNewSession}
+                    agentDefault={approvalModeAgentDefault}
+                    projectDefault={
+                      approvalModeIsNewSession
+                        ? approvalModeProjectDefault
+                        : undefined
+                    }
+                    projectDefaultUnavailable={
+                      approvalModeIsNewSession &&
+                      approvalModeProjectDefaultUnavailable
+                    }
+                    stationDefault={approvalModeStationDefault}
+                    lastAppliedApprovalMode={lastAppliedApprovalMode}
+                    onChange={onApprovalModeChange}
+                  />
+                )
+              )}
+            </ComposerRunControl>
+          </div>
           {/* On a phone Send/Queue hide (keeping their width) until there is
               something to send, so typing never moves Stop. Stop therefore
               sits after them, at the row's edge: before them it floated

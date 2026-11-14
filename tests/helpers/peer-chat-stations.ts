@@ -25,6 +25,7 @@ import {
   type OllamaFixtureStream,
   startOllamaFixture,
 } from './ollama-fixture';
+import { closeRunSetup, runSetupControl } from './run-setup';
 
 const CONNECTION_AGENT = 'connection-qualification';
 const RECEIVER_PROJECT = 'receiver-work';
@@ -467,8 +468,13 @@ export async function startConnectionChat(
     .getByRole('region', { name: 'New chat', exact: true })
     .getByRole('form', { name: 'Start work' });
   await expect(form).toBeVisible();
-  await form.getByRole('button', { name: /^(Agent:|Choose an agent)/ }).click();
+  await (
+    await runSetupControl(form, (panel) =>
+      panel.getByRole('button', { name: /^Agent:/ }),
+    )
+  ).click();
   await page.locator(`[data-agent-slug="${CONNECTION_AGENT}"]`).click();
+  await closeRunSetup(page);
   if (route === 'relay') {
     await form.getByRole('button', { name: /Runs on .*Choose where/ }).click();
     await page
@@ -477,16 +483,22 @@ export async function startConnectionChat(
       .click();
     const modelPicker = page.getByRole('dialog', { name: 'Engine & model' });
     if (!(await modelPicker.isVisible()))
-      await form.getByRole('button', { name: /^Model:/ }).click();
+      await (
+        await runSetupControl(form, (panel) =>
+          panel.getByRole('button', { name: /^Model:/ }),
+        )
+      ).click();
     await modelPicker
       .getByRole('option', { name: new RegExp(CONNECTION_MODEL) })
       .click();
+    await closeRunSetup(page);
     await form.getByRole('button', { name: /^Project:/ }).click();
     await page
       .getByRole('dialog', { name: 'Choose project', exact: true })
       .getByRole('button', { name: /^Receiver work/ })
       .click();
   }
+  await closeRunSetup(page);
   await form
     .getByRole('textbox', { name: 'What would you like done?' })
     .fill(text);

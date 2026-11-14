@@ -1,0 +1,13 @@
+{
+  "revision": "19b4cd4849493c4e299aa6523852f2a7eb7ce950",
+
+  "notes": [
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Inspected the frozen historical composer comparison and retained its original capturedRevision and pixels. The new loading guard and neutral conversation-change indicators are later current UI changes and are not represented by this historical comparison. Current desktop/390/412 gallery PNGs were separately rendered and inspected; this note does not promote the historical capture to current visual evidence.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Inspected the frozen historical composer comparison and retained its original capturedRevision and pixels. The new loading guard and neutral conversation-change indicators are later current UI changes and are not represented by this historical comparison. Current desktop/390/412 gallery PNGs were separately rendered and inspected; this note does not promote the historical capture to current visual evidence.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Inspected the frozen historical composer comparison and retained its original capturedRevision and pixels. The new loading guard and neutral conversation-change indicators are later current UI changes and are not represented by this historical comparison. Current desktop/390/412 gallery PNGs were separately rendered and inspected; this note does not promote the historical capture to current visual evidence.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Inspected the frozen historical composer comparison and retained its original capturedRevision and pixels. The new loading guard and neutral conversation-change indicators are later current UI changes and are not represented by this historical comparison. Current desktop/390/412 gallery PNGs were separately rendered and inspected; this note does not promote the historical capture to current visual evidence.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/components/chat-start/StartComposer.tsx"]}
+  ]
+}

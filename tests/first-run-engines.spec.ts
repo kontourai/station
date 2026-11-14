@@ -1,3 +1,4 @@
+import { runSetupControl } from './helpers/run-setup';
 /**
  * First-run "Which agents do you use?" chapter in the real app (archive#3027,
  * re-placed by the UX audit's RT-02/SHELL-12).
@@ -1329,7 +1330,11 @@ async function chooseProject(page: Page, modal: Locator, slug: string) {
 
 /** Open the Agent chip and take the Setup Assistant row's Connect. */
 async function connectFromAgentChip(page: Page, modal: Locator) {
-  await modal.getByRole('button', { name: /^Agent: / }).click();
+  await (
+    await runSetupControl(modal, (panel) =>
+      panel.getByRole('button', { name: /^Agent: / }),
+    )
+  ).click();
   const menu = page.getByRole('dialog', { name: 'Choose agent' });
   await expect(menu).toBeVisible({ timeout: 15_000 });
   await menu
@@ -1491,7 +1496,9 @@ for (const viewport of [
         name: 'Project: Setup Beta',
       }),
     ).toBeVisible();
-    const agentChip = fixture.modal.getByRole('button', { name: /^Agent: / });
+    const agentChip = await runSetupControl(fixture.modal, (panel) =>
+      panel.getByRole('button', { name: /^Agent: / }),
+    );
     await expect(agentChip).toHaveAttribute('aria-label', /Setup Assistant/);
     await expect(agentChip).not.toHaveAttribute('aria-label', /needs setup/);
     await expect(

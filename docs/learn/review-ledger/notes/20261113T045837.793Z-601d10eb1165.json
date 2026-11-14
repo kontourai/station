@@ -1,0 +1,7 @@
+{
+  "revision": "f5b7209b7148484e1cd798b6f737f8f6e3ef5d11",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rechecked trigger identity, real engine/provider mark input, concise names and approval-owned safety states against final source. Closed setup before subsequent draft/project actions in migrated callers. Four injected regressions failed the intended assertions and all 94 restored component tests passed; regular and stacked gallery captures were inspected separately from incomplete product journeys.","inputs":["docs/design/chat-composer.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

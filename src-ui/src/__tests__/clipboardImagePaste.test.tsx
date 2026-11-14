@@ -307,20 +307,12 @@ function expectOnePastedPng(files: File[]) {
 }
 
 describe('Paste image in each composer', () => {
-  test('the reply composer pastes into selectAttachmentFiles', async () => {
-    const props = renderChatInput();
-    fireEvent.click(await pasteButton());
-    await waitFor(() =>
-      expect(props.selectAttachmentFiles).toHaveBeenCalledOnce(),
-    );
-    expectOnePastedPng(props.selectAttachmentFiles.mock.calls[0][0]);
-  });
-
-  test('the start composer pastes into files.onAdd', async () => {
-    const onAdd = renderStart();
-    fireEvent.click(await pasteButton());
-    await waitFor(() => expect(onAdd).toHaveBeenCalledOnce());
-    expectOnePastedPng(onAdd.mock.calls[0][0]);
+  test('the reply and start composers no longer offer Paste image', async () => {
+    // Keyboard and Ctrl/Cmd+V paste stay; the clipboard button is room-only.
+    renderChatInput();
+    renderStart();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole('button', { name: 'Paste image' })).toBeNull();
   });
 
   test('the room composer pastes into its attachment port', async () => {
@@ -330,26 +322,8 @@ describe('Paste image in each composer', () => {
     expectOnePastedPng(attachments.selectFiles.mock.calls[0][0]);
   });
 
-  test('a clipboard without an image says so through each composer', async () => {
+  test('a clipboard without an image says so through the room composer', async () => {
     setClipboard(async () => [{ types: ['text/plain'], getType: vi.fn() }]);
-
-    const chat = renderChatInput();
-    fireEvent.click(await pasteButton());
-    await waitFor(() =>
-      expect(chat.onAttachUnavailable).toHaveBeenCalledWith(
-        NO_CLIPBOARD_IMAGE_MESSAGE,
-      ),
-    );
-    expect(chat.selectAttachmentFiles).not.toHaveBeenCalled();
-    cleanup();
-
-    const onAdd = renderStart();
-    fireEvent.click(await pasteButton());
-    expect((await screen.findByRole('alert')).textContent).toBe(
-      NO_CLIPBOARD_IMAGE_MESSAGE,
-    );
-    expect(onAdd).not.toHaveBeenCalled();
-    cleanup();
 
     const attachments = renderTaskRoom()!;
     fireEvent.click(await pasteButton());
@@ -374,12 +348,6 @@ describe('Paste image in each composer', () => {
   test('is not offered where the browser cannot read the clipboard', async () => {
     setClipboard(undefined);
     renderStart();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.queryByRole('button', { name: 'Paste image' })).toBeNull();
-  });
-
-  test('the reply composer offers no Paste image to a model without images', async () => {
-    renderChatInput({ modelSupportsAttachments: false });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.queryByRole('button', { name: 'Paste image' })).toBeNull();
   });

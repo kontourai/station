@@ -1,0 +1,23 @@
+{
+  "revision": "d637822b42298450412964eba1c5652ba62542c5",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed final Run setup composition and selected execution-agent engine mark through HomeStartComposer, NewChatModal and StartComposer. Existing policy, model reset and advertised mode owners are retained. Browser paste intake remains on the textarea; the room clipboard hook remains used. Restored focused run passed 170 tests; physical devices and provider execution remain unverified.","inputs":["docs/design/chat-composer.md","src-ui/src/components/ComposerRunControl.tsx","src-ui/src/components/ComposerRunControl.css","src-ui/src/components/ComposerChoiceSummary.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Updated new-task and attachment instructions to use Run setup, Attach and textarea paste. Room composer still offers Paste image on supported touch devices. Checked ChatInputArea, StartComposer and RoomComposer callers; no native keyboard insertion claim added.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Narrowed clipboard-image capability use to the room composer after reply/start button removal. Native capability reporting and media intake remain unchanged; no device verification claimed.","inputs":["docs/design/native-capabilities.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Bounded review: StartComposer continues to own initial drafts; ChatInputArea owns replies. ComposerRunControl groups existing picker owners and publishes their existing labels; no transport, authority, persistence or producer ownership changed. Other module-map sections outside this lane.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/motion.md","note":"The new setup control uses ResponsiveDialogSurface and its existing phone sheet and desktop popover motion. Added gallery cases exercise both themes and three widths; no motion primitives or durations changed. Other motion contracts unchanged. Named-theme gallery captures now explicitly apply and assert the theme at capture after interactions, after PNG inspection caught saved appearance reapplication.","inputs":["docs/design/motion.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed ComposerChoice registration and ComposerRunControl against responsive dialog focus/history, closed inert content, 44px controls and narrow layout requirements. No new focus trap or media-query owner. First gallery inspection prompted desktop anchor and phone row fixes; guide contracts remain accurate.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Screenshot changes add named Run setup screens and retain the existing isolated runner, audited fixtures and capture lifecycle. Targeted screenshot commands and baseline workflow remain accurate; no test resource policy changes. Named-theme gallery captures now explicitly apply and assert the theme at capture after interactions, after PNG inspection caught saved appearance reapplication.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Gallery-only dependency delta: named composer setup screens do not change telemetry capture or disclosure. Usage telemetry production and consent code unchanged; guide claims unaffected by this bounded lane.","inputs":["docs/reference/usage-telemetry.md"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Updated start-composer entry vocabulary to Run setup. Read existing setup-return and prerequisite guidance against NewChatModal: engine setup, draft retention, access revalidation and no automatic execution remain unchanged. No provider or native-device execution qualified.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

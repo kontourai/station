@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
@@ -105,9 +108,11 @@ afterEach(() => {
 function Harness({
   route,
   denyContinue = false,
+  sessionFacts = {},
 }: {
   route: 'host' | 'direct' | 'relay';
   denyContinue?: boolean;
+  sessionFacts?: Partial<ChatSession>;
 }) {
   const connection = useMemo(() => {
     const value = conversationConnection(route);
@@ -149,6 +154,7 @@ function Harness({
     updatedAt: 0,
     stationBinding: connection.binding,
     orchestrationTurnOpen: running,
+    ...sessionFacts,
   };
   const transport = createConversationTransport(connection);
   const chatInput: ReturnType<typeof useChatInput> = {
@@ -450,5 +456,69 @@ test.each(['host', 'direct', 'relay'] as const)(
     expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(
       text,
     );
+  },
+);
+
+test.each([
+  { provider: 'claude' as const, connection: 'configured', expected: 'codex' },
+  { provider: 'claude' as const, connection: 'previous', expected: 'claude' },
+])(
+  'composer mark follows configuration only while it names the session: $connection',
+  async ({ provider, connection, expected }) => {
+    const connectionTarget = conversationConnection('host');
+    setClientCredentialResolver(() => ({
+      origin: connectionTarget.requestScope.apiBase,
+      credential: 'fixture',
+      requestAuthority: {
+        ...connectionTarget.requestScope,
+        isCurrent: () => true,
+      },
+    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input) =>
+        Response.json({
+          success: true,
+          data: String(input).endsWith('/api/agents') ? [agent] : [],
+        }),
+      ),
+    );
+    const original = { ...agent };
+    Object.assign(agent, {
+      engineId: 'codex',
+      execution: { agentConnectionId: 'configured' },
+    });
+    try {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      clients.push(client);
+      render(
+        <QueryClientProvider client={client}>
+          <PreviewProvider>
+            <Harness
+              route="host"
+              sessionFacts={{
+                orchestrationProvider: provider,
+                agentConnectionId: engineConnectionId(connection),
+              }}
+            />
+          </PreviewProvider>
+        </QueryClientProvider>,
+      );
+      await waitFor(() => {
+        const trigger = screen.getByTestId('run-setup-trigger');
+        const marks = trigger.querySelectorAll('[data-brand-key]');
+        expect(
+          Array.from(marks, (mark) => mark.getAttribute('data-brand-key')),
+        ).toEqual(
+          connection === 'configured' ? ['codex'] : ['codex', expected],
+        );
+      });
+    } finally {
+      for (const key of Object.keys(agent))
+        delete (agent as unknown as Record<string, unknown>)[key];
+      Object.assign(agent, original);
+    }
   },
 );
