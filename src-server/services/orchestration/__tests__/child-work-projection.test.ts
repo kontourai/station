@@ -550,8 +550,57 @@ describe('a session that reports no child work, after a restart', () => {
       event({ method: 'session.exited', sessionId: THREAD }, THREAD, 'muse'),
       event({ method: 'session.started', sessionId: THREAD }, THREAD, 'muse'),
     ]);
-    expect(projection.read(THREAD, 'muse')).not.toMatchObject({
-      observability: 'not-reported',
+    expect(projection.read(THREAD, 'muse')).toMatchObject({
+      observability: 'reported',
+      running: [],
     });
+  });
+
+  // An unclean exit writes no `session.exited`; the session can then resume
+  // on `muse serve`, which reports its children.
+  const started = () =>
+    event({ method: 'session.started', sessionId: THREAD }, THREAD, 'muse');
+  const serveChild = () =>
+    event(
+      {
+        method: 'child-work.updated',
+        delta: {
+          kind: 'upsert',
+          item: {
+            producer: 'engine-subagent',
+            reporterThreadId: THREAD,
+            childId: 'c1',
+            status: 'running',
+            title: 'Explore',
+          },
+        },
+      },
+      THREAD,
+      'muse',
+    );
+  const runningIds = (projection: ChildWorkProjection) => {
+    const view = projection.read(THREAD, 'muse');
+    return view?.observability === 'reported'
+      ? view.running.map((item) => item.childId)
+      : view?.observability;
+  };
+
+  test('a later start in history drops the earlier statement', () => {
+    const projection = new ChildWorkProjection();
+    projection.seedHistoricalSettled(THREAD, [
+      started(),
+      notReported(THREAD),
+      started(),
+    ]);
+    expect(runningIds(projection)).toEqual([]);
+  });
+
+  test('a live start after the seed lets the resumed session report', () => {
+    const projection = new ChildWorkProjection();
+    projection.seedHistoricalSettled(THREAD, [started(), notReported(THREAD)]);
+    expect(runningIds(projection)).toBe('not-reported');
+    projection.observe(started());
+    projection.observe(serveChild());
+    expect(runningIds(projection)).toEqual(['c1']);
   });
 });

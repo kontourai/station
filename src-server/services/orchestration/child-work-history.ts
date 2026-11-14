@@ -4,6 +4,7 @@ import {
   childWorkDeltaFromLegacyClaudeTaskNotification,
   childWorkForReporter,
   childWorkSettleFromItem,
+  clearChildWorkNotReported,
   createEmptyChildWorkRegistry,
   forgetChildWorkReporter,
 } from '@kontourai/station-contracts/child-work';
@@ -31,6 +32,7 @@ export function settledChildWorkFromHistory(
     }
     if (event.method === 'session.started') {
       exited = false;
+      historical = clearChildWorkNotReported(historical, threadId);
       continue;
     }
     if (exited) continue;

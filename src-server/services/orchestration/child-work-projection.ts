@@ -6,6 +6,7 @@ import {
   type ChildWorkSessionView,
   childWorkDeltaFromLegacyClaudeTaskNotification,
   childWorkForReporter,
+  clearChildWorkNotReported,
   createEmptyChildWorkRegistry,
   forgetChildWorkReporter,
 } from '@kontourai/station-contracts/child-work';
@@ -155,6 +156,9 @@ export class ChildWorkProjection {
     }
     if (event.method === 'session.started') {
       this.exited.delete(event.threadId);
+      // A session that starts again (a resume after an unclean exit, possibly
+      // on another transport) states its child-work reporting afresh.
+      this.state = clearChildWorkNotReported(this.state, event.threadId);
       return;
     }
     if (this.exited.has(event.threadId)) return;
