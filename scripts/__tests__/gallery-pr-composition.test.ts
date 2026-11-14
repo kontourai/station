@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -85,8 +86,8 @@ function runStep(
   cwd: string,
   env: Record<string, string>,
   pathPrefix?: string,
+  temp = runner(),
 ) {
-  const temp = runner();
   const run = spawnSync('bash', ['-c', script], {
     cwd,
     encoding: 'utf8',
@@ -507,12 +508,14 @@ function attributionFixture({
     ].join('\n'),
   );
   chmodSync(join(bin, 'npm'), 0o755);
+  const temp = runner();
   const run = () => {
     const result = runStep(
       ATTRIBUTION,
       root,
       { BASE_SHA: base, CAPTURE: capture, NODE_BIN: nodeBin },
       bin,
+      temp,
     );
     return {
       ...result,
@@ -520,7 +523,8 @@ function attributionFixture({
       calls: existsSync(calls) ? readFileSync(calls, 'utf8') : '',
     };
   };
-  return { run, root, git, base };
+  const setBaseCapture = (text: string) => writeFileSync(fixture, text);
+  return { run, root, git, base, bin, runnerTemp: temp.dir, setBaseCapture };
 }
 
 describe('PR Gallery attributes a failure main already has', () => {
@@ -691,7 +695,7 @@ describe('a render failure is excused only by the same error on main', () => {
     const result = failingOnBoth(other, breadcrumb('284'));
     expect(result.output, result.out).toBe('verdict=pr\n');
     expect(result.summary).toContain(
-      'INTRODUCED child-chat-dark-390: capture-failed (dock does not overflow)',
+      'INTRODUCED child-chat-dark-390: capture-failed (line 1: dock does not overflow | main: breadcrumb stays before actions)',
     );
   });
 
@@ -716,6 +720,47 @@ describe('a render failure is excused only by the same error on main', () => {
     expect(result.output, result.out).toBe('verdict=main\n');
   });
 
+  it('never excuses an error that is not text', () => {
+    const odd = screen('child-chat-dark-390', {
+      ok: false,
+      error: { code: 1 },
+      sha256: null,
+      uiAudit: null,
+    });
+    const result = attributionFixture({
+      composed: [odd, screen('home')],
+      baseCapture: manifest([odd], ['child-chat-dark-390']),
+    }).run();
+    expect(result.output, result.out).toBe('verdict=pr\n');
+    expect(result.summary).toContain(
+      'INTRODUCED child-chat-dark-390: capture-failed (error is not text)',
+    );
+  });
+
+  it('excuses a stack whose only difference is the checkout root', () => {
+    const fixture = attributionFixture({
+      composed: [screen('home')],
+      baseCapture: null,
+    });
+    // Each checkout's own root appears in its capture's stack.
+    const stack = (rootDir: string) =>
+      `${breadcrumb('1')}\n    at ${rootDir}/tests/screenshots.spec.ts:4485:13`;
+    const composedCapture = manifest([
+      failedCapture('child-chat-dark-390', stack(realpathSync(fixture.root))),
+      screen('home'),
+    ]);
+    writeFileSync(join(fixture.root, 'gallery/capture.json'), composedCapture);
+    const baseRoot = join(fixture.runnerTemp, 'gallery-base');
+    fixture.setBaseCapture(
+      manifest(
+        [failedCapture('child-chat-dark-390', stack(baseRoot))],
+        ['child-chat-dark-390'],
+      ),
+    );
+    const result = fixture.run();
+    expect(result.output, result.out).toBe('verdict=main\n');
+  });
+
   it('compares an audit error by its message too', () => {
     const auditError = (error: string) =>
       screen('home', { uiAudit: { error } });
@@ -736,6 +781,10 @@ describe('a render failure is excused only by the same error on main', () => {
 });
 
 describe('normaliseFailureDetail', () => {
+  const root = '/__w/station/station';
+  const same = (a: string, b: string) =>
+    normaliseFailureDetail(a, { root }) === normaliseFailureDetail(b, { root });
+
   it('masks only the volatile parts', () => {
     expect(normaliseFailureDetail(breadcrumb('320.5'))).toBe(
       [
@@ -744,7 +793,7 @@ describe('normaliseFailureDetail', () => {
         'expect(received).toBeLessThanOrEqual(expected)',
         '',
         'Expected: <= 306',
-        'Received:    <n>',
+        'Received: <n>',
       ].join('\n'),
     );
     expect(normaliseFailureDetail(timeout)).toBe(
@@ -757,13 +806,78 @@ describe('normaliseFailureDetail', () => {
     ).toBe(
       'page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:<port>/agents',
     );
-    expect(
-      normaliseFailureDetail('ENOENT: /__w/station/station/gallery/home.png'),
-    ).toBe('ENOENT: <path>');
-    // A route path is not a filesystem path, and Expected keeps its numbers.
     expect(normaliseFailureDetail('GET /api/agents failed; Expected: 3')).toBe(
       'GET /api/agents failed; Expected: 3',
     );
+  });
+
+  it('keeps the 390 and 412 measurements of one assertion equal', () => {
+    expect(same(breadcrumb('320.5'), breadcrumb('-12'))).toBe(true);
+    expect(same(breadcrumb('284'), breadcrumb('306.25'))).toBe(true);
+  });
+
+  it('compares a Received value exactly unless it is only a number', () => {
+    expect(same('Received: "Step 1"', 'Received: "Step 2"')).toBe(false);
+    expect(
+      same('Received string: "Step 1 of 3"', 'Received string: "Step 2 of 3"'),
+    ).toBe(false);
+    expect(same('Received: "rgb(1, 2, 3)"', 'Received: "rgb(1, 2, 4)"')).toBe(
+      false,
+    );
+    expect(
+      same(
+        'Received: "http://localhost:5314/chat/1"',
+        'Received: "http://localhost:5314/chat/2"',
+      ),
+    ).toBe(false);
+    expect(same('Received: 12px', 'Received: 13px')).toBe(false);
+    expect(same('Received: 12', 'Received: 13')).toBe(true);
+  });
+
+  it('masks only the checkout root of a path, at a path start', () => {
+    expect(
+      normaliseFailureDetail(`at ${root}/tests/screenshots.spec.ts:6684:61`, {
+        root,
+      }),
+    ).toBe('at <repo>/tests/screenshots.spec.ts:6684:61');
+    expect(
+      same(
+        `at ${root}/tests/screenshots.spec.ts:6684:61`,
+        `at ${root}/tests/screenshots.spec.ts:7223:61`,
+      ),
+    ).toBe(false);
+    expect(same(`at ${root}/x.ts`, 'at /__w/other/x.ts')).toBe(false);
+    expect(
+      same('http://example.test/Users/a', 'http://example.test/Users/b'),
+    ).toBe(false);
+    expect(
+      normaliseFailureDetail(`see http://example.test${root}/x`, { root }),
+    ).toBe(`see http://example.test${root}/x`);
+    // The two checkouts' roots differ; the repo-relative rest must not.
+    expect(
+      normaliseFailureDetail('(/__w/_temp/gallery-base/tests/a.ts:1:2)', {
+        root: '/__w/_temp/gallery-base',
+      }),
+    ).toBe(normaliseFailureDetail(`(${root}/tests/a.ts:1:2)`, { root }));
+  });
+
+  it('drops only the appended console line, keeps call-log-only messages, and refuses non-text', () => {
+    const appended = `${breadcrumb('1')}\n${browserErrors(5314)}`;
+    expect(normaliseFailureDetail(appended, { appendedConsole: true })).toBe(
+      normaliseFailureDetail(breadcrumb('1')),
+    );
+    // Not appended by the capture: kept.
+    expect(normaliseFailureDetail(appended)).toContain('Browser errors: ');
+    const embedded =
+      'Extension registry failed during capture. Browser errors: ["a"]';
+    expect(normaliseFailureDetail(embedded, { appendedConsole: true })).toBe(
+      embedded,
+    );
+    expect(normaliseFailureDetail('Call log:\n  - waiting for a')).not.toBe(
+      normaliseFailureDetail('Call log:\n  - waiting for b'),
+    );
+    expect(normaliseFailureDetail({ message: 'x' })).toBeNull();
+    expect(normaliseFailureDetail(undefined)).toBeNull();
   });
 });
 

@@ -35,7 +35,7 @@
 // gallery-pr-check.yml). Exit 2 is a usage or input error, never a verdict;
 // the workflow treats it as `verdict=pr`.
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { judge, readAllowlist } from './gallery-ui-findings.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
@@ -96,65 +96,84 @@ const UNUSABLE_IDENTITIES = new Set([
   'audit-missing',
 ]);
 
+/** The line tests/screenshots.spec.ts appends to a render failure's error. */
+const APPENDED_CONSOLE_LINE = /\nBrowser errors: \[.*\]$/;
+
 /**
- * The comparable part of an unusable screen's error. Removed or masked, as
- * volatile between two builds of the same failure: ANSI colour codes; the
- * `Browser errors: [...]` line the capture appends (console output carries
- * bundle hashes and stack positions that differ between any two builds, and
- * console errors never fail a screen on their own); a Playwright `Call log:`
- * and everything after it (retry attempts, timings, element snapshots);
- * loopback URLs' ports; absolute filesystem paths under runner, temp and
- * home roots; and the numbers on `Received...:` lines (a measurement).
- * Everything else is compared verbatim, including the assertion message,
- * matcher, `Expected` bound, locator and timeout bound, so a different
- * assertion, a timeout versus an assertion, or a different bound is a
- * different failure. When in doubt, two errors are not the same.
+ * The comparable part of an unusable screen's error, or null when the error
+ * is not a string (never equal to anything). Treated as volatile between two
+ * builds of the same failure, and nothing else:
+ * - ANSI colour codes are removed;
+ * - for a render failure, the LAST line when it is the capture's appended
+ *   `Browser errors: [...]` (console output carries bundle hashes and ports
+ *   that differ between any two builds, and never fails a screen on its own);
+ *   the same text anywhere else is kept, so an error whose own message
+ *   embeds console output (telemetry-feedback-mobile's) is never excused;
+ * - a Playwright `Call log:` and everything after it (retry attempts,
+ *   timings, element snapshots), unless the message is nothing but a call
+ *   log, which is then kept whole;
+ * - loopback URLs' ports become `<port>`;
+ * - the checkout root (`root`) becomes `<repo>` where a path starts (line
+ *   start, whitespace, quote or bracket), so the repo-relative path and its
+ *   `:line:col` are still compared, and URL paths are untouched;
+ * - a `Received...:` line whose whole value is a plain number becomes
+ *   `Received...: <n>` (a measurement, as toBeLessThanOrEqual prints it).
+ *   Quoted, structured or mixed values are compared exactly.
+ * Everything else is compared verbatim: the assertion message, matcher,
+ * `Expected` bound, locator, timeout bound, routes and other paths. When in
+ * doubt, two errors are not the same.
  */
-export function normaliseFailureDetail(detail) {
-  let text = String(detail ?? '').replace(
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escapes are the input.
-    /\u001b\[[0-9;?]*[ -/]*[@-~]/g,
-    '',
-  );
+export function normaliseFailureDetail(detail, { root, appendedConsole } = {}) {
+  if (typeof detail !== 'string') return null;
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escapes are the input.
+  let text = detail.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '');
+  if (appendedConsole) text = text.replace(APPENDED_CONSOLE_LINE, '');
   const callLog = text.search(/^\s*Call log:/m);
-  if (callLog >= 0) text = text.slice(0, callLog);
+  if (callLog > 0 && text.slice(0, callLog).trim() !== '')
+    text = text.slice(0, callLog);
+  const rootPattern = root
+    ? new RegExp(
+        `(^|[\\s'"\`(\\[])${root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\/+$/, '')}(?=/)`,
+        'g',
+      )
+    : null;
   return text
     .split('\n')
-    .filter((line) => !line.startsWith('Browser errors: '))
-    .map((line) =>
-      line
-        .replace(
-          /\b(https?|wss?):\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):\d+/g,
-          '$1://$2:<port>',
-        )
-        .replace(
-          /(?:[A-Za-z]:)?\/(?:__w|home|Users|tmp|private|var|opt|root|runner|github|ms-playwright)\/[^\s'"`(),[\]]*/g,
-          '<path>',
-        ),
-    )
-    .map((line) =>
-      /^\s*Received(?: [a-z]+)?:/.test(line)
-        ? line.replace(/-?\d+(?:\.\d+)?/g, '<n>')
-        : line,
-    )
+    .map((line) => {
+      let next = line.replace(
+        /\b(https?|wss?):\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):\d+/g,
+        '$1://$2:<port>',
+      );
+      if (rootPattern) next = next.replace(rootPattern, '$1<repo>');
+      return next.replace(
+        /^(\s*Received(?: [a-z]+)?:)\s*-?\d+(?:\.\d+)?\s*$/,
+        '$1 <n>',
+      );
+    })
     .map((line) => line.trimEnd())
     .join('\n')
     .trim();
 }
 
 /** A judge failure reduced to what compare matches on. */
-function failureKey({ screen, identity, detail }) {
+function failureKey({ screen, identity, detail }, root) {
   return {
     screen,
     identity,
     signature: UNUSABLE_IDENTITIES.has(identity)
-      ? normaliseFailureDetail(detail)
+      ? normaliseFailureDetail(detail, {
+          root,
+          appendedConsole: identity === 'capture-failed',
+        })
       : '',
   };
 }
 
+// A null signature (a non-string error) matches nothing.
 const key = ({ screen, identity, signature }) =>
-  `${screen}\u0000${identity}\u0000${signature ?? ''}`;
+  signature === null
+    ? null
+    : `${screen}\u0000${identity}\u0000${signature ?? ''}`;
 
 /**
  * Why a composed capture cannot support an excuse, or null when it is a
@@ -199,7 +218,7 @@ export function planAttribution(failures, baseScreens, max) {
  * identity and normalised error, on the base's capture of the same screens.
  */
 export function compareAttribution(failures, baseFailures) {
-  const onBase = new Set(baseFailures.map(key));
+  const onBase = new Set(baseFailures.map(key).filter((k) => k !== null));
   const alsoOnMain = failures.filter((failure) => onBase.has(key(failure)));
   const introduced = failures.filter((failure) => !onBase.has(key(failure)));
   return {
@@ -209,16 +228,42 @@ export function compareAttribution(failures, baseFailures) {
   };
 }
 
+const MAX_SHOWN = 160;
+const bounded = (text) =>
+  text.length > MAX_SHOWN ? `${text.slice(0, MAX_SHOWN - 1)}…` : text;
+
 const listFailures = (failures) =>
   failures.map(
     ({ screen, identity, signature }) =>
-      `${screen}: ${identity}${signature ? ` (${signature.split('\n')[0]})` : ''}`,
+      `${screen}: ${identity}${signature ? ` (${bounded(signature.split('\n')[0])})` : ''}`,
   );
+
+/**
+ * An introduced failure, with the first line where its error differs from
+ * main's failure of the same screen and identity, when main has one.
+ */
+function describeIntroduced(failure, baseFailures) {
+  const label = `${failure.screen}: ${failure.identity}`;
+  if (failure.signature === null) return `${label} (error is not text)`;
+  if (!failure.signature) return label;
+  const onMain = baseFailures.find(
+    ({ screen, identity }) =>
+      screen === failure.screen && identity === failure.identity,
+  );
+  const ours = failure.signature.split('\n');
+  if (!onMain || typeof onMain.signature !== 'string')
+    return `${label} (${bounded(ours[0])})`;
+  const theirs = onMain.signature.split('\n');
+  const at = ours.findIndex((line, index) => line !== theirs[index]);
+  const index = at < 0 ? ours.length : at;
+  return `${label} (line ${index + 1}: ${bounded(ours[index] ?? '<end>')} | main: ${bounded(theirs[index] ?? '<end>')})`;
+}
 
 function runPlan(options) {
   const capture = readCapture(options.gallery);
   const verdict = judge(capture, readAllowlist(options.allowlist));
-  const failures = verdict.failures.map(failureKey);
+  const root = resolve(dirname(options.gallery));
+  const failures = verdict.failures.map((failure) => failureKey(failure, root));
   const map = JSON.parse(
     readFileSync(join(options['base-root'], SCREEN_MAP), 'utf8'),
   );
@@ -262,10 +307,11 @@ function runCompare(options) {
     readAllowlist(join(options['base-root'], ALLOWLIST)),
     plan.screens,
   );
-  const result = compareAttribution(
-    plan.failures,
-    baseVerdict.failures.map(failureKey),
+  const root = resolve(options['base-root']);
+  const baseFailures = baseVerdict.failures.map((failure) =>
+    failureKey(failure, root),
   );
+  const result = compareAttribution(plan.failures, baseFailures);
   const sha = options['base-sha'];
   const lines =
     result.verdict === 'main'
@@ -277,8 +323,9 @@ function runCompare(options) {
         ]
       : [
           `This pull request, merged into main at ${sha}, introduces ${result.introduced.length} Gallery failure(s) that main does not have.`,
-          ...listFailures(result.introduced).map(
-            (line) => `INTRODUCED ${line}`,
+          ...result.introduced.map(
+            (failure) =>
+              `INTRODUCED ${describeIntroduced(failure, baseFailures)}`,
           ),
           ...listFailures(result.alsoOnMain).map(
             (line) => `ALSO ON MAIN ${line}`,
