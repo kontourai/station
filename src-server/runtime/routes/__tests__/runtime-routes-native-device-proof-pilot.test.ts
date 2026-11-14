@@ -71,6 +71,7 @@ import { z } from 'zod/v3';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { createRelayManagementRoutes } from '../../../routes/system/relay-management-routes.js';
 import { NativeDeviceRequestAuthority } from '../../../security/native-device-request-authority.js';
 import { NativeSurfaceRegistry } from '../../../services/connections/native-surface-registry.js';
 import {
@@ -2058,17 +2059,66 @@ describe('native Device request-proof pilot over the production composition', ()
     expect(await probe.json()).toEqual({
       data: { canManage: true, configured: false },
     });
-    const view = await h.request('/api/relay-management', h.ownerHeaders());
-    expect(view.status).toBe(404);
-    const invitation = await h.request(
-      '/api/relay-management/invitations',
-      h.ownerHeaders({
-        method: 'POST',
-        headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prepare: {}, lifetime: '5m' }),
-      }),
+    // Every leaf the configured set registers, read from the module itself,
+    // so a leaf added there must also stay out of the unconfigured mount.
+    const configured = createRelayManagementRoutes(
+      {} as Parameters<typeof createRelayManagementRoutes>[0],
     );
-    expect(invitation.status).toBe(404);
+    const leaves = new Set<string>();
+    for (const route of configured.routes) {
+      if (route.path === '/capabilities') continue;
+      const path = route.path.replace(':enrollmentId', 'E'.repeat(43));
+      for (const method of route.method === 'GET'
+        ? ['GET', 'HEAD']
+        : [route.method])
+        leaves.add(
+          `${method} /api/relay-management${path === '/' ? '' : path}`,
+        );
+    }
+    expect([...leaves].sort()).toEqual(
+      expect.arrayContaining([
+        'GET /api/relay-management',
+        'POST /api/relay-management/approvals',
+        'POST /api/relay-management/approvals/revoke',
+        'POST /api/relay-management/invitations',
+        `POST /api/relay-management/devices/${'E'.repeat(43)}/approve`,
+        `POST /api/relay-management/devices/${'E'.repeat(43)}/deny`,
+      ]),
+    );
+    for (const leaf of leaves) {
+      const [method, path] = leaf.split(' ') as [string, string];
+      const response = await h.request(
+        path,
+        h.ownerHeaders(
+          method === 'POST'
+            ? {
+                method,
+                headers: {
+                  Origin: ORIGIN,
+                  'Content-Type': 'application/json',
+                },
+                body: '{}',
+              }
+            : { method },
+        ),
+      );
+      expect(response.status, leaf).toBe(404);
+    }
+  });
+
+  test('without a relay connector a paired Device lacking relay:manage reads canManage false', async () => {
+    const h = await setup();
+    const paired = await h.pairNativeDevice(
+      'no-relay-manage-device',
+      undefined,
+    );
+    const probe = await h.request('/api/relay-management/capabilities', {
+      headers: { Authorization: `Bearer ${paired.credential}` },
+    });
+    expect(probe.status, await probe.clone().text()).toBe(200);
+    expect(await probe.json()).toEqual({
+      data: { canManage: false, configured: false },
+    });
   });
 
   test('native relay manager composes real account and promoted Device authority for reads, setup approval, invitation and revocation; device decisions expose unavailable enrollment only', async () => {

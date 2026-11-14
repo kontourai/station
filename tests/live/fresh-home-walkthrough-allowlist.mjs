@@ -53,9 +53,11 @@ export const WALKTHROUGH_ALLOWLIST = [
     // refused by design; the client honours Retry-After. A person navigates
     // inside one document and does not reach this rate. Over-posting per
     // document (three reports, fixed in src-ui/src/hooks/focusReporter.ts)
-    // is pinned by hooks/__tests__/useFocusReporter.test.tsx, not this suite.
+    // still fails this suite: checkFocusReports in the walkthrough fails on
+    // any document posting one state twice within 1 s, and
+    // hooks/__tests__/useFocusReporter.test.tsx pins the client behaviour.
     pattern: /^request-error POST 429 \/api\/presence\/focus$/,
     reason:
-      "focus presence rate limit refusing the sweep's page-load churn (17-20 fresh documents a minute on one device, two reports each, 30 a minute budget); per-document report count is pinned by useFocusReporter.test.tsx",
+      "TRACKING: <to be filled by the orchestrator with the PR number> — focus presence rate limit refusing the sweep's page-load churn (17-20 fresh documents a minute on one device, two reports each, 30 a minute budget); duplicate per-document reports still fail via checkFocusReports",
   },
 ];

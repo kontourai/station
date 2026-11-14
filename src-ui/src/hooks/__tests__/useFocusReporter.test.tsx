@@ -255,6 +255,26 @@ describe('useFocusReporter', () => {
     expect(sentStates()).toEqual(['hidden', 'hidden']);
   });
 
+  test('hiding again after showing sends a second hidden, so the server never keeps focused', async () => {
+    await mountSettled();
+    await setVisibility('hidden');
+    await setVisibility('visible');
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    await setVisibility('hidden');
+    expect(sentStates()).toEqual(['hidden', 'focused', 'hidden']);
+  });
+
+  test('a page restored from the back/forward cache reports hidden again on its next pagehide', async () => {
+    await mountSettled();
+    await fire(window, 'pagehide');
+    const restored = new Event('pageshow');
+    Object.defineProperty(restored, 'persisted', { value: true });
+    window.dispatchEvent(restored);
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    await fire(window, 'pagehide');
+    expect(sentStates()).toEqual(['hidden', 'focused', 'hidden']);
+  });
+
   test('a document unloaded before its first report sends nothing', async () => {
     await mount();
     await fire(window, 'pagehide');

@@ -116,8 +116,9 @@ receive public routing and signing-trust facts, validate recipient setup against
 that exact Station/enrollment, approve or revoke exact native surfaces, issue
 single-use installation-bound invitations, and approve or deny pending Device
 requests. The WebView and SDK never receive the connector issuer credential.
-A Station without a connector mounts only `GET /api/relay-management/capabilities`,
-which answers `configured: false`; the panel then shows nothing.
+A Station without a connector mounts only the capability probe,
+`/api/relay-management/capabilities` (GET and HEAD), which answers
+`configured: false`; the panel then shows nothing.
 
 The [Connections panel](../../src-ui/src/views/connections-hub/RelayOperatorPanel.tsx)
 shows **Devices** and **Invite device** for current operators and explicitly promoted
