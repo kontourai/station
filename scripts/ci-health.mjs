@@ -1247,13 +1247,12 @@ export function buildSnapshot(data, options) {
   const lanes = laneMetrics(data.runs, data.jobs, options.until, options.since);
   const reasons = [...data.reasons];
   const collected = time(data.collectedAt ?? options.until);
-  const stale = (item) =>
-    collected - time(item.created_at) > STUCK_AFTER_HOURS * 60 * minute;
+  const stale = (at) => collected - time(at) > STUCK_AFTER_HOURS * 60 * minute;
   const stuckJobs = data.jobs.filter(
     (job) =>
       job.conclusion == null &&
       time(job.created_at) < time(options.until) &&
-      stale(job),
+      stale(job.created_at),
   ).length;
   // A run can sit queued with no jobs at all (seen on 2026-11-11); it never
   // reaches the job counts, so it is counted here.
@@ -1262,7 +1261,9 @@ export function buildSnapshot(data, options) {
     (run) =>
       run.status !== 'completed' &&
       !runKeys.has(`${run.id}:${run.run_attempt}`) &&
-      stale(run),
+      // A re-run keeps its first attempt's created_at; its own start is
+      // run_started_at.
+      stale(run.run_started_at ?? run.created_at),
   ).length;
   if (capacity.unattributed)
     reasons.push(

@@ -601,6 +601,7 @@ async function retireReplacedGroups(trigger, repository) {
     return;
   }
   let requested = 0;
+  let refused = 0;
   const runs = [];
   for (const status of ['queued', 'pending', 'in_progress']) {
     runs.push(
@@ -669,7 +670,10 @@ async function retireReplacedGroups(trigger, repository) {
       return;
     }
     // A 409 cancels nothing; the next queue event for this PR retries it.
-    if (!(await requestOrWarn(run))) continue;
+    if (!(await requestOrWarn(run))) {
+      refused++;
+      continue;
+    }
     requested++;
     const settled = await github(`actions/runs/${run.id}`);
     const terminal =
@@ -680,7 +684,7 @@ async function retireReplacedGroups(trigger, repository) {
     );
   }
   console.log(
-    `Merge retirement #${number}: ${requested} normal cancellation request(s); candidates with live refs or mismatched identities were preserved`,
+    `Merge retirement #${number}: ${requested} normal cancellation request(s), ${refused} refused (HTTP 409); candidates with live refs or mismatched identities were preserved`,
   );
 }
 

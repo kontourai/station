@@ -2104,3 +2104,21 @@ describe('CI health lane ledger, unique catch and landing cost', () => {
     expect(table.split('\n')[3]).toContain('| 0 | n/a / n/a | n/a |');
   });
 });
+
+describe('stuck runs', () => {
+  // A re-run keeps its first attempt's created_at; only run_started_at says
+  // when this attempt began.
+  it('judges a job-less run by when its current attempt started', () => {
+    const collectedAt = at(12 * 60);
+    const queued = run(9, {
+      status: 'queued',
+      conclusion: null,
+      created_at: at(0),
+    });
+    const snapshot = (runs: object[]) =>
+      buildSnapshot({ ...emptyData(), collectedAt, runs }, options).stuck;
+    expect(snapshot([queued]).runs).toBe(1);
+    expect(snapshot([{ ...queued, run_started_at: at(11 * 60) }]).runs).toBe(0);
+    expect(snapshot([{ ...queued, run_started_at: at(5 * 60) }]).runs).toBe(1);
+  });
+});

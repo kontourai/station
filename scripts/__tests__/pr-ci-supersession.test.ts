@@ -971,8 +971,9 @@ async function replacedGroup(
   const event = join(makeTempDir('merge-group-supersession-'), 'event.json');
   writeFileSync(event, JSON.stringify({ workflow_run: replacement }));
   let code = 0;
+  lastGroupStdout = '';
   try {
-    await exec(process.execPath, [script], {
+    ({ stdout: lastGroupStdout } = await exec(process.execPath, [script], {
       windowsHide: true,
       env: {
         PATH: process.env.PATH ?? '',
@@ -980,7 +981,7 @@ async function replacedGroup(
         GITHUB_REPOSITORY: repository,
         GITHUB_API_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
       },
-    });
+    }));
   } catch (error) {
     code = (error as { code: number }).code;
   } finally {
@@ -992,6 +993,8 @@ async function replacedGroup(
     expect(displacedResponses).toBeGreaterThan(0);
   return { code, cancelled };
 }
+// The last replacedGroup run's stdout, kept out of its exact result shape.
+let lastGroupStdout = '';
 
 describe('replaced merge candidate retirement through the GitHub API', () => {
   it.each([{}, { oldRef: true, oldRefDisplaced: true }])(
@@ -1026,6 +1029,9 @@ describe('replaced merge candidate retirement through the GitHub API', () => {
       code: 0,
       cancelled: [],
     });
+    expect(lastGroupStdout).toContain(
+      '0 normal cancellation request(s), 1 refused (HTTP 409)',
+    );
   });
   it.each([
     { badJobs: true },
