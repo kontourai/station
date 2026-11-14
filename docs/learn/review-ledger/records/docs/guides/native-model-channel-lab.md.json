@@ -40,7 +40,9 @@
 
     "src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts",
 
-    "src-server/services/orchestration/delegation-group-source-admission.ts"
+    "src-server/services/orchestration/delegation-group-source-admission.ts",
+
+    "scripts/child-work-native-container-lifecycle-lab.ts"
   ],
 
   "checks": []
