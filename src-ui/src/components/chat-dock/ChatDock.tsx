@@ -147,7 +147,11 @@ import {
   type EffectiveModelSource,
   isSessionWorkActive,
 } from '../../utils/execution';
-import { delegationOriginLabel, displayProvider, sessionTitle } from '../../utils/sessionDisplay';
+import {
+  delegationOriginLabel,
+  displayProvider,
+  sessionTitle,
+} from '../../utils/sessionDisplay';
 import { withConversationInventory } from '../../views/home/conversation-inventory-facts';
 import {
   isCurrentInboxItem,
@@ -1994,7 +1998,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ? [
           {
             key: 'input-origin',
-            label: delegationOriginLabel(activeOrchestrationSession.inputOrigin),
+            label: delegationOriginLabel(
+              activeOrchestrationSession.inputOrigin,
+            ),
             disabled: true,
             onSelect: () => {},
           },
