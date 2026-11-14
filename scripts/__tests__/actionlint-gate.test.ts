@@ -2122,6 +2122,26 @@ describe('persistent runner policy', () => {
       document.jobs.reconcile.steps[0].with!.ref =
         '${{ github.event.merge_group.head_sha }}';
     },
+    // Workflow-level concurrency lets a run whose job is skipped replace a
+    // pending publishing run for the same head.
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      const shape = document as unknown as {
+        concurrency?: unknown;
+        jobs: { reconcile: { concurrency?: unknown } };
+      };
+      shape.concurrency = shape.jobs.reconcile.concurrency;
+      delete shape.jobs.reconcile.concurrency;
+    },
   ])('rejects widened source verification publication authority', (mutate) => {
     const workflow = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/source-verification-policy.yml',
