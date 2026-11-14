@@ -4,13 +4,19 @@
  *
  * - Auth: HTTP Basic, user `opencode`, the password Station generated for
  *   that server.
- * - Denylist (ruling R3): the server also manages the person's provider
- *   credentials and integrations. `GET /api/credential` answers stored keys
- *   in plain text. Station's transport never reads or writes those, so the
- *   client refuses every request under `/api/credential`,
- *   `/api/integration/<id>/connect`, `/api/pair` and `/auth/` before any
- *   network I/O. A path it cannot read unambiguously (a dot segment, an
- *   encoded slash or dot, a backslash) is refused the same way.
+ * - Allowlist (ruling R3, tightened): the server also manages the person's
+ *   provider credentials and integrations, and `GET /api/credential`
+ *   answers stored keys in plain text. The client sends only the method and
+ *   path templates in {@link OPENCODE_NATIVE_ROUTES}, the operations the
+ *   native transport calls, matched segment by segment. A path holding `%`,
+ *   `//`, `;`, a backslash or a dot segment is refused outright, since the
+ *   server's router may decode it into something else. A never-allow list
+ *   (credentials, sign-in, pairing, client tokens, PTY connect tokens,
+ *   config writes) is checked first, so a route added to the table by
+ *   mistake still cannot reach them. Refusals happen before any network I/O.
+ * - Redaction: `GET /api/model` carries config-file provider keys in
+ *   `settings.apiKey`; every answer is redacted before it leaves the client
+ *   ({@link redactOpenCodeSecrets}).
  * - Events: `GET /api/event` is one global SSE feed, live only (no ids, no
  *   replay). The server sends a `: heartbeat` comment about every 15s, so a
  *   feed silent past the bound is treated as gone.
@@ -19,20 +25,164 @@
 export const OPENCODE_SERVE_USER = 'opencode';
 /** Three missed heartbeats (the server sends one about every 15s). */
 export const OPENCODE_EVENT_HEARTBEAT_TIMEOUT_MS = 45_000;
+/** Longest wait for a JSON answer, unless the caller passes its own signal. */
+export const OPENCODE_REQUEST_TIMEOUT_MS = 30_000;
+/** Longest wait for the event feed's response headers. */
+export const OPENCODE_EVENT_CONNECT_TIMEOUT_MS = 10_000;
 /** Longest SSE frame Station buffers before refusing the feed. */
 const MAX_FRAME_BYTES = 8 * 1024 * 1024;
 
-const DENIED_PATHS: ReadonlyArray<{ pattern: RegExp; why: string }> = [
+export type OpenCodeServeMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+export interface OpenCodeServeRoute {
+  /** The OpenAPI `operationId`, or `null` for the document itself. */
+  readonly operationId: string | null;
+  readonly method: OpenCodeServeMethod;
+  /** `{name}` segments match one identifier segment. */
+  readonly template: string;
+}
+
+/**
+ * Every request the native transport makes. The fingerprint projects the
+ * same operation ids (opencode-serve-fingerprint.ts), and a test checks each
+ * template against the captured OpenAPI document.
+ */
+export const OPENCODE_NATIVE_ROUTES: readonly OpenCodeServeRoute[] = [
+  { operationId: null, method: 'GET', template: '/openapi.json' },
+  { operationId: 'server.info', method: 'GET', template: '/api/info' },
+  { operationId: 'event.subscribe', method: 'GET', template: '/api/event' },
+  { operationId: 'agent.get', method: 'GET', template: '/api/agent/{agentID}' },
+  { operationId: 'command.list', method: 'GET', template: '/api/command' },
+  { operationId: 'model.list', method: 'GET', template: '/api/model' },
+  { operationId: 'mcp.list', method: 'GET', template: '/api/mcp' },
   {
-    pattern: /^\/api\/credential(?:$|[/?])/,
-    why: 'stored provider credentials',
+    operationId: 'permission.saved.list',
+    method: 'GET',
+    template: '/api/permission/saved',
+  },
+  { operationId: 'session.create', method: 'POST', template: '/api/session' },
+  {
+    operationId: 'session.active',
+    method: 'GET',
+    template: '/api/session/active',
   },
   {
-    pattern: /^\/api\/integration\/[^/?]+\/connect(?:$|[/?])/,
+    operationId: 'session.get',
+    method: 'GET',
+    template: '/api/session/{sessionID}',
+  },
+  {
+    operationId: 'session.update',
+    method: 'PATCH',
+    template: '/api/session/{sessionID}',
+  },
+  {
+    operationId: 'session.message.list',
+    method: 'GET',
+    template: '/api/session/{sessionID}/message',
+  },
+  {
+    operationId: 'session.prompt',
+    method: 'POST',
+    template: '/api/session/{sessionID}/prompt',
+  },
+  {
+    operationId: 'session.interrupt',
+    method: 'POST',
+    template: '/api/session/{sessionID}/interrupt',
+  },
+  {
+    operationId: 'session.command',
+    method: 'POST',
+    template: '/api/session/{sessionID}/command',
+  },
+  {
+    operationId: 'session.compact',
+    method: 'POST',
+    template: '/api/session/{sessionID}/compact',
+  },
+  {
+    operationId: 'session.inbox.list',
+    method: 'GET',
+    template: '/api/session/{sessionID}/inbox',
+  },
+  {
+    operationId: 'session.inbox.cancel',
+    method: 'DELETE',
+    template: '/api/session/{sessionID}/inbox/{inboxID}',
+  },
+  {
+    operationId: 'session.permission.list',
+    method: 'GET',
+    template: '/api/session/{sessionID}/permission',
+  },
+  {
+    operationId: 'session.permission.reply',
+    method: 'POST',
+    template: '/api/session/{sessionID}/permission/{requestID}/reply',
+  },
+  {
+    operationId: 'session.form.list',
+    method: 'GET',
+    template: '/api/session/{sessionID}/form',
+  },
+  {
+    operationId: 'session.form.reply',
+    method: 'POST',
+    template: '/api/session/{sessionID}/form/{formID}/reply',
+  },
+  {
+    operationId: 'session.form.cancel',
+    method: 'DELETE',
+    template: '/api/session/{sessionID}/form/{formID}',
+  },
+  {
+    operationId: 'session.revert.stage',
+    method: 'POST',
+    template: '/api/session/{sessionID}/revert/stage',
+  },
+  {
+    operationId: 'session.revert.commit',
+    method: 'POST',
+    template: '/api/session/{sessionID}/revert/commit',
+  },
+  {
+    operationId: 'session.revert.clear',
+    method: 'DELETE',
+    template: '/api/session/{sessionID}/revert',
+  },
+];
+
+/**
+ * Never sent, whatever the route table says. Matched on the lower-cased
+ * pathname; `method` narrows a row to writes where reads are harmless.
+ */
+const NEVER_ALLOWED: ReadonlyArray<{
+  pattern: RegExp;
+  methods?: readonly OpenCodeServeMethod[];
+  why: string;
+}> = [
+  { pattern: /^\/api\/credential/, why: 'stored provider credentials' },
+  {
+    pattern: /^\/api\/integration\/[^/]+\/connect/,
     why: 'provider sign-in',
   },
-  { pattern: /^\/api\/pair(?:$|[/?])/, why: 'client pairing' },
-  { pattern: /^\/auth\//, why: 'server sign-in' },
+  { pattern: /^\/api\/pair/, why: 'client pairing' },
+  { pattern: /^\/auth(?:\/|$)/, why: 'server sign-in' },
+  {
+    pattern: /^\/api\/experimental\/client-mcp\/token/,
+    why: 'client MCP tokens',
+  },
+  { pattern: /^\/api\/pty\/[^/]+\/connect-token/, why: 'terminal tokens' },
+  {
+    pattern: /^\/api\/experimental\/persistent-pty\/[^/]+\/connect-token/,
+    why: 'terminal tokens',
+  },
+  {
+    pattern: /^\/api(?:\/experimental)?\/config/,
+    methods: ['PUT', 'PATCH', 'POST', 'DELETE'],
+    why: 'config writes',
+  },
 ];
 
 export class OpenCodeServeDeniedPathError extends Error {
@@ -62,25 +212,88 @@ export class OpenCodeEventStreamStalledError extends Error {
   }
 }
 
+/** One path segment Station fills in: an OpenCode id or agent name. */
+const PARAM_SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9_.~-]*$/;
+/** The only query strings the transport sends. */
+const QUERY = /^[A-Za-z0-9_.=&-]*$/;
+
+function templateMatches(template: string, segments: string[]): boolean {
+  const parts = template.split('/');
+  if (parts.length !== segments.length) return false;
+  return parts.every((part, index) => {
+    const segment = segments[index] as string;
+    if (part.startsWith('{') && part.endsWith('}'))
+      return PARAM_SEGMENT.test(segment);
+    return part === segment;
+  });
+}
+
 /**
- * Refuse a path the transport never calls. Throws; nothing is sent. The
- * path is checked as written and lower-cased, since the server's router is
- * not Station's to second-guess.
+ * Refuse a request the transport never makes. Throws; nothing is sent.
+ * `routes` is a parameter only so a test can prove the never-allow list
+ * holds even against a table that lists a forbidden path.
  */
-export function assertOpenCodeServePathAllowed(path: string): void {
-  if (!path.startsWith('/') || path.startsWith('//'))
+export function assertOpenCodeServePathAllowed(
+  method: OpenCodeServeMethod,
+  path: string,
+  routes: readonly OpenCodeServeRoute[] = OPENCODE_NATIVE_ROUTES,
+): void {
+  if (!path.startsWith('/'))
     throw new OpenCodeServeDeniedPathError(path, 'non-relative path');
-  const pathname = path.split(/[?#]/, 1)[0] ?? '';
-  if (
-    /(?:^|\/)\.\.?(?:\/|$)/.test(pathname) ||
-    /%2e|%2f|%5c|\\/i.test(pathname)
-  )
+  if (/[%;\\#]|\/\//.test(path))
+    throw new OpenCodeServeDeniedPathError(path, 'ambiguous path');
+  const queryAt = path.indexOf('?');
+  const pathname = queryAt < 0 ? path : path.slice(0, queryAt);
+  const query = queryAt < 0 ? '' : path.slice(queryAt + 1);
+  const segments = pathname.split('/');
+  if (segments.some((segment) => segment === '.' || segment === '..'))
     throw new OpenCodeServeDeniedPathError(path, 'ambiguous path');
   const lowered = pathname.toLowerCase();
-  for (const { pattern, why } of DENIED_PATHS) {
-    if (pattern.test(lowered))
-      throw new OpenCodeServeDeniedPathError(path, why);
+  for (const rule of NEVER_ALLOWED) {
+    if (
+      rule.pattern.test(lowered) &&
+      (!rule.methods || rule.methods.includes(method))
+    )
+      throw new OpenCodeServeDeniedPathError(path, rule.why);
   }
+  if (!QUERY.test(query))
+    throw new OpenCodeServeDeniedPathError(path, 'unexpected query');
+  if (
+    !routes.some(
+      (route) =>
+        route.method === method && templateMatches(route.template, segments),
+    )
+  )
+    throw new OpenCodeServeDeniedPathError(path, `unlisted ${method}`);
+}
+
+const SECRET_KEY = /api[-_]?key|token|secret|password|credential/i;
+const SECRET_HOLDERS = new Set(['settings', 'options']);
+
+/**
+ * A copy of `value` with every string under a `settings` or `options`
+ * object whose key reads like a secret replaced by `[redacted]`. OpenCode
+ * answers `GET /api/model` with each model's provider settings, including a
+ * config-file `apiKey` in plain text; Station never needs it.
+ */
+export function redactOpenCodeSecrets(
+  value: unknown,
+  inHolder = false,
+): unknown {
+  if (Array.isArray(value))
+    return value.map((item) => redactOpenCodeSecrets(item, false));
+  if (value === null || typeof value !== 'object') return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (inHolder && SECRET_KEY.test(key) && typeof child === 'string')
+      out[key] = '[redacted]';
+    else
+      out[key] = redactOpenCodeSecrets(
+        child,
+        SECRET_HOLDERS.has(key) || (inHolder && typeof child === 'object'),
+      );
+  }
+  return out;
 }
 
 function assertLoopback(baseUrl: string): URL {
@@ -127,12 +340,18 @@ export class OpenCodeServeClient {
    * one); a non-2xx answer throws {@link OpenCodeServeHttpError}.
    */
   async request<T = unknown>(
-    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+    method: OpenCodeServeMethod,
     path: string,
     body?: unknown,
-    options: { signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal; timeoutMs?: number } = {},
   ): Promise<T> {
-    assertOpenCodeServePathAllowed(path);
+    assertOpenCodeServePathAllowed(method, path);
+    const timeout = AbortSignal.timeout(
+      options.timeoutMs ?? OPENCODE_REQUEST_TIMEOUT_MS,
+    );
+    const signal = options.signal
+      ? AbortSignal.any([options.signal, timeout])
+      : timeout;
     const headers: Record<string, string> = {
       authorization: this.authorization,
       accept: 'application/json',
@@ -142,7 +361,7 @@ export class OpenCodeServeClient {
       method,
       headers,
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-      ...(options.signal ? { signal: options.signal } : {}),
+      signal,
     });
     const text = await response.text();
     let parsed: unknown;
@@ -155,41 +374,71 @@ export class OpenCodeServeClient {
     }
     if (!response.ok)
       throw new OpenCodeServeHttpError(method, path, response.status, parsed);
-    return parsed as T;
+    return redactOpenCodeSecrets(parsed) as T;
   }
 
   /**
-   * The server's event feed, as parsed events, until `signal` aborts, the
-   * server ends it, or it stays silent past `heartbeatTimeoutMs` (then
-   * {@link OpenCodeEventStreamStalledError}). Comment frames count as
-   * activity and are not yielded.
+   * The server's event feed, as parsed events, until `signal` aborts (the
+   * iteration then simply ends), the server ends it, or it stays silent past
+   * `heartbeatTimeoutMs` (then {@link OpenCodeEventStreamStalledError}).
+   * Response headers that do not arrive within `connectTimeoutMs` count as
+   * a stall too. Comment frames count as activity and are not yielded.
    */
   async *events(
-    options: { signal?: AbortSignal; heartbeatTimeoutMs?: number } = {},
+    options: {
+      signal?: AbortSignal;
+      heartbeatTimeoutMs?: number;
+      connectTimeoutMs?: number;
+    } = {},
   ): AsyncGenerator<OpenCodeServeEvent> {
     const path = '/api/event';
-    assertOpenCodeServePathAllowed(path);
+    assertOpenCodeServePathAllowed('GET', path);
     const controller = new AbortController();
     const abort = () => controller.abort(options.signal?.reason);
-    if (options.signal?.aborted) abort();
+    if (options.signal?.aborted) return;
     options.signal?.addEventListener('abort', abort, { once: true });
+    const connectTimeoutMs =
+      options.connectTimeoutMs ?? OPENCODE_EVENT_CONNECT_TIMEOUT_MS;
+    let connectTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const response = await this.fetchImpl(`${this.origin}${path}`, {
-        headers: {
-          authorization: this.authorization,
-          accept: 'text/event-stream',
-        },
-        signal: controller.signal,
-      });
+      let response: Response;
+      try {
+        response = await Promise.race([
+          this.fetchImpl(`${this.origin}${path}`, {
+            headers: {
+              authorization: this.authorization,
+              accept: 'text/event-stream',
+            },
+            signal: controller.signal,
+          }),
+          new Promise<never>((_, reject) => {
+            connectTimer = setTimeout(
+              () =>
+                reject(new OpenCodeEventStreamStalledError(connectTimeoutMs)),
+              connectTimeoutMs,
+            );
+          }),
+        ]);
+      } catch (error) {
+        if (options.signal?.aborted) return;
+        throw error;
+      } finally {
+        clearTimeout(connectTimer);
+      }
       if (!response.ok || !response.body) {
         const text = await response.text().catch(() => '');
         throw new OpenCodeServeHttpError('GET', path, response.status, text);
       }
-      yield* readOpenCodeEventStream(response.body, {
-        heartbeatTimeoutMs:
-          options.heartbeatTimeoutMs ?? OPENCODE_EVENT_HEARTBEAT_TIMEOUT_MS,
-        signal: controller.signal,
-      });
+      try {
+        yield* readOpenCodeEventStream(response.body, {
+          heartbeatTimeoutMs:
+            options.heartbeatTimeoutMs ?? OPENCODE_EVENT_HEARTBEAT_TIMEOUT_MS,
+          signal: controller.signal,
+        });
+      } catch (error) {
+        if (options.signal?.aborted) return;
+        throw error;
+      }
     } finally {
       options.signal?.removeEventListener('abort', abort);
       controller.abort();

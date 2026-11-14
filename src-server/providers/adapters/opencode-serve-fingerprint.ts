@@ -14,47 +14,24 @@
  *
  * Only the projection is hashed, so an operation Station never calls can
  * change without unverifying a server; every shape Station reads or sends
- * cannot.
+ * cannot. Documentation keywords (`description`, `summary`, `example`,
+ * `examples`) are dropped before hashing, so a wording change alone does
+ * not unverify a server.
  */
 import { createHash } from 'node:crypto';
+import { OPENCODE_NATIVE_ROUTES } from './opencode-serve-client.js';
 
 /**
- * The operations the native transport calls, by `operationId`. Adding one
- * changes the projection, so the allowlist entry is recomputed from the
- * captured document (opencode-serve-fingerprint.test.ts).
+ * The operations the native transport calls, by `operationId`: exactly the
+ * client's route table, so the fingerprint covers every request the client
+ * may send and nothing else. Adding a route changes the projection, so the
+ * allowlist entry is recomputed from the captured document
+ * (opencode-serve-fingerprint.test.ts).
  */
-export const OPENCODE_NATIVE_OPERATIONS: readonly string[] = [
-  'server.info',
-  'event.subscribe',
-  'agent.list',
-  'agent.get',
-  'command.list',
-  'model.list',
-  'mcp.list',
-  'permission.saved.list',
-  'permission.request.list',
-  'session.create',
-  'session.get',
-  'session.update',
-  'session.active',
-  'session.message.list',
-  'session.prompt',
-  'session.interrupt',
-  'session.command',
-  'session.compact',
-  'session.switchModel',
-  'session.switchAgent',
-  'session.inbox.list',
-  'session.inbox.cancel',
-  'session.permission.list',
-  'session.permission.reply',
-  'session.form.list',
-  'session.form.reply',
-  'session.form.cancel',
-  'session.revert.stage',
-  'session.revert.commit',
-  'session.revert.clear',
-];
+export const OPENCODE_NATIVE_OPERATIONS: readonly string[] =
+  OPENCODE_NATIVE_ROUTES.flatMap((route) =>
+    route.operationId ? [route.operationId] : [],
+  );
 
 /**
  * Projection hashes of the servers the native transport was verified
@@ -66,7 +43,7 @@ export const OPENCODE_SERVE_VERIFIED_FINGERPRINTS: Readonly<
   Record<string, string>
 > = {
   '2.3.0':
-    'sha256:9a91cd5d1ef1217ccfb9797f1848038987cb88503309d557124dd7a8c127c17c',
+    'sha256:abe2c4b16eec48de73fd1df5636ba8133a8c68fa8e8d056c01f0b5d34d724e75',
 };
 
 const HTTP_METHODS = [
@@ -96,6 +73,32 @@ function canonical(value: unknown): string {
       .join(',')}}`;
   }
   return JSON.stringify(value ?? null);
+}
+
+const ANNOTATION_KEYS = new Set([
+  'description',
+  'summary',
+  'example',
+  'examples',
+]);
+/** Keys whose children are names, not schema keywords. */
+const NAME_MAPS = new Set(['properties', 'patternProperties', '$defs']);
+
+/**
+ * `value` without OpenAPI/JSON Schema documentation keywords. A property
+ * that happens to be called `description` (a key under `properties`) is a
+ * shape, not documentation, and is kept.
+ */
+function withoutAnnotations(value: unknown, namesHere = false): Json {
+  if (Array.isArray(value))
+    return value.map((item) => withoutAnnotations(item));
+  if (!isRecord(value)) return (value ?? null) as Json;
+  const out: Record<string, Json> = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (!namesHere && ANNOTATION_KEYS.has(key)) continue;
+    out[key] = withoutAnnotations(child, !namesHere && NAME_MAPS.has(key));
+  }
+  return out;
 }
 
 function collectRefs(value: unknown, into: Set<string>): void {
@@ -157,7 +160,13 @@ export function projectOpenCodeServeSchema(
     collectRefs(schema, next);
     for (const ref of next) if (reached[ref] === undefined) pending.add(ref);
   }
-  return { ok: true, projection: { operations: found, schemas: reached } };
+  return {
+    ok: true,
+    projection: {
+      operations: withoutAnnotations(found, true),
+      schemas: withoutAnnotations(reached, true),
+    },
+  };
 }
 
 export function openCodeServeFingerprint(projection: Json): string {

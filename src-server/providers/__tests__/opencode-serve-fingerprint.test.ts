@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
+import { OPENCODE_NATIVE_ROUTES } from '../adapters/opencode-serve-client.js';
 import {
   OPENCODE_NATIVE_OPERATIONS,
   OPENCODE_SERVE_VERIFIED_FINGERPRINTS,
@@ -24,12 +25,12 @@ describe('OpenCode serve schema fingerprint', () => {
     // line on purpose, not follow the code.
     expect(OPENCODE_SERVE_VERIFIED_FINGERPRINTS).toEqual({
       '2.3.0':
-        'sha256:9a91cd5d1ef1217ccfb9797f1848038987cb88503309d557124dd7a8c127c17c',
+        'sha256:abe2c4b16eec48de73fd1df5636ba8133a8c68fa8e8d056c01f0b5d34d724e75',
     });
     expect(verifyOpenCodeServeSchema('2.3.0', capturedDoc())).toEqual({
       verified: true,
       fingerprint:
-        'sha256:9a91cd5d1ef1217ccfb9797f1848038987cb88503309d557124dd7a8c127c17c',
+        'sha256:abe2c4b16eec48de73fd1df5636ba8133a8c68fa8e8d056c01f0b5d34d724e75',
     });
   });
 
@@ -87,9 +88,51 @@ describe('OpenCode serve schema fingerprint', () => {
     );
   });
 
-  test('every operation the transport calls exists in the captured document', () => {
-    const projected = projectOpenCodeServeSchema(capturedDoc());
-    expect(projected.ok).toBe(true);
+  test('documentation text in a used shape does not unverify the server', () => {
+    const doc = capturedDoc();
+    const prompt = doc.paths['/api/session/{sessionID}/prompt'].post;
+    prompt.description = 'reworded';
+    prompt.summary = 'reworded';
+    const schema = doc.components.schemas['Session.Inbox.User'];
+    schema.description = 'reworded';
+    expect(verifyOpenCodeServeSchema('2.3.0', doc).verified).toBe(true);
+  });
+
+  test('a property named description is a shape, not documentation', () => {
+    const doc = capturedDoc();
+    const projected = projectOpenCodeServeSchema(doc);
+    if (!projected.ok) throw new Error(projected.reason);
+    const holder = Object.entries(doc.components.schemas).find(
+      ([name, schema]: [string, any]) =>
+        (projected.projection as any).schemas[name] !== undefined &&
+        schema?.properties?.description !== undefined,
+    );
+    expect(holder).toBeDefined();
+    delete (holder![1] as any).properties.description;
+    expect(verifyOpenCodeServeSchema('2.3.0', doc).verified).toBe(false);
+  });
+
+  test('the fingerprinted operations are exactly the client route table', () => {
+    const doc = capturedDoc();
+    const declared = new Map<string, string>();
+    for (const [path, item] of Object.entries<any>(doc.paths))
+      for (const [method, operation] of Object.entries<any>(item))
+        if (operation?.operationId)
+          declared.set(
+            operation.operationId,
+            `${method.toUpperCase()} ${path}`,
+          );
+    for (const route of OPENCODE_NATIVE_ROUTES) {
+      if (route.operationId === null) continue;
+      expect(declared.get(route.operationId)).toBe(
+        `${route.method} ${route.template}`,
+      );
+    }
+    expect(OPENCODE_NATIVE_OPERATIONS).toEqual(
+      OPENCODE_NATIVE_ROUTES.flatMap((route) =>
+        route.operationId ? [route.operationId] : [],
+      ),
+    );
     expect(OPENCODE_NATIVE_OPERATIONS).toContain('session.prompt');
   });
 });
