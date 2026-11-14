@@ -79,7 +79,12 @@ function readConnection(value: unknown): RemoteTaskConnectionRecord | null {
     typeof acknowledgement.version === 'number' &&
     typeof acknowledgement.statement === 'string' &&
     typeof acknowledgement.acknowledgedAt === 'string'
-      ? (acknowledgement as unknown as RemoteTaskAcknowledgement)
+      ? ({
+          vendor,
+          version: acknowledgement.version,
+          statement: acknowledgement.statement,
+          acknowledgedAt: acknowledgement.acknowledgedAt,
+        } satisfies RemoteTaskAcknowledgement)
       : null;
   return {
     id,
