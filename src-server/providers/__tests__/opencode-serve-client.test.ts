@@ -138,11 +138,14 @@ describe('OpenCodeServeClient requests', () => {
     '/api/%61gent/build',
     '/api/session/ses_1/messag%65',
     '/api/session/ses_1/message?after=a%20b',
-  ])('%s is refused: percent-encoding only inside a route parameter', (path) => {
-    expect(() => assertOpenCodeServePathAllowed('GET', path)).toThrow(
-      OpenCodeServeDeniedPathError,
-    );
-  });
+  ])(
+    '%s is refused: percent-encoding only inside a route parameter',
+    (path) => {
+      expect(() => assertOpenCodeServePathAllowed('GET', path)).toThrow(
+        OpenCodeServeDeniedPathError,
+      );
+    },
+  );
 
   test('a listed route with another method is refused', async () => {
     const fetch = fetchSpy();
