@@ -3050,8 +3050,8 @@ vendor call. The credential sits in the engine host-auth vault, one bucket per
 Each vendor is a binding in
 [`bindings/`](../../src-server/services/remote-task-engines/bindings/index.ts).
 [`tracker.ts`](../../src-server/services/remote-task-engines/tracker.ts)
-polls active tasks and stores their messages under
-`<home>/remote-task-engines/tasks/`, and
+polls an active task only while a client has read it lately, storing a
+bounded window of its messages under `<home>/remote-task-engines/tasks/`, and
 [`remote-task-engine-routes.ts`](../../src-server/routes/remote-task-engines/remote-task-engine-routes.ts)
 serves them under `/remote-task-engines`.
 

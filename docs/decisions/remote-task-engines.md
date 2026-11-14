@@ -53,25 +53,29 @@ A separate dispatch surface was rejected. It would need its own store, task
 list, notifications and event stream, which duplicates what the adapter path
 already has.
 
-**Delivered in stages.** The first stage, in place now, is the substrate
-under that adapter, and it is the only part built:
+**Delivered in two pull requests.**
+
+The first (#4935) builds the substrate under that adapter, and nothing that
+shows up as an Agent or a chat:
 
 - the vendor-neutral service;
 - the three bindings;
 - the gates;
 - the credential handling;
-- a tracker that polls tasks and stores their messages;
+- a tracker that catches stored tasks up while a client reads them;
 - HTTP routes under `/remote-task-engines`.
 
 The routes' events read uses Station's own per-task sequence, with
 `after` or `Last-Event-ID`, the same resume role the orchestration stream
 gives `Last-Event-ID`.
 
-Composing the chat adapter is a later stage, and it needs three things:
+The second, stacked on the first, composes the chat adapter. It needs four
+things:
 
 - a new engine family in the closed `EngineCapabilityMatrix`;
 - an answer to how `limits.engines.allowed` treats it;
-- an agent picker launch path.
+- a transcript projection of the stored messages onto runtime events;
+- Agent and picker entries, behind the same preview.
 
 ### Capabilities
 
@@ -88,13 +92,20 @@ lacks.
 | get | `GET …/sessions/{id}` | `GET /agents/tasks/{id}` | agent, then its latest run |
 | list | `first`/`after` pages | `page`/`per_page` | `limit`/`cursor` |
 | follow-up | `POST …/messages` (steers) | none | follow-up run; `delivery: "steer"` when busy |
-| messages from a cursor | `GET …/messages?after=` | none | agent SSE stream from `Last-Event-ID` |
+| messages | `GET …/messages?after=` | none | each finished run's `result`, from the runs list |
 | cancel | `DELETE …/sessions/{id}` (terminate) | none | cancel the latest run |
 | usage | ACUs; USD overage (Teams) | AI credits or premium requests, per session | tokens (`/usage`) |
 | outputs | `pull_requests[].pr_url` | pull request by id only (`pull:<id>`) | `git.branches[].prUrl` |
 
 Usage stays in the vendor's unit. Station reports USD only where the vendor
-reports it: Devin's `on_demand_usage`.
+reports it: Devin's `on_demand_usage`. A figure in a unit the binding does
+not declare is dropped.
+
+Cursor's agent stream is not read. Its `assistant` events are text deltas for
+an ordinary agent, and opening a stream is rate-limited apart from requests
+(60 a minute, 600 an hour). Each finished run's `result` is the agent's
+message for that run, keyed by run id, so a poll costs three requests and no
+stream opens, and a replay cannot store a fragment twice.
 
 ### Trust boundary
 
@@ -115,11 +126,14 @@ refusal sends nothing:
 4. **The credential**, kept only in the engine host-auth vault
    ([engine credential provider](engine-credential-provider.md)) in one bucket
    per connection:
-   - Connection ids carry a `remote-task-` prefix, so no ACP connection can
-     name the bucket.
+   - Connection ids carry a `remote-task-` prefix, which an ACP connection id
+     may not take, so no ACP connection can name the bucket. Removing a remote
+     task connection deletes only its own key.
+   - A token shorter than 16 characters is refused, so redaction by exact
+     match is reliable.
    - The value reaches a binding only as the auth header for one call.
    - It is never returned to a client, logged, or passed on in a vendor's
-     error text: the vendor's message is redacted of it.
+     error text: the vendor's message and error code are redacted of it.
 5. **Who asks.** A request that may be an agent's is refused on every route,
    so an agent cannot send host code off the machine.
 
@@ -146,16 +160,33 @@ vendor's refusal in the vendor's own words.
   meaning a 429 or GitHub's exhausted-quota 403, waits at least the vendor's
   `Retry-After` or `X-RateLimit-Reset`, up to one hour. Interactive routes
   answer 429 with `Retry-After` and never retry.
-- **When polling stops.** The tracker stops polling a task that is finished,
-  idle or waiting for the person, and polls again after the next follow-up,
-  cancel or sync.
-- **Off switches.** A preview or policy refusal holds the task and rechecks
-  at the ceiling.
+- **Only for a reader.** The tracker polls a task only while a client has
+  touched it (created, written to, synced or read its messages) within the
+  last 15 minutes. Nothing is polled that nobody reads, so no vendor quota or
+  disk is spent unseen. Repeated reads never shorten the cadence.
+- **When polling stops.** The tracker also stops polling a task that is
+  finished, idle or waiting for the person, and polls again after the next
+  follow-up, cancel or sync. A task already finished and settled at the last
+  sync is not paged again. A vendor's end-of-stream answer on a finished task
+  (Cursor's `409 agent_archived`, Devin's `410`) ends paging instead of
+  failing the sync.
+- **What is retried.** Only failures that resolve on their own: a rate
+  limit, an unreachable vendor, and the preview or policy turned off, which
+  rechecks at the ceiling. Anything else stops polling until a client touches
+  the task again: no acknowledgement or credential, a connection that is gone,
+  an answer or a stored file Station cannot handle, or an unexpected error.
 - **Offline.** While Station is offline the task keeps running at the
-  vendor. On restart the tracker resumes every task still marked active from
-  its stored vendor cursor. Each task's file holds the cursor, the stored
-  messages and the vendor ids already seen, written together, so a replayed
-  page adds nothing.
+  vendor. After a restart nothing polls until a client reads a task, and that
+  read resumes from the stored vendor cursor. Each task's file holds the
+  cursor, the stored messages and the vendor ids already seen, written
+  together, so a replayed page adds nothing.
+- **Bounded storage.** A message's text is cut at 16,000 characters and
+  marked. A task keeps its newest 2,000 messages within 4 MiB. A read says
+  when messages after the client's position were dropped (`missed`). A vendor
+  answer larger than 4 MiB is refused. Removing a connection while one of its
+  syncs is in flight leaves no task file behind.
+- **Settings.** A connection's settings (Devin's organization) cannot change
+  once it has stored tasks.
 
 ### Candidates not bound
 
@@ -180,14 +211,22 @@ selected organizations only".
 Tests:
 
 - [Route gates](../../src-server/routes/remote-task-engines/__tests__/remote-task-engine-routes.test.ts):
-  every route with the preview off, the policy off, no acknowledgement, and an
-  agent request; credential isolation between two connections; polling
-  bounds.
+  every route with the preview off, the policy off and no acknowledgement;
+  credential isolation between two connections; polling bounds.
+- [Who may call](../../src-server/routes/remote-task-engines/__tests__/remote-task-engine-routes-authority.test.ts):
+  the production check refuses an agent-origin header, the internal principal
+  and an unauthenticated request on every route.
+- [Runtime composition](../../src-server/runtime/routes/__tests__/runtime-routes-remote-task-engines.test.ts):
+  the preview the runtime binds and the runtime's managed policy reach the
+  routes.
 - [Devin](../../src-server/services/remote-task-engines/__tests__/remote-task-devin.test.ts),
   [Copilot](../../src-server/services/remote-task-engines/__tests__/remote-task-github-copilot.test.ts)
   and [Cursor](../../src-server/services/remote-task-engines/__tests__/remote-task-cursor.test.ts):
   each binding against an HTTP fake serving the vendor's documented shapes.
-- [Tracker cadence](../../src-server/services/remote-task-engines/__tests__/remote-task-tracker.test.ts).
+- [Tracker](../../src-server/services/remote-task-engines/__tests__/remote-task-tracker.test.ts):
+  interest, cadence and what is retried.
+- [Service rules](../../src-server/services/remote-task-engines/__tests__/remote-task-service.test.ts):
+  capability flags, usage units, and removal during a sync.
 
 ## Not verified
 
@@ -196,4 +235,8 @@ cited in each binding. No call was made to a real vendor. Two facts are
 undocumented:
 
 - the unit of Devin's integer `created_at`, read as seconds;
-- the format of an entry in Devin's `repos` list, sent as `owner/name`.
+- the format of an entry in Devin's `repos` list, sent as `owner/name`;
+- whether Devin's `end_cursor` is null on a last page. Station keeps the last
+  cursor Devin issued, so at worst one page is re-read per poll;
+- whether Cursor's runs list carries each finished run's `result`. When an
+  entry leaves it out, Station reads that run, up to five per poll.
