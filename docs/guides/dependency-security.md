@@ -109,10 +109,10 @@ form. Upstream's own repository advisory,
 records the same CVE-2026-85393 and lists 1.4.1 as patched. The global
 GHSA-86w9-cpqp-85rv record still lists no patched version (`<= 1.4.0`), so the
 replacement rests on the upstream record, the commit and the controls below,
-not on the global database. 1.4.3 is the smallest release that also clears the other Forge
-advisories the registry reports against 1.4.0 (PEM, ASN.1 and TLS-record
-denial of service, PKCS#12 MAC forgery, X.509 chain checks, and AES-GCM tag
-length, among others).
+not on the global database. 1.4.3 is the smallest release that also clears the
+other Forge advisories the registry reports against 1.4.0 (PEM, ASN.1 and
+TLS-record denial of service, PKCS#12 MAC forgery, X.509 chain checks, and
+AES-GCM tag length, among others).
 
 The [installed-library controls](../../scripts/__tests__/node-forge-rsa-backport.test.ts)
 are unchanged and exercise the package entrypoint and both browser globals. The
@@ -242,8 +242,10 @@ closed. The guard is a check of the current installed tree, not continuous
 protection against a same-user writer changing files after verification.
 
 The formatter identity has since been removed from the verifier (#2722). The
-residual that used it is gone, so the verifier admits only the node-forge
-remediation above. A residual that carries a `patchBinding` is now refused as an
+residual that used it is gone. The verifier's only admitted identity is the
+node-forge remediation, and since node-forge moved to the official release
+above no `remediations` record uses it: the verifier is dormant but still
+tested. A residual that carries a `patchBinding` is now refused as an
 unknown field, and the installed-tree controls (drift, unaccounted copies and
 caller-directory, file, symlink and case-equivalent shadows) run against the
 node-forge fixture in `scripts/__tests__/dependency-patch-binding.test.ts`.
@@ -874,8 +876,9 @@ cross-origin redirect target when `sensitiveHeaders` is an array from another
 JavaScript realm. A loopback probe forwarded the header on 1.16.1 and stripped it
 on the installed 1.16.2, keeping an unrelated header.
 
-The two `@hono/node-server` advisories have no fix on the 1.x line for the
-`serveStatic` double-decoding issue. VoltAgent's Hono package declares `^1.14.0`
+The backslash-path advisory (GHSA-jpvv) is fixed on the 1.x line in 1.19.18,
+but the `serveStatic` double-decoding advisory (GHSA-rmxm) has no 1.x fix, so
+the 1.x line cannot clear both. VoltAgent's Hono package declares `^1.14.0`
 but uses only `serve()`; Station's own provider binds with the root 2.x copy.
 Version 2 drops Node 18 and the Vercel adapter, neither of which applies, so the
 nested copy now resolves to the same 2.1.7 that Station already loads. A probe
