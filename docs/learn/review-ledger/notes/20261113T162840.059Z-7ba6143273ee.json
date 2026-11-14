@@ -1,0 +1,7 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Model launch paragraph updated: on a resume ACP reapplies the conversation's model where the resumed session offers it and differs (reapplyRequestedSessionState); per-turn model changes still unsupported. Checked against acp-adapter.ts reattach branch.","inputs":["docs/reference/cli.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

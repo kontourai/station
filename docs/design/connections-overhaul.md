@@ -182,8 +182,10 @@ Each slice updates the Connections guide and module map for what it ships.
 
 - Provider allowance endpoints change shape. Unknown readings stay unknown.
 - Receipts written before slice 2 have no `connectionId`; connection views disclose the gap.
-- ACP adapters report context occupancy only and omit cost deliberately, so they
-  produce no usage receipts. Their usage panel states that, never zero.
+- ACP adapters report context occupancy, plus per-turn token figures from the
+  prompt answer's `usage` for an engine recorded reporting them (Antigravity);
+  they never read cost. An ACP turn without such figures is a missing usage
+  report.
 - Claude Code and Codex record `connectionId` only when dispatch passes it, so
   their engine pages keep filtering by provider kind.
 - **Check all** starts configured tool servers; the bound keeps it from flooding a host.

@@ -12,7 +12,8 @@ editing in Chat settings. Its scriptable equivalent is
 execution Session ID rather than the Conversation ID. Reads do not start or
 resume an engine. Writes require an authenticated person with Session mutation
 authority and `orchestration:operate`. The current Codex adapter supports save
-paused, pause and clear; resume and Station-managed execution are unavailable.
+paused, pause and clear; a Muse Session on `muse serve` supports read, pause
+and clear. Resume and Station-managed execution are unavailable.
 See [Session Goals](api.md#session-goals) for commands and uncertain outcomes.
 
 A Session that started in a worktree of its own records what became of its
@@ -729,7 +730,7 @@ retry returns its retained entry even after the head advances. Changed input
 returns HTTP409 `inbox_key_conflict`. A new entry with a stale head returns
 HTTP409 `inbox_stale_head` and `currentHead`, without a write.
 
-- **Steer:** text and head are durable before handoff. Native Claude/Codex
+- **Steer:** text and head are durable before handoff. Native Claude/Codex/Muse
   placement is engine-defined and disclosed. Where Station owns the loop,
   input waits for its next observed post-tool boundary; otherwise it waits
   for the next turn boundary. The current VoltAgent loop observes the boundary
@@ -1286,9 +1287,13 @@ The remaining controls are defined by
 `src-server/routes/orchestration/orchestration.ts`:
 
 - `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId?, clientInputId }` sends steering
-  input where the engine supports it. An ACP engine without a native steer
+  input where the engine supports it. An ACP engine whose handshake matches a
+  prompt hand-off entry (Antigravity) takes the steer as a second prompt on the
+  running turn, cancelling nothing. Any other ACP engine without a native steer
   method is steered by cancelling and re-prompting the running turn; that
-  steer's `turn.started` carries `steerInterruptedRun: true`.
+  steer's `turn.started` carries `steerInterruptedRun: true`. A Muse Session
+  on `muse serve` steers natively with `turn/steer`; one on the `muse exec`
+  fallback is refused `unsupported-engine` before the engine is called.
   On this server, a stable `clientInputId` makes acknowledgement retries safe: a durable claim
   precedes the adapter call, confirmed same-ID input returns its stored result,
   and an unresolved claim returns `outcome: 'indeterminate'` without invoking
@@ -1326,6 +1331,13 @@ The remaining controls are defined by
   names. Captures with Codex 0.164 show v1 accepting child `turn/steer` and v2
   rejecting direct app-server input. This provider evidence does not establish
   an end-to-end Station HTTP or deployed-device journey.
+
+  A Muse workflow's turn ends when it launches its children, so the Muse
+  serve adapter declares `childSteerOutlivesParentTurn`. With no running
+  parent turn, the server then admits a child steer only for a child the
+  child-work projection still holds running under that `turnId` (its steer
+  token); the dormant-session and confinement checks still apply. Muse
+  receives it as `subagent/sendMessage`.
 
 - `inspectSteerInput`: `{ type: 'inspectSteerInput', threadId, input, turnId?, clientInputId }`
   reads the original journal identity and returns `steered`, `indeterminate` or

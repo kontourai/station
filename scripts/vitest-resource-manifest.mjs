@@ -316,6 +316,16 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/pr-source-admission.test.ts',
   // Executes repair publication against real temporary checkouts and a loopback API.
   'scripts/__tests__/qualification-repair.test.ts',
+  // Runs the real Vitest corpus runner on tiny fixture projects (one child
+  // Vitest per case, including a leaked child and a deadline kill) and the
+  // real phase driver once, to assert the failure manifest they write.
+  'scripts/__tests__/qualification-failure-manifest.test.ts',
+  // Runs the repair prepare CLI against a loopback API with on-disk
+  // failure manifests and a temporary known-failure list.
+  'scripts/__tests__/qualification-failure-signal.test.ts',
+  // Runs the real Playwright test runner on tiny fixture projects (no
+  // browser) to assert the e2e failure manifest built from its JSON report.
+  'scripts/__tests__/playwright-failure-manifest.test.ts',
   // #3101: runs the dequeue report as a child against temporary Git remotes
   // (git fetch + merge-tree) and a loopback GitHub API.
   'scripts/__tests__/merge-queue-dequeue.test.ts',
@@ -1412,6 +1422,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // announced and answered.
   'src-server/providers/__tests__/acp-kiro-announce.process.test.ts',
   'src-server/providers/__tests__/acp-kiro-parity.process.test.ts',
+  // The fake ACP agent, driven by the recorded Antigravity profile, through
+  // the real adapter and ACPProcess: what session and prompt answers carry.
+  'src-server/providers/__tests__/acp-session-answers.process.test.ts',
   // #3924: runs the real `opencode` (when this host has one) with fresh XDG
   // directories against a planted project plugin; skips loudly where no
   // opencode binary resolves.

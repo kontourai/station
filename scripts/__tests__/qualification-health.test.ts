@@ -1021,6 +1021,10 @@ describe('qualification watchdog workflow authority', () => {
       workflow.jobs.health.steps
         .filter((step) => step.run)
         .map((step) => step.run),
-    ).toEqual(['node scripts/qualification-health.mjs']);
+    ).toEqual([
+      // Selecting the run to classify is read-only; it launches nothing.
+      'node scripts/qualification-health.mjs select-run',
+      'node scripts/qualification-health.mjs',
+    ]);
   });
 });

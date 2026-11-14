@@ -1,0 +1,7 @@
+{
+  "revision": "b1e62cc105903cf03db81840488cce164052d8c5",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Rechecked: the contracts reference change adds a Muse unsupported row; the integration guidance it links is unchanged.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md","docs/reference/contracts.md","docs/reference/sdk.md"]}
+  ]
+}
