@@ -7,11 +7,15 @@ name: "PR: Windows"
 #
 # The one skip is about WHEN, never WHO: on PR events a draft, and the
 # automation app's same-repository release PR (regenerated on every main
-# push), skip the floor. A draft can be neither merged nor queued, so its
-# skipped check is never what admits it; marking it ready
-# (`ready_for_review`) runs the floor on that head, and later pushes to the
-# non-draft PR run it as before. Forks and humans get the same rule, and the
-# merge group runs the floor for every candidate, the release PR included.
+# push), skip the floor. A draft can be neither merged nor queued. Marking
+# it ready (`ready_for_review`) runs the floor on that head, and later pushes
+# to the non-draft PR run it as before. Until the ready run creates its check,
+# the newest `Windows PR portable floor` on that head is still the draft's
+# `skipped`, so `gh pr ready` and an immediate `gh pr merge --auto` can
+# enqueue on it. That is harmless only because the merge group runs the floor
+# for every candidate, the release PR included: the merge group is the gate,
+# and the post-ready PR run is early feedback. Forks and humans get the same
+# rule.
 on:
   pull_request_target:
     branches: [main]

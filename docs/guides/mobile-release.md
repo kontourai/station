@@ -157,17 +157,24 @@ Every pull request and queued merge candidate emits the stable
 `build-ios-verification` check so the main ruleset can require it. A reviewed
 hosted-Linux classifier runs the `macos-26` job before landing only when the
 pull-request or merge-group diff changes native inputs: `src-desktop/`, Rust
-and Cargo files, the runtime smoke, the workflow, native-client build inputs,
+and Cargo files, dependency manifests, the runtime smoke, the workflow,
+`vite.config.ts` and every executed file named for iOS or the native client,
 and the native-shell slice of `src-ui/` (`src/platform/`, `public/`, and the
-boot entry). `scripts/classify-ci-change.mjs` owns the exact list. A change
-confined to the rest of `src-ui/` or the bundled packages is built after it
-lands: a `main` push builds when its range has such a change and no native
-input, since the merge queue fast-forwards `main` to the candidate it already
-built whenever a native input was present. Post-merge builds coalesce to one
-running and one pending, and a red one opens a `main-health.yml` tracker.
+boot entry). Everything else the app can contain or be built with is built
+after it lands: every source root the UI bundle imports (`src-ui/`,
+`src-shared/`, and the workspace packages it reaches) and the generic
+tooling the job runs. `scripts/classify-ci-change.mjs` owns both lists, and
+its test derives them from the job's commands and the UI's imports; files
+read only at run time are not derived. A `main` push builds when its range
+has a post-merge change and no native input, since the merge queue
+fast-forwards `main` to the candidate it already built whenever a native
+input was present. Post-merge builds coalesce to one running and one
+pending, and a red one opens a `main-health.yml` tracker. A commit pushed to
+`main` without the merge queue is the gap: if it has a native input, no
+build covers it until someone dispatches the workflow on `main`.
 Test-only `__tests__/`, `*.test.*` and `*.spec.*` TypeScript files under
-`src-ui/`, and a package's top-level `src/__tests__/`, never count: the app's
-builds never compile them. Unrelated candidates, drafts and the automation
+`src-ui/` and `src-shared/`, and a package's top-level `src/__tests__/`,
+never count: the app's builds never compile them. Unrelated candidates, drafts and the automation
 release PR receive a successful skipped job without consuming macOS capacity;
 the merge group still builds a relevant candidate. The cancellation group
 supersedes stale runs for the same candidate.

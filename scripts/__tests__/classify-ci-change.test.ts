@@ -4,10 +4,11 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 import {
@@ -27,6 +28,7 @@ import {
   classifyIosPostMergeGitRange,
   renderGithubOutputs,
 } from '../classify-ci-change.mjs';
+import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import { runWorkflowShell } from './fixtures/workflow-shell.js';
 
 function withFixtureCleanup(root: string, run: () => void): void {
@@ -738,10 +740,10 @@ describe('iOS builds native inputs before landing and the rest of the UI after',
     'package.json',
     'pnpm-lock.yaml',
     'pnpm-workspace.yaml',
+    '.npmrc',
     '.nvmrc',
     'vite.config.ts',
     'scripts/write-native-client-build-manifest.mjs',
-    'scripts/lib/desktop-build-manifest.mjs',
     'scripts/write-ios-build-manifest.mjs',
     'scripts/lib/ios-launch-screen.mjs',
     'scripts/ios-channel-icons.mjs',
@@ -782,6 +784,19 @@ describe('iOS builds native inputs before landing and the rest of the UI after',
     'packages/connect/src/pairing.test.ts',
     'packages/sdk/src/client/__tests__/client.test.ts',
     'packages/contracts/src/schema.spec.tsx',
+    // Other roots the bundle imports.
+    'packages/shared/src/agent-message-frame.ts',
+    'packages/basis-pane/src/index.ts',
+    'packages/board-pane/src/index.ts',
+    'src-shared/monitoring-keys.ts',
+    // Generic tooling the job executes, which Linux lanes run on every PR.
+    'scripts/lib/desktop-build-manifest.mjs',
+    'scripts/lib/bounded-capture.mjs',
+    'scripts/lib/module-entry.mjs',
+    'scripts/dependency-lifecycle.mjs',
+    'scripts/ui-bundle-budget.mjs',
+    'scripts/vite-ui-assets.ts',
+    'packages/cli/src/commands/ui-proxy-prefixes.ts',
   ])('builds %s only after landing', (changedPath) => {
     expect(iosBuildPoint([changedPath])).toBe('after');
   });
@@ -796,6 +811,7 @@ describe('iOS builds native inputs before landing and the rest of the UI after',
     'packages/sdk/src/__tests__/client.test.ts',
     'packages/connect/src/__tests__/pairing.test.ts',
     'packages/contracts/src/__tests__/fixtures/schema.json',
+    'src-shared/__tests__/monitoring-keys.test.ts',
     // Outside both scopes.
     'docs/guides/testing.md',
     'src-server/routes/foo.ts',
@@ -870,46 +886,250 @@ describe('iOS builds native inputs before landing and the rest of the UI after',
     expect(workflow.on.push).toEqual({ branches: ['main'] });
   });
 
-  // Every script the macOS job runs on its default (non-dispatch) path is a
-  // native-client build input: a change to one must build before landing.
-  test('every script the iOS build job runs is a pre-landing input', () => {
-    const workflow = parse(
-      readFileSync(join(repoRoot, '.github/workflows/build-ios.yml'), 'utf8'),
-    ) as {
-      jobs: Record<string, { steps: Array<{ if?: string; run?: string }> }>;
-    };
-    const scripts = new Set<string>();
-    for (const step of workflow.jobs['build-ios-verification'].steps) {
-      if (
-        String(step.if ?? '').startsWith(
-          "github.event_name == 'workflow_dispatch'",
-        )
-      )
-        continue;
-      for (const match of String(step.run ?? '').matchAll(
-        /\bscripts\/[\w./-]+\.mjs\b/g,
-      ))
-        scripts.add(match[0]);
+  // NATIVE must be closed under what the job executes, and every executed
+  // file must be built somewhere. Derive the set rather than list it: follow
+  // the job's run steps through npm scripts (workspace scripts included) and
+  // Tauri's beforeBuildCommand, then the static import graph. A newly
+  // reached file fails here until it is classified. The rule this applies:
+  // vite.config.ts, src-desktop/, and any file named for iOS or the native
+  // client build before landing; every other executed file is generic
+  // tooling that Linux lanes run on each PR, so it builds after landing.
+  test('every file the iOS build job executes is classified by the native-name rule', () => {
+    const { files, packageDirs } = iosJobExecutionClosure();
+    // Reachability: the walk really crossed npm-script indirection, a
+    // workspace script and the import graph.
+    for (const reached of [
+      'scripts/dependency-lifecycle.mjs',
+      'scripts/ui-bundle-budget.mjs',
+      'scripts/lib/bounded-capture.mjs',
+      'scripts/write-dist-stamp.mjs',
+      'scripts/vite-ui-assets.ts',
+      'packages/cli/src/commands/ui-proxy-prefixes.ts',
+      'src-desktop/tauri.conf.json',
+    ])
+      expect(files, reached).toContain(reached);
+    expect(packageDirs).toEqual(
+      expect.arrayContaining(['packages/connect', 'packages/sdk']),
+    );
+    for (const file of files) {
+      const nativeByRule =
+        file === 'vite.config.ts' ||
+        file.startsWith('src-desktop/') ||
+        /ios|native/i.test(file.slice(file.lastIndexOf('/') + 1));
+      expect(iosBuildPoint([file]), file).toBe(
+        nativeByRule ? 'before' : 'after',
+      );
     }
-    const packageScripts = (
-      JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')) as {
-        scripts: Record<string, string>;
-      }
-    ).scripts;
-    for (const match of packageScripts['build:native-client'].matchAll(
-      /\bscripts\/[\w./-]+\.mjs\b/g,
-    ))
-      scripts.add(match[0]);
-    expect([...scripts].sort()).toEqual([
-      'scripts/ios-channel-icons.mjs',
-      'scripts/ios-simulator-runtime-smoke.mjs',
-      'scripts/write-ios-build-manifest.mjs',
-      'scripts/write-native-client-build-manifest.mjs',
-    ]);
-    for (const script of scripts)
-      expect(iosBuildPoint([script]), script).toBe('before');
+    for (const dir of packageDirs)
+      expect(iosBuildPoint([`${dir}/src/probe.ts`]), dir).not.toBe('never');
+  });
+
+  // Everything the UI bundle can import must build on main at least: walk
+  // the imports of every non-test src-ui source, following workspace
+  // packages (all of their non-test sources) and relative paths that leave
+  // src-ui, transitively.
+  test('every root the UI bundle can import builds after landing at least', () => {
+    const { files, packageDirs } = uiBundleImportClosure();
+    expect(packageDirs).toEqual(
+      expect.arrayContaining([
+        'packages/basis-pane',
+        'packages/board-pane',
+        'packages/connect',
+        'packages/contracts',
+        'packages/sdk',
+        'packages/shared',
+      ]),
+    );
+    expect(files).toContain('src-shared/monitoring-keys.ts');
+    for (const file of files)
+      expect(iosBuildPoint([file]), file).not.toBe('never');
+    for (const dir of packageDirs)
+      expect(iosBuildPoint([`${dir}/src/probe.ts`]), dir).not.toBe('never');
   });
 });
+
+const WORKSPACE_PACKAGES = new Map(
+  trackedFiles(['packages'])
+    .filter((path) => /^packages\/[^/]+\/package\.json$/.test(path))
+    .map((path) => [
+      (
+        JSON.parse(readFileSync(join(repoRoot, path), 'utf8')) as {
+          name: string;
+        }
+      ).name,
+      dirname(path),
+    ]),
+);
+const NON_TEST_SOURCE = /\.(?:mjs|cjs|js|jsx|ts|tsx|mts)$/;
+const TEST_SOURCE = /(?:^|\/)__tests__\/|\.(?:test|spec)\.[cm]?[jt]sx?$/;
+
+function trackedFiles(paths: string[]) {
+  return String(
+    execFileSyncBounded('git', ['ls-files', '-z', '--', ...paths], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      windowsHide: true,
+    }),
+  )
+    .split('\0')
+    .filter(Boolean);
+}
+
+/**
+ * Static import edges of one source file: repository files it reaches by a
+ * relative specifier, and workspace packages it imports by name. Dynamic
+ * specifiers built at run time, child processes and readFileSync reads are
+ * not import edges and are not seen.
+ */
+function importEdges(file: string) {
+  const text = readFileSync(join(repoRoot, file), 'utf8');
+  const files: string[] = [];
+  const packages: string[] = [];
+  for (const match of text.matchAll(
+    /(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+|\brequire\(\s*)['"]([^'"]+)['"]/g,
+  )) {
+    const specifier = match[1];
+    if (specifier.startsWith('.')) {
+      const base = join(dirname(join(repoRoot, file)), specifier);
+      const target = [
+        base,
+        `${base}.ts`,
+        `${base}.tsx`,
+        `${base}.mjs`,
+        `${base}.js`,
+        `${base}.json`,
+        join(base, 'index.ts'),
+        join(base, 'index.tsx'),
+        join(base, 'index.mjs'),
+      ].find(
+        (candidate) => existsSync(candidate) && statSync(candidate).isFile(),
+      );
+      if (target) files.push(relative(repoRoot, target).split('\\').join('/'));
+      continue;
+    }
+    const name = specifier.split('/').slice(0, 2).join('/');
+    const dir = WORKSPACE_PACKAGES.get(name);
+    if (dir) packages.push(dir);
+  }
+  return { files, packages };
+}
+
+function walkImports(
+  seedFiles: string[],
+  seedPackages: string[],
+  followPackages: boolean,
+) {
+  const files = new Set<string>();
+  const packageDirs = new Set<string>();
+  const pending = [...seedFiles];
+  const addPackage = (dir: string) => {
+    if (packageDirs.has(dir)) return;
+    packageDirs.add(dir);
+    if (followPackages)
+      pending.push(
+        ...trackedFiles([dir]).filter(
+          (path) => NON_TEST_SOURCE.test(path) && !TEST_SOURCE.test(path),
+        ),
+      );
+  };
+  for (const dir of seedPackages) addPackage(dir);
+  while (pending.length) {
+    const file = pending.pop() as string;
+    if (files.has(file)) continue;
+    files.add(file);
+    if (!NON_TEST_SOURCE.test(file)) continue;
+    const edges = importEdges(file);
+    pending.push(...edges.files);
+    for (const dir of edges.packages) addPackage(dir);
+  }
+  return { files: [...files].sort(), packageDirs: [...packageDirs].sort() };
+}
+
+function uiBundleImportClosure() {
+  const seeds = trackedFiles(['src-ui']).filter(
+    (path) => NON_TEST_SOURCE.test(path) && !TEST_SOURCE.test(path),
+  );
+  // vite.config.ts aliases point UI specifiers straight at package sources.
+  const aliased = [
+    ...readFileSync(join(repoRoot, 'vite.config.ts'), 'utf8').matchAll(
+      /['"](packages\/[^/'"]+)\//g,
+    ),
+  ].map((match) => match[1]);
+  const result = walkImports(seeds, aliased, true);
+  return {
+    files: result.files.filter((file) => !file.startsWith('src-ui/')),
+    packageDirs: result.packageDirs,
+  };
+}
+
+function iosJobExecutionClosure() {
+  const workflow = parse(
+    readFileSync(join(repoRoot, '.github/workflows/build-ios.yml'), 'utf8'),
+  ) as {
+    jobs: Record<
+      string,
+      {
+        steps: Array<{
+          if?: string;
+          run?: string;
+          'working-directory'?: string;
+        }>;
+      }
+    >;
+  };
+  const entries = new Set<string>();
+  const packageDirs = new Set<string>();
+  const expanded = new Set<string>();
+  const expand = (command: string, cwd: string) => {
+    for (const match of command.matchAll(
+      /\bnpm run (?:--workspace=(\S+) )?([\w:.-]+)/g,
+    )) {
+      const dir = match[1] ? join(repoRoot, match[1]) : cwd;
+      const key = `${dir}#${match[2]}`;
+      if (expanded.has(key)) continue;
+      expanded.add(key);
+      const script = (
+        JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
+          scripts?: Record<string, string>;
+        }
+      ).scripts?.[match[2]];
+      if (!script) throw new Error(`npm script ${match[2]} missing in ${dir}`);
+      if (dir !== repoRoot) packageDirs.add(relative(repoRoot, dir));
+      expand(script, dir);
+    }
+    for (const match of command.matchAll(/\bnode (\S+\.(?:mjs|js|ts))\b/g))
+      entries.add(
+        relative(repoRoot, join(cwd, match[1])).split('\\').join('/'),
+      );
+    if (/\bvite build\b/.test(command)) entries.add('vite.config.ts');
+    if (/\bnpx tauri\b/.test(command)) {
+      entries.add('src-desktop/tauri.conf.json');
+      const tauri = JSON.parse(
+        readFileSync(join(repoRoot, 'src-desktop/tauri.conf.json'), 'utf8'),
+      ) as { build: { beforeBuildCommand: string } };
+      expand(tauri.build.beforeBuildCommand, repoRoot);
+    }
+  };
+  for (const step of workflow.jobs['build-ios-verification'].steps) {
+    if (
+      !step.run ||
+      String(step.if ?? '').startsWith(
+        "github.event_name == 'workflow_dispatch'",
+      )
+    )
+      continue;
+    expand(
+      step.run,
+      step['working-directory']
+        ? join(repoRoot, step['working-directory'])
+        : repoRoot,
+    );
+  }
+  // Package imports are recorded, not followed: a workspace package's own
+  // sources are the UI-import closure's business.
+  const result = walkImports([...entries], [...packageDirs], false);
+  return result;
+}
 
 describe('package test exemptions match what the package builds exclude', () => {
   // S5's packages/ exemption is only safe for paths the tsc builds in

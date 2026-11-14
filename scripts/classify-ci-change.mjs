@@ -43,17 +43,18 @@ const DEPENDENCY_FILES = new Set([
  * iOS has two answers, because the macOS build (build-ios.yml, ~25 minutes on
  * a 5-slot pool) is the long pole of every merge-queue candidate.
  *
- * NATIVE (`--scope ios`, pull_request_target and merge_group): inputs whose
- * break is specific to the native app, so no Linux lane would see it first.
+ * NATIVE (`--scope ios`, pull_request_target and merge_group) builds before
+ * landing. It is the inputs whose break is specific to the native app:
  * - this workflow, its classifier, and the runtime smoke with its fixtures;
  * - src-desktop/ (the Tauri crate, iOS project and configs), the Cargo
  *   manifests/lockfiles/toolchain files and `.cargo/` config anywhere, and
  *   patches/ (npm patches and the keyring crate's path dependency);
  * - the dependency/toolchain manifests that pin the Tauri CLI and plugins
- *   (package.json, pnpm-lock.yaml, pnpm-workspace.yaml, .nvmrc);
- * - the native-client build inputs the job runs itself: vite.config.ts (its
- *   `--mode native` branch), the native/iOS build-manifest writers, the
- *   launch-screen stager and the channel-icon verifier;
+ *   (package.json, pnpm-lock.yaml, pnpm-workspace.yaml, .npmrc, .nvmrc);
+ * - of what the job executes, vite.config.ts (its `--mode native` branch)
+ *   and every file whose name says it is for iOS or the native client
+ *   (`ios`, `native`): the manifest writers, launch-screen stager and
+ *   channel-icon verifier;
  * - the slice of src-ui that IS the native shell: src-ui/src/platform/ (the
  *   Tauri bridges, native relay, `pluginBundleCapability.js` that lib.rs
  *   `include_str!`s), src-ui/public/ (lib.rs `include_bytes!`s the channel
@@ -61,13 +62,23 @@ const DEPENDENCY_FILES = new Set([
  *   every WKWebView launch runs first: index.html, main.tsx, boot.ts,
  *   build-info.ts and the src-ui tsconfig.
  *
- * BROAD adds the rest of src-ui/ and the packages the bundle compiles
- * (connect, contracts, sdk). They are product code that every Linux lane
- * already builds, typechecks and drives in Chromium; what only the macOS
- * build adds for them is "the same bundle still leaves startup in WKWebView",
- * which breaks rarely and lands no worse than a red main. So a change touching
- * only BROAD-minus-NATIVE paths is built after landing, by the coalesced main
- * push run (`--scope ios-post-merge`), not before. That is a real trade: a
+ * POST-MERGE (`--scope ios-post-merge`, a main push) builds everything else
+ * that can reach the app or change how it is built:
+ * - every source root the UI bundle can import: src-ui/, src-shared/, and
+ *   each workspace package it imports, directly or through another one;
+ * - the generic tooling the job executes (dependency install, bundle budget,
+ *   vite plugins, shared script libraries). Every Linux lane runs these on
+ *   each PR, so a break shows there first; what only iOS adds is the native
+ *   flag they are called with (e.g. `uiAssetDelivery({ precompress: false })`).
+ * classify-ci-change.test.ts derives both lists from the job's run steps
+ * (through npm scripts and the static import graph) and from the UI's
+ * imports, so a newly reached file fails the test until it is classified.
+ * Too broad here only costs a coalesced build on main; too narrow is a break
+ * no iOS build ever sees.
+ *
+ * Product code every Linux lane already builds, typechecks and drives in
+ * Chromium breaks iOS rarely ("the same bundle still leaves startup in
+ * WKWebView"), and lands no worse than a red main. That is a real trade: a
  * WKWebView-only regression in, say, the pairing screens the smoke drives is
  * caught on main (tracked by main-health.yml) instead of on the PR, and until
  * it is fixed it also fails the next native candidate's merge-group build.
@@ -80,10 +91,10 @@ const IOS_NATIVE_FILES = new Set([
   'package.json',
   'pnpm-lock.yaml',
   'pnpm-workspace.yaml',
+  '.npmrc',
   '.nvmrc',
   'vite.config.ts',
   'scripts/write-native-client-build-manifest.mjs',
-  'scripts/lib/desktop-build-manifest.mjs',
   'scripts/write-ios-build-manifest.mjs',
   'scripts/lib/ios-launch-screen.mjs',
   'scripts/ios-channel-icons.mjs',
@@ -100,12 +111,41 @@ const IOS_NATIVE_PREFIXES = Object.freeze([
   'src-ui/src/platform/',
   'src-ui/public/',
 ]);
-/** What only the post-merge build covers (see above). */
+/** Source roots the UI bundle can import (see above). */
 const IOS_POST_MERGE_PREFIXES = Object.freeze([
   'src-ui/',
+  'src-shared/',
+  'packages/basis-pane/',
+  'packages/board-pane/',
   'packages/connect/',
   'packages/contracts/',
   'packages/sdk/',
+  'packages/shared/',
+]);
+/** Generic tooling the iOS job executes (see above). */
+const IOS_POST_MERGE_FILES = new Set([
+  'packages/cli/src/commands/ui-proxy-prefixes.ts',
+  'scripts/dependency-lifecycle.mjs',
+  'scripts/lib/bounded-capture.mjs',
+  'scripts/lib/dependency-install-retirement.mjs',
+  'scripts/lib/dependency-lifecycle-policy.mjs',
+  'scripts/lib/desktop-build-manifest.mjs',
+  'scripts/lib/git-environment.mjs',
+  'scripts/lib/live-service-verification.mjs',
+  'scripts/lib/module-entry.mjs',
+  'scripts/lib/npm-cli.mjs',
+  'scripts/lib/package-dist-freshness.mjs',
+  'scripts/lib/pnpm-lockfile.mjs',
+  'scripts/lib/posix-path.mjs',
+  'scripts/lib/workspace-dependency-satisfaction.mjs',
+  'scripts/ui-bundle-budget.mjs',
+  'scripts/ui-bundle-budget.json',
+  'scripts/vite-managed-host.ts',
+  'scripts/vite-offline-shell.ts',
+  'scripts/vite-third-party-licenses.ts',
+  'scripts/vite-ui-assets.ts',
+  'scripts/workspace-dependency-provenance.mjs',
+  'scripts/write-dist-stamp.mjs',
 ]);
 
 /**
@@ -362,9 +402,10 @@ export function changedPathsForGitRange({
  * The two roots are exempt for different reasons, and each is only as wide as
  * its reason:
  *
- * - src-ui/ reaches the app through `vite build`, which follows imports from
- *   the entry, and no non-test module imports a test file. So `__tests__/`
- *   directories and `*.test`/`*.spec` TypeScript names anywhere under it.
+ * - src-ui/ and src-shared/ reach the app through `vite build`, which follows
+ *   imports from the entry, and no non-test module imports a test file. So
+ *   `__tests__/` directories and `*.test`/`*.spec` TypeScript names anywhere
+ *   under them.
  * - packages/ reaches it through `build:native-client`'s `build:sdk` and
  *   `build:connect`, which run `tsc` over every file under `src/` minus each
  *   tsconfig's `exclude`. Those exclude only the top-level `src/__tests__`,
@@ -376,7 +417,7 @@ export function changedPathsForGitRange({
  * smoke test. Test helpers named anything else still count.
  */
 const SRC_UI_TEST_ONLY_SOURCE =
-  /^src-ui\/(?:.*\/)?(?:__tests__\/|[^/]+\.(test|spec)\.tsx?$)/;
+  /^src-(?:ui|shared)\/(?:.*\/)?(?:__tests__\/|[^/]+\.(test|spec)\.m?tsx?$)/;
 const PACKAGE_EXCLUDED_TESTS = /^packages\/[^/]+\/src\/__tests__\//;
 
 function isIosTestOnlyPath(path) {
@@ -394,7 +435,7 @@ function isIosNativeInput(path) {
 }
 
 function isIosBroadInput(path) {
-  if (isIosNativeInput(path)) return true;
+  if (isIosNativeInput(path) || IOS_POST_MERGE_FILES.has(path)) return true;
   return (
     IOS_POST_MERGE_PREFIXES.some((prefix) => path.startsWith(prefix)) &&
     !isIosTestOnlyPath(path)

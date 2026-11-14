@@ -82,22 +82,28 @@ const HEAVY_PR_LANE_GUARD =
 
 /**
  * Evaluates a job-level `if:` made of `github.*` and `needs.*` properties,
- * string and boolean literals, `always()`, !, ==, !=, && and ||. Anything
- * else is refused. `always()` is true: these cases model completed needs.
+ * string and boolean literals, `always()`, `cancelled()`, !, ==, !=, && and
+ * ||. Anything else is refused. `always()` is true; `cancelled()` is the
+ * context's `cancelled` flag (false unless a scenario cancels the run).
  */
 function evaluateJobIf(
   expression: string,
-  context: { github: Record<string, unknown>; needs?: Record<string, unknown> },
+  context: {
+    github: Record<string, unknown>;
+    needs?: Record<string, unknown>;
+    cancelled?: boolean;
+  },
 ) {
   const body = expression.trim().replace(/^\$\{\{([\s\S]*)\}\}$/, '$1');
   const stripped = body
     .replace(/'[^']*'/g, '')
     .replace(/(?:github|needs)(?:\.[A-Za-z_]+)+/g, '')
-    .replace(/\balways\(\)|\btrue\b|\bfalse\b/g, '')
+    .replace(/\b(?:always|cancelled)\(\)|\btrue\b|\bfalse\b/g, '')
     .replace(/==|!=|&&|\|\||[()!\s]/g, '');
   if (stripped) throw new Error(`unsupported expression syntax: ${stripped}`);
   const js = body
     .replace(/\balways\(\)/g, 'true')
+    .replace(/\bcancelled\(\)/g, String(Boolean(context.cancelled)))
     .replace(
       /\b(github|needs)((?:\.[A-Za-z_]+)+)/g,
       (_m, root: string, path: string) =>
@@ -1605,7 +1611,7 @@ describe('CI verification workflow contracts', () => {
     const job = pr.jobs['gallery-diff'];
     expect(job.needs).toBe('classify');
     expect(job.if).toBe(
-      `always() && github.event_name == 'pull_request_target' && (${HEAVY_PR_LANE_GUARD}) && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')`,
+      `!cancelled() && github.event_name == 'pull_request_target' && (${HEAVY_PR_LANE_GUARD}) && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')`,
     );
     const classificationGuard = job.steps[0];
     expect(classificationGuard.env).toEqual({
@@ -3373,7 +3379,7 @@ describe('iOS verification proves packaged runtime readiness', () => {
         'build-ios-verification'
       ].if,
     ).toBe(
-      `needs.classify.outputs.relevant == 'true' && (${HEAVY_PR_LANE_GUARD})`,
+      `!cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.relevant == 'true') && (${HEAVY_PR_LANE_GUARD})`,
     );
     expect(ios).toContain('runs-on: macos-26');
     expect(ios).toContain('/Applications/Xcode_26.6.app/Contents/Developer');
@@ -4337,7 +4343,7 @@ describe('heavy platform lanes wait for ready-for-review on PR events', () => {
     {
       file: 'build-ios.yml',
       job: 'build-ios-verification',
-      condition: `needs.classify.outputs.relevant == 'true' && (${HEAVY_PR_LANE_GUARD})`,
+      condition: `!cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.relevant == 'true') && (${HEAVY_PR_LANE_GUARD})`,
       mergeGroupRuns: true,
     },
     {
@@ -4349,7 +4355,7 @@ describe('heavy platform lanes wait for ready-for-review on PR events', () => {
     {
       file: 'gallery-pr-check.yml',
       job: 'gallery-diff',
-      condition: `always() && github.event_name == 'pull_request_target' && (${HEAVY_PR_LANE_GUARD}) && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')`,
+      condition: `!cancelled() && github.event_name == 'pull_request_target' && (${HEAVY_PR_LANE_GUARD}) && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')`,
       // Gallery is not a required context, so a merge-group capture could
       // never stop a landing; Nightly: Gallery covers main after landing.
       mergeGroupRuns: false,
@@ -4460,6 +4466,56 @@ describe('heavy platform lanes wait for ready-for-review on PR events', () => {
       ).toBe(false);
     }
   });
+
+  // A classify JOB that failed (checkout or runner failure, which the step's
+  // own fail_closed cannot answer) must build, never leave the required check
+  // skipped; a cancelled run must not start a build at all.
+  it.each(lanes.filter(({ file }) => file !== 'windows-pr-verification.yml'))(
+    '$file builds $job when classification is unknown, and never in a cancelled run',
+    (lane) => {
+      const condition = String(
+        (load(workflow(lane.file)) as Doc).jobs[lane.job].if,
+      );
+      const scenarios = [
+        pullRequest({ action: 'ready_for_review' }),
+        { event_name: 'merge_group', repository, event: { merge_group: {} } },
+        { event_name: 'push', repository, event: {} },
+      ]
+        .filter(
+          (github) =>
+            lane.mergeGroupRuns || github.event_name !== 'merge_group',
+        )
+        .filter(
+          (github) =>
+            lane.file === 'build-ios.yml' || github.event_name !== 'push',
+        );
+      for (const github of scenarios)
+        for (const result of ['failure', 'cancelled', 'skipped'])
+          expect(
+            evaluateJobIf(condition, {
+              github,
+              needs: { classify: { result, outputs: {} } },
+            }),
+            `${lane.file} ${github.event_name} classify ${result}`,
+          ).toBe(true);
+      // Drafts still skip on PR events whatever the classifier did.
+      expect(
+        evaluateJobIf(condition, {
+          github: pullRequest({ draft: true }),
+          needs: { classify: { result: 'failure', outputs: {} } },
+        }),
+      ).toBe(false);
+      // A cancelled run (a superseded head, a dropped candidate) starts
+      // nothing, even with a relevant answer.
+      expect(
+        evaluateJobIf(condition, {
+          github: pullRequest({ action: 'ready_for_review' }),
+          needs: relevantNeeds,
+          cancelled: true,
+        }),
+      ).toBe(false);
+    },
+  );
 
   it('coalesces post-merge iOS builds without cancelling a running one', () => {
     const ios = load(workflow('build-ios.yml')) as Doc;

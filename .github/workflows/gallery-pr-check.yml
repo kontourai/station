@@ -170,7 +170,9 @@ jobs:
     # The draft and release-PR guard is identical in build-ios.yml and
     # windows-pr-verification.yml (scripts/__tests__/ci-workflow-contract.test.ts).
     # pull_request_target only: see the header for why merge groups skip it.
-    if: always() && github.event_name == 'pull_request_target' && (github.event_name != 'pull_request_target' || (!github.event.pull_request.draft && (github.event.pull_request.head.ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login != 'station-automation[bot]'))) && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')
+    # `!cancelled()`, not `always()`: a failed classifier still captures, but a
+    # cancelled (superseded) run does not start one.
+    if: "!cancelled() && github.event_name == 'pull_request_target' && (github.event_name != 'pull_request_target' || (!github.event.pull_request.draft && (github.event.pull_request.head.ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login != 'station-automation[bot]'))) && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')"
     runs-on: ubuntu-22.04
     container:
       image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:9beb546099e11f52d62e505537914870e01a67e0e6b00ae41da4775324e73dbe
