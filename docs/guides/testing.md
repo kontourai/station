@@ -254,6 +254,17 @@ The [manual workflow](../../.github/workflows/server-scenario.yml) runs this
 scenario on a hosted Linux worker and uploads receipts/logs for 30 days.
 It has only `workflow_dispatch`, no schedule and no merge-blocking latency gate.
 
+### Idle weight and request overhead
+
+`npm run perf:station-weight` is the per-PR check for Station's weight at rest
+and the text and tools it adds to the Claude engine's first request. It runs
+the real launcher against a loopback model stub, so it costs no model spend.
+It compares with a committed baseline and fails on growth past headroom or on
+any budget it could not compare; `--report-only` serves hosts without a
+baseline. Its end-to-end test is process-heavy, so the full-regression
+workflow runs it on Linux. The [reference](../reference/station-weight.md)
+owns its metrics, budgets, baseline recording and gaps.
+
 ### Mutation safety and interpretation
 
 `test:mutation:smoke` runs curated source and fixture defects covering rendering, scope and engine identity, repeated reads, storage migration, indexed-event selection, API-base publication, readiness-fixture premises. The readiness cases prove that missing or mismatched decoys fail the fixture premise instead of passing while testing nothing. Select one with `--case=<id>`. The runner registry owns the case inventory; new cases must name the mutation and exact failing assertion. Budget three runs of the target file per case: baseline, injected, and restored.

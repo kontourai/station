@@ -1299,7 +1299,34 @@ describe('chat items borrow the session turn fold (#1074 review finding)', () =>
     expect(item.lifecycleLabel).toBe('Running');
   });
 
-  test('an errored chat reads Failed and outranks a correlated Running session', () => {
+  test('an errored chat reads Failed while the server reports no live work', () => {
+    const [item] = buildHomeWorkItems({
+      chats: {
+        local: {
+          conversationId: 'failed-chat-thread',
+          title: 'Failed chat',
+          status: 'error',
+          messages: [{ timestamp: 20 }],
+        },
+      } as any,
+      agents: [],
+      sessions: [
+        {
+          ...attachedSession,
+          threadId: 'failed-chat-thread',
+          hasActiveTurn: false,
+        },
+      ] as any,
+    });
+
+    expect(item.lifecycleLabel).toBe('Failed');
+  });
+
+  // A server drain replaced the conversation's session mid-turn. This chat
+  // kept the error from the drained session, but the conversation's current
+  // session is running a turn: the row and the header that reads it follow
+  // the current session, as the server's own label does.
+  test('an earlier local failure does not outrank a correlated session running a turn', () => {
     const [item] = buildHomeWorkItems({
       chats: {
         local: {
@@ -1319,7 +1346,83 @@ describe('chat items borrow the session turn fold (#1074 review finding)', () =>
       ] as any,
     });
 
-    expect(item.lifecycleLabel).toBe('Failed');
+    expect(item.lifecycleLabel).toBe('Running');
+  });
+
+  test('earlier session failed, current session runs background work: the row reads Running, not Failed', () => {
+    const conversationId = 'claude:drained';
+    const drained = `${conversationId}:session:old`;
+    const current = `${conversationId}:session:new`;
+    const conversationActivity = {
+      conversationId,
+      currentThreadId: current,
+      asOfSequence: 40,
+      // The turn ended; two backgrounded subagents keep working.
+      runningChildWork: { count: 2, producers: ['engine-subagent'] },
+    };
+    const sessions = [
+      {
+        ...attachedSession,
+        provider: 'claude',
+        threadId: drained,
+        conversationId,
+        status: 'dead',
+        lifecycleState: 'failed',
+        hasActiveTurn: false,
+        updatedAt: '2026-11-12T22:05:26Z',
+        conversationActivity,
+      },
+      {
+        ...attachedSession,
+        provider: 'claude',
+        threadId: current,
+        conversationId,
+        lifecycleState: 'idle',
+        hasActiveTurn: false,
+        updatedAt: '2026-11-12T22:44:00Z',
+        conversationActivity,
+      },
+    ];
+    const chat = {
+      conversationId,
+      currentSessionId: current,
+      title: 'Get it all merged',
+      agentSlug: 'claude',
+      // The drained session's failure, still held by this tab.
+      status: 'error',
+      orchestrationStatus: 'failed',
+      messages: [{ timestamp: 20 }],
+    };
+    const build = (chatState: object) =>
+      buildHomeWorkItems({
+        chats: { [conversationId]: chatState } as any,
+        agents: [],
+        sessions: sessions as any,
+      });
+
+    const [item] = build(chat);
+    expect(item.lifecycleLabel).toBe('Running');
+    expect(item.failureNotice).toBeUndefined();
+
+    // Same chat with the server's record in hand (the dock's copy).
+    const [withRecord] = build({ ...chat, conversationActivity });
+    expect(withRecord.lifecycleLabel).toBe('Running');
+
+    // Control: once that background work ends, the local failure stands.
+    const settled = sessions.map((session) => ({
+      ...session,
+      conversationActivity: {
+        conversationId,
+        currentThreadId: current,
+        asOfSequence: 41,
+      },
+    }));
+    const [afterWork] = buildHomeWorkItems({
+      chats: { [conversationId]: chat } as any,
+      agents: [],
+      sessions: settled as any,
+    });
+    expect(afterWork.lifecycleLabel).toBe('Failed');
   });
 
   test('a chat with no correlated session keeps its own signal', () => {

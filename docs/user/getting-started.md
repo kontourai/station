@@ -1350,7 +1350,10 @@ conversation with that error already attached:
 The assistant receives the page you were on (without anything after `?` or
 `#`), the error's code and first line with known credential shapes, links and
 file paths removed, and for a reply, the conversation and turn ids. It never
-receives a stack trace.
+receives a stack trace. Troubleshooting runs on the Station you are connected
+to; when the conversation isn't stored there, for example one that ran on a
+paired Station, the assistant is told so and asks which Station ran it, since
+this Station's logs and diagnostics don't cover it.
 
 1. Describe what went wrong in your own words and choose **Start
    troubleshooting**. You can paste or drop screenshots into the chat.

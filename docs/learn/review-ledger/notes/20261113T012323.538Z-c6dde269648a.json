@@ -1,0 +1,7 @@
+{
+  "revision": "91978da65ff851fbdfa759fc83049406b733445c",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Revised the bridge paragraph and emitter table: one start per open call id; the end row carries input that changed after the start row and reuses the start row's name unless the start carried only the call id. Checked against orchestration-monitoring-bridge.ts, emitter.ts, insights.ts start/end bucketing, a real-supervisor bridge test with fault injection, and the reviewer probe run against this tree.","inputs":["docs/guides/monitoring.md","src-server/monitoring/emitter.ts","src-server/services/orchestration/orchestration-monitoring-bridge.ts"]}
+  ]
+}

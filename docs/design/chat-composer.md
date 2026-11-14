@@ -662,6 +662,16 @@ own tool row or inside an activity summary. A Claude background shell command
 (`local_bash`, including one a Monitor launched) is child work of kind
 `command`/`monitor`, not a subagent: its card shows a terminal mark, the
 command line and its exit code, with no model, instructions or transcript.
+After the turn ends, the banner that says background work continues lists
+each running task the loaded transcript does not already draw as a card, with
+the same activity line the Background tasks sheet and Agents pane show (latest
+tool, progress, elapsed time), ticking live. A carded task appears once, as
+its card, which carries its own activity and elapsed time; with every running
+task carded, no list renders.
+A chat that recorded a local failure (a send refused during a restart, an
+earlier session's error) still reads Running in the inbox and header while the
+server reports the conversation's current execution running a turn or
+background work.
 Adjacent tool calls and visible reasoning share an activity summary on every
 screen size, live and settled. A brain glyph marks reasoning and mixed groups;
 the summary counts reasoning steps separately from tools. Opening the group
