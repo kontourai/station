@@ -109,8 +109,8 @@ export async function mockRuntimeConversation(
     }),
   );
   // This execution's latest-turn activity read (`useOrchestrationSession
-  // ActivityQuery`): since #4864 and #4873 a Session row on Home or in
-  // Activity reads its plan progress from it, so any page listing this
+  // ActivityQuery`): since #4864 and #4873 a Session row on Home reads its
+  // plan progress from it, so any page listing this
   // session makes it. Only that exact read is modelled here; any other
   // session-keyed window falls back to a route the spec itself declared, or
   // to the fixture audit.
