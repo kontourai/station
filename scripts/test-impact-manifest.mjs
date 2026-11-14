@@ -685,6 +685,12 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
     // ci:fast static list are asserted by text.
     ['package.json', 'scripts/__tests__/basis-mcp-apps.test.ts'],
     ['scripts/run-ci-fast.mjs', 'scripts/__tests__/basis-mcp-apps.test.ts'],
+    // Copies the gate into fixture repositories and runs it as a child
+    // process, so a change to its diff range is judged on the same PR.
+    [
+      'scripts/diff-whitespace-gate.mjs',
+      'scripts/__tests__/run-ci-fast.test.ts',
+    ],
     // Its SHELL_FILES, scanned for hand-rolled chrome alert markup.
     [
       'src-ui/src/App.tsx',

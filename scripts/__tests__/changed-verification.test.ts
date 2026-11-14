@@ -234,7 +234,7 @@ describe('changed verification selection', () => {
     );
     // Pinned by count, independently: the loop below is satisfied by an
     // empty list.
-    expect(UNMODELLED_INPUT_EDGES).toHaveLength(16);
+    expect(UNMODELLED_INPUT_EDGES).toHaveLength(17);
     for (const edge of UNMODELLED_INPUT_EDGES) {
       expect(edge.supplemental, edge.pattern).toBe(true);
       const path = edge.pattern.endsWith('/**')
