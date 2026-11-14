@@ -69,18 +69,27 @@ platform packages were not opened, and none is installed either way.
   person's own CLI would.
 - **Start and resume.** One start runs per thread at a time; a second is
   refused while it runs. A resume needs the binding key recorded at the
-  session's start (`nativeResumeBindingKey` over `COPILOT_HOME`); a cursor
-  without one, or with another home's, is refused. A session whose runtime
+  session's start (`nativeResumeBindingKey` over `COPILOT_HOME`, stamped on
+  `session.started` with the start metadata); a cursor without one, or with
+  another home's, is refused. Restart recovery and a credential retry that
+  keeps its profile hand the recorded key back to the start, for every native
+  engine (`startRecoveredOrchestrationSession`'s `readNativeResumeBindingKey`),
+  so an adapter can refuse a resume under a different engine home, as a live
+  continuation already could. A session whose runtime
   does not report `permissionMode: 'manual'` applied is refused, since a
   resume can restore another mode. On resume, the persisted `user.message`
   events (each carries the `clientTurnId` Station sent) restore the rewind
   points.
 - **Turn ends and runtime death.** A turn ends on the `session.idle` that
-  follows its own `user.message`, or on a root `session.error` for its message
-  (the SDK's own `sendAndWait` matching). A subagent's error does not end it,
-  and a recoverable error (`eligibleForAutoSwitch`) is a warning. When the
-  runtime stops answering `ping()`, the running turn ends aborted, open
-  requests are answered, and the session ends (`session.exited`).
+  follows its own `user.message`, on a root `session.error` for its message,
+  or on a `policy_blocked` `session.warning` for its message (a prompt hook
+  blocked it, so no `user.message` follows), as the SDK's own `sendAndWait`
+  matches them. The message id comes from `send()`, so a signal that arrives
+  before the echo still matches. An interrupted turn the runtime never echoed
+  ends on its aborted idle. A subagent's error does not end a turn, and a
+  recoverable error (`eligibleForAutoSwitch`) is a warning. When `ping()`
+  fails, or goes unanswered for two minutes, the running turn ends aborted,
+  open requests are answered, and the session ends (`session.exited`).
 
 ### How each capability binds
 
@@ -117,7 +126,8 @@ approval mode answers it:
 The mode is derived again on every turn from the turn's own approval mode and
 confinement, and reported in that turn's `turn.started` metadata. A turn that
 revokes full access (Ask, or a confinement other than `host`) asks before its
-next action, and the grants given under the earlier mode are dropped. A steer
+next action, and the grants given under the looser mode are dropped (a looser
+mode keeps them, since it asks a person for less). A steer
 runs under its turn's mode; orchestration refuses a steer across a
 confinement change.
 
@@ -125,10 +135,14 @@ confinement change.
 nearest existing parent, against the working directory's real path. It needs
 the runtime's `resolvedPath` (optional and experimental in the SDK), and a
 write's every `fileEdits` path must be inside too; otherwise a person decides.
-A request managed policy marks (`managedApprovalRequired`, on the request or
-on the derived prompt) always goes to a person, in every mode, and never
-records a session grant. A read granted for the session covers the file's
-real directory.
+A dangling symlink is followed to where it points, since a write through it
+lands there. These are checks at the time Station answers: a link swapped in
+before the runtime acts is not seen, so they narrow what Station approves
+without a person and do not confine the engine. A request managed policy
+marks (`managedApprovalRequired`, on the request or on the derived prompt)
+always goes to a person, in every mode, and never records a session grant. A
+read granted for the session covers the files directly in that file's real
+directory, not its subdirectories.
 
 The Copilot runtime gives Station no process sandbox to confine it with, so
 full access elsewhere applies `auto`, as it does for an ACP engine. The
