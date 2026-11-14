@@ -42,8 +42,6 @@
 
     "src-server/services/orchestration/flow-policy-sidecar.ts",
 
-    "src-server/services/orchestration/orchestration-service.ts",
-
     "src-server/services/orchestration/session-command-module.ts",
 
     "src-server/services/plugins/plugin-install-transaction.ts",

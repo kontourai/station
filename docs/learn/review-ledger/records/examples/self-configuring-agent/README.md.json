@@ -104,8 +104,6 @@
 
     "src-server/services/orchestration/approval-posture.ts",
 
-    "src-server/services/orchestration/orchestration-service.ts",
-
     "src-server/tools/station-control-catalog-tools.ts",
 
     "src-server/tools/station-control-delegation.ts",

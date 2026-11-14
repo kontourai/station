@@ -44,8 +44,6 @@
 
     "src-server/services/orchestration/flow-policy-sidecar.ts",
 
-    "src-server/services/orchestration/orchestration-service.ts",
-
     "src-server/services/orchestration/session-command-module.ts",
 
     "src-server/services/plugins/plugin-install-transaction.ts",
@@ -62,7 +60,9 @@
 
     "docs/guides/testing.md",
 
-    "src-server/services/automation/repair-controller.ts"
+    "src-server/services/automation/repair-controller.ts",
+
+    "src-server/services/scheduling/scheduled-conversation-runs.ts"
   ],
 
   "checks": [
