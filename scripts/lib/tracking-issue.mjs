@@ -1,8 +1,8 @@
 /**
  * One GitHub tracking issue per scheduled sweep (#2923): found by its exact
- * title, created only when something is outstanding, updated while anything
- * is, and closed as completed once nothing is. The sweeps never fail a
- * required check; this issue is how their findings stay visible.
+ * title and its author, created only when something is outstanding, updated
+ * while anything is, and closed as completed once nothing is. The sweeps
+ * never fail a required check; this issue is how their findings stay visible.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSyncBounded } from './bounded-capture.mjs';
@@ -34,6 +34,13 @@ export function postableReport(
   return path;
 }
 
+/**
+ * The login GitHub gives an issue created with a workflow's GITHUB_TOKEN
+ * (checked on #2953, the documentation sweep's tracker). Anyone can open an
+ * issue with a tracker's title, so only an issue this identity wrote counts.
+ */
+export const TRACKING_ISSUE_AUTHOR = 'github-actions[bot]';
+
 export function runGh(args) {
   return execFileSyncBounded('gh', args, {
     encoding: 'utf8',
@@ -52,6 +59,7 @@ export function upsertTrackingIssue({
   title,
   labels,
   outstanding,
+  author = TRACKING_ISSUE_AUTHOR,
   gh = runGh,
 }) {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo ?? ''))
@@ -69,11 +77,15 @@ export function upsertTrackingIssue({
     '-f',
     'per_page=100',
     '--jq',
-    `.items[] | select(.pull_request == null and .title == ${JSON.stringify(title)}) | .number`,
+    `.items[] | select(.pull_request == null and .title == ${JSON.stringify(title)}) | "\\(.number)\\t\\(.user.login)"`,
   ])
     .split('\n')
     .filter(Boolean)
-    .map(Number)
+    .map((line) => line.split('\t'))
+    // A same-titled issue someone else opened is ignored, so the sweep
+    // writes only to an issue it created.
+    .filter(([, login]) => login === author)
+    .map(([number]) => Number(number))
     .sort((a, b) => a - b);
   const existing = numbers[0];
   if (existing === undefined) {

@@ -403,7 +403,9 @@ describe('backlog priority policy', () => {
       const gh = (existing: string) => (args: string[]) => {
         const body = args.find((arg) => arg.startsWith('body=@'));
         if (body) posted.push(readFileSync(body.slice(6), 'utf8'));
-        return args.includes('GET') ? existing : '9';
+        return args.includes('GET')
+          ? existing && `${existing}\tgithub-actions[bot]`
+          : '9';
       };
       const report = buildBacklogReport(
         evaluateBacklogPriorityPolicy([issue(1, [])]),

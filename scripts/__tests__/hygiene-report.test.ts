@@ -855,7 +855,13 @@ describe('tracking issue upsert', () => {
     const calls: string[][] = [];
     const gh = (output: string) => (args: string[]) => {
       calls.push(args);
-      return args.includes('search/issues') ? output : '7';
+      return args.includes('search/issues')
+        ? output
+            .split('\n')
+            .filter(Boolean)
+            .map((number) => `${number}\tgithub-actions[bot]`)
+            .join('\n')
+        : '7';
     };
     const base = {
       repo: 'owner/repo',
@@ -876,5 +882,51 @@ describe('tracking issue upsert', () => {
     expect(() =>
       upsertTrackingIssue({ ...base, repo: 'bad', outstanding: 1, gh: gh('') }),
     ).toThrow('--repo must be owner/name');
+  });
+});
+
+// Every sweep's tracker goes through these: tracking-issue.mjs owns them.
+describe('tracking issue ownership', () => {
+  const searching = (lines: string[]) => {
+    const calls: string[][] = [];
+    const gh = (args: string[]) => {
+      calls.push(args);
+      return args.includes('search/issues') ? lines.join('\n') : '11';
+    };
+    return { gh, calls };
+  };
+  const base = () => {
+    const reportPath = join(makeTemp('tracking-owner-'), 'r.md');
+    writeFileSync(reportPath, 'body');
+    return {
+      repo: 'owner/repo',
+      reportPath,
+      title: HYGIENE_ISSUE_TITLE,
+      labels: ['P2'],
+      outstanding: 1,
+    };
+  };
+
+  // Anyone can open an issue with a tracker's exact title, lower-numbered
+  // than ours; it must never be the one the write token edits.
+  it('ignores a same-titled issue someone else opened and creates its own', () => {
+    const { gh, calls } = searching(['3\tsomeone']);
+    expect(upsertTrackingIssue({ ...base(), gh })).toEqual({
+      action: 'created',
+      number: 11,
+    });
+    expect(calls.at(-1)).toEqual(expect.arrayContaining(['POST']));
+    expect(calls.flat().join(' ')).not.toContain('issues/3');
+  });
+
+  it('updates the issue the workflow bot opened, even past a foreign one', () => {
+    const { gh, calls } = searching(['3\tsomeone', '8\tgithub-actions[bot]']);
+    expect(upsertTrackingIssue({ ...base(), gh })).toEqual({
+      action: 'updated',
+      number: 8,
+    });
+    expect(calls.at(-1)).toEqual(
+      expect.arrayContaining(['PATCH', 'repos/owner/repo/issues/8']),
+    );
   });
 });

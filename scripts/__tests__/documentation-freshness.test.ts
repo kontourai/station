@@ -1743,7 +1743,14 @@ describe('Nightly freshness sweep (#2923)', () => {
     const calls: string[][] = [];
     const gh = (existing: string) => (args: string[]) => {
       calls.push(args);
-      return args.includes('GET') ? existing : '7';
+      // The search answers `number<TAB>author` per same-titled issue.
+      return args.includes('GET')
+        ? existing
+            .split('\n')
+            .filter(Boolean)
+            .map((number) => `${number}\tgithub-actions[bot]`)
+            .join('\n')
+        : '7';
     };
     writeFileSync(reportPath, report(2).body);
     expect(
