@@ -309,6 +309,24 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
     process.execPath,
     Object.freeze(['scripts/agent-runtime-import-boundary-gate.mjs']),
   ]),
+  // verify:static members that otherwise ran only in full qualification
+  // (main, release, Nightly), so a pull request could not observe them. The
+  // generated Conduit conformance artifact is derived from lockfile versions:
+  // a dependency bump that left it stale kept main qualification red for
+  // about six days in 2026-11. The rest are source reads with no build or
+  // network. Measured alone on a dev host at load ~29: conformance 3s,
+  // knowledge-kit import 3s, test-import existence 6s, the other three
+  // under 1s each. The static reserve above is deliberately not raised; see
+  // its comment for why a reserve does not buy time.
+  Object.freeze(['npm', Object.freeze(['run', 'conduit:conformance:check'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'examples:conformance'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'product-version:check'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'knowledge-kit-import:gate'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'builder-delivery-viewer-import:gate']),
+  ]),
+  Object.freeze(['npm', Object.freeze(['run', 'gate:test-import-existence'])]),
 ]);
 
 export function fastBase(env = process.env) {

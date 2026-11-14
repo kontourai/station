@@ -459,6 +459,8 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
       'scripts/__tests__/issue-lifecycle-workflow.test.ts',
       'scripts/__tests__/nightly-build-identity.test.ts',
       'scripts/__tests__/node-runtime-contract.test.ts',
+      // Lists the workflows to find every full-regression.yml caller.
+      'scripts/__tests__/promotion-full-regression-workflow.test.ts',
       'scripts/__tests__/publish-oidc-exchange-status.test.ts',
       'scripts/__tests__/release-cargo-producer.test.ts',
       'scripts/__tests__/release-ring-workflow.test.ts',
@@ -655,6 +657,27 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
       reason:
         'settings registry artifact is generated from this input outside ' +
         'the import graph (#2176)',
+    }),
+  ),
+  // ci-fast-conformance.test.ts runs the Conduit conformance generator in a
+  // fixture root through the fast lane. It names the generator only through
+  // the package script, so these are its inputs: the generator and its
+  // lockfile reader, the one adapter it loads, the lockfile versions it
+  // renders, and the checked-in artifacts it compares.
+  ...[
+    'scripts/generate-runtime-conformance.mjs',
+    'scripts/lib/pnpm-lockfile.mjs',
+    'src-server/runtime/frameworks/conduit-framework-adapter.ts',
+    'docs/conformance/**',
+    'pnpm-lock.yaml',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze(['scripts/__tests__/ci-fast-conformance.test.ts']),
+      reason:
+        'the fast-lane conformance check reads this input through a child ' +
+        'process the import graph cannot see',
     }),
   ),
   // The color-theme artifacts are read by path: the drift test regenerates

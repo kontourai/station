@@ -198,6 +198,12 @@ not full release qualification and does not replace Beta/stable receipts.
 [Main: Qualification](../../.github/workflows/main-qualification.yml) runs at
 each main push, minute 17 every six UTC hours, or by manual dispatch. It tests
 one exact workflow-event SHA from `main`, independently of platform publishing.
+A push that changes only `docs/reference/deploy-ledger.json` and `.md` (the
+release bot's ledger commits) starts no run, so it cannot displace a pending
+source run; that commit stays unqualified until a scheduled or manual run
+tests it. Tests read the ledger, so a pass on its parent is never reused for
+it; only a recent test failure on the parent can stop a scheduled re-run (see
+below).
 Push runs qualify source only; scheduled/manual success also runs delivery
 validation. Coalesced pending revisions remain unqualified. Matrices do not cancel siblings
 on failure, and the phase driver continues through failed phases. A prerequisite
@@ -211,7 +217,8 @@ The [evidence resolver](../../scripts/qualification-evidence.mjs) can reuse a
 successful run for the same exact source from an admitted main, release or
 manual `PR: CI` workflow, within 24 hours. Historical Nightly runs that actually
 completed full qualification remain eligible; the new usability gate is not.
-It requires all eleven canonical source jobs to have completed successfully in
+It requires all twelve canonical source jobs (including three process-heavy
+slices) to have completed successfully in
 the current run attempt, bound to the same source, plus an unexpired receipt
 artifact and a final run/attempt identity check. Trusted main and historical
 Nightly parents may still be queued, pending, waiting or running optional
@@ -224,8 +231,17 @@ evidence runs fresh qualification. A newer failed qualification invalidates
 prior green evidence for that source. An API lookup failure also runs fresh;
 it cannot admit publication.
 
-Quiet intervals therefore avoid rerunning successful unchanged source. Failed
-source is revisited on the next interval, with all available failure logs kept.
+Quiet intervals therefore avoid rerunning successful unchanged source. A
+scheduled run also declines to repeat the corpus on a source whose newest
+executed main qualification failed in a test step within 24 hours, looking
+through first-parent ancestors that differ from it only in the deploy ledger
+(up to 30 commits) when the source itself has no executed run: its gate
+fails with `Not re-run: run <id> already failed tests on this exact source`, so
+the source stays unqualified and the earlier run keeps the failure logs. The
+scheduled run executes the corpus when main has moved, when that run was
+cancelled, timed out or incomplete, when a job failed outside its test step
+(checkout, install, browser download or prerequisites), and once the 24 hours
+pass. Pushes and manual dispatches always execute. A lookup failure runs fresh.
 Dispatch a fresh diagnostic when investigating environment changes or confirming
 a repair; a receipt is bounded source/environment evidence, not physical-device
 or provider publication proof:
@@ -283,7 +299,10 @@ command above; failed-source repair stays in its existing bounded episode.
 
 `STATION_QUALIFICATION_RUNNER_PROFILE` selects `free` (default), `expanded` or `custom`.
 Free runs at most two ordinary and one process-heavy corpus jobs concurrently;
-Expanded runs four and two. Every matrix leg and canonical phase remains.
+Expanded runs four and two. On Free the three process-heavy slices therefore
+run one after another, not side by side; each slice gets about a third of
+the files and its own 30-minute deadline. That headroom is unmeasured until
+a hosted run reports per-slice durations. Every matrix leg and canonical phase remains.
 Unknown profiles fail before fanout. Custom requires positive integer
 `STATION_QUALIFICATION_ORDINARY_SLOTS` (1–4),
 `STATION_QUALIFICATION_PROCESS_HEAVY_SLOTS` (1–2), and
