@@ -630,3 +630,39 @@ test('a long press on a pill opens only Who reacted, and closing it returns focu
   );
   await waitFor(() => expect(document.activeElement).toBe(pill));
 });
+
+test('when the room pauses attachments, the reader is told plainly, nothing is sent, and the text sends without the file (#4852)', async () => {
+  const original = globalThis.fetch;
+  vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
+    const url = new URL(input);
+    if (url.pathname.endsWith('/attachments') && init?.method === 'POST')
+      return Response.json(
+        { error: { code: 'project_room_files_unavailable' } },
+        { status: 503 },
+      );
+    return original(input, init);
+  });
+  mount();
+  const composer = await screen.findByRole('textbox', {
+    name: 'Message the project',
+  });
+  await screen.findByRole('button', { name: 'Attach files' });
+  pasteFile(composer, pngFile('paused.png'));
+  await screen.findByRole('img', { name: 'paused.png' });
+  fireEvent.change(composer, { target: { value: 'Still here.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await screen.findByText(
+    'Attachments are paused for now. Remove the files to send your message.',
+  );
+  expect(calls.some((c) => c.path.endsWith('/messages'))).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'Remove paused.png' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await waitFor(() =>
+    expect(calls.find((c) => c.path.endsWith('/messages'))?.body).toMatchObject(
+      { text: 'Still here.' },
+    ),
+  );
+  expect(
+    calls.find((c) => c.path.endsWith('/messages'))?.body.attachments,
+  ).toBeUndefined();
+});

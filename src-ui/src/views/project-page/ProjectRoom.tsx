@@ -1,6 +1,7 @@
 import {
   isProjectRoomUuid,
   PROJECT_ROOM_DEFAULT_CHANNEL_NAME,
+  PROJECT_ROOM_FILES_UNAVAILABLE_CODE,
   PROJECT_ROOM_FORBIDDEN_CODE,
   PROJECT_ROOM_LIMITS,
   type ProjectRoomAttachment,
@@ -1019,9 +1020,14 @@ function ProjectRoomSession({
     if (!retry && files.files.length) {
       try {
         attachments = await files.prepare(filesFor);
-      } catch {
+      } catch (error) {
+        // The room's file store is paused for repair (#4852): say so, and
+        // that the text still sends without the files.
         files.setError(
-          'The files were not uploaded. Try sending again.',
+          error instanceof StationHttpError &&
+            error.code === PROJECT_ROOM_FILES_UNAVAILABLE_CODE
+            ? 'Attachments are paused for now. Remove the files to send your message.'
+            : 'The files were not uploaded. Try sending again.',
           filesFor,
         );
         return;
