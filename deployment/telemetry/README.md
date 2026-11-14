@@ -501,7 +501,7 @@ COMPOSE_PROJECT_NAME=station-telemetry-private
 TELEMETRY_PRIVATE_DIR=/absolute/private/station-telemetry
 TELEMETRY_RECEIVER_IMAGE=station-telemetry:qualified-source
 STATION_RELEASE_SHA=<exact-clean-qualified-40-character-commit>
-STATION_RELEASE_REF=v0.0.0-preview.1
+STATION_RELEASE_REF=v0.0.0-rc.1
 STATION_RELEASE_CREATED_AT=<canonical-ISO-timestamp-for-that-source>
 ```
 
