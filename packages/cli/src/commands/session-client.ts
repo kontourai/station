@@ -14,6 +14,7 @@ import {
   type ExecutionTarget,
   executionProfileAgentId,
 } from '@kontourai/station-contracts/execution-target';
+import { isAcpFamilyEngine } from '@kontourai/station-contracts/provider';
 import {
   authenticatedFetch,
   continueExecutionMessage,
@@ -665,25 +666,24 @@ function createRuntimeSessionClient(
         '/api/orchestration/sessions/read-model',
       )) as Array<Record<string, unknown>>;
 
-      const providerSessions = sessions.filter(
-        (session) => session.provider === provider,
+      const providerSessions = sessions.filter((session) =>
+        sessionProviderMatches(session.provider, provider),
       );
-      const matchingSessions =
-        provider === 'acp'
-          ? (
-              await Promise.all(
-                providerSessions.map(async (session) => {
-                  const detail = await readRuntimeSessionOrNull(
-                    apiBase,
-                    String(session.threadId),
-                  );
-                  return runtimeSessionMatchesTarget(detail, target)
-                    ? session
-                    : null;
-                }),
-              )
-            ).filter((session): session is Record<string, unknown> => !!session)
-          : providerSessions;
+      const matchingSessions = isAcpFamilyEngine(provider)
+        ? (
+            await Promise.all(
+              providerSessions.map(async (session) => {
+                const detail = await readRuntimeSessionOrNull(
+                  apiBase,
+                  String(session.threadId),
+                );
+                return runtimeSessionMatchesTarget(detail, target)
+                  ? session
+                  : null;
+              }),
+            )
+          ).filter((session): session is Record<string, unknown> => !!session)
+        : providerSessions;
 
       return matchingSessions.map((session) => ({
         id: String(session.threadId),
@@ -824,7 +824,7 @@ function runtimeSessionMatchesTarget(
 ): boolean {
   if (!detail) return false;
   const session = detail.session as Record<string, unknown> | undefined;
-  if (session?.provider !== target.provider) return false;
+  if (!sessionProviderMatches(session?.provider, target.provider)) return false;
 
   const events = Array.isArray(detail.events)
     ? (detail.events as Array<Record<string, unknown>>)
@@ -842,8 +842,26 @@ function runtimeSessionMatchesTarget(
 
   // ACP providers share one orchestration provider id across multiple CLI
   // agents (for example Kiro and OpenCode), so an unscoped ACP session must
-  // never leak into another Agent's list/read/interrupt surface.
-  return target.provider !== 'acp';
+  // never leak into another Agent's list/read/interrupt surface. The same
+  // holds for an engine that runs saved ACP connections (`opencode`).
+  return !isAcpFamilyEngine(target.provider);
+}
+
+/**
+ * Whether a session's provider runs the target's connection. A saved ACP
+ * connection's chats run on `acp`, or on `opencode` for one started while
+ * the OpenCode native engine preview was on; a chat keeps its provider, so
+ * one connection can hold both.
+ */
+function sessionProviderMatches(
+  sessionProvider: unknown,
+  targetProvider: EngineId,
+): boolean {
+  if (typeof sessionProvider !== 'string') return false;
+  if (sessionProvider === targetProvider) return true;
+  return (
+    isAcpFamilyEngine(sessionProvider) && isAcpFamilyEngine(targetProvider)
+  );
 }
 
 /**

@@ -1,3 +1,4 @@
+import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
   parseEngineConnectionId,
@@ -278,6 +279,14 @@ export interface ProviderAdapterMetadata {
    * `engineIdForAdapter` (adapter-identity.ts).
    */
   engineId?: EngineId;
+  /**
+   * `acp-registry`: the adapter has no connection of its own. It runs saved
+   * ACP connection records (those {@link ProviderAdapterShape.claimsAcpConnection}
+   * accepts), so its engine id never reserves a connection id (#3355) and it
+   * is not listed as an engine connection of its own; its sessions run on
+   * the ACP connection they name.
+   */
+  connectionBacking?: 'acp-registry';
   /** Evidence-scoping identity for models launched through this adapter. */
   modelExecution?: ModelInventoryExecutionIdentity;
   /** Abort does not settle discovery until adapter-owned resources are closed. */
@@ -549,10 +558,14 @@ export interface ProviderAdapterShape {
   ): Promise<EngineCommandOutcome>;
   /**
    * Move the session's engine back to the end of `toTurnId` in place: later
-   * turns stay in the transcript but are hidden from the engine. The
-   * `rewind` adapter action of a slash command (`engine-command-dispatch.ts`)
-   * runs through this. Present only where some engine the adapter runs can
-   * rewind; a session whose engine cannot answers `not-declared`.
+   * turns stay in the transcript but are hidden from the engine. Present
+   * only where some engine the adapter runs can rewind; a session whose
+   * engine cannot answers `not-declared`.
+   *
+   * Reached today only through `OpenCodeAdapter`'s `/rewind` command
+   * (its `rewind` adapter action, `engine-command-dispatch.ts`) for a
+   * session on OpenCode's own server. No Station route asks an ACP session
+   * to rewind, so `AcpAdapter.rewindSession` has no production caller.
    */
   rewindSession?(
     threadId: string,
@@ -560,13 +573,22 @@ export interface ProviderAdapterShape {
   ): Promise<EngineCommandOutcome>;
   /**
    * The continuity one live session's engine declared, for an adapter whose
-   * engines differ (ACP reads it from each engine's `initialize`). Callers
-   * read this before `metadata.continuity`, which then speaks only for the
-   * adapter as a whole. Absent: `metadata.continuity` decides.
+   * engines differ (ACP reads it from each engine's `initialize`), where
+   * `metadata.continuity` speaks only for the adapter as a whole. No caller
+   * reads it yet: `OpenCodeAdapter` forwards its inner ACP adapter's answer,
+   * and nothing in orchestration or the UI asks for one session's.
    */
   sessionContinuity?(
     threadId: string,
   ): Pick<ProviderContinuityCapabilities, 'fork' | 'rewind'>;
+  /**
+   * For an adapter whose `metadata.connectionBacking` is `acp-registry`:
+   * whether a new session on this saved ACP connection runs on this adapter
+   * now. Read when a connection is projected (its engine id and the provider
+   * a new chat starts with); a chat keeps the provider it started with.
+   * False hands the connection to the ACP adapter.
+   */
+  claimsAcpConnection?(config: ACPConnectionConfig): boolean;
   respondToRequest(
     threadId: string,
     requestId: string,

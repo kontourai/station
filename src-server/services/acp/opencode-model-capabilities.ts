@@ -155,7 +155,8 @@ export async function runOpenCodeModelListing(
 ): Promise<OpenCodeListingResult> {
   // #4520: a listing runs the engine, so an engine the managed policy does
   // not allow is never listed (nothing is resolved or spawned).
-  if (!engineAllowedByManagedPolicy('acp'))
+  // OpenCode is governed by `acp` unless the policy names `opencode` (R5).
+  if (!engineAllowedByManagedPolicy('opencode'))
     return { ok: false, reason: 'managed-policy' };
   // #4520: a listing runs the engine too, so it uses a managed policy's
   // pinned binary and environment. Pinned arguments belong to an agent

@@ -22,7 +22,7 @@ import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import {
   ACP_ENGINE_DURABILITY,
-  acpStationApprovalEngine,
+  isOpenCodeAcpConnection,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
 import {
@@ -31,6 +31,10 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { ownArray, ownRecord } from '@kontourai/station-shared/input-request';
+import {
+  assertEngineAllowedByManagedPolicy,
+  managedEngineLaunch,
+} from '../../security/managed-engine-limits.js';
 import { prepareManagedAcpWorkspace } from '../../services/acp/managed-acp-workspace.js';
 import {
   type OpenCodeNativeFloor,
@@ -112,11 +116,7 @@ const ENGINE_NAME = 'OpenCode';
  * or a command whose executable is `opencode` launched as `opencode acp`.
  */
 export function isOpenCodeConnection(config: ACPConnectionConfig): boolean {
-  if (config.id === 'opencode') return true;
-  return (
-    acpStationApprovalEngine(config.command) === 'opencode' &&
-    config.args?.[0] === 'acp'
-  );
+  return isOpenCodeAcpConnection(config);
 }
 
 /**
@@ -228,6 +228,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     continuity: { resume: 'same-session', fork: 'none', rewind: 'in-place' },
     builtin: true,
     engineId: engineId('opencode'),
+    connectionBacking: 'acp-registry',
     approvalAcknowledgement: 'engine',
   };
 
@@ -263,6 +264,15 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
 
   private nativeEnabled(): boolean {
     return this.options.nativeEnabled?.() === true;
+  }
+
+  /**
+   * New chats on an OpenCode connection run here only while the Feature
+   * Preview is on; otherwise the ACP adapter keeps them, as before this
+   * engine existed.
+   */
+  claimsAcpConnection(config: ACPConnectionConfig): boolean {
+    return this.nativeEnabled() && isOpenCodeConnection(config);
   }
 
   private pumpInner(): void {
@@ -328,8 +338,23 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     config: ACPConnectionConfig,
   ): Promise<NativePlan | undefined> {
     if (!this.nativeEnabled()) return undefined;
+    // R5: the policy governing this connection, whichever transport runs it.
+    assertEngineAllowedByManagedPolicy(this.provider, config);
+    // A managed policy pins OpenCode's launch through its `acp` entry: the
+    // binary and environment apply to `serve` as they do to `acp`. Pinned
+    // arguments belong to the `acp` command line and are not given to
+    // `serve`.
+    const pinned = managedEngineLaunch(
+      'acp',
+      {
+        command: config.command,
+        args: [],
+        env: await (this.options.launchEnv ?? (() => augmentedSpawnEnv()))(),
+      },
+      'user',
+    );
     const binary = await (this.options.findBinary ?? findCliBinaryAsync)(
-      config.command,
+      pinned.command,
     );
     if (!binary) return undefined;
     const version = await (
@@ -341,7 +366,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       binary,
       version: version.text,
       cwd: await this.sessionCwd(input, config),
-      env: await (this.options.launchEnv ?? (() => augmentedSpawnEnv()))(),
+      env: pinned.env,
     };
   }
 
@@ -631,6 +656,10 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     );
     const floor = acpApprovalFloor(mode);
     const agent = requestedAcpSessionMode(input.modelOptions);
+    if (input.modelOptions?.effort !== undefined)
+      throw new Error(
+        'OpenCode on its own server does not take an effort setting in Station yet. Remove it from the agent, or turn off the OpenCode native engine preview.',
+      );
     if (floor && agent && !isOpenCodeGovernedMode(agent))
       throw new ApprovalGovernanceRefusedError(governedModeRefusal(agent));
     if (floor)
@@ -840,7 +869,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         if (adapterAction === 'rewind') {
           const target = this.rewindTarget(native, invocation.args);
           return target
-            ? native.rewind(target)
+            ? this.rewindSession(input.threadId, target)
             : { kind: 'answered', text: 'Nothing to rewind.' };
         }
         return { kind: 'unsupported' };

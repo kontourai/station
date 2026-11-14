@@ -143,6 +143,7 @@ const ENGINE_LABELS: Readonly<Record<ManagedPolicyEngineId, string>> = {
   codex: 'Codex',
   muse: 'Muse',
   acp: 'ACP engines (Agent Client Protocol)',
+  opencode: 'OpenCode (when listed, replaces the ACP choice for OpenCode)',
   'station-agent': "Station's own agent",
 };
 const ENGINE_VALUE_NAMES: Readonly<Record<ManagedPolicyEngineId, string>> = {
@@ -150,6 +151,7 @@ const ENGINE_VALUE_NAMES: Readonly<Record<ManagedPolicyEngineId, string>> = {
   codex: 'EngineCodex',
   muse: 'EngineMuse',
   acp: 'EngineAcp',
+  opencode: 'EngineOpenCode',
   'station-agent': 'EngineStationAgent',
 };
 

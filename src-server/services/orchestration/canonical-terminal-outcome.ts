@@ -1,4 +1,7 @@
-import { PROVIDER_CODEX } from '@kontourai/station-contracts/provider';
+import {
+  isAcpFamilyEngine,
+  PROVIDER_CODEX,
+} from '@kontourai/station-contracts/provider';
 import { isDeferredRetriableTurnError } from '@kontourai/station-contracts/runtime-events';
 import type {
   UsageTerminalEngine,
@@ -49,8 +52,13 @@ const ENGINES: readonly UsageTerminalEngine[] = [
   'muse',
   'ollama',
 ];
-/** Engine family only; an unrecognized provider id is never released verbatim. */
+/**
+ * Engine family only; an unrecognized provider id is never released verbatim.
+ * An engine that runs saved ACP connections (`opencode`) counts as `acp`, as
+ * its chats did before it existed, so a Feature Preview never moves them.
+ */
 export function terminalEngineFamily(provider: string): UsageTerminalEngine {
+  if (isAcpFamilyEngine(provider)) return 'acp';
   return (ENGINES as readonly string[]).includes(provider)
     ? (provider as UsageTerminalEngine)
     : 'other';

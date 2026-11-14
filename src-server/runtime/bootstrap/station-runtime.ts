@@ -1312,6 +1312,7 @@ export class StationRuntime {
   private codexBoundToolsPreview?: FeaturePreviewSelector;
   private stationInstructionsPreview?: FeaturePreviewSelector;
   private coordinatorSessionPreview?: FeaturePreviewSelector;
+  private openCodeNativeEnginePreview?: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
   private analyticsMaintenance?: (
@@ -1746,6 +1747,12 @@ export class StationRuntime {
       this.bindMemberPasskeysPreview();
       this.bindAccountSharingSettingPreview();
       this.bindCoordinatorSessionPreview();
+      this.openCodeNativeEnginePreview = this.featurePreviews.bind({
+        id: 'opencode-native-engine',
+        label: 'OpenCode native engine',
+        description:
+          'Run new OpenCode chats as their own engine: OpenCode 2 over its own local server where Station verified its API, otherwise over ACP as today. Existing chats keep their engine.',
+      });
       this.stationInstructionsPreview = this.featurePreviews.bind({
         id: 'station-orchestration-instructions',
         label: 'Station orchestration instructions',
@@ -4494,6 +4501,7 @@ export class StationRuntime {
           orchestrationEventStore: this.orchestrationEventStore,
           hostImagesPreview: this.chatHostImagesPreview,
           coordinatorSessionPreview: this.coordinatorSessionPreview,
+          openCodeNativeEnginePreview: this.openCodeNativeEnginePreview,
           durableAgentPreview: this.featurePreviews.bind({
             id: 'durable-station-agent',
             label: 'Crash-durable Station Agent',

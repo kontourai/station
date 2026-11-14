@@ -12,12 +12,18 @@ import { isRecord, ownMember } from './record-guard.js';
  * Every engine id a policy may name: the built-in adapters Station registers
  * (`runtime-initialize.ts`, `registerProviderAdapters`). A plugin engine has
  * an id outside this list, so an allow list never admits one.
+ *
+ * `opencode` runs saved ACP connection records, so an allow list that does
+ * not name it governs OpenCode through its `acp` entry, for allow and deny
+ * alike ({@link managedPolicyEngineFor}). Which provider a chat runs on (the
+ * `opencode-native-engine` Feature Preview) never changes that answer.
  */
 export const MANAGED_POLICY_ENGINE_IDS = [
   'claude',
   'codex',
   'muse',
   'acp',
+  'opencode',
   'station-agent',
 ] as const;
 export type ManagedPolicyEngineId = (typeof MANAGED_POLICY_ENGINE_IDS)[number];
@@ -456,8 +462,30 @@ export function parseManagedEngineSummary(
 }
 
 /**
+ * The policy id that governs an engine. An OpenCode connection, whichever
+ * provider runs it (`opencode`, or `acp` for a chat started before the
+ * provider existed or with the preview off), is governed by an `opencode`
+ * entry when the allow list names one, and otherwise by `acp`: naming
+ * `opencode` is the only way to treat it apart from other ACP engines.
+ *
+ * `openCodeConnection` says the session runs an OpenCode connection; an
+ * `opencode` engine always does.
+ */
+export function managedPolicyEngineFor(
+  engines: Pick<ManagedPolicyEngineLimits, 'allowed'> | undefined,
+  engine: string,
+  openCodeConnection = false,
+): string {
+  const openCode =
+    engine === 'opencode' || (engine === 'acp' && openCodeConnection);
+  if (!openCode) return engine;
+  return engines?.allowed?.includes('opencode') ? 'opencode' : 'acp';
+}
+
+/**
  * Whether `engine` may run. Without an allow list every engine may; with
- * one, an id it does not list (a plugin engine included) may not.
+ * one, an id it does not list (a plugin engine included) may not. Callers
+ * resolve an OpenCode session's id with {@link managedPolicyEngineFor} first.
  */
 export function managedEngineAllowed(
   engines: Pick<ManagedPolicyEngineLimits, 'allowed'> | undefined,

@@ -11,11 +11,13 @@
  * managed: nothing is marked. The server enforces the policy either way.
  */
 
+import { isOpenCodeAcpConnection } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   type ManagedPolicyEngineSummary,
   type ManagedPolicyPinnedEngineSummary,
   managedEngineAllowed,
   managedEnginePin,
+  managedPolicyEngineFor,
 } from '@kontourai/station-contracts/managed-policy-engines';
 import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy-status';
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
@@ -49,13 +51,24 @@ export function managedEnginesView(
 
 /**
  * The policy id of an engine row: Station's own agent is the engine
- * `station` and the policy id `station-agent`; an ACP connection is `acp`.
+ * `station` and the policy id `station-agent`; an ACP connection is `acp`,
+ * except that an OpenCode connection is `opencode` when the policy names
+ * `opencode` (the server's rule, `managedPolicyEngineFor`).
  */
 export function managedEngineIdFor(
   engineId: string | undefined,
   isAcpConnection: boolean,
+  options: {
+    openCodeConnection?: boolean;
+    view?: ManagedEnginesView | null;
+  } = {},
 ): string | undefined {
-  if (isAcpConnection) return 'acp';
+  if (isAcpConnection)
+    return managedPolicyEngineFor(
+      { allowed: options.view?.engines.allowed ?? undefined },
+      'acp',
+      options.openCodeConnection === true,
+    );
   if (engineId === 'station') return 'station-agent';
   return engineId;
 }
@@ -79,10 +92,15 @@ export function managedEngineState(
       { allowed: view.engines.allowed ?? undefined },
       engine,
     ) ||
-    (engine === 'acp' &&
+    ((engine === 'acp' || engine === 'opencode') &&
       options.registryAgent === true &&
       !view.engines.acpRegistryAgents);
-  const pin = managedEnginePin(view.engines, engine);
+  // OpenCode's launch is pinned by the `acp` entry; a policy cannot pin
+  // `opencode` on its own.
+  const pin = managedEnginePin(
+    view.engines,
+    engine === 'opencode' ? 'acp' : engine,
+  );
   if (!disallowed && !pin) return null;
   return {
     organization: view.organization,
@@ -114,12 +132,16 @@ export function useManagedEngineStateFor(): (
   };
   return useCallback(
     (connection: AgentConnectionView) => {
-      const isAcp = acpBridgeConnections.some(
+      const acpEntry = acpBridgeConnections.find(
         (entry) => entry.id === connection.id,
       );
+      const isAcp = acpEntry !== undefined;
       return managedEngineState(
         managedEngines,
-        managedEngineIdFor(connectionEngineId(connection), isAcp),
+        managedEngineIdFor(connectionEngineId(connection), isAcp, {
+          openCodeConnection: isOpenCodeAcpConnection(acpEntry),
+          view: managedEngines,
+        }),
         {
           registryAgent:
             isAcp &&

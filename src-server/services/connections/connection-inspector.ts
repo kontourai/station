@@ -15,7 +15,11 @@ import type {
   Prerequisite,
   RuntimeCatalogStatus,
 } from '@kontourai/station-contracts/tool';
-import { engineIdForAdapter } from '../../providers/adapter-identity.js';
+import {
+  acpConnectionRuntimeAdapter,
+  engineIdForAdapter,
+  isAcpConnectionBacked,
+} from '../../providers/adapter-identity.js';
 import type {
   ProviderAdapterModelCatalog,
   ProviderAdapterShape,
@@ -200,7 +204,12 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
     const appConfig = this.dependencies.appConfig();
     const adapters = this.dependencies.adapters();
     const inspected = await mapWithConcurrency(
-      adapters.filter((adapter) => adapter.provider !== 'acp'),
+      // An ACP-backed adapter (OpenCode) has no connection of its own: its
+      // connections are the ACP records projected below.
+      adapters.filter(
+        (adapter) =>
+          adapter.provider !== 'acp' && !isAcpConnectionBacked(adapter),
+      ),
       request.concurrency ?? 4,
       async (adapter) => this.inspectAdapter(adapter, appConfig, request),
       request.signal,
@@ -241,6 +250,10 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
       // observed evidence it requires instead of an absent field. Hoisted so
       // the not-ready state reason below can quote the same observation.
       const runtimeCatalog = acpRuntimeCatalogStatus(liveStatus, config);
+      // The engine a new chat on this connection starts with: an ACP-backed
+      // adapter that claims it now (OpenCode, behind its Feature Preview),
+      // otherwise ACP. A chat keeps the provider it started with.
+      const runtimeAdapter = acpConnectionRuntimeAdapter(adapters, config);
       connections.push({
         id: identity.id,
         kind: 'agent',
@@ -267,7 +280,8 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
           rewind: 'none',
         },
         config: {
-          engineId: 'acp',
+          engineId: runtimeAdapter ? engineIdForAdapter(runtimeAdapter) : 'acp',
+          ...(runtimeAdapter ? { provider: runtimeAdapter.provider } : {}),
           // The connection's saved icon (a built-in's `brand:kiro`), so the
           // engines list draws the same mark for it connected as it does
           // while it is not connected yet.

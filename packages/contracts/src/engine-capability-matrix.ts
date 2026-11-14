@@ -812,6 +812,30 @@ export function acpStationApprovalEngine(
   return executable === 'opencode' ? 'opencode' : undefined;
 }
 
+/**
+ * Whether a saved ACP connection runs OpenCode: the OpenCode descriptor's own
+ * id, or a command whose executable is `opencode` launched as `opencode acp`.
+ * The `opencode` engine runs exactly these records; a managed policy governs
+ * them through its `opencode` entry when it names one.
+ */
+export function isOpenCodeAcpConnection(
+  config:
+    | {
+        readonly id?: string;
+        readonly command?: string | null;
+        readonly args?: readonly string[] | null;
+      }
+    | null
+    | undefined,
+): boolean {
+  if (!config) return false;
+  if (config.id === 'opencode') return true;
+  return (
+    acpStationApprovalEngine(config.command) === 'opencode' &&
+    config.args?.[0] === 'acp'
+  );
+}
+
 /** Who decides which of this ACP connection's actions ask (#3290). */
 export function acpApprovalControl(
   command: string | null | undefined,

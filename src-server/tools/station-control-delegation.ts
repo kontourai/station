@@ -6961,6 +6961,11 @@ export async function executeExecutionTargetMessage(
       let currentMetadata = currentDetail
         ? sessionBinding(currentDetail)
         : undefined;
+      // The provider the conversation's current session runs on, so a
+      // successor on the same connection keeps it (ruling R2).
+      let currentProvider: unknown = currentDetail
+        ? record(currentDetail.session).provider
+        : undefined;
       const reservedHandoff = currentDetail
         ? undefined
         : orchestrationService.reservedConversationHandoff(currentSessionId);
@@ -6976,6 +6981,9 @@ export async function executeExecutionTargetMessage(
             readAuthority,
           );
         currentMetadata = continued ? sessionBinding(continued) : undefined;
+        currentProvider = continued
+          ? record(continued.session).provider
+          : undefined;
       }
       const boundTarget = reservedHandoff
         ? { kind: 'agent' as const, id: reservedHandoff.targetAgentId }
@@ -7040,6 +7048,13 @@ export async function executeExecutionTargetMessage(
           : typeof currentMetadata?.connectionId === 'string'
             ? { connectionId: currentMetadata.connectionId }
             : {}),
+        // A reserved handoff moves to another target; its provider is the
+        // target's, not the current session's.
+        ...(!reservedHandoff &&
+        typeof currentProvider === 'string' &&
+        currentProvider
+          ? { provider: currentProvider }
+          : {}),
       };
     },
     readPendingConversationSubmission: (

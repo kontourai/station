@@ -1,5 +1,6 @@
 import type { Skill } from '@kontourai/station-contracts/catalog';
 import type { AgentMcpPromptListing } from '@kontourai/station-contracts/mcp-prompts';
+import { isAcpFamilyEngine } from '@kontourai/station-contracts/provider';
 import type { useRunSkill, useSkillDetailReader } from '@kontourai/station-sdk';
 import { agentMcpPromptsQueryKey } from '@kontourai/station-sdk';
 import type { QueryClient } from '@tanstack/react-query';
@@ -230,8 +231,14 @@ export async function dispatchSlashCommand(
     return true;
   }
 
-  // 4. CLI runtime passthrough — forward unrecognized commands to the SDK
-  if (chatState.provider === 'claude' || chatState.provider === 'codex') {
+  // 4. CLI runtime passthrough — forward unrecognized commands to the SDK.
+  // An engine running saved ACP connections (`opencode`) takes them as the
+  // ACP connection's agent does (step 1), whichever Agent started the chat.
+  if (
+    chatState.provider === 'claude' ||
+    chatState.provider === 'codex' ||
+    isAcpFamilyEngine(chatState.provider)
+  ) {
     cleanup();
     return command; // Raw text forwarded to sendOrchestrationTurn
   }

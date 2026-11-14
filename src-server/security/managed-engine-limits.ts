@@ -12,6 +12,8 @@
  *   {@link managedEngineLaunch}, so a pinned binary, argument list and
  *   environment reach the child whichever path started it.
  */
+
+import { isOpenCodeAcpConnection } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy';
 import { managedPolicyDenial } from '@kontourai/station-contracts/managed-policy';
 import {
@@ -19,7 +21,9 @@ import {
   type ManagedPolicyEngineInstance,
   type ManagedPolicyEngineLimits,
   managedEngineAllowed,
+  managedPolicyEngineFor,
 } from '@kontourai/station-contracts/managed-policy-engines';
+import { isAcpFamilyEngine } from '@kontourai/station-contracts/provider';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import { SendTurnRefusedError } from '../providers/adapter-shape.js';
@@ -64,18 +68,50 @@ function denial(subject: string): string {
   return managedPolicyDenial(installedSummary, subject);
 }
 
+/** The ACP connection a check is about, as far as the policy reads it. */
+export interface ManagedPolicyConnection {
+  readonly id?: string;
+  readonly command?: string | null;
+  readonly args?: readonly string[] | null;
+  readonly publicRegistry?: unknown;
+  /**
+   * Whether the connection runs OpenCode, for a caller that knows it without
+   * the connection's command (orchestration reads it from the connection's
+   * approval control). Absent: read from `id`, `command` and `args`.
+   */
+  readonly runsOpenCode?: boolean;
+}
+
 /**
  * The policy id of an adapter's provider or engine id. Station's own agent
  * is the provider `station-agent` and the engine `station`
- * (`station-agent-adapter.ts`); a policy names it `station-agent`.
+ * (`station-agent-adapter.ts`); a policy names it `station-agent`. An
+ * OpenCode session (the `opencode` engine, or an `acp` one whose connection
+ * runs OpenCode) is governed by `opencode` only where the policy names it,
+ * and by `acp` otherwise (ruling R5), so the provider a chat happens to run
+ * on never widens or narrows the policy.
  */
-function managedPolicyEngineId(engine: string): string {
-  return engine === 'station' ? 'station-agent' : engine;
+function managedPolicyEngineId(
+  engine: string,
+  connection?: ManagedPolicyConnection,
+): string {
+  if (engine === 'station') return 'station-agent';
+  return managedPolicyEngineFor(
+    installedEngines,
+    engine,
+    connection?.runsOpenCode ?? isOpenCodeAcpConnection(connection),
+  );
 }
 
 /** Whether the policy lets `engine` run (no allow list: every engine may). */
-export function engineAllowedByManagedPolicy(engine: string): boolean {
-  return managedEngineAllowed(installedEngines, managedPolicyEngineId(engine));
+export function engineAllowedByManagedPolicy(
+  engine: string,
+  connection?: ManagedPolicyConnection,
+): boolean {
+  return managedEngineAllowed(
+    installedEngines,
+    managedPolicyEngineId(engine, connection),
+  );
 }
 
 /**
@@ -99,16 +135,16 @@ function acpRegistryAgentsAllowedByManagedPolicy(): boolean {
  */
 export function assertEngineAllowedByManagedPolicy(
   engine: string,
-  connection?: { publicRegistry?: unknown },
+  connection?: ManagedPolicyConnection,
 ): void {
-  if (!engineAllowedByManagedPolicy(engine))
+  if (!engineAllowedByManagedPolicy(engine, connection))
     throw new ManagedEngineRefusedError(
       denial(
-        `which engines run on this computer: ${managedPolicyEngineId(engine)} is not allowed`,
+        `which engines run on this computer: ${managedPolicyEngineId(engine, connection)} is not allowed`,
       ),
     );
   if (
-    engine === 'acp' &&
+    isAcpFamilyEngine(engine) &&
     connection?.publicRegistry !== undefined &&
     !acpRegistryAgentsAllowedByManagedPolicy()
   )
@@ -126,11 +162,13 @@ export function assertEngineAllowedByManagedPolicy(
  */
 export function managedEngineRefusalFor(
   engine: string | undefined,
+  connection?: ManagedPolicyConnection,
 ): ManagedEngineRefusedError | null {
-  if (engine === undefined || engineAllowedByManagedPolicy(engine)) return null;
+  if (engine === undefined || engineAllowedByManagedPolicy(engine, connection))
+    return null;
   return new ManagedEngineRefusedError(
     denial(
-      `which engines run on this computer: ${managedPolicyEngineId(engine)} is not allowed`,
+      `which engines run on this computer: ${managedPolicyEngineId(engine, connection)} is not allowed`,
     ),
   );
 }

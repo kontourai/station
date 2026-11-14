@@ -95,6 +95,7 @@ import {
   CLIENT_TURN_IN_FLIGHT_CODE,
   DELEGATION_PROVENANCE_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  isAcpFamilyEngine,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
   MUSE_TURN_SLOT_RELEASING_CODE,
@@ -2129,7 +2130,8 @@ async function resolveStartSessionCwd(
     // `default` project (no workingDirectory) and unbound chats both land
     // here; the resolver's product-side follow-ups in archive#1023 still apply.
     //
-    // ACP is still excluded here, for the same reason as before: its adapter
+    // ACP (and OpenCode, which runs saved ACP connections the same way:
+    // `isAcpFamilyEngine`) is still excluded here, for the same reason as before: its adapter
     // carries a connection-level fallback (`config.cwd`) that only the
     // adapter can see, and defaulting unconditionally here would permanently
     // shadow it. Since archive#1403, the adapter ends that chain in a private,
@@ -2140,7 +2142,11 @@ async function resolveStartSessionCwd(
     // own rather than the whole home folder, unless this Station opted out
     // (`AppConfig.noProjectChatFolder: 'home'`) or the conversation already
     // ran somewhere (the callback returns that folder).
-    if (!projectSlug && input.provider !== 'acp' && noProjectChatFolder) {
+    if (
+      !projectSlug &&
+      !isAcpFamilyEngine(input.provider) &&
+      noProjectChatFolder
+    ) {
       const folder = await noProjectChatFolder();
       if (folder) {
         sessionCwdResolution.add(1, {
@@ -2152,7 +2158,9 @@ async function resolveStartSessionCwd(
         return { ...input, cwd: folder, cwdDefaulted: true };
       }
     }
-    const home = input.provider === 'acp' ? undefined : safeHomeDirectory();
+    const home = isAcpFamilyEngine(input.provider)
+      ? undefined
+      : safeHomeDirectory();
     if (home) {
       sessionCwdResolution.add(1, {
         provider: input.provider,
@@ -2167,11 +2175,10 @@ async function resolveStartSessionCwd(
     sessionCwdResolution.add(1, {
       provider: input.provider,
       source: 'none',
-      outcome: input.provider === 'acp' ? 'deferred' : 'inherited',
-      reason:
-        input.provider === 'acp'
-          ? 'acp_connection_default'
-          : 'home_unavailable',
+      outcome: isAcpFamilyEngine(input.provider) ? 'deferred' : 'inherited',
+      reason: isAcpFamilyEngine(input.provider)
+        ? 'acp_connection_default'
+        : 'home_unavailable',
     });
     // archive#1174: still no real project/user cwd, even though this
     // degenerate-host/ACP branch leaves `cwd` itself untouched.
@@ -9281,7 +9288,13 @@ export class OrchestrationService {
             this.threadProviders.get(submittedInput.threadId) ??
             current?.session.provider;
           if (turnEngine !== undefined)
-            assertEngineAllowedByManagedPolicy(turnEngine);
+            assertEngineAllowedByManagedPolicy(
+              turnEngine,
+              this.managedPolicyConnectionOf(
+                submittedInput.threadId,
+                turnEngine,
+              ),
+            );
           let engineMaterialized = false;
           const adapter = await resolveOrchestrationAdapterForThread({
             threadId: submittedInput.threadId,
@@ -14252,13 +14265,43 @@ export class OrchestrationService {
     }
   }
 
+  /**
+   * R5: the connection a managed-policy check is about, so an `acp` thread
+   * on an OpenCode connection is governed as an `opencode` one would be.
+   * OpenCode is the engine whose approval rules Station sets
+   * (`acpApprovalControl` is `station`).
+   */
+  private managedPolicyConnectionOf(
+    threadId: string | undefined,
+    provider: EngineId,
+    connectionId?: string,
+  ): { id: string; runsOpenCode: boolean } | undefined {
+    if (!isAcpFamilyEngine(provider)) return undefined;
+    const id =
+      connectionId ??
+      (threadId
+        ? (this.sessionConnectionIds.get(threadId) ??
+          this.readLatestSessionStartMetadata(threadId)?.connectionId)
+        : undefined);
+    if (typeof id !== 'string' || !id) return undefined;
+    return {
+      id,
+      runsOpenCode:
+        id === 'opencode' ||
+        this.options.acpApprovalControl?.(id) === 'station',
+    };
+  }
+
   private async assertAdapterReady(
     adapter: ProviderAdapterShape,
     connectionId?: string,
   ): Promise<void> {
     // #4520: every engine start (new, recovered or child work) passes here;
     // an engine the managed policy does not allow starts nothing.
-    assertEngineAllowedByManagedPolicy(adapter.provider);
+    assertEngineAllowedByManagedPolicy(
+      adapter.provider,
+      this.managedPolicyConnectionOf(undefined, adapter.provider, connectionId),
+    );
     const prerequisites = await this.readPrerequisites(adapter, connectionId);
     const readiness = resolveRuntimeAdapterReadiness({
       adapter,
