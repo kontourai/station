@@ -327,7 +327,9 @@ The old queue ref must be absent or point elsewhere. Complete job inventories an
 fence each normal cancellation; an active old ref, changed owner or attempt,
 unknown runner metadata or API failure prevents it. This path can normally
 cancel an assigned runner doing obsolete work, but never force-cancels. A 202
-is a request, not terminal settlement. It does not cancel unrelated workflow
+is a request, not terminal settlement. A 409 refusal, here and when retiring a
+merged PR's optional delivery runs, cancels nothing and is reported as a
+warning; the pass continues. It does not cancel unrelated workflow
 families or replace any regression result with success.
 
 For the one-candidate throughput trial and its before/after measurements, use

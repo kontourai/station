@@ -478,6 +478,7 @@ function mergedWorld() {
     truncated: false,
     failedRead: false,
     sharedAtEffect: false,
+    refuseCancel: false,
   };
 }
 async function exerciseMerged(world = mergedWorld()) {
@@ -519,6 +520,11 @@ async function exerciseMerged(world = mergedWorld()) {
       value = { total_count: 1, workflow_runs: [world.run] };
     else if (path === `actions/runs/${holder.id}/cancel`) {
       expect(req.method).toBe('POST');
+      if (world.refuseCancel) {
+        res.writeHead(409);
+        res.end('{"message":"Cannot cancel this workflow run."}');
+        return;
+      }
       cancelled.push(holder.id);
       res.writeHead(202);
       res.end();
@@ -582,6 +588,20 @@ async function exerciseMerged(world = mergedWorld()) {
 }
 
 describe('merged optional-tail retirement through the real GitHub HTTP boundary', () => {
+  // The close event is one-shot: failing on a 409 retries nothing and would
+  // stop the pass before any later holder run.
+  it('warns and continues when GitHub refuses to cancel a holder (HTTP 409)', async () => {
+    const result = await exerciseMerged({
+      ...mergedWorld(),
+      refuseCancel: true,
+    });
+    expect(result.code).toBe(0);
+    expect(result.cancelled).toEqual([]);
+    expect(result.stdout).toContain(
+      `::warning::GitHub refused cancellation of run ${holder.id} (HTTP 409)`,
+    );
+    expect(result.stdout).not.toContain('Requested cancellation');
+  });
   it('retires the new-topology optional holder without a fabricated deleted corpus job', async () => {
     const result = await exerciseMerged();
     expect(result.code).toBe(0);
@@ -761,6 +781,7 @@ async function replacedGroup(
     queueNumberMismatch?: boolean;
     queueUnmergeable?: boolean;
     oldRefDisplaced?: boolean;
+    refuseCancel?: boolean;
   } = {},
 ) {
   const candidateBase = 'e'.repeat(40);
@@ -930,6 +951,11 @@ async function replacedGroup(
       };
     } else if (path === 'actions/runs/1/cancel') {
       expect(req.method).toBe('POST');
+      if (options.refuseCancel) {
+        res.writeHead(409);
+        res.end('{"message":"Cannot cancel this workflow run."}');
+        return;
+      }
       cancelled.push(1);
       res.writeHead(202);
       res.end();
@@ -994,6 +1020,13 @@ describe('replaced merge candidate retirement through the GitHub API', () => {
       expect(await replacedGroup(options)).toEqual({ code: 0, cancelled: [] });
     },
   );
+  // Nothing was cancelled, and the next queue event for this PR retries it.
+  it('warns and continues when GitHub refuses the cancellation (HTTP 409)', async () => {
+    expect(await replacedGroup({ refuseCancel: true })).toEqual({
+      code: 0,
+      cancelled: [],
+    });
+  });
   it.each([
     { badJobs: true },
     { refError: true },
