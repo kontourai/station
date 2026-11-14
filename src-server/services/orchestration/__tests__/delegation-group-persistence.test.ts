@@ -267,7 +267,8 @@ test.each(['execution', 'continuation'] as const)(
     const read = target.read;
     try {
       const snapshot = await read();
-      if (kind === 'continuation') expect(snapshot).toBe(target.expected);
+      if (typeof target.expected === 'string')
+        expect(snapshot).toBe(target.expected);
       else expect(snapshot).toMatchObject(target.expected);
       expect(recordSyncs).toBe(1);
       expect(
