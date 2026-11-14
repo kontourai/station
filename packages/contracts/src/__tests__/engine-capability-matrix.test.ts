@@ -225,9 +225,57 @@ describe('engine capability matrix', () => {
     ).toBe(ENGINE_CAPABILITY_MATRICES.acp);
   });
 
+  test('an OpenCode connection reads the opencode row only while it projects the opencode engine', () => {
+    // Preview on: the inspector projects `engineId: 'opencode'`.
+    expect(
+      resolveEngineCapabilityMatrix('opencode', {
+        type: 'acp',
+        config: { engineId: 'opencode', provider: 'opencode' },
+      }),
+    ).toBe(ENGINE_CAPABILITY_MATRICES.opencode);
+    expect(
+      resolveEngineCapabilityMatrix('my-opencode', {
+        type: 'acp',
+        engineId: 'opencode',
+      }),
+    ).toBe(ENGINE_CAPABILITY_MATRICES.opencode);
+    // Preview off: the same record projects `acp`, exactly as on the base.
+    expect(
+      resolveEngineCapabilityMatrix('opencode', {
+        type: 'acp',
+        config: { engineId: 'acp' },
+      }),
+    ).toBe(ENGINE_CAPABILITY_MATRICES.acp);
+  });
+
+  test('the opencode row states what both of its transports deliver', () => {
+    const row = ENGINE_CAPABILITY_MATRICES.opencode!;
+    expect(row.engineId).toBe('opencode');
+    expect(row).toMatchObject({
+      systemPrompt: { state: 'unsupported' },
+      instructionsInFirstTurn: { state: 'session', channel: 'first-turn' },
+      toolServers: { state: 'unsupported' },
+      skills: { state: 'unsupported' },
+      commands: { state: 'unsupported' },
+      modelSelection: { state: 'session', channel: 'wire' },
+      toolPolicy: { state: 'unsupported', adapterModule: 'opencode-adapter' },
+      imageInput: { state: 'unsupported' },
+      midTurnSteer: true,
+      subagentObservability: { state: 'declared', signals: ['lifecycle'] },
+      subagentControl: { state: 'none' },
+    });
+    // It is never the unknown-engine matrix the UI hides everything behind.
+    expect(row).not.toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
+    expect(sessionDeliveryChannels('opencode')).toEqual({
+      toolServers: false,
+      skills: false,
+      systemPrompt: false,
+    });
+  });
+
   test('an unknown external engine resolves to the all-unsupported conservative matrix, never silently editable surfaces', () => {
-    const result = resolveEngineCapabilityMatrix('opencode-connection', {
-      type: 'opencode',
+    const result = resolveEngineCapabilityMatrix('goose-connection', {
+      type: 'goose',
       config: {},
     });
     expect(result).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);

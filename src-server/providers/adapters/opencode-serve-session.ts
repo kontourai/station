@@ -30,6 +30,7 @@
  * they close then, and a late answer is refused without reaching OpenCode.
  */
 import crypto from 'node:crypto';
+import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
 import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
 import type {
   InputRequestContent,
@@ -232,6 +233,8 @@ interface ChildSession {
   title?: string;
   agent?: string;
   running: boolean;
+  /** The running item last reported for it, re-listed by each snapshot. */
+  item?: ChildWorkItem;
 }
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
@@ -1138,25 +1141,33 @@ export class OpenCodeNativeSession {
     switch (type) {
       case 'session.execution.started':
         child.running = true;
+        child.item = {
+          producer: 'engine-subagent',
+          reporterThreadId: this.deps.threadId,
+          childId: child.childId,
+          status: 'running',
+          workKind: 'agent',
+          ...(child.title ? { title: child.title } : {}),
+          ...(child.agent ? { kindLabel: child.agent } : {}),
+          parent: {
+            threadId: this.deps.threadId,
+            ...(this.activeTurnId ? { turnId: this.activeTurnId } : {}),
+          },
+          startedAt: this.nowIso(),
+        };
+        // The session's complete running set: this adapter sees every child
+        // OpenCode creates under it, so the snapshot is authoritative (a
+        // child it no longer lists without a settle reads `unresolved`).
         this.emit({
           method: 'child-work.updated',
           ...this.turnRef(),
           delta: {
-            kind: 'upsert',
-            item: {
-              producer: 'engine-subagent',
-              reporterThreadId: this.deps.threadId,
-              childId: child.childId,
-              status: 'running',
-              workKind: 'agent',
-              ...(child.title ? { title: child.title } : {}),
-              ...(child.agent ? { kindLabel: child.agent } : {}),
-              parent: {
-                threadId: this.deps.threadId,
-                ...(this.activeTurnId ? { turnId: this.activeTurnId } : {}),
-              },
-              startedAt: this.nowIso(),
-            },
+            kind: 'snapshot',
+            producer: 'engine-subagent',
+            reporterThreadId: this.deps.threadId,
+            running: [...this.children.values()].flatMap((entry) =>
+              entry.running && entry.item ? [entry.item] : [],
+            ),
           },
         });
         return;

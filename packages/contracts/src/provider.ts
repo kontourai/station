@@ -756,7 +756,8 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
     // `opencode-adapter.ts` reads `approvalMode` (OpenCode's approval rules
     // are always Station's to set) and `mode` (the OpenCode agent), and over
     // ACP hands `effort` to the inner ACP adapter, which applies it as above.
-    // A native session refuses `effort` rather than dropping it.
+    // A session with `effort` runs over ACP rather than natively, where it
+    // could not be honoured (`OPENCODE_NATIVE_UNSUPPORTED_SETTING`).
     [PROVIDER_OPENCODE]: ['approvalMode', 'mode', 'effort'],
     [PROVIDER_OLLAMA]: [],
     [PROVIDER_BEDROCK]: [],

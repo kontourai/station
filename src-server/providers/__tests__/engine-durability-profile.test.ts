@@ -12,6 +12,7 @@ import { ClaudeAdapter } from '../adapters/claude-adapter.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import { OllamaAdapter } from '../adapters/ollama-adapter.js';
+import { OpenCodeAdapter } from '../adapters/opencode-adapter.js';
 import { StationAgentAdapter } from '../adapters/station-agent-adapter.js';
 
 const eventBus = new EventBus();
@@ -19,6 +20,7 @@ const adapters = [
   new ClaudeAdapter(),
   new CodexAdapter(),
   new AcpAdapter({ getConnections: async () => [] }),
+  new OpenCodeAdapter({ getConnections: async () => [] }),
   new MuseAdapter(),
   new BedrockAdapter(),
   new OllamaAdapter(),

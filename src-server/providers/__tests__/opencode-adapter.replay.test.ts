@@ -575,15 +575,21 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     );
     expect(
       child.map((event) => (event.delta as { kind: string }).kind),
-    ).toEqual(['upsert', 'settle']);
+    ).toEqual(['snapshot', 'settle']);
+    // The child's start is the session's whole running set.
     expect(child[0]?.delta).toMatchObject({
-      item: {
-        producer: 'engine-subagent',
-        childId: 'ses_e28e4e140ffemsWOeVxszItzHu',
-        title: 'child probe',
-        kindLabel: 'general',
-        status: 'running',
-      },
+      producer: 'engine-subagent',
+      reporterThreadId: 'thread-1',
+    });
+    expect((child[0]?.delta as { running: unknown[] }).running).toHaveLength(1);
+    expect(
+      (child[0]?.delta as { running: unknown[] }).running[0],
+    ).toMatchObject({
+      producer: 'engine-subagent',
+      childId: 'ses_e28e4e140ffemsWOeVxszItzHu',
+      title: 'child probe',
+      kindLabel: 'general',
+      status: 'running',
     });
     expect(child[1]?.delta).toMatchObject({ status: 'completed' });
     // The child's own reply is not this session's text.
