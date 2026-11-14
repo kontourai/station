@@ -58,6 +58,18 @@ async function operatorJson(
   return { status: response.status, body: text ? JSON.parse(text) : {} };
 }
 
+/** SDK client options that act as the operator of the isolated Station. */
+function operatorOptions() {
+  const options = {
+    origin: live.api,
+    credential: operatorCredential,
+    credentialOrigin: live.api,
+    authentication: 'required' as const,
+    timeoutMs: 15_000,
+  };
+  return options;
+}
+
 /** A paired operator browser on the Project's room. */
 async function openClient(
   browser: Browser,
@@ -135,13 +147,7 @@ test.describe
       const project = await createProject(
         live.api,
         { name: 'Room actions', slug: SLUG },
-        {
-          origin: live.api,
-          credential: operatorCredential,
-          credentialOrigin: live.api,
-          authentication: 'required',
-          timeoutMs: 15_000,
-        },
+        operatorOptions(),
       );
       const opened = await operatorJson(`/api/projects/${SLUG}/room/init`, {
         method: 'POST',
@@ -328,13 +334,7 @@ test.describe
         live.api,
         SLUG,
         { kind: 'enable', localProjectId: project.body.data.id },
-        {
-          origin: live.api,
-          credential: operatorCredential,
-          credentialOrigin: live.api,
-          authentication: 'required',
-          timeoutMs: 15_000,
-        },
+        operatorOptions(),
       );
       if (enabled.kind !== 'enabled') throw new Error('Sharing not enabled');
       const invitation = await changeProjectAccess(
@@ -347,13 +347,7 @@ test.describe
           role: 'contributor',
           expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
         },
-        {
-          origin: live.api,
-          credential: operatorCredential,
-          credentialOrigin: live.api,
-          authentication: 'required',
-          timeoutMs: 15_000,
-        },
+        operatorOptions(),
       );
       if (invitation.kind !== 'invited') throw new Error('Not invited');
 

@@ -1415,7 +1415,10 @@ test('message files: a full quota recovers from deleted messages and old unsent 
   const bytes = new RoomAttachments(f.root, 'room');
   const unsent = Array.from(
     { length: 1280 - 3 },
-    () => bytes.store(f.binding, [png()])[0]!.id,
+    () =>
+      bytes.store(f.binding, [
+        png() as Parameters<RoomAttachments['store']>[1][number],
+      ])[0]!.id,
   );
   expect(await f.upload(png('over.png'))).toBe(400);
   // Deleting a message frees its file's place at once.
