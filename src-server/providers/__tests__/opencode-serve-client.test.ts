@@ -374,6 +374,14 @@ describe('OpenCodeServeClient requests', () => {
       type: 'session.text.ended',
       data: { sessionID: 'ses_1', text: PROSE },
     };
+    // A reply that is only a URL whose query names a code is content too.
+    const bareUrl = {
+      type: 'session.text.ended',
+      data: {
+        sessionID: 'ses_1',
+        text: 'https://example.com/callback?code=abc123&token=t2',
+      },
+    };
     const config = {
       type: 'mcp.status.changed',
       data: { headers: { Authorization: 'Bearer sk-feed' } },
@@ -386,6 +394,7 @@ describe('OpenCodeServeClient requests', () => {
           new Response(
             openStream([
               `data: ${JSON.stringify(text)}\n\n`,
+              `data: ${JSON.stringify(bareUrl)}\n\n`,
               `data: ${JSON.stringify(config)}\n\n`,
             ]),
           ),
@@ -395,10 +404,11 @@ describe('OpenCodeServeClient requests', () => {
     const seen: unknown[] = [];
     for await (const yielded of client.events({ signal: controller.signal })) {
       seen.push(yielded);
-      if (seen.length === 2) controller.abort();
+      if (seen.length === 3) controller.abort();
     }
     expect(seen[0]).toEqual(text);
-    expect(JSON.stringify(seen[1])).not.toContain('sk-feed');
+    expect(seen[1]).toEqual(bareUrl);
+    expect(JSON.stringify(seen[2])).not.toContain('sk-feed');
   });
 
   test('a request with no answer times out by default', async () => {
