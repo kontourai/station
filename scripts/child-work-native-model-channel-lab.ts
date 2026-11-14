@@ -16,6 +16,7 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { build } from 'esbuild';
 import { z } from 'zod/v3';
+import { prepareNativeTextModelRequest } from '../src-server/runtime/conversation/native-text-model-request.js';
 import { NativeModelContainer } from '../src-server/services/connections/native-model-container.js';
 import { acquireHeavyCheckSlot } from './lib/heavy-check-slots.mjs';
 import { runLabCommand } from './lib/local-collaboration-process.mjs';
@@ -29,6 +30,8 @@ process.once('exit', slot.release);
 const base =
   'node@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54';
 const includeEngines = process.argv.includes('--with-native-engines');
+const boundedTextWire = process.argv.includes('--with-bounded-text-wire');
+assert.ok(!boundedTextWire || includeEngines);
 const fixtureModel = 'station-channel-fixture';
 const fixtureCatalog = JSON.stringify({
   models: [
@@ -95,6 +98,7 @@ const receipt: Record<string, unknown> = {
   nativeEngineQualified: false,
   portableAuthorityQualified: false,
   providerBillingQualified: false,
+  boundedTextWire,
   requests,
 };
 const save = () =>
@@ -165,6 +169,8 @@ try {
       'scripts/child-work-native-model-channel-lab.ts',
       'scripts/lib/local-collaboration-process.mjs',
       'scripts/lib/owned-process.mjs',
+      'src-server/runtime/conversation/native-text-model-request.ts',
+      'src-server/runtime/conversation/bounded-api-provider-contract.ts',
       'src-server/services/connections/native-model-container.ts',
       'src-server/services/connections/native-model-stdio-channel.ts',
       'src-server/services/connections/native-model-stdio-protocol.ts',
@@ -243,7 +249,25 @@ try {
           input.path.split('?')[0],
           currentEngine === 'claude' ? '/v1/messages' : '/v1/responses',
         );
-        const body = JSON.parse(input.body.toString('utf8'));
+        const finalInput = boundedTextWire
+          ? prepareNativeTextModelRequest(input, {
+              provider: currentEngine === 'claude' ? 'anthropic' : 'openai',
+              modelId:
+                currentEngine === 'codex' ? fixtureModel : 'claude-sonnet-4-5',
+              maxOutputTokens: 2048,
+            })
+          : input;
+        const body = JSON.parse(finalInput.body.toString('utf8'));
+        if (boundedTextWire) {
+          assert.equal(
+            currentEngine === 'claude'
+              ? body.max_tokens
+              : body.max_output_tokens,
+            2048,
+          );
+          assert.deepEqual(body.tools, []);
+          if (currentEngine === 'codex') assert.equal(body.tool_choice, 'none');
+        }
         assert.equal(
           body.model,
           currentEngine === 'codex' ? fixtureModel : 'claude-sonnet-4-5',
@@ -252,10 +276,18 @@ try {
           engine: currentEngine,
           path: input.path,
           bodySha256: createHash('sha256').update(input.body).digest('hex'),
+          finalBodySha256: createHash('sha256')
+            .update(finalInput.body)
+            .digest('hex'),
         });
         writeFileSync(
           join(artifacts, `native-request-${requests.length}.json`),
           input.body,
+          { mode: 0o600, flag: 'wx' },
+        );
+        writeFileSync(
+          join(artifacts, `native-final-request-${requests.length}.json`),
+          finalInput.body,
           { mode: 0o600, flag: 'wx' },
         );
         const text = `CONFINED_${currentEngine.toUpperCase()}_REPLY`;

@@ -349,6 +349,12 @@ function parse(
   return result;
 }
 
+/** Native and SDK preparation share the same bounded, duplicate-refusing parser.
+ * Parsing grants neither provider qualification nor source authority. */
+export function parseBoundedApiRequestBody(serialized: string): unknown {
+  return parse(serialized, 2 * 1024 * 1024, 'unsupported_wire');
+}
+
 function rational(value: unknown): Rational {
   const v = closed(value, ['numerator', 'denominator'], [], 'invalid_contract');
   const n = str(v.numerator, 'invalid_contract', 64);
