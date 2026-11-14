@@ -844,7 +844,10 @@ export class EnvironmentSecurityService {
     const pairing = this.#devicePairingService;
     if (!pairing) return undefined;
     const assess = () => {
-      if (!this.#authorizeDeviceCredential(candidate, request))
+      // The following scope read proves liveness after route policy permits it.
+      if (
+        !this.#authorizeDeviceCredential(candidate, request, 'effective-scope')
+      )
         return undefined;
       const grantedScope = this.#resolveDeviceGrantedScope(candidate);
       return grantedScope === undefined
@@ -865,6 +868,7 @@ export class EnvironmentSecurityService {
         lastSeenFrom?: Exclude<PairedDevice['lastSeenFrom'], null>;
       };
     },
+    credentialValidation: 'direct' | 'effective-scope' = 'direct',
   ): boolean {
     if (
       ['POST', 'PUT', 'PATCH', 'DELETE'].includes(
@@ -960,7 +964,8 @@ export class EnvironmentSecurityService {
           candidate,
           request.activity.lastSeenFrom,
         ) ?? false)
-      : (this.#devicePairingService?.verifyCredential(candidate) ?? false);
+      : credentialValidation === 'effective-scope' ||
+          (this.#devicePairingService?.verifyCredential(candidate) ?? false);
   }
 
   /**

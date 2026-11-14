@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
@@ -67,13 +69,30 @@ const route = { method: 'GET', path: '/api/projects' };
 test('one credential-route assessment resolves authorization and scope under one physical Home acquisition', async () => {
   const { service, device } = await pairedService();
   observations.acquisitions = 0;
-  expect(service.assessCredentialRoute(device.credential, route)).toMatchObject(
-    {
+  const open = fs.openSync;
+  let tokenOpens = 0;
+  const observer = vi.spyOn(fs, 'openSync').mockImplementation((...args) => {
+    if (String(args[0]).includes('.home-writer.mutation')) tokenOpens++;
+    return open(...args);
+  });
+  syncBuiltinESMExports();
+  try {
+    expect(
+      service.assessCredentialRoute(device.credential, route),
+    ).toMatchObject({
       operator: false,
       grantedScope: PAIRING_SCOPE_ORCHESTRATION_READ,
-    },
-  );
-  expect(observations.acquisitions).toBe(1);
+    });
+    expect(observations.acquisitions).toBe(1);
+    expect(tokenOpens).toBeGreaterThan(0);
+    expect(
+      tokenOpens,
+      'assessment Home inspections; duplicate-lookup baseline was 16',
+    ).toBeLessThanOrEqual(15);
+  } finally {
+    observer.mockRestore();
+    syncBuiltinESMExports();
+  }
 });
 
 test('assessments preserve operator and device authority, observe revocation between calls, and never write activity', async () => {
@@ -92,16 +111,20 @@ test('assessments preserve operator and device authority, observe revocation bet
     operator: false,
     grantedScope: PAIRING_SCOPE_ORCHESTRATION_READ,
   });
-  expect(
-    service.assessCredentialRoute(device.credential, {
-      method: 'POST',
-      path: '/api/environments/peers',
-    }),
-  ).toBeUndefined();
+  for (const restricted of [
+    { method: 'POST', path: '/api/environments/peers' },
+    { method: 'GET', path: '/api/pairing/devices' },
+    { method: 'POST', path: '/api/pairing/offers' },
+  ]) {
+    expect(
+      service.assessCredentialRoute(device.credential, restricted),
+    ).toBeUndefined();
+  }
   expect(service.identifyDevice(device.credential)).toEqual(before);
   expect(
     service.assessCredentialRoute('unknown-credential', route),
   ).toBeUndefined();
+  expect(service.authorizeCredential('unknown-credential', route)).toBe(false);
   service.devicePairing.revokeDevice(device.device.id, 'operator-credential');
   expect(
     service.assessCredentialRoute(device.credential, route),
