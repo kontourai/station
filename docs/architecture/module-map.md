@@ -3087,7 +3087,8 @@ kiro-cli's `subagent/list_update` keeps its host-chrome notification row while
 its engine row reads the roster into `child-work.updated`, and a `tool_call`
 whose `_meta.kiro.kind` is `agent-subtask` is read the same way. An ACP
 engine whose handshake names neither reporter publishes `not-reported` at
-session start. The matrix cell's `perConnection` reason is what
+session start, and history replay restores that statement after a restart
+(`child-work-history.ts`), so the session never reads "nothing running". The matrix cell's `perConnection` reason is what
 `child-work-projection.ts` and the Agents pane fall back to for an ACP
 session with no report seen in this process.
 
