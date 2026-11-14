@@ -130,7 +130,7 @@ other status (`HashMismatch`, `NotTrusted`, `UnknownError`, ...). The inventory'
 `unsigned`/`not-applicable`) must match it. Until Windows signing is
 provisioned, tagged MSIs ship `NOT_SIGNED`, as Nightly does, and users see the
 SmartScreen prompt once; `release-artifacts.mjs draft-notes` derives the draft
-release body from the inventory and states this on the release page. The validator rejects false or conflated signing
+signing notice from the inventory and appends it to the generated changelog and installation instructions before creating the draft. The validator rejects false or conflated signing
 claims, a Windows claim that differs from its receipt, missing bytes, duplicate
 variants, source/tag disagreement, invalid checksums, and missing updater
 signatures.
