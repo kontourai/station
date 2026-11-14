@@ -806,8 +806,12 @@ jobs and five affected-test shard jobs run across all PRs. Statics use two
 buckets by PR number parity. Shards use five shared buckets: the PR number's
 last digit mod 5 plus the shard index, mod 5 (the table is in `ci.yml`), so one
 PR's shards never share a bucket and every plan's first shard spreads across all
-five; larger plans retain every shard. A job holds its bucket while it waits for
-a runner. Waiting jobs consume no runner. `pull_request_target` reads these
+five; larger plans retain every shard. The release-bot PR (head
+`changeset-release/main` from this repository, opened by
+`station-automation[bot]`) is re-pushed on every main push, so its shard and
+statics jobs share one dedicated `ci-pr-release-bot` slot and never enter the
+shared buckets; supersession cancels its older heads as for any PR. A job holds
+its bucket while it waits for a runner. Waiting jobs consume no runner. `pull_request_target` reads these
 groups from the base branch, so a bucket change applies to PR runs created
 after it lands. Different-head
 supersession still cancels obsolete source runs, including native FIFO
@@ -818,7 +822,7 @@ one force-cancel after revalidating the PR and run identities and confirming
 that no unfinished job has an assigned runner. Missing terminal confirmation
 fails the controller; cancellation never becomes source PASS. Same-head
 duplicates wait rather than cancelling another run's proof. Merge-group, push and manual
-diagnostic jobs use separate source-specific groups. These seven PR computation
+diagnostic jobs use separate source-specific groups. These eight PR computation
 slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 

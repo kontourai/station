@@ -383,9 +383,15 @@ jobs:
       # The odd/even/third names are kept, now as plain labels, so runs
       # created under the previous mapping share those slots while both run.
       # Shard 4 is each row's last arm; the planner never emits more than 4.
+      # The release-bot PR (same three-part identity as the build-ios.yml
+      # heavy-lane guard) is re-pushed on every main push; its shard and
+      # statics jobs share one slot of their own and never enter these five.
       # Required integration and diagnostics use separate source identities.
       group: >-
-        ${{ github.event_name == 'pull_request_target' && (
+        ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.ref == 'changeset-release/main' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.user.login == 'station-automation[bot]' && 'ci-pr-release-bot' ||
+        github.event_name == 'pull_request_target' && (
         (endsWith(format('{0}', github.event.pull_request.number), '0') || endsWith(format('{0}', github.event.pull_request.number), '5')) && (matrix.shard == 1 && 'ci-pr-shards-even' || matrix.shard == 2 && 'ci-pr-shards-odd' || matrix.shard == 3 && 'ci-pr-shards-third' || 'ci-pr-shards-fourth') ||
         (endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '6')) && (matrix.shard == 1 && 'ci-pr-shards-odd' || matrix.shard == 2 && 'ci-pr-shards-third' || matrix.shard == 3 && 'ci-pr-shards-fourth' || 'ci-pr-shards-fifth') ||
         (endsWith(format('{0}', github.event.pull_request.number), '2') || endsWith(format('{0}', github.event.pull_request.number), '7')) && (matrix.shard == 1 && 'ci-pr-shards-third' || matrix.shard == 2 && 'ci-pr-shards-fourth' || matrix.shard == 3 && 'ci-pr-shards-fifth' || 'ci-pr-shards-even') ||
@@ -592,9 +598,13 @@ jobs:
     concurrency:
       # Two repository-wide PR statics slots, with no pending replacement.
       # Obsolete heads are cancelled by the trusted supersession workflow.
-      # Metadata-only edits never enter this source-job group.
+      # Metadata-only edits never enter this source-job group. The release-bot
+      # PR uses its one ci-pr-release-bot slot, shared with its shards.
       group: >-
-        ${{ github.event_name == 'pull_request_target' && format('ci-pr-statics-{0}', (endsWith(format('{0}',
+        ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.ref == 'changeset-release/main' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.user.login == 'station-automation[bot]' && 'ci-pr-release-bot' ||
+        github.event_name == 'pull_request_target' && format('ci-pr-statics-{0}', (endsWith(format('{0}',
         github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') ||
         endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}',
         github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) &&

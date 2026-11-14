@@ -1192,16 +1192,23 @@ describe('repository-wide PR source runner ceilings', () => {
     shard = 1,
     event = 'pull_request_target',
     sha = 'a'.repeat(40),
+    identity: { ref?: string; repo?: string; login?: string } = {},
   ) => {
     if (!job.concurrency) throw new Error('Missing source concurrency');
     const github = {
       event_name: event,
       ref: `refs/heads/${event}`,
       sha,
+      repository: REPOSITORY,
       event: {
         pull_request: {
           number: pr,
-          head: { sha },
+          user: { login: identity.login ?? 'octocat' },
+          head: {
+            sha,
+            ref: identity.ref ?? 'feature/source',
+            repo: { full_name: identity.repo ?? REPOSITORY },
+          },
           base: { sha: 'b'.repeat(40) },
         },
       },
@@ -1304,6 +1311,76 @@ describe('repository-wide PR source runner ceilings', () => {
     expect(state.shards.get('fast-checks-shard')).toEqual([1, 2, 3, 4]);
     expect(state.results.get('fast-checks')).toBe('success');
   });
+  // The release-bot PR's three-part identity, as build-ios.yml's guard.
+  const RELEASE_BOT = {
+    ref: 'changeset-release/main',
+    repo: REPOSITORY,
+    login: 'station-automation[bot]',
+  };
+  test('the release-bot PR runs every shard and statics in its one dedicated slot', () => {
+    const groups = new Set();
+    for (const pr of [4097, 4100, 4101])
+      for (let shard = 1; shard <= 4; shard++)
+        groups.add(
+          sourceGroups(
+            jobs['fast-checks-shard'],
+            pr,
+            shard,
+            undefined,
+            undefined,
+            RELEASE_BOT,
+          ),
+        );
+    groups.add(
+      sourceGroups(
+        jobs['fast-checks-statics'],
+        4097,
+        1,
+        undefined,
+        undefined,
+        RELEASE_BOT,
+      ),
+    );
+    expect(groups).toEqual(new Set(['ci-pr-release-bot']));
+    // Its merge-group and dispatch runs keep their per-run identities.
+    for (const id of ['fast-checks-statics', 'fast-checks-shard'])
+      for (const event of ['merge_group', 'workflow_dispatch', 'push'])
+        expect(
+          sourceGroups(jobs[id], 4097, 1, event, undefined, RELEASE_BOT),
+        ).not.toBe('ci-pr-release-bot');
+  });
+  test.each([
+    ['a fork', { ...RELEASE_BOT, repo: 'someone/station' }],
+    ['another author', { ...RELEASE_BOT, login: 'octocat' }],
+    ['another branch', { ...RELEASE_BOT, ref: 'changeset-release/next' }],
+  ])(
+    'a changeset-release/main PR from %s stays in the shared slots',
+    (_label, identity) => {
+      for (let digit = 0; digit <= 9; digit++) {
+        for (let shard = 1; shard <= 4; shard++)
+          expect(SHARD_GROUPS).toContain(
+            sourceGroups(
+              jobs['fast-checks-shard'],
+              4090 + digit,
+              shard,
+              undefined,
+              undefined,
+              identity,
+            ),
+          );
+        expect(
+          sourceGroups(
+            jobs['fast-checks-statics'],
+            4090 + digit,
+            1,
+            undefined,
+            undefined,
+            identity,
+          ),
+        ).toBe(digit % 2 === 1 ? 'ci-pr-statics-odd' : 'ci-pr-statics-even');
+      }
+    },
+  );
   test('merge groups and diagnostics never join a PR slot or each other; source identities remain distinct', () => {
     for (const id of ['fast-checks-statics', 'fast-checks-shard']) {
       const prSlots = [

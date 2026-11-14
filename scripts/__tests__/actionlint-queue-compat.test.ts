@@ -114,6 +114,50 @@ describe('reviewed GitHub FIFO schema compatibility', () => {
     expect(evaluate(github, { shard: 1 }, endsWith, format)).toBe(
       'ci-fast-shard-1-merge_group-candidate-abc-',
     );
+    const releaseBot = (login: string, repo: string) => ({
+      event_name: 'pull_request_target',
+      repository: 'kontourai/station',
+      event: {
+        pull_request: {
+          number: 4097,
+          user: { login },
+          head: {
+            sha: 'head',
+            ref: 'changeset-release/main',
+            repo: { full_name: repo },
+          },
+          base: { sha: 'base' },
+        },
+      },
+      ref: 'ref',
+      sha: 'sha',
+    });
+    for (let shard = 1; shard <= 4; shard++) {
+      expect(
+        evaluate(
+          releaseBot('station-automation[bot]', 'kontourai/station'),
+          { shard },
+          endsWith,
+          format,
+        ),
+      ).toBe('ci-pr-release-bot');
+      expect(
+        evaluate(
+          releaseBot('station-automation[bot]', 'someone/station'),
+          { shard },
+          endsWith,
+          format,
+        ),
+      ).toMatch(/^ci-pr-shards-(even|odd|third|fourth|fifth)$/);
+      expect(
+        evaluate(
+          releaseBot('octocat', 'kontourai/station'),
+          { shard },
+          endsWith,
+          format,
+        ),
+      ).toMatch(/^ci-pr-shards-(even|odd|third|fourth|fifth)$/);
+    }
   });
   test('removes only the validated new key and preserves the original security document', () => {
     const original = structuredClone(document);
