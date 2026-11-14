@@ -62,7 +62,7 @@ function parseJson(bytes) {
 }
 
 /** A consumed note's releases and summary, or undefined when unreadable. */
-export function parseChangesetNote(bytes) {
+function parseChangesetNote(bytes) {
   const text = decode(bytes);
   if (text === undefined) return undefined;
   const lines = text.split('\n');
