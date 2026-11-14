@@ -152,11 +152,11 @@ describe('native release configuration', () => {
   test('refuses version components that would overflow their store number band', () => {
     // Without bounds, v0.1.100-rc.1 and v0.2.0-rc.1 both derive 20001, and
     // v0.1.100 (20099) would outrank the later v0.2.0-rc.98 (20098).
-    expect(() => taggedStoreIdentity('v0.1.100-rc.1')).toThrow(
-      'patch 0-99',
-    );
+    expect(() => taggedStoreIdentity('v0.1.100-rc.1')).toThrow('patch 0-99');
     expect(() => taggedStoreIdentity('v0.1.100')).toThrow('patch 0-99');
-    expect(() => taggedStoreIdentity('v0.1000.0')).toThrow('minor must be 0-999');
+    expect(() => taggedStoreIdentity('v0.1000.0')).toThrow(
+      'minor must be 0-999',
+    );
     expect(taggedStoreIdentity('v0.1.99').versionCode).toBe(19_999);
     expect(taggedStoreIdentity('v0.999.99').versionCode).toBe(9_999_999);
     expect(taggedStoreIdentity('v0.2.0-rc.1').versionCode).toBe(20_001);
