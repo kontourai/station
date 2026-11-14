@@ -1,7 +1,0 @@
-{
-  "revision": "7d593e0b6ea57c67db71c16d4f3595a25c3a02ee",
-
-  "notes": [
-    {"path":"docs/glossary.md","note":"chromium-server-host.ts only drops the export of classifyChromiumStderr (still used in-file); searched this document for it: no claim names it, and launch classification behaviour is unchanged.","inputs":["docs/glossary.md","src-server/services/browser/hosts/chromium-server-host.ts"]}
-  ]
-}

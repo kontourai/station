@@ -1,7 +1,0 @@
-{
-  "revision": "b2c82caeefbfb9ead319fa28fb1e69a7e241a301",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Reviewed SessionCommandModule start-announcement and lifecycle claims against initializeRuntime early ownership transfer, StationRuntime failed-initialize shutdown, EventStore closing listeners, exclusive built-in queue readers and immediate indeterminate settlement on consumer loss/foreign settlement. Graceful shutdown keeps exit observation through room parking. Other module-map claims unchanged; no epic/runtime-release qualification.","inputs":["docs/architecture/module-map.md","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

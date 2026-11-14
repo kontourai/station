@@ -1,9 +1,0 @@
-{
-  "revision": "450fb025b921ffc69da73eaa037560565c0f3acb",
-
-  "notes": [
-    {"path":"docs/guides/development.md","note":"Reviewed confined Codex cwdDefaulted startup through private workspace preparation, native thread start/resume, persisted session cwd, and summary projection. Explicit, project, adopted, and host locations remain selected by their existing paths. The new adapter integration and summary tests passed in the focused run; a native command separately succeeded in an interactive Windows task. This does not establish a full desktop-control journey. Reviewed ACP wrapper compatibility and Windows fixture corrections; the remaining catalog-writer fixture correction is under validation.","inputs":["docs/guides/development.md","src-server/providers/adapters/codex-adapter.ts","src-server/services/infra/managed-engine-workspace.ts","src-server/providers/__tests__/codex-adapter.test.ts","src-server/services/orchestration/orchestration-session-state.ts","src-server/services/orchestration/__tests__/session-summary-managed-workspace.test.ts","src-server/services/acp/managed-acp-workspace.ts","src-server/providers/__tests__/acp-adapter.test.ts","scripts/run-test-mutations.mjs"]},
-
-    {"path":"docs/design/chat-composer.md","note":"Reviewed the directory-less project paragraph against confined Codex startup and managed-workspace summary labeling. This update describes server-selected locations; it makes no new browser layout or project run-location endpoint claim. Existing explicit directory and ACP connection precedence remain unchanged.","inputs":["docs/design/chat-composer.md","packages/contracts/src/orchestration.ts"]}
-  ]
-}

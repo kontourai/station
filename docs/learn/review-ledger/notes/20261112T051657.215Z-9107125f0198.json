@@ -1,7 +1,0 @@
-{
-  "revision": "3c49101de1ce3239d166abacbeaf2d8ab1c0df30",
-
-  "notes": [
-    {"path":"docs/reference/connect.md","note":"Added checkedAt to the ConnectionStatusResult listing and the coordinator paragraph, checked against ConnectionHealthCoordinator.ts (stamped on the managed-loopback, connected and error publishes; unchanged on abort) and useConnectionStatus.ts (snapshot spread). Covered by the new coordinator test. No other claim in the reference changed.","inputs":["docs/reference/connect.md","packages/connect/src/core/ConnectionHealthCoordinator.ts","packages/connect/src/react/useConnectionStatus.ts"]}
-  ]
-}

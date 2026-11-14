@@ -14,6 +14,8 @@
  *  2. Console budget — console errors, page errors, and 4xx/5xx responses
  *     during ordinary navigation fail the run unless a known finding in
  *     tests/live/fresh-home-walkthrough-allowlist.mjs covers them.
+ *     A document posting the same focus state twice within 1 s also fails,
+ *     since the focus rate limit's 429 itself is allowlisted.
  *  3. Bundled-content smoke — installs every plugin in the bundled registry
  *     manifest (examples/registry/default.json), applies each plugin layout to
  *     a project, opens every declared tab, and asserts none renders
@@ -24,7 +26,9 @@
  * per-PR work — see .github/workflows/fresh-home-walkthrough.yml.
  *
  * Like tests/live/cold-bootstrap.mjs this deliberately uses no storageState
- * and never intercepts `/api/**`: the point is the product as shipped.
+ * and never intercepts `/api/**`: the point is the product as shipped. One
+ * init script records focus reports in the page and passes each call to the
+ * real fetch unchanged (helpers/focus-report-budget.mjs says why).
  */
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -37,6 +41,11 @@ import {
 } from '../../src-ui/src/app-shell/routing.ts';
 import { CONNECTION_SECTIONS } from '../../src-ui/src/views/connections-hub/connection-sections.ts';
 import { WALKTHROUGH_ALLOWLIST } from './fresh-home-walkthrough-allowlist.mjs';
+import {
+  FOCUS_REPORT_LOG_KEY,
+  focusReportFindings,
+  recordFocusReportsInPage,
+} from './helpers/focus-report-budget.mjs';
 // Boot/pair/settle plumbing is shared with the core-loop journey suite
 // (#766 item 2) — see tests/live/helpers/station-instance.mjs. Only the
 // walkthrough-specific pieces (console budget, gallery, expected-failure
@@ -174,6 +183,26 @@ function attachConsoleBudget(page) {
       `${request.method()} FAILED(${failure}) ${new URL(request.url()).pathname}`,
     );
   });
+}
+
+/**
+ * Fails the run when any document posted the same focus state twice inside
+ * the reporter's 1 s floor. A run that recorded no report at all fails too:
+ * the recorder not seeing the reporter is not evidence of a clean count.
+ */
+async function checkFocusReports(page) {
+  const recorded = JSON.parse(
+    (await page.evaluate(
+      (key) => localStorage.getItem(key),
+      FOCUS_REPORT_LOG_KEY,
+    )) ?? '[]',
+  );
+  if (recorded.length === 0) {
+    fail('focus report recorder saw no POST /api/presence/focus');
+    return;
+  }
+  console.log(`focus reports recorded: ${recorded.length}`);
+  for (const finding of focusReportFindings(recorded)) fail(finding);
 }
 
 // ---------------------------------------------------------------------------
@@ -540,6 +569,9 @@ try {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
   });
+  // Records focus reports so the per-document count can be checked even
+  // though the rate limit's 429 is allowlisted (helpers/focus-report-budget).
+  await context.addInitScript(recordFocusReportsInPage, FOCUS_REPORT_LOG_KEY);
   const page = await context.newPage();
   attachConsoleBudget(page);
 
@@ -549,6 +581,8 @@ try {
   await dismissFirstRun(page);
   await sweepRoutes(page, routes);
   await bundledContentSmoke(page);
+  phase = 'focus report count';
+  await checkFocusReports(page);
 } finally {
   await browser?.close();
   phase = 'teardown';

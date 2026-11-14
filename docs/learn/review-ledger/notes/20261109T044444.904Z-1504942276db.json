@@ -1,7 +1,0 @@
-{
-  "revision": "016e75f460559337248bbecae6472c0f110f5c01",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Inspected SessionLifecycleModule Code and evidence claims naming orchestration-service.test.ts against Windows fixture-only delta aed96ac2 at committed 016e75f. Changes isolate HOME/USERPROFILE, verify canonical alias/junction cleanup and assert platform scratch coordinates; no lifecycle service, authorization, provider boundary or publication code changes. Existing module ownership and integration-evidence description remains accurate; no prose change or full-module runtime claim.","inputs":["docs/architecture/module-map.md"]}
-  ]
-}

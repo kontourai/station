@@ -1,9 +1,0 @@
-{
-  "revision": "9cc28724742217ee5d6f93815b4ca3b1cd37db74",
-
-  "notes": [
-    {"path":"docs/design/isolated-agent-runs.md","note":"Extended the test list with the overlapping-edit moved base (kept refused until a resolving merge, then recorded with the merge commit) and the intent-before-removal ordering test; both pass. worktree-provisioning-service.ts only extracted the branch-kept reason into a helper with the same result. Other claims re-checked against the same sources as the previous note.","inputs":["docs/design/isolated-agent-runs.md","src-server/services/projects/__tests__/worktree-output-settlement.test.ts","src-server/services/projects/worktree-provisioning-service.ts"]},
-
-    {"path":"docs/reference/contracts.md","note":"worktree-provisioning-service.ts only extracted why a discard keeps the branch into a helper (same result); the workspace-isolation row is unaffected. No change needed.","inputs":["docs/reference/contracts.md","src-server/services/projects/worktree-provisioning-service.ts"]}
-  ]
-}

@@ -70,7 +70,7 @@ export function childTranscriptMessages(
               ...(result
                 ? {
                     output:
-                      (result.text ?? 'No text output.') +
+                      (result.text || 'Text output unavailable.') +
                       (result.truncated
                         ? '\n\n[Text truncated by the engine transcript reader]'
                         : ''),
@@ -96,7 +96,7 @@ export function childTranscriptMessages(
         return {
           id,
           role: 'assistant',
-          content: `${entry.isError ? 'Tool error' : 'Tool result'}\n\n${entry.text ?? 'No text output.'}${cut}`,
+          content: `${entry.isError ? 'Tool error' : 'Tool result'}\n\n${entry.text || 'Text output unavailable.'}${cut}`,
         };
       case 'omitted':
         return {

@@ -140,10 +140,6 @@
 
     "vite.config.ts",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "scripts/apply-android-channel-icons.mjs",
 
     "scripts/lib/android-themed-icon.mjs",
@@ -156,7 +152,13 @@
 
     "config/android-native-size-budget.json",
 
-    "src-desktop/tauri.android.onboarding.conf.json"
+    "src-desktop/tauri.android.onboarding.conf.json",
+
+    "package.json#/devDependencies/@tauri-apps~1cli",
+
+    "package.json#/devDependencies/vite",
+
+    "package.json#/devDependencies/react"
   ],
 
   "checks": [

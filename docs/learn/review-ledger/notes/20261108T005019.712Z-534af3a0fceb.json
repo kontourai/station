@@ -1,7 +1,0 @@
-{
-  "revision": "6d24a3afcdae185bf6a3c83de81d231783f95cc8",
-
-  "notes": [
-    {"path":"docs/guides/development.md","note":"Checked 'What engines are told' (first turn begins with a workload-scope section) against orchestration-service.ts: Station instructions are an additional first-turn part after the authored prompt, gated on the Feature Preview; the workload-limit text and its conditions are unchanged.","inputs":["docs/guides/development.md","src-server/providers/adapters/claude-adapter.ts"]}
-  ]
-}

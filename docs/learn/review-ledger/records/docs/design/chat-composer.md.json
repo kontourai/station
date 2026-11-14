@@ -64,8 +64,6 @@
 
     "src-ui/src/components/status/chatStatus.ts",
 
-    "src-server/services/orchestration/event-store.ts",
-
     "src-ui/src/__tests__/ChatInputArea.test.tsx",
 
     "src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx",
@@ -330,11 +328,11 @@
 
     "packages/sdk/src/query-domains/chatRuntimeOrchestration.ts",
 
-    "src-ui/src/components/ComposerRunControl.tsx",
+    "src-server/services/orchestration/thread-inbox.ts",
 
-    "src-ui/src/components/ComposerRunControl.css",
+    "src-server/services/orchestration/post-tool-inbox.ts",
 
-    "src-ui/src/components/ComposerChoiceSummary.ts"
+    "src-server/services/orchestration/attachment-blob-store.ts"
   ],
 
   "checks": [

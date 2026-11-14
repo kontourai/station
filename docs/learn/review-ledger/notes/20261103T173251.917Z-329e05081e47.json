@@ -1,9 +1,0 @@
-{
-  "revision": "8fa48c271edffcbb3ef63812e0b306492aa8c1aa",
-
-  "notes": [
-    {"path":"docs/reference/session-api.md","note":"Reviewed the start-acknowledgement paragraph against SessionCommandModule attachStarted/ensureStartedSessionCurrent ordering, awaitStartedSessionCommit, cleanupFailedStart, and the final 24 start/publication tests. Announced accepted starts require the durable event and recorded owner; timeout is indeterminate/non-retryable with an unavailable attempted receipt, and cleanup revokes interim authority even if provider stop fails. Deferred starts keep the tested process-local fallback until their event settles. Corrected the prior claim that fallback could never bind before timeout: attachment precedes the confirmation check, while cleanup revokes it. The merged tests use the actual asynchronous immediate-write seam and assert durable-event absence and authorization refusal after teardown. No Session route or payload contract changed; this note binds the final test bytes that hosted freshness correctly found unreviewed.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/__tests__/start-owner-publication-contention.test.ts"]},
-
-    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Scoped linked-source review: the historical status and superseding ADR0014 remain explicit. The Session API start-ack paragraph now accurately describes fallback revocation on timeout and event-derived ownership for deferred starts. That correction does not alter this frozen ADR rollout rationale, private execution adapter, no-migration decision or historical flag plan. Its current-contract link remains valid; no ADR prose was edited and historical flag instructions were not requalified as current.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
-  ]
-}

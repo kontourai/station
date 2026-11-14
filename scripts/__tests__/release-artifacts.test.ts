@@ -28,6 +28,10 @@ import {
   verifyTauriUpdaterSignature,
 } from '../lib/release-artifacts.mjs';
 import { generateReleaseSboms } from '../lib/release-sbom-generation.mjs';
+import {
+  createWindowsReleaseSigningReceipt,
+  windowsSigningReceiptAsset,
+} from '../lib/windows-release-signing.mjs';
 
 const roots: string[] = [];
 const TAG = 'v1.2.3';
@@ -141,7 +145,41 @@ function writeHostStream(assetsDir: string) {
   );
 }
 
-function fixture() {
+type WindowsSigningMode = 'certificate' | 'unsigned';
+
+/** Stage the receipt exactly as release.yml's desktop-windows job writes it. */
+function writeWindowsSigningReceipt(
+  assetsDir: string,
+  mode: WindowsSigningMode,
+) {
+  const installer = `station-${TAG}-windows-x86_64.msi`;
+  const installerSha256 = createHash('sha256')
+    .update(readFileSync(join(assetsDir, installer)))
+    .digest('hex');
+  const signer = mode === 'certificate' ? 'A1'.repeat(20) : null;
+  const receipt = createWindowsReleaseSigningReceipt({
+    tag: TAG,
+    sourceSha: SHA,
+    mode,
+    // The record release.yml's Authenticode observation step writes.
+    observation: {
+      installer: `D:\\a\\station\\bundle\\msi\\Station_1.2.3_x64_en-US.msi`,
+      installerSha256,
+      authenticodeStatus: mode === 'certificate' ? 'Valid' : 'NotSigned',
+      statusMessage: null,
+      signerThumbprint: signer,
+    },
+    expectedThumbprint: signer,
+    installer,
+    installerSha256,
+  });
+  writeFileSync(
+    join(assetsDir, windowsSigningReceiptAsset(TAG)),
+    `${JSON.stringify(receipt, null, 2)}\n`,
+  );
+}
+
+function fixture(windowsSigning: WindowsSigningMode = 'unsigned') {
   const root = mkdtempSync(join(tmpdir(), 'station-release-artifacts-'));
   roots.push(root);
   const assetsDir = join(root, 'assets');
@@ -174,6 +212,7 @@ function fixture() {
     }
   }
   writeHostStream(assetsDir);
+  writeWindowsSigningReceipt(assetsDir, windowsSigning);
   const portableSha = createHash('sha256')
     .update(readFileSync(join(assetsDir, 'station-portable.tar.gz')))
     .digest('hex');
@@ -269,8 +308,8 @@ function fixture() {
   return { assetsDir, containerDescriptor, updaterPublicKey, sbomContext };
 }
 
-function createFixtureInventory() {
-  const { sbomContext: _sbomContext, ...files } = fixture();
+function createFixtureInventory(windowsSigning?: WindowsSigningMode) {
+  const { sbomContext: _sbomContext, ...files } = fixture(windowsSigning);
   return {
     ...files,
     inventory: createReleaseInventory({
@@ -307,7 +346,7 @@ describe('release artifact inventory', () => {
     expect(inventory.variants.map((variant) => variant.id)).toEqual(
       releaseVariants(TAG).map((variant) => variant.id),
     );
-    expect(inventory.assets).toHaveLength(31);
+    expect(inventory.assets).toHaveLength(32);
     expect(inventory.assets).toContainEqual(
       expect.objectContaining({
         name: 'station-updater-public-key.txt',
@@ -491,6 +530,173 @@ describe('release artifact inventory', () => {
     expect(() =>
       validateReleaseInventory(inventory, { assetsDir, updaterPublicKey }),
     ).toThrow('SBOM artifact subjects do not match the release inventory');
+  });
+});
+
+describe('release artifact inventory: Windows Authenticode state (#3591)', () => {
+  const windowsVariant = (inventory: any) =>
+    inventory.variants.find((variant: any) => variant.id === 'windows-x86_64');
+
+  it('records an unsigned MSI as an explicit unsigned claim from its receipt', () => {
+    const { assetsDir, inventory, updaterPublicKey } =
+      createFixtureInventory('unsigned');
+    expect(windowsVariant(inventory)).toMatchObject({
+      distribution: 'distributable',
+      platformSigning: { state: 'unsigned', proof: 'not-applicable' },
+      updaterSigning: { state: 'signed', proof: 'tauri-updater-signature' },
+    });
+    expect(inventory.assets).toContainEqual(
+      expect.objectContaining({
+        name: windowsSigningReceiptAsset(TAG),
+        role: 'platform-signing-receipt',
+      }),
+    );
+    expect(() =>
+      validateReleaseInventory(inventory, { assetsDir, updaterPublicKey }),
+    ).not.toThrow();
+  });
+
+  it('records a verified Authenticode signature as the signed claim', () => {
+    const { assetsDir, inventory, updaterPublicKey } =
+      createFixtureInventory('certificate');
+    expect(windowsVariant(inventory).platformSigning).toEqual({
+      state: 'signed',
+      proof: 'platform-signature',
+    });
+    expect(() =>
+      validateReleaseInventory(inventory, { assetsDir, updaterPublicKey }),
+    ).not.toThrow();
+  });
+
+  it.each([
+    [
+      'an unsigned MSI claimed as signed',
+      'unsigned' as const,
+      (inventory: any) =>
+        (windowsVariant(inventory).platformSigning = {
+          state: 'signed',
+          proof: 'platform-signature',
+        }),
+    ],
+    [
+      'a signed MSI claimed as unsigned',
+      'certificate' as const,
+      (inventory: any) =>
+        (windowsVariant(inventory).platformSigning = {
+          state: 'unsigned',
+          proof: 'not-applicable',
+        }),
+    ],
+    [
+      'an unsigned Windows updater',
+      'unsigned' as const,
+      (inventory: any) =>
+        (windowsVariant(inventory).updaterSigning = {
+          state: 'unsigned',
+          proof: 'not-applicable',
+        }),
+    ],
+    [
+      'an unsigned claim with an invented proof',
+      'unsigned' as const,
+      (inventory: any) =>
+        (windowsVariant(inventory).platformSigning = {
+          state: 'unsigned',
+          proof: 'platform-signature',
+        }),
+    ],
+  ])('refuses %s', (_label, mode, mutate) => {
+    const { assetsDir, inventory, updaterPublicKey } =
+      createFixtureInventory(mode);
+    mutate(inventory);
+    expect(() =>
+      validateReleaseInventory(inventory, { assetsDir, updaterPublicKey }),
+    ).toThrow('Invalid release artifact inventory');
+  });
+
+  it('refuses a receipt that does not bind the shipped MSI bytes', () => {
+    const { assetsDir, inventory, updaterPublicKey } =
+      createFixtureInventory('unsigned');
+    const receiptFile = join(assetsDir, windowsSigningReceiptAsset(TAG));
+    const receipt = JSON.parse(readFileSync(receiptFile, 'utf8'));
+    receipt.installerSha256 = 'f'.repeat(64);
+    writeFileSync(receiptFile, `${JSON.stringify(receipt, null, 2)}\n`);
+    const entry = inventory.assets.find(
+      (asset: any) => asset.name === windowsSigningReceiptAsset(TAG),
+    ) as { sha256: string };
+    entry.sha256 = createHash('sha256')
+      .update(readFileSync(receiptFile))
+      .digest('hex');
+    expect(() =>
+      validateReleaseInventory(inventory, { assetsDir, updaterPublicKey }),
+    ).toThrow('signing receipt does not bind this release installer');
+  });
+
+  it.each([
+    ['unsigned' as const, true],
+    ['certificate' as const, false],
+  ])(
+    'discloses a %s Windows MSI in the draft release notes through the CLI: %s',
+    (mode, disclosed) => {
+      const { assetsDir, containerDescriptor, sbomContext } = fixture(mode);
+      const output = join(assetsDir, 'station-release-inventory.json');
+      const notes = join(assetsDir, '..', 'notes.md');
+      const cli = resolve(import.meta.dirname, '../release-artifacts.mjs');
+      const run = (args: string[]) =>
+        spawnSyncBounded(process.execPath, [cli, ...args], {
+          encoding: 'utf8',
+          windowsHide: true,
+          env: { ...process.env, TAURI_SIGNING_PUBLIC_KEY: '' },
+        });
+      const assemble = run([
+        'assemble',
+        '--assets-dir',
+        assetsDir,
+        '--output',
+        output,
+        '--tag',
+        TAG,
+        '--sha',
+        SHA,
+        '--generated-at',
+        GENERATED_AT,
+        '--sbom-context',
+        sbomContext,
+        '--container-descriptor',
+        containerDescriptor,
+        '--updater-public-key',
+        join(assetsDir, 'station-updater-public-key.txt'),
+      ]);
+      expect(assemble.status, assemble.stderr).toBe(0);
+      const draft = run([
+        'draft-notes',
+        '--inventory',
+        output,
+        '--output',
+        notes,
+      ]);
+      expect(draft.status, draft.stderr).toBe(0);
+      const body = readFileSync(notes, 'utf8');
+      expect(body.startsWith('Validated release inventory;')).toBe(true);
+      expect(body.includes('is not Authenticode-signed yet (#3591)')).toBe(
+        disclosed,
+      );
+      expect(body.includes(windowsSigningReceiptAsset(TAG))).toBe(disclosed);
+    },
+  );
+
+  it('refuses to assemble without the Windows signing receipt', () => {
+    const { sbomContext: _sbomContext, ...files } = fixture('unsigned');
+    rmSync(join(files.assetsDir, windowsSigningReceiptAsset(TAG)));
+    expect(() =>
+      createReleaseInventory({
+        tag: TAG,
+        sourceSha: SHA,
+        generatedAt: GENERATED_AT,
+        dependencyLifecycle: DEPENDENCY_LIFECYCLE,
+        ...files,
+      }),
+    ).toThrow(`missing ${windowsSigningReceiptAsset(TAG)}`);
   });
 });
 

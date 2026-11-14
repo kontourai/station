@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"#4517 managed settings. Changed: project-service.ts: project create/update refuse a change to a locked override field. Project model and new-chat claims hold. On a managed machine a lock outranks a project model pair; that is documented in the user Settings page and the managed policy guide.","inputs":["docs/user/getting-started.md","src-server/services/projects/project-service.ts"]}
-  ]
-}

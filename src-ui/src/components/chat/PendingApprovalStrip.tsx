@@ -2,6 +2,8 @@ import { inputRequestSummary } from '@kontourai/station-shared/input-request';
 import { toolRequestDisplayName } from '@kontourai/station-shared/tool-request-preview';
 import { useEffect, useRef, useState } from 'react';
 import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRequestRows';
+import { pendingRequestKind } from '../../hooks/orchestration/pendingRequestRows';
+import { attentionWord } from '../../views/home/work-status';
 import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonBlock } from '../state';
 import { type ToolApprovalOutcome, ToolCallDisplay } from './ToolCallDisplay';
@@ -66,12 +68,17 @@ function useNewApprovalAnnouncement(
         ? inputRequestSummary(asked.message)
         : toolRequestDisplayName(request.toolName || request.name) || 'a tool';
     });
+    const label = fresh.some(
+      (request) => pendingRequestKind(request) !== 'input',
+    )
+      ? attentionWord('approval')
+      : attentionWord('answer');
     setAnnouncement((previous) => ({
       id: previous.id + 1,
       text:
         fresh.length === 1
-          ? `Needs approval: ${names[0]}`
-          : `Needs approval (${fresh.length}): ${names.join(', ')}`,
+          ? `${label}: ${names[0]}`
+          : `${label} (${fresh.length}): ${names.join(', ')}`,
     }));
   }, [keys, settled]);
   return announcement;

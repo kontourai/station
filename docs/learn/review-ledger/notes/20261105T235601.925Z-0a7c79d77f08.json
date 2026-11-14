@@ -1,9 +1,0 @@
-{
-  "revision": "c442ccafa873a79a2a3bafd930a517fd487383c3",
-
-  "notes": [
-    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed the recovery action placement against the actual ActionRow, overflow-menu and refresh caller: Refresh delivery and Discard remain visible, Copy message is in More message actions, and refresh reports without resending. Mounted control tests pass and component captures were inspected in both themes at 320px and 960px; no deployed or native qualification is claimed.","inputs":["docs/design/offline-outbound-queue.md"]},
-
-    {"path":"docs/user/concepts.md","note":"Updated the discoverable route to Copy message through More message actions. Checked it against the mounted menu interaction test and inspected current component captures. The three-failure pause and explicit Retry after not-received remain unchanged; live repair and release evidence are separate.","inputs":["docs/user/concepts.md"]}
-  ]
-}

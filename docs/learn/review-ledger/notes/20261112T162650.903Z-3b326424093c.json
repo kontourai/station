@@ -1,7 +1,0 @@
-{
-  "revision": "d9e9dc4c935794ec9166c427e8845493ee1e96a9",
-
-  "notes": [
-    {"path":"docs/design/connections-onboarding.md","note":"AgentConnectionView change here is formatting of the Retry check gate plus main's #4702 save guidance; the finite readiness labels and explicit-Add rules this record states are unchanged, and the overhaul design records the one decision it changes (the /connections resolver).","inputs":["docs/design/connections-onboarding.md","src-ui/src/views/AgentConnectionView.tsx"]}
-  ]
-}

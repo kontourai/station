@@ -1,7 +1,0 @@
-{
-  "revision": "b05d0e59a6d8a67b25170c034338ebb5fee4b6c3",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Reviewed the generated BrowserSessionService topic against the canonical module map after adding shared Browser recording admission. Regenerated all shipped MCP topics and checked the digest; this does not establish Task Device, desktop, or release behavior.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

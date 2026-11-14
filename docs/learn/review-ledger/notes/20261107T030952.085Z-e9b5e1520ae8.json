@@ -1,7 +1,0 @@
-{
-  "revision": "2c612ef739516e513dae622eb39a28c7815e34ee",
-
-  "notes": [
-    {"path":"docs/reference/connect.md","note":"Reviewed formatting-only modal source delta; prior integration and authority claims and evidence limits remain unchanged.","inputs":["docs/reference/connect.md","packages/connect/src/react/ConnectionManagerModalContent.tsx"]}
-  ]
-}

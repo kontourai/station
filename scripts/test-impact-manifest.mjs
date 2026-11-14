@@ -2,8 +2,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   changedDependencies,
+  DEPENDENCY_IMPACT_SCOPE,
   DEPENDENCY_TEST_FANOUT_LIMIT,
   directImporterTests,
+  vitestEnvironmentSuites,
 } from './lib/dependency-change-scan.mjs';
 import {
   invertPathReadPins,
@@ -683,6 +685,12 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
     // ci:fast static list are asserted by text.
     ['package.json', 'scripts/__tests__/basis-mcp-apps.test.ts'],
     ['scripts/run-ci-fast.mjs', 'scripts/__tests__/basis-mcp-apps.test.ts'],
+    // Copies the gate into fixture repositories and runs it as a child
+    // process, so a change to its diff range is judged on the same PR.
+    [
+      'scripts/diff-whitespace-gate.mjs',
+      'scripts/__tests__/run-ci-fast.test.ts',
+    ],
     // Its SHELL_FILES, scanned for hand-rolled chrome alert markup.
     [
       'src-ui/src/App.tsx',
@@ -809,8 +817,12 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
   'scripts/__tests__/classify-ci-change.scan.test.ts',
   // Its iOS coverage tests walk src-ui and every package the UI bundle can
-  // import, so a new import that no iOS build covers fails on the pull
-  // request that adds it. No import edge connects those sources to the test.
+  // import, so a new import that no iOS build covers shows red in the
+  // repo-scans job on the same-repository pull request that adds it. That job
+  // is not required, the source-verification verdict leaves it out, fork pull
+  // requests skip it and the merge queue does not run this suite, so the red
+  // does not block landing; post-landing full qualification is what would
+  // stop it. No import edge connects those sources to the test.
   'scripts/__tests__/classify-ci-change.test.ts',
   'scripts/__tests__/content-integrity-gate.scan.test.ts',
   // Scans source trees for coordinator product names outside their copy owner.
@@ -2289,6 +2301,7 @@ const DEPENDENCY_DEFERRAL_REASON =
  *   readBase: (path: string) => string | null,
  *   readHead?: (path: string) => string | null,
  *   testFiles?: readonly string[],
+ *   environmentSuites?: () => Map<string, string[]>,
  * }} options
  * @returns {readonly ImpactEdge[]}
  */
@@ -2301,16 +2314,55 @@ export function dependencyChangeEdges({
     return existsSync(absolute) ? readFileSync(absolute, 'utf8') : null;
   },
   testFiles,
+  environmentSuites = () =>
+    vitestEnvironmentSuites({ root, ...(testFiles ? { testFiles } : {}) }),
 }) {
-  const changes = changedDependencies({ root, paths, readBase, readHead });
-  if (!changes.size) return Object.freeze([]);
+  const everyChange = changedDependencies({
+    root,
+    paths,
+    readBase,
+    readHead,
+    scope: null,
+  });
+  if (!everyChange.size) return Object.freeze([]);
+  const changes = new Map(
+    [...everyChange].filter(([name]) =>
+      name.startsWith(DEPENDENCY_IMPACT_SCOPE),
+    ),
+  );
+  // #4631: a changed test-runtime environment package runs every suite in
+  // its environment. No fan-out limit: a hosted plan keeps every mapped
+  // target, and those suites are exactly what the bump can break. The
+  // broader deferrals the manifest edits raise (ci-fast, the global rerun's
+  // test-full) remain; this narrows what they leave unrun.
+  // Only a name outside the sibling scope can be an environment package;
+  // without one, no suite environment is read.
+  const runtimeSuites =
+    changes.size < everyChange.size ? environmentSuites() : new Map();
+  const runtimeEdges = [...everyChange].flatMap(([name, sources]) => {
+    const suites = runtimeSuites.get(name) ?? [];
+    if (!suites.length) return [];
+    return [...sources].sort().map((pattern) =>
+      Object.freeze({
+        pattern,
+        supplemental: true,
+        tests: Object.freeze(suites),
+        reason:
+          `test runtime dependency ${name} changed and this suite runs in ` +
+          'its Vitest environment; a version bump changes no source file ' +
+          'the import graph could follow (#4631)',
+      }),
+    );
+  });
+  if (!changes.size) return Object.freeze(runtimeEdges);
   const importers = directImporterTests({
     root,
     names: changes.keys(),
     ...(testFiles ? { testFiles } : {}),
   });
-  return Object.freeze(
-    [...changes].flatMap(([name, sources]) => {
+  return Object.freeze([
+    ...runtimeEdges,
+    ...[...changes].flatMap(([name, sources]) => {
       const tests = importers.get(name) ?? [];
       if (!tests.length) return [];
       return [...sources].sort().map((pattern) =>
@@ -2332,7 +2384,7 @@ export function dependencyChangeEdges({
             }),
       );
     }),
-  );
+  ]);
 }
 
 /**

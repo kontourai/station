@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/guides/machine-relationships.md","note":"#4517 managed settings. Changed: config.ts: PUT /config/app refuses a locked managed setting first (403 managed_setting_locked), GET /config/app returns managed values with managed provenance, log-level and first-run map the refusal to 403. Cited docs edited: docs/guides/connections.md. Searched it for claims about app config loading and writes, settings provenance, the managed policy, project overrides and workspace isolation; none describes the changed behavior, so it remains accurate.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md","src-server/routes/system/config.ts"]}
-  ]
-}

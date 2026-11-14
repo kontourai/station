@@ -1,7 +1,0 @@
-{
-  "revision": "eef2034bec07987e12b073cfe3403f185a48cc8d",
-
-  "notes": [
-    {"path":"docs/decisions/telemetry-tiers.md","note":"Re-reviewed publisher declaration grammar, namespacing, consent and API/CLI claims against eef2034b. Only the end-anchor rationale comment changed; regex bytes, types and execution remain identical. Existing lowercase bounded grammar, trailing-newline refusal and per-publisher policy claims remain accurate. Source/comment inspection only; no new runtime or deployment qualification.","inputs":["docs/decisions/telemetry-tiers.md","packages/contracts/src/plugin-telemetry.ts"]}
-  ]
-}

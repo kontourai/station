@@ -1983,8 +1983,13 @@ missing, empty or over 1,024 characters, or any other body key, is refused
 | `failed` | the engine's own refusal or error, with its message; or no answer within 30 seconds. Then nothing is marked rewound yet, and another rewind is refused `rewind-pending` until the engine answers or 5 more minutes pass. A late success with no turn since, within 5 minutes, is recorded as a rewind (the marker and rewound turns appear then); any other late success, or an engine process that exits or is relaunched with the request unanswered (not a requested stop, which is only logged), is a `runtime.warning` `acp.session-rewound-late`, drawn as its own marker row with nothing marked |
 
 A refusal sends nothing to the engine. Today only the ACP adapter declares a
-rewind, for an engine whose handshake declares it (Kiro's agent service; see
-[ACP](../guides/acp.md#engine-session-actions)).
+rewind, for an engine whose handshake declares it (Kiro's agent service, and
+Grok Build by its handshake identity; see
+[ACP](../guides/acp.md#engine-session-actions)). On Grok, `failed` also covers
+what Station checks before applying anything: the engine's rewind points not
+lining up with the turns, and files changed outside the engine since that
+turn, which a rewind would overwrite. The message names them, and nothing is
+changed.
 
 ### Usage-limit recovery (`/sessions/:threadId/usage-limit`)
 
@@ -2556,3 +2561,28 @@ Before starting work, agents can use `search_conversations` and
 [work discovery](../guides/self-configuring-agent.md#find-related-work-before-starting)
 for input bounds, caller scope, incomplete search results and recorded workspace
 fields, and the [HTTP leaves](api.md#station-control-work-discovery).
+
+### Blocking request kinds and background elapsed time
+
+Session summaries include `openRequestKinds`, keyed by unresolved request ID,
+with `input` for questions, elicitation forms and links to open, and `approval` for tool
+permissions and plan review that gates leaving plan mode (including Claude
+ExitPlanMode and ACP plan approval). These are display hints only: adapters
+retain their existing request types and lifecycle/Attention routing. Structured
+forms retain an exact `requestReference`; request inspection directs the person
+to the chat to answer the form. `blockingOpenRequestIds` remains the authoritative set
+that suspends progress. The fields are additive: an older host without kind
+metadata uses conservative approval display until a validated form is read. Older persisted forms are
+classified from their validated input-request payload when the host projects
+its summary.
+
+The conversation pill and Inbox use **Needs input** for input and **Needs
+approval** for permission. Permission takes precedence when both wait, matching
+the attention ladder. Requests answered locally stop asking for attention while
+the engine confirms delivery. With no main turn open, the pill still shows
+server-reported background work and its count; its clock starts at the oldest
+reported child start. A pending provider follow-up reads **Waiting for background
+reply**. This display does not enable Stop or Steer for a closed turn.
+
+Elapsed displays share `src-ui/src/utils/relativeTime.ts` and use `45s`,
+`2m 1s`, and `1h 4m`. Under an hour, live clocks retain seconds.

@@ -1,7 +1,0 @@
-{
-  "revision": "1a87f5713422474efd3fe9053b236e401c408602",
-
-  "notes": [
-    {"path":"docs/learn/media/inspect-request.png","note":"Checked the request-inspector capture (tool scope, Approve once and Deny controls): this PR's orchestration change touches only idle parking and the first-turn recovery note, not request routes or the inspector, so the capture still shows current behaviour.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

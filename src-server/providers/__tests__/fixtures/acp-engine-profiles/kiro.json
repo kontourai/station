@@ -20,7 +20,7 @@
     {
       "method": "_kiro.dev/metadata",
       "params": {
-        "sessionId": "assumed"
+        "sessionId": "$sessionId"
       }
     }
   ]

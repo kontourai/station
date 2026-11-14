@@ -1,9 +1,0 @@
-{
-  "revision": "3a9ccbe719fb01b93bbf39d872b4fe42e9efa46d",
-
-  "notes": [
-    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Windows portable-floor follow-up: reviewed the manifest ownership and execution-class claims against tests/e2e-manifest.mjs and its classification test. owned-work-custody already belongs to product/full and sharedInstanceExclusive because it retains review artifacts. Added its omitted entry to the test's explicit expected exclusive list; the manifest and runner behavior are unchanged. The prior test failed exactly that list comparison (20 pass, 1 fail); the repaired suite passes 21/21. No new Playwright execution or coverage-tier qualification. Prose remains accurate.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/__tests__/e2e-manifest.test.ts"]},
-
-    {"path":"docs/testing/browser-smoke.md","note":"Windows portable-floor follow-up: checked the unchanged smoke selections and worker policy against the manifest. The one-line classification-test repair adds owned-work-custody to the expected product shared-instance-exclusive inventory; it does not add it to PR smoke, change the runner, or change browser-health policy. The test failed before repair and passes 21/21 after repair. Existing smoke qualification and fixture limits remain unchanged; no browser run claimed.","inputs":["docs/testing/browser-smoke.md","scripts/__tests__/e2e-manifest.test.ts"]}
-  ]
-}

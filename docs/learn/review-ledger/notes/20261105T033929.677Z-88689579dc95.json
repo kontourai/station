@@ -1,7 +1,0 @@
-{
-  "revision": "a5a69b55d48dc4a8662ff137d7922d0ba49751e1",
-
-  "notes": [
-    {"path":"packages/cli/README.md","note":"#4515 integration: docs/reference/cli.md now says station policy check prints the number of limits a policy sets. Checked this doc for claims about station policy output or the CLI reference it cites; none is affected.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
-  ]
-}

@@ -48,8 +48,6 @@
 
     "src-server/services/orchestration/external-session-continuation-context.ts",
 
-    "src-server/services/orchestration/orchestration-service.ts",
-
     "src-server/services/orchestration/project-task-room-runtime.ts",
 
     "src-server/services/scheduling/builtin-scheduler.ts",

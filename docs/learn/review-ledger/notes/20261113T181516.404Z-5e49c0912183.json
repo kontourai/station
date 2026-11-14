@@ -1,7 +1,0 @@
-{
-  "revision": "86d7da096555dd8e9fa1b48cd0af7b059b2e789b",
-
-  "notes": [
-    {"path":"docs/design/pane-or-shell.md","note":"Reviewed legacy redirect routing and app-routing tests: compatibility accepts session, evidence focus, notification/dock/chat state and project path, drops unknown parameters, and uses percent encoding. Storage extraction and Inbox title precedence do not alter this placement contract.","inputs":["docs/design/pane-or-shell.md","src-ui/src/app-shell/routing.ts"]}
-  ]
-}

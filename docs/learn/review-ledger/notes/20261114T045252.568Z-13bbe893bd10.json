@@ -1,0 +1,37 @@
+{
+  "revision": "45353daff075e1df23e0951d2c7cf9d6bf9a64ed",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"The context list and relationships are owned by the docs/contexts/*/CONTEXT.md pages already cited; nothing restates module ownership, paths or counts from the module map.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Both mentions route readers to the module map without restating any module, path or count from it; link targets are checked by check-markdown-links.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"The only mention is a labelled link in the documentation table; no module-map content is restated.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Mentions are links and a one-line role statement for the map; no module ownership, path or count is restated, and the L141 claim is about architecture.md, not module-map content.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The review defers detailed interfaces to the module map rather than restating them; its boundary observations cite their own source files and revisions.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"The doc explicitly declines to restate module-map content and only links to its sections; anchors are enforced by check-markdown-links. The ledger table claims are backed by the cited code files.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"A single pointer to a section; no ownership facts are restated, and the anchor is gate-checked by check-markdown-links.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Grepped for module-map links and restated module paths/ownership; none found, so the citation supports no claim.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Both are \"see also\" anchors after the doc states its own behaviour; the stated behaviour belongs to the session/boundary code the record already cites, and anchors are gate-checked.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Nothing in the 40-line record references or restates module-map content.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Claims cite their own code owners; no module-map fact is restated.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"The claim is about the build, owned by generate-station-docs.mjs and its generated station-docs-content.ts, both already cited; the doc restates no module-map content itself.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Grepped for module-map links and module paths; none present.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"The claims describe exporter behaviour (which file it reads, how it splits H2 sections), owned by graph.mjs/export.mjs and covered by the example test, all already cited; module-map content is input data, not restated.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"A routing instruction only; the remaining rules are about route/service boundaries, not module-map facts.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"A routing instruction only; the component paths named later are verified against the code files, not taken from the module map.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

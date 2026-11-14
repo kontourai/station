@@ -1,0 +1,7 @@
+{
+  "revision": "aac3c60768bd001e27b57bf3d9b1e304ca2bb5b8",
+
+  "notes": [
+    {"path":".changeset/README.md","note":"Checked: the changeset status command in ci:fast is unchanged; only a new diff-whitespace static joined the list. No prose change.","inputs":[".changeset/README.md","scripts/run-ci-fast.mjs"]}
+  ]
+}

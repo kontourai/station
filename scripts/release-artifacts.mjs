@@ -5,6 +5,7 @@ import {
   assertOnlyExpectedAssets,
   createReleaseInventory,
   readInventory,
+  releaseDraftNotes,
   validateReleaseInventory,
   writeChecksums,
 } from './lib/release-artifacts.mjs';
@@ -60,8 +61,14 @@ try {
     assertOnlyExpectedAssets(resolve(option('--assets-dir')), inventory.tag, {
       allowSignedHostManifest: true,
     });
+  } else if (command === 'draft-notes') {
+    // assemble-draft validates this inventory against its assets first.
+    const inventory = readInventory(resolve(option('--inventory')));
+    writeFileSync(resolve(option('--output')), releaseDraftNotes(inventory));
   } else {
-    throw new Error('Usage: release-artifacts.mjs <assemble|validate> ...');
+    throw new Error(
+      'Usage: release-artifacts.mjs <assemble|validate|draft-notes> ...',
+    );
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));

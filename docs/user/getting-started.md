@@ -360,8 +360,12 @@ is published means the two files are from different builds; download both
 again.
 
 The Windows installer is not publisher-signed yet
-([#3591](https://github.com/kontourai/station/issues/3591)). When you run
-the downloaded installer, Microsoft Defender SmartScreen therefore shows
+([#3591](https://github.com/kontourai/station/issues/3591)). This applies to
+the Nightly installer and to the Windows MSI on tagged
+[releases](https://github.com/kontourai/station/releases)
+(`station-v<version>-windows-x86_64.msi`), whose release records it as
+unsigned. When you run the downloaded installer, Microsoft Defender
+SmartScreen therefore shows
 "Windows protected your PC" with an unknown publisher; choose **More info**,
 then **Run anyway**. On Windows 11 with Smart App Control turned on, Windows
 can block the unsigned installer with no such option. The app's own updates
@@ -651,13 +655,15 @@ chat with the same Agent and Project. When earlier messages have no completed
 answer to fork from, neither is offered; **New chat from this message** remains.
 
 Some engines can also forget part of a chat in place. Where the running engine
-says it can (Kiro's agent service), your message's actions include **Rewind
+says it can (Kiro's agent service, Grok Build), your message's actions include **Rewind
 conversation to here**. After you confirm, the agent no longer sees that message
 or anything after it. The messages stay in the chat, dimmed and marked
 **Rewound**, and a line says how many files the engine restored, when it says.
 This is not a checkpoint restore; only files the engine restores itself change.
 It is refused while a turn runs, and for a message from before the engine last
-restarted; the dialog says why.
+restarted; the dialog says why. On Grok Build, if you changed a file since that
+message that the rewind would restore, nothing is rewound and the dialog names
+the file.
 
 The usage disclosure ends after your usage decision. **Personalize Station**
 opens optional preferences after the work entry; it is not a prerequisite for a
@@ -1013,6 +1019,11 @@ list above the composer, states the risk and removes it only after **I checked, 
 every open window. It does not hold back the messages written after
 it.
 
+The chat status says **Needs input** for questions and **Needs approval** for
+tool permissions. Approval takes priority when both wait. Background work keeps
+its count and elapsed time visible after the main turn ends. Elapsed time uses
+words such as **2m 1s**.
+
 Quiet turns show elapsed silence without guessing that an engine retried. Retry
 status appears only when the engine reports it. The **Drafts** icon opens **Saved
 drafts** (also Ctrl/Cmd+S in the composer). Save a copy of an unsent prompt,
@@ -1153,6 +1164,9 @@ transcript in the chat pane. The title becomes **Parent chat › Subagent**;
 choose an ancestor to return without losing its draft or reading position.
 Escape returns one level. On a phone, use the back button or swipe from the
 left edge. Engine transcripts are read only and refresh while running.
+
+If a tool result has no recorded text, the reader says **Text output unavailable.**
+This does not mean the tool produced no output.
 
 Use **Home** or the inbox to find work. Notification and session links open
 that session in Chat, including attached records and sessions whose Agent

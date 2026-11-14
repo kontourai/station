@@ -1,7 +1,0 @@
-{
-  "revision": "c0aeb5b2926cacaf4430c15d622c3a75cb689ef9",
-
-  "notes": [
-    {"path":"docs/user/settings.md","note":"Reviewed the copied-registry fixture update for apps-library. It includes the new constructor-owned catalog consumer; catalog meaning and default-off settings guidance remain unchanged. The 12 focused preview-doc checks pass.","inputs":["docs/user/settings.md","scripts/__tests__/feature-preview-docs-check.test.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "8752fc94e869e34bbbe9bedf9f299479e23e6898",
-
-  "notes": [
-    {"path":"docs/reference/usage-telemetry.md","note":"config.routes.test.ts gained a #4518 describe for the Station default approval mode under a managed ceiling. This document cites that test for telemetry tier and refusal-log behavior, which the new cases do not touch; searched for approval-mode claims: none.","inputs":["docs/reference/usage-telemetry.md","src-server/routes/system/__tests__/config.routes.test.ts"]}
-  ]
-}

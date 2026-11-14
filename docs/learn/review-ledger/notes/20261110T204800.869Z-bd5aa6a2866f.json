@@ -1,7 +1,0 @@
-{
-  "revision": "ea7a72218027623efdabb2eb2375379d1d9e77fd",
-
-  "notes": [
-    {"path":"docs/design/acp-chat-architecture.md","note":"No claim affected: links acp.md; the acp.md change only states ACP turns default to Queue (Steer default is native-only). This doc's waiting-detection polling and ACP architecture claims are unchanged.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md"]}
-  ]
-}

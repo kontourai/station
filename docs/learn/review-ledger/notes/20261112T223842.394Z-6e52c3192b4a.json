@@ -1,7 +1,0 @@
-{
-  "revision": "6af1ab7df77fb2bdf91524af58ac46479615e93f",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"Re-checked after ProjectRoom.tsx read the thread seek's oldest cursor from the loaded pages instead of pageParams (typecheck fix): the seek still pages back one window per settled page within PROJECT_ROOM_HISTORY_MAX_PAGES; no route, contract, SDK or draft claim changed.","inputs":["docs/reference/api.md","src-ui/src/views/project-page/ProjectRoom.tsx"]}
-  ]
-}

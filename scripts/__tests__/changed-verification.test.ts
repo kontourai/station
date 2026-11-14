@@ -232,9 +232,16 @@ describe('changed verification selection', () => {
     expect(without).toHaveLength(
       TEST_IMPACT_MANIFEST.length - UNMODELLED_INPUT_EDGES.length,
     );
-    // Pinned by count, independently: the loop below is satisfied by an
-    // empty list.
-    expect(UNMODELLED_INPUT_EDGES).toHaveLength(16);
+    // The loop below is satisfied by an empty list, so the list must not be
+    // empty. Not an exact count: two pull requests that each add an edge
+    // would both write the same number and fail whichever lands second.
+    expect(UNMODELLED_INPUT_EDGES.length).toBeGreaterThan(0);
+    // One edge pinned by name, so deleting it still fails here.
+    expect(
+      UNMODELLED_INPUT_EDGES.filter(
+        (edge) => edge.pattern === 'scripts/diff-whitespace-gate.mjs',
+      ).map((edge) => edge.tests),
+    ).toEqual([['scripts/__tests__/run-ci-fast.test.ts']]);
     for (const edge of UNMODELLED_INPUT_EDGES) {
       expect(edge.supplemental, edge.pattern).toBe(true);
       const path = edge.pattern.endsWith('/**')

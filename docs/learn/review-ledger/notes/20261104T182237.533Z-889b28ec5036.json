@@ -1,7 +1,0 @@
-{
-  "revision": "728add956c0a145f06080b8eccf4fd753e6635d4",
-
-  "notes": [
-    {"path":"docs/design/verified-action-replay.md","note":"Device guide change only removes the separate Node.js install step (bundled npm); this record's device claims (coordinate input, out of first slice, build identity) are unaffected and its guide links still resolve.","inputs":["docs/design/verified-action-replay.md","docs/guides/mobile-device-workspace.md"]}
-  ]
-}

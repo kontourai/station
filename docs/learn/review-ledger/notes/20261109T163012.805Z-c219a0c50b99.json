@@ -1,7 +1,0 @@
-{
-  "revision": "6c0dab501340cbd13f189059b6882ad4e619e2f9",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"path-read-pin-boundary.test.ts only gained one DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS entry (seed-dev-home.test.ts, TEMP_VIA_FIXTURE); the guide's description of the walker classification is unchanged and still accurate.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
-  ]
-}

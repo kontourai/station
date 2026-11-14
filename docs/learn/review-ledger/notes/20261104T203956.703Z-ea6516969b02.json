@@ -1,7 +1,0 @@
-{
-  "revision": "0b93fffbca9c3aceb63bdb7e741a7c2fdbcb32fa",
-
-  "notes": [
-    {"path":"deployment/telemetry/README.md","note":"Added the pointer that Kontour's Lite receiver is the Cloudflare Worker (deploy/telemetry-worker) using Workers rate-limit bindings, and scoped the WAF rule to the tunnel recipe. Checked wrangler.jsonc bindings and worker.ts route policy. Tunnel recipe claims are unchanged.","inputs":["deployment/telemetry/README.md","packages/telemetry-broker/README.md"]}
-  ]
-}

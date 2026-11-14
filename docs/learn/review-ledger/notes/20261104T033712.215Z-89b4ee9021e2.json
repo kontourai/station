@@ -1,7 +1,0 @@
-{
-  "revision": "0c669e8acc1a4e9a01f681445825b3e96d957d84",
-
-  "notes": [
-    {"path":"docs/design/settings-architecture.md","note":"Reviewed the Appearance ownership and account/device persistence claims against AppearancePage, AccentColorPicker, DeviceSettingsContext and device-settings-store after 0c669e8. The only production change exposes aria-pressed from the same saved accent value already driving the selected ring; routes, available choices, account/device authority, writes and reset semantics are unchanged, so no prose change is needed. Extended the existing mounted AppearancePage preset case: intended missing-state failure observed before repair, then 23/23 pass with select, switch and Use default restoration. Browser keyboard, reload, screenshots and screen-reader qualification remain unverified because canonical Chromium installation failed on Windows spawn npx ENOENT; no native/provider claim. Unmapped AppearancePage test change is evidence for the same documented owner; tests/settings.spec.ts remains unchanged.","inputs":["docs/design/settings-architecture.md","src-ui/src/views/settings/AccentColorPicker.tsx"]}
-  ]
-}

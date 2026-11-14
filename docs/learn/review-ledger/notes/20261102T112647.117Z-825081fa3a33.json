@@ -1,7 +1,0 @@
-{
-  "revision": "b731d4459aa64b3416d01545ae94a044f44c78f6",
-
-  "notes": [
-    {"path":"packages/sdk/AGENTS.md","note":"Still routes to the SDK reference and states plugin import and cancellation-race rules; the TerminalView session-contract and key-row additions there change none of them.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
-  ]
-}

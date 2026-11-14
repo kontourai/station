@@ -1,9 +1,10 @@
 import { execFile } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 
@@ -927,5 +928,105 @@ describe('replaced merge candidate retirement through the GitHub API', () => {
     { queueHttpStatus: 503 },
   ])('fails closed on ambiguous evidence: %j', async (options) => {
     expect(await replacedGroup(options)).toEqual({ code: 1, cancelled: [] });
+  });
+});
+
+/**
+ * Evaluates a GitHub Actions expression made only of `github.*` properties,
+ * string and boolean literals, ==, !=, !, &&, || and parentheses. Anything
+ * else is refused so a richer expression fails loudly instead of evaluating
+ * wrongly. && and || return operand values, as GitHub's do.
+ */
+function evaluateGithubExpression(
+  expression: string,
+  github: Record<string, unknown>,
+) {
+  const body = expression.trim().replace(/^\$\{\{([\s\S]*)\}\}$/, '$1');
+  const stripped = body
+    .replace(/'[^']*'/g, '')
+    .replace(/github(?:\.[A-Za-z_]+)+/g, '')
+    .replace(/\b(?:true|false)\b/g, '')
+    .replace(/==|!=|&&|\|\||[!()\s]/g, '');
+  if (stripped) throw new Error(`unsupported expression syntax: ${stripped}`);
+  const js = body
+    .replace(
+      /github((?:\.[A-Za-z_]+)+)/g,
+      (_m, path: string) => `github${path.replaceAll('.', '?.')}`,
+    )
+    .replace(/==/g, '===')
+    .replace(/!===/g, '!==');
+  return new Function('github', `return (${js});`)(github) as unknown;
+}
+
+describe('supersession controller admission', () => {
+  const read = (name: string) =>
+    load(
+      readFileSync(
+        resolve(import.meta.dirname, '../../.github/workflows', name),
+        'utf8',
+      ),
+      { schema: JSON_SCHEMA },
+    ) as {
+      'run-name'?: string;
+      jobs: Record<string, { if?: string }>;
+    };
+  const ci = read('ci.yml');
+  const guard = read('pr-ci-supersession.yml').jobs['cancel-obsolete'].if;
+  if (!ci['run-name'] || !guard) throw new Error('Missing workflow guards');
+  const pullRequest = {
+    head: { repo: { full_name: repository } },
+    merged: false,
+  };
+  // The triggering run's display_title is ci.yml's own run-name evaluated
+  // for the PR event that started it, so this follows the real producer.
+  const ciRun = (action: string, changes: Record<string, unknown> = {}) => ({
+    event: 'pull_request_target',
+    head_repository: { full_name: repository },
+    display_title: evaluateGithubExpression(ci['run-name']!, {
+      event_name: 'pull_request_target',
+      event: { action, changes, pull_request: pullRequest },
+    }),
+  });
+  const admits = (workflowRun: Record<string, unknown>) =>
+    evaluateGithubExpression(guard, {
+      event_name: 'workflow_run',
+      repository,
+      event: { action: 'requested', workflow_run: workflowRun },
+    });
+
+  it('allocates no runner for a metadata-only PR: CI run', () => {
+    const metadata = ciRun('edited', { title: { from: 'old' } });
+    expect(metadata.display_title).toBe('PR metadata');
+    expect(admits(metadata)).toBe(false);
+  });
+
+  it.each([
+    ['a base retarget', ciRun('edited', { base: { ref: { from: 'next' } } })],
+    ['a pushed head', ciRun('synchronize')],
+    ['an opened PR', ciRun('opened')],
+    [
+      'a merge-queue candidate',
+      {
+        event: 'merge_group',
+        head_repository: { full_name: repository },
+        display_title: 'Source verification',
+      },
+    ],
+  ])('still retires obsolete work after %s', (_label, run) => {
+    expect(run.display_title).toBe('Source verification');
+    expect(admits(run)).toBe(true);
+  });
+
+  it('still retires merged optional delivery on a merged close', () => {
+    expect(
+      evaluateGithubExpression(guard, {
+        event_name: 'pull_request_target',
+        repository,
+        event: {
+          action: 'closed',
+          pull_request: { ...pullRequest, merged: true },
+        },
+      }),
+    ).toBe(true);
   });
 });

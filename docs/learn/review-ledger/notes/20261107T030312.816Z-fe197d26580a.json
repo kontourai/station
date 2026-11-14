@@ -1,7 +1,0 @@
-{
-  "revision": "59760f9431f8205329d262cd5a3054c80e6c12cb",
-
-  "notes": [
-    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed the Paired devices revocation entry against the modal and panel; the focus transfer does not change device revocation or push delivery. Focused jsdom owner tests passed; real browser and device behavior remains unqualified.","inputs":["docs/guides/web-push-notifications.md","packages/connect/src/react/ConnectionManagerModalContent.tsx"]}
-  ]
-}

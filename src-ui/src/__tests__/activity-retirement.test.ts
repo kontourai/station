@@ -164,3 +164,20 @@ test('engine calls join their own results across page boundaries without extra a
     errorText: 'no access',
   });
 });
+
+test.each([undefined, ''])(
+  'missing tool text (%s) stays unknown for joined and unkeyed results',
+  (text) => {
+    const messages = childTranscriptMessages([
+      { message: 0, kind: 'tool-call', toolCallId: 'a', name: 'Read' },
+      { message: 1, kind: 'tool-result', toolCallId: 'a', text },
+      { message: 2, kind: 'tool-result', text },
+    ]);
+    expect(messages).toHaveLength(2);
+    expect(messages[0].contentParts?.[0]).toMatchObject({
+      state: 'output-available',
+      output: 'Text output unavailable.',
+    });
+    expect(messages[1].content).toBe('Tool result\n\nText output unavailable.');
+  },
+);

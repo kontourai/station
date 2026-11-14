@@ -1,7 +1,0 @@
-{
-  "revision": "3d6325c2787fcbbc582caeaba3ce0c1b18955bfe",
-
-  "notes": [
-    {"path":"docs/reference/sdk.md","note":"#4515 integration: provider-failure.ts gains the managed policy codes; checked the managed-signature-required sentence still matches the registry install route. Added the missing Managed policy status section for fetchManagedPolicyStatus and useManagedPolicyStatusQuery (from #4519), checked against packages/sdk/src/query-domains/managedPolicy.ts (404 reads as none, malformed throws, staleTime Infinity).","inputs":["docs/reference/sdk.md","packages/contracts/src/provider-failure.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "014424f65285df198ad0e98241ae589f5aa455ee",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Terminal epic integration: restart keeps id and starts a new segment; command sessions in their own 16-record pool (#4453 openInternal now calls makeRoom(record)); restore and ordinals unchanged.","inputs":["docs/architecture/module-map.md","src-server/services/terminal/terminal-sessions.ts"]}
-  ]
-}

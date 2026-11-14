@@ -194,6 +194,8 @@ to its source.
 | --- | --- | --- | --- |
 | Claude `AskUserQuestion` | `form` | `src-server/providers/adapters/harness-questions.ts` | ≤4 choice/multi-choice fields with their `header`, custom answer always |
 | Codex `item/tool/requestUserInput` | `form` | `src-server/providers/adapters/harness-questions.ts` | choice, or free text with no options; `header`; `isOther` custom; `isSecret` |
+| Cursor `cursor/ask_question` (ACP) | `form` | `src-server/providers/adapters/harness-questions.ts` | choice/multi-choice fields; options named by id; no header, custom answer or secret |
+| Grok `_x.ai/ask_user_question` (ACP) | `form` | `src-server/providers/adapters/harness-questions.ts` | choice/multi-choice fields, at least one option each, distinct question texts; no header, custom answer or secret |
 | MCP `elicitation/create` (form mode) | `form` | `@kontourai/station-shared/mcp-elicitation` | the MCP restricted schema; no header, custom answer or secret |
 | Tool approvals (every engine) | `decision` | `approvalDecisionBody`, derived at read time | allow once, allow for the session where a grant is offered, deny |
 

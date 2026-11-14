@@ -1,0 +1,15 @@
+{
+  "revision": "6599bc5143bf991ccee8e4e90543bac12612c8bf",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed host initialize/context update assertions against CSSOM-resolved theme variables. The host sends the same RGB colors serialized with spaces; initial-result delivery and no-replay checks remain exact. No host protocol or permission change; no prose correction needed. MCPToolUIFrame passed 58 tests.","inputs":["docs/design/mcp-ui-host.md","src-ui/src/__tests__/MCPToolUIFrame.test.tsx"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed confirmed/duplicate send focus ownership claims against TaskRoomComposer and repaired fixture. Each send proves its original textarea focused before Enter; fixture requires same connected disabled input and accepts JSDOM native disable-driven blur. Rejection, unknown, competing focus, authority, incarnation and stale-owner assertions remain intact. TaskRoomComposer passed all 57 tests; no product focus implementation change and no prose correction.","inputs":["docs/design/task-room-agent-requests.md","src-ui/src/__tests__/TaskRoomComposer.test.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed pane-host pop-out failure/focus fixture against the command owner. Test now commits disabled-state unlock before the return-focus frame and keeps exact invoking-command identity and bounded public error assertions. Persistence tests virtualize only their debounce timers, retaining JSDOM native rendering. WorkspacePaneHost passed 60 tests; no command or plugin authority change; no prose correction.","inputs":["docs/guides/plugins.md","src-ui/src/workspace-panes/__tests__/WorkspacePaneHost.test.tsx"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed replay setup and expected rendered states against current shared owners. Developer opt-in is account scoped; fixture declares exact idle schedule, event-window, terminal and Project-default reads while rejecting unknown methods. Clock uses Working for 28s/42s even with reasoning or partial text; active tool summary includes the running count. Native label/authorization/retention claims unchanged; final browser outcomes recorded separately in PR.","inputs":["docs/design/session-tape-replay.md","tests/chat-replay.spec.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed child-card CSS header layout and browser geometry assertions. Status occupies its own grid row; glyph, title, elapsed duration and chevron align on the title row. Precise duration words and Run finished use existing shared owners. React markup rendered with resolved CSS at 390, 412x915 and 1440 widths in both themes, screenshots inspected; no identity, placement or expansion contract change. Browser and native runtime qualification remain distinct.","inputs":["docs/design/placement.md","src-ui/src/components/chat/SubagentTranscriptCard.css"]}
+  ]
+}

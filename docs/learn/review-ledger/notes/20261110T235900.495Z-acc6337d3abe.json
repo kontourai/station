@@ -1,7 +1,0 @@
-{
-  "revision": "f6ed5605da81fcd45a1cddbb9c46168f12dcad4d",
-
-  "notes": [
-    {"path":"packages/agent-runtime/CONTEXT.md","note":"The only change to its source scripts/vitest-resource-manifest.mjs rewords the comment on the scripts/__tests__/check-required-tests-ran.test.ts entry; no agent-runtime entry (r1-outbox, turn-retention.process, body-process, turn-prefix-process, sqlite-compatibility) or classification list changed, so no claim in this document about agent-runtime test boundaries changed.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]}
-  ]
-}

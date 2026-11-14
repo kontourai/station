@@ -1,7 +1,0 @@
-{
-  "revision": "23edaa0f08f44f7817142ed2a0273ef09d93fadb",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Re-read against 23edaa0f08f4, which adds one hand-classified directory-walk entry for confinement-preflight-factory.test.ts to scripts/__tests__/path-read-pin-boundary.test.ts. Searched this guide for the walker classification, repo-scan suites and the path-read pin boundary: it names none of them and makes no claim about the list's entries, so no claim is affected.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
-  ]
-}

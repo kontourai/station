@@ -1,7 +1,0 @@
-{
-  "revision": "32b56f46ef91059872a62fc8ab7a7f210e1ac145",
-
-  "notes": [
-    {"path":"CONTRIBUTING.md","note":"AI-assisted section now asks for agent session identifiers, models, session count and token totals, forbids transcripts and message text, and asks for Agent-Session commit trailers; squash claim checked against repo setting squash_merge_commit_message=COMMIT_MESSAGES.","inputs":["CONTRIBUTING.md"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "7979651e525af26ffe92dbe849a72b37eeed3d10",
-
-  "notes": [
-    {"path":"docs/guides/monitoring.md","note":"The broker README change is limited to the public dashboard's noise rule (public-dashboard.ts). This guide's Lite section describes publication semantics and points to that README; its claims are unchanged.","inputs":["docs/guides/monitoring.md","packages/telemetry-broker/README.md"]}
-  ]
-}

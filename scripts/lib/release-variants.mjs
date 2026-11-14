@@ -54,6 +54,8 @@ export function releaseVariants(tag) {
         `station-${tag}-macos-x86_64.app.tar.gz.sig`,
       ],
     ],
+    // The credentialed Windows claim. release-artifacts.mjs replaces it with
+    // the claim the attested signing receipt records (#3591).
     [
       'windows-x86_64',
       'windows',

@@ -97,7 +97,9 @@ export function retryAfterMs(value: string | null, now: number): number {
  *   seq, not waiting for the debounce or for a report in flight: a
  *   backgrounded mobile webview may be frozen or unloaded before either
  *   finishes, and a stale `focused` would keep suppressing this person's
- *   notifications for the rest of the lease;
+ *   notifications for the rest of the lease. It goes once per hiding
+ *   (unloading fires both `pagehide` and `visibilitychange`), and not at
+ *   all from a document that has not reported yet;
  * - after `pagehide` the page counts as hidden until `pageshow`, so nothing
  *   reports it focused while it is being unloaded or cached;
  * - every other report goes one at a time and is abandoned after 10 s;
@@ -147,6 +149,16 @@ export function startFocusReporter(
   let acked: FocusState | undefined;
   let ackedSeq = 0;
   let ackedAt = Number.NEGATIVE_INFINITY;
+  /** Whether this document has transmitted any report at all. */
+  let sentAny = false;
+  /**
+   * Seq of the newest send when that send is a `hidden` that is in flight or
+   * was acknowledged; 0 otherwise. Unloading fires both `pagehide` and
+   * `visibilitychange`, and each would otherwise send its own hidden before
+   * the first one answered: three reports per page load, all counted against
+   * the server's per-surface report budget.
+   */
+  let hiddenSeq = 0;
   let lastInputAt = Number.NEGATIVE_INFINITY;
   /** Heartbeats since the last input that renewed on `isWatching` alone. */
   let watchRenewals = 0;
@@ -177,6 +189,8 @@ export function startFocusReporter(
   ): Promise<{ seq: number; response: FocusReportResponse | undefined }> => {
     const seq = nextSeq;
     nextSeq += 1;
+    sentAny = true;
+    hiddenSeq = state === 'hidden' ? seq : 0;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<undefined>((resolve) => {
@@ -215,6 +229,7 @@ export function startFocusReporter(
       backoffMs = 0;
       return true;
     }
+    if (seq === hiddenSeq) hiddenSeq = 0;
     if (response && status === 429) {
       retryIn(retryAfterMs(response.headers.get('retry-after'), now()));
     } else if (status === 401) {
@@ -277,10 +292,16 @@ export function startFocusReporter(
     clearDebounce();
     debounce = setTimeout(flush, FOCUS_REPORT_DEBOUNCE_MS);
   };
+  // A document that never reported has no state on the server to lower, and
+  // a hidden that is the newest send (in flight or acknowledged) needs no
+  // second copy. Otherwise send unless the server holds hidden and no newer
+  // report is in flight.
+  const hiddenNeeded = () =>
+    sentAny && hiddenSeq === 0 && (acked !== 'hidden' || inFlight);
   const onVisibility = () => {
     if (doc.visibilityState === 'hidden') {
       clearDebounce();
-      if (acked !== 'hidden' || inFlight) void sendHiddenNow();
+      if (hiddenNeeded()) void sendHiddenNow();
       return;
     }
     schedule();
@@ -290,7 +311,7 @@ export function startFocusReporter(
   const onPageHide = () => {
     pageHidden = true;
     clearDebounce();
-    if (!stopped && (acked !== 'hidden' || inFlight)) void sendHiddenNow();
+    if (!stopped && hiddenNeeded()) void sendHiddenNow();
   };
   // Restored from the back/forward cache: report whatever it reads now.
   const onPageShow = () => {

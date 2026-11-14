@@ -1,7 +1,0 @@
-{
-  "revision": "d5e3c3757b2dfb3fd2d38d801292f5c5a3bbfed6",
-
-  "notes": [
-    {"path":"docs/design/motion.md","note":"Documented the person's Reduced motion choice: data-motion=reduce applies the global tokens.css collapse and prefersReducedMotion(); component media blocks still follow only the device. Gallery screen additions do not change motion claims.","inputs":["docs/design/motion.md","src-ui/src/tokens.css","tests/screenshots.spec.ts"]}
-  ]
-}
