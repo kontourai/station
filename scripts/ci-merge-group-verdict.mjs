@@ -167,10 +167,16 @@ export async function runVerdictStep({
   }
   // A step output is one line; a multi-line reason must not forge another key.
   const reason = result.reason.replace(/[\r\n]+/g, ' ');
+  // A refused or unreadable lookup (a token without `actions: read`, an API
+  // outage, an unexpected body) still fails closed, but as a warning: as a
+  // notice, a lookup that always fails would end the saving unnoticed.
+  const lookupBroken = /^(?:lookup-failed|malformed-)/.test(reason);
   log(
     result.verified
       ? `::notice::Merge queue already verified this exact SHA (${reason}); the heavy push lane is skipped.`
-      : `::notice::No reusable merge-queue verdict (${reason}); the push runs the classifier's full lane.`,
+      : lookupBroken
+        ? `::warning title=Merge-queue verdict lookup failed::Could not read the merge-queue verdict (${reason.replaceAll('%', '%25')}); the push runs the classifier's full lane.`
+        : `::notice::No reusable merge-queue verdict (${reason}); the push runs the classifier's full lane.`,
   );
   if (env.GITHUB_OUTPUT)
     appendFileSync(

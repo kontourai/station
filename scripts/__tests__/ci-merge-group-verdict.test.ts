@@ -335,6 +335,11 @@ describe('runVerdictStep (fail open)', () => {
       'lookup-failed: GitHub ',
     ],
     [
+      'a refused read (a token without actions: read)',
+      async () => respond({ message: 'Resource not accessible' }, 403),
+      'lookup-failed: GitHub ',
+    ],
+    [
       'a network failure',
       async () => {
         throw new TypeError('fetch failed');
@@ -347,12 +352,13 @@ describe('runVerdictStep (fail open)', () => {
       'lookup-failed: ',
     ],
   ])(
-    'answers verified=false on %s',
+    'answers verified=false on %s, with a visible warning',
     async (_label, fetchImpl, reasonPrefix) => {
       const output = outputFile();
+      const lines: string[] = [];
       const result = await runVerdictStep({
         env: mainPush(output),
-        log: quiet,
+        log: (line: string) => lines.push(line),
         fetchImpl,
       });
       expect(result.verified).toBe(false);
@@ -360,8 +366,53 @@ describe('runVerdictStep (fail open)', () => {
       expect(readFileSync(output, 'utf8')).toMatch(
         /^verified=false\nreason=lookup-failed: [^\n]*\n$/,
       );
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toMatch(
+        /^::warning title=Merge-queue verdict lookup failed::Could not read the merge-queue verdict \(lookup-failed: /,
+      );
     },
   );
+
+  it('warns on an unexpected response body, which also stops the saving', async () => {
+    const lines: string[] = [];
+    const result = await runVerdictStep({
+      env: mainPush(outputFile()),
+      log: (line: string) => lines.push(line),
+      fetchImpl: async () => respond({ unexpected: true }),
+    });
+    expect(result).toEqual({
+      verified: false,
+      reason: 'malformed-run-listing',
+    });
+    expect(lines).toEqual([
+      "::warning title=Merge-queue verdict lookup failed::Could not read the merge-queue verdict (malformed-run-listing); the push runs the classifier's full lane.",
+    ]);
+  });
+
+  it('keeps an ordinary non-queue push a notice, not a warning', async () => {
+    const lines: string[] = [];
+    const result = await runVerdictStep({
+      env: mainPush(outputFile()),
+      log: (line: string) => lines.push(line),
+      fetchImpl: async () => respond({ total_count: 0, workflow_runs: [] }),
+    });
+    expect(result).toEqual({ verified: false, reason: 'no-merge-group-run' });
+    expect(lines).toEqual([
+      "::notice::No reusable merge-queue verdict (no-merge-group-run); the push runs the classifier's full lane.",
+    ]);
+  });
+
+  it('escapes a percent sign in the warning text', async () => {
+    const lines: string[] = [];
+    await runVerdictStep({
+      env: mainPush(outputFile()),
+      log: (line: string) => lines.push(line),
+      fetchImpl: async () => {
+        throw new Error('100%0Aforged');
+      },
+    });
+    expect(lines[0]).toContain('(lookup-failed: 100%250Aforged)');
+  });
 
   it('keeps a multi-line error on one output line', async () => {
     const output = outputFile();
@@ -459,6 +510,9 @@ describe('the workflow step as a child process', () => {
           /^verified=false\nreason=lookup-failed: GitHub [^\n]+ responded 500\n$/,
         );
         expect(stdout).toContain('runs the classifier');
+        expect(stdout).toMatch(
+          /^::warning title=Merge-queue verdict lookup failed::/m,
+        );
       },
     );
   });
