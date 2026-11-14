@@ -135,7 +135,8 @@ serves `docs:truth:gate`, Veritas readiness, `docs:learn:check`, captures and
   base touches needs a new note covering those inputs (one command can write
   that note for every document citing a changed source; see
   [below](#one-note-for-a-widely-cited-input)). Human record edits also
-  need a note. Dependencies at the merge base and in the working tree are both
+  need a note. The version PR's mechanical output is the one exception; see
+  [generated release records](#generated-release-records-and-removed-notes). Dependencies at the merge base and in the working tree are both
   considered, so dropping a citation cannot hide a changed input. A removed
   record whose document remains cannot hide source changes either. Committed
   notes must name a revision inside `merge base..HEAD`; an
