@@ -59,31 +59,34 @@ describe('chat dock header buttons are quiet (design round 2026-10, B1)', () => 
   });
 });
 
-describe('chat dock project status segment (station audit F6)', () => {
-  const badge = firstRuleFor('.chat-dock__project-badge');
+describe('project choice belongs to the shared start heading', () => {
+  const composerCss = readFileSync(
+    path.join(uiRoot, 'components/chat-start/StartComposer.css'),
+    'utf-8',
+  );
 
-  test('the project badge no longer carries the unconditional accent-green — it reads as muted status text', () => {
-    expect(badge).not.toMatch(/color:\s*var\(--accent-primary\)/);
+  test('the dock header has no retired project badge or session-name segment', () => {
+    expect(ruleBodiesFor(indexCss, '.chat-dock__project-badge')).toEqual([]);
+    expect(ruleBodiesFor(indexCss, '.chat-dock__project-session-name')).toEqual([]);
+    const header = readFileSync(
+      path.join(uiRoot, 'components/chat-dock/ChatDockHeader.tsx'),
+      'utf-8',
+    );
+    expect(header).not.toContain('chat-dock__project-badge');
   });
 
-  test('the badge reads in the row’s own font, not a second family', () => {
-    // F6's finding was that the badge encoded no state in its colour and read as
-    // a colored label rather than as text; its remedy was the muted tone plus the
-    // MONOSPACE family, chosen because the badge then shared a row with a visible
-    // directory path. #1536 F removed that path (it is the badge's tooltip), and
-    // #1552 D3 finished the job: with nothing monospace left beside it, a second
-    // type family in a 38px bar was the only thing that family bought. The chip
-    // inherits, so the bar has one font.
-    //
-    // The part of F6 that still holds is asserted next door: the tone is neutral,
-    // not the accent green a READY badge uses.
-    expect(badge).toMatch(/font-family:\s*inherit/);
-    expect(badge).not.toMatch(/var\(--font-mono\)/);
-    // The mismatch lead-in that once kept the monospace family beside it is
-    // gone from the desktop bar (the badge is New's destination now), and so
-    // is its rule.
-    expect(ruleBodiesFor(indexCss, '.chat-dock__project-session-name')).toEqual(
-      [],
-    );
+  test('the start heading project control uses neutral text and inherits the heading font', () => {
+    const destination = ruleBodiesFor(
+      composerCss,
+      '.start-composer__destination .start-composer__project',
+    ).join('\n');
+    expect(destination).toContain('color: var(--k-text-muted)');
+    expect(destination).not.toMatch(/color:\s*var\(--accent-primary\)/);
+    const heading = ruleBodiesFor(
+      composerCss,
+      '.start-composer__destination h2 .start-composer__project',
+    ).join('\n');
+    expect(heading).toContain('font: inherit');
+    expect(heading).not.toContain('var(--font-mono)');
   });
 });
