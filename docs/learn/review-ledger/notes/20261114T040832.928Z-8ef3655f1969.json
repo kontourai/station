@@ -1,0 +1,7 @@
+{
+  "revision": "b360d77b7ae7490105508b1420d10d50aab090ca",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked against the new runtime-cold-start case for the copilot-sdk-engine preview (preview off by default, a later choice, the adoption candidate, the hosted refusal): it adds a case and changes none of the telemetry assertions this document cites; accurate.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts"]}
+  ]
+}
