@@ -17,6 +17,10 @@ on:
         description: Reuse successful exact-source qualification from the last 24 hours
         default: true
         type: boolean
+      skip_failed_source:
+        description: Do not repeat the corpus when a main qualification run failed tests on this exact source in the last 24 hours (the gate still fails)
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -33,12 +37,16 @@ jobs:
     timeout-minutes: 10
     outputs:
       reuse_run: ${{ steps.evidence.outputs.reuse_run }}
+      failed_run: ${{ steps.evidence.outputs.failed_run }}
       ordinary: ${{ steps.capacity.outputs.ordinary }}
       heavy: ${{ steps.capacity.outputs.heavy }}
     steps:
+      # The failed-source lookup walks up to 30 first-parent commits that
+      # change only the deploy ledger; every other caller needs one commit.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_sha }}
+          fetch-depth: ${{ inputs.skip_failed_source && 32 || 1 }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -62,12 +70,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           ALLOW_REUSE: ${{ inputs.allow_reuse }}
+          SKIP_FAILED_SOURCE: ${{ inputs.skip_failed_source }}
         run: node scripts/qualification-evidence.mjs resolve
 
   static:
     name: Static and app builds
     needs: resolve
-    if: needs.resolve.outputs.reuse_run == ''
+    if: needs.resolve.outputs.reuse_run == '' && needs.resolve.outputs.failed_run == ''
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
@@ -127,7 +136,7 @@ jobs:
   ordinary:
     name: Ordinary corpus ${{ matrix.slice }}
     needs: resolve
-    if: needs.resolve.outputs.reuse_run == ''
+    if: needs.resolve.outputs.reuse_run == '' && needs.resolve.outputs.failed_run == ''
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     strategy:
@@ -256,19 +265,25 @@ jobs:
   process-heavy:
     name: Process-heavy corpus ${{ matrix.slice }}
     needs: resolve
-    if: needs.resolve.outputs.reuse_run == ''
+    if: needs.resolve.outputs.reuse_run == '' && needs.resolve.outputs.failed_run == ''
     # Managed workload proofs require scope OOM policy (systemd >= 253).
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    # Three slices, not two: with two, slice 1's phase ended at 1782-1801 s
+    # against its 1800 s deadline in the retained 2026-11 failure logs
+    # (#4943). Each slice now gets about a third of the files instead of a
+    # half. This is structural headroom, not a diagnosis of that growth.
     strategy:
       fail-fast: false
       max-parallel: ${{ fromJSON(needs.resolve.outputs.heavy) }}
       matrix:
         include:
-          - slice: 1 of 2
-            phases: --phase=test-full-process-heavy --process-heavy-shard=1/2
-          - slice: 2 of 2
-            phases: --phase=test-full-process-heavy --process-heavy-shard=2/2
+          - slice: 1 of 3
+            phases: --phase=test-full-process-heavy --process-heavy-shard=1/3
+          - slice: 2 of 3
+            phases: --phase=test-full-process-heavy --process-heavy-shard=2/3
+          - slice: 3 of 3
+            phases: --phase=test-full-process-heavy --process-heavy-shard=3/3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -399,7 +414,7 @@ jobs:
   exclusive:
     name: Exclusive corpora
     needs: [resolve, static]
-    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == ''
+    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == '' && needs.resolve.outputs.failed_run == ''
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
@@ -515,7 +530,7 @@ jobs:
   android-viewport:
     name: Mobile Playwright (Android viewport)
     needs: [resolve, exclusive]
-    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == ''
+    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == '' && needs.resolve.outputs.failed_run == ''
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
@@ -595,6 +610,7 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           REUSE_RUN: ${{ needs.resolve.outputs.reuse_run }}
+          FAILED_RUN: ${{ needs.resolve.outputs.failed_run }}
         run: node scripts/qualification-evidence.mjs attest
       - name: Retain exact-SHA completion receipts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
