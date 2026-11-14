@@ -62,7 +62,10 @@ import {
   SESSION_RECOVERY_FAILED_CODE,
   SESSION_START_IN_FLIGHT_CODE,
 } from '@kontourai/station-contracts/provider-failure';
-import type { ProviderRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type {
+  ProviderRuntimeErrorBody,
+  ProviderRuntimeEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import {
   assertEngineAllowedByManagedPolicy,
@@ -79,6 +82,7 @@ import { childProcessEnvironment } from '../../utils/child-process-environment.j
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import {
+  AttachmentInputUnsupportedError,
   type ProviderAdapterMetadata,
   type ProviderAdapterShape,
   type ProviderInterruptTurnResult,
@@ -132,6 +136,13 @@ const PREVIEW_DISABLED_MESSAGE =
 const COPILOT_SDK_INTERRUPT_SETTLE_MS = 10_000;
 /** How long a model catalogue read is reused. */
 const MODEL_CATALOG_TTL_MS = 5 * 60_000;
+/** Translated events that only mean something inside a running turn. */
+const TURN_OUTPUT_METHODS: ReadonlySet<string> = new Set([
+  'content.text-delta',
+  'content.reasoning-delta',
+  'tool.started',
+  'tool.completed',
+]);
 /** Restored file paths a failed rewind's message names. */
 const REWIND_FAILURE_PATHS_SHOWN = 5;
 
@@ -201,7 +212,8 @@ interface CopilotSessionRecord {
   copilot: CopilotSdkSessionPort;
   cwd: string;
   /** The working directory's real path; approvals compare against it. */
-  realCwd: string;
+  /** `undefined` when it cannot be resolved: then every read and write asks. */
+  realCwd: string | undefined;
   /** The mode the last turn (or the start) asked for, before confinement. */
   requestedMode: ApprovalMode | undefined;
   /** The mode answering requests now (`copilotAppliedApprovalMode`). */
@@ -469,7 +481,7 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
         'The GitHub Copilot CLI is not installed or not on PATH. Install it and run `copilot login`.',
       );
     const cwd = input.cwd ?? process.cwd();
-    const realCwd = copilotRealPath(cwd, cwd) ?? cwd;
+    const realCwd = copilotRealPath(cwd, cwd);
     // The session's own TMPDIR, as for every Station-launched engine.
     const sessionTmpDir = engineSessionTmpDir(threadId);
     const client = await this.clientFactory(
@@ -640,9 +652,8 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
         'busy',
       );
     if (input.attachments?.length)
-      throw new SendTurnRefusedError(
+      throw new AttachmentInputUnsupportedError(
         'Attachments are not supported on the Copilot SDK engine yet.',
-        'input_unsupported',
       );
     this.applyTurnMode(record, input.modelOptions, input.confinement);
     const turnId = this.newId();
@@ -812,8 +823,12 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
     for (const body of record.translator.translate(event, {
       threadId,
       turnId,
-    }))
+    })) {
+      // Output with no Station turn running (a runtime still draining after
+      // an abort) belongs to no turn, so it is not shown.
+      if (!active && TURN_OUTPUT_METHODS.has(body.method)) continue;
       this.publish(threadId, turnId, body);
+    }
     if (event.type === 'session.error') {
       this.onSessionError(record, event);
       return;
@@ -902,7 +917,7 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
       message: event.data.message,
       code: 'copilot_sdk_session_error',
       details,
-    });
+    } satisfies ProviderRuntimeErrorBody);
     this.endTurnForOrigin(
       record,
       event.data.originatingMessageId,

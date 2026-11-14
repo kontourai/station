@@ -207,8 +207,12 @@ export function copilotManagedApprovalRequired(
 
 /** What a session's approval decisions are made against. */
 export interface CopilotApprovalScope {
-  /** The real path of the session's working directory. */
-  realCwd: string;
+  /**
+   * The real path of the session's working directory; `undefined` when it
+   * could not be resolved, so no read or write is "inside" and every one
+   * goes to a person.
+   */
+  realCwd: string | undefined;
   grants: ReadonlySet<string>;
 }
 
@@ -222,7 +226,7 @@ export interface CopilotApprovalScope {
  */
 export function copilotSessionGrantKey(
   request: PermissionRequest,
-  realCwd: string,
+  realCwd: string | undefined,
   managed: boolean,
 ): string | undefined {
   if (managed) return undefined;
@@ -230,8 +234,9 @@ export function copilotSessionGrantKey(
     case 'shell':
       return `shell:${request.fullCommandText}`;
     case 'write':
-      return 'write';
+      return realCwd === undefined ? undefined : 'write';
     case 'read': {
+      if (realCwd === undefined) return undefined;
       const real = requestRealPaths(request, realCwd);
       return real?.length === 1 ? `read-dir:${dirname(real[0])}` : undefined;
     }
@@ -263,9 +268,11 @@ export function copilotModeAllows(
   if (managed) return false;
   if (mode === 'never') return true;
   if (request.kind === 'read' || request.kind === 'write') {
-    const real = requestRealPaths(request, scope.realCwd);
+    const realCwd = scope.realCwd;
+    if (realCwd === undefined) return false;
+    const real = requestRealPaths(request, realCwd);
     if (!real) return false;
-    const inside = real.every((path) => within(scope.realCwd, path));
+    const inside = real.every((path) => within(realCwd, path));
     if (request.kind === 'read')
       return inside || real.every((path) => readGranted(scope.grants, path));
     // A write is allowed only inside the working directory, by `auto` or by

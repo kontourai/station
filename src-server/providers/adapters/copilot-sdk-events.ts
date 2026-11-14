@@ -38,6 +38,9 @@ export type CopilotEventBody = DistributiveOmit<
   'eventId' | 'provider' | 'threadId' | 'createdAt'
 >;
 
+/** Longest subagent reply kept as its child-work result. */
+const CHILD_RESULT_MAX_CHARS = 2_000;
+
 const COPILOT_TOOL_OUTPUT_MAX_CHARS = 64_000;
 
 function boundedText(text: string, max: number): string {
@@ -100,6 +103,59 @@ export class CopilotSdkEventTranslator {
     { toolName: string; toolKind: EngineToolKind }
   >();
   private readonly openChildren = new Map<string, ChildWorkItem>();
+  /** Every subagent this turn started, open or ended (its task tool may return later). */
+  private readonly turnChildren = new Set<string>();
+
+  private snapshot(threadId: string): CopilotEventBody {
+    return {
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: threadId,
+        running: [...this.openChildren.values()],
+      },
+    };
+  }
+
+  /**
+   * The subagent's task tool returned: that is its reply to the parent, so
+   * it settles the child with the reply as its result, whichever of this and
+   * `subagent.completed` arrives first (they share the `toolCallId`).
+   */
+  private childToolReturned(
+    event: Extract<SessionEvent, { type: 'tool.execution_complete' }>,
+    threadId: string,
+  ): CopilotEventBody[] {
+    const childId = event.data.toolCallId;
+    if (!this.turnChildren.has(childId)) return [];
+    this.openChildren.delete(childId);
+    const reply = event.data.success
+      ? event.data.result?.content
+      : event.data.error?.message;
+    return [
+      {
+        method: 'child-work.updated',
+        delta: {
+          kind: 'settle',
+          producer: 'engine-subagent',
+          reporterThreadId: threadId,
+          childId,
+          status: event.data.success ? 'completed' : 'failed',
+          ...(reply
+            ? {
+                result: {
+                  summary: boundedText(reply, CHILD_RESULT_MAX_CHARS),
+                  source: event.data.success
+                    ? ('tool-return' as const)
+                    : ('provider-error' as const),
+                },
+              }
+            : {}),
+        },
+      },
+    ];
+  }
 
   /** Subagents still running (for settling them when their turn ends). */
   openChildIds(): string[] {
@@ -167,11 +223,13 @@ export class CopilotSdkEventTranslator {
         ];
       }
       case 'tool.execution_complete': {
+        const child = this.childToolReturned(event, context.threadId);
         const open = this.openTools.get(event.data.toolCallId);
-        if (!open) return [];
+        if (!open) return child;
         this.openTools.delete(event.data.toolCallId);
         const output = event.data.result?.content;
         return [
+          ...child,
           {
             method: 'tool.completed',
             itemId: event.data.toolCallId,
@@ -228,18 +286,18 @@ export class CopilotSdkEventTranslator {
             ...(context.turnId ? { turnId: context.turnId } : {}),
             toolCallId: event.data.toolCallId,
           },
-          depth: 1,
+          // No depth: the event does not say how deeply the subagent nests.
           startedAt: event.timestamp,
         };
         this.openChildren.set(item.childId, item);
-        return [
-          { method: 'child-work.updated', delta: { kind: 'upsert', item } },
-        ];
+        this.turnChildren.add(item.childId);
+        return [this.snapshot(context.threadId)];
       }
       case 'subagent.completed':
       case 'subagent.failed': {
         const childId = event.data.toolCallId;
-        if (!this.openChildren.delete(childId)) return [];
+        if (!this.turnChildren.has(childId)) return [];
+        this.openChildren.delete(childId);
         const failed = event.type === 'subagent.failed';
         const cancelled =
           event.type === 'subagent.completed' && event.data.cancelled === true;
@@ -255,7 +313,10 @@ export class CopilotSdkEventTranslator {
               ...(event.type === 'subagent.failed'
                 ? {
                     result: {
-                      summary: boundedText(event.data.error, 2_000),
+                      summary: boundedText(
+                        event.data.error,
+                        CHILD_RESULT_MAX_CHARS,
+                      ),
                       source: 'provider-error' as const,
                     },
                   }
@@ -344,6 +405,7 @@ export class CopilotSdkEventTranslator {
       });
     }
     this.openChildren.clear();
+    this.turnChildren.clear();
     this.openTools.clear();
     this.streamedMessages.clear();
     return bodies;
