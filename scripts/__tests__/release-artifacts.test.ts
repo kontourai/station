@@ -623,6 +623,59 @@ describe('release artifact inventory: Windows Authenticode state (#3591)', () =>
     ).toThrow('signing receipt does not bind this release installer');
   });
 
+  it.each([
+    ['unsigned' as const, true],
+    ['certificate' as const, false],
+  ])(
+    'discloses a %s Windows MSI in the draft release notes through the CLI: %s',
+    (mode, disclosed) => {
+      const { assetsDir, containerDescriptor, sbomContext } = fixture(mode);
+      const output = join(assetsDir, 'station-release-inventory.json');
+      const notes = join(assetsDir, '..', 'notes.md');
+      const cli = resolve(import.meta.dirname, '../release-artifacts.mjs');
+      const run = (args: string[]) =>
+        spawnSyncBounded(process.execPath, [cli, ...args], {
+          encoding: 'utf8',
+          windowsHide: true,
+          env: { ...process.env, TAURI_SIGNING_PUBLIC_KEY: '' },
+        });
+      const assemble = run([
+        'assemble',
+        '--assets-dir',
+        assetsDir,
+        '--output',
+        output,
+        '--tag',
+        TAG,
+        '--sha',
+        SHA,
+        '--generated-at',
+        GENERATED_AT,
+        '--sbom-context',
+        sbomContext,
+        '--container-descriptor',
+        containerDescriptor,
+        '--updater-public-key',
+        join(assetsDir, 'station-updater-public-key.txt'),
+      ]);
+      expect(assemble.status, assemble.stderr).toBe(0);
+      const draft = run([
+        'draft-notes',
+        '--inventory',
+        output,
+        '--output',
+        notes,
+      ]);
+      expect(draft.status, draft.stderr).toBe(0);
+      const body = readFileSync(notes, 'utf8');
+      expect(body.startsWith('Validated release inventory;')).toBe(true);
+      expect(body.includes('is not Authenticode-signed yet (#3591)')).toBe(
+        disclosed,
+      );
+      expect(body.includes(windowsSigningReceiptAsset(TAG))).toBe(disclosed);
+    },
+  );
+
   it('refuses to assemble without the Windows signing receipt', () => {
     const { sbomContext: _sbomContext, ...files } = fixture('unsigned');
     rmSync(join(files.assetsDir, windowsSigningReceiptAsset(TAG)));

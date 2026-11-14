@@ -505,6 +505,23 @@ function readWindowsSigningReceipt(inventory, assetsDir) {
   }
 }
 
+/**
+ * The draft release body. It discloses an unsigned Windows MSI from the
+ * inventory claim, so the release page states what the receipt recorded.
+ */
+export function releaseDraftNotes(inventory) {
+  const lines = [
+    'Validated release inventory; publish through the protected Release: Publish workflow.',
+  ];
+  const windows = inventory.variants.find(({ id }) => id === WINDOWS_VARIANT);
+  if (windows?.platformSigning.state !== 'signed')
+    lines.push(
+      '',
+      `The Windows installer (\`station-${inventory.tag}-windows-x86_64.msi\`) is not Authenticode-signed yet (#3591); \`${windowsSigningReceiptAsset(inventory.tag)}\` records this. Microsoft Defender SmartScreen shows "Windows protected your PC" on first run: choose **More info**, then **Run anyway**. In-app updates are still verified with Station's updater signing key.`,
+    );
+  return `${lines.join('\n')}\n`;
+}
+
 /** The Windows claim must be the one its receipt records, never assumed. */
 function validateWindowsSigning(inventory, assetsDir) {
   if (!assetsDir) return;

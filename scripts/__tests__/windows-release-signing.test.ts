@@ -43,13 +43,10 @@ type Step = {
   env?: Record<string, string>;
 };
 
-const windowsJob = (
-  load(
-    readFileSync(resolve(root, '.github/workflows/release.yml'), 'utf8'),
-  ) as {
-    jobs: Record<string, { steps: Step[] }>;
-  }
-).jobs['desktop-windows'];
+const releaseWorkflow = load(
+  readFileSync(resolve(root, '.github/workflows/release.yml'), 'utf8'),
+) as { jobs: Record<string, { steps: Step[] }> };
+const windowsJob = releaseWorkflow.jobs['desktop-windows'];
 
 function step(name: string): Step {
   const found = windowsJob.steps.find((candidate) => candidate.name === name);
@@ -317,6 +314,28 @@ describe('release.yml desktop-windows Authenticode steps', () => {
     );
     expect(verify.run).toContain(
       '} else { throw "Unknown Windows signing mode',
+    );
+  });
+
+  it('publishes the draft with notes derived from the validated inventory', () => {
+    const steps = releaseWorkflow.jobs['assemble-draft'].steps;
+    const index = (name: string) =>
+      steps.findIndex((candidate) => candidate.name === name);
+    const create =
+      steps[index('Create exactly one draft and upload validated assets')];
+    const notes =
+      'node scripts/release-artifacts.mjs draft-notes --inventory release-assets/station-release-inventory.json --output "$RUNNER_TEMP/station-release-notes.md"';
+    expect(create.run).toContain(notes);
+    expect(create.run).toContain(
+      '--notes-file "$RUNNER_TEMP/station-release-notes.md"',
+    );
+    expect((create.run as string).indexOf(notes)).toBeLessThan(
+      (create.run as string).indexOf('gh release create'),
+    );
+    expect(
+      index('Assemble and validate one deterministic inventory'),
+    ).toBeLessThan(
+      index('Create exactly one draft and upload validated assets'),
     );
   });
 
