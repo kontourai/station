@@ -430,6 +430,8 @@ describe('ProjectTasksSection', () => {
     );
     window.localStorage.setItem('station-starter-work-operations-v1', '{bad');
     render(<ProjectTasksSection slug="project-alpha" />);
+    // The starter form stands in for New Task until the record proves bad.
+    expect(screen.queryByRole('button', { name: 'New Task' })).toBeNull();
 
     fireEvent.change(screen.getByLabelText('Task title'), {
       target: { value: 'Starter task' },
@@ -438,10 +440,12 @@ describe('ProjectTasksSection', () => {
 
     expect(
       await screen.findByText(
-        /Nothing was started\. This device’s saved record of your first-task setup can’t be read/,
+        /This device’s record of your first-task setup can’t be read, so Station won’t start it here\. Create the task with New Task instead\./,
       ),
     ).toBeTruthy();
     expect(launchStarterTask).not.toHaveBeenCalled();
+    // The way forward the message names is actually on screen.
+    expect(screen.getByRole('button', { name: 'New Task' })).toBeTruthy();
     window.history.pushState({}, '', '/');
   });
 
@@ -464,7 +468,7 @@ describe('ProjectTasksSection', () => {
 
     expect(
       await screen.findByText(
-        /Nothing was started\. This device can’t reach its saved record of your first-task setup/,
+        /Nothing was started\. This device can’t reach its record of your first-task setup/,
       ),
     ).toBeTruthy();
     expect(launchStarterTask).not.toHaveBeenCalled();

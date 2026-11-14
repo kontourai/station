@@ -236,17 +236,14 @@ export function StationUsagePanel({
             <details className="station-usage__details">
               <summary>Coverage & sources</summary>
               <p>
-                Retained conversations and engine sessions only. Direct
-                invocations, peer serving, voice, realtime, embeddings and
-                unrecorded provider activity are not metered here. Fleet usage
-                saved in conversations is counted once.
+                Counts saved chats and engine sessions only, with fleet usage
+                counted once. Direct calls, peer serving, voice, realtime and
+                embeddings aren't included.
               </p>
               <p>
-                Missing measurements show —; reported zero stays zero. Context
-                occupancy is not consumed tokens. Dates use recorded UTC days;
-                people require recorded identity. Unknown attribution stays
-                unallocated. Costs are partial reported totals and estimates,
-                not a bill.
+                — means not reported. Context size isn't token use, and dates
+                are UTC. Usage without a recorded person stays unassigned. Costs
+                are partial totals and estimates, not a bill.
               </p>
               <dl className="station-usage__sources">
                 <div>
@@ -289,8 +286,8 @@ export function StationUsagePanel({
             )}
             {overview.stats.legacySummary && (
               <p>
-                An older summary is retained as unverified migration evidence
-                and excluded from these totals.
+                An older, unverified summary from before an upgrade is kept but
+                not counted here.
               </p>
             )}
           </>

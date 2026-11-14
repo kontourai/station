@@ -21,14 +21,14 @@ const INSPECTIONS = [
   {
     id: 'inspect-approval',
     title: 'Inspect an approval',
-    description: 'Open one real approval request without deciding it.',
+    description: "Open a pending approval. You won't have to decide it.",
     action: 'Inspect approval',
   },
   {
     id: 'inspect-receipt',
     title: 'Inspect review evidence',
-    description: 'Open one real independent-review receipt as evidence input.',
-    action: 'Inspect receipt',
+    description: 'Open a completed review.',
+    action: 'Open review',
   },
 ] as const;
 
@@ -146,15 +146,15 @@ function StarterInspectionCard({
   return (
     <PageCallout
       calloutId={`starter-${id}`}
-      // An owner Station cannot reach is not an ordinary offer.
-      tone={unreachable ? 'warning' : 'info'}
+      // An owner Station cannot reach is not an ordinary offer; having nothing
+      // to inspect yet is simply the empty case.
+      tone={unreachable && ownerState !== 'missing' ? 'warning' : 'info'}
       ariaLabel={title}
       title={title}
       action={
         unreachable ? (
           <Button onClick={retry}>
-            Retry {id === 'inspect-approval' ? 'approval' : 'receipt'}{' '}
-            inspection
+            Retry {id === 'inspect-approval' ? 'approval' : 'review'} inspection
           </Button>
         ) : target ? (
           <Button
@@ -163,22 +163,22 @@ function StarterInspectionCard({
             onClick={() => void open()}
           >
             {bound
-              ? `Reopen ${id === 'inspect-approval' ? 'approval' : 'receipt'}`
+              ? `Reopen ${id === 'inspect-approval' ? 'approval' : 'review'}`
               : action}
           </Button>
         ) : null
       }
     >
       {failed
-        ? 'The exact owner is unavailable.'
+        ? "Couldn't reach this item."
         : ownerState === 'missing'
-          ? 'An exact owner-backed item is not available yet.'
+          ? 'Nothing to inspect yet.'
           : ownerState === 'unavailable' || ownerState === 'NOT_VERIFIED'
-            ? 'The exact owner could not be verified.'
+            ? "This item couldn't be verified."
             : description}
       {launch.isError && (
         <p className="page-callout__notice" role="alert">
-          Inspection was not confirmed. Retry reuses the same exact operation.
+          Station didn't confirm it opened. Retry opens the same item.
         </p>
       )}
     </PageCallout>

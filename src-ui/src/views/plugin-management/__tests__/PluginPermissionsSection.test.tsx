@@ -109,7 +109,9 @@ test('only the row being withdrawn shows pending, not the whole section', () => 
   ).toBeTruthy();
 });
 
-test('the hint projects retirement and retry truth instead of stale reload behavior', () => {
+// Cleanup detail (draining, winding down, retry) is reported by the removal
+// result and the trusted confirmation, not repeated in this standing hint.
+test('the hint states the immediate effect instead of stale reload behavior', () => {
   render(
     <PluginPermissionsSection
       granted={[{ permission: 'plugin.server', tier: 'trusted' }]}
@@ -119,8 +121,9 @@ test('the hint projects retirement and retry truth instead of stale reload behav
       onReviewPermissions={vi.fn()}
     />,
   );
-  expect(screen.getByText(/retires registered providers/i)).toBeTruthy();
-  expect(screen.getByText(/needs a retry/i)).toBeTruthy();
+  expect(
+    screen.getByText('Removing a permission stops new use right away.'),
+  ).toBeTruthy();
   expect(screen.queryByText(/until the plugin reloads/i)).toBeNull();
 });
 
@@ -161,9 +164,7 @@ test('a grant that predates content binding says what Station cannot tell, witho
     />,
   );
 
-  expect(
-    screen.getByText(/cannot tell whether this plugin's code has changed/i),
-  ).toBeTruthy();
+  expect(screen.getByText(/can’t tell if the code changed/i)).toBeTruthy();
   // The permission is still held, and still removable.
   expect(
     screen.getByRole('button', {

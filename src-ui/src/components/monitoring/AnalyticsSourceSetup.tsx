@@ -326,7 +326,8 @@ export function AnalyticsSourceSetup({
           ) : null}
           {sourceStatus.error ? (
             <p role="alert">
-              Review status could not be checked. No approval is inferred.
+              Couldn't check review status. Treat this source as not approved
+              until it's checked.
             </p>
           ) : null}
           <label>
@@ -551,13 +552,14 @@ export function AnalyticsSourceSetup({
             <p role="status">
               Address review: {addressDecision}.{' '}
               {addressDecision === 'approved'
-                ? 'Request private storage preparation, then ask the operator to review it before the first sync.'
+                ? 'Request private storage preparation, then ask the Station operator to review it before the first sync.'
                 : ''}
             </p>
           ) : null}
           {addressStatus.error ? (
             <p role="alert">
-              Address review status could not be checked. Access is not assumed.
+              Couldn't check address review status. Treat this address as not
+              approved until it's checked.
             </p>
           ) : null}
         </>

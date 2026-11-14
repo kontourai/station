@@ -156,8 +156,7 @@ export function filterSkills(
  * most rows were built-in package skills and none of them were workspace-scoped
  * — a claim the loader contradicted on every row (#1582 D6).
  */
-export const SKILLS_SUBTITLE =
-  'Find reusable instructions, understand what they need, and use them with an agent. Add more through Registry or import a skill file.';
+export const SKILLS_SUBTITLE = 'Reusable instructions for agents.';
 
 /**
  * Where the loader found a skill, in the user's words.

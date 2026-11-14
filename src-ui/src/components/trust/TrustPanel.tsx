@@ -252,9 +252,8 @@ export function TrustPanel({ projectSlug }: { projectSlug: string }) {
               label="No trust bundles yet"
               description={
                 <>
-                  Plugins and tools project verified state into{' '}
-                  <code>.station/trust-bundles/</code> in the project workspace.
-                  Complete a review or projection to see trust state here.
+                  Run a review to see trust state here. Plugins and tools save
+                  it in <code>.station/trust-bundles/</code>.
                 </>
               }
             />

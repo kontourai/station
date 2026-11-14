@@ -72,28 +72,23 @@ export function getRegistryTabCopy(tab: RegistryCatalogTab) {
       return {
         description:
           'Discover agent definitions that can be added to this workspace.',
-        empty:
-          'No agents are available from the configured registry sources yet.',
+        empty: 'No agents in your marketplaces yet.',
       };
     case 'skills':
       return {
-        description:
-          'Discover skills to install, then author and edit installed skills separately.',
-        empty:
-          'No skills are available from the configured registry sources yet.',
+        description: 'Find skills to install. Edit installed skills in Skills.',
+        empty: 'No skills in your marketplaces yet.',
       };
     case 'integrations':
       return {
         description: 'Discover integrations to connect to this workspace.',
-        empty:
-          'No integrations are available from the configured registry sources yet.',
+        empty: 'No integrations in your marketplaces yet.',
       };
     case 'plugins':
       return {
         description:
           'Discover plugins to install. Manage installed plugin settings in Plugins.',
-        empty:
-          'No plugins are available from the configured registry sources yet.',
+        empty: 'No plugins in your marketplaces yet.',
       };
     case 'layouts':
       return {
@@ -104,7 +99,7 @@ export function getRegistryTabCopy(tab: RegistryCatalogTab) {
     case 'kits':
       return {
         description:
-          'Browse host-discovered portable Kits and add their read-only projections to a project.',
+          'Browse installed Kits and add their read-only views to a Project.',
         empty: 'No portable Kits are installed for this workspace yet.',
       };
   }

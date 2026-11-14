@@ -268,7 +268,7 @@ export function MemoryReview() {
   );
   return (
     <section aria-label="Review memory" className="memory-review">
-      <h3>What Station remembers about you</h3>
+      <h3>Your saved memories</h3>
       {support.data === 'unsupported' && (
         <Empty
           label="This Station can’t review memory yet"

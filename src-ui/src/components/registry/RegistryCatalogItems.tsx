@@ -61,8 +61,8 @@ export function RegistryCatalogDetail({
     (mcpServer ? null : installRefusal) ??
     (tab === 'skills'
       ? installed
-        ? 'Removing deletes the workspace copy so the skill is no longer selectable in agent definitions.'
-        : 'Installing copies this skill into the workspace so it becomes selectable in agent definitions.'
+        ? 'Removing it means agents can no longer use this skill.'
+        : 'Adds this skill to your workspace so agents can use it.'
       : null);
   const source = getRegistrySourceLabel(item);
   const isInstalledPlugin = tab === 'plugins' && installed;
@@ -164,7 +164,7 @@ export function RegistryCatalogDetail({
                 ? 'Checking installed status…'
                 : pending
                   ? 'Working…'
-                  : 'Remove Plugin'}
+                  : 'Remove plugin'}
             </Button>
           </>
         ) : (

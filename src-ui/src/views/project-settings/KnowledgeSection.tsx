@@ -195,9 +195,8 @@ export function KnowledgeSection({ slug }: { slug: string }) {
     <PageSection
       id="section-knowledge"
       className="project-settings__section knowledge-section"
-      eyebrow="Project context"
       title="Project knowledge"
-      description="Index durable project context so agents can retrieve it when needed."
+      description="Index this Project’s context so agents can find it when needed."
       actions={
         status ? (
           <span className="knowledge-section__stat">

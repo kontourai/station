@@ -36,10 +36,10 @@ describe('UsageDrillDownModal — cache-honest model usage (station#4196)', () =
       cacheProviderAttribution: 'single',
     });
 
-    expect(statValue('Input Tokens (uncached)')).toBe('135');
-    expect(statValue('Cache Read Tokens')).toBe('18,400');
-    expect(statValue('Cache Write Tokens')).toBe('10,100');
-    expect(statValue('Prompt Total')).toBe('28,635');
+    expect(statValue('Input tokens (uncached)')).toBe('135');
+    expect(statValue('Cache read tokens')).toBe('18,400');
+    expect(statValue('Cache write tokens')).toBe('10,100');
+    expect(statValue('Prompt total')).toBe('28,635');
   });
 
   test('shows an unverified provider cache component without inventing a prompt sum', () => {
@@ -54,11 +54,11 @@ describe('UsageDrillDownModal — cache-honest model usage (station#4196)', () =
       cacheProviderAttribution: 'single',
     });
 
-    expect(statValue('Input Tokens')).toBe('3,000');
-    expect(statValue('Cache Read Tokens')).toBe('900');
-    expect(screen.queryByText('Prompt Total')).toBeNull();
-    expect(screen.queryByText('Prompt Total/Turn')).toBeNull();
-    expect(screen.queryByText('Input Tokens (uncached)')).toBeNull();
+    expect(statValue('Input tokens')).toBe('3,000');
+    expect(statValue('Cache read tokens')).toBe('900');
+    expect(screen.queryByText('Prompt total')).toBeNull();
+    expect(screen.queryByText('Prompt total/turn')).toBeNull();
+    expect(screen.queryByText('Input tokens (uncached)')).toBeNull();
   });
 
   test('keeps indeterminate-provider components visible but refuses prompt totals and the uncached qualifier', () => {
@@ -72,12 +72,12 @@ describe('UsageDrillDownModal — cache-honest model usage (station#4196)', () =
       cacheProviderAttribution: 'indeterminate',
     });
 
-    expect(statValue('Input Tokens')).toBe('150');
-    expect(statValue('Cache Read Tokens')).toBe('18,400');
-    expect(statValue('Cache Write Tokens')).toBe('10,100');
-    expect(screen.queryByText('Input Tokens (uncached)')).toBeNull();
-    expect(screen.queryByText('Prompt Total')).toBeNull();
-    expect(screen.queryByText('Prompt Total/Turn')).toBeNull();
+    expect(statValue('Input tokens')).toBe('150');
+    expect(statValue('Cache read tokens')).toBe('18,400');
+    expect(statValue('Cache write tokens')).toBe('10,100');
+    expect(screen.queryByText('Input tokens (uncached)')).toBeNull();
+    expect(screen.queryByText('Prompt total')).toBeNull();
+    expect(screen.queryByText('Prompt total/turn')).toBeNull();
   });
 
   test('renders a reported cache zero but leaves an absent cache component unrendered', () => {
@@ -92,8 +92,8 @@ describe('UsageDrillDownModal — cache-honest model usage (station#4196)', () =
       cacheProviderAttribution: 'single',
     });
 
-    expect(statValue('Cache Read Tokens')).toBe('0');
-    expect(screen.queryByText('Cache Write Tokens')).toBeNull();
+    expect(statValue('Cache read tokens')).toBe('0');
+    expect(screen.queryByText('Cache write tokens')).toBeNull();
   });
 });
 
@@ -114,10 +114,10 @@ test.each([undefined, 0])(
     expect(statValue('Recorded cost')).toBe(
       reported === undefined ? 'Not reported' : '$0.00',
     );
-    expect(statValue('Input Tokens')).toBe(
+    expect(statValue('Input tokens')).toBe(
       reported === undefined ? 'Not reported' : '0',
     );
-    expect(statValue('Output Tokens')).toBe(
+    expect(statValue('Output tokens')).toBe(
       reported === undefined ? 'Not reported' : '0',
     );
     expect(screen.queryByText('Avg Cost/Turn')).toBeNull();
@@ -136,7 +136,7 @@ test('cache-only observations do not invent an uncached input or prompt total', 
     cacheInclusivity: 'disjoint',
     cacheProviderAttribution: 'single',
   });
-  expect(statValue('Input Tokens (uncached)')).toBe('Not reported');
-  expect(statValue('Cache Read Tokens')).toBe('25');
-  expect(screen.queryByText('Prompt Total')).toBeNull();
+  expect(statValue('Input tokens (uncached)')).toBe('Not reported');
+  expect(statValue('Cache read tokens')).toBe('25');
+  expect(screen.queryByText('Prompt total')).toBeNull();
 });

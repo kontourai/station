@@ -196,7 +196,7 @@ export function PluginModalStack({
           overlayClassName="plugins__confirm-overlay"
           panelClassName="plugins__confirm"
         >
-          <h3 id="remove-plugin-title">Remove Plugin</h3>
+          <h3 id="remove-plugin-title">Remove plugin</h3>
           <p>
             Remove &ldquo;{removeConfirm}&rdquo; from Station?
             {removalRetainsData
@@ -238,7 +238,7 @@ export function PluginModalStack({
           overlayClassName="plugins__confirm-overlay"
           panelClassName="plugins__confirm"
         >
-          <h3 id="update-plugin-title">Update Plugin</h3>
+          <h3 id="update-plugin-title">Update plugin</h3>
           <p>
             Update &ldquo;{updateConfirm.pluginName}&rdquo;? Station pulls the
             plugin&rsquo;s latest code from its source.

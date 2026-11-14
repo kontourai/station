@@ -55,7 +55,7 @@ export default function MemoryTab() {
   return (
     <section className="developer-tab" aria-label="Memory">
       <p className="developer-tab__hint">
-        Recall and canonical records from the configured memory stores.
+        Recall and records from your knowledge stores.
       </p>
 
       {statusUnavailable && (

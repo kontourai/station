@@ -183,9 +183,9 @@ Scheduler. The job stays disabled unless you explicitly
 enable its daily schedule. Station binds the exact Scheduler run before the
 Agent can be invoked, so a lost response or retry opens the same receipt and
 never starts another check. If Station restarts after binding but before the
-Agent begins, **Resume exact check** reuses the operation identity stored in
+Agent begins, **Resume check** reuses the operation identity stored in
 that binding; it does not create a replacement run. Failed or indeterminate
-checks offer **Inspect receipt**, not automatic retry. A completed check proves
+checks offer **Open result**, not automatic retry. A completed check proves
 execution only; read
 its findings and decide what to do rather than treating completion as a passed
 gate.

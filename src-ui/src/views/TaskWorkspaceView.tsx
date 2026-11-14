@@ -380,8 +380,8 @@ function StarterLinkRetry({ task }: { task: TaskRecord }) {
       </Button>
       {failed && (
         <p>
-          Still couldn’t link it. Your task is safe — try again later, and
-          Station won’t create a second one.
+          Still couldn’t link it. Your task is safe; try again later and it
+          won’t create a second task.
         </p>
       )}
     </section>
@@ -471,7 +471,7 @@ function TaskWorkspaceContent({
   // AW-4: the list is derived from what this Station has actually
   // installed, not from a hardcoded filter. An optional experience appears
   // only when an installed, ENABLED plugin declares it provides that
-  // contract; everything else stays behind the one Add capabilities
+  // contract; everything else stays behind the one Add plugins
   // affordance.
   const { data: plugins = [] } = usePluginsQuery() as {
     data: Array<{ enabled?: boolean; manifest?: { capabilities?: string[] } }>;
@@ -1039,9 +1039,9 @@ function DirectExperienceBoundary({
   return (
     <aside
       className="task-workspace__direct-boundary"
-      aria-label="Direct experience authority"
+      aria-label="Direct experience"
     >
-      <strong>Authority: {experience.authority}</strong>
+      <strong>From {experience.owner}</strong>
       <span>{experience.description}</span>
     </aside>
   );
@@ -1065,14 +1065,10 @@ function TaskExperienceNavigation({
         <div className="task-workspace__experience-heading">
           <div>
             <h3 id="task-inspection-heading">Task inspection</h3>
-            <p>
-              Inspect this Task's recorded workspace and references. Additional
-              product capabilities appear here only when their owner attaches a
-              verified contract.
-            </p>
+            <p>Plugins can add more ways to open this Task.</p>
           </div>
           <a className="editor-btn" href="/plugins">
-            Add capabilities
+            Add plugins
           </a>
         </div>
       </section>
@@ -1083,10 +1079,6 @@ function TaskExperienceNavigation({
       <div className="task-workspace__experience-heading">
         <div>
           <h3>Task experiences</h3>
-          <p>
-            Task identity stays in Station; each experience keeps its owning
-            product authority.
-          </p>
         </div>
       </div>
       <div className="task-workspace__experience-list">
@@ -1099,7 +1091,7 @@ function TaskExperienceNavigation({
                 ? ' task-workspace__experience--active'
                 : ''
             }`}
-            aria-label={`${experience.label} ${experience.authority} ${experience.availability}`}
+            aria-label={`${experience.label} from ${experience.owner}, ${experience.availability}`}
             aria-pressed={activeExperienceId === experience.id}
             onClick={() => onSelect(experience.id)}
           >
@@ -1107,7 +1099,7 @@ function TaskExperienceNavigation({
               {experience.label}
             </span>
             <span className="task-workspace__experience-owner">
-              {experience.authority}
+              {experience.owner}
             </span>
             <span
               className={`task-workspace__experience-status task-workspace__experience-status--${experience.availability}`}
@@ -1135,7 +1127,7 @@ function TaskExperienceBoundary({
       <div className="task-workspace__section-heading">
         <div>
           <p className="task-workspace__experience-eyebrow">
-            Authority: {experience.authority}
+            From {experience.owner}
           </p>
           <h3
             id={`task-experience-${experience.id}`}
@@ -1146,23 +1138,23 @@ function TaskExperienceBoundary({
           <p>{experience.description}</p>
         </div>
       </div>
-      <div className="task-workspace__experience-callout">
-        <p>{experience.unavailableDescription}</p>
-        {experience.alternativeHref && experience.alternativeLabel ? (
-          <a
-            className="editor-btn"
-            href={experience.alternativeHref}
-            target={isExternalAlternative ? '_blank' : undefined}
-            rel={isExternalAlternative ? 'noreferrer' : undefined}
-          >
-            {experience.alternativeLabel}
-          </a>
-        ) : null}
-      </div>
-      <p className="task-workspace__experience-boundary-note">
-        Station preserves Task identity and availability disclosure;{' '}
-        {experience.authority} remains authoritative for this experience.
-      </p>
+      {/* The callout and its alternative explain an experience that cannot
+          open; an attached, available one has nothing to apologize for. */}
+      {experience.availability === 'unavailable' && (
+        <div className="task-workspace__experience-callout">
+          <p>{experience.unavailableDescription}</p>
+          {experience.alternativeHref && experience.alternativeLabel ? (
+            <a
+              className="editor-btn"
+              href={experience.alternativeHref}
+              target={isExternalAlternative ? '_blank' : undefined}
+              rel={isExternalAlternative ? 'noreferrer' : undefined}
+            >
+              {experience.alternativeLabel}
+            </a>
+          ) : null}
+        </div>
+      )}
     </section>
   );
 }

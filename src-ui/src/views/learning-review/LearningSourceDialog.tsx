@@ -17,13 +17,13 @@ import './LearningSourceDialog.css';
 
 type Authority = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 const gaps: Record<string, string> = {
-  unsupported: 'This store does not support source-only inspection.',
+  unsupported: "This store can't show sources.",
   missing: 'The selected source record is no longer available.',
   busy: 'The store is changing. Retry after its current operation finishes.',
-  corrupt: 'The source could not be verified. No repair was attempted.',
-  unavailable: 'The source is unavailable. No source content was returned.',
+  corrupt: "The source couldn't be verified.",
+  unavailable: 'The source is unavailable.',
   'invalid-input': 'The source reference is invalid.',
-  'over-budget': 'The source exceeds the inspection budget.',
+  'over-budget': 'The source is too large to show here.',
 };
 export function LearningSourceDialog({
   reference,
@@ -148,10 +148,8 @@ export function LearningSourceDialog({
                 </dd>
               </dl>
               <p className="learning-source-disclosure">
-                Record status does not establish learning activation. This is a
-                non-atomic observation. Transaction state and owner revision are
-                unknown; the digest identifies the bytes observed, not a
-                learning revision.
+                A snapshot of the record when it was read. It may have changed
+                since.
               </p>
             </details>
           </>
@@ -159,7 +157,7 @@ export function LearningSourceDialog({
           <ErrorState
             variant="compact"
             title="Source inspection is restricted"
-            description="On a personal Station, open the local launch link on the machine that owns the store, then select the record again. Hosted Stations aren't supported."
+            description="Open Station from its local launch link on the computer that holds this store, then select the record again. Hosted Stations aren't supported."
           />
         ) : query.data ? (
           <p role="status">{gaps[query.data.state]}</p>

@@ -462,7 +462,10 @@ export function ProjectTasksSection({
       actions={
         <>
           <Button onClick={() => void refetchTasks()}>Refresh Tasks</Button>
-          {starterId !== 'start-task' && (
+          {/* The starter form replaces New Task, except when its own record is
+              unreadable: then New Task is the way forward the message names. */}
+          {(starterId !== 'start-task' ||
+            starterLaunchProblem === 'retry-state-corrupt') && (
             <Button
               variant="primary"
               onClick={() => requestTaskShaping({ projectSlug: slug })}
@@ -497,15 +500,11 @@ export function ProjectTasksSection({
 
       {starterId === 'start-task' && (
         <form className="project-page__task-form" onSubmit={createTask}>
-          <p role="status">
-            Create a focused starter task. Station will link the exact task
-            after it is created.
-          </p>
           <input
             className="project-page__task-input"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="Create a task"
+            placeholder="What should the agent work on?"
             aria-label="Task title"
           />
           <button
@@ -533,9 +532,8 @@ export function ProjectTasksSection({
 */}
       {starterLaunchProblem === 'correlation' && (
         <p role="status">
-          Your task was created and opened. We couldn’t confirm it is linked to
-          your first-task step, so that step may still look unfinished — you can
-          link it from the task itself.
+          Your task was created and opened. Your first-task step may still look
+          unfinished; you can link it from the task.
         </p>
       )}
       {starterLaunchProblem === 'indeterminate' && (
@@ -546,20 +544,20 @@ export function ProjectTasksSection({
       )}
       {starterLaunchProblem === 'retry-state-corrupt' && (
         <p role="status">
-          Nothing was started. This device’s saved record of your first-task
-          setup can’t be read, and Station won’t start work it can’t track.
+          This device’s record of your first-task setup can’t be read, so
+          Station won’t start it here. Create the task with New Task instead.
         </p>
       )}
       {starterLaunchProblem === 'retry-state-unavailable' && (
         <p role="status">
-          Nothing was started. This device can’t reach its saved record of your
-          first-task setup, and Station won’t start work it can’t track.
+          Nothing was started. This device can’t reach its record of your
+          first-task setup; try again later.
         </p>
       )}
       {starterLaunchProblem === 'deferred' && (
         <p role="status">
           Waiting for the agent to be ready. {starterLaunchReason} Try again
-          once it is — this picks up the same task rather than making another.
+          then; it reuses the same task.
         </p>
       )}
       {starterLaunchProblem &&

@@ -492,6 +492,11 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       }),
     ).toBeTruthy();
     expect(container.querySelector('#section-danger')).toBeTruthy();
+    // Sections rendered for real here (Agents, Layouts and Knowledge are
+    // mocked; their own tests cover them) carry no eyebrow label.
+    expect(container.querySelectorAll('.page-section__eyebrow')).toHaveLength(
+      0,
+    );
   });
 
   test('clearing the working directory reaches the update instead of retaining the old folder', async () => {

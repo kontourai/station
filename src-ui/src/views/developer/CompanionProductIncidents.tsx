@@ -190,7 +190,7 @@ function IncidentIssueLinks({
     if (!authority.isCurrent()) return;
     const url = issueUrl.trim();
     if (!workItemRefFromGitHubIssueUrl(url)) {
-      setNotice('Use a canonical GitHub issue URL without query parameters.');
+      setNotice('Use a plain GitHub issue URL without query parameters.');
       return;
     }
     const current =

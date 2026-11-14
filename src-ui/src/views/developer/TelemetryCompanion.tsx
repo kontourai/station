@@ -13,26 +13,26 @@ const missing: Record<
   string
 > = {
   'container-runtime-missing':
-    'Install Docker and Compose on the Station host, then check again.',
+    'Install Docker and Compose on the computer running Station, then check again.',
   'container-daemon-unavailable':
-    'Start the container runtime on the Station host, then check again.',
+    'Start Docker on the computer running Station, then check again.',
   'remote-container-context':
-    'Local installation needs a local container context. Connecting an existing remote companion is not available here yet.',
+    "Docker must use a local context. Connecting a remote companion isn't supported yet.",
   'container-host-unsupported':
     'This profile needs Linux containers on amd64 or arm64.',
   'compose-unavailable':
-    'Install Docker Compose 2.24 or later on the Station host, then check again.',
+    'Install Docker Compose 2.24 or later on the computer running Station, then check again.',
 };
 
 const missingArtifact = {
   'archive-install-required':
-    'This Station needs an installer-owned release archive to check companion release evidence.',
+    'Install Station from a release archive to check companion releases.',
   'release-envelope-missing':
-    'This installed version has no retained signed release envelope. Use a release installed with envelope retention.',
+    "This install didn't keep its signed release file. Reinstall Station from a current release.",
   'release-envelope-invalid':
-    'The retained release envelope could not be verified for this Station version, channel and host.',
+    "Station couldn't verify its signed release file for this version and computer.",
   'companion-payload-invalid':
-    'The bundled companion files are missing or do not match their build inventory.',
+    "The bundled companion files are missing or don't match the release.",
 };
 
 export function TelemetryCompanion() {
@@ -40,7 +40,7 @@ export function TelemetryCompanion() {
   return (
     <PageSection
       title="Telemetry companion"
-      description="Store and explore telemetry alongside Station. Check the host before installing the optional companion."
+      description="Store and explore telemetry alongside Station. Check the computer running Station before installing the optional companion."
     >
       {authority ? (
         <CompanionHost
@@ -48,9 +48,7 @@ export function TelemetryCompanion() {
           authority={authority}
         />
       ) : (
-        <p role="status">
-          Connect to this Station to check its companion host.
-        </p>
+        <p role="status">Connect to this Station to check the companion.</p>
       )}
     </PageSection>
   );
@@ -70,33 +68,27 @@ function CompanionHost({
       {query.isError ? (
         <p role="alert">
           {query.error instanceof StationHttpError && query.error.status === 403
-            ? 'Open this pane from an operator session on the Station host. Agents and ordinary paired devices cannot manage the companion.'
+            ? "Sign in as the Station operator to manage the companion. Agents and ordinary paired devices can't."
             : query.error instanceof StationHttpError &&
                 query.error.status === 404
-              ? 'This Station does not provide companion controls yet. Update the Station server to check its host.'
-              : 'The host check is unavailable. Check the Station connection and try again.'}
+              ? "This Station doesn't have companion controls yet. Update Station."
+              : "Couldn't check the computer running Station. Check the Station connection and try again."}
         </p>
       ) : query.isFetching || !query.data ? (
-        <SkeletonBlock count={1} label="Checking companion host" />
+        <SkeletonBlock count={1} label="Checking prerequisites" />
       ) : (
         <div role="status">
           {query.data.kind === 'available' ? (
             <>
               <p>
-                Host prerequisites passed: Linux {query.data.architecture},
-                Docker {query.data.dockerVersion}, Compose{' '}
-                {query.data.composeVersion}.
-              </p>
-              <p>
-                Host capability alone does not establish artifact qualification
-                or telemetry delivery.
+                Prerequisites passed: Linux {query.data.architecture}, Docker{' '}
+                {query.data.dockerVersion}, Compose {query.data.composeVersion}.
               </p>
               {query.data.artifact?.kind === 'parent-envelope-verified' ? (
                 <p>
-                  Parent release {query.data.artifact.version} has a verified
-                  signed envelope and matching companion build inventory. The
-                  archive must be authenticated and include the required profile
-                  declaration before installation.
+                  Release {query.data.artifact.version} is signed and its
+                  companion files match. Prepare the archive below before
+                  installing.
                 </p>
               ) : query.data.artifact?.kind === 'unavailable' ? (
                 <p>{missingArtifact[query.data.artifact.reason]}</p>
@@ -113,7 +105,7 @@ function CompanionHost({
         disabled={query.isFetching}
         onClick={() => void query.refetch()}
       >
-        Check host again
+        Check prerequisites again
       </Button>
       {query.data && !query.isError ? (
         <CompanionArchivePreparation

@@ -81,10 +81,9 @@ export function PluginPermissionsSection({
       )}
       {contentBinding === 'unverified' && (
         <p className="plugin-permissions__binding">
-          These permissions were approved before Station recorded which code a
-          permission was approved for, so it cannot tell whether this plugin's
-          code has changed since. They stay in effect; the next approval or
-          update for this plugin records it.
+          Approved before Station tracked plugin code versions, so it can’t tell
+          if the code changed. They stay in effect; the next approval or update
+          pins the version.
         </p>
       )}
 
@@ -167,10 +166,7 @@ export function PluginPermissionsSection({
       )}
 
       <p className="plugin-permissions__hint">
-        Removing a permission stops new use of it right away. Station drains
-        running module work and retires registered providers; the result says
-        when cleanup completed, is still winding down, or needs a retry.
-        Granting a Trusted permission again needs the separate host review page.
+        Removing a permission stops new use right away.
       </p>
     </div>
   );

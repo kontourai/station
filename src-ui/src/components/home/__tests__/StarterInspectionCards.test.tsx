@@ -76,13 +76,23 @@ describe('StarterInspectionCards', () => {
       'Inspect an approval',
     );
     expect(approval.querySelector('.page-callout__body')?.textContent).toBe(
-      'Open one real approval request without deciding it.',
+      "Open a pending approval. You won't have to decide it.",
     );
-    // The receipt candidate is `missing` in this fixture: an owner Station
-    // cannot reach is a warning, not an ordinary offer.
+    // The receipt candidate is `missing` in this fixture: nothing to inspect
+    // yet is the neutral empty case, not a warning.
+    expect(receipt.className).toBe('page-callout page-callout--info');
+    expect(receipt.querySelector('.page-callout__body')?.textContent).toBe(
+      'Nothing to inspect yet.',
+    );
+  });
+
+  test('an owner that cannot be verified still reads as a warning', () => {
+    candidateById.set('inspect-receipt', { state: 'unavailable' });
+    render(<StarterInspectionCards />);
+    const receipt = screen.getByLabelText('Inspect review evidence');
     expect(receipt.className).toContain('page-callout--warning');
     expect(receipt.querySelector('.page-callout__body')?.textContent).toBe(
-      'An exact owner-backed item is not available yet.',
+      "This item couldn't be verified.",
     );
   });
 
@@ -128,7 +138,7 @@ describe('StarterInspectionCards', () => {
       completion: { state: 'receipt-present' },
     });
     render(<StarterInspectionCards />);
-    fireEvent.click(screen.getByRole('button', { name: 'Reopen receipt' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen review' }));
     expect(navigate).toHaveBeenCalledWith('/projects/bravo/layouts/review', {
       receipt: 'same-id',
     });
@@ -141,8 +151,6 @@ describe('StarterInspectionCards', () => {
     expect(
       screen.queryByRole('button', { name: 'Inspect approval' }),
     ).toBeNull();
-    expect(
-      screen.getAllByText('An exact owner-backed item is not available yet.'),
-    ).toHaveLength(2);
+    expect(screen.getAllByText('Nothing to inspect yet.')).toHaveLength(2);
   });
 });

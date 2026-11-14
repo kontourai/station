@@ -29,8 +29,7 @@ const failures: Record<TelemetryRequestFailureCode, string> = {
   service_stopped: 'Station is stopping.',
   credential_unavailable:
     'The destination key is unavailable or no longer authorized.',
-  restart_required:
-    'Restart Station to activate the saved collector configuration.',
+  restart_required: 'Restart Station to apply the new collector settings.',
 };
 
 function checked(probe: TelemetryConnectionProbeStatus): string {
@@ -40,8 +39,8 @@ function checked(probe: TelemetryConnectionProbeStatus): string {
       ? failures[probe.failure.code]
       : 'Connection check failed.';
   return probe.scope === 'postgres-schema-v1'
-    ? 'Receiver source authority and storage query passed.'
-    : 'Collector accepted the empty metrics and trace requests; downstream storage is unverified.';
+    ? 'Connection and storage check passed.'
+    : 'The collector accepted a test request. Storage beyond it is unverified.';
 }
 
 const when = (value: string) => formatDateTime(value, value);
@@ -75,16 +74,10 @@ export function TelemetryDelivery() {
   ) : (
     <>
       <p role="status" className="settings__field-hint">
-        Connect to this Station to see its delivery status.
+        Connect to this Station to see delivery status.
       </p>
-      <PageRow
-        {...settingsRow('product-telemetry-delivery')}
-        description="Product delivery status is unavailable until this Station connection has authority."
-      />
-      <PageRow
-        {...settingsRow('otel-delivery')}
-        description="Collector status is unavailable until this Station connection has authority."
-      />
+      <PageRow {...settingsRow('product-telemetry-delivery')} />
+      <PageRow {...settingsRow('otel-delivery')} />
     </>
   );
 }
@@ -112,8 +105,8 @@ function DeliveryForAuthority({
     return (
       <p role="alert" className="settings__field-hint">
         {query.error instanceof StationHttpError && query.error.status === 404
-          ? 'This Station does not provide delivery status yet. Update it to see receiver acknowledgements.'
-          : 'Delivery status is unavailable. Cached success cannot establish current delivery.'}{' '}
+          ? "This Station doesn't report delivery status yet. Update Station to see it."
+          : 'Delivery status unavailable.'}{' '}
         <Button size="sm" variant="ghost" onClick={() => void query.refetch()}>
           Refresh status
         </Button>
@@ -143,7 +136,7 @@ function DeliveryForAuthority({
           check.error.code === MANAGED_POLICY_CAPABILITY_DISABLED_CODE
         ? check.error.message
         : check.error instanceof StationHttpError && check.error.status === 403
-          ? 'An operator must check this connection.'
+          ? 'Only the Station operator can check this connection.'
           : 'Connection check is unavailable.';
   const productError = checkError(productCheck);
   const otelError = checkError(otelCheck);
@@ -195,13 +188,13 @@ function DeliveryForAuthority({
       </PageRow>
       <PageRow
         {...settingsRow('otel-delivery')}
-        description="Metrics and traces sent to the operator’s collector."
+        description="Metrics and traces sent to the Station operator’s collector."
         status={
           <span>
             {otel.managedDenial
               ? 'Off: managed policy.'
               : otel.phase === 'restart-required'
-                ? 'Saved collector settings require a Station restart; exports from the previous configuration are fenced.'
+                ? 'Restart Station to apply the new collector settings.'
                 : otel.phase === 'failed'
                   ? 'Exporter initialization failed.'
                   : !otel.endpointConfigured

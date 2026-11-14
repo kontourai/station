@@ -63,9 +63,6 @@ export function TaskTurnReferenceView({
   const hasUnavailable = references.some(
     (reference) => reference.state === 'unavailable',
   );
-  const recorded = Boolean(
-    selected && isSupportedTurnProvenanceEnvelope(selected.answer.provenance),
-  );
   const selectedIdentity = selected
     ? `${selected.id}:${selected.sessionId}:${selected.turnId}`
     : null;
@@ -106,10 +103,6 @@ export function TaskTurnReferenceView({
           <h3 id="task-answer-basis" className="task-workspace__section-title">
             Answer details
           </h3>
-          <p>
-            Kept answers reopen from their exact Task reference. Execution
-            provenance is separate from semantic support.
-          </p>
         </div>
         <Button
           size="sm"
@@ -145,7 +138,7 @@ export function TaskTurnReferenceView({
       ) : references.length === 0 ? (
         <Empty
           variant="compact"
-          label="Kept answers are empty"
+          label="Nothing kept yet"
           description="Add a completed assistant answer to this Task to reopen it here."
         />
       ) : (
@@ -213,9 +206,12 @@ export function TaskTurnReferenceView({
                       {answerContextBoundaryCopy(selected.answer.provenance)}
                     </p>
                   )}
-                  <p className="task-workspace__answer-support-boundary">
-                    {answerSupportBoundaryCopy(recorded, selected.support)}
-                  </p>
+                  {/* The provenance card renders nothing for an absent record. */}
+                  {selected.answer.provenance == null && (
+                    <p className="task-workspace__answer-support-boundary">
+                      No run details were recorded for this answer.
+                    </p>
+                  )}
                   <AnswerSupport
                     reference={selected}
                     onRetry={() => void refetch()}
@@ -259,8 +255,8 @@ function answerContextBoundaryCopy(provenance: unknown): string | null {
   const boundary = provenance.contextBoundary;
   if (boundary?.state !== 'observed') return null;
   return boundary.value.priorTranscriptInjected
-    ? 'This answer reopened with the prior transcript re-anchored into its engine context; Task links and evidence remain preserved separately.'
-    : 'This answer reopened after the prior transcript was omitted from its engine context; the readable transcript, Task links, and evidence remain preserved separately.';
+    ? 'Reopened with earlier messages in context.'
+    : 'Reopened without earlier messages in context. The full transcript is still readable.';
 }
 
 function AnswerSupport({
@@ -282,10 +278,7 @@ function AnswerSupport({
         <div className="task-workspace__answer-support-heading">
           <div>
             <h4 id="answer-support-heading">What this answer stands on</h4>
-            <p>
-              This is an explicit authored association for this exact answer,
-              not support inferred from execution or output.
-            </p>
+            <p>Linked by a person, not inferred from the run.</p>
           </div>
           <div className="task-workspace__answer-support-actions">
             <Button size="sm" onClick={() => onOpen('replace')}>
@@ -312,7 +305,7 @@ function AnswerSupport({
         </div>
         {state.canAssociate && (
           <Button size="sm" onClick={() => onOpen('associate')}>
-            Associate support
+            Link support
           </Button>
         )}
         {state.canRetry && (
@@ -337,67 +330,45 @@ function supportState(
     case 'unassessed':
       return {
         tone: 'quiet',
-        label: 'Execution captured; semantic support not assessed.',
-        description:
-          'An authorized person can explicitly associate one Surface claim with this exact answer.',
+        label: 'No supporting claim linked yet.',
+        description: 'Link one Surface claim that supports this answer.',
         canAssociate: true,
         canRetry: false,
       };
     case 'claim-missing':
       return {
         tone: 'warning',
-        label: 'The associated claim is no longer available.',
+        label: 'The linked claim is no longer available.',
         description:
-          'The prior authored association cannot currently be read. Station cannot safely replace or remove it without its current revision.',
+          "It can't be replaced or removed until it can be read again. Retry.",
         canAssociate: false,
         canRetry: true,
       };
     case 'corrupt':
       return {
         tone: 'warning',
-        label: 'The associated Surface bundle/report cannot be interpreted.',
-        description:
-          'Station cannot interpret the associated Surface bundle/report or safely replace it without its current revision.',
+        label: "The linked Surface bundle can't be read.",
+        description: "It can't be replaced until it can be read again. Retry.",
         canAssociate: false,
         canRetry: true,
       };
     case 'unsupported-version':
       return {
         tone: 'warning',
-        label: 'The associated support record uses an unsupported version.',
-        description:
-          'This Station cannot interpret that association as support for the answer or safely replace it without its current revision.',
+        label: "The linked claim uses a format this Station can't read.",
+        description: "It can't be read or replaced from this Station.",
         canAssociate: false,
         canRetry: true,
       };
     case 'unavailable':
       return {
         tone: 'restricted',
-        label: 'Semantic support is unavailable.',
-        description:
-          'This Station cannot reopen support for this answer. No support detail is shown.',
+        label: 'Support details are unavailable.',
+        description: "This Station can't reopen support for this answer.",
         canAssociate: false,
         canRetry: true,
       };
   }
-}
-
-/** Keeps execution provenance honest without contradicting the current support state. */
-function answerSupportBoundaryCopy(
-  hasExecutionProvenance: boolean,
-  support: AvailableReference['support'],
-): string {
-  if (support.state === 'available')
-    return hasExecutionProvenance
-      ? 'Execution provenance is distinct from the explicit authored semantic support shown below.'
-      : 'No supported execution provenance is recorded. The explicit authored semantic support shown below is separate.';
-  if (support.state === 'unassessed')
-    return hasExecutionProvenance
-      ? 'Execution captured; semantic support is separate and has not been assessed.'
-      : 'No supported execution provenance is recorded. Semantic support is separate and has not been assessed.';
-  return hasExecutionProvenance
-    ? 'Execution provenance is distinct from the semantic-support state shown below.'
-    : 'No supported execution provenance is recorded. It is distinct from the semantic-support state shown below.';
 }
 
 /** Renders the server-owned Surface card directly; it never folds raw records. */
@@ -706,7 +677,7 @@ function AnswerSupportDialog({
           referenceId: reference.id,
           expectedRevision: association.revision,
         });
-        onCompleted('Support association removed from this exact answer.');
+        onCompleted('Support link removed from this answer.');
       } else if (selectedBundleId && selectedClaimId) {
         if (intent === 'replace') {
           if (!association) return;
@@ -717,7 +688,7 @@ function AnswerSupportDialog({
             claimId: selectedClaimId,
             expectedRevision: association.revision,
           });
-          onCompleted('Support association replaced for this exact answer.');
+          onCompleted('Support link replaced for this answer.');
         } else {
           await create.mutateAsync({
             taskId,
@@ -725,16 +696,14 @@ function AnswerSupportDialog({
             bundleId: selectedBundleId,
             claimId: selectedClaimId,
           });
-          onCompleted('Support association added for this exact answer.');
+          onCompleted('Support link added to this answer.');
         }
       }
     } catch {
       setSelectedBundleId(null);
       setSelectedClaimId(null);
       setConfirming(false);
-      setSubmissionError(
-        'Station could not change answer support. Protected support details have been withheld; try again.',
-      );
+      setSubmissionError("Couldn't change answer support. Try again.");
     }
   };
   const title = isRemoval
@@ -743,14 +712,14 @@ function AnswerSupportDialog({
       ? 'Replace answer support?'
       : intent === 'replace'
         ? 'Replace answer support'
-        : 'Associate answer support';
+        : 'Link answer support';
   const action = isRemoval
-    ? 'Remove association'
+    ? 'Remove link'
     : confirming
-      ? 'Replace association'
+      ? 'Replace link'
       : intent === 'replace'
         ? 'Review replacement'
-        : 'Attach support';
+        : 'Link support';
   const canSubmit = isRemoval
     ? Boolean(association)
     : bundleIsAuthorized && claimIsAuthorized;
@@ -798,8 +767,8 @@ function AnswerSupportDialog({
       {isRemoval || confirming ? (
         <p className="task-workspace__answer-support-dialog-copy">
           {isRemoval
-            ? 'Remove the explicit authored association. This does not change the answer or its execution provenance.'
-            : 'Replace the explicit authored association using the current revision. This does not prove the answer from its output.'}
+            ? 'Remove this link? The answer is not changed.'
+            : 'Replace the linked claim?'}
         </p>
       ) : (
         <SupportSelector
@@ -838,24 +807,20 @@ function SupportSelector({
   bundleFocus,
 }: SupportSelectorProps) {
   if (bundles.isLoading)
-    return (
-      <SkeletonList count={2} label="Loading authorized support bundles" />
-    );
+    return <SkeletonList count={2} label="Loading bundles" />;
   if (bundles.error)
     return (
       <p className="task-workspace__answer-support-dialog-error" role="alert">
-        Authorized support choices are unavailable. No cached support detail is
-        shown.
+        Couldn't load bundles. Close this dialog and try again.
       </p>
     );
   return (
     <div className="task-workspace__answer-support-selector">
       <p className="task-workspace__answer-support-dialog-copy">
-        Choose an authorized bundle, then one claim. IDs are intentionally
-        opaque when no safe label is supplied.
+        Choose a bundle, then a claim.
       </p>
       <fieldset>
-        <legend>Authorized bundles</legend>
+        <legend>Bundles</legend>
         {(bundles.data ?? []).map((bundle, index) => (
           <button
             ref={index === 0 ? bundleFocus : undefined}
@@ -868,19 +833,16 @@ function SupportSelector({
             <code>{bundle.id}</code>
           </button>
         ))}
-        {(bundles.data ?? []).length === 0 && (
-          <p>Authorized bundles are unavailable.</p>
-        )}
+        {(bundles.data ?? []).length === 0 && <p>Nothing to link yet.</p>}
       </fieldset>
       {selectedBundleId && (
         <fieldset>
-          <legend>Authorized claims</legend>
+          <legend>Claims</legend>
           {claims.isLoading ? (
-            <SkeletonList count={2} label="Loading authorized claims" />
+            <SkeletonList count={2} label="Loading claims" />
           ) : claims.error ? (
             <p role="alert">
-              Authorized claim choices are unavailable. No cached claim detail
-              is shown.
+              Couldn't load claims. Close this dialog and try again.
             </p>
           ) : (
             (claims.data ?? []).map((claim) => (

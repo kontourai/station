@@ -90,11 +90,8 @@ export function ProjectWorkspaceSelection({
     <section className="project-sources__form" aria-label="Project workspace">
       <h3>Agent starting directory</h3>
       <p>
-        A Project can contain several repositories. New sessions start in the
-        selected checkout and directory. Other attached repositories remain
-        separate sources; this does not combine checkouts into a shared parent
-        folder. Existing sessions keep their original directory. Documents
-        remain available through Knowledge tools.
+        Agents in new chats and Tasks start in this folder. Existing work keeps
+        its folder, and other repositories stay available as sources.
       </p>
       {identity.isError || resolution.isError ? (
         <p role="alert">

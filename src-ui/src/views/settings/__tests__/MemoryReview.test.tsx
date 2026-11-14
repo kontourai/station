@@ -182,6 +182,10 @@ test('shows the conflict with both pieces of evidence and records a decision wit
   expect(
     await screen.findByText('Which version should Station remember?'),
   ).toBeTruthy();
+  // docs/guides/knowledge.md quotes this heading as the place to look.
+  expect(
+    screen.getByRole('heading', { name: 'Your saved memories' }),
+  ).toBeTruthy();
   expect(screen.getByText(/3 more memories didn’t need checking/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Review' }));
   expect(

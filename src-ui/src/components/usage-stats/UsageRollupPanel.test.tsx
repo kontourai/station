@@ -107,6 +107,9 @@ import { UsageRollupPanel } from './UsageRollupPanel';
 describe('UsageRollupPanel (station#4135)', () => {
   test('explains mixed money and source gaps without rendering them as zero', () => {
     render(<UsageRollupPanel />);
+    // The header legend names the glyph a gap renders as.
+    expect(screen.getByText(/— means not\s+reported\./)).toBeTruthy();
+    expect(screen.queryByText(/Blank values/)).toBeNull();
     expect(screen.getByText('Mixed: 1.0000 USD, 2.0000 EUR')).toBeTruthy();
     expect(screen.getByText('Partially priced')).toBeTruthy();
     expect(
@@ -203,7 +206,7 @@ test('keeps Task workflow state, retail equivalent, engine cost and unknown acco
   expect(screen.getByText('Done')).toBeTruthy();
   expect(screen.getByText('0.0000 USD')).toBeTruthy();
   expect(
-    screen.getByText(/result quality is not independently evaluated/),
+    screen.getByText(/Result quality is not independently evaluated/),
   ).toBeTruthy();
   expect(screen.getByText('Account charges')).toBeTruthy();
   expect(screen.getByText('Subscription fee allocation')).toBeTruthy();

@@ -224,21 +224,6 @@
       "note": "Not a glyph of its own — the variation selector that puts the preceding character into emoji presentation."
     },
     {
-      "codepoint": "U+1F389",
-      "character": "🎉",
-      "category": "emoji"
-    },
-    {
-      "codepoint": "U+1F3C6",
-      "character": "🏆",
-      "category": "emoji"
-    },
-    {
-      "codepoint": "U+1F512",
-      "character": "🔒",
-      "category": "emoji"
-    },
-    {
       "codepoint": "U+FF3B",
       "character": "［",
       "category": "pseudo-locale"

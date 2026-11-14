@@ -1486,9 +1486,7 @@ test('renders pinned input context without leaking a revoked projection', async 
   await page.goto('/tasks/pinned-input-ui');
   await page.getByRole('tab', { name: 'Details', exact: true }).click();
   const inputs = page.getByRole('region', { name: 'Pinned inputs' });
-  await expect(inputs).toContainText(
-    'Explicitly pinned input from this Task’s work context. It was not inferred to support any answer.',
-  );
+  await expect(inputs).toContainText('Pinned to this Task by a person.');
   await expect(inputs).toContainText('brief.png · image/png · 1,024 bytes');
   await expect(inputs.getByText('Authored prompt')).toHaveCount(0);
   await expect(

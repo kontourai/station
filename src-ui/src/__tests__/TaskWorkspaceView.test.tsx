@@ -1067,16 +1067,10 @@ describe('TaskWorkspaceView', () => {
       screen.getByLabelText('Answer provenance for turn turn-answer'),
     ).toBeTruthy();
     expect(
-      screen.getByText(
-        'Execution captured; semantic support is separate and has not been assessed.',
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.getByText('Execution captured; semantic support not assessed.'),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'Associate support' }),
-    ).toBeTruthy();
+      screen.queryByText('No run details were recorded for this answer.'),
+    ).toBeNull();
+    expect(screen.getByText('No supporting claim linked yet.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Link support' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Retry support' })).toBeNull();
   });
 
@@ -1204,11 +1198,11 @@ describe('TaskWorkspaceView', () => {
       screen.getByText('provenance_gap · high · Missing direct provenance.'),
     ).toBeTruthy();
     expect(screen.getByText(/rationale not provided/)).toBeTruthy();
-    expect(screen.getByText(/explicit authored association/i)).toBeTruthy();
     expect(
-      screen.getByText(
-        'No supported execution provenance is recorded. The explicit authored semantic support shown below is separate.',
-      ),
+      screen.getByText('Linked by a person, not inferred from the run.'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('No run details were recorded for this answer.'),
     ).toBeTruthy();
   });
 
@@ -1242,13 +1236,18 @@ describe('TaskWorkspaceView', () => {
     render(<TaskWorkspaceView taskId="task-alpha" />);
     openAnswerDetails();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Associate support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link support' }));
     expect(
-      screen.getByRole('dialog', { name: 'Associate answer support' }),
+      screen.getByRole('dialog', { name: 'Link answer support' }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'claim-a' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Attach support' }));
+    // The trigger and the dialog's submit share the label; submit is in the dialog.
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Link support',
+      }),
+    );
     await waitFor(() =>
       expect(createAnswerSupportMutation.mutateAsync).toHaveBeenCalledWith({
         taskId: 'task-alpha',
@@ -1275,13 +1274,18 @@ describe('TaskWorkspaceView', () => {
     );
     render(<TaskWorkspaceView taskId="task-alpha" />);
     openAnswerDetails();
-    fireEvent.click(screen.getByRole('button', { name: 'Associate support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link support' }));
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'claim-a' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Attach support' }));
+    // The trigger and the dialog's submit share the label; submit is in the dialog.
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Link support',
+      }),
+    );
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toMatch(
-        /could not change answer support/i,
+        /Couldn't change answer support/i,
       ),
     );
     expect(screen.getByRole('dialog')).toBeTruthy();
@@ -1312,7 +1316,7 @@ describe('TaskWorkspaceView', () => {
     ];
     render(<TaskWorkspaceView taskId="task-alpha" />);
     openAnswerDetails();
-    fireEvent.click(screen.getByRole('button', { name: 'Associate support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link support' }));
     expect(
       screen.getByRole('dialog').querySelector('.station-dialog__subtitle')
         ?.textContent,
@@ -1341,7 +1345,7 @@ describe('TaskWorkspaceView', () => {
     ];
     const view = render(<TaskWorkspaceView taskId="task-alpha" />);
     openAnswerDetails();
-    fireEvent.click(screen.getByRole('button', { name: 'Associate support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link support' }));
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'claim-a' }));
     answerSupportBundlesResult = {
@@ -1352,8 +1356,8 @@ describe('TaskWorkspaceView', () => {
     await waitFor(() =>
       expect(
         (
-          screen.getByRole('button', {
-            name: 'Attach support',
+          within(screen.getByRole('dialog')).getByRole('button', {
+            name: 'Link support',
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true),
@@ -1363,7 +1367,7 @@ describe('TaskWorkspaceView', () => {
       error: new Error('denied'),
     };
     view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
-    expect(screen.getByText(/No cached support detail is shown/)).toBeTruthy();
+    expect(screen.getByText(/Couldn't load bundles/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'claim-a' })).toBeNull();
   });
 
@@ -1380,7 +1384,7 @@ describe('TaskWorkspaceView', () => {
     ];
     render(<TaskWorkspaceView taskId="task-alpha" />);
     openAnswerDetails();
-    const trigger = screen.getByRole('button', { name: 'Associate support' });
+    const trigger = screen.getByRole('button', { name: 'Link support' });
     trigger.focus();
     fireEvent.click(trigger);
     const dialog = screen.getByRole('dialog');
@@ -1437,9 +1441,7 @@ describe('TaskWorkspaceView', () => {
     expect(
       screen.getByRole('alertdialog', { name: 'Replace answer support?' }),
     ).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Replace association' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Replace link' }));
     await waitFor(() =>
       expect(replaceAnswerSupportMutation.mutateAsync).toHaveBeenCalledWith({
         taskId: 'task-alpha',
@@ -1454,7 +1456,7 @@ describe('TaskWorkspaceView', () => {
     expect(
       screen.getByRole('alertdialog', { name: 'Remove answer support?' }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove association' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove link' }));
     await waitFor(() =>
       expect(removeAnswerSupportMutation.mutateAsync).toHaveBeenCalledWith({
         taskId: 'task-alpha',
@@ -1470,12 +1472,10 @@ describe('TaskWorkspaceView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'claim-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'Review replacement' }));
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Replace association' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Replace link' }));
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toMatch(
-        /could not change answer support/i,
+        /Couldn't change answer support/i,
       ),
     );
     expect(
@@ -1490,10 +1490,10 @@ describe('TaskWorkspaceView', () => {
       new Error('unavailable server detail'),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Remove association' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove link' }));
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toMatch(
-        /could not change answer support/i,
+        /Couldn't change answer support/i,
       ),
     );
     expect(
@@ -1505,13 +1505,13 @@ describe('TaskWorkspaceView', () => {
   });
 
   test.each([
-    ['claim-missing', 'The associated claim is no longer available.'],
-    ['corrupt', 'The associated Surface bundle/report cannot be interpreted.'],
+    ['claim-missing', 'The linked claim is no longer available.'],
+    ['corrupt', "The linked Surface bundle can't be read."],
     [
       'unsupported-version',
-      'The associated support record uses an unsupported version.',
+      "The linked claim uses a format this Station can't read.",
     ],
-    ['unavailable', 'Semantic support is unavailable.'],
+    ['unavailable', 'Support details are unavailable.'],
   ])(
     'keeps %s support state distinct and does not reveal protected detail',
     (state, label) => {
@@ -1532,19 +1532,19 @@ describe('TaskWorkspaceView', () => {
       render(<TaskWorkspaceView taskId="task-alpha" />);
       openAnswerDetails();
       expect(screen.getByText(label)).toBeTruthy();
-      expect(
-        screen.queryByRole('button', { name: 'Associate support' }),
-      ).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Link support' })).toBeNull();
       expect(
         screen.getByRole('button', { name: 'Retry support' }),
       ).toBeTruthy();
       expect(
-        screen.getByText(
-          'No supported execution provenance is recorded. It is distinct from the semantic-support state shown below.',
-        ),
+        screen.getByText('No run details were recorded for this answer.'),
       ).toBeTruthy();
       if (state === 'unavailable') {
-        expect(screen.getByText(/No support detail is shown/)).toBeTruthy();
+        expect(
+          screen.getByText(
+            "This Station can't reopen support for this answer.",
+          ),
+        ).toBeTruthy();
       }
     },
   );
@@ -1722,6 +1722,24 @@ describe('TaskWorkspaceView', () => {
     expect(screen.queryByRole('button', { name: /^Learn/i })).toBeNull();
   });
 
+  test('an attached, available experience opens without a not-connected callout', () => {
+    pluginsResult.data = [
+      {
+        enabled: true,
+        manifest: { capabilities: ['station.task-experience.deliver'] },
+      },
+    ];
+    render(<TaskWorkspaceView taskId="task-alpha" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Deliver/i }));
+    expect(
+      screen.getByRole('heading', { name: 'Deliver experience' }),
+    ).toBeTruthy();
+    expect(screen.getByText('Continue delivery in Builder Kit.')).toBeTruthy();
+    expect(screen.queryByText(/isn't connected/)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Manage plugins' })).toBeNull();
+  });
+
   test('a disabled producer is not a producer this page can open', () => {
     pluginsResult.data = [
       {
@@ -1758,15 +1776,13 @@ describe('TaskWorkspaceView', () => {
     expect(screen.getByText('Inspect worktree diff')).toBeTruthy();
     expect(screen.getByText('Local references')).toBeTruthy();
     expect(
-      screen.getByText(/Inspection is not a verification claim/i),
+      screen.getByText('Files and references recorded for this Task.'),
     ).toBeTruthy();
     expect(
       screen.getByRole('heading', { name: 'Task inspection' }),
     ).toBeTruthy();
     expect(
-      screen
-        .getByRole('link', { name: 'Add capabilities' })
-        .getAttribute('href'),
+      screen.getByRole('link', { name: 'Add plugins' }).getAttribute('href'),
     ).toBe('/plugins');
     expect(screen.queryByRole('button', { name: /Deliver/i })).toBeNull();
   });
@@ -1775,7 +1791,7 @@ describe('TaskWorkspaceView', () => {
     render(<TaskWorkspaceView taskId="task-alpha" />);
     expect(screen.getAllByText('Inspect the workspace')).toHaveLength(2);
     expect(screen.getByText('task-alpha')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Add capabilities' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Add plugins' })).toBeTruthy();
     expect(screen.queryByText('Task experiences')).toBeNull();
     expect(
       within(screen.getByRole('tabpanel', { name: 'Details' })).queryByText(
@@ -1804,11 +1820,11 @@ describe('TaskWorkspaceView', () => {
     });
     render(<TaskWorkspaceView taskId="task-alpha" />);
 
-    expect(screen.getByRole('link', { name: 'Add capabilities' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Add plugins' })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: /attacker\.example/i }),
     ).toBeTruthy();
-    expect(screen.queryByText('Authority: Builder Kit')).toBeNull();
+    expect(screen.queryByText('From Builder Kit')).toBeNull();
     expect(
       within(screen.getByRole('tabpanel', { name: 'Details' })).queryByText(
         /^(complete|completed|done)$/i,
@@ -2783,9 +2799,7 @@ describe('TaskWorkspaceView', () => {
         'Add a completed assistant answer to this Task to reopen it here.',
       ),
     ).toBeTruthy();
-    expect(inputs.textContent).toContain(
-      'Explicitly pinned input from this Task’s work context. It was not inferred to support any answer.',
-    );
+    expect(inputs.textContent).toContain('Pinned to this Task by a person.');
     expect(inputs.textContent).toContain(
       'brief.pdf · application/pdf · 2,048 bytes',
     );

@@ -1,0 +1,7 @@
+{
+  "revision": "a34b34766d3b31b94ef564ea5265969c62ab28bc",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Listed only because I edited the Task experience sentence in docs/contexts/workspace-surfaces/CONTEXT.md and docs/glossary.md. The map only lists 'experiences' in the Workspace Surfaces one-line summary and links the glossary; neither the summary nor the links changed. No edit needed.","inputs":["CONTEXT-MAP.md","docs/contexts/workspace-surfaces/CONTEXT.md","docs/glossary.md"]}
+  ]
+}

@@ -70,7 +70,7 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['basic-info', 'Basic info'],
   ['model', 'Model'],
   ['new-chat', 'New chats'],
-  ['thread-execution', 'Thread execution'],
+  ['thread-execution', 'Chat workspace'],
   ['agents', 'Agents'],
   ['tools', 'Tools'],
   ['layouts', 'Layouts'],
@@ -460,7 +460,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <PageSection
               id="section-workspace"
               className="project-settings__section project-settings__section--hero"
-              eyebrow="Project home"
               title="Workspace"
               description="The folder used for work in this project."
               actions={
@@ -524,7 +523,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <PageSection
               id="section-basic-info"
               className="project-settings__section"
-              eyebrow="Project identity"
               title="Basic info"
             >
               <div className="project-settings__identity-grid">
@@ -596,7 +594,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <PageSection
               id="section-model"
               className="project-settings__section"
-              eyebrow="Conversation default"
               title="AI model"
               description="Choose a connection and model, or follow the Station default."
             >
@@ -674,7 +671,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                     models={selectedConnectionModels}
                     disabled={!form.defaultProviderId || unavailableConnection}
                     onChange={(modelId) => setField('defaultModel', modelId)}
-                    placeholder="System default"
+                    placeholder="Station default"
                   />
                 }
               />
@@ -718,9 +715,8 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <PageSection
               id="section-thread-execution"
               className="project-settings__section"
-              eyebrow="New thread default"
-              title="Thread execution"
-              description="A thread's own selection takes precedence."
+              title="Chat workspace"
+              description="Where new chats in this Project run. A chat's own choice takes precedence."
             >
               <EnvironmentPicker
                 id="project-default-environment"
@@ -814,7 +810,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <PageSection
               id="section-danger"
               className="project-settings__section"
-              eyebrow="Destructive action"
               title="Danger zone"
               description="Deleting this project cannot be undone."
               tone="danger"

@@ -388,9 +388,8 @@ export function ProjectDocumentImport({
             </p>
           )}
           <p>
-            Setting this aside only removes this browser’s recovery pointer.
-            Retained originals and imported records stay on the Station. Keep
-            the import ID for recovery.
+            Setting this aside only clears it from this browser. Originals and
+            imported records stay on Station; keep the import ID to recover it.
           </p>
           {!canManage && (
             <ActionRow

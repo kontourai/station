@@ -74,7 +74,7 @@ describe('StarterScheduledCheckCard', () => {
       'Run a scheduled readiness check',
     );
     expect(callout.querySelector('.page-callout__body')?.textContent).toBe(
-      'Create a disabled daily check and run it once through the real Scheduler.',
+      'Create a daily check, off until you turn it on, and run it once.',
     );
     expect(
       callout.querySelector('.page-callout__action .button--primary')
@@ -110,7 +110,7 @@ describe('StarterScheduledCheckCard', () => {
     const callout = screen.getByLabelText('Run a scheduled readiness check');
     expect(callout.className).toContain('page-callout--warning');
     expect(callout.querySelector('.page-callout__body')?.textContent).toBe(
-      'The Scheduler receipt owner is unavailable.',
+      'Scheduled check status is unavailable.',
     );
   });
 
@@ -134,7 +134,7 @@ describe('StarterScheduledCheckCard', () => {
         }),
       );
       render(<StarterScheduledCheckCard />);
-      fireEvent.click(screen.getByRole('button', { name: 'Inspect receipt' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Open result' }));
       expect(navigate).toHaveBeenCalledWith('/schedule', { run: 'exact-run' });
       expect(launch).not.toHaveBeenCalled();
     },
@@ -171,9 +171,7 @@ describe('StarterScheduledCheckCard', () => {
       );
       launch.mockResolvedValue(launchResult);
       render(<StarterScheduledCheckCard />);
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Resume exact check' }),
-      );
+      fireEvent.click(screen.getByRole('button', { name: 'Resume check' }));
       await waitFor(() => expect(launch).toHaveBeenCalledTimes(1));
       expect(launch).toHaveBeenCalledWith({
         starterId: 'run-scheduled-check',

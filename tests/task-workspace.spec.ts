@@ -265,10 +265,10 @@ test.describe
         page.getByRole('heading', { name: 'Task inspection' }),
       ).toBeVisible();
       await expect(
-        page.getByRole('link', { name: 'Add capabilities' }),
+        page.getByRole('link', { name: 'Add plugins' }),
       ).toHaveAttribute('href', '/plugins');
       await expect(
-        page.getByText(/Inspection is not a verification claim/i),
+        page.getByText('Files and references recorded for this Task.'),
       ).toBeVisible();
       await expect(
         page.getByRole('button', { name: /attacker\.example/i }),
@@ -692,9 +692,7 @@ test.describe
           .getByText(answer, { exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByText(
-          /semantic support is separate and has not been assessed/i,
-        ),
+        page.getByText('No supporting claim linked yet.'),
       ).toBeVisible();
       await expect(page.getByText(/reasoning/i)).toHaveCount(0);
       await expectNoBlockingAccessibilityViolations(

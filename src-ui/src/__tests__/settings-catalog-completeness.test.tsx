@@ -2240,6 +2240,31 @@ describe('settings catalog completeness', () => {
       });
     });
 
+    // A required setting is outside the reset plan, so "every setting uses
+    // its default" would be false while it still holds a stored value.
+    test('an empty plan says only the clearable settings are at their defaults', async () => {
+      configProvenance = { defaultModel: { source: 'file' } };
+      await renderSettings();
+
+      expect(
+        screen.getByText(
+          'Restores most Station settings to their defaults. Device settings are kept.',
+        ),
+      ).toBeTruthy();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Reset Station settings' }),
+      );
+      expect(
+        screen.getByText(
+          'Nothing to reset. The settings a reset can clear already use their defaults.',
+        ),
+      ).toBeTruthy();
+      expect(
+        (screen.getByRole('button', { name: 'Reset' }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+    });
+
     test('is refused while the form holds an unsaved draft', async () => {
       // A reset writes what the SERVER stores; the draft is not part of it,
       // so a Save afterwards would re-store the very values just cleared.
@@ -2256,9 +2281,7 @@ describe('settings catalog completeness', () => {
       }) as HTMLButtonElement;
       expect(reset.disabled).toBe(true);
       expect(
-        screen.getByText(
-          'Save or discard your unsaved changes first. Discard is always available.',
-        ),
+        screen.getByText('Save or discard your changes first.'),
       ).toBeTruthy();
       fireEvent.click(reset);
       expect(updateConfig).not.toHaveBeenCalled();

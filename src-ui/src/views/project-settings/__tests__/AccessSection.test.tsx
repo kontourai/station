@@ -278,7 +278,7 @@ describe('Project access administration UI through SDK queries and mutations', (
     );
     // The server refused anyway (authority changed): say so in words.
     expect((await screen.findByRole('alert')).textContent).toBe(
-      'You can’t turn on sharing from this device. It needs Station owner authority, such as the Station’s own computer.',
+      'You can’t turn on sharing from this device. Only the Station operator can, for example on the computer running Station.',
     );
     expect(writes).toEqual([
       `${host.apiBase}/api/projects/example/access/enable`,
@@ -302,7 +302,7 @@ describe('Project access administration UI through SDK queries and mutations', (
     );
     expect(
       screen.getByText(
-        'A Project owner or admin manages access. Turning sharing on needs Station owner authority.',
+        'A Project Owner or Admin manages access. Only the Station operator can turn sharing on.',
       ),
     ).toBeTruthy();
     expect(

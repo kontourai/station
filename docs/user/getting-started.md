@@ -1064,8 +1064,8 @@ shows the message with those values applied. **Start chat** opens a new chat
 and sends that message. This does not attach the skill to the Agent or install
 its dependencies; the Agent's configured tools and permissions still apply.
 
-To add skills, choose **Browse Registry Skills** and inspect the available
-catalog before installing. **Import .md** accepts standalone Markdown skill
+To add skills, choose **Browse Registry Skills** (**Browse Registry** while the
+library is empty) and inspect the available catalog before installing. **Import .md** accepts standalone Markdown skill
 files and reports the outcome of each file. Open an imported skill from its
 result to review and use it. Import does not copy a repository's
 scripts or supporting files. Load plugin packages through Registry.
@@ -1323,8 +1323,8 @@ Home can create **station-starter-check** and run it once. Its daily schedule
 stays disabled until you enable it. Open the receipt to read the findings;
 a completed run means the check ran, not that its findings passed a gate.
 
-After an interruption, **Resume exact check** continues the recorded check.
-Failed or uncertain runs offer **Inspect receipt**. They are not restarted
+After an interruption, **Resume check** continues the recorded check.
+Failed or uncertain runs offer **Open result**. They are not restarted
 automatically. See [Scheduler identity and recovery](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#run-a-scheduled-readiness-check).
 
 ## When Something Goes Wrong

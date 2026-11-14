@@ -94,8 +94,8 @@ export function UsageRollupPanel() {
         <div>
           <h3 id="usage-rollup-title">Usage across Stations</h3>
           <p>
-            Provider-reported usage and estimates remain separate. Missing data
-            is not zero.
+            Reported usage and estimates are shown separately. — means not
+            reported.
           </p>
           <p>
             Summary-generation tokens appear in compaction details, outside
@@ -236,7 +236,7 @@ export function UsageRollupPanel() {
               Task outcomes and recorded cost
             </h4>
             <p>
-              Current workflow state; result quality is not independently
+              Current workflow state. Result quality is not independently
               evaluated here.
             </p>
             {data?.taskOutcomes?.length ? (
@@ -314,8 +314,8 @@ export function UsageRollupPanel() {
           onClose={() => setShowCoverage(false)}
         >
           <p>
-            Gaps are not zero usage. Counts and freshness describe only what
-            Station observed in each provider window.
+            Counts and freshness cover only what each provider reported. Gaps
+            mean usage wasn't reported.
           </p>
           {!isLoading && !error && coverage.length === 0 && (
             <Empty label="Usage not reported for this window" />
@@ -366,7 +366,7 @@ export function UsageRollupPanel() {
             <p key={receipt.id}>
               {receipt.provider} · {receipt.model ?? 'model unreported'} ·{' '}
               {tokens(receipt.inputTokens)} input ·{' '}
-              {receipt.observedAt ?? 'legacy ingestion time unknown'} ·{' '}
+              {receipt.observedAt ?? 'ingestion time unknown'} ·{' '}
               {receipt.pricing?.status ?? 'unpriced'}
               {' · Published-rate retail: '}
               {receipt.retailEquivalent?.state === 'available' ||

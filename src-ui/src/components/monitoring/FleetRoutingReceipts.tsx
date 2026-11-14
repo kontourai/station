@@ -38,10 +38,10 @@ function describeFleetReceiptsFailure(error: unknown, subject: string): string {
     error instanceof StationHttpError &&
     isTerminalConnectionStatus(error.status)
   ) {
-    return 'Station rejected this request and will not retry automatically — check the connection.';
+    return 'Station rejected this request and won’t retry. Check the connection.';
   }
   if (isStationTransportFailure(error)) {
-    return "Station isn't responding right now — retrying automatically.";
+    return "Station isn't responding right now. Retrying automatically.";
   }
   return `Couldn't load ${subject}.`;
 }
@@ -123,8 +123,7 @@ export function FleetServeReceipts() {
       <section className="fleet-routing" data-testid="fleet-serve-receipts">
         <h3>Fleet inference served</h3>
         <p role="alert">
-          {message} That is unknown, not empty — it does not mean nothing has
-          been served.
+          {message} What was served is unknown until this loads.
         </p>
         {detail ? (
           <details>
@@ -171,12 +170,12 @@ export function FleetServeReceipts() {
                     Peer{' '}
                     {receipt.peerFingerprint
                       ? `${receipt.peerFingerprint.slice(0, 12)}… (credential fingerprint, not an identity this Station verified)`
-                      : 'unidentified — no credential was presented'}
+                      : 'unidentified (no credential presented)'}
                   </p>
                   <p className="fleet-routing__digest">
-                    Request digest {receipt.promptDigest.slice(0, 12)}… — the
-                    request content is never recorded. Receipted by content
-                    digest {receipt.receiptId.slice(0, 12)}… — not signed.
+                    Request digest {receipt.promptDigest.slice(0, 12)}… (the
+                    request content is never recorded). Receipted by content
+                    digest {receipt.receiptId.slice(0, 12)}…, not signed.
                   </p>
                 </article>
               </li>
@@ -213,8 +212,7 @@ export function FleetRoutingReceipts() {
       <section className="fleet-routing" data-testid="fleet-routing-receipts">
         <h3>Fleet routing</h3>
         <p role="alert">
-          {message} That is unknown, not empty — it does not mean nothing has
-          been routed.
+          {message} What was routed is unknown until this loads.
         </p>
         {detail ? (
           <details>
@@ -266,7 +264,7 @@ function EvidenceLine({
   const probe = describeConsumerProbe(evidence.probe);
   return (
     <span className="fleet-routing__evidence">
-      Evidence {evidence.level} — {evidence.label}
+      Evidence {evidence.level}: {evidence.label}
       {evidence.peerAttested?.observedAt
         ? ` (peer observed ${evidence.peerAttested.observedAt})`
         : ''}
@@ -304,7 +302,7 @@ function FleetRoutingReceiptRow({
         </p>
       ) : (
         <p className="fleet-routing__served">
-          Served by nothing — no candidate produced a completion.
+          Not served. No candidate produced a completion.
         </p>
       )}
 
@@ -315,7 +313,7 @@ function FleetRoutingReceiptRow({
       )}
 
       <p className="fleet-routing__stream">
-        Streaming: {receipt.stream.capable ? 'yes' : 'no'} —{' '}
+        Streaming: {receipt.stream.capable ? 'yes' : 'no'} ·{' '}
         {receipt.stream.reason}
       </p>
 
@@ -335,7 +333,7 @@ function FleetRoutingReceiptRow({
       )}
 
       <p className="fleet-routing__digest">
-        Receipted by content digest {receipt.receiptId.slice(0, 12)}… — not
+        Receipted by content digest {receipt.receiptId.slice(0, 12)}…, not
         signed.
       </p>
     </article>
@@ -350,8 +348,8 @@ function ExclusionRow({ exclusion }: { exclusion: FleetRoutingExclusion }) {
       <span className="fleet-routing__exclusion-code">{exclusion.code}</span>{' '}
       <span className="fleet-routing__exclusion-target">
         {exclusion.modelId ? `${where} / ${exclusion.modelId}` : where}
-      </span>{' '}
-      — {exclusion.message}
+      </span>
+      : {exclusion.message}
     </>
   );
 }
