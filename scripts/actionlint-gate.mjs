@@ -1735,12 +1735,48 @@ function isExactDeliveryPlanner(job) {
   );
 }
 
+/**
+ * The one token-reading step in `classify`: it runs only on pushes to main,
+ * where the checkout is already-landed main rather than candidate code, and
+ * `classify` itself never runs on pull_request_target. It reads public
+ * Actions run data to skip a push lane the merge queue already verified on
+ * the same SHA (scripts/ci-merge-group-verdict.mjs). Any other shape, or the
+ * token anywhere else in the job, keeps the finding.
+ */
+const MERGE_GROUP_VERDICT_STEP = Object.freeze({
+  id: 'merge-group-verdict',
+  name: 'Reuse the merge queue verdict for this exact SHA',
+  if: "${{ github.event_name == 'push' }}",
+  'continue-on-error': true,
+  'timeout-minutes': 2,
+  env: {
+    GH_TOKEN: `\${{ github.token }}`,
+    PUSH_BEFORE: `\${{ github.event.before }}`,
+  },
+  run: 'node scripts/ci-merge-group-verdict.mjs',
+});
+
+function classifyWithoutVerdictToken(job) {
+  if (job?.if !== EXACT_TARGET_SKIP_GUARDS.classify) return job;
+  const stripped = structuredClone(job);
+  for (const step of stripped.steps ?? []) {
+    if (
+      JSON.stringify(canonicalValue(step)) ===
+      JSON.stringify(canonicalValue(MERGE_GROUP_VERDICT_STEP))
+    )
+      delete step.env.GH_TOKEN;
+  }
+  return stripped;
+}
+
 function ciCredentialFindings(file, jobs) {
   return Object.entries(jobs)
     .filter(([jobId, job]) => {
       if (jobId === 'delivery-plan' && isExactDeliveryPlanner(job))
         return false;
       if (jobId === 'pr-admission' && isExactPrAdmission(job)) return false;
+      if (jobId === 'classify')
+        return referencesCredential(classifyWithoutVerdictToken(job));
       if (jobId !== 'pr-title') return referencesCredential(job);
       const withoutReadToken = structuredClone(job);
       for (const step of withoutReadToken.steps ?? []) {

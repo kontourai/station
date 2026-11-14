@@ -339,6 +339,23 @@ place to prevent delayed events from cancelling newer-head checks (#1445).
 The sweep checks out only the workflow's trusted revision and installs no
 dependencies. Its owner is `scripts/pr-ci-supersession.mjs`.
 
+The merge queue fast-forwards main to the candidate it tested, so a queue
+landing's push would repeat the merge-group verdict on the same SHA. On a
+main push, `PR: CI` still runs its classifier, then
+`scripts/ci-merge-group-verdict.mjs` skips the heavy lane only when the newest
+merge-group run for that exact SHA succeeded, its queue base equals the push's
+`before`, and its `fast-checks` and `Merge-queue regression` jobs succeeded.
+Direct or admin pushes, pushes carrying several queue entries, and any API
+error or unexpected response keep the classifier's full lane. The push run
+still concludes, so `Main: Qualify landed repair` and the dogfood reconcile,
+which read a successful push run for the exact main SHA, keep working.
+`PR: Docs kit` has no push trigger: its merge-group run is a superset of a
+push run and nothing consumes a main-push result; the next merge-group run
+checks the whole corpus, including any commit that reached main outside the
+queue. `PR: Secret scan` keeps its push trigger: it has no merge-group run,
+it is the only scan of main's own history (including bot ledger commits that
+bypass the queue), and `Main: Health` tracks its main-push result.
+
 The sidebar names below describe the primary trigger or delivery family.
 `PR:` checks can also run on main pushes; `Main:` qualification runs after main
 pushes, every six hours, or by manual dispatch. `Repo:` identifies housekeeping even when scheduled
@@ -366,7 +383,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`build-ios.yml`](../../.github/workflows/build-ios.yml) | Build iOS verification artifact | **PR: iOS build** | PR events; merge queue; manual dispatch. |
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
 | [`ci-throughput-health.yml`](../../.github/workflows/ci-throughput-health.yml) | — | **Repo: CI throughput health** | UTC schedule: `41 */6 * * *`; manual dispatch; reports only while #3101 is open. |
-| [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes; manual dispatch. |
+| [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes (heavy lane skipped when the merge queue already verified that exact SHA and base); manual dispatch. |
 | [`codex-pr-review.yml`](../../.github/workflows/codex-pr-review.yml) | Advisory PR review | **PR: Advisory review** | after `PR: Secret scan`. |
 | [`container-smoke.yml`](../../.github/workflows/container-smoke.yml) | Container smoke | **Main: Container smoke** | main pushes; manual dispatch. |
 | [`dated-todo-sweep.yml`](../../.github/workflows/dated-todo-sweep.yml) | Dated TODO sweep | **Repo: Dated TODO sweep** | UTC schedule: `41 4 * * 1`; manual dispatch. |
@@ -375,7 +392,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`desktop-clean-checkout.yml`](../../.github/workflows/desktop-clean-checkout.yml) | Desktop clean-checkout build | **PR: Desktop clean checkout** | reused by `Delivery validation`; manual dispatch. |
 | [`desktop-rust.yml`](../../.github/workflows/desktop-rust.yml) | Desktop Rust tests | **PR: Desktop Rust** | reused by `Delivery validation`; manual dispatch. |
 | [`docs-freshness-sweep.yml`](../../.github/workflows/docs-freshness-sweep.yml) | Documentation freshness sweep | **Repo: Docs freshness sweep** | UTC schedule: `37 5 * * *`; manual dispatch. |
-| [`docs-kit.yml`](../../.github/workflows/docs-kit.yml) | Main: Docs kit | **PR: Docs kit** | PR events; merge queue; main pushes; manual dispatch. |
+| [`docs-kit.yml`](../../.github/workflows/docs-kit.yml) | Main: Docs kit | **PR: Docs kit** | PR events; merge queue; manual dispatch. |
 | [`ecosystem-packaging.yml`](../../.github/workflows/ecosystem-packaging.yml) | Ecosystem packaging dry-run | **PR: Ecosystem packaging** | reused by `Delivery validation`; manual dispatch. |
 | [`fresh-home-walkthrough.yml`](../../.github/workflows/fresh-home-walkthrough.yml) | Fresh-home walkthrough | **Nightly: Fresh-home walkthrough** | UTC schedule: `0 10 * * *`; manual dispatch. |
 | [`full-regression.yml`](../../.github/workflows/full-regression.yml) | Hosted full regression | **Main: Full qualification** | reused by `Main: Publish packages`, `Main: Qualification`, `PR: CI`, `Release: Publish`, `Release: Stage`. |

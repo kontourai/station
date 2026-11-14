@@ -1039,6 +1039,81 @@ describe('CI verification workflow contracts', () => {
     expect(containerSmoke).not.toMatch(/^concurrency:/m);
   });
 
+  // The merge queue fast-forwards main to the candidate its merge_group run
+  // verified, so a queue landing's push skipped only the repeat of that
+  // verdict. The push run itself still exists and concludes, because
+  // qualification-after-repair and station-dogfood-reconcile consume a
+  // successful push-event `PR: CI` run for the exact main SHA.
+  it('skips the heavy push lane only on a proven merge-queue verdict for the exact SHA', () => {
+    type Step = {
+      id?: string;
+      if?: string;
+      run?: string;
+      env?: Record<string, string>;
+      'continue-on-error'?: boolean;
+    };
+    const ci = load(workflow('ci.yml')) as {
+      on: Record<string, unknown>;
+      jobs: Record<
+        string,
+        { if?: string; outputs?: Record<string, string>; steps?: Step[] }
+      >;
+    };
+    expect(Object.keys(ci.on)).toContain('push');
+    const classify = ci.jobs.classify;
+    expect(classify.outputs?.heavy).toBe(
+      "${{ steps.merge-group-verdict.outputs.verified == 'true' && 'false' || steps.classify.outputs.heavy }}",
+    );
+    const steps = classify.steps ?? [];
+    const classifyIndex = steps.findIndex((step) => step.id === 'classify');
+    const verdictIndex = steps.findIndex(
+      (step) => step.id === 'merge-group-verdict',
+    );
+    expect(classifyIndex).toBeGreaterThanOrEqual(0);
+    // After the classifier, so a lookup can never prevent classification.
+    expect(verdictIndex).toBeGreaterThan(classifyIndex);
+    const verdict = steps[verdictIndex];
+    // Merge-group and dispatch runs never consult it.
+    expect(verdict.if).toBe("${{ github.event_name == 'push' }}");
+    // A crashed step leaves `verified` unset, which keeps the full lane.
+    expect(verdict['continue-on-error']).toBe(true);
+    expect(verdict.run).toBe('node scripts/ci-merge-group-verdict.mjs');
+    expect(verdict.env).toEqual({
+      GH_TOKEN: '${{ github.token }}',
+      PUSH_BEFORE: '${{ github.event.before }}',
+    });
+
+    const repair = load(workflow('qualification-after-repair.yml')) as {
+      on: { workflow_run: { workflows: string[] } };
+      jobs: { dispatch: { if: string } };
+    };
+    expect(repair.on.workflow_run.workflows).toEqual(['PR: CI']);
+    expect(repair.jobs.dispatch.if).toContain(
+      "github.event.workflow_run.event == 'push'",
+    );
+  });
+
+  it('runs the advisory docs gate on the merge queue instead of repeating it on main pushes', () => {
+    const docsKit = load(workflow('docs-kit.yml')) as {
+      name: string;
+      on: Record<string, unknown>;
+    };
+    expect(Object.keys(docsKit.on).sort()).toEqual([
+      'merge_group',
+      'pull_request_target',
+      'workflow_dispatch',
+    ]);
+    // A future workflow_run consumer of this gate would need its push runs back.
+    const consumers = readWorkflowDocuments().filter(({ document }) => {
+      const on = (
+        document as { on?: { workflow_run?: { workflows?: string[] } } }
+      ).on;
+      return on?.workflow_run?.workflows?.includes(docsKit.name) ?? false;
+    });
+    expect(docsKit.name).toBe('PR: Docs kit');
+    expect(consumers).toEqual([]);
+  });
+
   it('lets the container smoke wait out every desktop-win lease it cannot share the host with', () => {
     // Run 33589882367: the smoke (weight 9 of 10) waited 600s behind the
     // Windows PR floor (weight 5, budgeted 45 min, runs on every PR), timed
