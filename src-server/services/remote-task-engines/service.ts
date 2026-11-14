@@ -707,6 +707,44 @@ export class RemoteTaskEngineService {
     }
   }
 
+  /** Whether the `remote-task-engines` preview is on, read now. */
+  previewEnabled(): boolean {
+    try {
+      this.#requirePreview();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * The connections a chat may run on right now: the preview is on, the
+   * managed policy allows the vendor, the acknowledgement is current and a
+   * token is set. Never throws; an empty list means none.
+   */
+  readyConnections(): RemoteTaskConnectionView[] {
+    if (!this.previewEnabled()) return [];
+    return this.#connections
+      .list()
+      .filter(
+        (connection) =>
+          !this.#deleted.has(connection.id) &&
+          this.policyAllows(connection.vendor) &&
+          remoteTaskAcknowledgementCovers(
+            connection.acknowledgement,
+            connection.vendor,
+          ) &&
+          this.#options.credentials.has(connection.id),
+      )
+      .map((connection) => this.#view(connection));
+  }
+
+  /** The newest Station sequence stored for a task; 0 when none. */
+  latestSequence(connectionId: string, taskId: string): number {
+    const record = this.#tasks.get(connectionId, taskId);
+    return record ? record.nextSequence - 1 : 0;
+  }
+
   pollingFor(connectionId: string): RemoteTaskPolling | undefined {
     return REMOTE_TASK_CONNECTION_ID.test(connectionId)
       ? this.#connections.get(connectionId)?.polling

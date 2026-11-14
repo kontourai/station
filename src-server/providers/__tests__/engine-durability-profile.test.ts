@@ -12,6 +12,7 @@ import { ClaudeAdapter } from '../adapters/claude-adapter.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import { OllamaAdapter } from '../adapters/ollama-adapter.js';
+import { RemoteTaskAdapter } from '../adapters/remote-task-adapter.js';
 import { StationAgentAdapter } from '../adapters/station-agent-adapter.js';
 
 const eventBus = new EventBus();
@@ -22,6 +23,14 @@ const adapters = [
   new MuseAdapter(),
   new BedrockAdapter(),
   new OllamaAdapter(),
+  new RemoteTaskAdapter({
+    // No vendor is reached: these tests read declarations only.
+    service: {
+      readyConnections: () => [],
+      previewEnabled: () => false,
+    } as never,
+    resolveRepository: async () => undefined,
+  }),
   new StationAgentAdapter({
     apiBase: 'http://127.0.0.1:13575',
     hasAgent: () => true,

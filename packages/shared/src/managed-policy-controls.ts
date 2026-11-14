@@ -149,6 +149,7 @@ const ENGINE_LABELS: Readonly<Record<ManagedPolicyEngineId, string>> = {
   muse: 'Muse',
   acp: 'ACP engines (Agent Client Protocol)',
   'station-agent': "Station's own agent",
+  'remote-task': 'Remote task engine chats (cloud agents)',
 };
 const ENGINE_VALUE_NAMES: Readonly<Record<ManagedPolicyEngineId, string>> = {
   claude: 'EngineClaude',
@@ -156,6 +157,7 @@ const ENGINE_VALUE_NAMES: Readonly<Record<ManagedPolicyEngineId, string>> = {
   muse: 'EngineMuse',
   acp: 'EngineAcp',
   'station-agent': 'EngineStationAgent',
+  'remote-task': 'EngineRemoteTask',
 };
 
 /**

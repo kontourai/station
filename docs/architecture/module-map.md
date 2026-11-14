@@ -3061,6 +3061,9 @@ polls an active task only while a client has read it lately, storing a
 bounded window of its messages under `<home>/remote-task-engines/tasks/`, and
 [`remote-task-engine-routes.ts`](../../src-server/routes/remote-task-engines/remote-task-engine-routes.ts)
 serves them under `/remote-task-engines`.
+[`remote-task-adapter.ts`](../../src-server/providers/adapters/remote-task-adapter.ts)
+is the same work as a chat: the `remote-task` engine, whose model picker lists
+the ready connections, polling only inside an open turn.
 
 [Exact-set tests](../../src-shared/__tests__/extension-notification-bindings.test.ts),
 ACP mapper tests and UI handler tests check lookup and current handling.
