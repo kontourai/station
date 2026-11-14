@@ -62,7 +62,15 @@
 
     "src-server/services/automation/repair-controller.ts",
 
-    "src-server/services/scheduling/scheduled-conversation-runs.ts"
+    "src-server/services/scheduling/scheduled-conversation-runs.ts",
+
+    "src-server/services/usage-telemetry-service.ts",
+
+    "src-server/services/telemetry-publisher-service.ts",
+
+    "src-server/services/plugin-telemetry-service.ts",
+
+    "packages/contracts/src/product-telemetry.ts"
   ],
 
   "checks": [

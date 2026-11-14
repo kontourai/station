@@ -166,7 +166,9 @@
 
     "package.json#/dependencies/@kontourai~1ui",
 
-    "package.json#/devDependencies/jsdom"
+    "package.json#/devDependencies/jsdom",
+
+    "pnpm-lock.yaml#/packages/@kontourai~1ui@1.20.1"
   ],
 
   "checks": [

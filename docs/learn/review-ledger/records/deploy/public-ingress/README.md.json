@@ -74,7 +74,13 @@
 
     "src-server/services/ssh/environment-security-service.ts",
 
-    "src-server/runtime/bootstrap/runtime-http.ts"
+    "src-server/runtime/bootstrap/runtime-http.ts",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "packages/shared/src/station-home-lifecycle.ts",
+
+    "packages/shared/src/instance-registry.ts"
   ],
 
   "checks": [

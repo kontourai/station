@@ -122,7 +122,9 @@
 
     "packages/sdk/package.json#/name",
 
-    "packages/connect/package.json#/name"
+    "packages/connect/package.json#/name",
+
+    "pnpm-lock.yaml#/packages/@kontourai~1ui@1.20.1"
   ],
 
   "checks": [
