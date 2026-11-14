@@ -3855,13 +3855,10 @@ export class AcpAdapter implements ProviderAdapterShape {
               );
             });
       const [point] = inWindow;
-      // Another turn that was a slash command the engine ran itself has no
-      // point, and that does not move the others.
-      if (
-        inWindow.length === 0 &&
-        !isChosen &&
-        turn.promptText?.trimStart().startsWith('/')
-      )
+      // A turn that was a slash command the engine ran itself has no point,
+      // and that does not move the others; the chosen turn must still have
+      // one (`chosen` stays unset otherwise, and nothing resolves).
+      if (inWindow.length === 0 && turn.promptText?.trimStart().startsWith('/'))
         continue;
       if (
         inWindow.length !== 1 ||
