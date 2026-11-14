@@ -1,0 +1,7 @@
+{
+  "revision": "523494108c03f57e072ff23a8afd04562ee4e12c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the new six-screen child-chat capture, exact screen selection, partial baseline merge, shrink-only growth judge and ordinary pointer assertions. Testing guidance remains accurate; controlled browser evidence does not qualify providers or devices.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json","tests/screenshots.spec.ts"]}
+  ]
+}

@@ -5,8 +5,10 @@ import { expect } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
+  dismissSetupLauncher,
   installMockOrchestrationEventWindow,
   installMockOrchestrationSse,
+  openChatRegion,
   seedActiveChats,
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
@@ -147,7 +149,9 @@ for (const viewport of [
           ),
         theme,
       );
-      await page.goto(`/?dock=bottom&maximize=true&chat=${parent}`);
+      await page.goto(`/?dock=open&chat=${parent}`);
+      await dismissSetupLauncher(page);
+      await openChatRegion(page);
       const log = page.getByRole('log', { name: 'Conversation transcript' });
       await expect(log).toContainText('Parent answer with a child review.');
       await log.getByRole('button', { name: /Review files/ }).click();
