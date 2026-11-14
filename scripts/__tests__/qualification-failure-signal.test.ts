@@ -6,11 +6,15 @@ import { promisify } from 'node:util';
 import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
-import { JOB_MANIFEST_FILE } from '../lib/qualification-failure-manifest.mjs';
+import {
+  JOB_MANIFEST_FILE,
+  MANIFEST_BOUNDS,
+} from '../lib/qualification-failure-manifest.mjs';
 import {
   classifyRun,
   KNOWN_FAILURES_PATH,
   loadKnownFailures,
+  MANIFEST_PHASE_STEPS,
   parseKnownFailures,
   qualificationFailureSignal,
   readJobManifests,
@@ -116,8 +120,34 @@ function manifest(
     },
   );
 }
-function job(name: string, conclusion = 'failure') {
-  return { name: `qualification / ${name}`, status: 'completed', conclusion };
+/**
+ * A job as the jobs API lists it. A failed qualification job's only failed
+ * step is its phase step, as in real run 43611171188 (2026-11-14), where
+ * every failed corpus and Android job showed exactly that one step failed.
+ */
+function job(
+  name: string,
+  conclusion = 'failure',
+  steps: { name: string; conclusion: string }[] = [
+    { name: 'Set up job', conclusion: 'success' },
+    {
+      name: name.startsWith('Mobile')
+        ? 'Run Android viewport tests'
+        : 'Run full-regression phases',
+      conclusion,
+    },
+    {
+      name: 'Retain the qualification failure manifest',
+      conclusion: 'success',
+    },
+  ],
+) {
+  return {
+    name: `qualification / ${name}`,
+    status: 'completed',
+    conclusion,
+    steps,
+  };
 }
 const JOBS = (...failed: ReturnType<typeof job>[]) => [
   job('resolve', 'success'),
@@ -388,9 +418,9 @@ describe('main qualification failure signal (manifests, never logs)', () => {
 
 describe('tracker decisions: report mode changes nothing, enforce mode decides', () => {
   const knownJobs = [
-    { ...job('resolve', 'success'), steps: [] },
-    { ...job('Exclusive corpora'), steps: [] },
-    { ...job('Full source qualification', 'failure'), steps: [] },
+    job('resolve', 'success'),
+    job('Exclusive corpora'),
+    job('Full source qualification', 'failure', []),
   ];
   function rootWithList() {
     const root = makeTempDir('station-signal-root-');
@@ -584,6 +614,139 @@ describe('tracker decisions: report mode changes nothing, enforce mode decides',
     );
     const expired = await health('enforce', '2026-11-15T05:00:00Z');
     expect(expired.result.reasons).toContain(stale);
+  });
+});
+
+describe('review round: hooks, duplicates, steps, bounds', () => {
+  const exclusive = job('Exclusive corpora');
+  const reasons = (
+    jobs: ReturnType<typeof job>[],
+    manifests: Record<string, unknown>,
+  ) => classify(jobs, manifests).fresh.map((item) => item.reason);
+
+  it('never explains a group with any failed file, even another file failing in a hook', () => {
+    for (const reason of ['suite', 'load'])
+      expect(
+        reasons(JOBS(exclusive), {
+          a: manifest('Exclusive corpora', [
+            group([KNOWN_TEST], {
+              failedFiles: [{ file: 'other.test.ts', reason }],
+            }),
+          ]),
+        })[0],
+        reason,
+      ).toMatch(/^unexplained/);
+  });
+
+  it('never explains a repeated test identity', () => {
+    expect(
+      reasons(JOBS(exclusive), {
+        a: manifest('Exclusive corpora', [
+          group([KNOWN_TEST, KNOWN_TEST], {
+            counts: {
+              reporterFailedTests: 2,
+              reporterFailedFiles: 1,
+              unhandledErrors: 0,
+            },
+          }),
+        ]),
+      })[0],
+    ).toMatch(/^unexplained/);
+  });
+
+  it('alerts on a failed job whose manifest lists no failed test', () => {
+    expect(
+      reasons(JOBS(exclusive), {
+        a: manifest('Exclusive corpora', [group([])]),
+      }),
+    ).toEqual(['failed with no failed test listed']);
+  });
+
+  it('treats any failed step besides the phase step as a new failure', () => {
+    const manifests = {
+      a: manifest('Exclusive corpora', [group([KNOWN_TEST])]),
+    };
+    const withSteps = (steps: { name: string; conclusion: string }[]) =>
+      reasons(JOBS(job('Exclusive corpora', 'failure', steps)), manifests);
+    const phase = { name: 'Run full-regression phases', conclusion: 'failure' };
+    expect(withSteps([phase])).toEqual([]);
+    expect(
+      withSteps([
+        phase,
+        {
+          name: 'Retain the qualification failure manifest',
+          conclusion: 'failure',
+        },
+      ])[0],
+    ).toMatch(/^failed in step/);
+    expect(
+      withSteps([
+        {
+          name: 'Install Chromium for full-corpus browser assertions',
+          conclusion: 'failure',
+        },
+      ])[0],
+    ).toMatch(/^failed in step/);
+    expect(withSteps([{ ...phase, conclusion: 'success' }])[0]).toMatch(
+      /^failed in step/,
+    );
+    const { steps: _steps, ...stepless } = exclusive;
+    expect(
+      reasons(JOBS(stepless as ReturnType<typeof job>), manifests),
+    ).toEqual(['job steps unavailable']);
+  });
+
+  it('enforces the manifest bounds: bytes, entries and manifest count', () => {
+    const big = manifest('Exclusive corpora', [group([KNOWN_TEST])]);
+    const padded = JSON.stringify(big).replace(
+      '"producer"',
+      `"padding":"${'x'.repeat(MANIFEST_BOUNDS.bytes)}","producer"`,
+    );
+    expect(reasons(JOBS(exclusive), { a: padded })[0]).toMatch(/exceeds/);
+    const many = Array.from(
+      { length: MANIFEST_BOUNDS.failedTestsPerGroup + 1 },
+      (_, index) => ({
+        file: 'many.test.ts',
+        titlePath: [`t${index}`],
+      }),
+    );
+    expect(
+      reasons(JOBS(exclusive), {
+        a: { ...big, phases: [{ ...big.phases[0], groups: [group(many)] }] },
+      })[0],
+    ).toMatch(/at most 500/);
+    const directory = makeTempDir('station-many-manifests-');
+    for (let index = 0; index < 70; index++) {
+      mkdirSync(join(directory, `m${index}`));
+      writeFileSync(
+        join(directory, `m${index}`, JOB_MANIFEST_FILE),
+        JSON.stringify(big),
+      );
+    }
+    expect(
+      readJobManifests(directory).some(
+        (item) => item.error === 'too many manifests',
+      ),
+    ).toBe(true);
+  });
+
+  it('enforces only on the exact word', () => {
+    for (const value of [' enforce', 'enforce ', 'ENFORCE', 'enforce\n'])
+      expect(signalMode(value), JSON.stringify(value)).toBe('report');
+  });
+
+  it('names exactly the workflow steps that write a manifest', () => {
+    const { jobs } = load(
+      readFileSync(join(repo, '.github/workflows/full-regression.yml'), 'utf8'),
+    ) as any;
+    const writers = Object.values(jobs).flatMap((entry: any) =>
+      (entry.steps ?? [])
+        .filter((step: any) => step.env?.STATION_QUALIFICATION_MANIFEST_DIR)
+        .map((step: any) => step.name),
+    );
+    expect([...new Set(writers)].sort()).toEqual(
+      [...MANIFEST_PHASE_STEPS].sort(),
+    );
   });
 });
 

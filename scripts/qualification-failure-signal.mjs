@@ -18,11 +18,22 @@ const MAX_ENTRIES = 20;
 const MAX_LIST_BYTES = 256 * 1024;
 const MAX_MANIFESTS = 64;
 const GATE_SUFFIX = 'Full source qualification';
+/**
+ * The steps that run the phases a manifest describes, by name in
+ * full-regression.yml. A failed job is explained only when its one failed
+ * step is one of these: a later setup, upload or post step that also failed
+ * is invisible to the manifest.
+ */
+export const MANIFEST_PHASE_STEPS = Object.freeze([
+  'Run full-regression phases',
+  'Run Android viewport tests',
+]);
 const JOB_PREFIX = 'qualification / ';
 
 /** `report` (the default) observes; only `enforce` changes tracker decisions. */
 export function signalMode(value) {
-  const mode = String(value ?? '').trim();
+  const mode = String(value ?? '');
+  // Exact: a stray space or capital letter must not switch enforcement on.
   if (mode === 'enforce') return 'enforce';
   if (mode !== '' && mode !== 'report')
     process.stderr.write(
@@ -195,6 +206,22 @@ export function classifyRun({ run, jobs, manifests, entries, issueStates }) {
       fresh.push({ job: job.name, failure: label, reason });
     if (job.status !== 'completed' || job.conclusion !== 'failure') {
       newFailure(`job ${job.conclusion ?? job.status}`);
+      continue;
+    }
+    if (!Array.isArray(job.steps)) {
+      newFailure('job steps unavailable');
+      continue;
+    }
+    const failedSteps = job.steps.filter(
+      (step) => !['success', 'skipped'].includes(step.conclusion),
+    );
+    if (
+      failedSteps.length !== 1 ||
+      !MANIFEST_PHASE_STEPS.includes(failedSteps[0].name)
+    ) {
+      newFailure(
+        `failed in step(s) ${failedSteps.map((step) => `"${step.name}" (${step.conclusion})`).join(', ') || 'none'}, not only in its test phase`,
+      );
       continue;
     }
     const own = manifests.filter((item) => item.manifest?.jobLabel === label);

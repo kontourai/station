@@ -724,7 +724,9 @@ export function vitestGroupManifest(result, { failureReport, jsonReport }) {
     fail('json-report-missing', 'the Vitest JSON reporter wrote no report');
   if (json.invalid !== undefined) fail('json-report-invalid', json.invalid);
   const report = failures.value ?? {};
-  if (
+  if (failures.value && report.reporterError !== undefined)
+    fail('failure-reporter-error', report.reporterError);
+  else if (
     failures.value &&
     report.reason !== 'passed' &&
     report.reason !== 'failed'
@@ -789,7 +791,18 @@ export function vitestGroupManifest(result, { failureReport, jsonReport }) {
 export async function runVitestGroup(group, files, options = {}) {
   const { manifestDirectory, ...rest } = options;
   if (!manifestDirectory) return runVitestGroupOnce(group, files, rest);
-  const reports = mkdtempSync(resolve(tmpdir(), 'station-vitest-manifest-'));
+  // The manifest is evidence about a run and must never change one: if its
+  // machinery fails, the group runs and reports exactly as it would without
+  // it, and the missing or unexplained entry makes the job alert.
+  let reports;
+  try {
+    reports = mkdtempSync(resolve(tmpdir(), 'station-vitest-manifest-'));
+  } catch (error) {
+    process.stderr.write(
+      `[vitest-corpus] failure manifest unavailable: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return runVitestGroupOnce(group, files, rest);
+  }
   const failureReport = resolve(reports, 'failures.json');
   const jsonReport = resolve(reports, 'vitest.json');
   let result;
@@ -810,6 +823,10 @@ export async function runVitestGroup(group, files, options = {}) {
       writeFileSync(
         resolve(manifestDirectory, `${basename(entry.group)}.json`),
         `${JSON.stringify(entry, null, 2)}\n`,
+      );
+    } catch (error) {
+      process.stderr.write(
+        `[vitest-corpus] could not write the failure manifest: ${error instanceof Error ? error.message : String(error)}\n`,
       );
     } finally {
       rmSync(reports, { recursive: true, force: true });

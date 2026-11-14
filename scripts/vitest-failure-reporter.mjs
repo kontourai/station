@@ -34,36 +34,57 @@ function* suitesOf(collection) {
 }
 
 export default class VitestFailureReporter {
+  // A throw from a reporter changes Vitest's exit status, so nothing here
+  // may escape: on any failure it records only that it failed, which the
+  // corpus runner turns into an unexplained manifest entry.
   onTestRunEnd(testModules, unhandledErrors, reason) {
     const target = process.env[FAILURE_REPORT_ENV];
     if (!target) return;
-    const failedTests = [];
-    const failedFiles = [];
-    for (const module of testModules) {
-      const file = repoPath(module.moduleId);
-      let tests = 0;
-      for (const test of module.children.allTests()) {
-        tests += 1;
-        if (test.result().state === 'failed')
-          failedTests.push({ file, titlePath: titlePath(test) });
-      }
-      if (module.errors().length > 0)
-        failedFiles.push({ file, reason: tests === 0 ? 'load' : 'suite' });
-      else if (
-        [...suitesOf(module.children)].some((suite) => suite.errors().length)
-      )
-        failedFiles.push({ file, reason: 'suite' });
+    try {
+      writeReport(target, testModules, unhandledErrors, reason);
+    } catch (error) {
+      try {
+        writeFileSync(
+          target,
+          `${JSON.stringify({
+            schemaVersion: 1,
+            reporterError: String(
+              error instanceof Error ? error.message : error,
+            ).slice(0, 2_000),
+          })}\n`,
+        );
+      } catch {}
     }
-    mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(
-      target,
-      `${JSON.stringify({
-        schemaVersion: 1,
-        reason: String(reason ?? 'unknown'),
-        failedTests,
-        failedFiles,
-        unhandledErrors: unhandledErrors.length,
-      })}\n`,
-    );
   }
+}
+
+function writeReport(target, testModules, unhandledErrors, reason) {
+  const failedTests = [];
+  const failedFiles = [];
+  for (const module of testModules) {
+    const file = repoPath(module.moduleId);
+    let tests = 0;
+    for (const test of module.children.allTests()) {
+      tests += 1;
+      if (test.result().state === 'failed')
+        failedTests.push({ file, titlePath: titlePath(test) });
+    }
+    if (module.errors().length > 0)
+      failedFiles.push({ file, reason: tests === 0 ? 'load' : 'suite' });
+    else if (
+      [...suitesOf(module.children)].some((suite) => suite.errors().length)
+    )
+      failedFiles.push({ file, reason: 'suite' });
+  }
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(
+    target,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      reason: String(reason ?? 'unknown'),
+      failedTests,
+      failedFiles,
+      unhandledErrors: unhandledErrors.length,
+    })}\n`,
+  );
 }

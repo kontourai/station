@@ -2495,10 +2495,29 @@ lists standing failures that already have an owner issue. The rules, plainly:
   phase, a setup-step failure, a cancelled or timed-out job, a missing or
   foreign manifest, and an unreadable list or issue all alert.
 
+Also unexplained: any file that failed other than through a named test (a
+load error or a failing or timed-out hook), the same test identity reported
+twice, and a failed job whose failed steps are anything but its one test
+phase step (a later setup, install or upload step that also failed).
+Flaky tests that pass on a retry are not failures, which matches the
+runners' own verdict.
+
+Two limits are inherent to identity matching. When two tests share a file
+and full title path and one fails, the list cannot tell which. And a listed
+test that starts failing for a new reason (its own `afterEach`, or under
+Playwright a new `beforeAll` in its describe, which is reported as that
+test failing) looks exactly like its known failure.
+
+With the manifest gate on, Vitest's JSON reporter prints one extra line per
+group, `JSON report written to <path>`; nothing that reads runner output
+matches it. With the gate unset, the runners' arguments, output and exit
+status are unchanged.
+
 [`scripts/qualification-failure-signal.mjs`](../../scripts/qualification-failure-signal.mjs)
 applies these rules for the repair tracker and the health watchdog.
 It runs in **report mode** unless the repository variable
-`STATION_QUALIFICATION_SIGNAL` is exactly `enforce`: the classification is
+`STATION_QUALIFICATION_SIGNAL` is exactly `enforce` (no surrounding space,
+lower case): the classification is
 written into both trackers and the step summary, and no tracker decision
 changes. No historical run has a manifest, so enforcement waits until the
 classification has been compared with a human reading of real runs.

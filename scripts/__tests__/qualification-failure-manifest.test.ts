@@ -21,8 +21,14 @@ import {
 import {
   phaseJobManifest,
   readPhaseGroups,
+  runFullRegressionPhases,
 } from '../run-full-regression-phases.mjs';
-import { runVitestGroup } from '../run-vitest-corpus.mjs';
+import {
+  buildVitestCommand,
+  runVitestGroup,
+  vitestGroupManifest,
+} from '../run-vitest-corpus.mjs';
+import VitestFailureReporter from '../vitest-failure-reporter.mjs';
 
 const exec = promisify(execFile);
 const repo = resolve(import.meta.dirname, '../..');
@@ -213,6 +219,229 @@ it('outlives the deadline', async () => { await new Promise((done) => setTimeout
   });
 });
 
+// A hook failure in the known test's own file used to read as known-only:
+// the suite-failed file was the known test's file, so the file count
+// reconciled. Any failed file now leaves the group unexplained.
+describe('hook failures beside a failing test (real runner)', () => {
+  const KNOWN = `import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+describe('known', () => { it('fails here', () => { expect(1).toBe(2); }); });
+`;
+  const cases: Record<string, string> = {
+    'beforeAll throws in another describe': `${KNOWN}
+describe('other', () => { beforeAll(() => { throw new Error('setup'); }); it('is skipped', () => {}); });
+`,
+    'top-level afterAll throws': `${KNOWN}
+afterAll(() => { throw new Error('teardown'); });
+`,
+    'nested afterAll throws': `${KNOWN}
+describe('other', () => { afterAll(() => { throw new Error('teardown'); }); it('passes', () => {}); });
+`,
+    'afterAll hook times out': `${KNOWN}
+describe('other', () => { afterAll(() => new Promise((done) => setTimeout(done, 5_000)), 50); it('passes', () => {}); });
+`,
+  };
+  for (const [name, source] of Object.entries(cases))
+    it(name, async () => {
+      const { entry } = await produce({ 'a.test.mjs': source });
+      expect(entry.failedTests).toContainEqual({
+        file: 'a.test.mjs',
+        titlePath: ['known', 'fails here'],
+      });
+      expect(entry.failedFiles).toEqual([
+        { file: 'a.test.mjs', reason: 'suite' },
+      ]);
+      expect(entry.explained).toBe(false);
+    }, 60_000);
+});
+
+describe('the manifest never changes a run (real runner)', () => {
+  const GREEN = "import { it } from 'vitest';\nit('passes', () => {});\n";
+  // The failure reporter's target is a directory, so both its report and
+  // its fallback error record fail to write inside onTestRunEnd.
+  const unwritableReport = (directory: string) => ({
+    execute: (...args: Parameters<typeof executeOwnedProcess>) => {
+      const options = args[4] as { env: NodeJS.ProcessEnv };
+      options.env = {
+        ...options.env,
+        STATION_VITEST_FAILURE_REPORT: directory,
+      };
+      return executeOwnedProcess(...args);
+    },
+  });
+
+  it('keeps green and red exits when the failure reporter cannot write', async () => {
+    for (const [source, status] of [
+      [GREEN, 0],
+      [FAILING, 1],
+    ] as const) {
+      const root = fixture({ 'a.test.mjs': source });
+      const blocked = join(root, 'blocked');
+      mkdirSync(blocked);
+      const manifestDirectory = join(root, 'manifest');
+      const result = await runVitestGroup(group, ['a.test.mjs'], {
+        root,
+        manifestDirectory,
+        ...unwritableReport(blocked),
+      });
+      expect(result.status).toBe(status);
+      const entry = JSON.parse(
+        readFileSync(join(manifestDirectory, 'process-heavy.json'), 'utf8'),
+      );
+      expect(
+        entry.runnerErrors.map((error: { kind: string }) => error.kind),
+      ).toContain('failure-report-missing');
+      expect(entry.explained).toBe(false);
+    }
+  }, 120_000);
+
+  it('records a reporter that throws instead of letting it escape', () => {
+    const root = makeTempDir('station-reporter-throw-');
+    const target = join(root, 'failures.json');
+    const previous = process.env.STATION_VITEST_FAILURE_REPORT;
+    process.env.STATION_VITEST_FAILURE_REPORT = target;
+    try {
+      expect(() =>
+        new VitestFailureReporter().onTestRunEnd(
+          [
+            {
+              moduleId: join(root, 'a.test.mjs'),
+              children: {
+                allTests() {
+                  throw new Error('reporter bug');
+                },
+              },
+            },
+          ] as never,
+          [],
+          'passed',
+        ),
+      ).not.toThrow();
+    } finally {
+      if (previous === undefined)
+        delete process.env.STATION_VITEST_FAILURE_REPORT;
+      else process.env.STATION_VITEST_FAILURE_REPORT = previous;
+    }
+    const entry = vitestGroupManifest(
+      { name: 'process-heavy', status: 0, signal: null, error: null },
+      { failureReport: target, jsonReport: join(root, 'absent.json') },
+    );
+    expect(
+      entry.runnerErrors.map((error: { kind: string }) => error.kind),
+    ).toContain('failure-reporter-error');
+    expect(entry.explained).toBe(false);
+  });
+
+  it('keeps green and red exits when the manifest directory is unwritable, and then alerts', async () => {
+    for (const [source, status] of [
+      [GREEN, 0],
+      [FAILING, 1],
+    ] as const) {
+      const root = fixture({ 'a.test.mjs': source });
+      writeFileSync(join(root, 'not-a-directory'), '');
+      const manifestDirectory = join(root, 'not-a-directory', 'manifest');
+      const result = await runVitestGroup(group, ['a.test.mjs'], {
+        root,
+        manifestDirectory,
+      });
+      expect(result.status).toBe(status);
+      expect(readPhaseGroups(manifestDirectory).groups).toEqual([]);
+    }
+    // A corpus phase with no group entry is never explained.
+    const job = phaseJobManifest(
+      [{ id: 'test-full-process-heavy' }],
+      [{ id: 'test-full-process-heavy', status: 1, error: null }],
+      new Map([['test-full-process-heavy', { groups: [], errors: [] }]]),
+      { jobLabel: 'x', sourceSha: 'a'.repeat(40), runId: '1', runAttempt: '1' },
+    );
+    expect(job.explained).toBe(false);
+  }, 120_000);
+});
+
+describe('the manifest gate (STATION_QUALIFICATION_MANIFEST_DIR)', () => {
+  const files = ['a.test.mjs'];
+  it('adds nothing when unset: the spawned argv is the plain command, and no file is written', async () => {
+    const root = fixture({ 'a.test.mjs': FAILING });
+    const spawned: string[][] = [];
+    await runVitestGroup(group, files, {
+      root,
+      execute: (...args: Parameters<typeof executeOwnedProcess>) => {
+        spawned.push([...(args[1] as string[])]);
+        return executeOwnedProcess(...args);
+      },
+    });
+    expect(spawned).toEqual([
+      [
+        join(root, 'node_modules/vitest/vitest.mjs'),
+        'run',
+        '--maxWorkers=1',
+        'a.test.mjs',
+      ],
+    ]);
+    const seen: object[] = [];
+    await runFullRegressionPhases(
+      [{ id: 'verify-static', args: [], timeoutMs: 1 }] as never,
+      {
+        runPhase: async (_step: unknown, options: object) => {
+          seen.push(options);
+          return { status: 0, error: null };
+        },
+        snapshot: () => ({
+          headSha: 'a',
+          workspaceDigest: 'b',
+          dependencyDigest: 'c',
+          status: [],
+        }),
+        log: () => {},
+      } as never,
+    );
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).not.toHaveProperty('extraEnv');
+  }, 60_000);
+
+  it('adds exactly the default, json and failure reporters when set', () => {
+    const plain = buildVitestCommand(group, files, {
+      root: '/r',
+      failureReportJson: '/t/vitest.json',
+      env: {},
+    });
+    expect(plain).toEqual([
+      '/r/node_modules/vitest/vitest.mjs',
+      'run',
+      '--maxWorkers=1',
+      '--reporter=default',
+      '--reporter=json',
+      '--outputFile.json=/t/vitest.json',
+      '--reporter=/r/scripts/vitest-failure-reporter.mjs',
+      'a.test.mjs',
+    ]);
+    expect(
+      buildVitestCommand(group, files, {
+        root: '/r',
+        failureReportJson: '/t/vitest.json',
+        env: { GITHUB_ACTIONS: 'true' },
+      }).filter((arg) => arg.startsWith('--reporter=')),
+    ).toEqual([
+      '--reporter=default',
+      '--reporter=github-actions',
+      '--reporter=json',
+      '--reporter=/r/scripts/vitest-failure-reporter.mjs',
+    ]);
+    // A group that already names its reporters keeps them and adds the two.
+    expect(
+      buildVitestCommand({ name: 'process-exclusive', maxWorkers: 1 }, files, {
+        root: '/r',
+        failureReportJson: '/t/vitest.json',
+        env: { GITHUB_ACTIONS: 'true' },
+      }).filter((arg) => arg.startsWith('--reporter=')),
+    ).toEqual([
+      '--reporter=default',
+      '--reporter=/r/scripts/vitest-inflight-reporter.mjs',
+      '--reporter=json',
+      '--reporter=/r/scripts/vitest-failure-reporter.mjs',
+    ]);
+  });
+});
+
 describe('the explanation rule', () => {
   const explained = {
     group: 'g',
@@ -237,6 +466,11 @@ describe('the explanation rule', () => {
       { counts: { ...explained.counts, reporterFailedTests: null } },
       { runnerErrors: [{ kind: 'runner-error', message: 'x' }] },
       { failedFiles: [{ file: 'b.test.mjs', reason: 'load' }] },
+      { failedFiles: [{ file: 'a.test.mjs', reason: 'suite' }] },
+      {
+        failedTests: [explained.failedTests[0], explained.failedTests[0]],
+        counts: { ...explained.counts, reporterFailedTests: 2 },
+      },
       { signal: 'SIGKILL' },
       { exitStatus: 2 },
       { exitStatus: null },

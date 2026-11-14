@@ -46,12 +46,23 @@ const isCount = (value) => Number.isSafeInteger(value) && value >= 0;
  */
 export function groupExplained(group) {
   const failedFiles = new Set(group.failedTests.map((test) => test.file));
+  // The runners report a test once per identity. A repeated identity means
+  // two tests share a file and title path, and a known entry could then
+  // stand for the wrong one.
+  const identities = new Set(
+    group.failedTests.map((test) =>
+      JSON.stringify([test.file, test.titlePath, test.project ?? null]),
+    ),
+  );
   const { reporterFailedTests, reporterFailedFiles, unhandledErrors } =
     group.counts;
   if (
     group.runnerErrors.length > 0 ||
     group.signal !== null ||
-    group.failedFiles.some((file) => file.reason === 'load') ||
+    // A failed file is a file that failed other than through a named test:
+    // it did not load, or a hook (beforeAll, afterAll, a hook timeout) failed.
+    group.failedFiles.length > 0 ||
+    identities.size !== group.failedTests.length ||
     !isCount(reporterFailedTests) ||
     !isCount(reporterFailedFiles) ||
     !isCount(unhandledErrors) ||
