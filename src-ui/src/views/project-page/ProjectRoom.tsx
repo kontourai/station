@@ -23,6 +23,7 @@ import {
   useProjectRoom,
   useProjectRoomAgent,
   useProjectRoomChannels,
+  useProjectRoomHistorySpan,
   useProjectRoomRetainedHistory,
 } from '@kontourai/station-sdk/project-rooms';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
@@ -35,6 +36,7 @@ import {
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
 } from 'react';
@@ -327,20 +329,34 @@ function useRoomMessages(
   roomId: string | undefined,
   fetched: RoomMessage[],
   reread: { messages: RoomMessage[]; at: number },
+  recheck: { messages: RoomMessage[]; at: number },
 ) {
   const retained = useRef<{
     roomId?: string;
     byId: Map<string, RoomMessage>;
     rereadAt?: number;
+    recheckAt?: number;
+    live: Set<string>;
     unloaded?: boolean;
-  }>({ byId: new Map() });
+  }>({ byId: new Map(), live: new Set() });
+  const [, rerender] = useReducer((count: number) => count + 1, 0);
   if (retained.current.roomId !== roomId)
-    retained.current = { roomId, byId: new Map(), rereadAt: reread.at };
-  if (retained.current.rereadAt !== reread.at) {
-    retained.current.rereadAt = reread.at;
-    for (const message of reread.messages)
-      retained.current.byId.set(message.messageId, message);
-  }
+    retained.current = {
+      roomId,
+      byId: new Map(),
+      rereadAt: reread.at,
+      recheckAt: recheck.at,
+      live: new Set(),
+    };
+  for (const source of [
+    { read: reread, key: 'rereadAt' as const },
+    { read: recheck, key: 'recheckAt' as const },
+  ])
+    if (retained.current[source.key] !== source.read.at) {
+      retained.current[source.key] = source.read.at;
+      for (const message of source.read.messages)
+        retained.current.byId.set(message.messageId, message);
+    }
   for (const message of fetched)
     retained.current.byId.set(message.messageId, message);
   if (fetched.length) {
@@ -354,12 +370,28 @@ function useRoomMessages(
         retained.current.unloaded = true;
       }
   }
+  // Rows that were live and no longer are: their last read may be from a
+  // window whose refresh was cancelled as the tail moved, so they are read
+  // again now rather than at the next live event (#4852 review).
+  const live = new Set(fetched.map((message) => message.messageId));
+  const left = [...retained.current.live]
+    .filter((id) => !live.has(id))
+    .map((id) => retained.current.byId.get(id))
+    .filter((message): message is RoomMessage => !!message)
+    .map((message) => message.seq);
+  retained.current.live = live;
   return {
     messages: [...retained.current.byId.values()].sort((a, b) => a.seq - b.seq),
     unloaded: !!retained.current.unloaded,
-    /** The reader asked for earlier messages: the unloaded notice is done. */
+    /** Rows that just left the live windows, to be read again. */
+    left: left.length
+      ? { after: Math.min(...left) - 1, end: Math.max(...left) }
+      : undefined,
+    /** Earlier messages loaded again: the unloaded notice is done. */
     acknowledgeUnloaded: () => {
+      if (!retained.current.unloaded) return;
       retained.current.unloaded = false;
+      rerender();
     },
   };
 }
@@ -841,15 +873,34 @@ function ProjectRoomSession({
     shownRoomId,
     () => olderShown.current,
   );
+  // Rows that just left the live windows are read again at once.
+  const [leftSpan, setLeftSpan] = useState<{ after: number; end: number }>();
+  const recheck = useProjectRoomHistorySpan(
+    requestScope,
+    slug,
+    projectId,
+    channelId,
+    shownRoomId,
+    leftSpan,
+  );
   const {
     messages,
     unloaded: earlierUnloaded,
+    left,
     acknowledgeUnloaded,
-  } = useRoomMessages(shownRoomId, fetchedMessages, {
-    messages: reread.data?.messages ?? [],
-    at: reread.dataUpdatedAt,
-  });
+  } = useRoomMessages(
+    shownRoomId,
+    fetchedMessages,
+    { messages: reread.data?.messages ?? [], at: reread.dataUpdatedAt },
+    { messages: recheck.data?.messages ?? [], at: recheck.dataUpdatedAt },
+  );
   olderShown.current = retainedSpan(messages, fetchedMessages);
+  const leftAfter = left?.after;
+  const leftEnd = left?.end;
+  useEffect(() => {
+    if (leftAfter === undefined || leftEnd === undefined) return;
+    setLeftSpan({ after: leftAfter, end: leftEnd });
+  }, [leftAfter, leftEnd]);
   // Every send and Agent ask from an open thread replies to its root, read
   // from the route on each send rather than kept in the draft (#4795).
   const replyTarget = threadRoot ?? replyTo;
@@ -1715,8 +1766,10 @@ function ProjectRoomSession({
               olderNote={olderNote}
               loadingOlder={room.history.isFetchingNextPage}
               onLoadOlder={() => {
-                acknowledgeUnloaded();
-                void room.history.fetchNextPage();
+                // The notice stays until earlier messages actually load.
+                void room.history.fetchNextPage().then((result) => {
+                  if (!result.isError) acknowledgeUnloaded();
+                });
               }}
             />
           )}

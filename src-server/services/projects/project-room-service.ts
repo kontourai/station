@@ -63,7 +63,7 @@ export interface ProjectRoomAdmission {
   scope: ProjectMembershipScope;
   actorId: string;
 }
-/** Byte storage for room files (`RoomAttachments`), keyed by a binding tuple. */
+/** Byte storage for room files (`ProjectRoomAttachments`), keyed by a binding tuple. */
 export interface ProjectRoomAttachmentPort {
   store(
     binding: readonly string[],
@@ -77,9 +77,9 @@ export interface ProjectRoomAttachmentPort {
     binding: readonly string[],
     attachments: ProjectRoomAttachment[],
   ): unknown;
-  /** Gives up these files' bindings (and quota); never deletes bytes. */
+  /** Gives up these files, and deletes bytes no other file names. */
   release(binding: readonly string[], ids: readonly string[]): void;
-  /** Releases files no standing message needs (see `RoomAttachments.sweep`). */
+  /** Releases files no standing message needs (`ProjectRoomAttachments.sweep`). */
   sweep(
     binding: readonly string[],
     unsentBefore: number,

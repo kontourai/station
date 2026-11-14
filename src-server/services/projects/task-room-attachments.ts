@@ -19,6 +19,7 @@ import {
   isTaskRoomAttachments,
   type TaskRoomAttachment,
 } from '@kontourai/station-contracts/project-task-room';
+import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
 import { AttachmentBlobStore } from '../orchestration/attachment-blob-store.js';
 
 /** Files stored under one binding (a Task incarnation or a Project room). */
@@ -35,8 +36,13 @@ export class RoomAttachments {
     private readonly root: string,
     /** Names the owner in the limit refusal ("This Task has…"). */
     private readonly owner: string,
+    /** `retention: false` turns off the byte store's age and size eviction. */
+    options: { retention?: false } = {},
   ) {
-    this.blobs = new AttachmentBlobStore({ rootDir: join(root, 'blobs') });
+    this.blobs = new AttachmentBlobStore({
+      rootDir: join(root, 'blobs'),
+      ...(options.retention === false ? { retention: false } : {}),
+    });
   }
   private directory(binding: readonly string[]) {
     const key = createHash('sha256')
@@ -111,51 +117,75 @@ export class RoomAttachments {
     };
   }
   /**
-   * Gives up files of this binding: their bindings go, which frees their
-   * place in the binding's quota. Bytes are never deleted here. The byte store
-   * is deduplicated and shared by every binding and process, and nothing here
-   * coordinates a reference scan with another process publishing the same
-   * bytes, so a blob this path deleted could already back a new message
-   * elsewhere. Unreferenced bytes are left to the store's own age and size
-   * retention until a coordinated sweep exists (#4942).
+   * Gives up files of this binding, then deletes each of their blobs that no
+   * binding in this store still names (the byte store is deduplicated, so the
+   * same bytes may back another file). A binding that cannot be read might
+   * name any blob, so then nothing is deleted. The caller must hold the
+   * store's cross-process lock across this call and every `store`, or another
+   * process could publish the same bytes between the scan and the deletion
+   * (`ProjectRoomAttachments`).
    */
-  release(binding: readonly string[], ids: readonly string[]) {
+  reclaim(binding: readonly string[], ids: readonly string[]) {
     const directory = this.directory(binding);
+    const refs = new Set<string>();
     for (const id of ids) {
       if (!/^[0-9a-f-]{36}$/.test(id)) continue;
-      rmSync(join(directory, `${id}.json`), { force: true });
+      const path = join(directory, `${id}.json`);
+      const ref = this.blobRef(path);
+      rmSync(path, { force: true });
+      if (ref) refs.add(ref);
     }
+    if (!refs.size) return;
+    const bindings = join(this.root, 'bindings');
+    for (const key of existsSync(bindings) ? readdirSync(bindings) : [])
+      for (const name of readdirSync(join(bindings, key))) {
+        const ref = this.blobRef(join(bindings, key, name));
+        if (!ref) return;
+        refs.delete(ref);
+        if (!refs.size) return;
+      }
+    for (const ref of refs) this.blobs.removeByRef(ref);
   }
   /**
-   * Releases this binding's files that no standing message needs: any whose
-   * message was deleted, and unsent uploads older than `unsentBefore` (epoch
-   * ms). `standing` names, of the ids it is asked about, those linked to a
-   * message that still stands; `linked`, those linked to any message.
+   * This binding's files no standing message needs: any whose message was
+   * deleted, and unsent uploads older than `unsentBefore` (epoch ms).
+   * `standing` names, of the ids it is asked about, those linked to a message
+   * that still stands; `linked`, those linked to any message.
    */
-  sweep(
+  stale(
     binding: readonly string[],
     unsentBefore: number,
     links: (ids: string[]) => { standing: Set<string>; linked: Set<string> },
-  ) {
+  ): string[] {
     const directory = this.directory(binding);
-    if (!existsSync(directory)) return;
+    if (!existsSync(directory)) return [];
     const ids = readdirSync(directory)
       .filter((name) => name.endsWith('.json'))
       .map((name) => name.slice(0, -'.json'.length));
-    if (!ids.length) return;
+    if (!ids.length) return [];
     const { standing, linked } = links(ids);
-    this.release(
-      binding,
-      ids.filter((id) => {
-        if (standing.has(id)) return false;
-        if (linked.has(id)) return true;
-        try {
-          return statSync(join(directory, `${id}.json`)).mtimeMs < unsentBefore;
-        } catch {
-          return false;
-        }
-      }),
-    );
+    return ids.filter((id) => {
+      if (standing.has(id)) return false;
+      if (linked.has(id)) return true;
+      try {
+        return statSync(join(directory, `${id}.json`)).mtimeMs < unsentBefore;
+      } catch {
+        return false;
+      }
+    });
+  }
+  private blobRef(path: string): string | undefined {
+    try {
+      const stored: unknown = JSON.parse(readFileSync(path, 'utf8'));
+      return stored &&
+        typeof stored === 'object' &&
+        'blobRef' in stored &&
+        typeof stored.blobRef === 'string'
+        ? stored.blobRef
+        : undefined;
+    } catch {
+      return undefined;
+    }
   }
   /** Each descriptor must name a stored file of this binding, field for field. */
   resolve(
@@ -207,5 +237,67 @@ export class TaskRoomAttachments {
     attachments: TaskRoomAttachment[],
   ): ChatAttachmentInput[] {
     return this.files.resolve(taskBinding(scope), attachments);
+  }
+}
+
+/**
+ * Project-room files (#4812). Bytes are deleted only when no binding names
+ * them, and only under one store-wide cross-process lock that every upload
+ * (blob and binding publication) also holds, so no process can publish the
+ * same bytes between the reference scan and the deletion (#4852 review). The
+ * byte store's age and size eviction is off: it cannot tell a live blob from
+ * a released one. Every byte on disk therefore backs a live binding, and the
+ * bindings are bounded by the per-binding file limit.
+ *
+ * The lock is the synchronous form so that each operation stays inside the
+ * caller's synchronous authority check. Uncontended it is one file create;
+ * only another process sharing this Station home can contend it, and every
+ * hold is one short store or reclaim.
+ */
+export class ProjectRoomAttachments {
+  private readonly files: RoomAttachments;
+  constructor(private readonly root: string) {
+    this.files = new RoomAttachments(root, 'room', { retention: false });
+  }
+  store(
+    binding: readonly string[],
+    inputs: ChatAttachmentInput[],
+  ): TaskRoomAttachment[] {
+    return this.locked(() => this.files.store(binding, inputs));
+  }
+  read(binding: readonly string[], id: string) {
+    return this.files.read(binding, id);
+  }
+  resolve(
+    binding: readonly string[],
+    attachments: TaskRoomAttachment[],
+  ): ChatAttachmentInput[] {
+    return this.files.resolve(binding, attachments);
+  }
+  /** Gives up these files, and the bytes no other file names. */
+  release(binding: readonly string[], ids: readonly string[]): void {
+    this.locked(() => this.files.reclaim(binding, ids));
+  }
+  /** Releases the files no standing message needs (see `RoomAttachments.stale`). */
+  sweep(
+    binding: readonly string[],
+    unsentBefore: number,
+    links: (ids: string[]) => { standing: Set<string>; linked: Set<string> },
+  ): void {
+    this.locked(() =>
+      this.files.reclaim(
+        binding,
+        this.files.stale(binding, unsentBefore, links),
+      ),
+    );
+  }
+  private locked<T>(run: () => T): T {
+    mkdirSync(this.root, { recursive: true });
+    const unlock = acquireFileMutationLock(join(this.root, 'store.lock'));
+    try {
+      return run();
+    } finally {
+      unlock();
+    }
   }
 }

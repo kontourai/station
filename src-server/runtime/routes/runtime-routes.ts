@@ -224,7 +224,7 @@ import { createTaskCaptureBlobStoreFactory } from '../../services/projects/task-
 import { TaskDeviceCapture } from '../../services/projects/task-device-capture.js';
 import { TaskDeviceRecording } from '../../services/projects/task-device-recording.js';
 import {
-  RoomAttachments,
+  ProjectRoomAttachments,
   TaskRoomAttachments,
 } from '../../services/projects/task-room-attachments.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
@@ -9529,7 +9529,7 @@ export function configureRuntimeRoutes(
   const projectRoomService = new ProjectRoomService(
     roomStore.store,
     roomAccess,
-    new RoomAttachments(join(roomHome, 'project-room-attachments'), 'room'),
+    new ProjectRoomAttachments(join(roomHome, 'project-room-attachments')),
   );
   let roomAgentRuntime:
     | ReturnType<typeof createProjectRoomAgentRuntime>

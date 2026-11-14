@@ -36,7 +36,10 @@ import {
   ProjectRoomStore,
 } from '../../services/projects/project-room-store.js';
 import { ProjectService } from '../../services/projects/project-service.js';
-import { RoomAttachments } from '../../services/projects/task-room-attachments.js';
+import {
+  ProjectRoomAttachments,
+  RoomAttachments,
+} from '../../services/projects/task-room-attachments.js';
 import { projectRoomVersionSource } from '../../services/read-markers/room-version-sources.js';
 import { createProjectRoomRoutes } from './project-room-routes.js';
 
@@ -169,7 +172,7 @@ async function harness(
   const service = new ProjectRoomService(
     runtime.store,
     port,
-    new RoomAttachments(join(home, 'project-room-attachments'), 'room'),
+    new ProjectRoomAttachments(join(home, 'project-room-attachments')),
   );
   cleanup.push(() => service.close());
   if (provision)
@@ -1376,7 +1379,7 @@ async function aliceFiles(h: Awaited<ReturnType<typeof harness>>) {
   return { a, root, binding, directory, blobOf, upload, send, remove };
 }
 
-test('message files: deleting a message releases its files, and never deletes bytes the shared store may still hold for another file (#4812)', async () => {
+test('message files: deleting a message releases its files, and its bytes go only once no other file names them (#4812)', async () => {
   const { existsSync } = await import('node:fs');
   const h = await harness();
   const f = await aliceFiles(h);
@@ -1397,11 +1400,66 @@ test('message files: deleting a message releases its files, and never deletes by
   );
   expect(await f.remove(two.messageId)).toBe(200);
   expect(existsSync(join(f.directory()!, `${second!.id}.json`))).toBe(false);
-  // Releasing frees bindings, never bytes: the deduplicated store is shared
-  // across processes, so its own retention reclaims unreferenced bytes.
-  expect(existsSync(blob)).toBe(true);
+  // No file names the bytes any more, so the release reclaimed them.
+  expect(existsSync(blob)).toBe(false);
   // A repeated delete (the same message again) changes nothing and still answers.
   expect(await f.remove(two.messageId)).toBe(200);
+});
+
+/** Bytes other than `PNG` that are still a PNG, so each upload is a new blob. */
+const pngVariant = (name: string, tail: string) => {
+  const bytes = Buffer.concat([PNG, Buffer.from(tail)]);
+  return {
+    ...png(name),
+    size: bytes.length,
+    dataUrl: `data:image/png;base64,${bytes.toString('base64')}`,
+  };
+};
+
+test('message files: a standing message keeps its file past the age the byte store would once have evicted (#4852)', async () => {
+  const { utimesSync, existsSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const [file] = (await f.upload(png('standing.png'))) as { id: string }[];
+  await f.send([file]);
+  const blob = f.blobOf(file!.id);
+  // 91 days old, and a day later so any once-a-day sweep runs on this upload.
+  const old = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000);
+  utimesSync(blob, old, old);
+  vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 24 * 60 * 60 * 1000);
+  expect(Array.isArray(await f.upload(pngVariant('next.png', 'next')))).toBe(
+    true,
+  );
+  expect(existsSync(blob)).toBe(true);
+  const read = await h.request('bob', `/attachments/${file!.id}`);
+  expect(read.status).toBe(200);
+  expect(Buffer.from(await read.arrayBuffer())).toEqual(PNG);
+});
+
+test('message files: a standing message keeps its file past a byte cap the store would once have enforced (#4852)', async () => {
+  const { existsSync } = await import('node:fs');
+  vi.stubEnv('STATION_ATTACHMENT_MAX_BYTES', String(PNG.length));
+  try {
+    const h = await harness();
+    const f = await aliceFiles(h);
+    const [file] = (await f.upload(png('standing.png'))) as { id: string }[];
+    await f.send([file]);
+    const blob = f.blobOf(file!.id);
+    const now = Date.now();
+    expect(
+      Array.isArray(await f.upload(pngVariant('second.png', 'second'))),
+    ).toBe(true);
+    vi.spyOn(Date, 'now').mockReturnValue(now + 24 * 60 * 60 * 1000);
+    expect(
+      Array.isArray(await f.upload(pngVariant('third.png', 'third'))),
+    ).toBe(true);
+    expect(existsSync(blob)).toBe(true);
+    expect((await h.request('bob', `/attachments/${file!.id}`)).status).toBe(
+      200,
+    );
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });
 
 test('message files: a full quota recovers from deleted messages and old unsent uploads, but keeps sent files and recent uploads (#4812)', async () => {
@@ -1414,7 +1472,7 @@ test('message files: a full quota recovers from deleted messages and old unsent 
   const deleted = await f.send([gone]);
   const [recent] = (await f.upload(png('recent.png'))) as { id: string }[];
   // Fill the binding to its 1280 files with uploads no message names.
-  const bytes = new RoomAttachments(f.root, 'room');
+  const bytes = new RoomAttachments(f.root, 'room', { retention: false });
   const unsent = Array.from(
     { length: 1280 - 3 },
     () =>

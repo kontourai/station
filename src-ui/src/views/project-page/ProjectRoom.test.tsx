@@ -1969,19 +1969,17 @@ test('a kept row the re-read can still reach shows a live delete: 500 newer mess
 
 test('a kept row past the re-read span is never left showing deleted text: 501 newer messages (#4852)', async () => {
   await deleteKeptThreadRoot(501);
-  // The stale root is retired; the thread seeks it within the windows a room
-  // keeps, cannot reach it, and says so. The deleted text never shows.
-  await screen.findByText(
-    'This thread is too far back to open here.',
-    {},
-    { timeout: 10_000 },
-  );
+  // The root left the live windows and was read again at once (a tombstone);
+  // the thread's seek then paged back so it is inside the re-read span. The
+  // deleted text never shows, and the thread does not give up on its root.
+  await screen.findByText('Message deleted', {}, { timeout: 10_000 });
   expect(screen.queryByText('Original 1')).toBeNull();
   await new Promise((resolve) => setTimeout(resolve, 200));
-  expect(
-    screen.getByText('This thread is too far back to open here.'),
-  ).toBeTruthy();
+  expect(screen.getByText('Message deleted')).toBeTruthy();
   expect(screen.queryByText('Original 1')).toBeNull();
+  expect(
+    screen.queryByText('This thread is too far back to open here.'),
+  ).toBeNull();
 });
 
 test('an open thread whose kept root the re-read can reach stays open as the tail moves: 480 newer messages (#4852)', async () => {
@@ -2129,4 +2127,153 @@ test('rows the room unloads to stay current are announced, and Load earlier brin
       ),
     ).toBeNull(),
   );
+});
+
+test('a delete that lands as the tail moves reaches the row at once, though the old window read was cancelled (#4852)', async () => {
+  messages = Array.from({ length: 25 }, (_, i) =>
+    storedMessage(i + 1, `Concurrent ${i + 1}`),
+  );
+  const first = messages[0]!;
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <ProjectRoom
+        slug="team"
+        projectId="project"
+        requestScope={requestScope}
+        routeChannel={{ id: undefined }}
+        thread={{ rootId: first.messageId as string, open: () => {} }}
+      />
+    </QueryClientProvider>,
+  );
+  await screen.findByText('Concurrent 1');
+  // Hold the old window's re-read until the tail has moved, so it is
+  // cancelled and never shows the delete.
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let oldStarted = false;
+  let aborted = false;
+  const original = globalThis.fetch;
+  vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
+    const url = new URL(input);
+    if (
+      url.pathname.endsWith('/messages') &&
+      Number(url.searchParams.get('after')) === 0 &&
+      !oldStarted
+    ) {
+      oldStarted = true;
+      init?.signal?.addEventListener('abort', () => {
+        aborted = true;
+      });
+      const response = await original(input, init);
+      await held;
+      return response;
+    }
+    return original(input, init);
+  });
+  messages[0] = { ...first, text: '', deletedAt: at };
+  messages.push(
+    ...Array.from({ length: 100 }, (_, i) =>
+      storedMessage(i + 26, `Fresh ${i + 26}`),
+    ),
+  );
+  try {
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['project-room'] });
+    });
+    await waitFor(() =>
+      expect(
+        client
+          .getQueryCache()
+          .getAll()
+          .some(
+            (query) =>
+              query.queryKey.at(-1) === 100 && query.state.status === 'success',
+          ),
+      ).toBe(true),
+    );
+    expect(oldStarted).toBe(true);
+    expect(aborted).toBe(true);
+    // No second change: the rows that left the live windows are read again.
+    await screen.findByText('Message deleted');
+    expect(screen.queryByText('Concurrent 1')).toBeNull();
+  } finally {
+    release();
+  }
+});
+
+test('the unloaded notice stays when Load earlier fails, since nothing came back (#4852)', async () => {
+  stubResizeObserver();
+  messages = Array.from({ length: 25 }, (_, i) =>
+    storedMessage(i + 1, `Notice ${i + 1}`),
+  );
+  const { client } = mount();
+  await screen.findByText('Notice 1');
+  messages.push(
+    ...Array.from({ length: 501 }, (_, i) =>
+      storedMessage(i + 26, `Later ${i + 26}`),
+    ),
+  );
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['project-room'] });
+  });
+  await screen.findByText(
+    'Earlier messages were unloaded to keep this view current.',
+  );
+  const original = globalThis.fetch;
+  vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
+    const url = new URL(input);
+    if (
+      url.pathname.endsWith('/messages') &&
+      Number(url.searchParams.get('after')) === 476
+    )
+      return Response.json(
+        { success: false, error: 'Older page unavailable' },
+        { status: 503 },
+      );
+    return original(input, init);
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Load earlier messages' }),
+  );
+  await screen.findByText('History could not be loaded.');
+  expect(screen.queryByText('Notice 1')).toBeNull();
+  expect(
+    screen.getByText(
+      'Earlier messages were unloaded to keep this view current.',
+    ),
+  ).toBeTruthy();
+});
+
+test('a kept row past the re-read span that changes later is not shown stale: it was retired (#4852)', async () => {
+  stubResizeObserver();
+  messages = Array.from({ length: 25 }, (_, i) =>
+    storedMessage(i + 1, `Kept ${i + 1}`),
+  );
+  const first = messages[0]!;
+  const { client } = mount();
+  await screen.findByText('Kept 1');
+  messages.push(
+    ...Array.from({ length: 501 }, (_, i) =>
+      storedMessage(i + 26, `After ${i + 26}`),
+    ),
+  );
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['project-room'] });
+  });
+  await screen.findByText(
+    'Earlier messages were unloaded to keep this view current.',
+  );
+  // Later, the row past the span is deleted. Nothing re-reads that far back,
+  // so a kept copy would stay stale; retirement means it is not on screen.
+  messages[0] = { ...first, text: '', deletedAt: at };
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['project-room'] });
+  });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  expect(screen.queryByText('Kept 1')).toBeNull();
 });

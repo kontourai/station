@@ -206,30 +206,94 @@ export function useProjectRoomRetainedHistory(
     // A room that is not open holds no data at all, even an empty list.
     initialData: roomId ? { messages: [] } : undefined,
     initialDataUpdatedAt: 0,
-    queryFn: async ({ signal }) => {
-      const wanted = asked.current();
-      const messages: Awaited<
-        ReturnType<typeof readProjectRoomWindow>
-      >['messages'] = [];
-      if (!roomId || !wanted || wanted.end <= wanted.after) return { messages };
-      const floor = Math.max(
-        wanted.after,
-        wanted.end - PROJECT_ROOM_RETAINED_REREAD_MESSAGES,
-      );
-      for (let end = wanted.end; end > floor; end -= 25) {
-        const window = await readProjectRoomWindow(
-          scope,
-          slug,
-          { projectId, roomId },
-          { after: Math.max(floor, end - 25), end },
-          signal,
-          channelId,
-        );
-        messages.unshift(...window.messages);
-      }
-      return { messages };
-    },
+    queryFn: ({ signal }) =>
+      readProjectRoomSpan(
+        scope,
+        slug,
+        projectId,
+        roomId,
+        asked.current(),
+        signal,
+        channelId,
+      ),
   });
+}
+/**
+ * Re-reads one span right away: the rows that just left the live windows
+ * (#4852 review). A history read cancelled as the tail moved left them as they
+ * were before any change it would have shown; this reads them again without
+ * waiting for the next live event. Each new span is one read, under the room's
+ * key, so an invalidation re-reads it too.
+ */
+export function useProjectRoomHistorySpan(
+  incomingScope: ApiRequestScope,
+  slug: string,
+  projectId: string,
+  channelId: string | undefined,
+  roomId: string | undefined,
+  span: ProjectRoomHistorySpan | undefined,
+) {
+  const { apiBase, authorityKey } = incomingScope;
+  const scope = useMemo(
+    () => ({ apiBase, authorityKey }),
+    [apiBase, authorityKey],
+  );
+  return useQuery({
+    queryKey: [
+      ...(channelId === undefined
+        ? projectRoomKey(scope, projectId)
+        : projectRoomChannelKey(scope, projectId, channelId)),
+      roomId ?? 'unopened',
+      'history',
+      'span',
+      span?.after,
+      span?.end,
+    ],
+    enabled: !!roomId && !!span,
+    retry: false,
+    gcTime: 0,
+    queryFn: ({ signal }) =>
+      readProjectRoomSpan(
+        scope,
+        slug,
+        projectId,
+        roomId,
+        span,
+        signal,
+        channelId,
+      ),
+  });
+}
+/** Messages in `span`, at most the re-read budget, newest windows first. */
+async function readProjectRoomSpan(
+  scope: ApiRequestScope,
+  slug: string,
+  projectId: string,
+  roomId: string | undefined,
+  wanted: ProjectRoomHistorySpan | undefined,
+  signal: AbortSignal,
+  channelId: string | undefined,
+) {
+  const messages: Awaited<
+    ReturnType<typeof readProjectRoomWindow>
+  >['messages'] = [];
+  if (!roomId || !wanted || wanted.end <= wanted.after) return { messages };
+  const floor = Math.max(
+    wanted.after,
+    wanted.end - PROJECT_ROOM_RETAINED_REREAD_MESSAGES,
+  );
+  for (let end = wanted.end; end > floor; end -= 25) {
+    const window = await readProjectRoomWindow(
+      scope,
+      slug,
+      { projectId, roomId },
+      { after: Math.max(floor, end - 25), end },
+      signal,
+      channelId,
+    );
+    messages.unshift(...window.messages);
+  }
+  return { messages };
 }
 /**
  * One room's discovery, history, sends, note and live stream. Without

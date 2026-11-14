@@ -56,7 +56,12 @@ export function attachmentBlobRefFor(bytes: Buffer): string {
 interface AttachmentBlobStoreOptions {
   rootDir: string;
   logger?: BlobStoreLogger;
-  retention?: Partial<AttachmentBlobRetentionPolicy>;
+  /**
+   * Age and size eviction. `false` turns it off for a store whose owner
+   * deletes only bytes it has proven unreferenced (Project rooms, #4852):
+   * eviction does not know what still names a blob.
+   */
+  retention?: Partial<AttachmentBlobRetentionPolicy> | false;
   now?: () => number;
 }
 
@@ -111,6 +116,7 @@ export class AttachmentBlobStore {
   private readonly rootDir: string;
   private readonly logger?: BlobStoreLogger;
   private readonly retention: AttachmentBlobRetentionPolicy;
+  private readonly evicts: boolean;
   private readonly now: () => number;
   private lastRetentionDay?: number;
 
@@ -118,15 +124,17 @@ export class AttachmentBlobStore {
     this.rootDir = options.rootDir;
     this.logger = options.logger;
     this.now = options.now ?? (() => Date.now());
+    this.evicts = options.retention !== false;
+    const policy = options.retention || undefined;
     this.retention = {
       maxAgeDays:
-        options.retention?.maxAgeDays ??
+        policy?.maxAgeDays ??
         readPositiveInteger(
           process.env.STATION_ATTACHMENT_RETENTION_DAYS,
           DEFAULT_ATTACHMENT_BLOB_RETENTION.maxAgeDays,
         ),
       maxBytes:
-        options.retention?.maxBytes ??
+        policy?.maxBytes ??
         readPositiveInteger(
           process.env.STATION_ATTACHMENT_MAX_BYTES,
           DEFAULT_ATTACHMENT_BLOB_RETENTION.maxBytes,
@@ -274,6 +282,7 @@ export class AttachmentBlobStore {
    * once a day, and only on a write, so an idle Station never walks the tree.
    */
   applyRetention(options?: { force?: boolean }): void {
+    if (!this.evicts) return;
     const today = Math.floor(this.now() / DAY_MS);
     if (!options?.force && this.lastRetentionDay === today) return;
     this.lastRetentionDay = today;
