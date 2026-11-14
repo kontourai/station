@@ -345,6 +345,13 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'build:connect']],
       [process.execPath, ['scripts/typecheck-aggregate.mjs']],
       [process.execPath, ['scripts/agent-runtime-import-boundary-gate.mjs']],
+      // verify:static members that otherwise ran only in full qualification.
+      ['npm', ['run', 'conduit:conformance:check']],
+      ['npm', ['run', 'examples:conformance']],
+      ['npm', ['run', 'product-version:check']],
+      ['npm', ['run', 'knowledge-kit-import:gate']],
+      ['npm', ['run', 'builder-delivery-viewer-import:gate']],
+      ['npm', ['run', 'gate:test-import-existence']],
     ]);
     expect(JSON.stringify(FAST_STATIC_COMMANDS)).not.toMatch(
       /verify:static|test:full|vitest-corpus/,
