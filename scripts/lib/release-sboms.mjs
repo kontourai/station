@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { canonicalJson } from './canonical-json.mjs';
+import { parseReleaseTag } from './release-tag.mjs';
 import { releaseVariants } from './release-variants.mjs';
 
 // Release tooling imports the SBOM canonical form from here.
@@ -20,8 +21,6 @@ const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,239}$/;
 const VARIANT_ID = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/;
 const BOM_REF = /^[A-Za-z0-9][A-Za-z0-9._:+/@-]{0,255}$/;
 const SPDX_ID = /^SPDXRef-[A-Za-z0-9][A-Za-z0-9.-]{0,127}$/;
-const VERSION =
-  /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-preview\.([1-9][0-9]*))?$/;
 const CYCLONEDX_COMPONENT_TYPES = new Set([
   'application',
   'container',
@@ -173,15 +172,29 @@ function parseCanonical(bytes) {
   return { source, value };
 }
 
+/** The tag's bare base version, or null when the tag is not a release tag. */
+function tagBaseVersion(tag) {
+  try {
+    return parseReleaseTag(tag).baseVersion;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The context names the release by its tag (the location every SBOM subject
+ * lives at) and by the base version its bytes carry; a candidate tag
+ * `v0.2.0-rc.1` therefore pairs with version `0.2.0`, ring Stable (#4929).
+ */
 function validateContext(context) {
+  const baseVersion = tagBaseVersion(context?.tag);
   if (
     !safeText(context?.tag, 160) ||
-    !VERSION.test(context?.version ?? '') ||
-    context.tag !== `v${context.version}` ||
+    baseVersion === null ||
+    context.version !== baseVersion ||
     !GIT_SHA.test(context?.sourceSha ?? '') ||
     !exactIso(context?.generatedAt) ||
-    (context?.channel !== 'preview' && context?.channel !== 'stable') ||
-    context.tag.includes('-preview.') !== (context.channel === 'preview') ||
+    context.channel !== 'stable' ||
     (() => {
       try {
         expectedLifecycle(context);

@@ -78,7 +78,16 @@ jobs:
           ALLOW_PUBLISHED_POINTER_REPAIR: ${{ inputs.allow_published_pointer_repair }}
           ALLOW_EMPTY_UPDATER_CHANNEL_BOOTSTRAP: ${{ inputs.allow_empty_updater_channel_bootstrap }}
         run: |
-          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-preview\.([1-9][0-9]*))?$ ]]
+          if [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.[1-9][0-9]*$ ]]; then
+            # Publishing here moves the Stable desktop feed, host pointer and
+            # container tags; a candidate must move none of them (#4929).
+            echo "::error::$RELEASE_TAG is a release candidate; rc publication lands in S3 of #4929 and this workflow publishes only final vX.Y.Z tags." >&2
+            exit 1
+          fi
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::$RELEASE_TAG is not a vX.Y.Z release tag." >&2
+            exit 1
+          fi
           # No checkout persists a credential, so this one fetch carries the
           # read-only job token in process-scoped config only.
           GIT_CONFIG_COUNT=1 \
@@ -129,7 +138,7 @@ jobs:
             echo "sha=$sha"
             echo "created_at=$created_at"
             echo "version=${RELEASE_TAG#v}"
-            echo "channel=$([[ "$RELEASE_TAG" == *-preview.* ]] && echo preview || echo stable)"
+            echo "channel=stable"
             echo "desktop_updater_tag=$desktop_updater_tag"
             echo "has_current_updater_manifest=$has_current_updater_manifest"
             echo "pointer_repair_only=$pointer_repair_only"
@@ -177,7 +186,7 @@ jobs:
       GITHUB_REPOSITORY: ${{ github.repository }}
       VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
       VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
-      VITE_NATIVE_APP_UPDATE_CHANNEL: ${{ needs.resolve.outputs.channel == 'preview' && 'beta' || 'stable' }}
+      VITE_NATIVE_APP_UPDATE_CHANNEL: ${{ needs.resolve.outputs.channel }}
       VITE_NATIVE_APP_VERSION: ${{ needs.resolve.outputs.version }}
       NATIVE_APP_UPDATE_ACTION_URL: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}
       NATIVE_APP_UPDATE_ACTION_KIND: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}

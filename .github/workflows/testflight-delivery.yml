@@ -133,7 +133,7 @@ jobs:
           short_sha=$(git rev-parse --short=12 HEAD)
           printf '{"schemaVersion":1,"kind":"testflight-source-identity","sourceSha":"%s","shortSha":"%s","sourceDateUtc":"%s","channel":"%s","marketingVersion":"%s","bundleVersion":"%s"}\n' '${{ inputs.source_sha }}' "$short_sha" "$source_date" '${{ inputs.channel }}' '${{ inputs.marketing_version }}' '${{ inputs.bundle_version }}' > staged-identity/source-identity.json
           source_ref='${{ inputs.source_ref }}'
-          [[ "$source_ref" =~ ^refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[1-9][0-9]*)?|nightly-version-code/[0-9]+|ios-testflight/(stable|beta|nightly)/v[0-9]+\.[0-9]+\.[0-9]+/[0-9]+)$ ]]
+          [[ "$source_ref" =~ ^refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[1-9][0-9]*)?|nightly-version-code/[0-9]+|ios-testflight/(stable|beta|nightly)/v[0-9]+\.[0-9]+\.[0-9]+/[0-9]+)$ ]]
           git fetch --no-tags origin "$source_ref:$source_ref"
           node scripts/verify-ios-testflight-authority.mjs --source-ref "$source_ref" --source-sha '${{ inputs.source_sha }}'
           echo "AUTHORITY_REF=$source_ref" >> "$GITHUB_ENV"
@@ -650,7 +650,7 @@ jobs:
           [[ "$STATION_RELEASE_LABEL" =~ ^[A-Za-z0-9._-]+$ ]]
           test "$(git rev-parse HEAD)" = '${{ inputs.source_sha }}'
           source_ref='${{ inputs.source_ref }}'
-          [[ "$source_ref" =~ ^refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[1-9][0-9]*)?|nightly-version-code/[0-9]+|ios-testflight/(stable|beta|nightly)/v[0-9]+\.[0-9]+\.[0-9]+/[0-9]+)$ ]]
+          [[ "$source_ref" =~ ^refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[1-9][0-9]*)?|nightly-version-code/[0-9]+|ios-testflight/(stable|beta|nightly)/v[0-9]+\.[0-9]+\.[0-9]+/[0-9]+)$ ]]
           git fetch --no-tags origin "$source_ref:$source_ref"
           node scripts/verify-ios-testflight-authority.mjs --source-ref "$source_ref" --source-sha '${{ inputs.source_sha }}'
           echo "AUTHORITY_REF=$source_ref" >> "$GITHUB_ENV"
