@@ -34,11 +34,7 @@
 
     "src-server/services/plugins/plugin-permissions.ts",
 
-    "src-server/services/plugins/plugin-public-server.ts",
-
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots"
+    "src-server/services/plugins/plugin-public-server.ts"
   ],
 
   "checks": [

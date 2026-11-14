@@ -92,10 +92,6 @@
 
     "packages/shared/package.json#/files",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "src-ui/src/lib/startup-presentation.ts",
 
     "src-ui/src/components/StartupHandoff.tsx",
@@ -122,7 +118,15 @@
 
     "src-ui/src/lib/appearance-cache.ts",
 
-    "src-ui/src/components/editor-controls.css"
+    "src-ui/src/components/editor-controls.css",
+
+    "package.json#/dependencies/@kontourai~1ui",
+
+    "pnpm-lock.yaml#/packages/@kontourai~1ui@1.20.1",
+
+    "package.json#/dependencies/shiki",
+
+    "package.json#/dependencies/@pierre~1diffs"
   ],
 
   "checks": [

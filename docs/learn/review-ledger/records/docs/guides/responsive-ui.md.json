@@ -130,10 +130,6 @@
 
     "packages/shared/package.json#/files",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "src-ui/src/components/chat-dock/MobileInboxPanel.tsx",
 
     "src-ui/src/components/chat-dock/MobileSheetPending.tsx",
@@ -166,7 +162,11 @@
 
     "src-ui/src/__tests__/HeaderActions.connection-reflow.test.tsx",
 
-    "src-ui/src/components/chat-dock/ChatInboxHoverCard.css"
+    "src-ui/src/components/chat-dock/ChatInboxHoverCard.css",
+
+    "package.json#/dependencies/@kontourai~1ui",
+
+    "package.json#/devDependencies/jsdom"
   ],
 
   "checks": [

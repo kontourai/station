@@ -26,10 +26,6 @@
 
     "package.json#/dependencies/@kontourai~1flow-agents",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "src-server/runtime/routes/runtime-routes.ts"
   ],
 

@@ -34,9 +34,9 @@
 
     "src-server/services/plugins/plugin-public-server.ts",
 
-    "pnpm-lock.yaml#/packages",
+    "package.json#/dependencies/@kontourai~1survey",
 
-    "pnpm-lock.yaml#/snapshots"
+    "package.json#/dependencies/@kontourai~1surface"
   ],
 
   "checks": [
