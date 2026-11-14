@@ -911,6 +911,8 @@ async function grokTurn(
   input: string,
   enginePromptId: string,
   startedAt?: number,
+  /** How far the engine's clock runs ahead of Station's. */
+  engineAheadMs = 0,
 ): Promise<string> {
   const turn = await session.adapter.sendTurn({
     threadId: session.threadId,
@@ -930,7 +932,7 @@ async function grokTurn(
       sessionUpdate: 'agent_message_chunk',
       content: { type: 'text', text: 'ok' },
     },
-    _meta: { agentTimestampMs: Date.now() + 15 },
+    _meta: { agentTimestampMs: Date.now() + 15 + engineAheadMs },
   });
   await settle();
   session.proc.resolvePrompt('end_turn');
@@ -1237,7 +1239,7 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
     const base = times[0]!;
     const session = await startGrokSession();
     const turns: string[] = [];
-    for (const [position, text] of ['first', 'second', 'third'].entries())
+    for (const [position, text] of ['first', 'second', 'third'].entries()) {
       turns.push(
         await grokTurn(
           session,
@@ -1246,6 +1248,27 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
           base + position * 60_000,
         ),
       );
+      if (position === 0) {
+        // Another client's prompt runs between the first two turns: Grok
+        // announces it like any other, and it makes a point of its own.
+        vi.setSystemTime(base + 30_000);
+        await session.agent.notify('_x.ai/queue/changed', {
+          sessionId: session.sessionId,
+          entries: [],
+          runningPromptId: 'other-client',
+        });
+        await settle();
+        await session.agent.notify('_x.ai/session_notification', {
+          sessionId: session.sessionId,
+          update: {
+            sessionUpdate: 'turn_completed',
+            prompt_id: 'other-client',
+            stop_reason: 'end_turn',
+          },
+        });
+        await settle();
+      }
+    }
     const [live] = (points as { rewind_points: Record<string, unknown>[] })
       .rewind_points;
     const at = (ms: number) => new Date(ms).toISOString();
@@ -1278,14 +1301,24 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
    * Turns whose prompts all open with the same ambient line, each reported
    * started at `at[k]`, with live point shapes created at `pointAt[k]`.
    */
-  async function ambientTurns(at: number[], pointAt: number[]) {
+  async function ambientTurns(
+    at: number[],
+    pointAt: number[],
+    engineAheadMs = 0,
+  ) {
     vi.useFakeTimers({ toFake: ['Date'] });
     const ambient = '[Timezone: America/Denver]';
     const session = await startGrokSession();
     const turns: string[] = [];
     for (const [k, started] of at.entries())
       turns.push(
-        await grokTurn(session, `${ambient}\nturn ${k}`, `p-${k}`, started),
+        await grokTurn(
+          session,
+          `${ambient}\nturn ${k}`,
+          `p-${k}`,
+          started,
+          engineAheadMs,
+        ),
       );
     const [live] = (points as { rewind_points: Record<string, unknown>[] })
       .rewind_points;
@@ -1294,7 +1327,8 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
         ...live,
         prompt_index: index,
         prompt_preview: ambient,
-        created_at: new Date(created).toISOString(),
+        // The engine stamps its points on its own clock.
+        created_at: new Date(created + engineAheadMs).toISOString(),
       })),
     };
     return { session, turns, listed };
@@ -1418,6 +1452,87 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
     await session.stop();
   });
 
+  test("an engine clock 400 ms ahead is read on Station's clock: turns resolve, and a pointless turn after a short one does not take its point", async () => {
+    const t = times[0]!;
+    // Turns 500 ms apart: on Grok's own clock turn 0's point falls past
+    // turn 0's window, so only reading it on Station's clock finds it.
+    const steady = await ambientTurns(
+      [t, t + 500, t + 8_000],
+      [t + 15, t + 515, t + 8_015],
+      400,
+    );
+    answerLive(steady.session, {
+      '_x.ai/rewind/points': [steady.listed],
+      '_x.ai/rewind/execute': [preview, commit],
+    });
+    expect(
+      await steady.session.adapter.rewindSession(
+        steady.session.threadId,
+        steady.turns[1]!,
+      ),
+    ).toMatchObject({ kind: 'rewound' });
+    expect(
+      steady.session.proc.extMethodCalls[1]?.params.targetPromptIndex,
+    ).toBe(1);
+    await steady.session.stop();
+    vi.useRealTimers();
+    // Turn 0 was stopped 600 ms in; a prompt hook blocked turn 1.
+    const short = await ambientTurns(
+      [t, t + 600, t + 10_000],
+      [t + 15, t + 10_015],
+      400,
+    );
+    answerLive(short.session, { '_x.ai/rewind/points': [short.listed] });
+    expect(
+      await short.session.adapter.rewindSession(
+        short.session.threadId,
+        short.turns[1]!,
+      ),
+    ).toEqual({
+      kind: 'failed',
+      message: expect.stringContaining('do not line up'),
+    });
+    await short.session.stop();
+  });
+
+  test('a pointless turn 200 ms after a short one does not take its point', async () => {
+    const t = times[0]!;
+    const { session, turns, listed } = await ambientTurns(
+      [t, t + 200, t + 10_000],
+      [t + 15, t + 10_015],
+    );
+    answerLive(session, { '_x.ai/rewind/points': [listed] });
+    expect(
+      await session.adapter.rewindSession(session.threadId, turns[1]!),
+    ).toEqual({
+      kind: 'failed',
+      message: expect.stringContaining('do not line up'),
+    });
+    expect(session.proc.extMethodCalls).toHaveLength(1);
+    await session.stop();
+  });
+
+  test('an old stamp, as a load replays, does not spoil the clock reading', async () => {
+    const { session, turns } = await threeTurns();
+    await session.agent.notify('session/update', {
+      sessionId: session.sessionId,
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'replayed' },
+      },
+      _meta: { agentTimestampMs: Date.now() - 600_000 },
+    });
+    await settle();
+    answerLive(session, {
+      '_x.ai/rewind/points': [points],
+      '_x.ai/rewind/execute': [preview, commit],
+    });
+    expect(
+      await session.adapter.rewindSession(session.threadId, turns[1]!),
+    ).toMatchObject({ kind: 'rewound' });
+    await session.stop();
+  });
+
   test('a notice Station read a little late still bounds its window', async () => {
     // Turn 2's notice was read 30 ms after Grok sent it; its point came 15 ms
     // after the send, so before Station's read.
@@ -1437,7 +1552,7 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
     await session.stop();
   });
 
-  test("an engine clock two seconds behind Station's leaves a turn without a point, so nothing is rewound", async () => {
+  test('points listed two seconds before their turns leave the last turn without one, so nothing is rewound', async () => {
     const at = [times[0]!, times[0]! + 4_000, times[0]! + 8_000];
     const { session, turns, listed } = await ambientTurns(
       at,

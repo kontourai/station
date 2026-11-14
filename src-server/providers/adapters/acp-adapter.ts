@@ -887,11 +887,13 @@ export interface AcpSessionRecord {
    */
   enginePromptStarts?: Map<string, number>;
   /**
-   * The engine's clock less Station's, from the latest frame stamped with
-   * the engine's own time (`_meta.agentTimestampMs`, Grok), less the frame's
-   * transit. Unset until such a frame arrives.
+   * Recent readings of the engine's clock less Station's, from frames
+   * stamped with the engine's own time (`_meta.agentTimestampMs`, Grok):
+   * each is the stamp less when Station read the frame, so transit and
+   * Station's own lag only ever lower it, and a replayed old frame lowers it
+   * a lot. The largest is the best estimate. Most recent last, bounded.
    */
-  engineClockOffsetMs?: number;
+  engineClockSamples?: number[];
   /** Whether a frame naming another session was dropped (logged once). */
   droppedForeignFrame?: boolean;
   /** Drops `session/update` while a relaunch replays history (`session/load`). */
@@ -1136,15 +1138,28 @@ const ACP_REWIND_NOTICE_LAG_MS = 250;
  */
 const ACP_ENGINE_CLOCK_MAX_OFFSET_MS = 500;
 
+/** Clock readings a session keeps; the largest of them is the estimate. */
+const ACP_ENGINE_CLOCK_SAMPLES_MAX = 32;
+
 /** Remember how far the engine's clock is from Station's, when a frame says. */
 function noteEngineClock(
-  record: Pick<AcpSessionRecord, 'engineClockOffsetMs'>,
+  record: Pick<AcpSessionRecord, 'engineClockSamples'>,
   params: unknown,
 ): void {
   const meta = isRecord(params) ? params._meta : undefined;
   const stamped = isRecord(meta) ? meta.agentTimestampMs : undefined;
-  if (typeof stamped === 'number' && Number.isFinite(stamped))
-    record.engineClockOffsetMs = stamped - Date.now();
+  if (typeof stamped !== 'number' || !Number.isFinite(stamped)) return;
+  const samples = (record.engineClockSamples ??= []);
+  samples.push(stamped - Date.now());
+  if (samples.length > ACP_ENGINE_CLOCK_SAMPLES_MAX) samples.shift();
+}
+
+/** The engine's clock less Station's, as best the stamped frames say. */
+function engineClockOffset(
+  record: Pick<AcpSessionRecord, 'engineClockSamples'>,
+): number | undefined {
+  const samples = record.engineClockSamples;
+  return samples?.length ? Math.max(...samples) : undefined;
 }
 
 /**
@@ -3779,13 +3794,14 @@ export class AcpAdapter implements ProviderAdapterShape {
    * runs one prompt at a time, so a turn's point is the one point created in
    * its window: from its prompt's first notice to the next prompt's, both
    * moved `ACP_REWIND_NOTICE_LAG_MS` earlier for Station reading a notice
-   * late, so consecutive windows tile time. The times are compared only
-   * while the engine's clock is within `ACP_ENGINE_CLOCK_MAX_OFFSET_MS` of
-   * Station's, measured from its stamped frames. The point's preview must
-   * also be the turn's, and every turn from the chosen one to the last must
-   * resolve so, each to its own point; otherwise nothing resolves. The one
-   * exception is a later turn whose text is a slash command: the engine may
-   * have run it itself, without a point.
+   * late, so consecutive windows tile time. A point's time is read on
+   * Station's clock, less the engine's measured offset, and only while that
+   * offset is within `ACP_ENGINE_CLOCK_MAX_OFFSET_MS`. The point's preview
+   * must also be the turn's, and the turn before the chosen one and every
+   * turn after it must resolve so, each to its own point; otherwise nothing
+   * resolves. The one exception is a turn other than the chosen one whose
+   * text is a slash command: the engine may have run it itself, without a
+   * point.
    */
   private async promptIndexForTurn(
     record: AcpSessionRecord,
@@ -3796,7 +3812,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     position: number,
     read: <T>(answer: Promise<T>) => Promise<T | typeof ACP_REWIND_TIMED_OUT>,
   ): Promise<{ index: number } | { failed: string }> {
-    const offset = record.engineClockOffsetMs;
+    const offset = engineClockOffset(record);
     if (
       offset === undefined ||
       Math.abs(offset) > ACP_ENGINE_CLOCK_MAX_OFFSET_MS
@@ -3816,7 +3832,12 @@ export class AcpAdapter implements ProviderAdapterShape {
       };
     const starts = [...(record.enginePromptStarts?.values() ?? [])];
     const resolved: number[] = [];
-    for (const turn of turns.slice(position)) {
+    // The turn before the chosen one is resolved too, so a chosen turn the
+    // engine made no point for cannot take a short previous turn's point.
+    const from = Math.max(0, position - 1);
+    let chosen: number | undefined;
+    for (const [k, turn] of turns.slice(from).entries()) {
+      const isChosen = from + k === position;
       const startedAt = turn.startedAt;
       const next = starts.find(
         (at) => startedAt !== undefined && at > startedAt,
@@ -3824,19 +3845,21 @@ export class AcpAdapter implements ProviderAdapterShape {
       const inWindow =
         startedAt === undefined
           ? []
-          : points.filter(
-              (point) =>
-                point.createdAt !== undefined &&
-                point.createdAt >= startedAt - ACP_REWIND_NOTICE_LAG_MS &&
-                (next === undefined ||
-                  point.createdAt < next - ACP_REWIND_NOTICE_LAG_MS),
-            );
+          : points.filter((point) => {
+              if (point.createdAt === undefined) return false;
+              // The point's time on Station's clock.
+              const made = point.createdAt - offset;
+              return (
+                made >= startedAt - ACP_REWIND_NOTICE_LAG_MS &&
+                (next === undefined || made < next - ACP_REWIND_NOTICE_LAG_MS)
+              );
+            });
       const [point] = inWindow;
-      // A later turn that was a slash command the engine ran itself has no
+      // Another turn that was a slash command the engine ran itself has no
       // point, and that does not move the others.
       if (
         inWindow.length === 0 &&
-        resolved.length > 0 &&
+        !isChosen &&
         turn.promptText?.trimStart().startsWith('/')
       )
         continue;
@@ -3850,8 +3873,9 @@ export class AcpAdapter implements ProviderAdapterShape {
           failed: `${record.engineName}'s rewind points do not line up with this conversation's turns, so Station cannot tell which one is this turn. Nothing was changed.`,
         };
       resolved.push(point.index);
+      if (isChosen) chosen = point.index;
     }
-    const [index] = resolved;
+    const index = chosen;
     return index === undefined
       ? {
           failed: `${record.engineName}'s rewind points do not line up with this conversation's turns, so Station cannot tell which one is this turn. Nothing was changed.`,
