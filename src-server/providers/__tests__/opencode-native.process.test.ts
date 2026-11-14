@@ -17,7 +17,10 @@ import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
-import type { ProviderAdapterShape } from '../adapter-shape.js';
+import type {
+  ProviderAdapterShape,
+  ProviderSessionStartInput,
+} from '../adapter-shape.js';
 import { OpenCodeAdapter } from '../adapters/opencode-adapter.js';
 import { realOpenCode2, warnSkipped } from './opencode-real-binary.js';
 
@@ -210,6 +213,16 @@ describe.skipIf(!real.binary)(
       adapter = new OpenCodeAdapter({
         getConnections: async () => [connection],
         nativeEnabled: () => true,
+        // An Agent's staged pre-tool policy, as the runtime resolves it.
+        acp: {
+          resolvePreToolPolicy: async () => async (tool) =>
+            tool.toolName === 'shell'
+              ? {
+                  behavior: 'deny',
+                  denial: { allowed: false, reason: 'POLICY-DENIED shell' },
+                }
+              : { behavior: 'defer' },
+        },
         findBinary: async () => binary,
         launchEnv: async () => env,
         // This test is about the native transport: falling back is a failure.
@@ -297,6 +310,50 @@ describe.skipIf(!real.binary)(
         ),
       ).toMatchObject({ outputText: 'native reply: hello native' });
       await adapter.stopSession('native-1');
+    }, 120_000);
+
+    test("a session started as an Agent runs natively, and its staged policy's deny fails the shell with its reason while the turn goes on", async () => {
+      await adapter.startSession({
+        threadId: 'native-agent',
+        provider: 'opencode',
+        cwd: project,
+        metadata: { connectionId: 'real-opencode' },
+        modelOptions: { approvalMode: 'ask' },
+        agent: { slug: 'reviewer' } as ProviderSessionStartInput['agent'],
+      });
+      expect(
+        await waitFor(
+          (event) =>
+            event.method === 'session.started' &&
+            event.threadId === 'native-agent',
+        ),
+      ).toMatchObject({ metadata: { openCodeTransport: 'native' } });
+      const shell = await adapter.sendTurn({
+        threadId: 'native-agent',
+        input: 'DO_BASH please',
+      });
+      expect(
+        await waitFor(
+          (event) =>
+            event.method === 'tool.completed' && event.turnId === shell.turnId,
+        ),
+      ).toMatchObject({
+        toolName: 'shell',
+        status: 'error',
+        error: expect.stringContaining('POLICY-DENIED shell'),
+      });
+      await waitFor(
+        (event) =>
+          event.method === 'turn.completed' && event.turnId === shell.turnId,
+      );
+      expect(
+        events.filter(
+          (event) =>
+            event.method === 'request.opened' &&
+            event.threadId === 'native-agent',
+        ),
+      ).toEqual([]);
+      await adapter.stopSession('native-agent');
     }, 120_000);
   },
 );
