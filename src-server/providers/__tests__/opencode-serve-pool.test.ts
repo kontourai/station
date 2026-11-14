@@ -185,6 +185,26 @@ describe('OpenCodeServePool', () => {
     expect(h.spawned).toHaveLength(2);
   });
 
+  test('a discarded lease stops its server at once unless another lease holds it', async () => {
+    const h = harness({ idleStopMs: 60_000 });
+    active = h.pool;
+    const a = await h.pool.acquire(input());
+    const b = await h.pool.acquire(input());
+    a.discard();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(h.spawned[0]?.proc.exitCode).toBeNull();
+    b.discard();
+    // Well inside the idle bound: only a stop at once ends it this soon.
+    const stopped = await Promise.race([
+      b.exited.then(() => true),
+      new Promise<boolean>((resolve) =>
+        setTimeout(() => resolve(false), 2_000),
+      ),
+    ]);
+    expect(stopped).toBe(true);
+    expect(h.spawned[0]?.proc.exitCode).toBe(0);
+  });
+
   test('a lease taken within the idle bound keeps the server', async () => {
     const h = harness({ idleStopMs: 30 });
     active = h.pool;
