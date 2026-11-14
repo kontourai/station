@@ -100,10 +100,16 @@ the installed bytes by a `remediations` record in the
 
 The workspace override now selects the official node-forge 1.4.3 release, and
 the patch, its `patchedDependencies` entry, its secret-scan allowlist and the
-`remediations` record are removed. Release 1.4.1 re-encodes the DigestInfo and
-requires a byte-identical canonical DER value with or without the NULL
-parameter, which also rejects the nested-element form; the advisory lists 1.4.1
-as patched. 1.4.3 is the smallest release that also clears the other Forge
+`remediations` record are removed. Release 1.4.1 contains upstream commit
+`2bce9d477a2f` ("Require canonical DigestInfo in RSA PKCS#1 v1.5 verify"),
+which re-encodes the DigestInfo and requires a byte-identical canonical DER
+value with or without the NULL parameter, also rejecting the nested-element
+form. Upstream's own repository advisory,
+[GHSA-2g46-22mc-6gwp](https://github.com/digitalbazaar/forge/security/advisories/GHSA-2g46-22mc-6gwp),
+records the same CVE-2026-85393 and lists 1.4.1 as patched. The global
+GHSA-86w9-cpqp-85rv record still lists no patched version (`<= 1.4.0`), so the
+replacement rests on the upstream record, the commit and the controls below,
+not on the global database. 1.4.3 is the smallest release that also clears the other Forge
 advisories the registry reports against 1.4.0 (PEM, ASN.1 and TLS-record
 denial of service, PKCS#12 MAC forgery, X.509 chain checks, and AES-GCM tag
 length, among others).
