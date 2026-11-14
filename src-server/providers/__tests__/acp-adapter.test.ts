@@ -75,6 +75,10 @@ afterAll(() => rmSync(managedWorkspaceHome, { recursive: true, force: true }));
 
 import { NO_PERSON_INTENT } from '../../services/approvals/guardian-conversation.js';
 import { FakeAcpProcess } from './fake-acp-process.js';
+import {
+  QWEN_SUBAGENT_FRAMES,
+  QWEN_SUBAGENT_PARENT_CALL_ID,
+} from './fixtures/qwen-code-subagent-frames.js';
 
 function createConnections(
   overrides: Partial<ACPConnectionConfig>[] = [],
@@ -409,6 +413,101 @@ describe('AcpAdapter', () => {
       'session.configured',
       'child-work.updated',
     ]);
+  });
+
+  test('a Qwen Code session reports the subagent its nested tool calls name, and ends it with the parent call', async () => {
+    const { adapter, processes } = createAdapter({
+      onProcess: (proc) => {
+        // Qwen Code's initialize (packages/cli/src/acp-integration/acpAgent.ts).
+        proc.initResult!.agentInfo = { name: 'qwen-code', version: '0.27.3' };
+      },
+    });
+    const events: CanonicalRuntimeEvent[] = [];
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-qwen-subagent',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-qwen-subagent',
+      input: 'Find where authentication is handled.',
+    });
+    await nextEvent(iterator, 'turn.started');
+    for (const frame of QWEN_SUBAGENT_FRAMES)
+      await processes[0]!.client.sessionUpdate(frame.params as any);
+    processes[0]!.resolvePrompt('end_turn');
+    for (;;) {
+      const event = (await iterator.next()).value as CanonicalRuntimeEvent;
+      events.push(event);
+      if (event.method === 'turn.completed') break;
+    }
+    const childWork = events
+      .filter((event) => event.method === 'child-work.updated')
+      .map((event) => (event as { delta: Record<string, unknown> }).delta);
+    // No `not-reported`: the handshake names a reporter.
+    expect(childWork.map((delta) => delta.kind)).toEqual([
+      'snapshot',
+      'settle',
+      'snapshot',
+    ]);
+    expect(childWork[0]).toMatchObject({
+      running: [
+        {
+          childId: QWEN_SUBAGENT_PARENT_CALL_ID,
+          kindLabel: 'Explore',
+          parent: {
+            threadId: 'thread-qwen-subagent',
+            turnId: turn.turnId,
+            toolCallId: QWEN_SUBAGENT_PARENT_CALL_ID,
+          },
+        },
+      ],
+    });
+    expect(childWork[1]).toMatchObject({
+      childId: QWEN_SUBAGENT_PARENT_CALL_ID,
+      status: 'completed',
+    });
+    expect(childWork[2]).toMatchObject({ running: [] });
+    await adapter.stopAll();
+  });
+
+  test('the same nested frames from an engine not identified as Qwen Code report nothing', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-not-qwen',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    await adapter.sendTurn({ threadId: 'thread-not-qwen', input: 'go' });
+    const seen: CanonicalRuntimeEvent[] = [];
+    for (;;) {
+      const event = (await iterator.next()).value as CanonicalRuntimeEvent;
+      seen.push(event);
+      if (event.method === 'turn.started') break;
+    }
+    for (const frame of QWEN_SUBAGENT_FRAMES)
+      await processes[0]!.client.sessionUpdate(frame.params as any);
+    processes[0]!.resolvePrompt('end_turn');
+    for (;;) {
+      const event = (await iterator.next()).value as CanonicalRuntimeEvent;
+      seen.push(event);
+      if (event.method === 'turn.completed') break;
+    }
+    const childWork = seen
+      .filter((event) => event.method === 'child-work.updated')
+      .map((event) => (event as { delta: { kind: string } }).delta.kind);
+    // Only the session's start statement; the frames still map as tool calls.
+    expect(childWork).toEqual(['not-reported']);
+    expect(seen.some((event) => event.method === 'tool.started')).toBe(true);
+    await adapter.stopAll();
   });
 
   test('#2316: an interrupt settles the open permission request; a late answer is refused and grants nothing', async () => {

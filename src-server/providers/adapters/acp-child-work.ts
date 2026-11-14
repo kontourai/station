@@ -34,6 +34,11 @@ export interface AcpChildWorkState {
   /** Running subagents a v3 `agent-subtask` frame reported, by child id. */
   acpSubagents?: Map<string, ChildWorkItem>;
   /**
+   * Running subagents a nested tool call named, by the parent tool call
+   * that runs each one (Qwen Code).
+   */
+  acpNestedSubagents?: Map<string, ChildWorkItem>;
+  /**
    * Roster children already settled, so a repeated roster does not settle
    * them again. Bounded (oldest out): a child evicted past the bound is
    * settled again if a later roster still restates it, which the fold
@@ -54,13 +59,13 @@ export interface AcpChildWorkContext {
   };
 }
 
-export type AcpSubagentWire = 'roster' | 'agent-subtask';
+export type AcpSubagentWire = 'roster' | 'agent-subtask' | 'nested-tool-call';
 
 /**
  * Engines whose subagent frames this module maps, keyed on what the live
  * handshake says about the engine (the steer table's identity matcher).
- * Neither wire is declared at `initialize`, so both are `undeclared-engine`
- * rows of the engine-extension binding table.
+ * No wire is declared at `initialize`, so each is an `undeclared-engine`
+ * row of the engine-extension binding table.
  */
 const ACP_SUBAGENT_REPORTERS: ReadonlyArray<{
   identity: AcpHandshakeIdentity;
@@ -80,6 +85,14 @@ const ACP_SUBAGENT_REPORTERS: ReadonlyArray<{
     wire: 'agent-subtask',
     observed:
       'kirocrew acp/session_handle_native_children.py _handle_kas_subagent; test/test_kas_subagent_progress.py',
+  },
+  {
+    // `tool_call` / `tool_call_update` with `_meta.provenance: 'subagent'`;
+    // Qwen Code's initialize names it `qwen-code` (acpAgent.ts initialize).
+    identity: { agentInfoName: 'qwen-code' },
+    wire: 'nested-tool-call',
+    observed:
+      'QwenLM/qwen-code 6f754be65489 packages/cli/src/acp-integration/session/SubAgentTracker.ts; source only, not a live run',
   },
 ];
 
@@ -363,6 +376,67 @@ export function publishAcpAgentSubtask(
   if (!known) return;
   roster.delete(id);
   ctx.state.acpSubagentBoundWarned?.delete('agent-subtask');
+  publishSettle(ctx, item, status.status);
+  publishSnapshot(ctx, [...roster.values()]);
+}
+
+/**
+ * Qwen Code: a subagent runs inside one Agent tool call. Its own tool calls
+ * are frames whose `_meta.provenance` is `subagent`, naming that call as
+ * `_meta.parentToolCallId`; its progress notes on the call itself carry the
+ * marker with `subagentProgress: true` and no parent. Either frame names the
+ * subagent by the call that runs it, listed running from its first frame,
+ * labelled by `_meta.subagentType`. A subagent inside a subagent runs in its
+ * own Agent call and is listed as its own child.
+ */
+export function publishAcpNestedSubagentFrame(
+  update: Record<string, unknown>,
+  ctx: AcpChildWorkContext,
+): void {
+  if (!ctx.state?.acpSubagentWires?.has('nested-tool-call')) return;
+  const meta = isRecord(update._meta) ? update._meta : undefined;
+  if (meta?.provenance !== 'subagent') return;
+  const id =
+    childId(meta.parentToolCallId) ??
+    (meta.subagentProgress === true ? childId(update.toolCallId) : undefined);
+  if (!id) return;
+  const roster = (ctx.state.acpNestedSubagents ??= new Map());
+  if (roster.has(id)) return;
+  if (roster.size >= CHILD_WORK_ITEMS_MAX_PER_REPORTER) {
+    warnOverBoundOnce(
+      ctx,
+      'nested-tool-call',
+      'ACP nested subagent past the child-work bound is not tracked',
+      { max: CHILD_WORK_ITEMS_MAX_PER_REPORTER },
+    );
+    return;
+  }
+  roster.set(
+    id,
+    baseItem(ctx, id, {
+      kindLabel: label(meta.subagentType),
+      toolCallId: id,
+    }),
+  );
+  publishSnapshot(ctx, [...roster.values()]);
+}
+
+/**
+ * A `tool_call_update` that ends the Agent call a listed Qwen subagent runs
+ * in ends that subagent with the call's own outcome.
+ */
+export function settleAcpNestedSubagent(
+  update: Record<string, unknown>,
+  ctx: AcpChildWorkContext,
+): void {
+  const roster = ctx.state?.acpNestedSubagents;
+  const id = childId(update.toolCallId);
+  const item = id ? roster?.get(id) : undefined;
+  if (!roster || !id || !item || typeof update.status !== 'string') return;
+  const status = childStatus(update.status);
+  if (status.running) return;
+  roster.delete(id);
+  ctx.state?.acpSubagentBoundWarned?.delete('nested-tool-call');
   publishSettle(ctx, item, status.status);
   publishSnapshot(ctx, [...roster.values()]);
 }

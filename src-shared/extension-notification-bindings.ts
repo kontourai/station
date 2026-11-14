@@ -293,6 +293,9 @@ const DECLARED_EXTENSION_NOTIFICATION_BINDINGS = [
  *   `update.sessionUpdate` is `sessionUpdate`.
  * - `tool-call-meta-kind`: a core `tool_call` / `tool_call_update` whose
  *   `_meta.<namespace>.kind` is `kind`.
+ * - `tool-call-meta-field`: a core `tool_call` / `tool_call_update` whose
+ *   top-level `_meta.<field>` is `value`, for an engine that keeps its
+ *   facts outside a vendor namespace.
  */
 export type EngineExtensionWire =
   | { readonly kind: 'notification'; readonly method: string }
@@ -311,6 +314,11 @@ export type EngineExtensionWire =
       readonly kind: 'tool-call-meta-kind';
       readonly namespace: string;
       readonly metaKind: string;
+    }
+  | {
+      readonly kind: 'tool-call-meta-field';
+      readonly field: string;
+      readonly value: string;
     };
 
 /**
@@ -338,6 +346,8 @@ export const KIRO_V3_LIVE_CAPTURE =
  *   kirodotdev/kirocrew; `fixture` is the path in that repository.
  * - `kiro-v2`: a Station runtime observation already cited by the
  *   notification table.
+ * - `vendor-source`: read from the engine's own published source, not a
+ *   live run; `source` is the repository, commit and paths.
  */
 export type EngineExtensionObservation =
   | { readonly variant: 'kiro-v3-2.35'; readonly capture: string }
@@ -345,7 +355,8 @@ export type EngineExtensionObservation =
   | {
       readonly variant: 'kiro-v2';
       readonly ref: ExtensionNotificationEvidence;
-    };
+    }
+  | { readonly variant: 'vendor-source'; readonly source: string };
 
 export interface EngineExtensionBinding {
   readonly id: string;
@@ -443,8 +454,8 @@ const info = (metaKind: string) =>
   ({ kind: 'session-info-kind', namespace: 'kiro', metaKind }) as const;
 
 /**
- * Every engine→client extension the Kiro parity work binds, one row per
- * wire shape. Rows whose tuple the notification table above already binds
+ * Every engine→client extension the Kiro parity work binds, and the rows
+ * other engines' depth work added after it, one row per wire shape. Rows whose tuple the notification table above already binds
  * (`_kiro.dev/mcp/oauth_request`, …) re-route it to a new consumer; the
  * older row wins until it is removed with its handler.
  *
@@ -774,6 +785,26 @@ const ENGINE_EXTENSION_ROWS: readonly EngineExtensionBinding[] = [
     observed: LIVE,
     consumer: 'client.terminal-facts',
   },
+  // Qwen Code (`agentInfo.name` `qwen-code`).
+  {
+    // A subagent's own tool calls carry `_meta.provenance: 'subagent'` and
+    // name the Agent tool call that runs it as `_meta.parentToolCallId`;
+    // its progress notes on that call carry the marker with
+    // `subagentProgress: true`. The parent call's own result ends it.
+    id: 'qwen-code.tool.subagent',
+    wire: {
+      kind: 'tool-call-meta-field',
+      field: 'provenance',
+      value: 'subagent',
+    },
+    basis: 'undeclared-engine',
+    observed: {
+      variant: 'vendor-source',
+      source:
+        'QwenLM/qwen-code 6f754be65489 packages/cli/src/acp-integration/session/SubAgentTracker.ts, session/emitters/tool-call-emitter.ts, packages/acp-bridge/src/transcript-replay.ts buildUpdateMeta',
+    },
+    consumer: 'child-work',
+  },
 ];
 
 export const ENGINE_EXTENSION_BINDINGS: readonly EngineExtensionBinding[] =
@@ -870,6 +901,13 @@ export function engineExtensionBinding(
           other.method === wire.method &&
           other.sessionUpdate === wire.sessionUpdate
         );
+      }
+      case 'tool-call-meta-field': {
+        const other = row.wire as Extract<
+          EngineExtensionWire,
+          { kind: 'tool-call-meta-field' }
+        >;
+        return other.field === wire.field && other.value === wire.value;
       }
     }
   });

@@ -38,6 +38,7 @@ import type {
   ProviderSession,
 } from '../adapter-shape.js';
 import { observeInboundExtensionNotification } from '../extension-notification-observe.js';
+import { settleAcpNestedSubagent } from './acp-child-work.js';
 import {
   type CursorTodo,
   cursorTodosToPlanEntries,
@@ -328,6 +329,11 @@ export function mapAcpSessionUpdate(
         hasStatus: Object.hasOwn(update, 'status'),
       });
       mapEngineToolCallMeta(update, { ...ctx, logger: mapperLogger(ctx) });
+      // The end of the Agent call a listed nested subagent runs in ends it.
+      settleAcpNestedSubagent(update as unknown as Record<string, unknown>, {
+        ...ctx,
+        logger: mapperLogger(ctx),
+      });
       return;
     }
 

@@ -619,6 +619,25 @@ How the events behave:
   The roster's opaque `extension.notification` stays host chrome. Neither wire
   has a live capture (kirocrew's live captures omit the roster because it names
   the host's agents); the shapes are kirocrew's test vectors.
+  Qwen Code (`agentInfo.name` `qwen-code`) runs each subagent inside one Agent
+  tool call. The subagent's own tool calls carry `_meta.provenance:
+  'subagent'` and name that call as `_meta.parentToolCallId`. Its progress
+  notes on the call itself carry the marker with `subagentProgress: true`.
+  Station lists the subagent running from its first such frame, named by the
+  Agent call and labelled by `_meta.subagentType`, and ends it with that call's
+  own outcome. A subagent inside a subagent is its own child. These frames
+  stay tool calls too. The shape is read from Qwen Code's source, not a live
+  capture. Bound past 64 running like `agent-subtask`.
+  Not bound, with the reason:
+  - **Cursor's `cursor/task`.** Its documentation describes a completion
+    notification only, with no start, no session id, and no handshake
+    identity, and it also gives the notification a response type. A child
+    cannot be listed running from it.
+  - **Copilot CLI.** Its changelog says ACP clients receive subagent IDs, but
+    the wire shape is not public.
+  - **Goose `subagent_id`.** It appears only inside an MCP log entry relayed
+    as `_meta.toolNotification` on the parent call, with no start or end.
+    The emitter in Goose's current source could not be pinned.
 
 Observed on kiro-cli 2.35.0 `--agent-engine v3`:
 
