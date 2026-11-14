@@ -10,6 +10,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   ALL_DEPENDENCY_SCOPES,
   classifyChangedPaths,
@@ -35,6 +36,9 @@ import {
   pnpmDependencyGraph,
   pnpmImporterManifest,
 } from '../lib/pnpm-dependency-graph.mjs';
+
+// Removed in an after-hook, so a failed assertion cannot leak the fixture.
+const makeTempDir = trackTempDirs();
 
 const NOW = new Date('2026-07-10T00:00:00.000Z');
 
@@ -455,7 +459,7 @@ overrides:
   });
 
   it('admits a cacache glob major only through its own reviewed override', () => {
-    const root = mkdtempSync(path.join(tmpdir(), 'station-remediation-'));
+    const root = makeTempDir('station-remediation-');
     const put = (directory: string, manifest: object) => {
       mkdirSync(path.join(root, directory), { recursive: true });
       writeFileSync(
@@ -526,7 +530,7 @@ overrides:
         'override ^12.0.0 is below declared ^13.0.0',
       );
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      // The tracker removes `root`; nothing else to restore.
     }
   });
 
