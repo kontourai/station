@@ -1,7 +1,10 @@
 import { writeFileSync } from 'node:fs';
 import { afterEach, expect, test, vi } from 'vitest';
 
-vi.mock('node:fs', () => ({ writeFileSync: vi.fn() }));
+vi.mock('node:fs', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:fs')>()),
+  writeFileSync: vi.fn(),
+}));
 const argv = process.argv;
 afterEach(() => {
   process.argv = argv;

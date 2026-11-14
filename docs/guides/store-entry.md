@@ -167,9 +167,11 @@ Complete the [external TestFlight setup](mobile-release.md#nightly-external-test
 for beta review information, reviewer access and tester automatic updates.
 Internal cohort dispatches remain internal-only.
 
-Desktop Developer ID, Authenticode, and Tauri updater keys are a separate
-product. Skip them if this month is mobile beta only; those desktop jobs will
-fail closed until they exist.
+Desktop Developer ID and Tauri updater keys are a separate product. Skip them
+if this month is mobile beta only; those desktop jobs will fail closed until
+they exist. Windows Authenticode is optional: without it the tagged Windows MSI
+ships unsigned and records that state
+([#3591](https://github.com/kontourai/station/issues/3591)).
 
 ## 4. First binaries
 

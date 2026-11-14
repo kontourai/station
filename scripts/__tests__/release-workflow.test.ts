@@ -218,10 +218,7 @@ describe('frozen stable client-build provenance', () => {
       STATION_CLIENT_BUILD_REUSE: '1',
     });
     expect(
-      namedStep(
-        windows,
-        'Verify Windows Authenticode signature and versioned build output',
-      ).run,
+      namedStep(windows, 'Verify versioned MSI build provenance').run,
     ).toContain(
       'MSI build provenance does not byte-equal the preflight manifest',
     );

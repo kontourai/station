@@ -342,15 +342,30 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
-          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          for name in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD TAURI_SIGNING_PUBLIC_KEY WINDOWS_CERTIFICATE_BASE64 WINDOWS_CERTIFICATE_PASSWORD; do
+          for name in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD TAURI_SIGNING_PUBLIC_KEY; do
             test -n "${!name}" || { echo "Missing required protected secret: $name" >&2; exit 1; }
           done
           printf '%s' "$TAURI_SIGNING_PUBLIC_KEY" > "$RUNNER_TEMP/station-updater.pub"
           node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json" --updater-public-key-file "$RUNNER_TEMP/station-updater.pub" --updater-endpoint "${{ needs.preflight.outputs.desktop_updater_endpoint }}"
+      # #3591: no Windows publisher credentials ships an unsigned MSI and
+      # records NOT_SIGNED; a partial pair or WINDOWS_SIGN_COMMAND refuses.
+      - name: Decide the Windows Authenticode signing mode
+        id: windows-signing
+        shell: bash
+        env:
+          WINDOWS_SIGN_COMMAND: ${{ vars.WINDOWS_SIGN_COMMAND }}
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          node scripts/lib/windows-release-signing.mjs mode
+          if grep -qxF 'mode=unsigned' "$GITHUB_OUTPUT"; then
+            printf '%s\n' '{}' > "$RUNNER_TEMP/tauri.windows.release.conf.json"
+          fi
       - name: Import Windows Authenticode certificate
+        id: windows-certificate
+        if: ${{ steps.windows-signing.outputs.mode == 'certificate' }}
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
@@ -361,6 +376,7 @@ jobs:
           $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
           $imported = Import-PfxCertificate -FilePath $certificate -CertStoreLocation Cert:\CurrentUser\My -Password $password
           if (-not $imported.Thumbprint) { throw 'Windows signing certificate import failed' }
+          "thumbprint=$($imported.Thumbprint)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           $config = @{ bundle = @{ windows = @{ certificateThumbprint = $imported.Thumbprint; digestAlgorithm = 'sha256'; timestampUrl = 'http://timestamp.digicert.com' } } } | ConvertTo-Json -Compress -Depth 5
           $config | Set-Content -Path "$env:RUNNER_TEMP/tauri.windows.release.conf.json" -Encoding utf8
       - name: Build signed Windows staging candidate
@@ -373,14 +389,41 @@ jobs:
           STATION_CLIENT_BUILD_REUSE: '1'
         with:
           args: --target x86_64-pc-windows-msvc --config ${{ runner.temp }}/tauri.windows.release.conf.json --config ${{ runner.temp }}/tauri.release.conf.json
-      - name: Verify Windows Authenticode signature and versioned build output
+      # Observation only: this step records what Get-AuthenticodeSignature
+      # returned for the MSI. Which status and signer each mode accepts is
+      # decided by scripts/lib/windows-release-signing.mjs, here and again when
+      # the receipt is staged. windows-release-authenticode.process.test.ts
+      # runs this script under pwsh against real signed and unsigned files.
+      - name: Observe Windows Authenticode signature
+        id: windows-authenticode
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_MODE: ${{ steps.windows-signing.outputs.mode }}
+          EXPECTED_SIGNER_THUMBPRINT: ${{ steps.windows-certificate.outputs.thumbprint }}
+        run: |
+          $installers = @(Get-ChildItem 'src-desktop/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi')
+          if ($installers.Count -ne 1) { throw 'Expected exactly one MSI' }
+          $installer = $installers[0]
+          if (-not $installer.Name.Contains($env:RELEASE_VERSION)) { throw 'MSI filename does not carry release version' }
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
+          $observation = Join-Path $env:RUNNER_TEMP 'station-windows-authenticode.json'
+          [ordered]@{
+            installer = $installer.FullName
+            installerSha256 = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            authenticodeStatus = $signature.Status.ToString()
+            statusMessage = $signature.StatusMessage
+            signerThumbprint = if ($signature.SignerCertificate) { $signature.SignerCertificate.Thumbprint } else { $null }
+          } | ConvertTo-Json | Set-Content -LiteralPath $observation -Encoding utf8NoBOM
+          $expected = @()
+          if ($env:EXPECTED_SIGNER_THUMBPRINT) { $expected = @('--expected-thumbprint', $env:EXPECTED_SIGNER_THUMBPRINT) }
+          node scripts/lib/windows-release-signing.mjs check --mode "$env:WINDOWS_SIGNING_MODE" --observation $observation @expected
+          if ($LASTEXITCODE -ne 0) { throw "Windows Authenticode observation refused (exit $LASTEXITCODE)" }
+          "observation=$observation" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+      - name: Verify versioned MSI build provenance
         shell: pwsh
         run: |
-          $installers = Get-ChildItem 'src-desktop/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi'
+          $installers = @(Get-ChildItem 'src-desktop/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi')
           if ($installers.Count -ne 1) { throw 'Expected exactly one MSI' }
-          if (-not $installers[0].Name.Contains($env:RELEASE_VERSION)) { throw 'MSI filename does not carry release version' }
-          $signature = Get-AuthenticodeSignature $installers[0].FullName
-          if ($signature.Status -ne 'Valid') { throw "Invalid Authenticode status: $($signature.Status)" }
           $extracted = Join-Path $env:RUNNER_TEMP 'station-msi-provenance'
           $expected = [IO.File]::ReadAllBytes('src-desktop/station-client-build.json')
           Start-Process msiexec.exe -Wait -ArgumentList @('/a', $installers[0].FullName, '/qn', "TARGETDIR=$extracted")
@@ -391,13 +434,22 @@ jobs:
           for ($index = 0; $index -lt $expected.Length; $index += 1) {
             if ($expected[$index] -ne $actual[$index]) { throw 'MSI build provenance does not byte-equal the preflight manifest' }
           }
-      - name: Stage canonical signed Windows artifacts
+      - name: Stage canonical Windows artifacts and their signing receipt
         shell: bash
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
+          WINDOWS_SIGNING_MODE: ${{ steps.windows-signing.outputs.mode }}
+          AUTHENTICODE_OBSERVATION: ${{ steps.windows-authenticode.outputs.observation }}
+          EXPECTED_SIGNER_THUMBPRINT: ${{ steps.windows-certificate.outputs.thumbprint }}
         run: |
+          set -euo pipefail
           mkdir release-assets
           cp src-desktop/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi "release-assets/station-${RELEASE_TAG}-windows-x86_64.msi"
           cp src-desktop/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi.zip "release-assets/station-${RELEASE_TAG}-windows-x86_64.msi.zip"
           cp src-desktop/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi.zip.sig "release-assets/station-${RELEASE_TAG}-windows-x86_64.msi.zip.sig"
+          expected=()
+          if [ -n "$EXPECTED_SIGNER_THUMBPRINT" ]; then expected=(--expected-thumbprint "$EXPECTED_SIGNER_THUMBPRINT"); fi
+          node scripts/lib/windows-release-signing.mjs receipt --tag "$RELEASE_TAG" --sha "$RELEASE_SHA" --mode "$WINDOWS_SIGNING_MODE" --observation "$AUTHENTICODE_OBSERVATION" "${expected[@]}" --installer "release-assets/station-${RELEASE_TAG}-windows-x86_64.msi" --output "release-assets/station-${RELEASE_TAG}-windows-x86_64-signing.json" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -1147,8 +1199,8 @@ jobs:
             echo "Refusing to replace assets under existing release $RELEASE_TAG" >&2
             exit 1
           fi
-          install_channel="$RELEASE_CHANNEL"
-          if [ "$install_channel" = preview ]; then install_channel=beta; fi
-          node scripts/server-release-notes.mjs "$RELEASE_TAG" "$RELEASE_SHA" "$RUNNER_TEMP/server-notes.md" "Validated release inventory; publish through the protected Release: Publish workflow. Install with: curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/install.sh | STATION_CHANNEL=$install_channel sh"
+          node scripts/server-release-notes.mjs "$RELEASE_TAG" "$RELEASE_SHA" "$RUNNER_TEMP/server-notes.md" "Install with: curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/install.sh | STATION_CHANNEL=$RELEASE_CHANNEL sh"
+          node scripts/release-artifacts.mjs draft-notes --inventory release-assets/station-release-inventory.json --output "$RUNNER_TEMP/station-release-notes.md"
+          cat "$RUNNER_TEMP/station-release-notes.md" >> "$RUNNER_TEMP/server-notes.md"
           gh release create "$RELEASE_TAG" --draft --verify-tag --title "Station $RELEASE_TAG" --notes-file "$RUNNER_TEMP/server-notes.md"
           gh release upload "$RELEASE_TAG" release-assets/*
