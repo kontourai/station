@@ -22,6 +22,24 @@ describe('parseOpenCodeVersion', () => {
     expect(parseOpenCodeVersion('opencode dev')).toBeUndefined();
     expect(parseOpenCodeVersion('v2.3')).toBeUndefined();
     expect(parseOpenCodeVersion('1.2.3.4')).toBeUndefined();
+    // A version somewhere in other text is not the binary's version.
+    expect(
+      parseOpenCodeVersion(
+        'warning: config from 1.2.3 is old\nopencode v2.3.0',
+      ),
+    ).toBeUndefined();
+    expect(parseOpenCodeVersion('node v22.1.0 required')).toBeUndefined();
+    expect(parseOpenCodeVersion('opencode v2.3.0 (build abc)')).toBeUndefined();
+    expect(parseOpenCodeVersion('02.3.0')).toBeUndefined();
+  });
+
+  test('blank lines around the version line and a pre-release are read', () => {
+    expect(parseOpenCodeVersion('\n  2.3.0  \n')?.text).toBe('2.3.0');
+    expect(parseOpenCodeVersion('opencode 2.3.0')?.text).toBe('2.3.0');
+    // Kept whole, so it never matches the release's allowlist entry.
+    expect(parseOpenCodeVersion('opencode v2.4.0-beta.1')?.text).toBe(
+      '2.4.0-beta.1',
+    );
   });
 
   test('only 2.x and later serve natively', () => {

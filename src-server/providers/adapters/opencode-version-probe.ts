@@ -3,9 +3,12 @@
  *
  * OpenCode 1.x (npm `opencode-ai`) speaks only ACP. OpenCode 2.x also runs
  * `opencode serve` (HTTP + SSE), which Station can drive natively, and its
- * ACP is a client of that same server. 2.3.0 prints `opencode v2.3.0`; the
- * reader takes the first `major.minor.patch` it finds, so a bare `1.18.18`
- * reads too. Output it cannot read is `undefined`: unknown, never guessed.
+ * ACP is a client of that same server. 2.3.0 prints `opencode v2.3.0` and
+ * 1.x a bare `1.18.18`. The reader accepts only a first non-empty line that
+ * is exactly one of those forms (`[opencode ][v]X.Y.Z[-pre]`); anything else
+ * (a banner, a warning, a version inside other text) is `undefined`:
+ * unknown, never guessed. A pre-release keeps its suffix in `text`, so it
+ * never matches an allowlist entry for the release.
  *
  * A probe runs the binary, so its answer is kept per binary identity (real
  * path, size and modification time): an upgrade in place is a new identity
@@ -18,23 +21,35 @@ export interface OpenCodeVersion {
   readonly major: number;
   readonly minor: number;
   readonly patch: number;
-  /** `major.minor.patch`, as the allowlists are keyed. */
+  /** `major.minor.patch[-pre]`, as the allowlists are keyed. */
   readonly text: string;
 }
 
 export function parseOpenCodeVersion(
   output: string,
 ): OpenCodeVersion | undefined {
-  const match = /(?:^|[^\d.])(\d{1,4})\.(\d{1,4})\.(\d{1,6})(?![\d.])/.exec(
-    output.slice(0, 4096),
-  );
+  const line = output
+    .slice(0, 4096)
+    .split(/\r?\n/)
+    .map((text) => text.trim())
+    .find((text) => text.length > 0);
+  if (!line) return undefined;
+  const match =
+    /^(?:opencode\s+)?v?(0|[1-9]\d{0,3})\.(0|[1-9]\d{0,3})\.(0|[1-9]\d{0,5})(-[0-9A-Za-z][0-9A-Za-z.-]{0,63})?$/.exec(
+      line,
+    );
   if (!match) return undefined;
   const [major, minor, patch] = [match[1], match[2], match[3]].map(Number) as [
     number,
     number,
     number,
   ];
-  return { major, minor, patch, text: `${major}.${minor}.${patch}` };
+  return {
+    major,
+    minor,
+    patch,
+    text: `${major}.${minor}.${patch}${match[4] ?? ''}`,
+  };
 }
 
 /** OpenCode 2.x and later run `opencode serve`; 1.x is ACP-only. */
