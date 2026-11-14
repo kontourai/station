@@ -471,9 +471,9 @@ export class PluginRegistry {
    * does nothing.
    */
   retryUnavailableInventory(): void {
+    // A load in flight reports no failure, so this also refuses to start one
+    // beside it.
     if (
-      this.reloadInFlight ||
-      this.loadStatus.state !== 'degraded' ||
       this.loadStatus.failure !== 'registry-unavailable' ||
       !this.inventoryRetryable
     )
