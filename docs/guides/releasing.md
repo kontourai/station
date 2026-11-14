@@ -413,9 +413,14 @@ label, then arms auto-merge once. Adding the label or marking a PR ready also
 triggers trusted-base automation, which first verifies successful CI for its
 current head. Both landing jobs load their helpers from the workflow's own
 trusted revision (`github.workflow_sha`), including when the PR event's base
-predates those helpers. Arm runs for one PR branch are serialized, and an
-event the arm job skips (another label, a red or queue CI run, a dequeue)
-never takes a pending arm run's place. Candidate code is never executed. It does not poll the queue, bypass checks,
+predates those helpers. The arm job, not the workflow, holds the
+concurrency group, keyed by the PR's head branch, so arm runs for one PR are
+serialized and other PRs' runs never queue behind them. An event the arm job
+skips (another label, a red or queue CI run, a dequeue) is meant not to take
+a pending arm run's place; that relies on GitHub queuing a job for its
+concurrency group only after its `if` admits it, which GitHub does not
+document; a hosted run has not yet confirmed it here. A dequeue run and a label arm run for
+the same PR can run at once; both arm only the head they read. Candidate code is never executed. It does not poll the queue, bypass checks,
 merge main into contributors' branches or wake an agent for status observation.
 Repair PRs opt in automatically. Maintainers can label their own ready PRs;
 unlabelled lanes remain under their owner's control.
