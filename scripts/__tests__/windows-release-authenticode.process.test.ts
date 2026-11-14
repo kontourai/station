@@ -3,16 +3,14 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
-  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import { createWindowsReleaseSigningReceipt } from '../lib/windows-release-signing.mjs';
 
@@ -110,19 +108,15 @@ describe.skipIf(!onWindows)(
   `release.yml Authenticode observation under real pwsh${onWindows ? '' : ` (${SKIP_REASON})`}`,
   { timeout: STEP_TIMEOUT_MS * 2 },
   () => {
-    const temporaryRoots: string[] = [];
+    // Fixtures are shared by every test; each test's workspace is its own.
+    const makeFixtureDir = trackTempDirs({ lifetime: 'file' });
+    const makeWorkspace = trackTempDirs();
     let fixtureDir = '';
     let selfSignedThumbprint = '';
     let publisherThumbprint = '';
 
-    function temporary() {
-      const directory = mkdtempSync(join(tmpdir(), 'station-authenticode-'));
-      temporaryRoots.push(directory);
-      return directory;
-    }
-
     beforeAll(() => {
-      fixtureDir = temporary();
+      fixtureDir = makeFixtureDir('station-authenticode-fixtures-');
       const script = join(fixtureDir, 'fixtures.ps1');
       writeFileSync(script, FIXTURES);
       const result = pwsh(script, fixtureDir, {
@@ -138,16 +132,11 @@ describe.skipIf(!onWindows)(
       ));
     }, STEP_TIMEOUT_MS * 2);
 
-    afterAll(() => {
-      for (const directory of temporaryRoots.splice(0))
-        rmSync(directory, { recursive: true, force: true });
-    });
-
     /** Run the extracted step with `fixture` as the bundle's only MSI. */
     function observe(fixture: string, mode: string, expectedThumbprint = '') {
       if (!observeScript)
         throw new Error(`Missing desktop-windows step ${OBSERVE}`);
-      const workspace = temporary();
+      const workspace = makeWorkspace('station-authenticode-');
       symlinkSync(
         resolve(root, 'scripts'),
         join(workspace, 'scripts'),

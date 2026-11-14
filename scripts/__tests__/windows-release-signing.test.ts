@@ -2,16 +2,14 @@ import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
-  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import {
   assertWindowsReleaseSigningReceipt,
@@ -52,7 +50,6 @@ function observation(
     signerThumbprint,
   };
 }
-const temporaryRoots: string[] = [];
 /** A GitHub Actions expression exactly as release.yml spells it. */
 const gh = (expression: string) => ['$', '{{ ', expression, ' }}'].join('');
 
@@ -83,16 +80,8 @@ const PROVENANCE = 'Verify versioned MSI build provenance';
 const STAGE = 'Stage canonical Windows artifacts and their signing receipt';
 const UPDATER = 'Fail closed and create tag-bound updater configuration';
 
-function temporary() {
-  const directory = mkdtempSync(join(tmpdir(), 'station-windows-signing-'));
-  temporaryRoots.push(directory);
-  return directory;
-}
-
-afterEach(() => {
-  for (const directory of temporaryRoots.splice(0))
-    rmSync(directory, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
+const temporary = () => makeTempDir('station-windows-signing-');
 
 /** Run a release.yml step the way `shell: bash` does on the runner. */
 function runStep(script: string, cwd: string, env: Record<string, string>) {
