@@ -29,6 +29,12 @@ import {
   validateSbomBytes,
   validateSbomDescriptorSet,
 } from './release-sboms.mjs';
+import {
+  assertWindowsReleaseSigningReceipt,
+  windowsPlatformSigningClaim,
+  windowsPlatformSigningClaims,
+  windowsSigningReceiptAsset,
+} from './windows-release-signing.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
 const CHECKSUM = /^[0-9a-f]{64}$/;
@@ -207,6 +213,8 @@ export function verifyTauriUpdaterSignature({
 function ancillaryAssets(tag) {
   return [
     { name: 'station-updater-public-key.txt', role: 'updater-public-key' },
+    // #3591: records whether the Windows MSI carries Authenticode.
+    { name: windowsSigningReceiptAsset(tag), role: 'platform-signing-receipt' },
     {
       name: 'station-portable.tar.gz.sha256',
       role: 'portable-checksum',
@@ -430,9 +438,17 @@ export function createReleaseInventory({
     generatedAt,
     dependencyLifecycle,
     container,
-    variants: releaseVariants(tag).map(({ files, ...variant }) => variant),
+    variants: [],
     assets: collectAssets(tag, assetsDir),
   };
+  const windowsClaim = windowsPlatformSigningClaim(
+    readWindowsSigningReceipt(inventory, assetsDir),
+  );
+  inventory.variants = releaseVariants(tag).map(({ files, ...variant }) =>
+    variant.id === WINDOWS_VARIANT
+      ? { ...variant, platformSigning: windowsClaim }
+      : variant,
+  );
   inventory.sboms = readSbomDescriptors(inventory, assetsDir);
   validateReleaseInventory(inventory, { assetsDir, updaterPublicKey });
   return inventory;
@@ -457,6 +473,49 @@ function validateSchema(inventory) {
   fail(`schema validation failed: ${details || 'unknown schema error'}`);
 }
 
+const WINDOWS_VARIANT = 'windows-x86_64';
+
+function sameClaim(left, right) {
+  return left?.state === right.state && left?.proof === right.proof;
+}
+
+/**
+ * The signing receipt release.yml's desktop-windows job staged, bound to the
+ * inventory's Windows MSI checksum (validateAssets ties that to the bytes).
+ */
+function readWindowsSigningReceipt(inventory, assetsDir) {
+  const file = regularFile(
+    join(assetsDir, windowsSigningReceiptAsset(inventory.tag)),
+    'Windows signing receipt',
+  );
+  const installer = inventory.assets.find(
+    (asset) => asset.variantId === WINDOWS_VARIANT && asset.role === 'primary',
+  );
+  try {
+    return assertWindowsReleaseSigningReceipt(
+      JSON.parse(readFileSync(file, 'utf8')),
+      {
+        tag: inventory.tag,
+        sourceSha: inventory.sourceSha,
+        installerSha256: installer?.sha256,
+      },
+    );
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/** The Windows claim must be the one its receipt records, never assumed. */
+function validateWindowsSigning(inventory, assetsDir) {
+  if (!assetsDir) return;
+  const claim = windowsPlatformSigningClaim(
+    readWindowsSigningReceipt(inventory, assetsDir),
+  );
+  const variant = inventory.variants.find(({ id }) => id === WINDOWS_VARIANT);
+  if (!sameClaim(variant?.platformSigning, claim))
+    fail(`${WINDOWS_VARIANT} platformSigning differs from its signing receipt`);
+}
+
 function validateVariants(inventory) {
   const expected = releaseVariants(inventory.tag);
   const expectedVariants = new Map(
@@ -479,16 +538,26 @@ function validateVariants(inventory) {
       if (variant[key] !== expectedVariant[key])
         fail(`${variant.id} has an invalid ${key}`);
     }
+    // Owner decision 2026-11-13 (#3591): Windows may ship without
+    // Authenticode; validateWindowsSigning binds the claim to its receipt.
+    const unsignedWindows =
+      variant.id === WINDOWS_VARIANT &&
+      windowsPlatformSigningClaims().some(
+        (claim) =>
+          claim.state === 'unsigned' &&
+          sameClaim(variant.platformSigning, claim),
+      );
     for (const claim of ['platformSigning', 'updaterSigning']) {
-      if (
-        variant[claim].state !== expectedVariant[claim].state ||
-        variant[claim].proof !== expectedVariant[claim].proof
-      )
+      const allowed =
+        claim === 'platformSigning' && variant.id === WINDOWS_VARIANT
+          ? windowsPlatformSigningClaims()
+          : [expectedVariant[claim]];
+      if (!allowed.some((expected) => sameClaim(variant[claim], expected)))
         fail(`${variant.id} makes an invalid ${claim} claim`);
     }
     if (
       variant.distribution === 'distributable' &&
-      (variant.platformSigning.state === 'unsigned' ||
+      ((variant.platformSigning.state === 'unsigned' && !unsignedWindows) ||
         variant.updaterSigning.state === 'unsigned')
     )
       fail(`${variant.id} is unsigned but distributable`);
@@ -755,6 +824,7 @@ export function validateReleaseInventory(
     }
   }
   validateSidecars(inventory, assetsDir);
+  validateWindowsSigning(inventory, assetsDir);
   validateHostStream(inventory, assetsDir, manifestKeys);
   validateContainer(inventory, assetsDir, containerDescriptor);
   validateUpdaterPairs(inventory, assetsDir, updaterPublicKey);

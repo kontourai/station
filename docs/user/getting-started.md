@@ -360,8 +360,12 @@ is published means the two files are from different builds; download both
 again.
 
 The Windows installer is not publisher-signed yet
-([#3591](https://github.com/kontourai/station/issues/3591)). When you run
-the downloaded installer, Microsoft Defender SmartScreen therefore shows
+([#3591](https://github.com/kontourai/station/issues/3591)). This applies to
+the Nightly installer and to the Windows MSI on tagged
+[releases](https://github.com/kontourai/station/releases)
+(`station-v<version>-windows-x86_64.msi`), whose release records it as
+unsigned. When you run the downloaded installer, Microsoft Defender
+SmartScreen therefore shows
 "Windows protected your PC" with an unknown publisher; choose **More info**,
 then **Run anyway**. On Windows 11 with Smart App Control turned on, Windows
 can block the unsigned installer with no such option. The app's own updates

@@ -1080,6 +1080,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // processes with release.yml's arguments. Single-shot spawns, no wall-clock
   // assertion.
   'scripts/__tests__/release-artifacts.test.ts',
+  // #3591: runs release.yml's desktop-windows signing-mode and receipt
+  // staging bash steps as real child processes. Single-shot spawns, no
+  // wall-clock assertion.
+  'scripts/__tests__/windows-release-signing.test.ts',
   // #2977: runs release.yml's assemble-draft admission step as a real bash
   // child against a download-artifact-shaped fixture root.
   'scripts/__tests__/release-admit-producer-assets.test.ts',
