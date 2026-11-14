@@ -12,6 +12,15 @@ const JOB_MANIFEST_KIND = 'station.qualification-job-manifest';
 export const JOB_MANIFEST_FILE = 'job-manifest.json';
 /** Environment variable naming the directory a job's manifest goes to. */
 export const MANIFEST_DIR_ENV = 'STATION_QUALIFICATION_MANIFEST_DIR';
+/**
+ * The manifest directory a producer writes to, or undefined. Unset or empty
+ * means no manifest and no extra reporters: the runner behaves exactly as it
+ * does without this feature.
+ */
+export function manifestDirectoryFromEnv(env = process.env) {
+  const value = env[MANIFEST_DIR_ENV];
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
 /** Environment variable carrying the job's displayed name. */
 export const JOB_LABEL_ENV = 'STATION_QUALIFICATION_JOB_LABEL';
 

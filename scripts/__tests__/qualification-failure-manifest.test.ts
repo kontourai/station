@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import {
   copyFileSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -16,6 +17,7 @@ import {
   groupExplained,
   JOB_MANIFEST_FILE,
   jobExplained,
+  manifestDirectoryFromEnv,
   parseJobManifest,
 } from '../lib/qualification-failure-manifest.mjs';
 import {
@@ -355,6 +357,95 @@ describe('the manifest never changes a run (real runner)', () => {
     );
     expect(job.explained).toBe(false);
   }, 120_000);
+});
+
+describe('a failure reporter Vitest cannot load (real runner)', () => {
+  it('runs the group as with the gate off and records why, so green and red keep their exits', async () => {
+    for (const [source, status] of [
+      ["import { it } from 'vitest';\nit('passes', () => {});\n", 0],
+      [FAILING, 1],
+    ] as const) {
+      const root = fixture({ 'a.test.mjs': source });
+      writeFileSync(
+        join(root, 'scripts', 'vitest-failure-reporter.mjs'),
+        'export default class {\n',
+      );
+      const manifestDirectory = join(root, 'manifest');
+      const result = await runVitestGroup(group, ['a.test.mjs'], {
+        root,
+        manifestDirectory,
+      });
+      expect(result.status).toBe(status);
+      const entry = JSON.parse(
+        readFileSync(join(manifestDirectory, 'process-heavy.json'), 'utf8'),
+      );
+      expect(
+        entry.runnerErrors.map((error: { kind: string }) => error.kind),
+      ).toContain('failure-reporter-unavailable');
+      expect(entry.explained).toBe(false);
+    }
+  }, 120_000);
+});
+
+describe('the producers write nothing with the gate unset (real CLIs)', () => {
+  const run = async (
+    script: string,
+    args: string[],
+    env: NodeJS.ProcessEnv,
+  ) => {
+    const scratch = makeTempDir('station-gate-off-');
+    const environment: NodeJS.ProcessEnv = {
+      ...process.env,
+      RUNNER_TEMP: scratch,
+      TMPDIR: scratch,
+      GITHUB_RUN_ID: '7',
+      GITHUB_RUN_ATTEMPT: '1',
+      ...env,
+    };
+    delete environment.STATION_QUALIFICATION_MANIFEST_DIR;
+    Object.assign(environment, env);
+    await exec(process.execPath, [join(repo, script), ...args], {
+      cwd: scratch,
+      env: environment,
+      windowsHide: true,
+    }).catch(() => undefined);
+    const found = execFileSyncList(scratch);
+    return found;
+  };
+  // Every file the CLI left under its scratch cwd, RUNNER_TEMP and TMPDIR.
+  function execFileSyncList(directory: string): string[] {
+    const listed: string[] = [];
+    const walk = (current: string) => {
+      for (const entry of readdirSync(current, { withFileTypes: true }))
+        if (entry.isDirectory()) walk(join(current, entry.name));
+        else listed.push(entry.name);
+    };
+    walk(directory);
+    return listed;
+  }
+
+  for (const [script, args] of [
+    ['scripts/run-full-regression-phases.mjs', ['--phase=no-such-phase']],
+    ['scripts/run-e2e-suite.mjs', ['--suite=no-such-suite']],
+  ] as const)
+    it(`${script} writes a manifest only when the directory is set`, async () => {
+      expect(await run(script, [...args], {})).not.toContain(JOB_MANIFEST_FILE);
+      const directory = makeTempDir('station-gate-on-');
+      await run(script, [...args], {
+        STATION_QUALIFICATION_MANIFEST_DIR: directory,
+      });
+      expect(readdirSync(directory)).toContain(JOB_MANIFEST_FILE);
+    }, 60_000);
+
+  it('reads the gate as unset when absent or empty', () => {
+    expect(manifestDirectoryFromEnv({})).toBeUndefined();
+    expect(
+      manifestDirectoryFromEnv({ STATION_QUALIFICATION_MANIFEST_DIR: '' }),
+    ).toBeUndefined();
+    expect(
+      manifestDirectoryFromEnv({ STATION_QUALIFICATION_MANIFEST_DIR: '/x' }),
+    ).toBe('/x');
+  });
 });
 
 describe('the manifest gate (STATION_QUALIFICATION_MANIFEST_DIR)', () => {

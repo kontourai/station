@@ -170,8 +170,25 @@ function unexplainedReason(manifest) {
       kinds.add(`phase ${phase.phase}: ${phase.error}`.slice(0, 200));
     else if (!phase.corpus && phase.exitStatus !== 0)
       kinds.add(`phase ${phase.phase} failed without test identities`);
-    for (const group of phase.groups)
+    for (const group of phase.groups) {
       for (const error of group.runnerErrors) kinds.add(error.kind);
+      for (const file of group.failedFiles)
+        kinds.add(
+          `${file.file} failed outside a named test (${file.reason === 'load' ? 'did not load' : 'a hook or suite failed'})`.slice(
+            0,
+            200,
+          ),
+        );
+      const identities = new Set(
+        group.failedTests.map((test) =>
+          JSON.stringify([test.file, test.titlePath, test.project ?? null]),
+        ),
+      );
+      if (identities.size !== group.failedTests.length)
+        kinds.add('a failed test identity is reported more than once');
+      if (group.counts.unhandledErrors)
+        kinds.add(`${group.counts.unhandledErrors} unhandled error(s)`);
+    }
   }
   return kinds.size
     ? `unexplained (${[...kinds].join('; ')})`
@@ -215,7 +232,10 @@ export function classifyRun({ run, jobs, manifests, entries, issueStates }) {
     );
     if (
       failedSteps.length !== 1 ||
-      !MANIFEST_PHASE_STEPS.includes(failedSteps[0].name)
+      !MANIFEST_PHASE_STEPS.includes(failedSteps[0].name) ||
+      // The phase step must have failed, not been cancelled, timed out or
+      // left without a conclusion.
+      failedSteps[0].conclusion !== 'failure'
     ) {
       newFailure(
         `failed in step(s) ${failedSteps.map((step) => `"${step.name}" (${step.conclusion})`).join(', ') || 'none'}, not only in its test phase`,

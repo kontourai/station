@@ -26,6 +26,7 @@ import {
   JOB_LABEL_ENV,
   JOB_MANIFEST_FILE,
   MANIFEST_DIR_ENV,
+  manifestDirectoryFromEnv,
 } from './lib/qualification-failure-manifest.mjs';
 import {
   collectWorkspaceProvenance,
@@ -474,7 +475,7 @@ async function main() {
   const unregister = ['SIGINT', 'SIGTERM'].map((name) =>
     registerProcessSignal(name, () => controller.abort(name)),
   );
-  const manifestDirectory = process.env[MANIFEST_DIR_ENV] || undefined;
+  const manifestDirectory = manifestDirectoryFromEnv();
   let plan = [];
   let results = [];
   const phaseGroups = new Map();

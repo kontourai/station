@@ -62,7 +62,7 @@ import {
   clipText,
   JOB_LABEL_ENV,
   JOB_MANIFEST_FILE,
-  MANIFEST_DIR_ENV,
+  manifestDirectoryFromEnv,
 } from './lib/qualification-failure-manifest.mjs';
 
 installNodeHttpCompatibility();
@@ -471,7 +471,7 @@ export function e2eJobManifest(
 }
 
 function writeE2EManifest(thrown) {
-  const directory = process.env[MANIFEST_DIR_ENV];
+  const directory = manifestDirectoryFromEnv();
   if (!directory) return;
   try {
     let sourceSha = '';

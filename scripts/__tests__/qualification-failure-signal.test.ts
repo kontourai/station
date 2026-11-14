@@ -731,6 +731,93 @@ describe('review round: hooks, duplicates, steps, bounds', () => {
     ).toBe(true);
   });
 
+  it('requires the single non-success step to be the phase step and to have failed', () => {
+    const manifests = {
+      a: manifest('Exclusive corpora', [group([KNOWN_TEST])]),
+    };
+    for (const conclusion of ['cancelled', 'timed_out', 'neutral', null])
+      expect(
+        reasons(
+          JOBS(
+            job('Exclusive corpora', 'failure', [
+              {
+                name: 'Run full-regression phases',
+                conclusion: conclusion as string,
+              },
+            ]),
+          ),
+          manifests,
+        )[0],
+        String(conclusion),
+      ).toMatch(/^failed in step/);
+  });
+
+  it('names the cause when a failed file or a repeated identity leaves a job unexplained', () => {
+    expect(
+      reasons(JOBS(exclusive), {
+        a: manifest('Exclusive corpora', [
+          group([KNOWN_TEST], {
+            failedFiles: [{ file: 'other.test.ts', reason: 'suite' }],
+          }),
+        ]),
+      })[0],
+    ).toMatch(
+      /other\.test\.ts failed outside a named test \(a hook or suite failed\)/,
+    );
+    expect(
+      reasons(JOBS(exclusive), {
+        a: manifest('Exclusive corpora', [
+          group([KNOWN_TEST], {
+            failedFiles: [{ file: 'b.test.ts', reason: 'load' }],
+          }),
+        ]),
+      })[0],
+    ).toMatch(/b\.test\.ts failed outside a named test \(did not load\)/);
+    expect(
+      reasons(JOBS(exclusive), {
+        a: manifest('Exclusive corpora', [
+          group([KNOWN_TEST, KNOWN_TEST], {
+            counts: {
+              reporterFailedTests: 2,
+              reporterFailedFiles: 1,
+              unhandledErrors: 0,
+            },
+          }),
+        ]),
+      })[0],
+    ).toMatch(/reported more than once/);
+  });
+
+  it('pins the manifest bounds as literals: 64 manifests and 4 MiB pass, one more of either is refused', () => {
+    const own = manifest('Exclusive corpora', [group([KNOWN_TEST])]);
+    const sized = (bytes: number) => {
+      const text = JSON.stringify(own);
+      return `${text}${' '.repeat(bytes - Buffer.byteLength(text))}`;
+    };
+    const FOUR_MIB = 4_194_304;
+    expect(reasons(JOBS(exclusive), { a: sized(FOUR_MIB) })).toEqual([]);
+    expect(reasons(JOBS(exclusive), { a: sized(FOUR_MIB + 1) })[0]).toMatch(
+      /manifest exceeds 4194304 bytes/,
+    );
+    const fill = (count: number) => {
+      const directory = makeTempDir('station-manifest-count-');
+      for (let index = 0; index < count; index++) {
+        mkdirSync(join(directory, `m${index}`));
+        writeFileSync(
+          join(directory, `m${index}`, JOB_MANIFEST_FILE),
+          JSON.stringify(manifest(`Job ${index}`, [group([])])),
+        );
+      }
+      return readJobManifests(directory);
+    };
+    expect(fill(64).filter((item) => item.error)).toEqual([]);
+    expect(
+      fill(65)
+        .filter((item) => item.error)
+        .map((item) => item.error),
+    ).toEqual(['too many manifests']);
+  });
+
   it('enforces only on the exact word', () => {
     for (const value of [' enforce', 'enforce ', 'ENFORCE', 'enforce\n'])
       expect(signalMode(value), JSON.stringify(value)).toBe('report');

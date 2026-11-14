@@ -15,6 +15,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { stripVTControlCharacters } from 'node:util';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
@@ -28,7 +29,7 @@ import {
   clipText,
   groupExplained,
   MANIFEST_BOUNDS,
-  MANIFEST_DIR_ENV,
+  manifestDirectoryFromEnv,
 } from './lib/qualification-failure-manifest.mjs';
 import { FULL_REGRESSION_PHASES } from './verification-lanes.mjs';
 import { FAILURE_REPORT_ENV } from './vitest-failure-reporter.mjs';
@@ -696,10 +697,14 @@ function runnerErrorKind(result) {
  * runner itself saw go wrong is a runner error, which leaves the group
  * unexplained.
  */
-export function vitestGroupManifest(result, { failureReport, jsonReport }) {
+export function vitestGroupManifest(
+  result,
+  { failureReport, jsonReport, setupError = null },
+) {
   const runnerErrors = [];
   const fail = (kind, message) =>
     runnerErrors.push({ kind, message: clipText(message) });
+  if (setupError) fail('failure-reporter-unavailable', setupError);
   if (result.error) fail(runnerErrorKind(result), result.error);
   if (
     result.status !== null &&
@@ -805,20 +810,44 @@ export async function runVitestGroup(group, files, options = {}) {
   }
   const failureReport = resolve(reports, 'failures.json');
   const jsonReport = resolve(reports, 'vitest.json');
+  // A reporter Vitest cannot load fails the whole run, so load it here
+  // first. If it cannot be loaded the group runs exactly as with the gate
+  // off and its entry records why, which leaves it unexplained.
+  let setupError = null;
+  try {
+    const reporter = await import(
+      pathToFileURL(
+        resolve(
+          rest.root ?? process.cwd(),
+          'scripts/vitest-failure-reporter.mjs',
+        ),
+      ).href
+    );
+    if (typeof reporter.default !== 'function')
+      throw new Error('the failure reporter has no default export');
+  } catch (error) {
+    setupError = error instanceof Error ? error.message : String(error);
+  }
   let result;
   try {
-    result = await runVitestGroupOnce(group, files, {
-      ...rest,
-      failureReportJson: jsonReport,
-      extraEnv: { [FAILURE_REPORT_ENV]: failureReport },
-    });
+    result = setupError
+      ? await runVitestGroupOnce(group, files, rest)
+      : await runVitestGroupOnce(group, files, {
+          ...rest,
+          failureReportJson: jsonReport,
+          extraEnv: { [FAILURE_REPORT_ENV]: failureReport },
+        });
     return result;
   } catch (error) {
     result = terminalFailure(group.resultName ?? group.name, error);
     throw error;
   } finally {
     try {
-      const entry = vitestGroupManifest(result, { failureReport, jsonReport });
+      const entry = vitestGroupManifest(result, {
+        failureReport,
+        jsonReport,
+        setupError,
+      });
       mkdirSync(manifestDirectory, { recursive: true });
       writeFileSync(
         resolve(manifestDirectory, `${basename(entry.group)}.json`),
@@ -1185,7 +1214,7 @@ async function main() {
     const result = await runVitestCorpus({
       ...options,
       signal: controller.signal,
-      manifestDirectory: process.env[MANIFEST_DIR_ENV] || undefined,
+      manifestDirectory: manifestDirectoryFromEnv(),
       onResult: (group) =>
         emitResult(group, {
           diagnosticDirectory: resolve(
