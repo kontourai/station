@@ -43,19 +43,26 @@ describe('OpenCode serve captures', () => {
     expect(files.sort()).toEqual(
       [
         'basic',
+        'boot',
         'catalog',
         'compact',
         'crossload',
         'debug-agents',
+        'governed',
         'interrupt',
+        'interrupt-pending',
         'mcp',
+        'mode-switch',
         'permission-allow',
         'permission-reject',
         'permission-saved',
+        'plan-deny',
+        'plan-deny-override',
         'question',
         'reconnect',
         'revert',
         'steer',
+        'stop-pending',
         'subagent',
         'tools',
       ]
@@ -213,5 +220,70 @@ describe('OpenCode serve captures', () => {
     expect(single?.args).toEqual(['debug', 'agent', 'build']);
     expect(single?.status).toBe(1);
     expect(single?.stderr).toContain('Unknown subcommand "agent"');
+  });
+
+  test('(d) just after /api/info is ready, GET /api/agent/{id} is briefly 404', () => {
+    const boot = lines('boot').filter((line) => line.kind === 'http');
+    const ready = boot.findIndex(
+      (line) => line.path === '/api/info' && line.status === 200,
+    );
+    const agent = boot.slice(ready + 1);
+    expect(ready).toBeGreaterThanOrEqual(0);
+    expect(agent[0]).toMatchObject({
+      path: '/api/agent/build',
+      status: 404,
+      response: { _tag: 'AgentNotFoundError', agentID: 'build' },
+    });
+    expect(agent.at(-1)).toMatchObject({ status: 200 });
+  });
+
+  test('(e) PATCH permissions:null keeps the session rules; [] clears them', () => {
+    const http = lines('mode-switch').filter((line) => line.kind === 'http');
+    const at = (body: unknown) =>
+      http.findIndex(
+        (line) =>
+          line.method === 'PATCH' &&
+          JSON.stringify((line as { body?: unknown }).body) ===
+            JSON.stringify(body),
+      );
+    const afterNull = http[at({ permissions: null }) + 1];
+    const afterEmpty = http[at({ permissions: [] }) + 1];
+    expect(afterNull?.method).toBe('GET');
+    expect(afterNull?.response.data.permissions.length).toBeGreaterThan(0);
+    expect(afterEmpty?.response.data.permissions).toEqual([]);
+  });
+
+  test('(f) an interrupt drops a pending ask without permission.replied; a late answer is 404', () => {
+    const scenario = lines('interrupt-pending');
+    expect(
+      scenario.some((line) => line.event?.type === 'permission.asked'),
+    ).toBe(true);
+    expect(
+      scenario.some(
+        (line) => line.event?.type === 'session.execution.interrupted',
+      ),
+    ).toBe(true);
+    expect(
+      scenario.some((line) => line.event?.type === 'permission.replied'),
+    ).toBe(false);
+    expect(
+      scenario.find(
+        (line) => line.kind === 'http' && line.path?.endsWith('/reply'),
+      )?.status,
+    ).toBe(404);
+  });
+
+  test("(g) a session's rules outrank the plan agent's deny unless the deny follows them", () => {
+    const asked = (scenario: string) =>
+      lines(scenario).some((line) => line.event?.type === 'permission.asked');
+    const failed = (scenario: string) =>
+      lines(scenario).find(
+        (line) => line.event?.type === 'session.tool.failed',
+      );
+    expect(asked('plan-deny-override')).toBe(true);
+    expect(asked('plan-deny')).toBe(false);
+    expect(failed('plan-deny')?.event.data.error.message).toContain(
+      'Cannot use edit',
+    );
   });
 });

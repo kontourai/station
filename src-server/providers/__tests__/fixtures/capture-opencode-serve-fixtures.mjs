@@ -8,6 +8,7 @@
 //   node src-server/providers/__tests__/fixtures/capture-opencode-serve-fixtures.mjs \
 //     --opencode <path-to-opencode-2.x> --work <empty-scratch-dir> \
 //     [--out <fixtures-dir>] [--port-base 47300] [--only basic,tools]
+//     [--config plain]   (only for the plan-deny scenarios)
 //
 // Isolation: OpenCode runs with HOME, XDG_* and TMPDIR inside --work, a
 // fresh git project at <work>/proj, an inline mock OpenAI-compatible model on
@@ -80,7 +81,7 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv.slice(2));
 if (!args.opencode || !args.work) {
   console.error(
-    'Usage: capture-opencode-serve-fixtures.mjs --opencode <bin> --work <empty-dir> [--out <dir>] [--port-base 47300] [--only a,b]',
+    'Usage: capture-opencode-serve-fixtures.mjs --opencode <bin> --work <empty-dir> [--out <dir>] [--port-base 47300] [--only a,b] [--config plain]',
   );
   process.exit(2);
 }
@@ -170,7 +171,8 @@ function plan(body) {
       chunks: [
         'Tool ',
         'finished: ',
-        JSON.stringify(textOf(last.content)).slice(0, 120),
+        // Scrubbed before it is cut, so a cut never leaves part of a path.
+        JSON.stringify(scrub(textOf(last.content))).slice(0, 120),
       ],
     };
   const user = textOf(last.content);
@@ -194,6 +196,8 @@ function plan(body) {
       command: 'echo hello-from-bash',
       description: 'echo test',
     });
+  if (user.includes('DO_LS'))
+    return call('shell', { command: 'ls -a', description: 'list files' });
   if (user.includes('DO_WRITE'))
     return call('write', { path: 'created.txt', content: 'created by mock\n' });
   if (user.includes('DO_EDIT'))
@@ -421,10 +425,16 @@ function prepareWorkspace() {
     model: 'mock/mock-1',
     update: 'disable',
     share: 'manual',
-    permissions: [
-      { action: '*', resource: '*', effect: 'allow' },
-      { action: 'shell', resource: '*', effect: 'ask' },
-    ],
+    // `--config plain` keeps OpenCode's own agent rules in force (no global
+    // allow after them), so an agent's configured deny is what decides.
+    ...(args.config === 'plain'
+      ? {}
+      : {
+          permissions: [
+            { action: '*', resource: '*', effect: 'allow' },
+            { action: 'shell', resource: '*', effect: 'ask' },
+          ],
+        }),
     mcp: {
       servers: {
         echo: {
@@ -525,17 +535,10 @@ for (const signal of ['SIGINT', 'SIGTERM'])
     process.exit(130);
   });
 
-async function startServe() {
+async function startServe(port = SERVE_PORT) {
   const child = spawnOwned(
     BIN,
-    [
-      'serve',
-      '--stdio',
-      '--hostname',
-      '127.0.0.1',
-      '--port',
-      String(SERVE_PORT),
-    ],
+    ['serve', '--stdio', '--hostname', '127.0.0.1', '--port', String(port)],
     {
       cwd: PROJ,
       env: engineEnv({ OPENCODE_PASSWORD: PASSWORD }),
@@ -750,10 +753,11 @@ async function settled(
   }
 }
 
-async function createSession(rec, title) {
+async function createSession(rec, title, extra = {}) {
   const created = await rec.api('POST', '/api/session', {
     title,
     location: { directory: realpathSync(PROJ) },
+    ...extra,
   });
   if (created.status !== 200)
     throw new Error(`session.create ${created.status}`);
@@ -1165,6 +1169,234 @@ S['debug-agents'] = async (rec) => {
   );
 };
 
+// ---------------------------------------------------------------- governed sessions
+
+// Station's session rulesets as `openCodeNativeApprovalRules`
+// (opencode-approval-native.ts) builds them; kept in step by hand.
+const FULL_RULES = [{ action: '*', resource: '*', effect: 'allow' }];
+const CONFINED_RULES = [
+  ...[
+    'shell',
+    'edit',
+    'webfetch',
+    'websearch',
+    'external_directory',
+    '*_*',
+  ].map((action) => ({ action, resource: '*', effect: 'ask' })),
+  { action: 'subagent', resource: '*', effect: 'deny' },
+];
+
+async function askAndAnswer(rec, tap, s, text, decision = 'once') {
+  const before = tap.count(is('permission.asked', s));
+  const started = tap.count(is('session.execution.started', s));
+  await rec.api('POST', `/api/session/${s}/prompt`, { text });
+  const asks = () => tap.events.filter(is('permission.asked', s));
+  await tap.waitFor(() => asks().length > before);
+  const asked = asks()[before];
+  await rec.api('POST', `/api/session/${s}/permission/${asked.data.id}/reply`, {
+    decision,
+  });
+  await settled(tap, s, { minExecutions: started + 1 });
+  return asked;
+}
+
+// The real server just after it reports ready: `/api/info` answers before
+// the agent catalog is loaded, so `GET /api/agent/{id}` is briefly 404.
+// Its own server on the next port, so the shared one stays warm.
+S.boot = async (rec) => {
+  const boot = await startServe(SERVE_PORT + 1);
+  const base = rec.base;
+  rec.base = boot.url;
+  try {
+    for (let i = 0; i < 200; i += 1) {
+      const info = await rec.api('GET', '/api/info').catch(() => undefined);
+      if (info?.status === 200) break;
+      await sleep(25);
+    }
+    let notFound = 0;
+    for (let i = 0; i < 200; i += 1) {
+      const agent = await rec.api('GET', '/api/agent/build');
+      if (agent.status === 200) break;
+      if (agent.status === 404) notFound += 1;
+      await sleep(25);
+    }
+    rec.finding(
+      `GET /api/agent/build answered 404 ${notFound} time(s) after /api/info was 200`,
+    );
+  } finally {
+    rec.base = base;
+    await stopOwned(boot.child);
+  }
+};
+
+// Station's approval mode changes between turns: full access, then Ask
+// (PATCH the session's rules), then the agent switches; then what PATCH
+// does with `permissions: null` and with `[]`.
+S['mode-switch'] = async (rec) => {
+  const A = await rec.tap('A');
+  const s = await createSession(rec, 'mode-switch', {
+    agent: 'build',
+    permissions: FULL_RULES,
+  });
+  await rec.api('POST', `/api/session/${s}/prompt`, { text: 'DO_BASH full' });
+  await settled(A, s);
+  rec.finding(
+    `full access: ${A.count(is('permission.asked', s))} permission asks for DO_BASH`,
+  );
+  await rec.api('GET', '/api/agent/build');
+  await rec.api('GET', '/api/permission/saved');
+  await rec.api('PATCH', `/api/session/${s}`, { permissions: CONFINED_RULES });
+  await askAndAnswer(rec, A, s, 'DO_BASH ask');
+  rec.finding(
+    `after PATCH to Ask's rules: ${A.count(is('permission.asked', s))} permission ask(s)`,
+  );
+  await rec.api('GET', '/api/agent/plan');
+  await rec.api('POST', `/api/session/${s}/agent`, { agent: 'plan' });
+  await sleep(300);
+  await rec.api('POST', `/api/session/${s}/prompt`, { text: 'hello plan' });
+  await settled(A, s, { minExecutions: 3 });
+  const kept = await rec.api('PATCH', `/api/session/${s}`, {
+    permissions: null,
+  });
+  const afterNull = await rec.api('GET', `/api/session/${s}`);
+  const cleared = await rec.api('PATCH', `/api/session/${s}`, {
+    permissions: [],
+  });
+  const afterEmpty = await rec.api('GET', `/api/session/${s}`);
+  rec.finding(
+    `PATCH permissions:null -> ${kept.status}, rules after: ${JSON.stringify(afterNull.json?.data?.permissions ?? null).length} chars; PATCH permissions:[] -> ${cleared.status}, rules after: ${JSON.stringify(afterEmpty.json?.data?.permissions ?? null)}`,
+  );
+};
+
+// A governed session (Ask's rules): an edit, the same shell command twice,
+// then another shell command, each asked and answered once. What each ask
+// names (`resources`, `save`) is what a session grant is scoped by.
+S.governed = async (rec) => {
+  const A = await rec.tap('A');
+  const s = await createSession(rec, 'governed', {
+    agent: 'build',
+    permissions: CONFINED_RULES,
+  });
+  const asks = [];
+  for (const text of [
+    'DO_EDIT one',
+    'DO_BASH two',
+    'DO_BASH three',
+    'DO_LS four',
+  ])
+    asks.push(await askAndAnswer(rec, A, s, text));
+  rec.finding(
+    `asks: ${asks.map((a) => `${a.data.action} ${JSON.stringify(a.data.resources)} save ${JSON.stringify(a.data.save ?? null)}`).join('; ')}`,
+  );
+};
+
+// An interrupt while a permission ask is pending: what the engine says of
+// the ask, and what a late answer to it gets.
+S['interrupt-pending'] = async (rec) => {
+  const A = await rec.tap('A');
+  const s = await createSession(rec, 'interrupt-pending', {
+    agent: 'build',
+    permissions: CONFINED_RULES,
+  });
+  await rec.api('POST', `/api/session/${s}/prompt`, { text: 'DO_BASH wait' });
+  const asked = await A.waitFor(is('permission.asked', s));
+  await rec.api('POST', `/api/session/${s}/interrupt`);
+  await A.waitFor(is('session.execution.interrupted', s), 10_000);
+  await sleep(500);
+  const listed = await rec.api('GET', `/api/session/${s}/permission`);
+  const late = await rec.api(
+    'POST',
+    `/api/session/${s}/permission/${asked.data.id}/reply`,
+    { decision: 'once' },
+  );
+  rec.finding(
+    `after interrupt: permission.replied ${A.count(is('permission.replied', s))}, pending listed ${(listed.json?.data ?? []).length}, late reply -> ${late.status}`,
+  );
+};
+
+// Stopping a session with an ask pending: Station rejects the ask, then
+// interrupts the execution.
+S['stop-pending'] = async (rec) => {
+  const A = await rec.tap('A');
+  const s = await createSession(rec, 'stop-pending', {
+    agent: 'build',
+    permissions: CONFINED_RULES,
+  });
+  await rec.api('POST', `/api/session/${s}/prompt`, { text: 'DO_BASH stop' });
+  const asked = await A.waitFor(is('permission.asked', s));
+  await rec.api('POST', `/api/session/${s}/permission/${asked.data.id}/reply`, {
+    decision: 'reject',
+  });
+  await rec.api('POST', `/api/session/${s}/interrupt`);
+  await A.waitFor((e) => TERMINAL.has(e.type) && sid(e) === s, 10_000);
+  await sleep(300);
+  rec.finding(
+    `stop: ended ${A.events.find((e) => TERMINAL.has(e.type) && sid(e) === s)?.type}`,
+  );
+};
+
+/**
+ * The plan agent's own rules after Station's, as
+ * `openCodeNativeSessionRules` keeps them: its effective deny, and the
+ * narrower exception after it no looser than Station's rule (here, ask).
+ */
+function planGuard(agentRules) {
+  const at = agentRules.findIndex(
+    (r) => r.action === 'edit' && r.resource === '*' && r.effect === 'deny',
+  );
+  if (at < 0) return [];
+  return agentRules
+    .slice(at)
+    .filter((r) => r.action === 'edit')
+    .map((r) => (r.effect === 'allow' ? { ...r, effect: 'ask' } : r));
+}
+
+// Run with `--config plain`: the plan agent's `edit * deny` decides. With
+// Station's rules alone after it, the session's `edit * ask` wins (last
+// match) and the edit is asked instead of denied.
+S['plan-deny-override'] = async (rec) => {
+  const A = await rec.tap('A');
+  await rec.api('GET', '/api/agent/plan');
+  const s = await createSession(rec, 'plan-override', {
+    agent: 'plan',
+    permissions: CONFINED_RULES,
+  });
+  await rec.api('POST', `/api/session/${s}/prompt`, { text: 'DO_EDIT plan' });
+  await A.waitFor(
+    (e) =>
+      sid(e) === s && (e.type === 'permission.asked' || TERMINAL.has(e.type)),
+  );
+  const asked = A.events.find(is('permission.asked', s));
+  if (asked)
+    await rec.api(
+      'POST',
+      `/api/session/${s}/permission/${asked.data.id}/reply`,
+      {
+        decision: 'reject',
+      },
+    );
+  await settled(A, s);
+  rec.finding(
+    `plan agent with Station's rules only: edit ${asked ? 'was ASKED (deny overridden)' : 'was not asked'}`,
+  );
+};
+
+S['plan-deny'] = async (rec) => {
+  const A = await rec.tap('A');
+  const agent = await rec.api('GET', '/api/agent/plan');
+  const guard = planGuard(agent.json?.data?.permissions ?? []);
+  const s = await createSession(rec, 'plan-deny', {
+    agent: 'plan',
+    permissions: [...CONFINED_RULES, ...guard],
+  });
+  await rec.api('POST', `/api/session/${s}/prompt`, { text: 'DO_EDIT plan' });
+  await settled(A, s);
+  const failed = A.events.find(is('session.tool.failed', s));
+  rec.finding(
+    `plan agent with its deny after Station's rules: asks ${A.count(is('permission.asked', s))}, edit failed: ${JSON.stringify(failed?.data?.error ?? null)}`,
+  );
+};
+
 const ORDER = [
   'basic',
   'tools',
@@ -1181,8 +1413,15 @@ const ORDER = [
   'catalog',
   'crossload',
   'debug-agents',
+  'boot',
+  'mode-switch',
+  'governed',
+  'interrupt-pending',
+  'stop-pending',
   'permission-saved',
 ];
+// Captured separately, with `--config plain --only plan-deny-override,plan-deny`.
+const PLAIN_ONLY = new Set(['plan-deny-override', 'plan-deny']);
 
 // ---------------------------------------------------------------- main
 
@@ -1231,6 +1470,10 @@ async function main() {
       if (name === 'openapi') continue;
       const scenario = S[name];
       if (!scenario) throw new Error(`Unknown scenario ${name}`);
+      if (PLAIN_ONLY.has(name) !== (args.config === 'plain'))
+        throw new Error(
+          `${name} is captured ${PLAIN_ONLY.has(name) ? 'only' : 'never'} with --config plain`,
+        );
       console.log(`--- ${name}`);
       const rec = new Recorder(serve.url);
       rec.push({ kind: 'meta', scenario: name, opencodeVersion: ver });
