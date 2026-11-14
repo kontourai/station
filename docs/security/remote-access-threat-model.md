@@ -1404,6 +1404,21 @@ built-in descriptor with that binding's delegation arguments; every other
 credential callback is still refused (ADR 0013, narrowed by the
 [engine credential provider decision](../decisions/engine-credential-provider.md)).
 
+Remote task engines ([the decision](../decisions/remote-task-engines.md)) are a
+different trust boundary: the work runs on the vendor's machines, so prompts
+and repository code leave the host, and confinement and approval do not apply
+there. The `/remote-task-engines` routes are behind a Feature Preview, the
+managed policy's `limits.engines.remoteTasks` (off on a managed machine unless
+it names the vendor), and a per-connection acknowledgement that names the
+vendor. Reads are `orchestration:read` and changes `orchestration:operate`.
+Storing or clearing a connection's vendor token
+(`/remote-task-engines/connections/:id/credential`) is an `engine:login` leaf
+with the same operator-in-person exception as an engine key. Every route refuses
+a request that may be an agent's, so an agent cannot send host code off the
+machine. The token lives in the engine host-auth vault in its connection's own
+bucket. It is never returned or logged, and a vendor's error text is redacted
+of it. It reaches only that connection's vendor requests.
+
 Quota reads remain `access:manage`: they borrow a selected account's stored token
 for an outbound provider request. An engine-login grant alone admits neither
 quota reads nor account creation or manual enrolment metadata. Activity uses the existing management-scoped rollup API even for local-only
