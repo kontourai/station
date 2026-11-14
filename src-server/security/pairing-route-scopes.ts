@@ -192,7 +192,9 @@ function isEngineSignInLeaf(request: {
     (['GET', 'POST', 'DELETE'].includes(request.method) &&
       /^\/acp\/connections\/[^/]+\/host-auth\/login$/.test(path)) ||
     (request.method === 'POST' &&
-      /^\/acp\/connections\/[^/]+\/host-auth\/sign-out$/.test(path))
+      /^\/acp\/connections\/[^/]+\/host-auth\/sign-out$/.test(path)) ||
+    (['PUT', 'DELETE'].includes(request.method) &&
+      /^\/remote-task-engines\/connections\/[^/]+\/credential$/.test(path))
   );
 }
 
@@ -421,6 +423,9 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   '/api/webhooks',
   '/api/agents',
   '/acp',
+  // docs/decisions/remote-task-engines.md: reads `orchestration:read`,
+  // changes `orchestration:operate`; the token leaf is `engine:login` below.
+  '/remote-task-engines',
   // createInvokeRoutes mounts at '/' with absolute leaf paths — '/invoke'
   // and '/tool-approval' are the two that do not already fall under
   // another listed prefix (their sibling `/agents/:slug/invoke` and
@@ -1857,6 +1862,16 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // A remote task engine's vendor token: the `engine:login` decision, like
+  // an ACP connection's key.
+  {
+    id: '/remote-task-engines/connections/:id/credential:engine-login',
+    method: '*',
+    prefix: '/remote-task-engines/connections/:id/credential',
+    exact: true,
+    scope: PAIRING_SCOPE_ENGINE_LOGIN,
+    origin: 'explicit',
+  },
   {
     id: '/acp/connections/:id/credentials:engine-login',
     method: '*',
@@ -4051,6 +4066,44 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'GET',
       path: '/api/projects/:slug/flow/runs/:runId/gates/:gateId/evaluations/:evaluationId',
+    },
+    // docs/decisions/remote-task-engines.md: connection settings, the
+    // acknowledgement, and remote tasks. None returns a credential; the
+    // handlers also refuse a request that may be an agent's.
+    { method: 'GET', path: '/remote-task-engines/connections' },
+    { method: 'POST', path: '/remote-task-engines/connections' },
+    { method: 'GET', path: '/remote-task-engines/connections/:id' },
+    { method: 'PATCH', path: '/remote-task-engines/connections/:id' },
+    { method: 'DELETE', path: '/remote-task-engines/connections/:id' },
+    {
+      method: 'POST',
+      path: '/remote-task-engines/connections/:id/acknowledgement',
+    },
+    {
+      method: 'DELETE',
+      path: '/remote-task-engines/connections/:id/acknowledgement',
+    },
+    { method: 'GET', path: '/remote-task-engines/connections/:id/tasks' },
+    { method: 'POST', path: '/remote-task-engines/connections/:id/tasks' },
+    {
+      method: 'GET',
+      path: '/remote-task-engines/connections/:id/tasks/:taskId',
+    },
+    {
+      method: 'POST',
+      path: '/remote-task-engines/connections/:id/tasks/:taskId/messages',
+    },
+    {
+      method: 'POST',
+      path: '/remote-task-engines/connections/:id/tasks/:taskId/cancel',
+    },
+    {
+      method: 'POST',
+      path: '/remote-task-engines/connections/:id/tasks/:taskId/sync',
+    },
+    {
+      method: 'GET',
+      path: '/remote-task-engines/connections/:id/tasks/:taskId/events',
     },
     // prettier-ignore
     { method: 'GET', path: '/acp/connections' },

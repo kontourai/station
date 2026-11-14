@@ -452,6 +452,7 @@ import {
 } from '../../routes/chat/conversations.js';
 import { createACPRoutes } from '../../routes/connections/acp.js';
 import { createACPSignInRoutes } from '../../routes/connections/acp-sign-in.js';
+import { createRemoteTaskEngineRoutes } from '../../routes/remote-task-engines/remote-task-engine-routes.js';
 import { createAppHomeRoutes } from '../../routes/connections/app-home.js';
 import { createBedrockRoutes } from '../../routes/connections/bedrock.js';
 import { createConnectionRoutes } from '../../routes/connections/connections.js';
@@ -762,6 +763,10 @@ import { TrustBundleService } from '../../services/evidence/trust-bundle-service
 import { VeritasReadinessService } from '../../services/evidence/veritas-readiness-service.js';
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
 import type { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
+import { engineHostAuth } from '../../services/engine-host-auth/service.js';
+import { RemoteTaskCredentials } from '../../services/remote-task-engines/credentials.js';
+import { RemoteTaskEngineService } from '../../services/remote-task-engines/service.js';
+import { RemoteTaskTracker } from '../../services/remote-task-engines/tracker.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
 import { createFeedbackRatingTarget } from '../../services/feedback/feedback-target.js';
 import { FlowMcpUiEvidenceBridge } from '../../services/flow/flow-mcp-ui-evidence-bridge.js';
@@ -8159,6 +8164,37 @@ export function configureRuntimeRoutes(
     createACPSignInRoutes({
       ctx: runtimeContext,
       service: engineSignInService,
+    }),
+  );
+  // docs/decisions/remote-task-engines.md: cloud coding agents. Bound here
+  // unconditionally so the preview is offered; every route, the tracker's
+  // polls and the service's vendor calls read the selector at each use.
+  const remoteTaskService = new RemoteTaskEngineService({
+    homeDir: context.configLoader.getProjectHomeDir(),
+    credentials: new RemoteTaskCredentials(
+      () => engineHostAuth()?.vault ?? null,
+    ),
+    preview: context.featurePreviews.bind({
+      id: 'remote-task-engines',
+      label: 'Remote task engines',
+      description:
+        "Send coding tasks to cloud agents (Devin, GitHub Copilot cloud agent, Cursor Cloud Agents) that run on the vendor's machines. Prompts and repository code leave this computer, and each task spends your vendor account's credits.",
+    }),
+    managedPolicy: () => context.managedPolicy ?? null,
+    fetch: (input, init) => fetch(input, init),
+    logger: context.logger,
+  });
+  const remoteTaskTracker = new RemoteTaskTracker({
+    service: remoteTaskService,
+    logger: context.logger,
+  });
+  remoteTaskTracker.resume();
+  context.app.route(
+    '/remote-task-engines',
+    createRemoteTaskEngineRoutes({
+      service: remoteTaskService,
+      tracker: remoteTaskTracker,
+      logger: context.logger,
     }),
   );
   context.app.route('/agents', createAgentToolRoutes(runtimeContext));

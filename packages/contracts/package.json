@@ -104,6 +104,7 @@
     "./engine-sign-in": "./src/engine-sign-in.ts",
     "./engine-credential-provider": "./src/engine-credential-provider.ts",
     "./engine-secret-storage": "./src/engine-secret-storage.ts",
+    "./remote-task-engine": "./src/remote-task-engine.ts",
     "./engine-commands": "./src/engine-commands.ts",
     "./managed-engine-install": "./src/managed-engine-install.ts",
     "./conversation-context-boundary": "./src/conversation-context-boundary.ts",
