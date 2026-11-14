@@ -31,6 +31,30 @@ type PluginDisposer = () => void;
 
 /** Plugin discovery must never block the app shell indefinitely. */
 export const PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS = 8_000;
+/**
+ * Inventory reads one load makes before it reports the registry unavailable.
+ * Attempt `n` gets `n` times the inventory deadline.
+ */
+export const PLUGIN_REGISTRY_INVENTORY_ATTEMPTS = 3;
+const PLUGIN_REGISTRY_INVENTORY_RETRY_DELAY_MS = 1_000;
+
+function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const abort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', abort);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', abort, { once: true });
+  });
+}
 /** Marks the script preloads `prefetchBundles` adds, removed once the pass ends. */
 const BUNDLE_PRELOAD_ATTRIBUTE = 'data-station-plugin-preload';
 
@@ -328,15 +352,12 @@ export class PluginRegistry {
     }
 
     try {
-      const res = await authenticatedFetch(`${apiBase}/api/plugins`, {
-        signal,
-        timeoutMs: PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,
-      });
-      if (!res.ok) {
+      const inventory = await this.readInventory(apiBase, signal);
+      if (!inventory) {
         this.failure = 'registry-unavailable';
         return 'degraded';
       }
-      const { plugins } = await res.json();
+      const { plugins } = inventory;
       if (!this.isCurrentConfiguredOrigin(apiBase, apiBaseGeneration)) {
         return 'ready';
       }
@@ -388,6 +409,37 @@ export class PluginRegistry {
         `link[${BUNDLE_PRELOAD_ATTRIBUTE}]`,
       ))
         link.remove();
+    }
+  }
+
+  /**
+   * Reads `GET /api/plugins`, retrying a read that timed out, failed in
+   * transit or got a 5xx, with a longer deadline each time. The server scans
+   * every installed package for this answer, so on a loaded host one read can
+   * outlast its deadline while the connection stays healthy. Nothing else
+   * retries a failed load then (`PluginRegistryBootstrap` reloads only when
+   * the connection comes back), so a single slow read would leave every
+   * plugin tab "Unsupported" until the page reloads. The load status stays
+   * `loading` across attempts. Returns `undefined` for a refused read; throws
+   * when the last attempt fails or the load is aborted.
+   */
+  private async readInventory(
+    apiBase: string,
+    signal: AbortSignal,
+  ): Promise<{ plugins: any[] } | undefined> {
+    for (let attempt = 1; ; attempt += 1) {
+      const last = attempt >= PLUGIN_REGISTRY_INVENTORY_ATTEMPTS;
+      try {
+        const res = await authenticatedFetch(`${apiBase}/api/plugins`, {
+          signal,
+          timeoutMs: PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS * attempt,
+        });
+        if (res.ok) return await res.json();
+        if (last || !(res.status >= 500)) return undefined;
+      } catch (error) {
+        if (signal.aborted || last) throw error;
+      }
+      await abortableDelay(PLUGIN_REGISTRY_INVENTORY_RETRY_DELAY_MS, signal);
     }
   }
 
