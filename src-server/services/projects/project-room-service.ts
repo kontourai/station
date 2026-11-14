@@ -27,7 +27,7 @@ const logger = createLogger({ name: 'project-room-service' });
  * How long an upload no message names is kept for its send (#4812). A send
  * that fails or is discarded leaves it behind; after this it is released.
  */
-export const PROJECT_ROOM_UNSENT_FILE_TTL_MS = 24 * 60 * 60 * 1000;
+const PROJECT_ROOM_UNSENT_FILE_TTL_MS = 24 * 60 * 60 * 1000;
 export type ProjectRoomCapabilities = ProjectRoomView['capabilities'];
 export interface ProjectRoomAccessPort {
   withAction<T>(
