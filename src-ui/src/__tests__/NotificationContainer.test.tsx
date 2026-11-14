@@ -139,7 +139,7 @@ describe('NotificationContainer', () => {
   test('renders tool activity toasts with their label and detail', () => {
     render(<NotificationContainer />);
 
-    expect(screen.getByText('Tool Activity')).toBeTruthy();
+    expect(screen.getByText('Tool activity')).toBeTruthy();
     expect(screen.getByText('Dev Agent failed shell exec')).toBeTruthy();
     expect(screen.getByText('Permission denied')).toBeTruthy();
 

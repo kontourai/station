@@ -1850,7 +1850,7 @@ content and recorded metadata; changed content refuses continuation instead of
 splicing revisions. Missing Agent identity is optional, never a default Agent.
 The read-only inspector does not adopt, resume, fork, or send to a Session.
 
-The palette's explicit **Workspace search (this Station)** mode consumes local
+The palette's explicit **Search Tasks and messages** mode consumes local
 Task/message results and this exact inspector. Command/legacy remote search is
 preserved as a separate mode; only the selected mode dispatches search queries.
 This is a local tracer, not completion of the broader multi-source search issue.

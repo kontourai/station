@@ -89,7 +89,7 @@ const DefaultLayout: AgentLayoutComponent = ({ layout, onShowChat }) => (
         </svg>
       }
       label={layout?.name || 'Layout'}
-      description="Start a conversation or schedule an automated job to get things moving."
+      description="Start a chat to work in this layout."
       action={
         <button
           type="button"
@@ -293,23 +293,22 @@ const KitStandardViewLayout: AgentLayoutComponent = ({ layout, activeTab }) => {
 
   return (
     <section className="workspace-default" aria-label="Read-only Kit view">
-      <Empty
-        variant="prominent"
-        label={view.projection || 'Read-only Kit view'}
-        description="Station shows this Kit view as read-only information. Nothing here can be changed."
-      />
-      <pre className="workspace-default__description">
-        {JSON.stringify(
-          {
-            contribution: kit?.contributionRef,
-            projection: view.projection,
-            schemaRef: view.schemaRef,
-            readOnly: true,
-          },
-          null,
-          2,
-        )}
-      </pre>
+      <Empty variant="prominent" label="Kit view" description="Read-only" />
+      <details>
+        <summary>Details</summary>
+        <pre className="workspace-default__description">
+          {JSON.stringify(
+            {
+              contribution: kit?.contributionRef,
+              projection: view.projection,
+              schemaRef: view.schemaRef,
+              readOnly: true,
+            },
+            null,
+            2,
+          )}
+        </pre>
+      </details>
     </section>
   );
 };

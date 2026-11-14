@@ -143,6 +143,10 @@ function ApprovalModeChipContent({
   const policyLabel = toolPolicyDeliveryLabel(toolPolicyDelivery);
   const policyExplanation = toolPolicyDeliveryExplanation(toolPolicyDelivery);
   const policyDisclosure = `${policyLabel}. ${policyExplanation}`;
+  // Where Station's approvals do not fully govern this engine, that boundary
+  // is safety copy: it stays on the chip itself, not only in the sheet.
+  const policyBoundary =
+    toolPolicyDelivery?.state === 'native' ? '' : ` ${policyLabel}.`;
 
   // #3290: the engine could not be moved onto the rules the pick needs, so
   // it runs what it ran before (its own settings, or the mode it reports).
@@ -306,12 +310,14 @@ function ApprovalModeChipContent({
            by what they see. The pending state's short form ("Full access ·
            pending") is not a substring of the long form, so it is composed in
            explicitly rather than replaced. */
-        aria-label={`${
+        aria-label={`Approval mode: ${
           isPendingApply
-            ? `Approval mode: ${chipText} — takes effect next turn. Engine approval control. ${policyDisclosure}`
-            : `Approval mode: ${isPendingRestrict || isRefused ? `${chipText} — ${pendingNote}` : accessibleLabel}. Engine approval control. ${policyDisclosure}`
-        }${reviewerDisclosure} Approval ${chipText}`}
-        title={`Approval mode: ${selectedLabel}. ${policyDisclosure}${reviewerDisclosure} Approval ${chipText}`}
+            ? `${chipText} — takes effect next turn`
+            : isPendingRestrict || isRefused
+              ? `${chipText} — ${pendingNote}`
+              : accessibleLabel
+        }.${policyBoundary}${reviewerDisclosure} Approval ${chipText}`}
+        title={`Approval: ${selectedLabel}.${policyBoundary}`}
         onClick={() => setIsSheetOpen((open) => !open)}
         caption="Approval"
         value={chipText}
@@ -327,6 +333,7 @@ function ApprovalModeChipContent({
             onClose: () => setIsSheetOpen(false),
             onSelect: onChange,
             sourceNote,
+            policyNote: policyDisclosure,
             pendingNote,
             activeMode: appliedMode
               ? approvalModeLabel(appliedMode)

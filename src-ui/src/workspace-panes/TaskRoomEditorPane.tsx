@@ -732,11 +732,11 @@ export function TaskRoomEditorPane({
     document.isLoading || room.isLoading
       ? 'Loading the shared document.'
       : !authorizationCurrent
-        ? 'Task room authorization ended. The last readable document remains read-only.'
+        ? 'You no longer have access to this Task. The document is read-only.'
         : possibleEffect
-          ? 'This exact edit may have taken effect. Retry the identical batch or resync before making another change.'
+          ? 'This edit may already be saved. Retry it or reload the brief before editing again.'
           : document.isError
-            ? 'The shared document could not be loaded. Editing is disabled until a successful resync.'
+            ? 'Couldn’t load the shared document. Resync to edit again.'
             : document.data?.kind === 'gap'
               ? 'The shared document is stale. Resync before editing.'
               : document.data?.kind === 'unavailable'
@@ -744,9 +744,9 @@ export function TaskRoomEditorPane({
                 : !roomAvailable
                   ? 'The Task room is unavailable. This document is read-only.'
                   : !readable
-                    ? 'The shared document is not readable with this room capability.'
+                    ? 'You don’t have access to read this document.'
                     : !writable
-                      ? 'The shared document is readable and read-only.'
+                      ? 'This document is read-only.'
                       : settlement === 'unchanged'
                         ? 'No changes were needed; your draft already matches the shared document.'
                         : settlement === 'committed'
@@ -911,7 +911,7 @@ export function TaskRoomEditorPane({
           onClick={() => void retry()}
           disabled={batch.isPending || !authorizationCurrent}
         >
-          Retry identical batch
+          Retry edit
         </button>
       ) : null}
     </section>

@@ -75,8 +75,8 @@ flow falls back exactly as it does for the help menu.
 surfaces above: inline `ErrorState` panels in individual views, warning-tone
 toasts, error toasts that already carry two actions, a local-Station banner
 that offers Restart, tool-activity failure toasts, the connection and compatibility
-banners, other workspace-pane failure states (for example "Workspace pane
-cannot mount"), and the new-chat picker's engine states.
+banners, other workspace-pane failure states (for example "<pane name>
+unavailable"), and the new-chat picker's engine states.
 
 ### Seed from an error surface
 

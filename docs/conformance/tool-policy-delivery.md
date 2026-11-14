@@ -151,7 +151,8 @@ With `approvals_reviewer: auto_review`, Codex can review eligible sandbox
 escalations of a `host` session automatically without opening a Station
 approval card. The Ask
 chip confirms the approval-policy mapping only; Station does not currently
-report the effective reviewer. Its picker and chip disclosure name that gap.
+report the effective reviewer. Its picker option and the chip's accessible name
+name that gap; the chip's hover tooltip carries only the policy boundary.
 Ask alone is not evidence that a person must approve every sandbox escalation.
 See OpenAI's [Auto-review documentation](https://learn.chatgpt.com/docs/sandboxing/auto-review).
 

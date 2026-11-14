@@ -521,7 +521,7 @@ test.describe('Command skills', () => {
     await page.goto('/guidance/release-check?tab=skills');
     await page.waitForSelector('.skill-detail', { timeout: 15_000 });
     await page.getByRole('button', { name: 'Import .md' }).click();
-    const importDialog = page.getByRole('dialog', { name: 'Import Skills' });
+    const importDialog = page.getByRole('dialog', { name: 'Import skills' });
     await expect(importDialog).toBeVisible();
     await expect(importDialog).toBeFocused();
 

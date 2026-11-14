@@ -1,0 +1,7 @@
+{
+  "revision": "aca18a89472716df7a2b3972a9220405f5ed4d21",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Latest shell commits change chatErrorTranslation.ts only in the stream-ended message (neutral body, 'connection to this Station' hint). contracts.md cites chatErrorTranslation.ts for the error-translation contract shape; it doesn't quote these strings, and categories, retryability and caller hints are unchanged.","inputs":["docs/reference/contracts.md","src-ui/src/utils/chatErrorTranslation.ts"]}
+  ]
+}

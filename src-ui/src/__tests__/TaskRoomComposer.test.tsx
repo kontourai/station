@@ -867,7 +867,9 @@ test('a reload during dispatch retains its exact uncertain operation before the 
   fireEvent.click(
     screen.getByRole('button', { name: 'Check saved request status' }),
   );
-  await screen.findByText(/This does not prove the request failed/);
+  await screen.findByText(
+    'Couldn’t confirm whether this request ran. Check the run list before retrying.',
+  );
   expect(mocks.agent).toHaveBeenCalledOnce();
   await act(async () => {
     settle({ kind: 'recorded', record: { state: 'dispatched' } });
@@ -879,6 +881,53 @@ test('a reload during dispatch retains its exact uncertain operation before the 
   await waitFor(() => expect(mocks.agent).toHaveBeenCalledTimes(2));
   expect(mocks.agent.mock.calls[1][0]).toEqual(original);
 });
+
+test.each([
+  [
+    'starting',
+    'This request was saved but not confirmed as sent. Check its run before retrying.',
+  ],
+  [
+    'dispatched',
+    'This request was sent to the agent. Check its run before retrying.',
+  ],
+  [
+    'indeterminate',
+    'Couldn’t confirm whether this request ran. Check its run before retrying.',
+  ],
+  [
+    'refused',
+    'This request was refused, so it didn’t run. Send it again as a new request.',
+  ],
+] as const)(
+  'a recorded %s saved request is described in words, not its raw state',
+  async (state, notice) => {
+    mocks.agent.mockImplementationOnce(() => new Promise(() => {}));
+    const first = render(<TaskRoomComposer {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
+    fireEvent.click(
+      screen.getByRole('option', { name: /^Researcher Agent @researcher\b/ }),
+    );
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'Explore exactly this' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+    await waitFor(() => expect(mocks.agent).toHaveBeenCalledOnce());
+    const original = mocks.agent.mock.calls[0][0];
+    first.unmount();
+    render(<TaskRoomComposer {...props} />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Restore saved draft' }),
+    );
+    mocks.refetch.mockResolvedValueOnce({
+      data: { records: [{ ...original, state }], context: mocks.brief },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check saved request status' }),
+    );
+    expect(await screen.findByText(notice)).toBeTruthy();
+  },
+);
 
 test.each(['api', 'authorization', 'task', 'incarnation', 'project'])(
   'a saved draft never crosses a changed %s owner',

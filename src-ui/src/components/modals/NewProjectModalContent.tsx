@@ -412,7 +412,7 @@ function NewProjectForm({
             Set aside this setup
           </Button>
           <p className="editor-hint">
-            This keeps any Project, checkout and server setup receipt.
+            Anything already created, such as the Project or checkout, is kept.
           </p>
         </div>
       )}

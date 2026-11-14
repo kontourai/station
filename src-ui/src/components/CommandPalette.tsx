@@ -101,8 +101,8 @@ export function WorkspaceSearchBoundary({
 }) {
   const frame = (children: ReactNode) => (
     <Dialog
-      title="Workspace search (this Station)"
-      closeLabel="Close workspace search"
+      title="Search this Station"
+      closeLabel="Close search"
       historyMode="none"
       onClose={props.onClose}
     >
@@ -113,15 +113,13 @@ export function WorkspaceSearchBoundary({
     <LazyBoundary
       load={load}
       componentProps={props}
-      pending={frame(
-        <SkeletonBlock count={1} label="Opening workspace search" />,
-      )}
+      pending={frame(<SkeletonBlock count={1} label="Opening search" />)}
       unavailable={(retry) =>
         frame(
           <ErrorState
-            title="Workspace search unavailable"
-            description="The workspace search view could not be loaded."
-            action={<Button onClick={retry}>Retry workspace search</Button>}
+            title="Search unavailable"
+            description="Couldn't load search."
+            action={<Button onClick={retry}>Retry search</Button>}
           />,
         )
       }
@@ -1145,7 +1143,7 @@ export function CommandPalette() {
       >
         <div className="command-palette__input-row">
           <Button variant="secondary" onClick={() => setWorkspaceSearch(true)}>
-            Workspace search (this Station)
+            Search Tasks and messages
           </Button>
           {/* One wrapping unit: on a narrow palette the field moves to its
               own line under the button instead of being squeezed (#4694). */}
@@ -1164,7 +1162,7 @@ export function CommandPalette() {
               aria-expanded="true"
               aria-controls="command-palette-listbox"
               aria-autocomplete="list"
-              aria-label="Search commands and indexed conversation messages"
+              aria-label="Search commands, projects and chats"
               // Focus stays in the input while the arrows move `activeIndex`,
               // so without this a screen reader announces nothing at all as the
               // user arrows through results. The option ids already existed and

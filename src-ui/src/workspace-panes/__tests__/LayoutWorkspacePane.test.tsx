@@ -378,7 +378,11 @@ describe('a project Layout as a pane', () => {
       />,
     );
     expect(screen.getByText('Open this Layout in Main')).toBeTruthy();
-    expect(screen.getByText(/whole viewport/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        'A Chat layout fills the whole window, so it opens only in the main area.',
+      ),
+    ).toBeTruthy();
     expect(screen.queryByTestId('layout-renderer')).toBeNull();
   });
 

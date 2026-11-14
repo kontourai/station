@@ -3,7 +3,7 @@ import { ConnectionsProvider } from '@kontourai/station-connect';
  * @vitest-environment jsdom
  */
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { JSX } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { captureTroubleshootSeeds } from '../components/troubleshoot/__tests__/captureTroubleshootSeeds';
@@ -395,7 +395,10 @@ describe('LayoutRenderer component dispatch', () => {
 
     const view = screen.getByLabelText('Read-only Kit view');
     expect(view).toBeTruthy();
-    expect(screen.getByText('<summary>')).toBeTruthy();
+    expect(within(view).getByText('Read-only')).toBeTruthy();
+    expect(view.querySelector('details pre')?.textContent).toContain(
+      '"projection": "<summary>"',
+    );
     expect(view.querySelector('pre')?.textContent).toContain('<untrusted-kit>');
     expect(mcpToolUIFrameMock).not.toHaveBeenCalled();
   });

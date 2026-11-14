@@ -95,9 +95,9 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
   },
   'engine-scan': {
     reach: 'host-hands',
-    host: 'Station found these on this machine. Pick the ones you use and Station sets up an agent for each — you can change them later.',
+    host: 'Station found these on this computer. Pick the ones you use and Station sets up an agent for each.',
     paired: (hostName) =>
-      `Station found these on ${hostName}, the computer it runs on. Pick the ones you use and Station sets up an agent for each — you can change them later.`,
+      `Station found these on ${hostName}, the computer it runs on. Pick the ones you use and Station sets up an agent for each.`,
   },
   'engine-scan-all-set': {
     // #1536 A4: the "pick" lede stood above three rows that all read
@@ -105,22 +105,22 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     // control under it. This says what happened instead of asking for an act
     // that is already done.
     reach: 'host-hands',
-    host: 'Station found these on this machine and set each one up. Nothing to pick here — you can change them later.',
+    host: 'Station found these on this computer and set each one up.',
     paired: (hostName) =>
-      `Station found these on ${hostName}, the computer it runs on, and set each one up. Nothing to pick here — you can change them later.`,
+      `Station found these on ${hostName}, the computer it runs on, and set each one up.`,
   },
   'engine-scan-none-selectable': {
     // Not all set up, but none tickable either. Deliberately claims nothing
     // about WHY — each row carries its own reason, and this lede must not
     // summarise a mix of them into one sentence that is wrong for some.
     reach: 'host-hands',
-    host: 'Station found these on this machine. None can be set up from here right now — each row says why.',
+    host: 'Station found these on this computer. None can be set up from here yet; each row says why.',
     paired: (hostName) =>
-      `Station found these on ${hostName}, the computer it runs on. None can be set up from here right now — each row says why.`,
+      `Station found these on ${hostName}, the computer it runs on. None can be set up from here yet; each row says why.`,
   },
   'engine-scan-pending': {
     reach: 'host-hands',
-    host: 'Looking for agent CLIs on this machine…',
+    host: 'Looking for agent CLIs on this computer…',
     paired: (hostName) => `Looking for agent CLIs on ${hostName}…`,
   },
   'engine-missing': {
@@ -129,7 +129,7 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     // Naming where it would have to be installed is an instruction, not an
     // observation.
     reach: 'host-hands',
-    host: 'Not found on this machine.',
+    host: 'Not found on this computer.',
     paired: (hostName) =>
       `Not found on ${hostName}. Agent CLIs run on that computer, so it has to be installed there.`,
   },
@@ -137,17 +137,17 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     // The CLI has to land on the host's PATH; running it on a phone or a
     // laptop that only pairs with Station installs nothing Station can use.
     reach: 'host-hands',
-    host: 'Install it on this machine:',
+    host: 'Install it on this computer:',
     paired: (hostName) =>
-      `Install it on ${hostName}, the computer Station runs on. Engines run there, so installing it on this device does not help.`,
+      `Install it on ${hostName}, the computer Station runs on. Engines run there, not on this device.`,
   },
   'engine-recheck-not-permitted': {
     // Re-checking runs the host user's login shell, so it needs the operate
     // scope. The plain list read still ran; only the re-check was refused.
     reach: 'remote-safe',
-    host: 'This sign-in cannot ask Station to look again. The list shows what Station last found.',
+    host: 'This sign-in can’t ask Station to look again. The list shows what Station last found.',
     paired: (hostName) =>
-      `This device cannot ask ${hostName} to look again. An operator can change this device's permissions.`,
+      `This device can’t ask ${hostName} to look again. The Station operator can change this device’s permissions.`,
   },
   'connection-sign-in': {
     // The engine's own login runs on the host and writes to the credential
@@ -171,7 +171,7 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     // the question a person types one into a phone with.
     host: '',
     paired: (hostName) =>
-      `The key is saved on ${hostName}, the computer Station runs on. It is never sent back to this device.`,
+      `The key is saved on ${hostName}, the computer Station runs on, and never sent back to this device.`,
   },
   'engine-sign-in': {
     // The engine signs in on the host and keeps its credentials there;
@@ -185,13 +185,13 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     reach: 'remote-safe',
     host: "Opens the engine's own sign-in in a terminal on this computer.",
     paired: (hostName) =>
-      `Opens the engine's own sign-in in a terminal on ${hostName}. You can use that terminal from this device.`,
+      `Opens the engine's own sign-in in a terminal on ${hostName}. Use that terminal from this device.`,
   },
   'engine-sign-in-browser': {
     reach: 'remote-safe',
-    host: 'The engine may open a browser on this computer. If it shows a link, you can open it here.',
+    host: 'The engine may open a browser on this computer. If it shows a link, open it here.',
     paired: (hostName) =>
-      `The engine may open a browser on ${hostName}. If it shows a link, you can open it on this device.`,
+      `The engine may open a browser on ${hostName}. If it shows a link, open it on this device.`,
   },
   'agent-engine-setup': {
     // Setting up an engine sends you to Connections, which a paired device
@@ -213,7 +213,7 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     reach: 'remote-safe',
     host: '',
     paired: (hostName) =>
-      `Full logs are available on ${hostName}. This device is shown the redacted read.`,
+      `Full logs are available on ${hostName}. This device shows a redacted copy.`,
   },
 };
 

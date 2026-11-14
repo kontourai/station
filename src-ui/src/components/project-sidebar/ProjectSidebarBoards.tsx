@@ -675,9 +675,7 @@ export function ProjectSidebarBoards({
         />
       )}
       {!collapsed && Array.isArray(boards) && visibleRows.length === 0 && (
-        <p className="sidebar__boards-description">
-          Dashboards across projects.
-        </p>
+        <p className="sidebar__boards-description">Boards across Projects.</p>
       )}
       {visibleRows.map((board) => {
         const path = boardPath(board.slug);

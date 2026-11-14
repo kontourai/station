@@ -875,13 +875,13 @@ describe('ProjectPage (#762 query-failure regression)', () => {
 
     expect(screen.getByRole('button', { name: /Coding/ })).toBeTruthy();
     // A pane-catalog failure is not the project page's failure any more.
-    expect(screen.queryByText('Could not load workspace panes')).toBeNull();
+    expect(screen.queryByText('Couldn’t load panes')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '+ Add pane' }));
 
     // The Project room on the same page has its own Retry: ask the picker's.
     const failure = screen
-      .getByText('Could not load workspace panes')
+      .getByText('Couldn’t load panes')
       .closest<HTMLElement>('[role="alert"]');
     fireEvent.click(within(failure!).getByRole('button', { name: 'Retry' }));
     expect(sdkMocks.refetchPanes).toHaveBeenCalledTimes(1);

@@ -320,8 +320,7 @@ describe('TaskRoomEditorPane', () => {
         text: 'older query text',
       },
       isError: true,
-      status:
-        'The shared document could not be loaded. Editing is disabled until a successful resync.',
+      status: 'Couldn’t load the shared document. Resync to edit again.',
     },
   ])(
     'keeps stream text visible but revokes edit/save authority after $label query truth',
@@ -635,9 +634,7 @@ describe('TaskRoomEditorPane', () => {
       expect(
         screen.getByText(kind === 'committed' ? 'Saved' : 'Saved'),
       ).toBeTruthy();
-      expect(
-        screen.queryByRole('button', { name: 'Retry identical batch' }),
-      ).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Retry edit' })).toBeNull();
       expect(mocks.refetchAuthoritative).toHaveBeenCalledTimes(
         kind === 'duplicate' ? 1 : 0,
       );
@@ -711,7 +708,7 @@ describe('TaskRoomEditorPane', () => {
     fireEvent.blur(editor());
 
     expect(
-      await screen.findByRole('button', { name: 'Retry identical batch' }),
+      await screen.findByRole('button', { name: 'Retry edit' }),
     ).toBeTruthy();
     expect((editor() as HTMLTextAreaElement).value).toBe('possibly saved');
     expect(screen.queryByText('Saved')).toBeNull();
@@ -737,7 +734,7 @@ describe('TaskRoomEditorPane', () => {
     fireEvent.blur(editor());
 
     expect(
-      await screen.findByRole('button', { name: 'Retry identical batch' }),
+      await screen.findByRole('button', { name: 'Retry edit' }),
     ).toBeTruthy();
     expect((editor() as HTMLTextAreaElement).value).toBe('gap custody draft');
     expect(screen.queryByText('Saved')).toBeNull();
@@ -852,7 +849,7 @@ describe('TaskRoomEditorPane', () => {
             'task two document',
           ),
         );
-        expect(screen.queryByText(/may have taken effect/i)).toBeNull();
+        expect(screen.queryByText(/may already be saved/i)).toBeNull();
       }
     },
   );
@@ -875,9 +872,9 @@ describe('TaskRoomEditorPane', () => {
     changeDraft('possibly saved');
     fireEvent.blur(editor());
     const retry = await screen.findByRole('button', {
-      name: 'Retry identical batch',
+      name: 'Retry edit',
     });
-    expect(screen.getByText(/may have taken effect/i)).toBeTruthy();
+    expect(screen.getByText(/may already be saved/i)).toBeTruthy();
     expect((editor() as HTMLTextAreaElement).value).toBe('possibly saved');
     fireEvent.click(retry);
     await waitFor(() =>
@@ -910,9 +907,7 @@ describe('TaskRoomEditorPane', () => {
     const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft('possibly committed');
     fireEvent.blur(editor());
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Retry identical batch' }),
-    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry edit' }));
     await waitFor(() => expect(mocks.batch).toHaveBeenCalledTimes(2));
     mocks.document.data = { kind: 'unavailable' } as never;
     rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
@@ -928,9 +923,7 @@ describe('TaskRoomEditorPane', () => {
       'task-1',
     );
     expect((editor() as HTMLTextAreaElement).value).toBe('concurrent truth');
-    expect(
-      screen.queryByRole('button', { name: 'Retry identical batch' }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry edit' })).toBeNull();
     // A readable response does not itself restore query/stream write authority.
     expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
   });
@@ -957,7 +950,7 @@ describe('TaskRoomEditorPane', () => {
     expect((editor() as HTMLTextAreaElement).value).toBe('terminal plan draft');
     expect(
       screen.getByText(
-        'Task room authorization ended. The last readable document remains read-only.',
+        'You no longer have access to this Task. The document is read-only.',
       ),
     ).toBeTruthy();
   });
@@ -1006,7 +999,7 @@ describe('TaskRoomEditorPane', () => {
     changeDraft('retained draft');
     fireEvent.blur(editor());
     const retry = await screen.findByRole('button', {
-      name: 'Retry identical batch',
+      name: 'Retry edit',
     });
 
     mocks.stream = 'terminal';
@@ -1015,7 +1008,7 @@ describe('TaskRoomEditorPane', () => {
     mocks.stream = 'live';
     rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
     const resumedRetry = screen.getByRole('button', {
-      name: 'Retry identical batch',
+      name: 'Retry edit',
     });
     expect(resumedRetry.matches(':disabled')).toBe(false);
     fireEvent.click(resumedRetry);
@@ -1032,7 +1025,7 @@ describe('TaskRoomEditorPane', () => {
     render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft('first exact draft');
     fireEvent.blur(editor());
-    await screen.findByRole('button', { name: 'Retry identical batch' });
+    await screen.findByRole('button', { name: 'Retry edit' });
     changeDraft('new ordinary draft');
 
     fireEvent.blur(editor());
@@ -1074,13 +1067,9 @@ describe('TaskRoomEditorPane', () => {
       'terminal batch draft',
     );
     expect(
-      screen
-        .getByRole('button', { name: 'Retry identical batch' })
-        .matches(':disabled'),
+      screen.getByRole('button', { name: 'Retry edit' }).matches(':disabled'),
     ).toBe(true);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Retry identical batch' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry edit' }));
     expect(mocks.batch).toHaveBeenCalledTimes(1);
   });
 
@@ -1097,9 +1086,7 @@ describe('TaskRoomEditorPane', () => {
       'Stale edit plan',
     );
     expect((editor() as HTMLTextAreaElement).value).toBe('stale draft');
-    expect(
-      screen.queryByRole('button', { name: 'Retry identical batch' }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry edit' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Retry autosave' })).toBeTruthy();
   });
 
@@ -1155,9 +1142,7 @@ describe('TaskRoomEditorPane', () => {
       capabilities: { documentRead: true, documentWrite: false },
     };
     const { rerender } = render(<TaskRoomEditorPane taskId="task-1" />);
-    expect(
-      screen.getByText('The shared document is readable and read-only.'),
-    ).toBeTruthy();
+    expect(screen.getByText('This document is read-only.')).toBeTruthy();
     expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
 
     mocks.document.isError = true;
@@ -1165,7 +1150,7 @@ describe('TaskRoomEditorPane', () => {
     expect(screen.getByRole('alert').textContent).toBe(
       'The latest shared document read failed.',
     );
-    expect(screen.getByText(/could not be loaded/i)).toBeTruthy();
+    expect(screen.getByText(/Couldn’t load the shared document/i)).toBeTruthy();
   });
 
   test('keeps the last readable document visible and blocks writes after stream revocation', () => {
@@ -1173,7 +1158,7 @@ describe('TaskRoomEditorPane', () => {
     render(<TaskRoomEditorPane taskId="task-1" />);
     expect(
       screen.getByText(
-        'Task room authorization ended. The last readable document remains read-only.',
+        'You no longer have access to this Task. The document is read-only.',
       ),
     ).toBeTruthy();
     expect((editor() as HTMLTextAreaElement).value).toBe('shared base');

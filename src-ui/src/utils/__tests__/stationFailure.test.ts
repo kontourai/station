@@ -238,6 +238,6 @@ describe('Station authority failure translation', () => {
       connection('direct'),
     );
     expect(terminal.terminalSession).toBe(true);
-    expect(terminal.hint).toBe('New chat.');
+    expect(terminal.hint).toBe('Start a new chat.');
   });
 });

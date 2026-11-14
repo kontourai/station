@@ -17,7 +17,7 @@
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Plan the change across the workspace and review every navigation boundary, No project]"
     ],
     "command-palette-empty": [
-      "axe:aria-valid-attr-value:input.command-palette__input[type=text][Search commands and indexed conversation messages]"
+      "axe:aria-valid-attr-value:input.command-palette__input[type=text][Search commands, projects and chats]"
     ],
     "connections-tools": [
       "axe:label-content-name-mismatch:button.split-pane__item[Station Control]",

@@ -1728,7 +1728,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     const notice = activeChatsStore
       .getSnapshot()
       [sessionId]?.ephemeralMessages?.at(-1)?.content;
-    expect(notice).toContain("Can't resume");
+    expect(notice).toContain('This chat can’t continue');
     expect(notice).not.toMatch(/Model connection/i);
     expect(
       activeChatsStore.getSnapshot()[sessionId]?.ephemeralMessages?.at(-1)
@@ -1744,7 +1744,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   it.each([
     [
       'thread t-1 already has an active writer',
-      /^\*\*The chat didn't start\*\*\n\nStation could not complete this request\./,
+      /^\*\*The chat didn't start\*\*\n\nStation couldn’t complete this request\./,
     ],
     [
       'OAuth session expired and could not be refreshed',

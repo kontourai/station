@@ -83,7 +83,7 @@ export function describeDeviceActionFailure(
       return {
         title: `${deviceName} is no longer available`,
         description:
-          'It stopped, or it is no longer on this machine. Refresh devices and pick one again.',
+          'It stopped, or it’s no longer on this computer. Refresh devices and pick one again.',
       };
     case 'hub-unavailable':
     case 'unavailable':

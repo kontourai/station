@@ -259,7 +259,7 @@ describe('SkillsView', () => {
       '/skills/release-check',
       undefined,
     );
-    expect(screen.queryByRole('dialog', { name: 'Import Skills' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Import skills' })).toBeNull();
   });
 
   test('renders an import rejection in the dialog', async () => {
@@ -419,7 +419,7 @@ describe('SkillsView', () => {
     );
     expect(navigateMock).toHaveBeenCalledWith('/registry/skills');
     fireEvent.click(screen.getByRole('button', { name: 'Import skill files' }));
-    expect(screen.getByRole('dialog', { name: 'Import Skills' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Import skills' })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Choose .md files' }),
     ).toBeTruthy();

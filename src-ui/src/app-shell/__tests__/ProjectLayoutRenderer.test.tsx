@@ -482,7 +482,7 @@ describe('ProjectLayoutRenderer', () => {
     [
       'the catalog failing',
       { isError: true, entries: [], refetch: vi.fn() },
-      'Could not load coding workspace',
+      'Couldn’t load coding workspace',
     ],
     ['no Coding occurrence', { entries: [] }, 'Coding workspace unavailable'],
   ])('%s still shows the one centre Chat', (_state, catalog, text) => {
@@ -912,7 +912,7 @@ describe('ProjectLayoutRenderer', () => {
     render(<ProjectLayoutRenderer projectSlug="demo" layoutSlug="coding" />);
 
     expect(screen.getByRole('alert').textContent).toContain(
-      'Could not load coding workspace',
+      'Couldn’t load coding workspace',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetch).toHaveBeenCalledOnce();
@@ -962,7 +962,7 @@ describe('ProjectLayoutRenderer', () => {
       <ProjectLayoutRenderer projectSlug="project-route" layoutSlug="coding" />,
     );
 
-    expect(screen.queryByText('Could not load coding workspace')).toBeNull();
+    expect(screen.queryByText('Couldn’t load coding workspace')).toBeNull();
     // The Coding occurrence is the layout's Chat position: the stack's Chat
     // page, never a pane of the host.
     expect(screen.getByTestId('coding-center-chat')).toBeTruthy();
@@ -1522,7 +1522,7 @@ describe('ProjectLayoutRenderer', () => {
         expect(screen.getByText('Diff pane /repo/workspace')).toBeTruthy();
         expect(screen.getByText('Terminal pane /repo/workspace')).toBeTruthy();
         expect(screen.getByRole('alert').textContent).toContain(
-          'Experimental evidence panes unavailable',
+          'Experimental panes unavailable',
         );
       }
     },

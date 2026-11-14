@@ -96,8 +96,8 @@ function paneCatalog() {
     // The catalog route answers `projectSlug: project.slug` beside the id
     // (`src-server/routes/projects/projects.ts`), and since #1451 the pane
     // route REQUIRES it: a plugin pane whose catalog carries no slug renders
-    // "Station could not bind this plugin pane to its owning Project and
-    // plugin." instead of the frame. This fixture predates that change and
+    // "This plugin pane is missing its Project or plugin." instead of the
+    // frame. This fixture predates that change and
     // was never updated, so the hostile pane stopped mounting and the
     // containment proof below stopped running at all (#2089).
     projectSlug: 'hostile',

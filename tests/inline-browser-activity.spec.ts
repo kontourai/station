@@ -335,6 +335,8 @@ test('a mixed tool run and pending permission stay available', async ({
   const approval = page.getByRole('button', { name: /^Needs approval/ });
   await expect(approval).toBeVisible();
   await approval.click();
-  await expect(page.getByText('Tool Approval Request')).toBeVisible();
+  await expect(
+    page.getByText('Approval request', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Allow Once' })).toBeVisible();
 });

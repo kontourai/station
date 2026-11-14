@@ -301,7 +301,7 @@ describe('WorkspacePaneRouteView', () => {
         />,
       );
 
-      expect(screen.queryByText('Could not load workspace pane')).toBeNull();
+      expect(screen.queryByText('Couldn’t load this pane')).toBeNull();
       expect(screen.getByTestId('mounted-pane').textContent).toContain('demo');
     } finally {
       mock.isError = false;
@@ -324,7 +324,7 @@ describe('WorkspacePaneRouteView', () => {
         />,
       );
 
-      expect(screen.getByText('Could not load workspace pane')).toBeTruthy();
+      expect(screen.getByText('Couldn’t load this pane')).toBeTruthy();
     } finally {
       mock.isError = false;
       catalogMock.entries = entries;
@@ -429,9 +429,7 @@ describe('WorkspacePaneRouteView', () => {
       expect(
         screen.queryByText('This Project doesn’t have that pane.'),
       ).toBeNull();
-      expect(
-        screen.getByText('Could not refresh workspace panes'),
-      ).toBeTruthy();
+      expect(screen.getByText('Couldn’t refresh panes')).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       expect(catalogMock.refetch).toHaveBeenCalledTimes(1);
     } finally {
@@ -453,7 +451,7 @@ describe('WorkspacePaneRouteView', () => {
     expect(
       screen.getByText('This Project doesn’t have that pane.'),
     ).toBeTruthy();
-    expect(screen.queryByText('Could not refresh workspace panes')).toBeNull();
+    expect(screen.queryByText('Couldn’t refresh panes')).toBeNull();
   });
 
   test('mounts the catalog-selected contributed renderer without branching on contributor identity', () => {
