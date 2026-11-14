@@ -257,7 +257,7 @@ describe('Devin binding', () => {
     const { devin, h, connectionId } = await setup();
     const { taskId } = await h.service.createTask(connectionId, {
       prompt: 'Go',
-    }, 60_000);
+    });
     devin.setStatus(taskId, 'running', 'working');
     const long = 'x'.repeat(6_000);
     // 800 messages of 6,000 characters: past the 4 MiB budget.
@@ -283,7 +283,7 @@ describe('Devin binding', () => {
     devin.reply(taskId, 'still going');
     const later = await h.service.syncTask(connectionId, taskId);
     expect(later.appended.map((e) => e.text)).toEqual(['still going']);
-  });
+  }, 60_000);
 
   test('a session that finishes is read to its last message once, then not paged again', async () => {
     const { devin, h, connectionId } = await setup();
