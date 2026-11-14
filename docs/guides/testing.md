@@ -193,7 +193,9 @@ replay harness
 ([`opencode-serve-replay.ts`](../../src-server/providers/__tests__/opencode-serve-replay.ts))
 serves those exchanges over `node:http` to the adapter suites.
 [`opencode-serve-fixtures.test.ts`](../../src-server/providers/__tests__/opencode-serve-fixtures.test.ts)
-checks three things: that every replayed scenario was captured, that no
+checks three things: that every replayed scenario was captured (the
+`subagent-gap` scenario raises `experimental.subagent_depth` in the capture's
+configuration so a child can start its own child), that no
 credential, machine path or private name remains, and the findings the
 design relies on. The fingerprint allowlist entry is recomputed from the
 captured document

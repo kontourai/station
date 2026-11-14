@@ -53,6 +53,16 @@
 //     starts or joins OpenCode's shared background service. So the 1.x
 //     check cannot verify a 2.x engine, and over ACP Station refuses its
 //     approval modes on 2.x (ruling R1) rather than rebuild the check there.
+// Settled by the 2.3.0 capture (2026-11-15):
+// (i) Code Mode's `opencode.session_move` to a directory inside the project
+//     asks nothing under Station's confined rules, and OpenCode loads the
+//     destination's own plugin before it publishes `session.moved` (move).
+//     With `opencode_session_move` denied after those rules, the model is
+//     not offered the tool and the call fails as unknown (move-denied).
+// (j) A grandchild (a child's own child, `experimental.subagent_depth: 2`)
+//     raising an ask while no feed is open: `GET /api/permission/request`
+//     lists it, and `GET /api/session?parentID=` finds the child, then the
+//     grandchild (subagent-gap).
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import {

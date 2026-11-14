@@ -51,7 +51,9 @@ transport for each session when the session starts or resumes:
   OpenCode adapter owns under the `opencode` id. That covers OpenCode 1.x (npm
   `opencode-ai`), which stays ACP-only, a 2.x server whose API is not on the
   allowlist, a 2.x server that does not start, a session that asks for an
-  `effort` setting, and every session while the preview is off.
+  `effort` setting, a session started as an Agent (Station's staged pre-tool
+  policy runs only on the ACP path), and every session while the preview is
+  off.
 
 Saved connections stay ACP connection records. The adapter runs the ones
 `isOpenCodeAcpConnection` recognises: the OpenCode descriptor's own id, or a
@@ -91,7 +93,7 @@ releases, and is checked against an exact allowlist. OpenCode 1.x has no
 
 The capture also settled what the design relied on
 ([fixture suite](../../src-server/providers/__tests__/opencode-serve-fixtures.test.ts)
-findings a to f):
+findings a to j):
 
 - An ACP session id is the native session id, both ways (`crossload`), so a
   session can move between transports.
@@ -103,6 +105,15 @@ findings a to f):
 - `PATCH permissions: null` keeps a session's rules, and `[]` clears them.
 - An interrupt drops a pending ask without `permission.replied`, and a late
   answer gets 404.
+- Code Mode's `opencode.session_move` to a directory inside the project asks
+  nothing, and OpenCode loads the destination's own plugins before it
+  publishes `session.moved` (`move`). With a session rule denying
+  `opencode_session_move`, the tool is not offered and the call fails as an
+  unknown tool (`move-denied`).
+- A child may start its own child when `experimental.subagent_depth` is raised
+  (the default allows one level). Its ask, raised while the feed was down, is
+  listed by `GET /api/permission/request`, and the descendants by
+  `GET /api/session?parentID=` (`subagent-gap`).
 
 ## Transport selection and the fingerprint allowlist
 
@@ -119,8 +130,8 @@ findings a to f):
    Only `2.3.0` is listed. A pre-release keeps its suffix, so it never matches.
 4. On a mismatch, the server is stopped and the session runs over ACP with a
    `runtime.warning` coded `OPENCODE_NATIVE_UNVERIFIED`. A server that did not
-   start gives `OPENCODE_NATIVE_UNAVAILABLE`, and an `effort` setting gives
-   `OPENCODE_NATIVE_UNSUPPORTED_SETTING`.
+   start gives `OPENCODE_NATIVE_UNAVAILABLE`, and an `effort` setting or a
+   session started as an Agent gives `OPENCODE_NATIVE_UNSUPPORTED_SETTING`.
 5. A verdict from a document that was actually read is kept per binary identity
    and version. A failed read is not kept.
 
@@ -172,9 +183,17 @@ server, not two.
 The SSE feed has no event ids and no replay. When the feed drops, or is silent
 for longer than three missed heartbeats (45 seconds), the session reconnects
 with back-off. After `server.connected` it re-reads over REST: the session's
-status, its history (with the text a part finished during the gap), pending
-asks and forms, and the inbox. It also emits the terminal event if the
-execution ended while the feed was down.
+status, its history (with the text a part finished during the gap), its
+descendants, pending asks and forms, and the inbox. It also emits the terminal
+event if the execution ended while the feed was down. Descendants (children,
+and their children at any depth) are looked up by `parentID` from the session
+down, at most 200. One running now is reported as running child work, and one
+reported running that ended in the gap is settled with the outcome OpenCode
+kept. Pending asks and forms come from the server location's lists
+(`GET /api/permission/request`, `GET /api/form`), filtered to the session and
+its descendants, so a child's ask raised in the gap is surfaced. A failure to
+read the descendants is reported in a warning, and the session's own turn is
+still caught up.
 
 ## Governance
 
@@ -192,11 +211,27 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
 - **Full access in a `host` session** sends no Station session rules. The
   agent's own rules decide, OpenCode asks only where they say ask, and Station
   answers `once`.
-- **Ask, Auto, and full access confined to Auto** send only `ask` rules: for
+- **Ask, Auto, and full access confined to Auto** send `ask` rules for
   `shell`, `edit`, `webfetch`, `websearch`, `external_directory`, `*_*` (MCP
   tools) and `subagent`. OpenCode appends a session's rules after the agent's
   and lets the last match win, so these asks reach Station even for actions the
-  agent's own rules deny.
+  agent's own rules deny. Last, they deny `opencode_session_move`, Code Mode's
+  session move. That is the only Station `deny`. No agent rule governs that
+  tool, so the deny takes nothing from the agent. It closes a boundary: the
+  move asks nothing for a directory inside the project, and OpenCode loads the
+  destination's configuration and plugins while resolving it, before
+  `session.moved` is published, so no check after the event could keep that
+  code from running. A wholly denied tool leaves OpenCode's catalog, and
+  children inherit the rule.
+- **A session that moves anyway** (another client of its server, or a resume
+  of a session moved earlier) is followed. In a governed session, a
+  `session.moved` for it or a descendant runs the #3924 scan on the new
+  directory. Code there stops the session through the usual stop path (the
+  execution interrupted, asks rejected), after a `runtime.warning` coded
+  `OPENCODE_SESSION_MOVED_UNGOVERNABLE` that names the directory and what was
+  found. Otherwise the session's directory follows the move: the
+  configuration-edit guard, later governed checks and the resume cursor use
+  it. A resume reads the stored session's directory and scans that.
 - **Answering an ask**: if the asking agent's rules alone deny it, or it is
   `subagent`, Station rejects it without a person. Below host full access, an
   `edit` of OpenCode configuration (`opencode.json(c)`, `.opencode/`, the
@@ -211,11 +246,21 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   OpenCode refuses (other than a 404 for an ask already gone) is put to the
   person, so the ask never waits hidden. Station never answers `always`
   (ruling R4).
+- **After an untrusted read** (#4828), an `edit` ask from the session or a
+  descendant that names a known agent-instruction or git-hook file, as a
+  resource or in `metadata.files`, is rejected before any deny check, grant,
+  mode or person. It asks the same ledger and ancestry as the ACP path
+  (`untrustedContentAncestry`) and classifies paths the same way
+  (`openCodeNativePersistenceTarget`). A shell command's ask is not
+  classified, as on ACP.
 - **Child sessions** inherit their parent's session rules
   (`core/src/session.ts`), so a child's ask is answered as the parent's would
   be, except that the deny check uses the child's own agent's rules
   (`GET /api/agent/{name}`; rules that cannot be read send the ask to a
-  person). `subagent` stays rejected under Ask and Auto, but a `subtask: true`
+  person). A child's own children are governed the same way, and a child that
+  switches agent (`session.agent.selected`) has its later asks decided on the
+  new agent's rules. Station's staged pre-tool policy is not run natively; a
+  session started as an Agent runs over ACP, where it is. `subagent` stays rejected under Ask and Auto, but a `subtask: true`
   command starts a child without that permission, and its asks are governed
   this way.
   "Allow for this session" is a grant the adapter holds, scoped to the asked
@@ -304,6 +349,10 @@ features:
 - **Code Mode `opencode.worktree_create`** asserts no permission, and it can
   run the project's configured `commands.start`. Station does not see it as an
   ask. Accepted for this preview.
+- **Asks of a session that moved** to another location are listed there; a
+  reconnect reads only the server's own location's lists (the client sends no
+  location query), so such an ask raised during a feed gap is not reopened. A
+  governed session cannot move itself (its rules deny the tool).
 - **OpenCode 1.x** stays ACP-only. **2.x over ACP** refuses Station approval
   modes (R1).
 - **CI coverage of the real binary**:

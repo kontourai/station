@@ -29,6 +29,7 @@ type Line = {
   event?: any;
   dir?: string;
   msg?: any;
+  text?: string;
 };
 
 function lines(scenario: string): Line[] {
@@ -291,6 +292,47 @@ describe('OpenCode serve captures', () => {
       scenario.find((line) => line.event?.type === 'session.tool.failed')?.event
         ?.data,
     ).toMatchObject({ error: { message: 'The user declined this tool call' } });
+  });
+
+  test("(i) Code Mode's session move asks nothing and loads the destination first; denied, the tool is not offered", () => {
+    const move = lines('move');
+    expect(move.some((line) => line.event?.type === 'permission.asked')).toBe(
+      false,
+    );
+    expect(
+      move.find((line) => line.event?.type === 'session.moved')?.event?.data,
+    ).toMatchObject({ location: { directory: '{PROJ}/sub' }, subpath: 'sub' });
+    expect(move.find((line) => line.kind === 'finding')?.text).toContain(
+      'the nested plugin ran before the event was published',
+    );
+    const denied = lines('move-denied');
+    expect(denied.some((line) => line.event?.type === 'session.moved')).toBe(
+      false,
+    );
+    expect(
+      JSON.stringify(
+        denied.find((line) => line.event?.type === 'session.tool.success')
+          ?.event?.data,
+      ),
+    ).toContain("Unknown tool 'opencode.session_move'");
+    expect(denied.find((line) => line.kind === 'finding')?.text).toContain(
+      'the plugin never ran',
+    );
+  });
+
+  test('(j) a grandchild ask raised with no feed open is listed by the location, and found by parentID', () => {
+    const gap = lines('subagent-gap');
+    const lists = gap.filter(
+      (line) =>
+        line.kind === 'http' && line.path?.startsWith('/api/session?parentID='),
+    ) as Array<{ response: { data: Array<{ id: string; parentID: string }> } }>;
+    const child = lists[0]?.response.data[0];
+    const grandchild = lists[1]?.response.data[0];
+    expect(grandchild?.parentID).toBe(child?.id);
+    const pending = gap.find(
+      (line) => line.kind === 'http' && line.path === '/api/permission/request',
+    )?.response as { data: Array<{ sessionID: string }> };
+    expect(pending.data.map((ask) => ask.sessionID)).toEqual([grandchild?.id]);
   });
 
   test('(h) history is paged: 50 messages by default, newest first with a cursor that carries its order', () => {

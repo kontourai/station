@@ -1026,7 +1026,12 @@ Station reads the binary's `--version` to tell the two apart
   over its own `opencode serve`, where Station verified the served API, and
   governs it through the session's permission rules. An edit of OpenCode's
   own configuration asks you there under Ask and Auto, even after an
-  "allow for this session". That path does not
+  "allow for this session". Under Ask and Auto, OpenCode's own tool for moving
+  the chat to another folder is turned off, because OpenCode loads the new
+  folder's plugins as it moves; a chat moved there anyway, into a folder whose
+  OpenCode configuration runs code, is stopped with a warning. A chat started
+  as an Agent runs over ACP, where Station's tool policy for the Agent is
+  enforced. That path does not
   need `debug agent`, so it is where #4435 is resolved. 1.x, an unverified 2.x,
   and every chat while the preview is off still run over ACP. The design,
   fallback rules and limits are in
