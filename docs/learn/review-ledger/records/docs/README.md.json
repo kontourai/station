@@ -42,8 +42,6 @@
 
     "src-server/routes/mobile-device.ts",
 
-    "src-server/runtime/routes/runtime-routes.ts",
-
     "src-server/services/browser/browser-access.ts",
 
     "src-server/services/browser/browser-agent-authority.ts",

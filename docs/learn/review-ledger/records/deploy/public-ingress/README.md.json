@@ -70,13 +70,13 @@
 
     "src-server/runtime/mcp/mcp-manager.ts",
 
-    "src-server/runtime/routes/runtime-routes.ts",
-
     "src-server/services/orchestration/__tests__/home-reference-recovery.test.ts",
 
     "src-server/services/ssh/device-pairing-service.ts",
 
-    "src-server/services/ssh/environment-security-service.ts"
+    "src-server/services/ssh/environment-security-service.ts",
+
+    "src-server/runtime/bootstrap/runtime-http.ts"
   ],
 
   "checks": [

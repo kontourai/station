@@ -68,8 +68,6 @@
 
     "src-server/runtime/bootstrap/personal-home-authority-database.ts",
 
-    "src-server/runtime/routes/runtime-routes.ts",
-
     "src-server/services/orchestration/delegation-attempt-claim-store.ts",
 
     "src-server/services/orchestration/planned-home-admission-reconciliation.ts",
@@ -96,7 +94,11 @@
 
     "src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx",
 
-    "tests/container-self-host.spec.ts"
+    "tests/container-self-host.spec.ts",
+
+    "src-server/routes/projects/projects.ts",
+
+    "src-server/services/projects/git-repository-config.ts"
   ],
 
   "checks": [

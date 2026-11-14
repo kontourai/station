@@ -68,8 +68,6 @@
 
     "src-server/runtime/bootstrap/personal-home-authority-database.ts",
 
-    "src-server/runtime/routes/runtime-routes.ts",
-
     "src-server/services/orchestration/delegation-attempt-claim-store.ts",
 
     "src-server/services/orchestration/planned-home-admission-reconciliation.ts",
