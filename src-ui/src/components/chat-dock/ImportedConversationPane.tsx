@@ -18,6 +18,7 @@ import {
 } from '../../lib/attached-continuation-handoff';
 import { displayProvider } from '../../utils/sessionDisplay';
 import { Button } from '../Button';
+import { useSessionReaderBinding } from '../conversation/SessionReaderBinding';
 import { AgentIcon } from '../icons/AgentIcon';
 import { SessionDetail } from '../session-detail/SessionDetail';
 import { ErrorState, SkeletonBlock } from '../state';
@@ -48,6 +49,7 @@ export default function ImportedConversationPane({
     isCurrent: () => boolean,
   ) => Promise<boolean>;
 }) {
+  const binding = useSessionReaderBinding();
   const authority = useAuthorityPersistence();
   const station =
     authority.status === 'verified'
@@ -95,7 +97,7 @@ export default function ImportedConversationPane({
       intent.current += 1;
     };
   }, [scope, threadId]);
-  // #3552: a draft handed over from Activity belongs to this visit only. It
+  // #3552: a draft handed over from a record belongs to this visit only. It
   // is dropped once this pane has settled whether it could show the reader
   // that takes it, so a dev-mode effect rehearsal while still loading keeps it.
   const settled = useRef(false);
@@ -233,7 +235,7 @@ export default function ImportedConversationPane({
           className="imported-conversation-pane__error"
           variant="compact"
           title="This continuation can't open as a chat"
-          description={`Station has no ${engineName(unboundEngine)} agent, so the continuation has none. Open it from Activity, or set up ${engineName(unboundEngine)} in New Chat.`}
+          description={`Station has no ${engineName(unboundEngine)} agent, so the continuation has none. Set up ${engineName(unboundEngine)} in New Chat.`}
         />
       )}
       {(continued.isError || openFailed) && (
@@ -260,6 +262,11 @@ export default function ImportedConversationPane({
           key={`${scope}\0${threadId}`}
           handoffScope={scope}
           presentation="chat"
+          evidenceReveal={
+            binding?.sessionId === threadId && binding.focus === 'evidence'
+              ? { threadId, token: binding.intentToken ?? 0 }
+              : undefined
+          }
           chatFontSize={chatFontSize}
           apiBase={apiBase}
           session={source.data.session}

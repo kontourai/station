@@ -1756,7 +1756,13 @@
 
     "scripts/child-work-native-model-channel-lab.ts",
 
-    "docs/guides/native-model-channel-lab.md"
+    "docs/guides/native-model-channel-lab.md",
+
+    "src-server/providers/registries/registry-source-detection.ts",
+
+    "src-server/providers/registries/agent-registry-provider.ts",
+
+    "src-server/providers/registries/confined-local-read.ts"
   ],
 
   "checks": [

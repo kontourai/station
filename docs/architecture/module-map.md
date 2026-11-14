@@ -525,10 +525,16 @@ limits and the remaining encrypted-path acceptance.
 ## RegistrySourceManager
 
 [The source manager](../../src-server/providers/registries/registry-source-manager.ts)
-composes the existing visible Skill/plugin providers with user-added local
-Skill directories, public GitHub libraries and local/HTTPS Station manifests.
-It persists source configuration and last successful bounded snapshots under
-the Station home. [The configuration reader](../../src-server/providers/registries/registry-source-configuration.ts)
+composes the existing visible Skill/plugin providers with sources a person
+adds by location and optional ref. [Detection](../../src-server/providers/registries/registry-source-detection.ts)
+reads each source within fixed bounds, refusing rather than truncating past
+them, and [reads a folder source only inside itself](../../src-server/providers/registries/confined-local-read.ts),
+following no link. Root indexes (a Station manifest, a Claude Code marketplace) decide the
+kinds they declare, a structural scan finds the rest, and one source can supply
+skills, plugins and agents through one catalog entry per kind
+([decision](../decisions/registry-sources-detected-by-structure.md)). It
+persists source configuration, detections and last successful bounded snapshots
+under the Station home. [The configuration reader](../../src-server/providers/registries/registry-source-configuration.ts)
 refuses corrupt/unsupported or nonregular files and bounds the file to 8 MiB
 and retained snapshots to 32. [Installed-state projection](../../src-server/providers/registries/registry-catalog-installed-state.ts)
 uses the current local inventory and source ownership aliases for live and
@@ -1680,7 +1686,7 @@ cause disclosure, while desktop incoming bubbles keep their sender treatment.
 Exact send/receive navigation uses the recorded request key, reads at most
 20 older pages to rule out ambiguity, and focuses a uniquely resolved record.
 Missing, ambiguous and page-limit outcomes remain visible. The public
-`SessionMessageAnchor` travels through the existing region outbox and Activity
+`SessionMessageAnchor` travels through the existing region outbox and Chat
 binding as one consumed intent, with repeat activations keyed by its token.
 Its parser requires a matching Session of 1–512 characters, sent/received
 direction and a request key of 1–128 characters; invalid anchors grant
@@ -2202,8 +2208,15 @@ carrier rebind cannot borrow that acknowledgement. A failed witness projection
 rolls back only that derived update; the observed canonical terminal remains
 independently persistable. These private projections remain in the existing EventStore. A consumed start
 boundary is not a delivery acknowledgement; uncertain or failed seed delivery
-refuses ordinary reuse. Deliberate empty context and the framework's native
-memory companion retain their separate contracts.
+refuses ordinary reuse. A handoff (not a native return) or a plain continuation
+(no deliberate context boundary) whose seed-bearing turn definitively failed or
+was stopped does not strand the conversation: the next ordinary turn starts a
+successor Session with a freshly pinned transcript seed of the whole
+conversation, never the failed Session's native cursor, and a stopped
+redelivery is redelivered the same way. An open or uncertain seed turn, a
+failed boundary seed and a failed fork seed stay refused. These refusals carry the closed
+`conversation-context-unavailable` code. Deliberate empty context and the
+framework's native memory companion retain their separate contracts.
 
 [Saved fork context](../../src-server/services/orchestration/conversation-fork-context.ts)
 is an owner-scoped immutable copy with an independent Conversation identity.
@@ -4093,10 +4106,10 @@ starts from exact authorized account/Session/correlation identity. The active
 row does not yet have a routing receipt; settlement adds the sealed receipt ID
 before terminal publication. [Tracking helpers](../../src-server/services/operations/action-operation-tracker.ts)
 use stable handoff identities and catch observation-storage failures so those
-failures do not replace the wrapped domain result. The SDK/Activity UI consume
+failures do not replace the wrapped domain result. The SDK/Monitoring UI consume
 these browser-safe records, not the private file store.
 
-The [Activity section](../../src-ui/src/components/action-operations/ActionOperationsSection.tsx)
+The [Monitoring section](../../src-ui/src/components/action-operations/ActionOperationsSection.tsx)
 keeps platform actions separate from filtered sessions: operation records have
 account and optional machine/Session scope, without the Project or client-origin
 attribution those filters need. Its disclosure shows running and attention counts,
@@ -4854,7 +4867,7 @@ JS fixtures do not establish installed-shell qualification.
 [ConversationBody](../../src-ui/src/components/conversation/ConversationBody.tsx),
 [useConversationController](../../src-ui/src/components/conversation/useConversationController.ts)
 and the [transport](../../src-ui/src/components/conversation/conversation-transport.ts)
-own the dock, Activity, attached-session and coding-tab conversation composition.
+own the dock, attached-session and coding-tab conversation composition.
 Record density changes framing; the adapters retain read-only access and explicit
 continuation into an owned child. [SharedTaskHistoryList](../../src-ui/src/components/conversation/SharedTaskHistoryList.tsx)
 receives owner/member/guest history projections and paging ports without changing

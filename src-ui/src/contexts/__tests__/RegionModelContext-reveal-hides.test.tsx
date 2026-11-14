@@ -90,15 +90,15 @@ describe('the reveal prediction matches the model’s own reveal of Chat', () =>
       name: 'a hidden Chat beside a shown Activity',
       folded: false,
       hidden: [] as string[],
-      arrange: () => current().placeSurface('activity', 'right'),
+      arrange: () => current().placeSurface('workspace-agents', 'right'),
     },
     {
       name: 'Chat behind Activity’s tab in its own region',
       folded: false,
-      hidden: ['activity'],
+      hidden: ['workspace-agents'],
       arrange: () => {
         navigationStore.navigate('/', { dock: 'open' });
-        current().placeSurface('activity', 'bottom');
+        current().placeSurface('workspace-agents', 'bottom');
       },
     },
     {

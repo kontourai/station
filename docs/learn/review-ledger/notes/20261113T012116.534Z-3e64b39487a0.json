@@ -1,0 +1,7 @@
+{
+  "revision": "91978da65ff851fbdfa759fc83049406b733445c",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Rechecked the Monitoring Emitter section against emitter.ts: emitToolResult may now carry gen_ai.tool.call.arguments for input that changed after the start row; redaction, live emit, tracked persistence and flush claims are unchanged. Source reading and emitter/bridge focused tests.","inputs":["docs/architecture.md","src-server/monitoring/emitter.ts"]}
+  ]
+}

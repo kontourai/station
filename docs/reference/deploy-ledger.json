@@ -1,5 +1,50 @@
 [
   {
+    "timestampUtc": "2026-11-14T00:16:41Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261113.43530636495",
+    "sha": "a5752ec5b31170072dbaabb9744f486d3a551321",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43530636495",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261113.43530636495 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "ce3f22639a3d22d56250ca6fa2686aa1296a6091",
+      "groups": {
+        "feat": [
+          "[#4904](https://github.com/kontourai/station/pull/4904) feat(chat): open child transcripts in chat and retire Activity",
+          "[#4879](https://github.com/kontourai/station/pull/4879) feat(ui): add a source by location and show what it provides",
+          "[#4876](https://github.com/kontourai/station/pull/4876) feat(registry): sources are a location; what they provide is detected from their content",
+          "[#4870](https://github.com/kontourai/station/pull/4870) feat(desktop): full-bleed desktop icons and a startup cover that matches the in-app splash",
+          "[#4865](https://github.com/kontourai/station/pull/4865) feat(automations): inbound webhooks and GitHub poll intake through Telltale",
+          "[#4855](https://github.com/kontourai/station/pull/4855) feat(projects): channels and Task rooms in the sidebar, full-screen channels on phones, and the dock inbox opens stored conversations (#4794, #4795, #4814)",
+          "[#4850](https://github.com/kontourai/station/pull/4850) feat(automations): agents propose sources and rules, a person confirms (#4830)"
+        ],
+        "fix": [
+          "[#4924](https://github.com/kontourai/station/pull/4924) fix(deps): adopt Flow Agents 11 and Flow 6 together",
+          "[#4903](https://github.com/kontourai/station/pull/4903) fix(android): prevent startup loops on HTML fallback responses",
+          "[#4909](https://github.com/kontourai/station/pull/4909) fix: show outstanding branch reviews in delta inspection",
+          "[#4910](https://github.com/kontourai/station/pull/4910) fix(deps): pin jsdom back to 30 until the UI tests migrate to 31"
+        ],
+        "ci": [],
+        "docs": [
+          "[#4902](https://github.com/kontourai/station/pull/4902) docs: state one public promise everywhere and check it"
+        ],
+        "other": [
+          "[#4921](https://github.com/kontourai/station/pull/4921) test(desktop): keep relay reuse fixture sockets blocking on accept",
+          "[#4906](https://github.com/kontourai/station/pull/4906) test(ui): derive AccountEntry Chromium pin from Playwright 1.65"
+        ]
+      },
+      "note": null,
+      "commitCount": 14
+    }
+  },
+  {
     "timestampUtc": "2026-11-13T13:09:17Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.20261113.1",

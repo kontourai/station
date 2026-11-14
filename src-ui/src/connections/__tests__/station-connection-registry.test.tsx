@@ -375,6 +375,35 @@ describe('Station connection registry', () => {
     registry.retire();
   });
 
+  it('keeps the resolver stable across a health tick that only refreshes profile timestamps', () => {
+    const client = new QueryClient();
+    const seen: MountedConnections[] = [];
+    render(
+      <RegistryTree
+        client={client}
+        namespace="source-authority"
+        capture={(value) => seen.push(value)}
+      />,
+    );
+    const before = seen.at(-1)!;
+    const active = before.profiles.activeConnection!;
+    // What the 10s health probe does: re-create the active profile with a new
+    // success time. Remote chats re-resolve whenever this value changes.
+    act(() => {
+      before.profiles.recordEndpointSuccess(
+        active.id,
+        active.url,
+        (active.lastSuccessAt ?? 0) + 10_000,
+      );
+    });
+    const after = seen.at(-1)!;
+    expect(after.profiles.activeConnection).not.toBe(active);
+    expect(after.profiles.activeConnection?.lastSuccessAt).toBe(
+      (active.lastSuccessAt ?? 0) + 10_000,
+    );
+    expect(after.station).toBe(before.station);
+  });
+
   it('retires pending direct verification before it can publish after source replacement', async () => {
     const { source, registry, hook } = setup();
     let targetId = '';

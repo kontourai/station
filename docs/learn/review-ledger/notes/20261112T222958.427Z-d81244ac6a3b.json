@@ -1,0 +1,23 @@
+{
+  "revision": "745b803683c85673a2200508ea826eb195a1323a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed the RegistrySourceManager entry against the fix round. Added that a folder source is read only inside itself, following no link (confined-local-read.ts, used by detection and the confined skill provider). The bounds statement still holds, with SKILL.md now bounded too. The agent merge description is unchanged.","inputs":["docs/architecture/module-map.md","src-server/providers/registries/agent-registry-provider.ts","src-server/providers/registries/filesystem-skill-registry.ts","src-server/providers/registries/registry-source-configuration.ts","src-server/providers/registries/registry-source-detection.ts","src-server/providers/registries/registry-source-manager.ts","src-server/providers/registries/registry.ts","src-server/routes/plugins/registry.ts","src-server/providers/registries/confined-local-read.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Re-reviewed the Add source and agentRegistry paragraphs. Added that a plain-ID agent install is refused while any agent registry cannot be read (agentCatalogOwnership, 503 agent-catalog-unavailable). Detection kinds, bounds and per-source cards are unchanged.","inputs":["docs/guides/plugins.md","src-server/providers/registries/agent-registry-provider.ts","src-server/providers/registries/filesystem-skill-registry.ts","src-server/providers/registries/registry-source-configuration.ts","src-server/providers/registries/registry-source-detection.ts","src-server/providers/registries/registry-source-manager.ts","src-server/routes/plugins/registry.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Install Agent now states 409 agent-catalog-ambiguous and 503 agent-catalog-unavailable (routes/plugins/registry.ts, registeredAgentCatalogOwnership). The Manage marketplaces detection fields are unchanged; the detection state 'refused' also covers a confinement refusal, which the existing sentence covers as a refused read.","inputs":["docs/reference/api.md","src-server/providers/registries/agent-registry-provider.ts","src-server/providers/registries/filesystem-skill-registry.ts","src-server/providers/registries/registry-source-configuration.ts","src-server/providers/registries/registry-source-detection.ts","src-server/providers/registries/registry-source-manager.ts","src-server/routes/plugins/registry.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Re-checked after the server fix round; the SDK add input and hooks are unchanged. No prose change.","inputs":["docs/reference/sdk.md","src-server/providers/registries/filesystem-skill-registry.ts","src-server/providers/registries/registry-source-configuration.ts","src-server/providers/registries/registry-source-manager.ts","src-server/routes/plugins/registry.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Stale only through api.md's agent install refusal codes; terminal routes are unaffected. No prose change.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Stale through api.md. This guide states no registry agent-install codes or source-reading rules. No prose change.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"registry.ts now refuses unresolved plain-id agent installs. The Marketplace sources section (adding a source grants and installs nothing; removal preserves packages) is unaffected. No prose change.","inputs":["docs/guides/distribution-profiles.md","src-server/routes/plugins/registry.ts"]},
+
+    {"path":"examples/registry/README.md","note":"Re-checked against the fix round: the manifest's entries still install through the plugin preview, consent and transaction. No prose change.","inputs":["examples/registry/README.md","src-server/routes/plugins/registry.ts"]},
+
+    {"path":"examples/registry/integrations/README.md","note":"Re-checked against the fix round: the installable and recognized kinds are unchanged; only reads are confined and bounded. No prose change.","inputs":["examples/registry/integrations/README.md","src-server/providers/registries/registry-source-configuration.ts","src-server/routes/plugins/registry.ts"]}
+  ]
+}

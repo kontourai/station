@@ -90,6 +90,7 @@ clearly mark the stale document.
 - **[Canonical usage export](guides/monitoring.md#canonical-usage-export-source)** — verified-person source consent, committed-order receipts and invalidations, bounded durable sync/indexing, saved Personal views and restore activation; deployed, clone/mirror and native acceptance remain separate.
 - **[Product telemetry](reference/usage-telemetry.md)** — disclosed observations, saved destinations, exact instance key grants, current-process health and connection checks; the [standalone receiver](../packages/telemetry-broker/README.md) owns durable product ingestion. Collector delivery and personal receipt analytics retain separate contracts.
 - **[Cedar policy foundation](reference/cedar-policy.md)** — server-local evaluator contract, bounds and packaged probe.
+- **[Idle weight and request overhead](reference/station-weight.md)** — the per-PR check of Station's memory, CPU and launch time at rest, what it adds to an engine's first model request, its baseline and budgets.
 - **[Backlog disposition policy](reference/backlog-disposition-policy.md)** — how every open issue is classified and which labels the backlog audit accepts.
 - **[Settings deep links](reference/settings-deep-links.md)** — the `?view=&highlight=` URL shape, the registry endpoint that enumerates every control, and the rule for answering with one.
 - **[Architecture](architecture/)** — current module boundaries and ownership.

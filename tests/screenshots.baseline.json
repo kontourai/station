@@ -194,12 +194,6 @@
       "sha256": "94b5555ddf96a470e5b7f4a892d27c9569aec5b53cdbbbd9086cc65558776dba"
     },
     {
-      "name": "mobile-activity-compact",
-      "width": 390,
-      "height": 844,
-      "sha256": "ada796343f6e45ad4368b4590c0a311f9893945a4fbf074a299404f3ad3804fe"
-    },
-    {
       "name": "mobile-agent-editor",
       "width": 390,
       "height": 844,
@@ -395,7 +389,7 @@
       "name": "overlay-region-chooser-from-toggle",
       "width": 1440,
       "height": 900,
-      "sha256": "be43b6d2e69fb8d6f80df5a4438ae9ac8ecd9e083c5856617851794c2af52548"
+      "sha256": "ac4811a031239794325a13b3a6407d7e20a56502d65e8183c598cbd10142e8eb"
     },
     {
       "name": "overlay-toast",
@@ -780,18 +774,6 @@
       "width": 1440,
       "height": 900,
       "sha256": "ef63d35656dcdd2129636c53127c981bdc2588382aa9b3a5592c341eff659275"
-    },
-    {
-      "name": "sessions",
-      "width": 1440,
-      "height": 900,
-      "sha256": "2827bf99bd72f1fee547fcae0c5c20adc349940e0df363468818fe4756d058f1"
-    },
-    {
-      "name": "sessions-filtered-empty",
-      "width": 1440,
-      "height": 900,
-      "sha256": "ca01fd46645549679dfe453bd891cb8fb98170fddb5242cd6730a75f5a652427"
     },
     {
       "name": "settings",
