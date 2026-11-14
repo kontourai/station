@@ -161,11 +161,15 @@ At `690d47d6a47c`, the two contract/SDK-owner suites pass 146 cases. Separate
 producer-comparison, SDK-separation and native-tool-check faults each fail their
 intended API assertion. Byte-exact restoration passes the four selected positive
 and refusal cases. These are synthetic registry fixtures, not provider evidence.
-Server-test typing passes. Native source admission and physical reservation remain
-unfinished: the existing SDK source lease and private prototype wire cannot be
-used as a native grant, and a single Task must not be given invented group/seat
-identities to enter the group-only source API. Codex/Responses qualification and
-the full inherited-authority acceptance remain open.
+The parser split at `c86f6446c6` passes all 66 contract cases. Removing its SDK
+schema's native-metadata refusal fails the intended assertion; byte-exact
+restoration passes all 66 cases again. Server-test typing passes at the earlier
+profile checkpoint. Native source admission and physical reservation remain
+unfinished: the [existing source owner](../../src-server/services/orchestration/delegation-group-source-admission.ts)
+cannot lend its SDK lease or private prototype wire as a native grant. A single
+Task must not be given invented group/seat identities to enter its group-only
+source API. Codex/Responses qualification and the full inherited-authority
+acceptance remain open.
 
 ## Evidence and limits
 
