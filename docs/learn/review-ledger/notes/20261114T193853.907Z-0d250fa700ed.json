@@ -1,0 +1,7 @@
+{
+  "revision": "b1e62cc105903cf03db81840488cce164052d8c5",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Rechecked after merging main: the runtime row's foldEngineMcpStatus now also keeps a configured server (runtime.ts state set, conversation-engine-mcp.test.ts), matching the Muse MCP-servers bullet; the new unsupported row is true of the committed stable 1.4.20 schema, which has no token or auth request.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports","packages/contracts/src/__tests__/provider-failure.test.ts","packages/contracts/src/engine-sign-in.ts","packages/contracts/src/index.ts","packages/contracts/src/project-room.ts","packages/contracts/src/provider-failure.ts","packages/contracts/src/provider.ts","packages/contracts/src/runtime-events.ts","packages/contracts/src/runtime.ts","scripts/__tests__/provider-failure-inventory.test.ts","src-server/providers/adapter-shape.ts","src-server/routes/orchestration/orchestration.ts","src-server/routes/projects/project-room-routes.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/conversation/conversation-stats-view.ts","src-server/security/pairing-route-scopes.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx","src-ui/src/views/project-page/ProjectRoom.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "b1e62cc105903cf03db81840488cce164052d8c5",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Rechecked: the contracts reference change adds a Muse unsupported row; contracts scope rules are unchanged.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md","packages/contracts/package.json#/exports"]}
+  ]
+}
