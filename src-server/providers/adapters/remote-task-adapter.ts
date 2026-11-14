@@ -61,7 +61,7 @@ import {
 import type { AsyncEventStreamOptions } from '../sessions/async-event-queue.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 
-export const REMOTE_TASK_PROVIDER = 'remote-task';
+const REMOTE_TASK_PROVIDER = 'remote-task';
 
 /** Statuses after which the vendor does nothing more until someone writes. */
 const TURN_ENDING: readonly RemoteTaskStatus[] = ['idle', 'waiting-for-user'];
@@ -75,7 +75,7 @@ export interface RemoteTaskTurnBounds {
   readonly pollCeilingMs: number;
 }
 
-export const REMOTE_TASK_TURN_BOUNDS: RemoteTaskTurnBounds = Object.freeze({
+const REMOTE_TASK_TURN_BOUNDS: RemoteTaskTurnBounds = Object.freeze({
   wakeMs: 10 * 60_000,
   workMs: 60 * 60_000,
   pollCeilingMs: 150_000,
@@ -217,7 +217,7 @@ const STATUS_WORDS: Readonly<Record<RemoteTaskStatus, string>> = {
  * reported (a pull request by URL, or by the vendor's reference when it gives
  * no URL), the task's page, and where to answer when Station cannot.
  */
-export function summaryLine(
+function summaryLine(
   vendor: RemoteTaskVendorId,
   task: RemoteTask,
   followUp: RemoteTaskCapabilities['followUp'],

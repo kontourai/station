@@ -14,7 +14,7 @@ import {
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { RemoteTaskEngineService } from './service.js';
 
-export const REMOTE_TASK_ENGINE_ID = 'remote-task';
+const REMOTE_TASK_ENGINE_ID = 'remote-task';
 
 export async function adoptRemoteTaskEngineWhenReady(deps: {
   readonly service: Pick<RemoteTaskEngineService, 'readyConnections'>;
