@@ -858,11 +858,16 @@ describe('input review notes', () => {
 
   it('covers only the exact cited value, not another value or the whole file, in scoped or strict replay', () => {
     const f = pathOnlyFixture();
+    // Both pages also cite the reviewed value, so each receives a note for
+    // it that must not stand for the other binding into the same file.
     editRecord(f.root, 'docs/b.md', (data) => {
-      data.sources.push('package.json#/scripts/other');
+      data.sources.push(
+        'package.json#/scripts/docs',
+        'package.json#/scripts/other',
+      );
     });
     editRecord(f.root, 'docs/a.md', (data) => {
-      data.sources.push('package.json');
+      data.sources.push('package.json', 'package.json#/scripts/docs');
     });
     commit(f.root, 'cite another value and the whole file');
     for (const path of ['docs/a.md', 'docs/b.md'])
@@ -880,7 +885,7 @@ describe('input review notes', () => {
     expect(
       recordInput(f, 'package.json#/scripts/docs', 'Checked the docs script.')
         .recorded[0].paths,
-    ).toEqual(['docs/pkg.md']);
+    ).toEqual(['docs/a.md', 'docs/b.md', 'docs/pkg.md']);
     const expected = {
       'docs/a.md': ['package.json'],
       'docs/b.md': ['package.json#/scripts/other'],
