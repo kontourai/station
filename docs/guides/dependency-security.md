@@ -803,11 +803,13 @@ jobs, so a later lifecycle reconcile republishes the same state rather than
 replacing it. As with every merge-group job, including the title publisher,
 the merge-group workflow definition is the queued candidate's own; only the
 script comes from the base, and the main-branch lifecycle reconcile remains
-the recovery publisher. Lifecycle reconciliation handles
-requested and completed source runs: a requested run or attempt publishes
-pending and completion publishes its verdict, so a start event would only
-republish pending. Metadata request events allocate no publisher, while
-metadata completion can reconcile existing proof.
+the recovery publisher. Lifecycle reconciliation publishes pending when a
+first attempt is requested and when a re-run attempt starts (`in_progress`
+with `run_attempt` above 1, because GitHub sends no `requested` event for a
+re-run), and publishes the verdict on completion. A first attempt's
+`in_progress` event is skipped at job level, since `requested` already
+published pending. Metadata request and start events allocate no publisher,
+while metadata completion can reconcile existing proof.
 
 The policy binds the exact head, repository and every current main-target PR
 sharing that head. It checks recorded base ancestry and the current run attempt;

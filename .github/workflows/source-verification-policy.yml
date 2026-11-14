@@ -9,10 +9,12 @@ on:
         type: string
   workflow_run:
     workflows: ["PR: CI"]
-    # A new run or attempt is `requested` (publishes pending) and its verdict
-    # arrives with `completed`; `in_progress` could only republish pending,
-    # so it no longer takes a runner hop.
-    types: [requested, completed]
+    # A first attempt publishes pending on `requested` and its verdict on
+    # `completed`. GitHub does not send `requested` for a re-run, so a
+    # re-run attempt publishes pending on `in_progress` (replacing the prior
+    # attempt's verdict); the job skips `in_progress` for a first attempt,
+    # which `requested` already covered, so that event takes no runner.
+    types: [requested, in_progress, completed]
   workflow_dispatch:
     inputs:
       source_sha:
@@ -31,7 +33,7 @@ concurrency:
 
 jobs:
   reconcile:
-    if: ${{ (github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run' && (github.event.workflow_run.display_title != 'PR metadata' || github.event.action == 'completed') && (github.event.workflow_run.event == 'pull_request_target' || github.event.workflow_run.event == 'merge_group'))) || github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}
+    if: ${{ (github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run' && (github.event.workflow_run.display_title != 'PR metadata' || github.event.action == 'completed') && (github.event.action != 'in_progress' || github.event.workflow_run.run_attempt > 1) && (github.event.workflow_run.event == 'pull_request_target' || github.event.workflow_run.event == 'merge_group'))) || github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:

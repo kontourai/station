@@ -933,9 +933,10 @@ describe('source verification reconciler API boundary', () => {
     });
     expect(workflow.on.workflow_run).toEqual({
       workflows: ['PR: CI'],
-      // `requested` publishes pending for a new run or attempt and
-      // `completed` its verdict; `in_progress` could only republish pending.
-      types: ['requested', 'completed'],
+      // `requested` publishes pending for a first attempt, `in_progress` for
+      // a re-run attempt (GitHub sends no `requested` for re-runs), and
+      // `completed` the verdict.
+      types: ['requested', 'in_progress', 'completed'],
     });
     const steps = workflow.jobs.reconcile.steps;
     expect(steps.filter((step) => step.run).map((step) => step.run)).toEqual([
@@ -946,5 +947,122 @@ describe('source verification reconciler API boundary', () => {
       'persist-credentials': false,
     });
     expect(steps.some((step) => step.uses?.includes('artifact'))).toBe(false);
+  });
+});
+
+/**
+ * Evaluates a GitHub Actions expression made only of `github.*` properties,
+ * string, integer and boolean literals, ==, !=, >, !, &&, || and
+ * parentheses; anything else is refused so a richer guard fails loudly
+ * instead of evaluating wrongly. && and || return operand values, as
+ * GitHub's do.
+ */
+function evaluateGithubExpression(
+  expression: string,
+  github: Record<string, unknown>,
+) {
+  const body = expression.trim().replace(/^\$\{\{([\s\S]*)\}\}$/, '$1');
+  const stripped = body
+    .replace(/'[^']*'/g, '')
+    .replace(/github(?:\.[A-Za-z_]+)+/g, '')
+    .replace(/\b(?:true|false|\d+)\b/g, '')
+    .replace(/==|!=|&&|\|\||[!()>\s]/g, '');
+  if (stripped) throw new Error(`unsupported expression syntax: ${stripped}`);
+  const js = body
+    .replace(
+      /github((?:\.[A-Za-z_]+)+)/g,
+      (_m, path: string) => `github${path.replaceAll('.', '?.')}`,
+    )
+    .replace(/==/g, '===')
+    .replace(/!===/g, '!==');
+  return new Function('github', `return (${js});`)(github) as unknown;
+}
+
+describe('publisher admission for PR: CI lifecycle events', () => {
+  const guard = (
+    load(
+      readFileSync(
+        new URL(
+          '../../.github/workflows/source-verification-policy.yml',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+      { schema: JSON_SCHEMA },
+    ) as { jobs: { reconcile: { if: string } } }
+  ).jobs.reconcile.if;
+  const admits = (
+    action: string,
+    runAttempt: number,
+    displayTitle = 'Source verification',
+    event = 'pull_request_target',
+  ) =>
+    Boolean(
+      evaluateGithubExpression(guard, {
+        ref: 'refs/heads/main',
+        event_name: 'workflow_run',
+        event: {
+          action,
+          workflow_run: {
+            event,
+            run_attempt: runAttempt,
+            display_title: displayTitle,
+          },
+        },
+      }),
+    );
+
+  test.each([
+    // A first attempt gets pending from `requested`; its `in_progress` is
+    // redundant and takes no runner.
+    ['requested', 1, true],
+    ['in_progress', 1, false],
+    // GitHub sends no `requested` for a re-run, so the re-run attempt's
+    // start is what replaces the previous attempt's verdict with pending.
+    ['in_progress', 2, true],
+    ['in_progress', 3, true],
+    ['completed', 1, true],
+    ['completed', 2, true],
+  ] as const)(
+    'a source run %s on attempt %i runs the reconcile: %s',
+    (action, attempt, expected) => {
+      expect(admits(action, attempt)).toBe(expected);
+      expect(
+        admits(action, attempt, 'Source verification', 'merge_group'),
+      ).toBe(expected);
+    },
+  );
+
+  test.each([
+    ['requested', 1, false],
+    ['in_progress', 1, false],
+    ['in_progress', 2, false],
+    ['completed', 1, true],
+    ['completed', 2, true],
+  ] as const)(
+    'a metadata-only run %s on attempt %i runs the reconcile: %s',
+    (action, attempt, expected) => {
+      expect(admits(action, attempt, 'PR metadata')).toBe(expected);
+    },
+  );
+
+  test('runs only for PR and merge-group CI runs on main', () => {
+    expect(admits('in_progress', 2, 'Source verification', 'push')).toBe(false);
+    expect(
+      Boolean(
+        evaluateGithubExpression(guard, {
+          ref: 'refs/heads/feature',
+          event_name: 'workflow_run',
+          event: {
+            action: 'in_progress',
+            workflow_run: {
+              event: 'pull_request_target',
+              run_attempt: 2,
+              display_title: 'Source verification',
+            },
+          },
+        }),
+      ),
+    ).toBe(false);
   });
 });

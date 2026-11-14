@@ -3252,7 +3252,7 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
       .update(JSON.stringify(canonicalValue(document)))
       .digest('hex');
     return digest ===
-      'd314fb363a3fc8ef8605e60a2c0033a0e41f40beae223989f3490db7586622e7'
+      'd94eec977c3bd1196cf9282b01becc3ba27a7a9408a8520df4a871125c3a0f10'
       ? []
       : [
           {
