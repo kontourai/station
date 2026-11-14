@@ -631,7 +631,7 @@ const ACTIONLINT_ARTIFACT_DOWNLOAD_KEYS = [
   'with',
 ];
 const EXACT_TARGET_SKIP_GUARDS = Object.freeze({
-  classify: `\${{ github.event_name != 'pull_request_target' }}`,
+  classify: `\${{ github.event_name != 'pull_request_target' && github.event_name != 'merge_group' }}`,
   'full-regression': `\${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' }}`,
   'manual-completion-diagnostics': `\${{ always() && !cancelled() && github.event_name == 'workflow_dispatch' && (needs['full-regression'].result == 'success' || needs['full-regression'].result == 'failure') }}`,
 });

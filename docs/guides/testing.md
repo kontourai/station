@@ -2253,7 +2253,11 @@ it does not start an expensive fallback corpus. The required
 `Source verification policy` status for the queue head is published from
 inside the merge-group run once `fast-checks` settles; the post-run lifecycle
 reconcile recomputes the same verdict from the same jobs and stays the
-recovery publisher, so it no longer has to wait for a runner after the run. An old candidate without the
+recovery publisher, so it no longer has to wait for a runner after the run.
+Merge groups skip the `Exact full-diff classification` job, as pull requests
+do: every queue job is admitted by its `merge_group` clause, so the
+classifier's output was unread there and its runner hop delayed every later
+job. Pushes and manual dispatches still classify. An old candidate without the
 validation CLI must integrate current main before it can supply that evidence.
 
 Hosted plans retain concrete mapped tests and related discovery from other

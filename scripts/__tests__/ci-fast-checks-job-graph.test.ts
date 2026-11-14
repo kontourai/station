@@ -23,8 +23,9 @@ import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
  * including one that was skipped. `classify` is skipped for every
  * pull_request_target, so on every same-repository pull request the plan
  * ran (it uses `always()`), the shards were skipped, and the required
- * aggregator failed (run 36308041839). Dispatch and merge_group run
- * `classify`, so nothing before merge showed it.
+ * aggregator failed (run 36308041839). Dispatch ran `classify` (merge
+ * groups did too until it was skipped there), so nothing before merge
+ * showed it.
  *
  * This model is deliberately the strict reading observed on that run:
  * - an `if` with no status function (success/always/failure/cancelled) is
@@ -327,10 +328,11 @@ const EVENTS: Array<[string, Context, Record<string, Record<string, string>>]> =
       sameRepositoryPr,
       {},
     ],
+    // classify is skipped on merge groups: no classifier output is supplied.
     [
-      'merge_group',
+      'merge_group (classify skipped)',
       { ...sameRepositoryPr, event: 'merge_group' },
-      { classify: { heavy: 'false' } },
+      {},
     ],
     [
       'workflow_dispatch',
@@ -412,6 +414,49 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     },
   );
 
+  // Merge groups no longer wait on the classifier's runner hop: classify is
+  // skipped there, and every part, the aggregator and the queue's required
+  // jobs still run from their merge_group clauses alone.
+  test('a merge group skips classify and still runs and aggregates every part', () => {
+    const state = simulate(
+      jobs,
+      { ...sameRepositoryPr, event: 'merge_group' },
+      {
+        outputs: {
+          'fast-checks-plan': { legacy: 'false', 'integration-ready': 'true' },
+        },
+        resolve: (id, current) =>
+          id === 'fast-checks'
+            ? aggregatorPartResults(jobs, current) === 0
+              ? 'success'
+              : 'failure'
+            : undefined,
+      },
+    );
+    expect(state.results.get('classify')).toBe('skipped');
+    for (const id of [
+      'actionlint-artifact',
+      ...PARTS,
+      'fast-checks',
+      'diff',
+      'merge-queue-regression',
+      'source-policy',
+      'pr-title',
+    ])
+      expect(state.results.get(id), id).toBe('success');
+    expect(state.shards.get('fast-checks-shard')).toEqual([1, 2, 3, 4]);
+    for (const id of ['full-regression', 'manual-completion-diagnostics'])
+      expect(state.results.get(id), id).toBe('skipped');
+  });
+
+  test('pushes and dispatches still run classify', () => {
+    for (const event of ['push', 'workflow_dispatch'])
+      expect(
+        simulate(jobs, { ...sameRepositoryPr, event }).results.get('classify'),
+        event,
+      ).toBe('success');
+  });
+
   test('a deferred conflict spends no plan, shard or statics runner and fails the aggregator', () => {
     const state = simulate(jobs, sameRepositoryPr, {
       outcomes: { 'pr-admission': 'failure' },
@@ -442,7 +487,9 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
   ])('%s never evaluates conflict admission', (_name, context) => {
     const state = simulate(jobs, context, {
       outputs: {
-        classify: { heavy: 'false' },
+        ...(context.event === 'merge_group'
+          ? {}
+          : { classify: { heavy: 'false' } }),
         'fast-checks-plan': { legacy: 'false' },
       },
     });
@@ -912,7 +959,7 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       [
         'a merge group',
         { ...sameRepositoryPr, event: 'merge_group' },
-        { classify: { heavy: 'false' } },
+        {},
         true,
       ],
       [

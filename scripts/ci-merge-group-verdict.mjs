@@ -14,7 +14,7 @@ import { invokedDirectly } from './lib/module-entry.mjs';
  * - the newest `merge_group` run of ci.yml for this exact head SHA, in this
  *   repository, completed with `success`;
  * - its queue branch names the push's `before` as its base, so the push
- *   diff is exactly the diff that run classified and planned (a push carrying
+ *   diff is exactly the diff that run planned and tested (a push carrying
  *   several queue entries falls back to the full run);
  * - in that run attempt, the `fast-checks` aggregate and the required
  *   `Merge-queue regression` job each concluded `success`.

@@ -22,10 +22,13 @@ permissions:
 jobs:
   classify:
     name: Exact full-diff classification
-    # Non-PR jobs use this full-diff result. Hosted so a GitHub-hosted
-    # outage cannot skip the rest of this workflow the way station#1931
-    # did when this classifier ran on a billing-blocked hosted image.
-    if: ${{ github.event_name != 'pull_request_target' }}
+    # Push and dispatch jobs use this full-diff result. Hosted so a
+    # GitHub-hosted outage cannot skip the rest of this workflow the way
+    # station#1931 did when this classifier ran on a billing-blocked hosted
+    # image. Skipped on merge groups as on pull requests: every consumer
+    # already admits merge_group by event, so its outputs were unread there
+    # and its runner hop only delayed every later job.
+    if: ${{ github.event_name != 'pull_request_target' && github.event_name != 'merge_group' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     outputs:
@@ -52,8 +55,8 @@ jobs:
       - id: classify
         name: Classify the complete before..sha diff
         env:
-          BEFORE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '0000000000000000000000000000000000000000' }}
-          AFTER: ${{ github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
+          BEFORE: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
+          AFTER: ${{ github.sha }}
         run: node scripts/classify-ci-change.mjs --before "$BEFORE" --after "$AFTER" >> "$GITHUB_OUTPUT"
 
       # Push-only and fail-open: the step never fails the job, and anything
