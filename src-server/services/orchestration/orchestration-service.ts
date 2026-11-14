@@ -94,6 +94,7 @@ import type {
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
+  ACP_SESSION_STARTED_FRESH_CODE,
   CLIENT_TURN_IN_FLIGHT_CODE,
   DELEGATION_PROVENANCE_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
@@ -1517,12 +1518,35 @@ function composeAmbientSendTurnInput(
  * rather than short-circuiting mid-scan, so this holds regardless of a
  * session.configured event's position relative to turn.started.
  */
+/**
+ * Whether a turn has started since the engine's context last began: the
+ * session's start, or a later point where the engine replaced the
+ * conversation with a new engine session that holds none of it (an ACP
+ * reattach that started fresh, `ACP_SESSION_STARTED_FRESH_CODE`). What the
+ * first turn delivers (the authored prompt, Station's instructions, a Task
+ * brief) is delivered again on the first turn after such a point, because
+ * the new engine session never received it.
+ */
+function turnStartedSinceEngineContextBegan(
+  events: readonly { method?: unknown; code?: unknown }[],
+): boolean {
+  let began = 0;
+  events.forEach((event, index) => {
+    if (
+      event.method === 'runtime.warning' &&
+      event.code === ACP_SESSION_STARTED_FRESH_CODE
+    )
+      began = index + 1;
+  });
+  for (let index = began; index < events.length; index += 1)
+    if (events[index]?.method === 'turn.started') return true;
+  return false;
+}
+
 function pendingFirstTurnInstructions(
-  events: readonly { method?: unknown; metadata?: unknown }[],
+  events: readonly { method?: unknown; metadata?: unknown; code?: unknown }[],
 ): string | undefined {
-  if (events.some((event) => event.method === 'turn.started')) {
-    return undefined;
-  }
+  if (turnStartedSinceEngineContextBegan(events)) return undefined;
   let firstTurnInstructions: string | undefined;
   for (const event of events) {
     if (
@@ -1559,11 +1583,9 @@ function pendingFirstTurnInstructions(
  * list), since the text names tools the session cannot call.
  */
 function pendingStationInstructions(
-  events: readonly { method?: unknown; metadata?: unknown }[],
+  events: readonly { method?: unknown; metadata?: unknown; code?: unknown }[],
 ): string | undefined {
-  if (events.some((event) => event.method === 'turn.started')) {
-    return undefined;
-  }
+  if (turnStartedSinceEngineContextBegan(events)) return undefined;
   let text: string | undefined;
   let toolServers: SessionCapabilityDeliveryMetadata['toolServers'];
   for (const event of events) {
@@ -1654,7 +1676,7 @@ function isGenuineFirstTurn(events: readonly { method?: unknown }[]): boolean {
  * text past the brief's own bound, composes nothing.
  */
 function pendingTaskBrief(
-  events: readonly { method?: unknown; metadata?: unknown }[],
+  events: readonly { method?: unknown; metadata?: unknown; code?: unknown }[],
 ):
   | {
       digest: string;
@@ -1664,9 +1686,7 @@ function pendingTaskBrief(
       mandatoryContextDigest?: string;
     }
   | undefined {
-  if (events.some((event) => event.method === 'turn.started')) {
-    return undefined;
-  }
+  if (turnStartedSinceEngineContextBegan(events)) return undefined;
   let brief:
     | {
         digest: string;
@@ -2574,6 +2594,14 @@ export class OrchestrationService {
    */
   private readonly sessionConnectionIds = new Map<string, string>();
   private readonly quarantinedThreads = new Set<string>();
+  /**
+   * Threads whose engine a recovery just started as a new engine session
+   * (`ProviderSession.engineContextStartedFresh`), not yet sent a turn. The
+   * adapter's `acp.session-started-fresh` warning says the same in the log,
+   * but may not be stored yet when the turn that started the engine reads
+   * it; the next turn reads the log.
+   */
+  private readonly engineContextStartedFreshThreads = new Set<string>();
   /**
    * Known threads whose adapter `session.started` this process has settled
    * (see `settleStartEvent`). A start whose event settled before the start
@@ -9378,22 +9406,13 @@ export class OrchestrationService {
             ambientContext?: string;
             clientKey?: string;
           };
-          // archive#895 wave C: an engine with no native systemPrompt
-          // channel gets its authored prompt delivered by prepending it
-          // into THIS turn's ambientContext — the same choke point ordinary
-          // ambient context (timezone, geolocation) already crosses —
-          // but only on the session's genuine first turn (`current` was
-          // read above, before this dispatch's own turn.started exists).
-          const pendingPrompt = current
-            ? pendingFirstTurnInstructions(current.events)
-            : undefined;
-          // Station's orchestration instructions ride the same first turn,
-          // right after the authored prompt (preview-gated at resolution).
-          // Whether station-control reached the engine is a delivery fact of
-          // the engine that runs this turn: a recovery that just started one
-          // logged a fresh report after `current` was read, so decide on the
-          // log as it stands now.
-          const stationGuideEvents =
+          // What the engine that runs this turn has already received is read
+          // from the log as it stands now: a recovery that just started the
+          // engine in this dispatch logged its start (and, when the engine
+          // could not reload the conversation, the started-fresh warning
+          // that makes the first-turn context due again) after `current`
+          // was read.
+          const readEngineEvents =
             current && engineMaterialized
               ? ((
                   await this.readSession(
@@ -9402,14 +9421,45 @@ export class OrchestrationService {
                   )
                 )?.events ?? current.events)
               : current?.events;
+          // The engine this dispatch just started began a new context: its
+          // warning may not be stored yet, so it is appended here, in the
+          // place the log will hold it (before this turn's turn.started).
+          const engineEvents =
+            readEngineEvents &&
+            this.engineContextStartedFreshThreads.delete(
+              submittedInput.threadId,
+            )
+              ? [
+                  ...readEngineEvents,
+                  {
+                    method: 'runtime.warning',
+                    code: ACP_SESSION_STARTED_FRESH_CODE,
+                  },
+                ]
+              : readEngineEvents;
+          // archive#895 wave C: an engine with no native systemPrompt
+          // channel gets its authored prompt delivered by prepending it
+          // into THIS turn's ambientContext — the same choke point ordinary
+          // ambient context (timezone, geolocation) already crosses —
+          // but only on the session's genuine first turn, or the first since
+          // the engine began a new context (both read before this
+          // dispatch's own turn.started exists).
+          const pendingPrompt = engineEvents
+            ? pendingFirstTurnInstructions(engineEvents)
+            : undefined;
+          // Station's orchestration instructions ride the same first turn,
+          // right after the authored prompt (preview-gated at resolution).
+          // Whether station-control reached the engine is a delivery fact of
+          // the engine that runs this turn, read from the same log.
+          const stationGuideEvents = engineEvents;
           const pendingStationGuide = stationGuideEvents
             ? pendingStationInstructions(stationGuideEvents)
             : undefined;
           // Epic #4003: a Session dispatched for a Task gets its Task brief
           // the same way, on the same genuine first turn, on every engine:
           // after any authored prompt, before ordinary ambient context.
-          const pendingBrief = current
-            ? pendingTaskBrief(current.events)
+          const pendingBrief = engineEvents
+            ? pendingTaskBrief(engineEvents)
             : undefined;
           // Station's own first-turn context, on every engine whose adapter
           // declares a bounded engine scope: the workload budget it runs
@@ -16639,12 +16689,14 @@ export class OrchestrationService {
     const tenantExecutionContext =
       this.sessionAuthz.tenantContextFor(threadId) ??
       session.tenantExecutionContext;
-    await startRecoveredOrchestrationSession({
+    const started = await startRecoveredOrchestrationSession({
       session,
       adapter,
       ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
       options: this.recoveredSessionStartOptions(admission),
     });
+    if (started.engineContextStartedFresh)
+      this.engineContextStartedFreshThreads.add(threadId);
     return adapter;
   }
 
