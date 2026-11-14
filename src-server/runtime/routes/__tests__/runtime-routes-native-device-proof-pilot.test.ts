@@ -2047,6 +2047,30 @@ describe('native Device request-proof pilot over the production composition', ()
     }
   });
 
+  test('without a relay connector the capability probe answers configured false and management leaves stay unmounted', async () => {
+    const h = await setup();
+    const probe = await h.request(
+      '/api/relay-management/capabilities',
+      h.ownerHeaders(),
+    );
+    expect(probe.status, await probe.clone().text()).toBe(200);
+    expect(probe.headers.get('Cache-Control')).toBe('no-store');
+    expect(await probe.json()).toEqual({
+      data: { canManage: true, configured: false },
+    });
+    const view = await h.request('/api/relay-management', h.ownerHeaders());
+    expect(view.status).toBe(404);
+    const invitation = await h.request(
+      '/api/relay-management/invitations',
+      h.ownerHeaders({
+        method: 'POST',
+        headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prepare: {}, lifetime: '5m' }),
+      }),
+    );
+    expect(invitation.status).toBe(404);
+  });
+
   test('native relay manager composes real account and promoted Device authority for reads, setup approval, invitation and revocation; device decisions expose unavailable enrollment only', async () => {
     const h = await setup(true);
     const guest = await h.shareAndCreateGuest('relay-manager', 'Relay manager');

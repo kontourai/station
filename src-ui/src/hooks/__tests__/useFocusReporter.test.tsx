@@ -235,6 +235,33 @@ describe('useFocusReporter', () => {
     expect(sentStates()).toEqual(['focused', 'hidden']);
   });
 
+  test('unloading sends one hidden although pagehide and visibilitychange both fire before it answers', async () => {
+    await mountSettled();
+    // A real unload: the hidden from pagehide is still in flight (the page is
+    // going away) when the document turns hidden.
+    holdNextSend();
+    await fire(window, 'pagehide');
+    await setVisibility('hidden');
+    expect(sentStates()).toEqual(['hidden']);
+  });
+
+  test('a hidden that failed is sent again on the next hiding event', async () => {
+    await mountSettled();
+    mocks.authenticatedFetch.mockImplementationOnce(async () => {
+      throw new Error('offline');
+    });
+    await setVisibility('hidden');
+    await fire(window, 'pagehide');
+    expect(sentStates()).toEqual(['hidden', 'hidden']);
+  });
+
+  test('a document unloaded before its first report sends nothing', async () => {
+    await mount();
+    await fire(window, 'pagehide');
+    await setVisibility('hidden');
+    expect(mocks.authenticatedFetch).not.toHaveBeenCalled();
+  });
+
   test('a hung report is abandoned after the timeout and the next report goes', async () => {
     holdNextSend();
     await mount();
