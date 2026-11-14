@@ -126,7 +126,9 @@
 
     "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx",
 
-    "docs/design/station-connection.md"
+    "docs/design/station-connection.md",
+
+    "docs/guides/native-model-channel-lab.md"
   ],
 
   "checks": [

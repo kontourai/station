@@ -1,0 +1,9 @@
+{
+  "revision": "1a291c90a31ca89abd5e45054e7bda18fead30db",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Checked this branch's edit to remote-access-threat-model.md (the engine credential callback sentence now describes the reviewed engine-credential binding) against this doc's one claim about the threat model: that it rejects Tailscale Funnel outright. That statement is unchanged in the threat model, so the claim and the link hold.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked this branch's edits to api.md (contextWindowPercentage falls back to the engine's own context reading; ACP usage rollup wording) against this doc's only reference to api.md, the link to the terminal socket operator-transport section. That section and its anchor are unchanged.","inputs":["docs/design/terminal.md","docs/reference/api.md"]}
+  ]
+}

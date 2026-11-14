@@ -1,6 +1,6 @@
 import { childWorkDeltaFromLegacyClaudeTaskNotification } from '@kontourai/station-contracts/child-work';
 import {
-  type ExtensionNotificationConsumer,
+  type ExtensionNotificationBinding,
   extensionNotificationBinding,
   takeUnboundExtensionNotice,
 } from '@shared/extension-notification-bindings';
@@ -58,7 +58,7 @@ function activityHintsEqual(
  */
 function handleClaudeNotification(
   event: Extract<OrchestrationEvent, { method: 'extension.notification' }>,
-  consumer: ExtensionNotificationConsumer,
+  consumer: ExtensionNotificationBinding['consumer'],
   station?: StationStateSource,
 ) {
   const chatStore = activeChatsStore.forStation(

@@ -26,6 +26,15 @@ vi.mock('@kontourai/station-sdk', async () => ({
   useFeaturePreviewsQuery: () => ({ data: [] }),
   // #3418: the live body names Sessions in Station tool rows.
   useOrchestrationSessionsQuery: () => ({ data: [] }),
+  // The rewind row's live-continuity read: nothing declared in these chats.
+  useSessionLiveContinuityQuery: () => ({
+    data: { live: false, rewind: 'none', fork: 'none' },
+    refetch: () => {},
+  }),
+  useRewindSessionToTurnMutation: () => ({
+    mutateAsync: async () => ({ kind: 'refused', reason: 'unsupported' }),
+    isPending: false,
+  }),
   useProjectChatDefaultsQuery: () => ({
     data: undefined,
     isFetching: false,

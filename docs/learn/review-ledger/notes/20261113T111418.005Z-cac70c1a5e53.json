@@ -1,0 +1,7 @@
+{
+  "revision": "86eb350aab7717090b7910cdd15b2ac753821714",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Its home-store claim names the security and automation state roots, which the registry change (adding engines as external) leaves as state; still accurate.","inputs":["docs/reference/config.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

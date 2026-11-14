@@ -725,6 +725,32 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       expect(state.results.get(id), id).toBe('skipped');
   });
 
+  // The repo-scans comments (ci.yml, REPO_SCAN_SUITES) say a red there is
+  // feedback that does not block landing: nothing that gates landing waits
+  // on it, and neither the merge queue nor a fork pull request runs it.
+  test('repo-scans is pull-request feedback: a red one gates nothing, and merge groups and forks skip it', () => {
+    const red = simulate(jobs, sameRepositoryPr, {
+      outcomes: { 'repo-scans': 'failure' },
+      outputs: { 'fast-checks-plan': { legacy: 'false', shards: '[1]' } },
+    });
+    expect(red.results.get('repo-scans')).toBe('failure');
+    for (const id of ['fast-checks', 'source-policy'])
+      expect(red.results.get(id), id).toBe('success');
+    for (const id of ['fast-checks', 'source-policy', 'merge-queue-regression'])
+      expect(ancestors(jobs, id).has('repo-scans'), id).toBe(false);
+    const queue = simulate(
+      jobs,
+      { ...sameRepositoryPr, event: 'merge_group' },
+      { outputs: { 'fast-checks-plan': { legacy: 'false' } } },
+    );
+    expect(queue.results.get('repo-scans')).toBe('skipped');
+    const fork = simulate(jobs, {
+      ...sameRepositoryPr,
+      headRepository: 'someone/station',
+    });
+    expect(fork.results.get('repo-scans')).toBe('skipped');
+  });
+
   test('a push that is not heavy skips the fast-checks graph', () => {
     const state = simulate(
       jobs,
@@ -1048,6 +1074,54 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       .map(([id]) => id);
     expect(exposed).toEqual([]);
   });
+});
+
+/**
+ * classify's `heavy` output, evaluated with the same expression model: only
+ * a proven merge-queue verdict turns it off; anything else (verified false,
+ * an empty output, the step skipped off push) passes the classifier through.
+ * A skipped step's outputs read as empty in GitHub; both empty and absent
+ * are modelled.
+ */
+describe("classify's heavy output under the merge-group verdict", () => {
+  const heavy = String(
+    (readJobs().classify as Job & { outputs: Record<string, string> }).outputs
+      .heavy,
+  )
+    .replace(/^\$\{\{\s*/, '')
+    .replace(/\s*\}\}$/, '');
+  const evaluateHeavy = (verdict: Record<string, string>, classifier: string) =>
+    evaluate(
+      heavy,
+      ([head, id, field, name, ...rest]) => {
+        if (head !== 'steps' || field !== 'outputs' || rest.length)
+          throw new Error(`unmodelled ${head}.${id}.${field}`);
+        if (id === 'classify' && name === 'heavy') return classifier;
+        if (id === 'merge-group-verdict' && name === 'verified')
+          return verdict.verified;
+        throw new Error(`unmodelled steps.${id}.outputs.${name}`);
+      },
+      {},
+    );
+
+  test.each(['true', 'false'])(
+    'a proven verdict turns heavy off when the classifier says %s',
+    (classifier) => {
+      expect(evaluateHeavy({ verified: 'true' }, classifier)).toBe('false');
+    },
+  );
+
+  test.each([
+    ['verified=false', { verified: 'false' }],
+    ['an empty output', { verified: '' }],
+    ['the step skipped (no output)', {}],
+  ] as Array<[string, Record<string, string>]>)(
+    '%s keeps the classifier answer',
+    (_label, verdict) => {
+      for (const classifier of ['true', 'false'])
+        expect(evaluateHeavy(verdict, classifier), classifier).toBe(classifier);
+    },
+  );
 });
 
 describe('delivery work waits for required PR feedback', () => {

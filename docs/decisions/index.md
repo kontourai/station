@@ -11,12 +11,14 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | Topic | Status | Decision |
 | --- | --- | --- |
 | [agent-authored-tracker-updates](./agent-authored-tracker-updates.md) | current | Agents keep tracker items current through comments and PR links, not status sync |
+| [agent-extension-bindings](./agent-extension-bindings.md) | current | Agent extensions bind as evidenced data rows to declared mechanisms; credentials only through reviewed bindings |
 | [agent-proposed-automations](./agent-proposed-automations.md) | current | An agent proposes Automation sources and rules; a person confirms |
 | [automations-unify-schedules](./automations-unify-schedules.md) | current | Automations are scheduled work that runs in a conversation, on any engine |
 | [browser-agent-actions-and-bound-channel](./browser-agent-actions-and-bound-channel.md) | current | Browser Agent actions and cross-engine binding |
 | [browser-viewport-is-shared-fit-is-per-viewer](./browser-viewport-is-shared-fit-is-per-viewer.md) | current | The Browser page viewport is shared by every viewer; each viewer's fit and zoom are local |
 | [device-agent-control](./device-agent-control.md) | current | Bound agents control host-qualified device live surfaces through the shared lease |
 | [ended-task-resume](./ended-task-resume.md) | needs-decision | Resuming ended tracker-backed Tasks after GitHub follow-ups |
+| [engine-credential-provider](./engine-credential-provider.md) | current | Issue engine credentials only through a typed, scoped, reviewed provider |
 | [html-replies](./html-replies.md) | current | Contain agent-authored HTML in a page-only sandbox |
 | [managed-policy](./managed-policy.md) | current | A machine-level managed policy that Station loads at startup and fails closed on |
 | [mcp-app-transcript-previews](./mcp-app-transcript-previews.md) | current | Display recorded MCP app results in chat without granting session actions |

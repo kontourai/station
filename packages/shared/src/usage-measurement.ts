@@ -57,7 +57,17 @@ export interface SessionMeasurementView {
   outputTokens?: number;
   totalTokens?: number;
   costUsd?: number;
+  /**
+   * How many cost units the engine reported in its own unit (`credit`, an
+   * ISO currency). A cost in any unit is a reported cost.
+   */
+  reportedCostUnits?: number;
   contextTokens?: number;
+  /**
+   * The engine's own context reading, in percent, when it reported one
+   * without a token pair (Kiro's `context_usage`).
+   */
+  contextPercent?: number;
 }
 
 /**
@@ -83,8 +93,10 @@ export function unreportedMeasurementClasses(
   ) {
     classes.push('token counts');
   }
-  if (view.costUsd === undefined) classes.push('cost');
-  if (view.contextTokens === undefined) classes.push('context usage');
+  if (view.costUsd === undefined && !view.reportedCostUnits)
+    classes.push('cost');
+  if (view.contextTokens === undefined && view.contextPercent === undefined)
+    classes.push('context usage');
   return classes;
 }
 
@@ -131,6 +143,8 @@ export function conversationStatsMeasurementView(
     | 'estimatedCost'
     | 'contextTokens'
     | 'measurement'
+    | 'reportedCosts'
+    | 'contextWindowPercentage'
   >,
 ): SessionMeasurementView {
   return {
@@ -140,6 +154,14 @@ export function conversationStatsMeasurementView(
     outputTokens: stats.outputTokens,
     totalTokens: stats.totalTokens,
     costUsd: stats.estimatedCost,
+    ...(stats.reportedCosts?.length
+      ? { reportedCostUnits: stats.reportedCosts.length }
+      : {}),
     contextTokens: stats.contextTokens,
+    // Without a token pair the percentage can only be the engine's own.
+    ...(stats.contextTokens === undefined &&
+    stats.contextWindowPercentage !== undefined
+      ? { contextPercent: stats.contextWindowPercentage }
+      : {}),
   };
 }

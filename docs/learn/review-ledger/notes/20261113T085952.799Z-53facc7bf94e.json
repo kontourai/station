@@ -1,0 +1,9 @@
+{
+  "revision": "82a2e5edc530216fb0e6a396839020ef1e0929f1",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Viewed the frame: the Notifications page with the Inspect request dialog for a fixture_read tool approval (Deny, Approve once, Open session, Close). This branch's change to orchestration-service.ts is one import and the new reconnectEngineMcpServer method, which does not touch request inspection or its presentation, so the frame's content is unaffected by this branch.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Checked this branch's change to orchestration-service.ts (one import and the new reconnectEngineMcpServer method) against the recorded flow, the Inspect request dialog for a tool approval. The change does not touch request inspection, so the recording is unaffected by this branch. Frames were not re-extracted for this note; the png from the same flow was viewed.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

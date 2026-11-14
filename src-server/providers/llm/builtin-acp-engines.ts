@@ -15,6 +15,11 @@ const ANTHROPIC_SUBSCRIPTION_TERMS =
   'https://code.claude.com/docs/en/legal-and-compliance';
 
 import type { ACPConnectionRegistryEntry } from '@kontourai/station-contracts/acp';
+import {
+  MANAGED_RUNTIME_SCRIPT_TOKEN,
+  managedRuntimeCommand,
+} from '@kontourai/station-contracts/managed-engine-install';
+import { KAS_INSTALL_ID } from '../../services/engines/managed-install-pins.js';
 
 type BuiltinEngine = Omit<
   ACPConnectionRegistryEntry,
@@ -23,42 +28,100 @@ type BuiltinEngine = Omit<
 
 const POWERSHELL = 'Run in PowerShell.';
 
+const KIRO_CLI_INSTALL: BuiltinEngine['install'] = {
+  darwin: {
+    command: 'curl -fsSL https://cli.kiro.dev/install | bash',
+    docsUrl: 'https://kiro.dev/docs/getting-started/installation/',
+  },
+  linux: {
+    command: 'curl -fsSL https://cli.kiro.dev/install | bash',
+    docsUrl: 'https://kiro.dev/docs/getting-started/installation/',
+  },
+  win32: {
+    command: "irm 'https://cli.kiro.dev/install.ps1' | iex",
+    docsUrl: 'https://kiro.dev/docs/getting-started/installation/',
+    note: POWERSHELL,
+  },
+};
+
+/** Names Station to kiro-cli (its telemetry and client-specific behaviour). */
+const KIRO_CLI_LAUNCH_ENV = { KIRO_CLI_CLIENT_APPLICATION: 'station' };
+
+const KIRO_CLI_AUTH: BuiltinEngine['auth'] = {
+  // Strings present in the kiro-cli binary and in the open-source
+  // Amazon Q CLI it grew from (crates/chat-cli/src/cli/user.rs). Other
+  // output (a login kind that code does not print) stays unknown.
+  statusCommand: ['kiro-cli', 'whoami'],
+  statusRule: {
+    signedOutText: ['Not logged in'],
+    signedInText: ['Logged in with'],
+  },
+  signInHint: 'Run kiro-cli login on the computer Station runs on.',
+  credentialEnvVars: ['KIRO_API_KEY'],
+};
+
 export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
   {
     id: 'kiro',
     name: 'Kiro CLI',
     description: "Kiro's coding agent, run from its kiro-cli command.",
     command: 'kiro-cli',
-    args: ['acp'],
+    // The id predates the KAS entries below; a saved `kiro` connection keeps
+    // its own arguments, and v2 is also kiro-cli's default engine.
+    args: ['acp', '--agent-engine', 'v2'],
     icon: 'brand:kiro',
     tags: ['acp', 'kiro'],
     homepageUrl: 'https://kiro.dev/docs/cli/',
-    install: {
-      darwin: {
-        command: 'curl -fsSL https://cli.kiro.dev/install | bash',
-        docsUrl: 'https://kiro.dev/docs/getting-started/installation/',
-      },
-      linux: {
-        command: 'curl -fsSL https://cli.kiro.dev/install | bash',
-        docsUrl: 'https://kiro.dev/docs/getting-started/installation/',
-      },
-      win32: {
-        command: "irm 'https://cli.kiro.dev/install.ps1' | iex",
-        docsUrl: 'https://kiro.dev/docs/getting-started/installation/',
-        note: POWERSHELL,
-      },
+    install: KIRO_CLI_INSTALL,
+    launchEnv: KIRO_CLI_LAUNCH_ENV,
+    auth: KIRO_CLI_AUTH,
+  },
+  {
+    id: 'kiro-kas',
+    name: 'Kiro (KAS)',
+    description:
+      "Kiro's agent service (KAS), run through kiro-cli, which keeps its own sign-in.",
+    command: 'kiro-cli',
+    // `--auth-method cli`: kiro-cli answers the agent service's token
+    // requests from its own login, so Station never handles a Kiro token on
+    // this route (kiro-cli 2.35.0, /tmp evidence in the Kiro-parity design).
+    args: ['acp', '--agent-engine', 'v3', '--auth-method', 'cli'],
+    icon: 'brand:kiro',
+    tags: ['acp', 'kiro'],
+    homepageUrl: 'https://kiro.dev/docs/cli/',
+    install: KIRO_CLI_INSTALL,
+    launchEnv: KIRO_CLI_LAUNCH_ENV,
+    // `kiro-cli whoami` reports kiro-cli's one login, the same one both
+    // kiro-cli routes run on, so the same rule reads it.
+    auth: KIRO_CLI_AUTH,
+  },
+  {
+    id: 'kiro-kas-bundle',
+    name: 'Kiro (KAS, no CLI)',
+    description:
+      "Kiro's agent service, run from a pinned build Station downloads. Station keeps the Kiro sign-in; no kiro-cli needed.",
+    // Not a program on PATH: Station resolves it at launch to the installed
+    // runtime and `managedRuntime.argv` (managed-engine-install.ts).
+    command: managedRuntimeCommand(KAS_INSTALL_ID),
+    args: [],
+    icon: 'brand:kiro',
+    tags: ['acp', 'kiro'],
+    homepageUrl: 'https://kiro.dev/',
+    platforms: ['darwin', 'linux', 'win32'],
+    managedRuntime: {
+      installId: KAS_INSTALL_ID,
+      // kirocrew acp/kas_transport.py: the engine delegates its token to the
+      // host (`_kiro/auth/getAccessToken`) under `--auth=acp-callback`.
+      argv: [
+        '--experimental-wasm-modules',
+        MANAGED_RUNTIME_SCRIPT_TOKEN,
+        '--transport=stdio',
+        '--auth=acp-callback',
+      ],
     },
     auth: {
-      // Strings present in the kiro-cli binary and in the open-source
-      // Amazon Q CLI it grew from (crates/chat-cli/src/cli/user.rs). Other
-      // output (a login kind that code does not print) stays unknown.
-      statusCommand: ['kiro-cli', 'whoami'],
-      statusRule: {
-        signedOutText: ['Not logged in'],
-        signedInText: ['Logged in with'],
-      },
-      signInHint: 'Run kiro-cli login on the computer Station runs on.',
-      credentialEnvVars: ['KIRO_API_KEY'],
+      signInHint:
+        'Install it, then sign in to Kiro here with AWS Builder ID, IAM Identity Center, or Google or GitHub. Station keeps the credential and gives the engine only a short-lived access token.',
     },
   },
   {

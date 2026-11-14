@@ -61,27 +61,37 @@
  * Station emits the conformant code and never derives support from a code it
  * receives. Nothing in this module reads an inbound error code.
  *
- * ## Part 2 — the no-credential-bridging invariant
+ * ## Part 2 — credentials only through a reviewed binding
  *
- * Standing invariant: **Station never answers an agent's token or credential
- * request.** Not today, and not after some later slice teaches Station to
- * answer other extension methods.
+ * Standing invariant (docs/decisions/engine-credential-provider.md, which
+ * supersedes the blanket ban ADR 0013 recorded): **Station answers an
+ * agent's token or credential request only through a reviewed binding.** A
+ * binding is one entry of {@link REVIEWED_ENGINE_CREDENTIAL_BINDINGS} or
+ * {@link REVIEWED_ENGINE_SECRET_BINDINGS}: one exact wire method, the
+ * credential kind, and the launch arguments Station itself adds to make the
+ * engine delegate to the host. Its answer comes from an issuer whose only
+ * source is Station's engine host-auth vault, never from Station's own
+ * principals.
  *
- * The invariant is structural rather than a comment, in two independent
- * places, because a comment is exactly what the next lazy handler ignores:
+ * The invariant is structural rather than a comment, in three places,
+ * because a comment is exactly what the next lazy handler ignores:
  *
  * 1. {@link AcpInboundExtensionRegistry.register} *throws* for a
- *    credential-shaped method name. There is no code path by which such a
- *    method acquires a handler.
- * 2. {@link createAcpInboundExtensionRequestHandler} re-checks at dispatch,
- *    so even a registry mutated by some other route refuses rather than
- *    answers.
+ *    credential-shaped method name. The generic path can never answer one.
+ * 2. {@link AcpInboundExtensionRegistry.registerCredentialResponder} and
+ *    {@link AcpInboundExtensionRegistry.registerSecretResponder} accept only
+ *    the frozen table entries themselves (object identity, not a matching
+ *    shape), and a credential responder only for a built-in launch whose
+ *    argv carries the binding's delegation arguments.
+ * 3. {@link AcpInboundExtensionRegistry.resolve} serves a credential-shaped
+ *    method only from a reviewed responder, so even a registry whose generic
+ *    map was mutated by some other route refuses rather than answers.
  *
- * ### What Station would have handed over, if it had answered
+ * ### What Station would hand over, if a generic handler could answer
  *
- * Station does not hold or refresh engine-owned login tokens or provide an
- * inbound credential callback bridge: **Station does not become a Kiro auth
- * host.** API keys intentionally supplied by a person are stored separately
+ * A reviewed binding hands over only an access token and its expiry from the
+ * engine host-auth vault, scoped to the process's connection and credential
+ * profile. API keys intentionally supplied by a person are stored separately
  * and passed through the configured connection environment; they do not
  * authorize answering an agent's credential request.
  *
@@ -155,6 +165,18 @@
  * half, which this module deliberately does not implement.
  */
 import { RequestError } from '@agentclientprotocol/sdk/unstable';
+import {
+  argvDelegatesTo,
+  type EngineCredentialBinding,
+  type EngineCredentialIssueResult,
+  type EngineCredentialRefusal,
+  type EngineCredentialScope,
+} from '@kontourai/station-contracts/engine-credential-provider';
+import {
+  type EngineSecretRefusal,
+  type EngineSecretStorageBinding,
+  readEngineSecretRequest,
+} from '@kontourai/station-contracts/engine-secret-storage';
 import { acpInboundExtensionRequests } from '../../telemetry/metrics.js';
 
 export type AcpInboundExtensionHandler = (
@@ -261,12 +283,18 @@ export class AcpCredentialBridgingRefusedError extends Error {
  */
 export type AcpInboundExtensionRequestHandlerId =
   | 'cursor.ask-question'
-  | 'cursor.create-plan';
+  | 'cursor.create-plan'
+  | 'kiro.user-input'
+  | 'kiro.mcp-elicitation'
+  | 'kiro.open-external-url'
+  | 'client.terminal-facts';
 
 export interface AcpReviewedInboundExtensionRequest {
   /** Exact method name; no prefix or namespace matching. */
   readonly method: string;
   readonly handler: AcpInboundExtensionRequestHandlerId;
+  /** Where the request and the answer it takes were observed. */
+  readonly evidence?: string;
 }
 
 /**
@@ -286,19 +314,260 @@ export const REVIEWED_INBOUND_EXTENSION_REQUESTS: readonly AcpReviewedInboundExt
       method: 'cursor/create_plan',
       handler: 'cursor.create-plan' as const,
     }),
+    // Kiro's agent service sends these three only to a client that announced
+    // the matching `_meta.kiro` flag (`ACP_ANNOUNCED_CLIENT_META_FLAGS`), and
+    // the flag is announced only while the handler is registered. Each is
+    // answered from what a person decided, never with a JSON-RPC error
+    // (`acp-input-requests.ts`).
+    Object.freeze({
+      method: '_kiro/userInput',
+      handler: 'kiro.user-input' as const,
+      evidence:
+        'kirocrew acp/types.py METHOD_KAS_USER_INPUT and acp/elicitation.py (reply always `answered`)',
+    }),
+    Object.freeze({
+      method: '_kiro/mcp/elicitation',
+      handler: 'kiro.mcp-elicitation' as const,
+      evidence:
+        'kirocrew test/fixtures/acp_frames/kas/mcp-elicitation.jsonl (fields nested under params.elicitation)',
+    }),
+    Object.freeze({
+      method: '_kiro/openExternalUrl',
+      handler: 'kiro.open-external-url' as const,
+      evidence:
+        'kirocrew test/fixtures/acp_frames/kas/open-external-url-live.jsonl; answer `{success: true}`, refusal a -32000 error (acp/runtime_host_requests.py)',
+    }),
+    // `client.terminal-facts`: what Station's terminal bridge is. Kiro's agent
+    // service asks `{sessionId}` during session/new and reads `{shellType}`
+    // (a non-empty string) as the grammar for its shell-command policy; a
+    // -32601 falls back to `unknown` (KAS 0.66.102 acp-server.js
+    // `resolveShellTypeInfo`; live: v3-refuse-shell capture, kiro-cli 2.35).
+    Object.freeze({
+      method: '_kiro/terminal/shell_type',
+      handler: 'client.terminal-facts' as const,
+      evidence:
+        'live kiro-cli `acp --agent-engine v3` session/new (2026-11-13); answer shape read from @kiro/agent 0.66.102 resolveShellTypeInfo',
+    }),
   ]);
+
+// --- Reviewed credential and secret bindings -------------------------------
+
+/**
+ * Every engine credential Station may issue. Extending this table is a
+ * reviewed code change, and it is the protection: a responder can be
+ * registered only for one of these objects.
+ *
+ * - `kiro.get-access-token`: Kiro's agent service asks for an access token
+ *   on its connection when launched with `--auth=acp-callback` (the bundle
+ *   route, where Station owns the Kiro sign-in). The kiro-cli relay route
+ *   runs `--auth-method cli`, so kiro-cli keeps its own credential and never
+ *   asks.
+ * - `codex.chatgpt-auth-tokens-refresh`: Codex's app-server account refresh.
+ *   Not an ACP method, so the ACP registry refuses it; it is listed so the
+ *   Codex side reviews against the same table. No delegation argument is
+ *   pinned, and {@link argvDelegatesTo} refuses an empty one, so no
+ *   responder can be installed for it until one is.
+ */
+export const REVIEWED_ENGINE_CREDENTIAL_BINDINGS: readonly EngineCredentialBinding[] =
+  Object.freeze([
+    Object.freeze({
+      id: 'kiro.get-access-token' as const,
+      kind: 'kiro.oidc-access-token' as const,
+      wire: Object.freeze({
+        protocol: 'acp' as const,
+        method: '_kiro/auth/getAccessToken' as const,
+        scope: 'connection' as const,
+      }),
+      delegationArgv: Object.freeze(['--auth=acp-callback']),
+      evidence:
+        'kirocrew test/fixtures/acp_frames/kas/host-auth-callback-live.jsonl and kas/bundle-session-live.jsonl; answer shape acp/kas_host_auth.py',
+    }),
+    Object.freeze({
+      id: 'codex.chatgpt-auth-tokens-refresh' as const,
+      kind: 'openai.chatgpt-auth-tokens' as const,
+      wire: Object.freeze({
+        protocol: 'codex-app-server' as const,
+        method: 'account/chatgptAuthTokens/refresh' as const,
+        push: 'account/login/start' as const,
+      }),
+      delegationArgv: Object.freeze([] as string[]),
+      evidence:
+        'Named by the Kiro-parity design; wire shape not observed or pinned in this repository',
+    }),
+  ]);
+
+/**
+ * Every engine-held secret store Station may serve. Same rule as
+ * {@link REVIEWED_ENGINE_CREDENTIAL_BINDINGS}: only these objects register.
+ *
+ * - `kiro.mcp-grant-storage`: Kiro's agent service keeps MCP OAuth state in
+ *   a client store it calls on the connection (no session). Keys outside
+ *   `kiro.mcp.<sha256>.<kind>` are refused; only `client` and `tokens`
+ *   outlive the engine process.
+ */
+export const REVIEWED_ENGINE_SECRET_BINDINGS: readonly EngineSecretStorageBinding[] =
+  Object.freeze([
+    Object.freeze({
+      id: 'kiro.mcp-grant-storage' as const,
+      methods: Object.freeze({
+        get: '_kiro/secret/get',
+        store: '_kiro/secret/store',
+        delete: '_kiro/secret/delete',
+      }),
+      announce: Object.freeze({ metaNamespace: 'kiro', flag: 'secretStorage' }),
+      keyPattern:
+        /^kiro\.mcp\.[0-9a-f]{64}\.(client|tokens|verifier|discovery)$/,
+      persistedKinds: Object.freeze(['client', 'tokens'] as const),
+      maxValueChars: 65_536,
+      scope: 'connection-profile' as const,
+      evidence:
+        'kirocrew acp/kas_secret_storage.py (key policy, persisted kinds, value cap) and test/test_kas_mcp_secret_storage.py',
+    }),
+  ]);
+
+/** Whether `binding` is one of the reviewed table's own objects. */
+function isReviewedEngineCredentialBinding(
+  binding: EngineCredentialBinding,
+): boolean {
+  return REVIEWED_ENGINE_CREDENTIAL_BINDINGS.includes(binding);
+}
+
+/** Whether `binding` is one of the reviewed table's own objects. */
+function isReviewedEngineSecretBinding(
+  binding: EngineSecretStorageBinding,
+): boolean {
+  return REVIEWED_ENGINE_SECRET_BINDINGS.includes(binding);
+}
+
+/**
+ * The server side of a reviewed credential binding, implemented over the
+ * engine host-auth vault. Its scope is fixed when it is built: the
+ * connection and credential profile of the one process it answers.
+ * Concurrency sharing, the hourly cap, policy and audit are the issuer's.
+ */
+export interface EngineCredentialIssuer {
+  readonly scope: EngineCredentialScope;
+  issue(binding: EngineCredentialBinding): Promise<EngineCredentialIssueResult>;
+}
+
+/**
+ * The server side of a reviewed secret binding, scoped like the issuer.
+ * Values never reach a log or an error message.
+ */
+export interface EngineSecretStore {
+  readonly scope: EngineCredentialScope;
+  get(key: string): Promise<string | undefined>;
+  store(key: string, value: string): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
+/** How the process that would be answered was launched. */
+export interface AcpCredentialLaunchFacts {
+  /** Launched from a built-in descriptor, not a user, custom or plugin command. */
+  readonly builtinDescriptor: boolean;
+  /** The arguments the process was actually launched with. */
+  readonly argv: readonly string[];
+}
+
+/** Thrown when a responder registration is refused. */
+export class AcpReviewedBindingRefusedError extends Error {
+  constructor(
+    readonly bindingId: string,
+    reason: string,
+  ) {
+    super(`Refusing to register a responder for '${bindingId}': ${reason}.`);
+    this.name = 'AcpReviewedBindingRefusedError';
+  }
+}
+
+/** JSON-RPC code for a refused credential issue; its message carries no token. */
+export const ENGINE_CREDENTIAL_REFUSED_CODE = -32000;
+
+const CREDENTIAL_REFUSAL_TEXT: Record<EngineCredentialRefusal, string> = {
+  'signed-out': 'Station has no signed-in credential for this engine',
+  'refresh-rejected': 'The credential could not be refreshed; sign in again',
+  'rate-limited': 'Too many credential requests; try again later',
+  'policy-off': 'Host-issued engine credentials are off by policy',
+  'scope-mismatch': 'This process is not scoped to that credential',
+  unavailable: 'The credential is unavailable',
+};
+
+const SECRET_REFUSAL_TEXT: Record<EngineSecretRefusal, string> = {
+  'unknown-method': 'Unknown secret method',
+  malformed: 'Malformed secret request',
+  'key-refused': 'Key outside the allowed namespace',
+  'value-too-long': 'Value exceeds the size limit',
+};
+
+function credentialResponder(
+  binding: EngineCredentialBinding,
+  issuer: EngineCredentialIssuer,
+): AcpInboundExtensionHandler {
+  return async () => {
+    let result: EngineCredentialIssueResult;
+    try {
+      result = await issuer.issue(binding);
+    } catch {
+      // The issuer's error text may name a path or a vendor response; none of
+      // it goes on the engine's pipe.
+      result = { kind: 'refused', reason: 'unavailable' };
+    }
+    if (result.kind === 'refused') {
+      throw new RequestError(
+        ENGINE_CREDENTIAL_REFUSED_CODE,
+        CREDENTIAL_REFUSAL_TEXT[result.reason],
+      );
+    }
+    const { accessToken, expiresAt, attributes } = result.issue;
+    // Attributes first so a vendor value can never replace the token fields.
+    return { ...attributes, accessToken, expiresAt };
+  };
+}
+
+function secretResponder(
+  binding: EngineSecretStorageBinding,
+  store: EngineSecretStore,
+): AcpInboundExtensionHandler {
+  return async (method, params) => {
+    const request = readEngineSecretRequest(binding, method, params);
+    if ('refused' in request) {
+      throw RequestError.invalidParams(
+        undefined,
+        SECRET_REFUSAL_TEXT[request.refused],
+      );
+    }
+    switch (request.op) {
+      case 'get': {
+        const value = await store.get(request.key);
+        return value === undefined ? {} : { value };
+      }
+      case 'store':
+        await store.store(request.key, request.value);
+        return {};
+      case 'delete':
+        await store.delete(request.key);
+        return {};
+    }
+  };
+}
 
 /**
  * The only way an inbound agent→client extension request gets answered at
  * all. Empty by default; a caller registers entries from
- * {@link REVIEWED_INBOUND_EXTENSION_REQUESTS}.
+ * {@link REVIEWED_INBOUND_EXTENSION_REQUESTS} through {@link register}, and
+ * reviewed credential or secret bindings through their own methods.
  */
 export class AcpInboundExtensionRegistry {
   private readonly handlers = new Map<string, AcpInboundExtensionHandler>();
+  /** Filled only by the reviewed-binding methods below. */
+  private readonly reviewedResponders = new Map<
+    string,
+    AcpInboundExtensionHandler
+  >();
 
   /**
    * @throws {AcpCredentialBridgingRefusedError} if the method is
-   * credential-shaped — the structural half of the no-bridging invariant.
+   * credential-shaped: those are answerable only through a reviewed binding.
    */
   register(method: string, handler: AcpInboundExtensionHandler): void {
     if (isCredentialShapedExtensionMethod(method)) {
@@ -308,21 +577,87 @@ export class AcpInboundExtensionRegistry {
   }
 
   /**
+   * Answer a reviewed credential binding's ACP method from `issuer`.
+   *
+   * @throws {AcpReviewedBindingRefusedError} unless `binding` is one of
+   * {@link REVIEWED_ENGINE_CREDENTIAL_BINDINGS}' own objects, its wire is
+   * ACP, and `launch` is a built-in descriptor launch whose argv carries the
+   * binding's delegation arguments.
+   */
+  registerCredentialResponder(
+    binding: EngineCredentialBinding,
+    issuer: EngineCredentialIssuer,
+    launch: AcpCredentialLaunchFacts,
+  ): void {
+    const id = typeof binding?.id === 'string' ? binding.id : '(unknown)';
+    if (!isReviewedEngineCredentialBinding(binding))
+      throw new AcpReviewedBindingRefusedError(id, 'not a reviewed binding');
+    if (binding.wire.protocol !== 'acp')
+      throw new AcpReviewedBindingRefusedError(id, 'not an ACP binding');
+    if (!launch.builtinDescriptor)
+      throw new AcpReviewedBindingRefusedError(
+        id,
+        'the process was not launched from a built-in descriptor',
+      );
+    if (!argvDelegatesTo(launch.argv, binding.delegationArgv))
+      throw new AcpReviewedBindingRefusedError(
+        id,
+        'the launch does not carry the delegation arguments',
+      );
+    this.reviewedResponders.set(
+      binding.wire.method,
+      credentialResponder(binding, issuer),
+    );
+  }
+
+  /**
+   * Answer a reviewed secret binding's methods from `store`.
+   *
+   * @throws {AcpReviewedBindingRefusedError} unless `binding` is one of
+   * {@link REVIEWED_ENGINE_SECRET_BINDINGS}' own objects.
+   */
+  registerSecretResponder(
+    binding: EngineSecretStorageBinding,
+    store: EngineSecretStore,
+  ): void {
+    const id = typeof binding?.id === 'string' ? binding.id : '(unknown)';
+    if (!isReviewedEngineSecretBinding(binding))
+      throw new AcpReviewedBindingRefusedError(id, 'not a reviewed binding');
+    const responder = secretResponder(binding, store);
+    for (const method of Object.values(binding.methods))
+      this.reviewedResponders.set(method, responder);
+  }
+
+  /** Remove every handler for `method`, reviewed or generic. */
+  unregister(method: string): void {
+    this.handlers.delete(method);
+    this.reviewedResponders.delete(method);
+  }
+
+  /**
    * Exact match only. A near-miss (`_kiro/` vs `_kiro.dev/`, both live
    * simultaneously in one vendor's binary) resolves to nothing and is
    * refused, rather than fuzzy-matched onto a handler that meant the other
    * spelling.
    *
-   * Re-checks the credential shape, so a handler installed by any route that
-   * bypassed {@link register} still never runs.
+   * A credential-shaped method resolves only to a reviewed responder, so a
+   * handler installed in the generic map by any route that bypassed
+   * {@link register} still never runs.
    */
   resolve(method: string): AcpInboundExtensionHandler | undefined {
+    const reviewed = this.reviewedResponders.get(method);
+    if (reviewed) return reviewed;
     if (isCredentialShapedExtensionMethod(method)) return undefined;
     return this.handlers.get(method);
   }
 
+  /** Whether {@link resolve} would answer `method`: what client announcements key on. */
+  answers(method: string): boolean {
+    return this.resolve(method) !== undefined;
+  }
+
   get size(): number {
-    return this.handlers.size;
+    return this.handlers.size + this.reviewedResponders.size;
   }
 }
 

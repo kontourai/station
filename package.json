@@ -230,6 +230,7 @@
     "test:repo-scans": "npm run build:cli && node scripts/run-repo-scan-suites.mjs",
     "connection:key": "tsx scripts/connection-key.ts",
     "lab:collaboration": "tsx scripts/local-collaboration-lab.ts",
+    "lab:native-model-channel": "tsx scripts/child-work-native-model-channel-lab.ts",
     "lab:browser-transport": "tsx scripts/browser-transport-lab.ts",
     "lab:native-relay-diagnostic-echo": "tsx scripts/native-relay-diagnostic-echo-lab.ts",
     "lab:remote-relay": "tsx scripts/remote-relay-lab.ts",

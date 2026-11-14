@@ -1,7 +1,13 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import {
+  ENGINE_EXTENSION_BINDINGS,
+  ENGINE_EXTENSION_CONSUMERS,
+  type EngineExtensionConsumerId,
   EXTENSION_NOTIFICATION_BINDINGS,
+  engineExtensionBinding,
   extensionNotificationBinding,
+  KIRO_V3_LIVE_CAPTURE,
   takeUnboundExtensionNotice,
 } from '../extension-notification-bindings.js';
 
@@ -99,20 +105,6 @@ describe('extension notification bindings', () => {
         consumer: 'ui.claude.task-settled',
         observedAgainst: ['claude-adapter'],
         evidence: 'station#1815-runtime-observation',
-      },
-      {
-        namespace: '_kiro.dev',
-        type: 'mcp/server_initialized',
-        consumer: 'ui.engine.mcp-status',
-        observedAgainst: ['kiro-v2'],
-        evidence: 'station#1935-runtime-observation',
-      },
-      {
-        namespace: '_kiro.dev',
-        type: 'metadata',
-        consumer: 'acp.host-chrome',
-        observedAgainst: ['kiro-v2'],
-        evidence: 'station#1935-runtime-observation',
       },
       {
         namespace: '_kiro.dev',
@@ -227,6 +219,86 @@ describe('extension notification bindings', () => {
         observedAgainst: ['codex-adapter-transport'],
         evidence: 'station-session-source-emitter',
       },
+      // Engine-extension rows whose consumer is implemented today: the
+      // canonical-event consumers the ACP mapper publishes, and the
+      // notifications Station accepts as host chrome.
+      {
+        namespace: '_kiro.dev',
+        type: 'mcp/server_initialized',
+        consumer: 'engine-mcp.status',
+        observedAgainst: ['kiro-v2'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro.dev',
+        type: 'mcp/server_init_failure',
+        consumer: 'engine-mcp.status',
+        observedAgainst: ['kiro-v2'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro.dev',
+        type: 'metadata',
+        consumer: 'usage.context-percent',
+        observedAgainst: ['kiro-v2'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro',
+        type: 'memory/syncStatus',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['kiro-v3'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro',
+        type: 'governance/state',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['kiro-v3'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro',
+        type: 'powers/items_changed',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['kiro-v3'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro',
+        type: 'sessions/changed',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['kiro-v3'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro',
+        type: 'mcp/status',
+        consumer: 'engine-mcp.status',
+        observedAgainst: ['kiro-v3'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro',
+        type: 'tools/didChange',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['kiro-v3'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro',
+        type: 'progressive_context/items_changed',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['kiro-v3'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_kiro',
+        type: 'steering/documents_changed',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['kiro-v3'],
+        evidence: 'engine-extension-binding',
+      },
     ]);
   });
 
@@ -246,5 +318,114 @@ describe('extension notification bindings', () => {
     expect(takeUnboundExtensionNotice('acp', '_x.ai', type)).toBe(true);
     expect(takeUnboundExtensionNotice('acp', '_x.ai', type)).toBe(false);
     expect(takeUnboundExtensionNotice('claude', '_x.ai', type)).toBe(true);
+  });
+});
+
+describe('engine extension bindings (Kiro parity)', () => {
+  const placeholders = Object.keys(
+    ENGINE_EXTENSION_CONSUMERS,
+  ) as EngineExtensionConsumerId[];
+
+  test('rows are frozen data with unique ids and unique wire shapes', () => {
+    expect(Object.isFrozen(ENGINE_EXTENSION_BINDINGS)).toBe(true);
+    const ids = ENGINE_EXTENSION_BINDINGS.map(({ id }) => id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const wires = ENGINE_EXTENSION_BINDINGS.map(({ wire }) =>
+      JSON.stringify(wire),
+    );
+    expect(new Set(wires).size).toBe(wires.length);
+    for (const row of ENGINE_EXTENSION_BINDINGS) {
+      expect(Object.isFrozen(row)).toBe(true);
+      expect(engineExtensionBinding(row.wire)).toBe(row);
+    }
+  });
+
+  test('a placeholder consumer binds no notification until it is implemented', () => {
+    const unimplemented = placeholders.filter(
+      (consumer) => !ENGINE_EXTENSION_CONSUMERS[consumer].implemented,
+    );
+    expect(unimplemented.length).toBeGreaterThan(0);
+    expect(
+      EXTENSION_NOTIFICATION_BINDINGS.filter(({ consumer }) =>
+        (unimplemented as string[]).includes(consumer),
+      ),
+    ).toEqual([]);
+    // `child-work` is implemented through the engine row
+    // (`acp-child-work.ts`), and the v2 tuple keeps its host-chrome row.
+    expect(ENGINE_EXTENSION_CONSUMERS['child-work'].implemented).toBe(true);
+    expect(
+      extensionNotificationBinding('_kiro.dev', 'subagent/list_update')
+        ?.consumer,
+    ).toBe('acp.host-chrome');
+  });
+
+  test('the events-and-UI consumers are implemented, so their rows bind', () => {
+    for (const consumer of [
+      'engine-mcp.status',
+      'model.rerouted',
+      'usage.reported-cost',
+      'usage.context-percent',
+      'session.message-id',
+    ] as const)
+      expect(ENGINE_EXTENSION_CONSUMERS[consumer].implemented).toBe(true);
+    expect(extensionNotificationBinding('_kiro', 'mcp/status')?.consumer).toBe(
+      'engine-mcp.status',
+    );
+  });
+
+  test('a re-routed v2 tuple keeps its current binding until that row is removed', () => {
+    expect(
+      engineExtensionBinding({
+        kind: 'notification',
+        method: '_kiro.dev/mcp/oauth_request',
+      })?.consumer,
+    ).toBe('input-request.url');
+    expect(
+      extensionNotificationBinding('_kiro.dev', 'mcp/oauth_request')?.consumer,
+    ).toBe('ui.kiro.oauth-request');
+    const tuples = EXTENSION_NOTIFICATION_BINDINGS.map(
+      ({ namespace, type }) => `${namespace}/${type}`,
+    );
+    expect(new Set(tuples).size).toBe(tuples.length);
+  });
+
+  test('every row observed live is in the scrubbed 2.35 capture, as that wire shape', () => {
+    const frames = readFileSync(
+      new URL(`../../${KIRO_V3_LIVE_CAPTURE}`, import.meta.url),
+      'utf8',
+    )
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line).msg);
+    const seen = (row: (typeof ENGINE_EXTENSION_BINDINGS)[number]) =>
+      frames.some((msg) => {
+        const { wire } = row;
+        if (wire.kind === 'notification')
+          return msg.method === wire.method && msg.id === undefined;
+        if (wire.kind === 'request')
+          return msg.method === wire.method && msg.id !== undefined;
+        if (wire.kind === 'session-info-kind')
+          return (
+            msg.method === 'session/update' &&
+            msg.params?.update?.sessionUpdate === 'session_info_update' &&
+            msg.params.update._meta?.[wire.namespace]?.kind === wire.metaKind
+          );
+        return false;
+      });
+    const live = ENGINE_EXTENSION_BINDINGS.filter(
+      ({ observed }) => observed.variant === 'kiro-v3-2.35',
+    );
+    // 8 notifications, 9 session-info kinds and `_kiro/terminal/shell_type`.
+    expect(live).toHaveLength(18);
+    expect(live.filter((row) => !seen(row)).map(({ id }) => id)).toEqual([]);
+  });
+
+  test('the capture holds no home directory or real session id', () => {
+    const capture = readFileSync(
+      new URL(`../../${KIRO_V3_LIVE_CAPTURE}`, import.meta.url),
+      'utf8',
+    );
+    expect(capture).not.toMatch(/\/Users\//);
+    expect(capture).not.toMatch(/sess_[0-9a-f]{8}-/);
   });
 });

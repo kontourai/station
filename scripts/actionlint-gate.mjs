@@ -2992,6 +2992,16 @@ function primaryCiRouterFindings(file, document) {
         hasExactKeys(job.permissions, ['contents', 'actions']) &&
         job.permissions.contents === 'read' &&
         job.permissions.actions === 'read'
+      ) &&
+      // `classify` never runs on pull_request_target, so its read-only
+      // Actions grant (for the push-only merge-group-verdict step) never
+      // reaches candidate code. Any other `if` keeps the finding.
+      !(
+        jobId === 'classify' &&
+        job.if === EXACT_TARGET_SKIP_GUARDS.classify &&
+        hasExactKeys(job.permissions, ['contents', 'actions']) &&
+        job.permissions.contents === 'read' &&
+        job.permissions.actions === 'read'
       )
     )
       findings.push({
@@ -3365,7 +3375,7 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
       .update(JSON.stringify(canonicalValue(document)))
       .digest('hex');
     return digest ===
-      'd94eec977c3bd1196cf9282b01becc3ba27a7a9408a8520df4a871125c3a0f10'
+      '05fec52d933b88495b6e4e61eb57912a67574e7a3b2d9f9013e70bbf2a01b3c0'
       ? []
       : [
           {

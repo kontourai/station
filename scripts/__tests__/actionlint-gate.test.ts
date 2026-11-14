@@ -1601,6 +1601,48 @@ describe('persistent runner policy', () => {
         message: CREDENTIAL,
       });
     });
+
+    const OVERRIDE =
+      'base-controlled PR job permission overrides must declare only permissions: { contents: read }';
+
+    test('declares exactly contents: read and actions: read on the push-only job', () => {
+      const [{ document }] = primaryCiJobFixture('classify', () => {});
+      expect(document.jobs.classify.permissions).toEqual({
+        contents: 'read',
+        actions: 'read',
+      });
+    });
+
+    test.each([
+      [
+        'actions is writable',
+        (job: Record<string, unknown>) => {
+          job.permissions = { contents: 'read', actions: 'write' };
+        },
+      ],
+      [
+        'another scope is added',
+        (job: Record<string, unknown>) => {
+          job.permissions = {
+            contents: 'read',
+            actions: 'read',
+            statuses: 'write',
+          };
+        },
+      ],
+      [
+        'the job also runs on pull_request_target',
+        (job: Record<string, unknown>) => {
+          job.if = "${{ github.event_name != 'merge_group' }}";
+        },
+      ],
+    ])('rejects the actions grant when %s', (_name, mutate) => {
+      expect(classifyFindings(mutate)).toContainEqual({
+        file: '.github/workflows/ci.yml',
+        jobId: 'classify',
+        message: OVERRIDE,
+      });
+    });
   });
 
   test('classifies credential expressions without flagging ordinary github reads', () => {
@@ -2121,6 +2163,26 @@ describe('persistent runner policy', () => {
     }) => {
       document.jobs.reconcile.steps[0].with!.ref =
         '${{ github.event.merge_group.head_sha }}';
+    },
+    // Workflow-level concurrency lets a run whose job is skipped replace a
+    // pending publishing run for the same head.
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      const shape = document as unknown as {
+        concurrency?: unknown;
+        jobs: { reconcile: { concurrency?: unknown } };
+      };
+      shape.concurrency = shape.jobs.reconcile.concurrency;
+      delete shape.jobs.reconcile.concurrency;
     },
   ])('rejects widened source verification publication authority', (mutate) => {
     const workflow = readWorkflowDocuments().find(

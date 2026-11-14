@@ -370,6 +370,9 @@ function deriveSession(
     activityHint: chatState.activityHint,
     backgroundTasks: chatState.backgroundTasks,
     liveUsage: chatState.liveUsage,
+    engineMcpServers: chatState.engineMcpServers,
+    engineMcpReconnect: chatState.engineMcpReconnect,
+    engineMcpComplete: chatState.engineMcpComplete,
     replay: chatState.replay,
   };
 }

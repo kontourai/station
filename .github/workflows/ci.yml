@@ -29,6 +29,13 @@ jobs:
     # already admits merge_group by event, so its outputs were unread there
     # and its runner hop only delayed every later job.
     if: ${{ github.event_name != 'pull_request_target' && github.event_name != 'merge_group' }}
+    # `actions: read` is for merge-group-verdict's run and job listings, which
+    # work undeclared only while the repository is public. This job never
+    # runs on pull_request_target (its `if` above), so no candidate code holds
+    # it; the actionlint gate allows the grant only with that exact `if`.
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     outputs:
@@ -61,8 +68,9 @@ jobs:
 
       # Push-only and fail-open: the step never fails the job, and anything
       # short of a proven merge-queue verdict leaves verified unset or false
-      # (scripts/ci-merge-group-verdict.mjs). It reads public Actions data
-      # with the job's read-only token.
+      # (scripts/ci-merge-group-verdict.mjs). It reads Actions run data with
+      # the job's read-only token (`actions: read` above); a failed or refused
+      # lookup keeps the full lane and raises a warning annotation.
       - id: merge-group-verdict
         name: Reuse the merge queue verdict for this exact SHA
         if: ${{ github.event_name == 'push' }}
@@ -1172,8 +1180,10 @@ jobs:
     # used to surface first in the merge queue's full corpus (#2553). They run
     # here on every same-repository pull request, beside fast-checks rather
     # than inside it, so they neither spend its twelve-minute budget nor wait
-    # on it. Not a required check (yet): a red here is feedback, and the
-    # merge-queue regression still runs the same suites.
+    # on it. Not a required check (yet) and not part of the source-verification
+    # verdict: a red here is feedback that does not block landing. The merge
+    # queue runs only a bounded selection, not these suites, so a violation
+    # that lands is caught next by post-landing full qualification.
     if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       contents: read

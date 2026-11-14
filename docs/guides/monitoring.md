@@ -1037,7 +1037,7 @@ is attribution, never a grant or a claim of personal lifetime totals.
 | Bedrock and Ollama adapters | Tokens reported for each model call | Absent usage stays absent; cost estimates need an eligible pricing snapshot |
 | Muse serve | Model-call input/output/cache figures, emitted as per-turn usage | Uses the wire `usage` object rather than `cumulative`; child-work usage stays a separate projection |
 | Muse stdio | Completed work and other reported lifecycle facts | Its envelope supplies no token-usage event |
-| ACP, including ACP-backed engines | Reported context occupancy/window | Occupancy is not consumed tokens; arbitrary-currency ACP costs are not projected |
+| ACP, including ACP-backed engines | Reported context occupancy/window, an engine's own context percentage, and costs in the engine's own unit | Occupancy is not consumed tokens; a reported cost (an ISO currency or a vendor unit such as credits) is shown in conversation statistics as reported, one total per unit, never converted to USD, and usage receipts do not include it |
 | Station agent / direct model-provider chat | Saved messages and their recorded usage/estimates | Canonical relay joins use saved messages as primary; overlapping engine activity is separately disclosed |
 
 Attached Claude transcripts retain a bounded record-to-turn ancestry map in the

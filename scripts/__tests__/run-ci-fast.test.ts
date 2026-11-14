@@ -456,6 +456,48 @@ describe('bounded ci:fast runner', () => {
       expect(result.output).toContain('[diff-whitespace] OK');
     });
 
+    // Base-only whitespace that main ADDS after the branch point shows as a
+    // removal in any range from the main tip, so the test above cannot tell
+    // `<base>...HEAD` from `<base> HEAD`. Whitespace that main REMOVES after
+    // the branch point can: a two-point diff from the main tip reads the
+    // PR's untouched, inherited copy of the line as an addition.
+    it('passes a PR that leaves alone inherited whitespace main has since fixed', () => {
+      const { dir, base } = whitespaceRepo('clean line\n');
+      const git = (...args: string[]) =>
+        execFileSync('git', args, {
+          cwd: dir,
+          windowsHide: true,
+          encoding: 'utf8',
+        });
+      git('checkout', '-q', 'main');
+      writeFileSync(join(dir, 'notes.md'), 'inherited trailing space\n');
+      git('commit', '-qam', 'main fixes the inherited whitespace');
+      const fixedBase = git('rev-parse', 'HEAD').trim();
+      git('checkout', '-q', 'pr');
+      expect(base).not.toBe(fixedBase);
+      expect(
+        spawnSync('git', ['diff', '--check', fixedBase, 'HEAD'], {
+          cwd: dir,
+          windowsHide: true,
+        }).status,
+        'the two-point diff must flag the inherited line for this to discriminate',
+      ).toBe(2);
+      const result = runGate(dir, fixedBase);
+      expect(result.status).toBe(0);
+      expect(result.output).toContain('[diff-whitespace] OK');
+    });
+
+    // The header's contract: the committed head is judged, as CI checks it
+    // out, not uncommitted edits in a local working tree.
+    it('does not judge an uncommitted working-tree edit', () => {
+      const { dir, base } = whitespaceRepo('clean line\n');
+      writeFileSync(join(dir, 'change.md'), 'clean line\nuncommitted \n');
+      const result = runGate(dir, base);
+      expect(result.status).toBe(0);
+      expect(result.output).toContain('[diff-whitespace] OK');
+      expect(result.output).not.toContain('change.md');
+    });
+
     it('fails closed when the base is not a fetched commit', () => {
       const { dir } = whitespaceRepo('clean line\n');
       const result = runGate(dir, 'f'.repeat(40));

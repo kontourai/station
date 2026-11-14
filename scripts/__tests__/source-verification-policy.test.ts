@@ -948,6 +948,35 @@ describe('source verification reconciler API boundary', () => {
     });
     expect(steps.some((step) => step.uses?.includes('artifact'))).toBe(false);
   });
+
+  // GitHub keeps one pending run per concurrency group. At workflow level a
+  // run whose `reconcile` job its `if` skips still queued in the group and
+  // replaced (cancelled) a pending admitted run for the same head, which then
+  // never published. On the job, a skipped job never enters the group. This
+  // pins the shape only; only a hosted run can show the runtime effect.
+  test('publisher serializes on the reconcile job, so a skipped run never enters the group', () => {
+    const workflow = load(
+      readFileSync(
+        new URL(
+          '../../.github/workflows/source-verification-policy.yml',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+      { schema: JSON_SCHEMA },
+    ) as {
+      concurrency?: unknown;
+      jobs: Record<string, { concurrency?: unknown; if?: string }>;
+    };
+    expect(workflow).not.toHaveProperty('concurrency');
+    expect(Object.keys(workflow.jobs)).toEqual(['reconcile']);
+    expect(workflow.jobs.reconcile.if).toEqual(expect.any(String));
+    expect(workflow.jobs.reconcile.concurrency).toEqual({
+      group:
+        'source-verification-policy-${{ github.repository }}-${{ github.event.workflow_run.head_sha || inputs.source_sha }}',
+      'cancel-in-progress': false,
+    });
+  });
 });
 
 /**

@@ -126,6 +126,7 @@ function createAdapter(
     onProcess?: (process: FakeAcpProcess, index: number) => void;
     resolvePreToolPolicy?: AcpAdapterOptions['resolvePreToolPolicy'];
     sendTurnStartWaitMs?: number;
+    modelAdvertisementWaitMs?: number;
   } = {},
 ): {
   adapter: AcpAdapter;
@@ -145,6 +146,9 @@ function createAdapter(
     revokeStationControlMcpAuth: options.revokeStationControlMcpAuth,
     resolvePreToolPolicy: options.resolvePreToolPolicy,
     sendTurnStartWaitMs: options.sendTurnStartWaitMs,
+    ...(options.modelAdvertisementWaitMs !== undefined
+      ? { modelAdvertisementWaitMs: options.modelAdvertisementWaitMs }
+      : {}),
     managedWorkspaceHomeDir:
       options.managedWorkspaceHomeDir ?? managedWorkspaceHome,
     processFactory: (opts) => {
@@ -189,12 +193,34 @@ const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'reject-always', name: 'Reject always', kind: 'reject_always' },
 ];
 
+/**
+ * The next event, past the `child-work.updated` `not-reported` this mock
+ * engine's session publishes at start (its handshake names no subagent
+ * reporter). That event has its own test below; the positional reads here
+ * are about the turn and request lifecycle around it.
+ */
+async function nextLifecycle(
+  iterator: AsyncIterator<CanonicalRuntimeEvent>,
+): Promise<IteratorResult<CanonicalRuntimeEvent>> {
+  for (;;) {
+    const result = await iterator.next();
+    const event = result.value as CanonicalRuntimeEvent | undefined;
+    if (
+      !result.done &&
+      event?.method === 'child-work.updated' &&
+      event.delta.kind === 'not-reported'
+    )
+      continue;
+    return result;
+  }
+}
+
 async function nextEvent(
   iterator: AsyncIterator<CanonicalRuntimeEvent>,
   label: string,
 ): Promise<CanonicalRuntimeEvent> {
   const result = await Promise.race([
-    iterator.next(),
+    nextLifecycle(iterator),
     new Promise<never>((_, reject) =>
       setTimeout(
         () => reject(new Error(`Timed out waiting for ${label}`)),
@@ -232,7 +258,9 @@ function nextEventOrTimeout(
   ms: number,
 ): Promise<CanonicalRuntimeEvent | 'TIMED_OUT'> {
   return Promise.race([
-    iterator.next().then((result) => result.value as CanonicalRuntimeEvent),
+    nextLifecycle(iterator).then(
+      (result) => result.value as CanonicalRuntimeEvent,
+    ),
     new Promise<'TIMED_OUT'>((resolve) =>
       setTimeout(() => resolve('TIMED_OUT'), ms),
     ),
@@ -360,6 +388,27 @@ describe('AcpAdapter', () => {
     expect(auth?.description).toContain('has no way to check whether OpenCode');
     expect(auth?.description).not.toMatch(/credentials are present/i);
     expect(requiredMissingPrerequisites(prerequisites)).toEqual([]);
+  });
+
+  test('a session whose engine names no subagent reporter says its child work is not reported, right after it is configured', async () => {
+    const { adapter } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-not-reported',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    const methods: string[] = [];
+    for (let step = 0; step < 3; step += 1)
+      methods.push(
+        ((await iterator.next()).value as CanonicalRuntimeEvent).method,
+      );
+    expect(methods).toEqual([
+      'session.started',
+      'session.configured',
+      'child-work.updated',
+    ]);
   });
 
   test('#2316: an interrupt settles the open permission request; a late answer is refused and grants nothing', async () => {
@@ -719,6 +768,7 @@ describe('AcpAdapter', () => {
         description: 'Deploy the app',
         argumentHint: '<env>',
         passthrough: true,
+        route: { kind: 'prompt-text' },
       },
     ]);
 
@@ -3275,6 +3325,13 @@ describe('AcpAdapter', () => {
           currentValue: 'default-model',
           options: [{ value: 'claude-sonnet' }],
         },
+        // `effort` applies only through an advertised thought_level option.
+        {
+          id: 'reasoning',
+          category: 'thought_level',
+          currentValue: 'high',
+          options: [{ value: 'high' }],
+        },
       ],
     });
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -4641,7 +4698,7 @@ describe('AcpAdapter', () => {
     finishDestroy();
     await stopping;
 
-    expect((await iterator.next()).value.method).toBe('session.exited');
+    expect((await nextLifecycle(iterator)).value.method).toBe('session.exited');
   });
 
   test('does not publish completion from a superseded ACP turn', async () => {
@@ -4903,11 +4960,40 @@ describe('station#1182: runtime-reported model', () => {
     await adapter.stopAll();
   });
 
-  test('refuses a requested model when the fresh session has no model option', async () => {
-    const { adapter, processes } = createAdapter({
+  test('refuses at once a requested model on an engine with no config options and no model list', async () => {
+    const { adapter } = createAdapter({
       newSessionConfigOptions: [],
+      modelAdvertisementWaitMs: 5_000,
+    });
+    const started = Date.now();
+    await expect(
+      adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-model-no-options',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        modelId: 'model-b',
+      }),
+    ).rejects.toMatchObject({ code: 'model_not_advertised' });
+    // Nothing would ever send it a model option: no wait.
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  test('refuses a requested model when the fresh session has no model option, after a bounded wait', async () => {
+    // The engine speaks config options (a mode), so a model option may follow.
+    const { adapter, processes } = createAdapter({
+      newSessionConfigOptions: [
+        {
+          id: 'mode',
+          category: 'mode',
+          currentValue: 'vibe',
+          options: [{ value: 'vibe' }],
+        },
+      ],
+      modelAdvertisementWaitMs: 200,
     });
 
+    const started = Date.now();
     await expect(
       adapter.startSession({
         provider: 'acp',
@@ -4921,6 +5007,9 @@ describe('station#1182: runtime-reported model', () => {
       code: 'model_not_advertised',
       message: expect.stringContaining('ACP model option unavailable'),
     });
+    // It waited for a late model option, and no longer than its bound.
+    expect(Date.now() - started).toBeGreaterThanOrEqual(190);
+    expect(Date.now() - started).toBeLessThan(2_000);
     expect(processes[0].setConfigOptionCalls).toEqual([]);
   });
 
@@ -6120,7 +6209,7 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
     const drain = (async () => {
       for (let step = 0; step < 8; step += 1) {
         const next = await Promise.race([
-          iterator.next().then((result) => result.value),
+          nextLifecycle(iterator).then((result) => result.value),
           new Promise((resolve) => setTimeout(() => resolve(null), 60)),
         ]);
         // `stopAll` closes the queue, so an exhausted iterator yields
@@ -6995,6 +7084,124 @@ describe('AcpAdapter.steerTurn', () => {
     });
     await adapter.stopAll();
   });
+
+  test('prompt end settles only its own turn’s requests; one opened between turns stays open', async () => {
+    const { adapter, processes } = createAdapter();
+    const events: CanonicalRuntimeEvent[] = [];
+    const drained = (async () => {
+      for await (const event of adapter.streamEvents()) events.push(event);
+    })();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-acp-request-turns',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    const client = processes[0]!.client;
+    // Between turns: the engine asks (an MCP sign-in after a reconnect).
+    const outside = requestPermission(client, 'tool-outside', 'write');
+    await vi.waitFor(() =>
+      expect(
+        events.filter((event) => event.method === 'request.opened'),
+      ).toHaveLength(1),
+    );
+    const outsideId = String(
+      (events.find((event) => event.method === 'request.opened') as any)
+        .requestId,
+    );
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-acp-request-turns',
+      input: 'go',
+    });
+    const inside = requestPermission(client, 'tool-inside', 'write');
+    await vi.waitFor(() =>
+      expect(
+        events.filter((event) => event.method === 'request.opened'),
+      ).toHaveLength(2),
+    );
+    processes[0]!.resolvePrompt('end_turn');
+    await expect(inside).resolves.toEqual({
+      outcome: { outcome: 'cancelled' },
+    });
+    await vi.waitFor(() =>
+      expect(
+        events.some(
+          (event) =>
+            event.method === 'turn.completed' &&
+            (event as any).turnId === turn.turnId,
+        ),
+      ).toBe(true),
+    );
+    const resolved = events.filter(
+      (event) => event.method === 'request.resolved',
+    );
+    expect(resolved.map((event) => (event as any).requestId)).not.toContain(
+      outsideId,
+    );
+    expect(resolved).toHaveLength(1);
+    // Still answerable: the engine is still waiting on it.
+    await adapter.respondToRequest(
+      'thread-acp-request-turns',
+      outsideId,
+      'accept',
+    );
+    await expect(outside).resolves.toMatchObject({
+      outcome: { outcome: 'selected' },
+    });
+    await adapter.stopAll();
+    await drained;
+  });
+
+  test.each(['interrupt', 'steer'] as const)(
+    '%s settles only the cancelled turn’s requests; one opened between turns stays open',
+    async (action) => {
+      // `other-cli` declares no native steer, so a steer cancels and re-prompts.
+      const { adapter, processes } = createAdapter({
+        connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+      });
+      const events: CanonicalRuntimeEvent[] = [];
+      const drained = (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      const threadId = `thread-acp-${action}-request-turns`;
+      await adapter.startSession({
+        provider: 'acp',
+        threadId,
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+      });
+      const client = processes[0]!.client;
+      const opened = () =>
+        events.filter((event) => event.method === 'request.opened');
+      const outside = requestPermission(client, 'tool-outside', 'write');
+      await vi.waitFor(() => expect(opened()).toHaveLength(1));
+      const outsideId = String((opened()[0] as any).requestId);
+      const turn = await adapter.sendTurn({ threadId, input: 'go' });
+      const inside = requestPermission(client, 'tool-inside', 'write');
+      await vi.waitFor(() => expect(opened()).toHaveLength(2));
+      const insideId = String((opened()[1] as any).requestId);
+
+      if (action === 'interrupt')
+        await adapter.interruptTurn(threadId, turn.turnId);
+      else await adapter.steerTurn(threadId, 'take this instead', turn.turnId);
+
+      await expect(inside).resolves.toEqual({
+        outcome: { outcome: 'cancelled' },
+      });
+      const resolved = events
+        .filter((event) => event.method === 'request.resolved')
+        .map((event) => (event as any).requestId);
+      expect(resolved).toContain(insideId);
+      expect(resolved).not.toContain(outsideId);
+      // The engine is still waiting on the request opened between turns.
+      await adapter.respondToRequest(threadId, outsideId, 'accept');
+      await expect(outside).resolves.toMatchObject({
+        outcome: { outcome: 'selected' },
+      });
+      await adapter.stopAll();
+      await drained;
+    },
+  );
 
   test('#2316: cancel-and-reprompt settles the open permission request; a late answer is refused and grants nothing', async () => {
     const { adapter, processes } = createAdapter({

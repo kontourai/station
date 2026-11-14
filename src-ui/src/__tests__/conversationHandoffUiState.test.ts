@@ -26,6 +26,10 @@ describe('conversation handoff UI state', () => {
       planArtifact: { version: 1, entries: [] },
       currentModeId: 'mode-old',
       backgroundTasks: [{ id: 'task-old', description: 'stale task' }],
+      liveUsage: { contextPercent: 40 },
+      engineMcpServers: [{ name: 'docs', state: 'ready', scope: 'session' }],
+      engineMcpReconnect: true,
+      engineMcpComplete: true,
       orchestrationHistoryRevision: 4,
     } as unknown as ChatUIState;
     const begun = beginConversationHandoffUiState(predecessor, {
@@ -82,6 +86,11 @@ describe('conversation handoff UI state', () => {
       orchestrationHistoryRevision: 5,
     });
     expect(accepted.streamingMessage).toBeUndefined();
+    // The predecessor engine's reports: its usage and its MCP servers.
+    expect(merged.liveUsage).toBeUndefined();
+    expect(merged.engineMcpServers).toBeUndefined();
+    expect(merged.engineMcpReconnect).toBeUndefined();
+    expect(merged.engineMcpComplete).toBeUndefined();
     expect(accepted.orchestrationModel).toBeUndefined();
     expect(accepted.requestedProviderOptions).toEqual({});
     expect(accepted.approvalToasts).toEqual(new Map());

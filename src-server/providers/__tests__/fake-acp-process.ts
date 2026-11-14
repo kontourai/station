@@ -62,7 +62,7 @@ export class FakeAcpProcess {
 
   async start() {
     if (this.startError) throw this.startError;
-    this.client = this.opts.createClient();
+    this.client = this.opts.createClient({ launchReplacedByPolicy: false });
     return this.initResult;
   }
 

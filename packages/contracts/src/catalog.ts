@@ -613,7 +613,49 @@ export type ProviderDeclaredHandshakeFact =
   | 'authMethods'
   | 'extensionMethods'
   /** The probe session's `models` list (#352). */
-  | 'models';
+  | 'models'
+  | 'declaredFeatures'
+  | 'logChannels';
+
+/**
+ * Which engine variant a reviewed handshake-identity entry matched
+ * (`acp-handshake-facts.ts`). A variant names an engine and protocol
+ * generation, never a version: `kiro-v2` is kiro-cli's own engine
+ * (`agentInfo.name` `Kiro CLI Agent`), `kiro-v3` its agent service (it
+ * declares `agentCapabilities._meta.kiro`).
+ */
+export type ProviderDeclaredEngineVariant = 'kiro-v2' | 'kiro-v3';
+
+/**
+ * Feature flags an engine declared under its vendor namespace in
+ * `agentCapabilities._meta`, read against Station's bounds. Each is the
+ * engine's own claim. Station binds behavior to a flag only through a
+ * reviewed entry; an unbound flag is recorded, not acted on.
+ */
+export interface ProviderDeclaredFeatures {
+  /** The vendor `_meta` namespace the flags were read from (`kiro`). */
+  namespace: string;
+  /** Workspace checkpoints the engine can revert to. */
+  checkpoints?: boolean;
+  /** The engine lists its own stored sessions. */
+  sessionList?: boolean;
+  /** Updates replayed by a session load are marked as replayed. */
+  replayMarking?: boolean;
+  /** The engine reports a model fallback it performed. */
+  modelFallbackReporting?: boolean;
+  /** The engine reports organization policy changes. */
+  policyNotifications?: boolean;
+  /** `session/fork` accepts a message id to fork at. */
+  forkAtMessage?: boolean;
+  /** Bounds of the engine's auto-compaction threshold, in percent of context. */
+  autoCompactionThreshold?: { min: number; max: number; default: number };
+  /** Where the engine can run a session (`local`, `cloud-sandbox`, …). */
+  executionTargets?: string[];
+  /** Where the engine's sessions can come from (`local`, `remote`). */
+  sessionSources?: string[];
+  /** Scopes the engine's session list can be asked for. */
+  sessionListScopes?: string[];
+}
 
 /**
  * ADR 0013: what one engine connection declared about itself at its protocol
@@ -631,6 +673,15 @@ export interface ProviderDeclaredHandshake {
   authMethods?: ProviderDeclaredAuthMethod[];
   /** Extension methods the engine listed in its capability `_meta`. */
   extensionMethods?: string[];
+  /** The engine variant a reviewed identity entry matched; absent when none did. */
+  engineVariant?: ProviderDeclaredEngineVariant;
+  /** Vendor feature flags; absent when the engine declared none Station reads. */
+  declaredFeatures?: ProviderDeclaredFeatures;
+  /**
+   * Names of the log channels the engine declared. Their file paths are host
+   * paths and stay on the server, where only an administrator reads a tail.
+   */
+  logChannels?: string[];
   /**
    * Facts the engine declared beyond Station's bounds. Each is absent above,
    * never shortened, so a refused list cannot read as a complete one.

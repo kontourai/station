@@ -1,0 +1,7 @@
+{
+  "revision": "86eb350aab7717090b7910cdd15b2ac753821714",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Added that backups and update rollback skip engines/; verified against STATION_HOME_ROOTS engines: external and the per-version install layout in managed-install.ts.","inputs":["docs/guides/connections.md"]}
+  ]
+}

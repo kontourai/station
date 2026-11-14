@@ -1,6 +1,8 @@
 import type { AgentCapabilities } from '@agentclientprotocol/sdk/unstable';
 import type {
   ProviderDeclaredAuthMethod,
+  ProviderDeclaredEngineVariant,
+  ProviderDeclaredFeatures,
   ProviderDeclaredHandshake,
   ProviderDeclaredHandshakeFact,
 } from '@kontourai/station-contracts/catalog';
@@ -28,7 +30,92 @@ export const ACP_DECLARED_FACT_BOUNDS = {
   authMethods: 32,
   extensionMethods: 256,
   availableModels: 1024,
+  /** Entries in one declared feature list (`executionTargets`, …). */
+  featureList: 16,
+  logChannels: 16,
+  /** A declared log directory or file path. */
+  path: 4096,
 } as const;
+
+/** One declared handshake fact, matched exactly. */
+export type AcpHandshakeIdentity =
+  | { agentInfoName: string }
+  | { capabilityMetaNamespace: string }
+  | { initializeMetaFlag: string };
+
+/** The parts of an `initialize` answer an identity is read from. */
+export type AcpIdentityHandshake = Pick<
+  InitializeResult,
+  'agentInfo' | 'agentCapabilities' | '_meta'
+>;
+
+function hasRecordKey(value: unknown, key: string): boolean {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    Object.hasOwn(value as object, key)
+  );
+}
+
+/**
+ * Whether the live handshake says this about itself: its `agentInfo.name`,
+ * a vendor namespace in `agentCapabilities._meta`, or a `true` flag in the
+ * result's own `_meta`. Never the launch command.
+ */
+export function matchesAcpHandshakeIdentity(
+  handshake: AcpIdentityHandshake,
+  identity: AcpHandshakeIdentity,
+): boolean {
+  if ('agentInfoName' in identity) {
+    return handshake.agentInfo?.name === identity.agentInfoName;
+  }
+  if ('capabilityMetaNamespace' in identity) {
+    return hasRecordKey(
+      handshake.agentCapabilities?._meta,
+      identity.capabilityMetaNamespace,
+    );
+  }
+  return handshake._meta?.[identity.initializeMetaFlag] === true;
+}
+
+/**
+ * Engine variants a handshake identifies, most specific first. The agent
+ * service declares `_meta.kiro` and, on 2.35, no `agentInfo`; kiro-cli's own
+ * engine names itself and declares no `_meta`. Were one handshake to do both,
+ * the declared namespace wins: it is what carries the features.
+ */
+const ACP_ENGINE_VARIANTS: ReadonlyArray<{
+  variant: ProviderDeclaredEngineVariant;
+  identity: AcpHandshakeIdentity;
+  observed: string;
+}> = [
+  {
+    variant: 'kiro-v3',
+    identity: { capabilityMetaNamespace: 'kiro' },
+    observed: 'kiro-cli 2.35.0 `acp --agent-engine v3` (2026-11-13)',
+  },
+  {
+    variant: 'kiro-v2',
+    identity: { agentInfoName: 'Kiro CLI Agent' },
+    observed: 'kiro-cli 2.35.0 `acp --agent-engine v2` (2026-11-13)',
+  },
+];
+
+export function resolveAcpEngineVariant(
+  handshake: AcpIdentityHandshake | null | undefined,
+): ProviderDeclaredEngineVariant | undefined {
+  if (!handshake) return undefined;
+  return ACP_ENGINE_VARIANTS.find(({ identity }) =>
+    matchesAcpHandshakeIdentity(handshake, identity),
+  )?.variant;
+}
+
+/**
+ * Vendor namespaces whose `agentCapabilities._meta` feature flags Station
+ * reads. Another namespace's flags are not projected: their meaning has not
+ * been reviewed.
+ */
+const ACP_DECLARED_FEATURE_NAMESPACES: readonly string[] = ['kiro'];
 
 type AcpSessionLifecycleCapability =
   AcpDeclaredHandshake['sessionCapabilities'][number];
@@ -136,6 +223,165 @@ function projectExtensionMethods(
   return methods;
 }
 
+/** A declared flag: `true`/`false` as declared, anything else absent. */
+function declaredFlag(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+/** A declared list of short labels: absent, within bounds, or refused. */
+function declaredLabelList(value: unknown): Bounded<string[]> {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return REFUSED;
+  if (value.length > ACP_DECLARED_FACT_BOUNDS.featureList) return REFUSED;
+  const labels: string[] = [];
+  for (const entry of value) {
+    if (
+      typeof entry !== 'string' ||
+      !entry ||
+      entry.length > ACP_DECLARED_FACT_BOUNDS.label
+    )
+      return REFUSED;
+    if (!labels.includes(entry)) labels.push(entry);
+  }
+  return labels;
+}
+
+/** Integer percentages with `min <= default <= max`, all within 0-100. */
+function declaredPercentRange(
+  value: unknown,
+): Bounded<ProviderDeclaredFeatures['autoCompactionThreshold']> {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return REFUSED;
+  const { min, max, default: initial } = value;
+  const percent = (n: unknown): n is number =>
+    typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 100;
+  if (!percent(min) || !percent(max) || !percent(initial)) return REFUSED;
+  if (!(min <= initial && initial <= max)) return REFUSED;
+  return { min, max, default: initial };
+}
+
+/**
+ * The feature flags a reviewed vendor namespace declared. Booleans are read
+ * as declared; a list or range that is malformed or beyond the bounds
+ * refuses the whole set, so a partial set never reads as complete.
+ */
+function projectDeclaredFeatures(
+  agentCapabilities: AgentCapabilities | null | undefined,
+): Bounded<ProviderDeclaredFeatures> {
+  const meta = agentCapabilities?._meta;
+  if (!isRecord(meta)) return undefined;
+  const namespace = ACP_DECLARED_FEATURE_NAMESPACES.find((candidate) =>
+    isRecord(meta[candidate]),
+  );
+  if (!namespace) return undefined;
+  const flags = meta[namespace] as Record<string, unknown>;
+  const sessionCapabilities: unknown = agentCapabilities?.sessionCapabilities;
+  const fork = isRecord(sessionCapabilities)
+    ? sessionCapabilities.fork
+    : undefined;
+  const forkMeta = isRecord(fork) && isRecord(fork._meta) ? fork._meta : null;
+  const forkFlags =
+    forkMeta && isRecord(forkMeta[namespace]) ? forkMeta[namespace] : null;
+  const executionTargets = declaredLabelList(flags.executionTargets);
+  const sessionSources = declaredLabelList(flags.sessionSources);
+  const sessionListScopes = declaredLabelList(flags.sessionListScopes);
+  const autoCompactionThreshold = declaredPercentRange(
+    flags.autoCompactionThreshold,
+  );
+  if (
+    executionTargets === REFUSED ||
+    sessionSources === REFUSED ||
+    sessionListScopes === REFUSED ||
+    autoCompactionThreshold === REFUSED
+  )
+    return REFUSED;
+  const booleans = {
+    checkpoints: declaredFlag(flags.checkpoints),
+    sessionList: declaredFlag(flags.sessionList),
+    replayMarking: declaredFlag(flags.replayMarking),
+    modelFallbackReporting: declaredFlag(flags.modelFallbackReporting),
+    policyNotifications: declaredFlag(flags.policyNotifications),
+    forkAtMessage: declaredFlag(forkFlags?.messageId),
+  };
+  const features: ProviderDeclaredFeatures = Object.assign(
+    { namespace },
+    Object.fromEntries(
+      Object.entries(booleans).filter(([, value]) => value !== undefined),
+    ),
+  );
+  if (autoCompactionThreshold)
+    features.autoCompactionThreshold = autoCompactionThreshold;
+  if (executionTargets) features.executionTargets = executionTargets;
+  if (sessionSources) features.sessionSources = sessionSources;
+  if (sessionListScopes) features.sessionListScopes = sessionListScopes;
+  return features;
+}
+
+/**
+ * Log channels an engine declared under a reviewed namespace's `logging`:
+ * a log directory and named files. Host paths: served only to the server
+ * (an administrator's tail read checks each real path is inside `logDir`,
+ * itself inside a root the engine's descriptor declares). The public
+ * handshake carries the channel names alone.
+ */
+export interface AcpDeclaredLogging {
+  logDir: string;
+  channels: Array<{ name: string; filePath: string }>;
+}
+
+const LOG_CHANNEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+function absolutePath(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= ACP_DECLARED_FACT_BOUNDS.path &&
+    !value.includes('\0') &&
+    (value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value))
+  );
+}
+
+function readDeclaredLogging(
+  agentCapabilities: AgentCapabilities | null | undefined,
+): Bounded<AcpDeclaredLogging> {
+  const meta = agentCapabilities?._meta;
+  if (!isRecord(meta)) return undefined;
+  const namespace = ACP_DECLARED_FEATURE_NAMESPACES.find((candidate) =>
+    isRecord(meta[candidate]),
+  );
+  if (!namespace) return undefined;
+  const logging = (meta[namespace] as Record<string, unknown>).logging;
+  if (logging === undefined) return undefined;
+  if (!isRecord(logging) || !absolutePath(logging.logDir)) return REFUSED;
+  if (
+    !Array.isArray(logging.channels) ||
+    logging.channels.length > ACP_DECLARED_FACT_BOUNDS.logChannels
+  )
+    return REFUSED;
+  const channels: AcpDeclaredLogging['channels'] = [];
+  for (const channel of logging.channels) {
+    if (
+      !isRecord(channel) ||
+      typeof channel.name !== 'string' ||
+      channel.name.length > ACP_DECLARED_FACT_BOUNDS.label ||
+      !LOG_CHANNEL_NAME.test(channel.name) ||
+      !absolutePath(channel.filePath) ||
+      channels.some((other) => other.name === channel.name)
+    )
+      return REFUSED;
+    channels.push({ name: channel.name, filePath: channel.filePath });
+  }
+  return { logDir: logging.logDir, channels };
+}
+
+/** The declared log channels with their host paths, for server use only. */
+export function projectAcpDeclaredLogging(
+  initResult: Pick<InitializeResult, 'agentCapabilities'>,
+): AcpDeclaredLogging | undefined {
+  const logging = readDeclaredLogging(initResult.agentCapabilities);
+  return logging === REFUSED ? undefined : logging;
+}
+
 export function projectAcpDeclaredHandshake(
   initResult: InitializeResult,
 ): AcpDeclaredHandshake {
@@ -146,9 +392,16 @@ export function projectAcpDeclaredHandshake(
   const extensionMethods = projectExtensionMethods(
     initResult.agentCapabilities,
   );
+  const declaredFeatures = projectDeclaredFeatures(
+    initResult.agentCapabilities,
+  );
+  const logging = readDeclaredLogging(initResult.agentCapabilities);
+  const engineVariant = resolveAcpEngineVariant(initResult);
   if (agentInfo === REFUSED) refused.push('agentInfo');
   if (authMethods === REFUSED) refused.push('authMethods');
   if (extensionMethods === REFUSED) refused.push('extensionMethods');
+  if (declaredFeatures === REFUSED) refused.push('declaredFeatures');
+  if (logging === REFUSED) refused.push('logChannels');
   return {
     protocolVersion: initResult.protocolVersion,
     ...(agentInfo && agentInfo !== REFUSED ? { agentInfo } : {}),
@@ -162,6 +415,13 @@ export function projectAcpDeclaredHandshake(
       : {}),
     ...(extensionMethods !== REFUSED && extensionMethods !== undefined
       ? { extensionMethods }
+      : {}),
+    ...(engineVariant ? { engineVariant } : {}),
+    ...(declaredFeatures !== REFUSED && declaredFeatures !== undefined
+      ? { declaredFeatures }
+      : {}),
+    ...(logging !== REFUSED && logging !== undefined
+      ? { logChannels: logging.channels.map((channel) => channel.name) }
       : {}),
     ...(refused.length > 0 ? { refused } : {}),
   };
