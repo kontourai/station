@@ -277,6 +277,41 @@ describe.skipIf(process.platform === 'win32')(
       expect(configured.metadata?.effectiveModel).toBe('retired-model');
     });
 
+    test('a reopen whose engine refuses the requested model still opens, on the engine model', async () => {
+      // Before the reapply existed a reopen never set the model, so an engine
+      // refusing it must not stop the conversation from opening.
+      const engine = launch(
+        { ...PROFILE, refuseConfigOptions: ['model'] },
+        TEXT_TURN,
+      );
+      const first = await engine.start('refused');
+      await engine.adapter.stopSession('refused');
+      const before = engine.record().length;
+      await engine.start('refused', first.resumeCursor, {
+        modelId: 'gemini-3.8-flash',
+      });
+      expect(
+        engine
+          .record()
+          .slice(before)
+          .map((entry) =>
+            entry.method === 'session/set_config_option'
+              ? entry.configId
+              : entry.method,
+          ),
+      ).toEqual(['initialize', 'session/resume', 'model']);
+      const configured = (await waitFor(
+        () =>
+          engine.events.filter(
+            (event) => event.method === 'session.configured',
+          )[1],
+        'the reopen session.configured',
+      )) as { metadata?: Record<string, unknown> };
+      expect(configured.metadata?.reportedModel).toBe('gemini-4-argon');
+      const turnId = await engine.send('refused', 'hello');
+      await engine.completed(turnId);
+    });
+
     test('a reopen applies an effort to an option that lists no values', async () => {
       // An effort option with no listed values takes any value.
       const freeForm = structuredClone(PROFILE) as {

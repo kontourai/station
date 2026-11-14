@@ -487,9 +487,11 @@ describe('usage attribution to connections', () => {
     }
   });
 
-  // ACP turns report totals from the prompt answer's `usage` (declared
-  // per-turn), so a turn with only the context pair is a missing report.
-  test('an ACP turn that reported only its context pair is a missing usage report', async () => {
+  // `acp` is declared per-turn for the engines whose prompt answer carries
+  // `usage`, but most ACP engines report only the context pair. The reason
+  // comes from what the unreported turns carried, so such an engine still
+  // reads as context-only rather than as missing reports.
+  test('ACP coverage says it reports context occupancy, not totals', async () => {
     store.appendEvent({
       eventId: 'acp-started',
       provider: 'acp',
@@ -527,6 +529,41 @@ describe('usage attribution to connections', () => {
     // Context occupancy is not a receipt, so nothing is attributed.
     expect(body.data.rows).toEqual([]);
     expect(body.data.coverage[0].state).toBe('unknown');
+    expect(body.data.coverage[0].providers).toEqual([
+      expect.objectContaining({
+        provider: 'acp',
+        state: 'partial',
+        reason:
+          'engine reports context occupancy only, not token or cost totals',
+      }),
+    ]);
+  });
+
+  test('an ACP turn with no usage at all is a missing usage report', async () => {
+    store.appendEvent({
+      eventId: 'acp-silent-started',
+      provider: 'acp',
+      threadId: 'acp-silent',
+      sessionId: 'acp-silent',
+      createdAt: new Date().toISOString(),
+      method: 'session.started',
+      initialState: 'created',
+      metadata: { userId: OWNER, cwd: '/work', connectionId: 'antigravity' },
+    });
+    store.appendEvent({
+      eventId: 'acp-silent-completed',
+      provider: 'acp',
+      threadId: 'acp-silent',
+      turnId: 'acp-silent-turn',
+      createdAt: new Date().toISOString(),
+      method: 'turn.completed',
+      finishReason: 'stop',
+    });
+    const response = await usageRoute(store, home).request(
+      rollupPath({ connectionId: 'antigravity' }),
+    );
+    expect(response.status).toBe(200);
+    const body = await readJson<{ data: UsageRollup }>(response);
     expect(body.data.coverage[0].providers).toEqual([
       expect.objectContaining({
         provider: 'acp',

@@ -34,6 +34,9 @@
 //                        beside `stopReason` (a recorded engine's `usage`)
 //   requestDelaysMs      { "<core method>": ms } for session/set_mode and
 //                        session/set_config_option: answer that much later
+//   refuseConfigOptions  config ids whose session/set_config_option is
+//                        refused with an internal error (an engine that will
+//                        not take a value it listed)
 //   --prompt-steps <path>  a JSON step list replacing the default turn. Extra
 //                        step kinds: `client-request` {method, params},
 //                        `user-message-id` (a Kiro `user_message_id_assigned`
@@ -396,6 +399,11 @@ const app = acp
   .onRequest('session/set_config_option', async ({ params }) => {
     record({ method: 'session/set_config_option', configId: params.configId });
     await requestDelay('session/set_config_option');
+    if (profile.refuseConfigOptions?.includes(params.configId))
+      throw acp.RequestError.internalError(
+        undefined,
+        `refused ${params.configId}`,
+      );
     state.config.set(`${params.sessionId}\0${params.configId}`, params.value);
     return {
       configOptions: sessionShape(params.sessionId).configOptions ?? [],

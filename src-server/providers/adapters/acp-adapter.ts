@@ -1176,6 +1176,7 @@ async function reapplyRequestedSessionState(input: {
   requestedMode: string | undefined;
   requestedEffort: string | undefined;
   connectionId: string;
+  logger: AcpLogger;
 }): Promise<{
   reportedModel: string | undefined;
   modelSelection?: ReturnType<typeof modelSelectionReceipt>;
@@ -1205,57 +1206,69 @@ async function reapplyRequestedSessionState(input: {
     if (appliedMode.configOptions)
       record.configOptions = appliedMode.configOptions;
   }
-  if (requestedModel && requestedModel !== reportedModel) {
-    const modelOption = findAcpModelConfigOption(record.configOptions);
-    if (
-      modelOption?.options.some((option) => option.value === requestedModel)
-    ) {
-      const response = await input.process.setConfigOption(
-        modelOption.id,
-        requestedModel,
-      );
-      const applied = findAcpModelConfigOption(
-        (response as { configOptions?: unknown } | null)?.configOptions,
-      );
+  // A model or effort the resumed session will not take leaves the reopen
+  // on what the engine reports (`reportedModel`), logged: the conversation
+  // opened before this reapply existed, and must not stop opening because of
+  // it. A mode that fails is refused above, as on a fresh start, since a
+  // governed session's mode is a boundary, not a preference.
+  try {
+    if (requestedModel && requestedModel !== reportedModel) {
+      const modelOption = findAcpModelConfigOption(record.configOptions);
       if (
-        applied?.id !== modelOption.id ||
-        applied.currentValue !== requestedModel
+        modelOption?.options.some((option) => option.value === requestedModel)
       ) {
-        throw new Error(
-          `ACP model application unverified: connection '${input.connectionId}' reported '${applied?.currentValue ?? 'no current value'}' after '${requestedModel}' was requested.`,
+        const response = await input.process.setConfigOption(
+          modelOption.id,
+          requestedModel,
         );
+        const applied = findAcpModelConfigOption(
+          (response as { configOptions?: unknown } | null)?.configOptions,
+        );
+        if (
+          applied?.id !== modelOption.id ||
+          applied.currentValue !== requestedModel
+        ) {
+          throw new Error(
+            `ACP model application unverified: connection '${input.connectionId}' reported '${applied?.currentValue ?? 'no current value'}' after '${requestedModel}' was requested.`,
+          );
+        }
+        record.configOptions = (
+          response as { configOptions: unknown[] }
+        ).configOptions;
+        reportedModel = requestedModel;
+        modelSelection = modelSelectionReceipt(requestedModel, requestedModel);
+      } else if (
+        !modelOption &&
+        input.sessionModels?.availableModels.some(
+          (model) => model.modelId === requestedModel,
+        )
+      ) {
+        await input.process.setModel(requestedModel);
+        reportedModel = requestedModel;
+        modelSelection = modelSelectionReceipt(requestedModel, requestedModel);
       }
-      record.configOptions = (
-        response as { configOptions: unknown[] }
-      ).configOptions;
-      reportedModel = requestedModel;
-      modelSelection = modelSelectionReceipt(requestedModel, requestedModel);
-    } else if (
-      !modelOption &&
-      input.sessionModels?.availableModels.some(
-        (model) => model.modelId === requestedModel,
-      )
-    ) {
-      await input.process.setModel(requestedModel);
-      reportedModel = requestedModel;
-      modelSelection = modelSelectionReceipt(requestedModel, requestedModel);
     }
-  }
-  const effortOption = findAcpEffortConfigOption(record.configOptions);
-  // An option that lists no values takes any (as `applyAcpEffort` does).
-  if (
-    input.requestedEffort &&
-    effortOption &&
-    (effortOption.values.length === 0 ||
-      effortOption.values.includes(input.requestedEffort))
-  ) {
-    const applied = await applyAcpEffort(
-      input.process,
-      record.configOptions,
-      input.requestedEffort,
-      input.connectionId,
+    const effortOption = findAcpEffortConfigOption(record.configOptions);
+    // An option that lists no values takes any (as `applyAcpEffort` does).
+    if (
+      input.requestedEffort &&
+      effortOption &&
+      (effortOption.values.length === 0 ||
+        effortOption.values.includes(input.requestedEffort))
+    ) {
+      const applied = await applyAcpEffort(
+        input.process,
+        record.configOptions,
+        input.requestedEffort,
+        input.connectionId,
+      );
+      if (applied.configOptions) record.configOptions = applied.configOptions;
+    }
+  } catch (error) {
+    input.logger.warn?.(
+      `ACP connection '${input.connectionId}': a reopened session kept the engine's model or effort; reapplying the requested one failed.`,
+      error instanceof Error ? error.message : error,
     );
-    if (applied.configOptions) record.configOptions = applied.configOptions;
   }
   return {
     reportedModel,
@@ -2484,6 +2497,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             ),
             requestedEffort: requestedAcpEffort(input.modelOptions),
             connectionId: config.id,
+            logger,
           });
           reportedModel = reapplied.reportedModel;
           verifiedModelSelection = reapplied.modelSelection;
