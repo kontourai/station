@@ -1,30 +1,44 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   buildSnapshot,
+  COMMENT_LIMIT,
   capacityMetrics,
   classifyReentry,
   collectHealth,
   concurrencyTimeline,
+  costPerLanding,
   distribution,
   groupRuns,
   LEDGER_LOG_FORMAT,
+  landingLatency,
+  laneJobName,
+  laneMetrics,
   ledgerMetrics,
   mergeMetrics,
+  NON_VERIFYING_PR_WORKFLOWS,
   parseOptions,
   percentile,
   qualificationMetrics,
   readHistory,
   renderHistory,
   renderSnapshot,
+  reportSnapshot,
   setupMetrics,
   shardFamily,
   snapshotComment,
   summarizeGroups,
+  uniqueCatchMetrics,
   windowDecision,
 } from '../ci-health.mjs';
 
@@ -833,6 +847,8 @@ describe('CI health collection bounds and command interface', () => {
             ],
           };
         if (endpoint.includes('/timeline')) return [removal, entry, merge];
+        if (endpoint.startsWith('search/issues?'))
+          return { total_count: 0, incomplete_results: false, items: [] };
         throw new Error(`Unexpected REST call ${endpoint}`);
       },
       async (_exe: string, args: string[]) =>
@@ -902,6 +918,8 @@ describe('CI health collection bounds and command interface', () => {
           if (bySha) return routes.sha?.[bySha[1]] ?? [];
           if (endpoint.includes('/pulls?state=all&head='))
             return routes.head ?? [];
+          if (endpoint.startsWith('search/issues?'))
+            return { total_count: 0, incomplete_results: false, items: [] };
           throw new Error(`Unexpected REST call ${endpoint}`);
         },
         async (_exe: string, args: string[]) =>
@@ -1156,5 +1174,708 @@ describe('CI health collection bounds and command interface', () => {
     expect(renderHistory(history).indexOf(at(60))).toBeLessThan(
       renderHistory(history).indexOf(at(120)),
     );
+  });
+});
+
+describe('CI health lane ledger, unique catch and landing cost', () => {
+  // GitHub REST workflow-run shape: `path` names the workflow file and
+  // `display_title` carries ci.yml's run-name.
+  const flow = (
+    id: number,
+    path: string,
+    event: string,
+    overrides: Record<string, unknown> = {},
+  ) =>
+    run(id, {
+      name: path === 'ci.yml' ? 'PR: CI' : path,
+      path: `.github/workflows/${path}`,
+      display_title: 'Source verification',
+      event,
+      ...overrides,
+    });
+  const leg = (
+    id: number,
+    key: string,
+    name: string,
+    overrides: Record<string, unknown> = {},
+  ) => job(id, { name, health_run_key: key, ...overrides });
+
+  it.each([
+    // Counters aggregate.
+    ['fast-checks shard 12', 'fast-checks shard N'],
+    ['Ordinary corpus 3-4 of 8', 'Ordinary corpus N-N of N'],
+    ['Process-heavy corpus 1 of 2', 'Process-heavy corpus N of N'],
+    ['Coverage corpus ordinary-1-of-8', 'Coverage corpus ordinary-N-of-N'],
+    ['test (1, 4)', 'test (N, N)'],
+    ['Shard 1/4', 'Shard N/N'],
+    ['build (macos-14, 3)', 'build (macos-14, N)'],
+    // Platforms, images and stage ordinals stay distinct.
+    ['build (macos-14)', 'build (macos-14)'],
+    ['build (macos-15)', 'build (macos-15)'],
+    ['smoke windows-2022', 'smoke windows-2022'],
+    ['smoke windows-2025', 'smoke windows-2025'],
+    ['runs on ubuntu-22', 'runs on ubuntu-22'],
+    ['runs on ubuntu-22.04', 'runs on ubuntu-22.04'],
+    ['Build and smoke linux-x64', 'Build and smoke linux-x64'],
+    ['1 · Source gate', '1 · Source gate'],
+  ])('normalizes lane job name %s to %s', (name, lane) => {
+    expect(laneJobName(name)).toBe(lane);
+  });
+
+  it('aggregates shard legs into one lane per workflow, job and event with clipped runner-minutes', () => {
+    const runs = [
+      flow(1, 'ci.yml', 'pull_request_target'),
+      flow(2, 'ci.yml', 'merge_group'),
+      flow(3, 'install-smoke.yml', 'pull_request_target'),
+    ];
+    const jobs = [
+      leg(1, '1:1', 'Ordinary corpus 1-2 of 8'),
+      leg(2, '1:1', 'Ordinary corpus 3-4 of 8', {
+        started_at: at(10),
+        completed_at: at(40),
+        conclusion: 'failure',
+      }),
+      leg(3, '2:1', 'Ordinary corpus 1-2 of 8'),
+      leg(4, '3:1', 'Build and smoke linux-x64', {
+        created_at: at(45),
+        started_at: at(50),
+        completed_at: at(80),
+      }),
+      leg(5, '3:1', 'Build and smoke darwin-arm64', {
+        conclusion: 'timed_out',
+      }),
+    ];
+    const snapshot = buildSnapshot({ ...emptyData(), runs, jobs }, options);
+    expect(
+      snapshot.lanes.rows.map(
+        (r: { workflow: string; job: string; event: string }) => [
+          r.workflow,
+          r.job,
+          r.event,
+        ],
+      ),
+    ).toEqual([
+      ['ci.yml', 'Ordinary corpus N-N of N', 'pull_request_target'],
+      ['ci.yml', 'Ordinary corpus N-N of N', 'merge_group'],
+      [
+        'install-smoke.yml',
+        'Build and smoke darwin-arm64',
+        'pull_request_target',
+      ],
+      ['install-smoke.yml', 'Build and smoke linux-x64', 'pull_request_target'],
+    ]);
+    expect(snapshot.lanes.rows[0]).toEqual({
+      workflow: 'ci.yml',
+      job: 'Ordinary corpus N-N of N',
+      event: 'pull_request_target',
+      executed: 2,
+      runnerMinutes: 40,
+      share: 0.5714,
+      jobMinutes: { count: 2, median: 30, p90: 30 },
+      waitMinutes: { count: 2, median: 10, p90: 10 },
+      failures: 1,
+      cancelledRunMinutes: 0,
+      incomplete: false,
+      unfinished: 0,
+      unattributed: 0,
+    });
+    // Runner-minutes are clipped to the window; job minutes are not.
+    expect(snapshot.lanes.rows[3]).toMatchObject({
+      runnerMinutes: 10,
+      jobMinutes: { count: 1, median: 30, p90: 30 },
+    });
+    expect(snapshot.lanes.rows[2].failures).toBe(1);
+    // The lanes partition the capacity runner-hours exactly.
+    expect(snapshot.lanes.totalRunnerMinutes).toBe(70);
+    expect(snapshot.capacity.runnerHours * 60).toBe(70);
+    expect(snapshot.costPerLanding.runnerHoursByEvent).toEqual({
+      pull_request: 1,
+      merge_group: 0.17,
+      push: 0,
+      schedule: 0,
+      workflow_run: 0,
+      other: 0,
+    });
+    expect(snapshot.lanes.other).toBeNull();
+  });
+
+  it('charges executed minutes inside cancelled runs to the lane, including legs that finished first', () => {
+    const runs = [
+      flow(4, 'gallery-pr-check.yml', 'pull_request', {
+        conclusion: 'cancelled',
+      }),
+      flow(5, 'ci.yml', 'pull_request_target'),
+      flow(6, 'codeql.yml', 'pull_request', { conclusion: 'cancelled' }),
+    ];
+    const jobs = [
+      leg(1, '4:1', 'Gallery'),
+      leg(2, '4:1', 'Gallery', {
+        conclusion: 'cancelled',
+        started_at: at(16),
+        completed_at: at(20),
+      }),
+      leg(3, '4:1', 'Gallery', {
+        conclusion: 'cancelled',
+        runner_id: 0,
+        runner_name: '',
+      }),
+      leg(4, '5:1', 'fast-checks'),
+      // Cancelled before a runner was assigned: waiting only, never a lane.
+      leg(5, '6:1', 'Analyze', {
+        conclusion: 'cancelled',
+        runner_id: 0,
+        runner_name: '',
+      }),
+    ];
+    const lanes = laneMetrics(runs, jobs, at(60), at(0));
+    expect(lanes.rows.map((r: { workflow: string }) => r.workflow)).toEqual([
+      'gallery-pr-check.yml',
+      'ci.yml',
+    ]);
+    expect(lanes.rows[0]).toMatchObject({
+      executed: 2,
+      runnerMinutes: 14,
+      cancelledRunMinutes: 14,
+      failures: 0,
+    });
+    expect(lanes.rows[1].cancelledRunMinutes).toBe(0);
+    expect(lanes.cancelledRunMinutes).toBe(14);
+    expect(lanes.cancelledRunShare).toBe(14 / 24);
+  });
+
+  it('marks a lane with unfinished jobs incomplete through the snapshot mechanism', () => {
+    const snapshot = buildSnapshot(
+      {
+        ...emptyData(),
+        runs: [flow(7, 'ios-build.yml', 'pull_request', { conclusion: null })],
+        jobs: [
+          leg(1, '7:1', 'iOS build'),
+          leg(2, '7:1', 'iOS build', {
+            status: 'in_progress',
+            conclusion: null,
+            completed_at: null,
+          }),
+        ],
+      },
+      options,
+    );
+    expect(snapshot.incomplete).toBe(true);
+    expect(snapshot.lanes.rows[0]).toMatchObject({
+      executed: 1,
+      incomplete: true,
+      unfinished: 1,
+    });
+  });
+
+  it('keeps the top 25 lanes by runner-minutes and folds the rest into one other row', () => {
+    const runs = [flow(8, 'many.yml', 'push')];
+    const jobs = Array.from({ length: 30 }, (_, i) =>
+      leg(i + 1, '8:1', `Lane ${String.fromCharCode(65 + i)}`, {
+        started_at: at(0),
+        completed_at: at(i + 1),
+      }),
+    );
+    const lanes = laneMetrics(runs, jobs, at(60), at(0));
+    expect(lanes.rows).toHaveLength(25);
+    expect(lanes.rows[0]).toMatchObject({ job: 'Lane ^', runnerMinutes: 30 });
+    expect(lanes.rows[24].runnerMinutes).toBe(6);
+    expect(lanes.other).toMatchObject({
+      lanes: 5,
+      executed: 5,
+      runnerMinutes: 15,
+      share: 0.0323,
+    });
+    expect(lanes.totalRunnerMinutes).toBe(465);
+  });
+
+  describe('PR-level unique catch', () => {
+    const lane = 'windows-floor.yml';
+    const runs = [
+      flow(10, 'ci.yml', 'pull_request_target', { head_sha: 'a' }),
+      flow(20, lane, 'pull_request', { head_sha: 'a', conclusion: 'failure' }),
+      flow(11, 'ci.yml', 'pull_request_target', { head_sha: 'b' }),
+      flow(21, lane, 'pull_request', { head_sha: 'b', conclusion: 'failure' }),
+      flow(21, lane, 'pull_request', { head_sha: 'b', run_attempt: 2 }),
+      flow(12, 'ci.yml', 'pull_request_target', {
+        head_sha: 'c',
+        conclusion: 'failure',
+      }),
+      flow(12, 'ci.yml', 'pull_request_target', {
+        head_sha: 'c',
+        run_attempt: 2,
+      }),
+      flow(22, lane, 'pull_request', { head_sha: 'c', conclusion: 'failure' }),
+      flow(13, 'ci.yml', 'pull_request_target', {
+        head_sha: 'd',
+        conclusion: 'failure',
+      }),
+      flow(23, lane, 'pull_request', { head_sha: 'd', conclusion: 'failure' }),
+      flow(14, 'ci.yml', 'pull_request_target', {
+        head_sha: 'e',
+        display_title: 'PR metadata',
+      }),
+      flow(24, lane, 'pull_request', { head_sha: 'e', conclusion: 'failure' }),
+      flow(15, 'ci.yml', 'pull_request_target', { head_sha: 'f' }),
+      flow(25, lane, 'pull_request', { head_sha: 'f', conclusion: 'failure' }),
+      flow(26, lane, 'pull_request', {
+        head_sha: 'g',
+        conclusion: 'cancelled',
+      }),
+      flow(16, 'ci.yml', 'merge_group', { head_sha: 'h' }),
+      flow(27, lane, 'merge_group', { head_sha: 'h', conclusion: 'failure' }),
+      // Close and label/dequeue automation runs on the same head verify nothing.
+      flow(30, 'pr-ci-supersession.yml', 'pull_request_target', {
+        head_sha: 'a',
+        conclusion: 'failure',
+      }),
+      flow(31, 'landing-automation.yml', 'pull_request_target', {
+        head_sha: 'a',
+        conclusion: 'failure',
+      }),
+    ];
+    const jobs = [
+      leg(1, '10:1', 'fast-checks', { conclusion: 'failure' }),
+      leg(2, '20:1', 'Windows floor 1', { conclusion: 'failure' }),
+      leg(3, '21:1', 'Windows floor 1', { conclusion: 'failure' }),
+      leg(4, '21:2', 'Windows floor 1'),
+      leg(5, '22:1', 'Windows floor 1', { conclusion: 'failure' }),
+      leg(6, '23:1', 'Windows floor 1', { conclusion: 'timed_out' }),
+      leg(7, '24:1', 'Windows floor 1', { conclusion: 'failure' }),
+      leg(8, '25:1', 'Windows floor 1'),
+      leg(9, '25:1', 'Windows floor 2', { conclusion: 'failure' }),
+      leg(10, '26:1', 'Windows floor 1', { conclusion: 'cancelled' }),
+      leg(11, '27:1', 'Windows floor 1', { conclusion: 'failure' }),
+      leg(12, '30:1', 'cancel-obsolete', { conclusion: 'failure' }),
+      leg(13, '31:1', 'dequeue', { conclusion: 'failure' }),
+    ];
+    const expected = {
+      note: 'Counts real defects and flakes together: an upper bound on value, not a defect count.',
+      reference: 'ci.yml',
+      // a, b, c, d, f: the metadata-only run on e verifies nothing.
+      referenceShas: 5,
+      referencePassedShas: 4,
+      rows: [
+        {
+          workflow: lane,
+          job: 'Windows floor N',
+          shas: 6,
+          failedShas: 5,
+          failedWhileCiPassed: 3,
+        },
+      ],
+      omittedLanes: 0,
+    };
+
+    it('counts lane failures on head SHAs whose ci.yml source verdict passed, a later passing attempt superseding failures on either side', () => {
+      expect(uniqueCatchMetrics(runs, jobs)).toEqual(expected);
+    });
+    it('reaches the same verdicts whatever order attempts are listed in', () => {
+      expect(
+        uniqueCatchMetrics([...runs].reverse(), [...jobs].reverse()),
+      ).toEqual(expected);
+    });
+    it('renders the defects-and-flakes caveat with the table', () => {
+      const text = renderSnapshot(
+        buildSnapshot({ ...emptyData(), runs, jobs }, options),
+      );
+      expect(text).toContain(
+        'Counts real defects and flakes together: an upper bound on value, not a defect count.',
+      );
+      expect(text).toContain(
+        '| windows-floor.yml | Windows floor N | 6 | 5 | 3 |',
+      );
+    });
+    it('leaves label, dequeue and close automation out of the unique-catch table', () => {
+      const workflows = uniqueCatchMetrics(runs, jobs).rows.map(
+        (r: { workflow: string }) => r.workflow,
+      );
+      expect(workflows).not.toContain('pr-ci-supersession.yml');
+      expect(workflows).not.toContain('landing-automation.yml');
+      // Their runs still cost runner time and stay in the lane ledger.
+      expect(
+        laneMetrics(runs, jobs, at(60), at(0)).rows.map(
+          (r: { workflow: string }) => r.workflow,
+        ),
+      ).toEqual(
+        expect.arrayContaining([
+          'pr-ci-supersession.yml',
+          'landing-automation.yml',
+        ]),
+      );
+    });
+    it('excludes exactly the checked-in PR workflows that no source event triggers', () => {
+      const dir = new URL('../../.github/workflows/', import.meta.url);
+      const sourceEvents = ['opened', 'synchronize'];
+      const nonVerifying = readdirSync(dir)
+        .filter((file) => /\.ya?ml$/.test(file))
+        .filter((file) => {
+          const on = (
+            load(readFileSync(new URL(file, dir), 'utf8'), {
+              schema: JSON_SCHEMA,
+            }) as { on?: Record<string, { types?: string[] } | null> }
+          ).on;
+          const triggers = ['pull_request', 'pull_request_target'].filter(
+            (event) => on && typeof on === 'object' && event in on,
+          );
+          // Without `types`, GitHub runs on opened, synchronize and reopened.
+          return (
+            triggers.length > 0 &&
+            triggers.every((event) => {
+              const types = on?.[event]?.types;
+              return types && !types.some((t) => sourceEvents.includes(t));
+            })
+          );
+        })
+        .sort();
+      expect(nonVerifying).toEqual([
+        'landing-automation.yml',
+        'pr-ci-supersession.yml',
+      ]);
+      expect([...NON_VERIFYING_PR_WORKFLOWS].sort()).toEqual(nonVerifying);
+    });
+  });
+
+  it('measures last and first queue entry to merge, counting re-entries and PRs without queue or merge events', () => {
+    // Timeline event shapes and second-level ordering from real PRs: GitHub
+    // logs the queue removal that accompanies a merge at the same second
+    // (4906, 4876) or one second before it (4879).
+    const event = (name: string, iso: string, login = 'author') => ({
+      event: name,
+      created_at: iso,
+      actor: { login, type: login.endsWith('[bot]') ? 'Bot' : 'User' },
+    });
+    const day = (time: string) => `2026-11-13T${time}Z`;
+    const added = (time: string) => event('added_to_merge_queue', day(time));
+    const merged = (time: string) => event('merged', day(time));
+    const removed = (time: string) =>
+      event('removed_from_merge_queue', day(time), 'github-merge-queue[bot]');
+    const timelines = {
+      4906: [added('11:20:25'), merged('15:35:38'), removed('15:35:38')],
+      4879: [added('21:47:54'), removed('22:33:12'), merged('22:33:13')],
+      4876: [
+        added('09:36:21'),
+        removed('13:59:56'),
+        added('17:02:02'),
+        merged('18:58:31'),
+        removed('18:58:31'),
+      ],
+      // Queued, removed by the bot, then merged three days later by bypass.
+      3301: [
+        added('00:00:00'),
+        removed('00:30:00'),
+        event('merged', '2026-11-16T00:00:00Z'),
+      ],
+      3203: [merged('10:00:00')],
+      3204: [added('10:00:00')],
+      3205: [added('10:00:00'), merged('10:20:00'), added('10:30:00')],
+    };
+    expect(
+      landingLatency(
+        [4906, 4879, 4876, 3301, 3203, 3204, 3205, 4906],
+        timelines,
+      ),
+    ).toEqual({
+      merged: 7,
+      measured: 4,
+      notQueuedAtMerge: 2,
+      missingMergeEvent: 1,
+      multipleEntries: 1,
+      // 20, 45:19, 1:56:29 and 4:15:13 from the last live entry.
+      lastEntryToMergeMinutes: { count: 4, median: 116.48, p90: 255.22 },
+      // 4876's first entry is 9:22:10 before its merge.
+      firstEntryToMergeMinutes: { count: 4, median: 255.22, p90: 562.17 },
+    });
+  });
+
+  it('reports cost per landing as null with zero or unavailable landings instead of dividing by zero', () => {
+    const lanes = laneMetrics([], [], at(60), at(0));
+    expect(costPerLanding(lanes, 1.5, [])).toMatchObject({
+      landings: 0,
+      runnerHoursPerLanding: null,
+    });
+    expect(costPerLanding(lanes, 1.5, null)).toMatchObject({
+      landings: null,
+      runnerHoursPerLanding: null,
+    });
+    expect(costPerLanding(lanes, 1.5, [1, 2, 3, 3])).toMatchObject({
+      landings: 4,
+      runnerHoursPerLanding: 0.38,
+    });
+    const snapshot = buildSnapshot({ ...emptyData(), landings: [] }, options);
+    expect(snapshot.costPerLanding.runnerHoursPerLanding).toBeNull();
+    expect(renderSnapshot(snapshot)).toContain(
+      '| Landed PRs / runner-hours per landing | 0 / n/a |',
+    );
+    expect(renderHistory([snapshot])).toContain('| n/a | n/a / n/a | n/a |');
+  });
+
+  it('counts landings by merged_at in the half-open window, not by commit date, fetching each landed timeline once', async () => {
+    // A queue squash commit dated inside the window whose PR merged later
+    // must not count; the search result decides.
+    const log = '\x1efeat: queued earlier (#3299)\n\nM\tscripts/a.mjs\n';
+    // GitHub search/issues item shape for a merged pull request.
+    const item = (number: number, mergedAt: string) => ({
+      number,
+      state: 'closed',
+      closed_at: mergedAt,
+      pull_request: { merged_at: mergedAt },
+    });
+    const search = (items: unknown[], extra = {}) => ({
+      total_count: items.length,
+      incomplete_results: false,
+      items,
+      ...extra,
+    });
+    const git = async (_exe: string, args: string[]) =>
+      args[0] === 'remote'
+        ? 'git@github.com:kontourai/station.git'
+        : args[0] === 'rev-parse'
+          ? 'false'
+          : log;
+    const calls: string[] = [];
+    const data = await collectHealth(
+      options,
+      async (endpoint: string) => {
+        calls.push(endpoint);
+        if (endpoint.includes('/actions/runs?'))
+          return { total_count: 0, workflow_runs: [] };
+        if (endpoint.startsWith('search/issues?'))
+          return search([
+            item(3302, at(59)),
+            item(3301, at(10)),
+            item(3301, at(10)),
+            // Search ranges are inclusive; the window end is not.
+            item(3303, at(60)),
+          ]);
+        if (endpoint.includes('/issues/3301/timeline'))
+          return [
+            { event: 'added_to_merge_queue', created_at: at(0) },
+            { event: 'merged', created_at: at(10) },
+          ];
+        if (endpoint.includes('/issues/3302/timeline'))
+          return [
+            { event: 'added_to_merge_queue', created_at: at(9) },
+            { event: 'merged', created_at: at(59) },
+          ];
+        // Answered so that counting 3303 fails on `landings`, not on a call.
+        if (endpoint.includes('/issues/3303/timeline'))
+          return [
+            { event: 'added_to_merge_queue', created_at: at(50) },
+            { event: 'merged', created_at: at(60) },
+          ];
+        throw new Error(`Unexpected REST call ${endpoint}`);
+      },
+      git,
+    );
+    expect(data.reasons).toEqual([]);
+    expect(data.landings).toEqual([3301, 3302]);
+    expect(calls.filter((c) => c.startsWith('search/'))).toEqual([
+      `search/issues?q=${encodeURIComponent('repo:kontourai/station is:pr is:merged merged:2026-10-01T00:00:00Z..2026-10-01T01:00:00Z')}&per_page=100&page=1`,
+    ]);
+    expect(calls.filter((c) => c.includes('/timeline'))).toEqual([
+      'repos/kontourai/station/issues/3301/timeline?per_page=100&page=1',
+      'repos/kontourai/station/issues/3302/timeline?per_page=100&page=1',
+    ]);
+    const snapshot = buildSnapshot(data, options);
+    expect(snapshot.costPerLanding.landings).toBe(2);
+    expect(snapshot.landingLatency.lastEntryToMergeMinutes).toEqual({
+      count: 2,
+      median: 50,
+      p90: 50,
+    });
+    for (const [response, reason] of [
+      [
+        search([item(3301, at(10))], { incomplete_results: true }),
+        'Merged pull request search returned incomplete results',
+      ],
+      [
+        search([item(3301, at(10))], { total_count: 1001 }),
+        'Merged pull request search cap (1000)',
+      ],
+      [
+        { message: 'Validation Failed' },
+        'Invalid merged pull request search response',
+      ],
+      [
+        search([item(3301, at(10)), { number: 3304, pull_request: {} }]),
+        'Merged pull request search item #3304 has no merged_at',
+      ],
+    ] as const) {
+      const failed = await collectHealth(
+        options,
+        async (endpoint: string) => {
+          if (endpoint.includes('/actions/runs?'))
+            return { total_count: 0, workflow_runs: [] };
+          if (endpoint.startsWith('search/issues?')) return response;
+          throw new Error(`Unexpected REST call ${endpoint}`);
+        },
+        git,
+      );
+      expect(failed.reasons).toHaveLength(1);
+      expect(failed.reasons[0]).toContain(reason);
+      expect(failed.landings).toBeNull();
+      expect(buildSnapshot(failed, options)).toMatchObject({
+        incomplete: true,
+        costPerLanding: { landings: null, runnerHoursPerLanding: null },
+      });
+    }
+    // Every landed PR's timeline needs a merge event, or latency is partial.
+    expect(
+      buildSnapshot(
+        { ...emptyData(), landings: [3301], timelines: { 3301: [] } },
+        options,
+      ).reasons,
+    ).toEqual(['window includes 1 merged PRs without a timeline merge event']);
+  });
+
+  it('keeps a busy-window comment under the GitHub limit and parseable by history', () => {
+    expect(COMMENT_LIMIT).toBe(65_536);
+    // 40 lanes per event across three events, each with long realistic names,
+    // and a unique-catch row for every PR lane.
+    const runs: ReturnType<typeof run>[] = [];
+    const jobs: ReturnType<typeof job>[] = [];
+    let id = 0;
+    for (const [e, event] of ['pull_request', 'merge_group', 'push'].entries())
+      for (let i = 0; i < 40; i++) {
+        id++;
+        runs.push(
+          flow(id, `workflow-with-a-long-file-name-${i}.yml`, event, {
+            head_sha: `${i}`.padStart(40, '0'),
+          }),
+        );
+        jobs.push(
+          leg(
+            id,
+            `${id}:1`,
+            `A long descriptive job name for lane ${String.fromCharCode(65 + i)} on ${event}`,
+            {
+              started_at: at(e),
+              completed_at: at(e + i + 1),
+              conclusion: i % 3 ? 'success' : 'failure',
+            },
+          ),
+        );
+      }
+    const snapshot = buildSnapshot({ ...emptyData(), runs, jobs }, options);
+    expect(snapshot.lanes.rows).toHaveLength(25);
+    expect(snapshot.lanes.other).toMatchObject({ lanes: 95 });
+    expect(snapshot.uniqueCatch.rows).toHaveLength(25);
+    expect(snapshot.uniqueCatch.omittedLanes).toBe(15);
+    const comment = snapshotComment(snapshot);
+    expect(comment.length).toBeLessThanOrEqual(65_536);
+    expect(comment).toContain('```json\n{\n  "schema"');
+    expect(readHistory([{ body: comment }])).toEqual([snapshot]);
+    // Without the cap the same window would not fit in one comment.
+    const uncapped = {
+      ...snapshot,
+      lanes: laneMetrics(runs, jobs, options.until, options.since, Infinity),
+      uniqueCatch: uniqueCatchMetrics(runs, jobs, Infinity),
+    };
+    expect(JSON.stringify(uncapped, null, 2).length).toBeGreaterThan(65_536);
+  });
+
+  it('prints the measured snapshot before recording, so a refused comment keeps the evidence and exits nonzero', async () => {
+    const recordOptions = {
+      ...options,
+      json: true,
+      record: true,
+      issue: '3101',
+    };
+    const order: string[] = [];
+    let printed = '';
+    const warnings: string[] = [];
+    // Real collected data whose comment is too large for GitHub.
+    const collect = async () => ({
+      ...emptyData(),
+      reasons: [],
+      runs: [],
+      jobs: [],
+      ledger: { ...ledgerMetrics(''), note: 'x'.repeat(70_000) },
+    });
+    const posted: string[] = [];
+    const code = await reportSnapshot(recordOptions, {
+      collect,
+      post: async (body: string) => {
+        order.push('post');
+        posted.push(body);
+      },
+      print: (text: string) => {
+        order.push('print');
+        printed = text;
+      },
+      warn: (text: string) => warnings.push(text),
+    });
+    expect(code).toBe(1);
+    expect(order).toEqual(['print']);
+    expect(posted).toEqual([]);
+    expect(JSON.parse(printed)).toMatchObject({
+      schema: 'station-ci-health/v1',
+      incomplete: false,
+    });
+    expect(warnings).toEqual([
+      expect.stringMatching(
+        /^Recording failed: CI health comment is \d+ characters; GitHub accepts 65536$/,
+      ),
+    ]);
+    // A failed POST also keeps the printed snapshot and exits nonzero.
+    const failedPost = await reportSnapshot(recordOptions, {
+      collect: async () => emptyData(),
+      post: async () => {
+        order.push('post');
+        throw new Error('gh: Server Error (HTTP 502)');
+      },
+      print: () => order.push('print'),
+      warn: (text: string) => warnings.push(text),
+    });
+    expect(failedPost).toBe(1);
+    expect(order.slice(1)).toEqual(['print', 'post']);
+    expect(warnings[1]).toBe('Recording failed: gh: Server Error (HTTP 502)');
+    // A complete snapshot that records successfully exits zero.
+    expect(
+      await reportSnapshot(recordOptions, {
+        collect: async () => emptyData(),
+        post: async () => undefined,
+        print: () => undefined,
+      }),
+    ).toBe(0);
+  });
+
+  it('falls back to unindented JSON for an oversized snapshot and refuses one that cannot fit', () => {
+    const snapshot = buildSnapshot(emptyData(), options);
+    const wide = {
+      ...snapshot,
+      reasons: Array.from({ length: 3800 }, (_, i) => `reason ${i}`),
+    };
+    expect(JSON.stringify(wide, null, 2).length).toBeGreaterThan(65_536);
+    const comment = snapshotComment(wide);
+    expect(comment.length).toBeLessThanOrEqual(65_536);
+    expect(readHistory([{ body: comment }])).toEqual([wide]);
+    expect(() =>
+      snapshotComment({ ...snapshot, reasons: ['x'.repeat(70_000)] }),
+    ).toThrow('GitHub accepts 65536');
+  });
+
+  it('parses snapshots recorded before the lane ledger and shows their new trend columns as unavailable', () => {
+    const current = buildSnapshot({ ...emptyData(), landings: [1] }, options);
+    const {
+      lanes: _lanes,
+      uniqueCatch: _catch,
+      costPerLanding: _cost,
+      landingLatency: _latency,
+      ...legacy
+    } = { ...current, until: at(30) };
+    const history = readHistory([
+      { body: snapshotComment(legacy) },
+      { body: snapshotComment(current) },
+    ]);
+    expect(history).toEqual([legacy, current]);
+    const table = renderHistory(history);
+    expect(table).toContain(
+      '| Runner-h per landing | Last entry to merge min median / p90 | Cancelled-run share |',
+    );
+    expect(table.split('\n')[2]).toContain(
+      '| n/a (legacy snapshot) | n/a (legacy snapshot) | n/a (legacy snapshot) |',
+    );
+    expect(table.split('\n')[3]).toContain('| 0 | n/a / n/a | n/a |');
   });
 });
