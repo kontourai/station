@@ -414,6 +414,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/pending-pairing-journal.browser.test.ts',
   // Executes the hosted Android identity admission step in bounded bash children.
   'scripts/__tests__/android-channel-release-generation.test.ts',
+  // Runs the release identity shell step and real Android helpers on private fixtures.
+  'scripts/__tests__/android-pairing-scheme.test.ts',
   'scripts/__tests__/local-collaboration-lab.test.ts',
   // Owns a UDP relay child and private command-output diagnostics.
   'scripts/__tests__/browser-transport-fixture.test.ts',
