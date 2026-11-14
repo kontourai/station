@@ -22,8 +22,6 @@
 
     "docs/privacy-policy.md",
 
-    "docs/reference/cli.md",
-
     "install.sh",
 
     "packages/cli/src/cli.ts",
@@ -41,6 +39,14 @@
     "src-ui/src/hooks/voiceWsUrl.ts",
 
     "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts",
+
+    "src-ui/src/workspace-panes/agents/ChildWorkRow.tsx",
+
+    "src-ui/src/components/chat-dock/BackgroundTasksSheet.tsx",
+
+    "docs/architecture/module-map.md",
+
+    "docs/reference/cli.md",
 
     "src-ui/src/components/MobileWelcomeBoundary.tsx",
 

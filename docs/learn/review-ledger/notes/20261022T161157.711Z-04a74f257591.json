@@ -1,0 +1,7 @@
+{
+  "revision": "fa79398d275333d2671f71ad0a0b4b0146a71076",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed the full execution plan and recent source-bound receipt narrative, including live answered-form versus retrospective SSE scope, retained native recovery and sync limitations, and the new same-snapshot topology plus gutter repair. Traced CliSessionGroupsPanel, its mounted tests, retained group view contract and current #91/#205/#453/#600 requirements. Five panel cases and UI typecheck pass; edge omission is caught and restored; source-only independent repair review accepts geometry. Browser evidence uses synthetic inventory, not backend/provider/native acceptance. Portable lineage, fiscal admission, remote propagation, physical-device acceptance and broad documentation freshness remain open; no baseline advance or whole-epic completion.","inputs":["docs/plans/child-work-epic.md","src-ui/src/views/CliSessionGroupsPanel.tsx","src-ui/src/views/CliSessionGroupsPanel.css","src-ui/src/views/__tests__/CliSessionGroupsPanel.test.tsx"]}
+  ]
+}

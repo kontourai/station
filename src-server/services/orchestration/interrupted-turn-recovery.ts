@@ -19,6 +19,7 @@ import { errorMessage } from '../../utils/error-message.js';
 import { sleep } from '../../utils/sleep.js';
 import type { EventStore, PersistedRuntimeEvent } from './event-store.js';
 import { TURN_ABORT_SETTLED_REQUEST_STATUS } from './open-requests.js';
+import { reservedSourceExecutionFromStart } from './orchestration-session-state.js';
 import { isInvocationlessRecoveryAbort } from './session-lifecycle-service.js';
 
 /**
@@ -770,9 +771,20 @@ export class InterruptedTurnRecovery {
           }
           continue;
         }
+        const startEvent = eventStore.latestEventByMethod(
+          record.threadId,
+          'session.started',
+        );
+        const sealedSource =
+          reservedSourceExecutionFromStart(startEvent?.payload) !== undefined ||
+          reservedSourceExecutionFromStart(
+            eventStore.firstEventByMethod(record.threadId, 'session.started')
+              ?.payload,
+          ) !== undefined;
         if (
           ownEnding === undefined &&
           ownTurnId &&
+          !sealedSource &&
           this.deps.recoverDurableTurn
         ) {
           const handoff = await this.deps.recoverDurableTurn({
@@ -794,10 +806,6 @@ export class InterruptedTurnRecovery {
           if (movedOn()) continue;
         }
         const providerTurn = isProviderTurnBoundary(record);
-        const startEvent = eventStore.latestEventByMethod(
-          record.threadId,
-          'session.started',
-        );
         const provider = startEvent?.provider;
         const agentSlug =
           typeof (startEvent?.payload as { metadata?: Record<string, unknown> })

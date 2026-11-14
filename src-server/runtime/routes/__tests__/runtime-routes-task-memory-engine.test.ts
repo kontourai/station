@@ -212,6 +212,10 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
       taskGraphService: taskGraph,
       projectService,
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
+        devicePairing: deepStub({
+          withCurrentRegistry: <T>(read: () => T): T => read(),
+        }),
         verifyCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL,
         authorizeCredential: (credential: string) =>

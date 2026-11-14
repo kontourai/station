@@ -1386,6 +1386,7 @@ export {
   fetchCodingFileMentionCandidates,
   useCodingFileMentionCandidatesQuery,
 } from './query-domains/chatRuntimeCoding.js';
+export { useCliSessionGroupsQuery } from './query-domains/cliSessionGroups';
 export {
   confirmDevicePairingRequest,
   DevicePairingRequestActionError,
@@ -1396,6 +1397,12 @@ export {
   useDenyDevicePairingRequestMutation,
   usePairedDevicesQuery,
 } from './query-domains/devicePairingRequests.js';
+export {
+  useCancelCliSessionGroup,
+  useCreateEnsembleCliSessionGroup,
+  useInspectEnsemble,
+  useRunCliSessionGroup,
+} from './query-domains/ensembles';
 export {
   type FeaturePreview,
   fetchFeaturePreviews,
@@ -1535,6 +1542,16 @@ export {
   useMarkReadMutation,
   useReadMarkerSummaryQuery,
 } from './query-domains/readMarkers';
+export {
+  useCancelReportGroup,
+  useCreateReportGroup,
+  useFinalizeReportGroupCancel,
+  useFinalizeReportGroupSync,
+  useReportGroupContextCheckpoint,
+  useReportGroupResultQuery,
+  useReportGroupsQuery,
+  useSyncReportGroupContext,
+} from './query-domains/reportGroups';
 export type {
   SetupImportItem,
   SetupImportPreview,

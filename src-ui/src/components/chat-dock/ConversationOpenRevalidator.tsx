@@ -53,6 +53,7 @@ export function ConversationOpenRevalidator({
   );
   apiBase = connection?.targetApiBase ?? apiBase;
   const observation = useWorkObservation(conversationId, connection);
+  const streamEpoch = observation?.streamEpochGeneration();
   useEffect(() => {
     if (resolving) return;
     if (unavailable) {
@@ -64,7 +65,11 @@ export function ConversationOpenRevalidator({
       return;
     }
     let cancelled = false;
-    const read = observation?.read(conversationId, 'open', () => !cancelled);
+    const read = observation?.read(
+      conversationId,
+      'open',
+      () => !cancelled && observation.streamEpochGeneration() === streamEpoch,
+    );
     void import('./conversationOpenController')
       .then(async (controller) => {
         if (cancelled || read?.current() === false) return;
@@ -169,6 +174,7 @@ export function ConversationOpenRevalidator({
     };
   }, [
     observation,
+    streamEpoch,
     connection,
     unavailable,
     resolving,

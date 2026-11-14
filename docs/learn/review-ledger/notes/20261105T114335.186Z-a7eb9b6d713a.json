@@ -1,0 +1,9 @@
+{
+  "revision": "262ec6aef9fe14675c250f7913fe639f27c8cc70",
+
+  "notes": [
+    {"path":"README.md","note":"Post-foundation merge scoped review: compared this entry point's personal Station, phone pairing and account/sharing links with the deployment-authentication guide delta. That delta corrects the existing opt-in native Device-proof allowlist for exact relay-management and Project-access leaves. The current nativeDeviceProofPilotRoute explicitly enumerates those leaves; they retain separate management grants and account/Project checks. Ordinary one-time host sign-in, pairing invitations and first-chat steps are unchanged. This source review is not native pilot, physical phone, passkey or released-install qualification.","inputs":["README.md","src-ui/src/workspace-panes/agents/ChildWorkRow.tsx","docs/guides/deployment-authentication.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Post-foundation merge scoped review: compared this entry point's personal Station, phone pairing and account/sharing links with the deployment-authentication guide delta. That delta corrects the existing opt-in native Device-proof allowlist for exact relay-management and Project-access leaves. The current nativeDeviceProofPilotRoute explicitly enumerates those leaves; they retain separate management grants and account/Project checks. Ordinary one-time host sign-in, pairing invitations and first-chat steps are unchanged. This source review is not native pilot, physical phone, passkey or released-install qualification.","inputs":["docs/user/getting-started.md","docs/guides/deployment-authentication.md"]}
+  ]
+}

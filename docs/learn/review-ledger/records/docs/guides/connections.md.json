@@ -430,6 +430,10 @@
 
     "packages/contracts/src/tool.ts",
 
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/services/terminal/terminal-tickets.ts",
+
     "src-ui/src/views/project-settings/ProjectRepositorySources.tsx",
 
     "src-ui/src/views/project-settings/ProjectSourcesSection.tsx",

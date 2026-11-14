@@ -305,13 +305,21 @@ export async function admitEngineStartForIntent(
   probe: RuntimeResourcePostureProbe | undefined,
   _logger: unknown,
   intent: RuntimeEngineStartIntent,
-  input: { binding: string; signal?: AbortSignal },
+  input: {
+    binding: string;
+    signal?: AbortSignal;
+    waitForCapacity?: AbortSignal;
+  },
 ): Promise<RuntimeEngineStartLease | undefined> {
   const controller = probe as
     | Partial<RuntimeResourcePostureController>
     | undefined;
-  if (intent === 'interactive_user' && controller?.waitForEngineStart)
-    return controller.waitForEngineStart(input.signal);
+  if (
+    (input.waitForCapacity || intent === 'interactive_user') &&
+    controller?.waitForEngineStart
+  )
+    return controller.waitForEngineStart(input.waitForCapacity ?? input.signal);
+
   return typeof controller?.reserveEngineStart === 'function'
     ? controller.reserveEngineStart()
     : undefined;

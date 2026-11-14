@@ -1,0 +1,7 @@
+{
+  "revision": "44fc55802354eb20d3155d561f457a74bd73d7d6",
+
+  "notes": [
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Reviewed runtime context against actual session start/turn/lifecycle and conversation-lineage callers, group initial-turn observation, retained-session sync activation and private agent-runtime non-adoption. Group dependencies use the shared positive finish-reason authority; absent/other remain held, cancellation remains canceled, and later turns do not replace the accepted initial identity. Verified restored route suite 21/21 at 44fc558 after the compiling authority-broadening mutant produced two intended failures; byte-identical restoration confirmed. Context sync and experimental durability retain documented provider, autonomous-effect, physical/fiscal and production-adoption limits. Prior native/loopback receipts are scoped historical evidence, not new provider execution.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-command-module.ts"]}
+  ]
+}

@@ -90,7 +90,7 @@ describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
   async function setup() {
     const homeDir = makeTempDir('station-server-update-wiring-');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir,
       environmentId: '55555555-5555-4555-8555-555555555555',
     });
@@ -176,6 +176,7 @@ describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
       taskGraphService: { listTasks: () => [] },
       projectService: { listProjects: () => [] },
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           pairing.verifyCredential(credential),
         authorizeCredential: (credential: string) =>

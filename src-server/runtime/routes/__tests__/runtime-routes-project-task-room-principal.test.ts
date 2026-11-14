@@ -179,6 +179,7 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
     const projects = [{ id: task.projectId, slug: 'project' }];
     let deviceActive = true;
     const environmentSecurityService = deepStub({
+      assessCredentialRoute: undefined,
       getPublicHandshake: async () => ({ environmentId: 'environment-local' }),
       identifyDevice: (credential: string) =>
         deviceActive && credential === deviceCredential

@@ -1,0 +1,7 @@
+{
+  "revision": "164311dc1267d4056f9e5d0f45832d5917ab8503",
+
+  "notes": [
+    {"path":"docs/user/workspace-checkpoints.md","note":"Scoped CLI/orchestration/runtime mount review at d15bad3205f: read complete workspace checkpoint guide and current CLI restore implementation, CLI dispatch, orchestration checkpoint route leaves and runtime checkpoint owners. New group routes and ensemble dispatch do not replace checkpoint routes or authenticated restore ownership. CLI still invokes runCheckpointsCommand directly; restore still uses raw fetch with only content-type, a local default base and immediate confirmed preview projection. The guide truthfully discloses the missing shared credential/profile client and affected-path confirmation journey under #2734, rather than claiming parity. Capture timing caveat and settle/baseline parser distinction remain. No prose change needed for these input deltas; unchanged restore lock/tree/expiry/UI behavior retains prior review. Source inspection only, no destructive restore, repository snapshot capture, provider, browser/device or packaged acceptance executed.","inputs":["docs/user/workspace-checkpoints.md","packages/cli/src/cli.ts","src-server/runtime/routes/runtime-routes.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

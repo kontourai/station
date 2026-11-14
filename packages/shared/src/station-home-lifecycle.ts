@@ -18,6 +18,7 @@ import {
   type FileMutationLockOptions,
 } from './lifecycle-events.js';
 import {
+  lookupProcessBirthFingerprintCached,
   type ProcessIdentityDependencies,
   probeExactProcessIdentity,
   resolveOwnProcessIdentity,
@@ -42,6 +43,54 @@ export interface StationHomeLifecycleHooks {
 export interface StationHomeRuntimeLease {
   readonly ownerId: string;
   release(): void;
+}
+
+export interface StationHomeRuntimeProof {
+  assertCurrent(): void;
+}
+
+const capturedRuntimeProofs = new WeakMap<
+  StationHomeRuntimeProof,
+  { home: string; assertCurrent(): void }
+>();
+
+const runtimeLeaseProofs = new WeakMap<
+  StationHomeRuntimeLease,
+  {
+    home: string;
+    assertCurrent(): void;
+  }
+>();
+
+/** Capture only an exact lease minted in this process for this home. */
+export function captureStationHomeRuntimeProof(
+  homeDir: string,
+  lease: StationHomeRuntimeLease,
+): StationHomeRuntimeProof {
+  const owner = runtimeLeaseProofs.get(lease);
+  if (!owner || owner.home !== coordinationPaths(homeDir).root)
+    throw new StationHomeLifecycleUnavailableError(
+      'Runtime lease does not own this home',
+    );
+  owner.assertCurrent();
+  const proof = Object.freeze({ assertCurrent: () => owner.assertCurrent() });
+  capturedRuntimeProofs.set(proof, owner);
+  return proof;
+}
+
+export function assertStationHomeRuntimeProof(
+  proof: StationHomeRuntimeProof,
+  homeDir?: string,
+): void {
+  const current = capturedRuntimeProofs.get(proof);
+  if (
+    !current ||
+    (homeDir !== undefined && current.home !== coordinationPaths(homeDir).root)
+  )
+    throw new StationHomeLifecycleUnavailableError(
+      'Runtime proof is not authentic',
+    );
+  current.assertCurrent();
 }
 
 export interface StationHomeMaintenanceLease {
@@ -243,7 +292,31 @@ export function acquireStationHomeRuntimeLease(
       birth: identity.start,
     });
     let released = false;
-    return {
+    const assertCurrent = () => {
+      if (released)
+        throw new StationHomeLifecycleUnavailableError(
+          'Runtime lease is released',
+        );
+      const current = readLease(path);
+      // Only this running process's immutable birth is reused; the lease is re-read.
+      const probe = probeExactProcessIdentity(
+        identity.pid,
+        hooks.processIdentity ?? {
+          lookup: lookupProcessBirthFingerprintCached,
+        },
+      );
+      if (
+        current.ownerId !== ownerId ||
+        current.pid !== identity.pid ||
+        current.birth !== identity.start ||
+        probe.state !== 'exact' ||
+        probe.identity.start !== identity.start
+      )
+        throw new StationHomeLifecycleUnavailableError(
+          'Runtime lease ownership changed',
+        );
+    };
+    const lease: StationHomeRuntimeLease = {
       ownerId,
       release: () => {
         if (released) return;
@@ -264,6 +337,8 @@ export function acquireStationHomeRuntimeLease(
         }
       },
     };
+    runtimeLeaseProofs.set(lease, { home: paths.root, assertCurrent });
+    return lease;
   } catch (error) {
     if (
       error instanceof StationHomeLifecycleUnavailableError ||

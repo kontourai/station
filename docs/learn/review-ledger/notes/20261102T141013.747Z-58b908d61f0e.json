@@ -1,0 +1,7 @@
+{
+  "revision": "4852b044d45bcb03b5e45b16fa885f891ebb5443",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Scoped historical-classification review at 4852b044d45: read the complete ADR and successor ADR0014, Session API introduction and its branch delta, UI send/Stop delta, and canonical foreground route registration/executeForegroundMessage call. Against db857573504, CLI session-client and ADR0014 are unchanged; UI changes only distinguish termination-unconfirmed Stop outcomes; Session API changes document questionnaire actions, posture ordering and sealed-source cancellation. Orchestration route additions are delegation/session-group and read/control rails; the foreground chat handler remains unconditional. Verified the private Station adapter relays to /api/agents/:slug/chat and public provider listing excludes station-agent. The status note correctly separates historical flag/rollback instructions from current orchestration design rationale. No prose correction. Historical parity, attachments/title gaps, migration/permanent legacy-read claims, provider/device behavior and release cutover are not requalified by this note.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

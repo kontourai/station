@@ -1025,7 +1025,7 @@ zero cost remains a real measurement. `snapshot.projection` identifies
 `recorded-observations-utc`. These markers do not establish complete historical
 coverage. The [public stats DTO](../../packages/contracts/src/usage-stats.ts)
 exposes recorded-principal and recorded-provider buckets for authorized consumers.
-Recorded-person breakdowns require the bound local operator boundary; a principal
+Recorded-person breakdowns require the bound Station-owner boundary; a principal
 is attribution, never a grant or a claim of personal lifetime totals.
 
 | Ingress | Usage the current implementation can observe | Limits |
@@ -1166,7 +1166,7 @@ rate limit; an explicit retry can reauthorize it. This surface grants no access 
 
 Open **Profile → This Station → View station usage**.
 Activity bars rank recorded messages and completed turns; **Tokens & costs** opens
-the full measurement table. The authorized local operator can inspect usage by engine or
+the full measurement table. The authorized Station owner can inspect usage by engine or
 provider, model, person/principal, and UTC day. **Unknown / unallocated** keeps
 missing attribution visible. Identity comes from server-stamped events; saved
 message metadata cannot certify a person. Corrections and deletions change
@@ -1174,8 +1174,8 @@ current totals. Ambiguous relay activity is shown separately and excluded from
 those totals. Token report counts preserve measured zero; a missing measurement
 shows a dash. Reported cost and recorded estimates stay separate.
 
-The instance read requires the runtime-bound home-possession local operator and
-is unavailable on hosted deployments or tenant workers. Ordinary analytics and
+The instance read requires the runtime-bound Station owner (home-possession
+or owner-device standing) and is unavailable on hosted deployments or tenant workers. Ordinary analytics and
 rescan responses omit the person breakdown. The SDK partitions its cache by
 Station and captured authority; an access error hides cached results, and
 401/403 pauses polling until retry. The view queries no peer Station.

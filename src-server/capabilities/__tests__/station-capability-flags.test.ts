@@ -4,8 +4,12 @@ import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   pairingScopeIncludes,
   parsePairingScope,
+  parsePublicStationHandshake,
 } from '@kontourai/station-contracts/environment-security';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { ConfigLoader } from '../../domain/config-loader.js';
+import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import { STATION_CAPABILITY_FLAGS } from '../station-capability-flags.js';
 
 describe('fleetInference is protocol support, never participation (station#1398 §3.3/§5.2)', () => {
@@ -63,4 +67,22 @@ describe('fleetInference is protocol support, never participation (station#1398 
       expect(code).not.toContain(forbidden);
     }
   });
+});
+
+const tempDir = trackTempDirs();
+
+test('the actual public handshake reports group support unavailable independently of single delegation', async () => {
+  const home = tempDir('group-handshake-');
+  await new ConfigLoader({
+    projectHomeDir: home,
+    enforceHomeSchema: true,
+  }).ensureHomeSchema();
+  const service = new EnvironmentSecurityService({ homeDir: home });
+  const handshake = parsePublicStationHandshake(
+    await service.getPublicHandshake(),
+  );
+  expect(handshake).not.toBeNull();
+  expect(handshake?.capabilities?.delegationGroups).toBe(false);
+  expect(handshake?.capabilities?.delegationAttemptClaims).toBe(true);
+  expect(handshake?.capabilities?.executionPreparation).toBe(true);
 });

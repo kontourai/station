@@ -18,7 +18,7 @@ From the Station repository root, with Node 24 and managed dependencies installe
 
 ```sh
 npm run dependencies:ci
-node examples/repository-knowledge-graph/export.mjs --output=/tmp/station-knowledge-graph.json
+node examples/repository-knowledge-graph/export.mjs --module=ChildWork --output=/tmp/station-knowledge-graph.json
 ```
 
 Omit `--output` to print JSON. An existing output file is refused. `--repo=<path>`
@@ -27,8 +27,15 @@ atlas, module map and review ledger, including intentional working edits. It
 records HEAD and independent byte hashes; HEAD alone does not describe dirty
 inputs. Symlinks, unsafe paths and changed-during-read inputs are refused.
 
-Current atlas membership determines the module set; it is not hard-coded in the
-exporter. Whole-document ledger dependencies stay on document nodes. A module
+Repeat `--module=<exact atlas module name>` to select a subset. Unknown or
+duplicate names are refused. Omitting it requests the whole atlas, which can
+exceed the unchanged 2,500-record, 15,000-edge or byte limits as the repository
+grows; choose a smaller subset instead of raising those bounds. The snapshot
+records its selection and binds it into record identity. Omitted-reference
+counts describe the selected graph, not modules you did not select.
+
+Current atlas membership determines valid module names; they are not hard-coded
+in the exporter. Whole-document ledger dependencies stay on document nodes. A module
 gets only references found in its own canonical section. Untracked/private
 artifacts, unsupported external URLs and ambiguous short filenames are not
 ingested. Counts disclose omitted references. No raw source-file bodies or
@@ -88,7 +95,7 @@ record creation and link requests. Store reads can still refresh derived caches:
 ```sh
 node --import tsx examples/repository-knowledge-graph/ingest.mjs --input=/tmp/station-knowledge-graph.json --api-base=http://127.0.0.1:43521 --root=root:project-repository-graph
 node --import tsx examples/repository-knowledge-graph/ingest.mjs --input=/tmp/station-knowledge-graph.json --api-base=http://127.0.0.1:43521 --root=root:project-repository-graph --apply
-node --import tsx examples/repository-knowledge-graph/ingest.mjs --input=/tmp/station-knowledge-graph.json --api-base=http://127.0.0.1:43521 --root=root:project-repository-graph --query=KnowledgeStoreProvider
+node --import tsx examples/repository-knowledge-graph/ingest.mjs --input=/tmp/station-knowledge-graph.json --api-base=http://127.0.0.1:43521 --root=root:project-repository-graph --query=ChildWork
 ```
 
 The importer refuses default ports, non-loopback origins, personal roots and
@@ -109,7 +116,7 @@ routes. A known `rate_limited` HTTP 429 with a valid `Retry-After` waits at leas
 that long, then reads the exact record before another write. At most eight such
 waits and a 15-minute batch deadline are allowed. Unknown refusals and uncertain
 transport failures stop with an incomplete receipt; they are not automatically
-replayed. Individual SDK request deadlines still apply.
+replayed. The 15-minute batch deadline also bounds its requests.
 
 New exports retain old snapshot records rather than rewriting history. Recall
 uses the selected export's IDs, so equal titles from older snapshots are not

@@ -48,7 +48,10 @@ by being installed.
 The entry re-exports canonical client operations with their existing signatures:
 `operation(apiBase, input, options)` (some operations also take an ID). Pass an
 explicit selected Station URL and the request authority needed for each call.
-There is no SDK-owned default Station or cached credential.
+The `/agent` entry adds no Station selection or credential store. Its clients
+share the canonical transport, which can use a host-configured credential
+resolver when per-call credentials are omitted. Pass explicit request authority
+when your application must not depend on that ambient host configuration.
 
 ```ts
 import {

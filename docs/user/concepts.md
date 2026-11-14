@@ -37,8 +37,8 @@ until you need them; starting a chat does not require creating each one.
 Station names the concrete engine when that distinction matters. Protocols such
 as ACP are connection details, not agent types users need to choose.
 
-The reserved Agent named **Station** is a separate role. Its name does not tell
-you which engine runs it; that engine is selected in Station settings.
+The reserved Agent named **Station Assistant** is a separate role. Its name does
+not tell you which engine runs it; that engine is selected in Station settings.
 
 Concrete examples:
 
@@ -80,7 +80,8 @@ failed observation’s sequence within the same stream epoch supersedes that fai
 current status, even if the older read fails after that update. The sequence is
 captured when the read starts. A stream epoch change (such as replacing the
 orchestration database) resets sequence fences and retires pending old-epoch
-reads. Unrecovered failures stay last known until a new-epoch observation arrives. The history pane keeps any history-read error until its
+reads. A chat whose binding read is pending starts a fresh read in the new
+epoch before it can continue. Unrecovered failures stay last known until a new-epoch observation arrives. The history pane keeps any history-read error until its
 reader recovers. Hiding and
 showing a row preserves its last-known status. Observations are released when
 the conversation is absent from the loaded inventory and no row or reader
@@ -118,6 +119,49 @@ an observed tool boundary, otherwise the next turn. If a handoff may already
 have reached an engine, **May have been sent** stays visible. **Review and resend**
 restores the text into an empty composer; sending again is your explicit choice.
 Display-only notes appear immediately without sending anything to an engine.
+Report-member Sessions with a sealed-source policy require their bounded report
+controls for another turn. Generic Steer or Queue is refused; a saved message or
+an interrupted turn is not permission to repeat a paid attempt. See the
+[Session input restrictions](https://github.com/kontourai/station/blob/main/docs/reference/session-api.md#submit-steer-follow-up-or-display-input).
+
+## Delegated work and session groups
+
+A delegated task can finish while its conversation stays open for follow-up.
+Home, Sessions and the inbox distinguish **Needs you**, **Running** and **Idle**.
+Running covers a turn or reported child work in flight. Idle conversations remain
+open without being called completed; observed terminal outcomes can enter
+**Just finished**. A working directory without a registered Project is shown as
+a directory; it does not imply Project membership. Client surfaces such as CLI
+are marked as reported, separately from the server-authenticated actor. Station
+does not infer an external orchestrator from task text or a User-Agent.
+
+Child-work reports say where their text came from: **Returned result**,
+**Provider summary**, **Child message**, or **Provider error**. An older summary
+may have no recorded source. **No result** means no outcome was confirmed; it
+does not mean the child completed or stopped. **Interrupted** means Station
+observed the child's engine exit while the child was running; it does not
+establish successful completion. A returned result is still the
+child's report, not verified evidence or acceptance of its work. Open its
+authorized transcript when you need the underlying detail.
+
+A provider summary or child message is not promoted to a returned result just
+because the child ended. Where no returned result was reported, the Agents
+row says so. Long reports disclose that the summary was cut; full-text
+recovery depends on a supported retained transcript reference and your current
+access. A missing or unreadable transcript does not become an empty result.
+
+Background tasks show bounded recent activity. Older tool rows and closed-chat
+history may be missing, and their running counts cover retained rows. An empty
+activity list is not proof that no work is running. Reopening a conversation can
+recover current facts from its Station snapshot without reconstructing all
+discarded history.
+
+A session group retains named member Sessions and their dependencies. Flow owns
+readiness and joins; Station observes the members' execution outcomes. A context
+sync receipt records which members acknowledged the folded context. Uncertain
+attempts are not automatically resent, and the final receipt discloses incomplete
+synchronization. Group completion and ACKs do not accept the work. See the [session-group contract](https://github.com/kontourai/station/blob/main/docs/reference/api.md#cli-session-groups)
+for supported engines and the limits of its logical start allowance.
 
 ## Gates, Evidence, And Receipts
 

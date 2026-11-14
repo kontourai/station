@@ -1,0 +1,69 @@
+.report-groups li,
+.report-groups section {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.report-groups__result {
+  max-height: 32rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: var(--k-space-3);
+  background: var(--k-bg);
+}
+
+.report-groups__form,
+.report-groups__form fieldset {
+  display: grid;
+  gap: var(--k-space-3);
+  min-width: 0;
+}
+
+.report-groups__form {
+  margin-block: var(--k-space-3);
+}
+
+.report-groups__form p {
+  margin: 0;
+}
+
+.report-groups__form fieldset {
+  margin: 0;
+  padding: var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+}
+
+.report-groups__form .control {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 44px;
+}
+
+.report-groups__form .control--textarea {
+  min-height: calc(var(--k-space-6) * 3);
+}
+
+.report-groups__form button {
+  justify-self: start;
+  max-width: 100%;
+  white-space: normal;
+}
+
+.report-groups__form [hidden] {
+  display: none;
+}
+
+.report-groups__choice {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.report-groups__choice input {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  accent-color: var(--k-action);
+}

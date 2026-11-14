@@ -374,6 +374,7 @@ describe('read_conversation through the real MCP route, from a separate engine p
       projectService: projects,
       taskGraphService: deepStub({ listTasks: () => [] }),
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: () => false,
         authorizeCredential: () => false,
         verifyOperatorCredential: () => false,
@@ -382,6 +383,7 @@ describe('read_conversation through the real MCP route, from a separate engine p
         canSharePersonalConversation: () => false,
         personalConversationOwnerIds: (id: string) => [id],
         devicePairing: deepStub({
+          withCurrentRegistry: <T>(read: () => T): T => read(),
           listDevices: () => [
             { id: 'phone', kind: 'device', name: 'Phone' },
             { id: 'peer-station', kind: 'delegation', name: 'Peer' },

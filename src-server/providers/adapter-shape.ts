@@ -51,6 +51,7 @@ import type {
   SessionGoalRead,
 } from '@kontourai/station-contracts/session-goal';
 import type { ModelOption } from '@kontourai/station-contracts/tool';
+import type { ReservedStationSession } from '../runtime/conversation/reserved-station-turn.js';
 import { ProviderRefusalError } from './provider-failure.js';
 
 /** The provider's live turn ended before mid-turn input could be enqueued. */
@@ -459,6 +460,28 @@ export function isProviderInterruptTurnResult(
   }
 }
 
+/** Server-only fresh-session login observation; it grants no execution authority. */
+export interface ProviderExecutionAuthInput {
+  readonly signal?: AbortSignal;
+  readonly principalId: string;
+  readonly bindingHash: string;
+  readonly connectionId: string;
+  readonly cwd: string;
+  readonly model: string;
+  readonly modelOptions: Readonly<Record<string, unknown>>;
+  readonly credentialProfileRef?: string | null;
+  /** Request-owned authority and exact receiver binding, checked at each CLI spawn. */
+  readonly assertCurrent: () => Promise<() => void>;
+}
+
+export interface ProviderExecutionAuthObservation {
+  readonly state: 'authenticated' | 'unauthenticated' | 'unknown';
+  readonly contextHash: string;
+  readonly checkedAt: number;
+  readonly modelEntitlement: 'not-checked';
+  readonly outputTokenLimitFidelity: 'unavailable';
+}
+
 export interface ProviderAdapterShape {
   /** This adapter can add coordinator tools to this Session without a successor. */
   readonly coordinatorToolsRefresh?: true;
@@ -467,6 +490,8 @@ export interface ProviderAdapterShape {
   readonly adoptionLifecycle?: 'reported';
   readonly provider: EngineId;
   readonly metadata: ProviderAdapterMetadata;
+  /** Read-only qualification; launch still verifies the actual native handshake. */
+  assertContextSyncRuntime?(): Promise<void>;
 
   /** Absent means unsupported. Neither operation may materialize an engine session. */
   readonly goals?: {
@@ -481,6 +506,8 @@ export interface ProviderAdapterShape {
   nativeSessionIdentity?(
     resumeCursor: unknown,
   ): ProviderNativeSessionIdentity | undefined;
+  /** Private process-local observation; never a resume cursor or command DTO. */
+  reservedStationSession?(threadId: string): ReservedStationSession | undefined;
   preparedTurnBinding?(
     threadId: string,
   ): ProviderPreparedTurnBinding | undefined;
@@ -604,6 +631,8 @@ export interface ProviderAdapterShape {
        */
       inputContent?: InputRequestContent;
       expectedRequestEventId?: string;
+      /** Server-internal live service guard for delayed Station canonical settlement. */
+      assertAnswerCurrent?: () => void;
       /**
        * With `acceptForSession`: `server` widens the grant to the whole
        * in-process Station browser server; `rule` narrows it to the Bash
@@ -663,6 +692,11 @@ export interface ProviderAdapterShape {
    * must treat as possibly started.
    */
   preflightStart?(input: ProviderSessionStartInput): Promise<void>;
+  /** Uses the selected launch context, bypassing readiness and its caches. */
+  observeExecutionAuthentication?(
+    input: ProviderExecutionAuthInput,
+  ): Promise<ProviderExecutionAuthObservation>;
+
   /** Reads provider-reported connection quota data when the engine supports it. */
   readQuotaSnapshot?(options: {
     connectionId: string;

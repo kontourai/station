@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { HomeWorkItem } from '../../../views/home/home-view-model';
 import { buildHomeWorkItems } from '../../../views/home/home-view-model';
@@ -109,5 +109,21 @@ describe("Home rows take a project's colour and icon only for this Station's pro
     expect(mark?.textContent).not.toContain('🚀');
     expect(mark?.dataset.projectIcon).toBeUndefined();
     expect(mark?.style.backgroundColor).toBe('');
+  });
+  test('a projectless working directory is labeled as a directory without a project mark', () => {
+    const [directory] = buildHomeWorkItems({
+      chats: {},
+      agents: [],
+      sessions: [
+        {
+          ...summary,
+          projectSlug: undefined,
+          cwd: '/workspace/checkouts/child-work',
+        },
+      ],
+    });
+    expect(markFor(directory)).toBeNull();
+    expect(screen.getByText('Directory · …/checkouts/child-work')).toBeTruthy();
+    expect(screen.queryByText('No project')).toBeNull();
   });
 });

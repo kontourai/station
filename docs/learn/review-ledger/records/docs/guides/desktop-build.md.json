@@ -202,6 +202,8 @@
 
     "src-ui/src/views/home/__tests__/HomeRolePane.test.tsx",
 
+    "package.json",
+
     "src-ui/src/components/updates/UpdateDownloadIcon.tsx",
 
     "src-ui/src/components/updates/Updates.css",

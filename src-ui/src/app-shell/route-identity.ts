@@ -35,6 +35,8 @@ import type { NavigationView } from '../types';
  */
 export function routeIdentity(view: NavigationView): string {
   switch (view.type) {
+    case 'agents':
+      return `agents:${view.tab ?? 'default'}`;
     case 'agent-edit':
       return `agent-edit:${view.slug}`;
     case 'guidance':

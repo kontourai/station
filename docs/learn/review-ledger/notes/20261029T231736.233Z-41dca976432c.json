@@ -1,0 +1,7 @@
+{
+  "revision": "0ee38770451fe6d8e9cb7b69f71dfe096f628f03",
+
+  "notes": [
+    {"path":"docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","note":"Scoped source-impact review of the Flow dependency change at 0ee38770451. Read the complete historical ADR including its explicit 2026-08-26 supersession. Station FlowRunService.evaluate still imports public evaluateRun and returns its outcomes/state without an attach veto or producer-pin overlay; the deprecated producerPin event field remains read-only historical data whose absence proves no assessment. Inspected installed Flow 5.4.0 config-to-policy and gate matching: trusted_producers and authority_refs remain enforced by Flow with explicit untrusted_producer diagnostics; the public evaluation owner retains mutation locking. The version update does not revive the retired Station probe or STATION_FLOW_PRODUCER_PIN switch. Preserve the dated Flow 1/3 failure discussion as historical rationale and the supersession as the current decision; no ADR prose change needed. Source inspection only, including installed published package bytes: no fresh gate execution, authority/provider/hosted acceptance, baseline or classification change, and no claim that a particular run passed policy.","inputs":["docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","package.json#/dependencies/@kontourai~1flow"]}
+  ]
+}

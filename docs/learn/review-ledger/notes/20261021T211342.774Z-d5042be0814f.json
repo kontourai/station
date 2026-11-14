@@ -1,0 +1,7 @@
+{
+  "revision": "cd6802ab73247a797d1004dacff2519019048ff5",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed adoption of the R4 sealed source and SDK owners, their 38 focused Station regressions, private memory-only snapshot lifetime, disabled capability and absent boot issuer/managed transport. Upstream additive accounting readiness is local and unpublished; Station remains on public 9.3.0. No live consent, provider, billing or native claim.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}

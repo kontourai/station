@@ -1,0 +1,95 @@
+.cli-session-groups {
+  display: grid;
+  gap: var(--k-space-3);
+  margin-top: var(--k-space-6);
+  padding-block: var(--k-space-4);
+  border-top: 1px solid var(--k-line);
+}
+.cli-session-groups article {
+  min-width: 0;
+  padding: var(--k-space-4);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+.cli-session-groups code,
+.cli-session-groups h3,
+.cli-session-groups dd {
+  overflow-wrap: anywhere;
+}
+.cli-session-groups__table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.cli-session-groups__table table {
+  min-width: 36rem;
+}
+.cli-session-groups__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+.cli-session-groups__refusal {
+  display: block;
+  margin-top: var(--k-space-2);
+  color: var(--k-text-muted);
+}
+.cli-session-groups button {
+  min-height: 44px;
+}
+.cli-session-groups summary {
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+}
+.cli-session-groups summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+
+.cli-session-groups__member-name {
+  border-inline-start: 3px solid;
+  padding-inline-start: var(--k-space-2);
+}
+.cli-session-groups__member-details {
+  display: block;
+  margin-top: var(--k-space-2);
+  overflow-wrap: anywhere;
+}
+
+.cli-session-groups__table:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+
+.cli-session-groups__topology {
+  margin: var(--k-space-4) 0;
+}
+.cli-session-groups__graph-scroll {
+  overflow-x: auto;
+}
+.cli-session-groups__graph {
+  display: block;
+  width: 100%;
+  min-width: 48rem;
+  color: var(--k-text-muted);
+}
+.cli-session-groups__graph path[marker-end] {
+  stroke: currentColor;
+  stroke-width: 2;
+}
+.cli-session-groups__graph-node {
+  box-sizing: border-box;
+  height: 100%;
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  overflow-wrap: anywhere;
+  overflow-y: auto;
+}
+.cli-session-groups__graph-scroll:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}

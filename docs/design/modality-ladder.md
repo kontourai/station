@@ -110,8 +110,8 @@ is a dialog (or an inline control on the page).
   Hand off between rungs explicitly — a dialog may *end* by navigating to a
   page, but then the page owns the rest of the flow and the URL says so.
 - **Escape pops one rung.** Popover → closed; dialog → closed (guarded);
-  sheet → closed; page → its parent view. Escape never skips levels or
-  silently discards a dirty form.
+  sheet → closed; page → its declared parent view, when one exists. Escape
+  never skips levels or silently discards a dirty form.
 - **Mobile maps rungs, it doesn't invent them.** Dialog and sheet may render
   as bottom sheets on narrow viewports; the promise (single outcome vs
   coexisting context) is unchanged.

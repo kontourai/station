@@ -1,0 +1,13 @@
+{
+  "revision": "00b55cb68b55db3df0090a024c87cffccf799dae",
+
+  "notes": [
+    {"path":".changeset/README.md","note":"Compared the current workspace release guidance with package.json Changesets scripts, installed checkChangesets discovery/config/read/planner calls and run-ci-fast invocation. The only pnpm-workspace delta from actual main removes the obsolete FlowAgents6.5.1 optional Datum extension; workspace package membership/private root exclusion is unchanged. Executed npm run changesets:check: zero retained changesets, valid plan. No publish, versioning or full CI acceptance claimed.","inputs":[".changeset/README.md","pnpm-workspace.yaml"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Compared current package-cut/evidence-owner claims with its unchanged source, README and value-bound build/typecheck/import-boundary scripts. The only relevant changed citation is the resource manifest adding three shared-publisher/group-binding Node subprocess test owners ahead of the unchanged agent-runtime body-process classification. Those additions have bounded spawnSync timeout and windowsHide, and do not change agent-runtime types, coordinator, SQLite, cancellation, replay, framework entries or Station adoption. No agent-runtime execution/provider proof renewed; historical receipt tiers and experimental/future-consumer limits remain.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the actual-main delta to vitest-resource-manifest: three named rejected-finalizer child-process owners added to PROCESS_HEAVY_VITEST_FILES, existing classifications unchanged. Inspected their bounded20s spawnSync calls with windowsHide:true and the manifest role. Existing governance guidance requiring classification, bounded owned subprocesses, serial worktree testing and truthful terminal evidence remains accurate. No policy relaxation, new process authorization or broad check PASS inferred.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Reviewed the sole changed cited source: SDK root adds useInspectEnsemble, with no change to runtime Agent identity exports, useSendToChat, voice registry or STT selection. Traced current Pane agent-identity runtime import, Station Agent send, first-supported provider hook and documented modal behavior against unchanged owners. The builder containment/source-build gap and unqualified microphone/native/transcript-to-Agent journey remain explicitly open. No bundle build, installed-plugin or live STT/provider acceptance claimed.","inputs":["examples/meeting-transcription/README.md","packages/sdk/src/index.ts"]}
+  ]
+}

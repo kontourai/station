@@ -205,6 +205,46 @@ const exclusions = {
       'HOSTED_PERSISTENCE_BOUNDARY_REJECTED',
       'Hosted persistence bootstrap policy.',
     ],
+  'src-server/runtime/bootstrap/runtime-publication-participant.ts:RuntimePublicationUnavailable.code':
+    [
+      'runtime_publication_unavailable',
+      'Bootstrap publication lifetime custody, not a provider start or turn outcome.',
+    ],
+  'src-server/runtime/bootstrap/runtime-publication-participant.ts:RuntimePublicationPending.code':
+    [
+      'runtime_publication_pending',
+      'Shutdown publication drain retains dependencies; no provider retry eligibility is inferred.',
+    ],
+  'src-server/runtime/conversation/runtime-fenced-credential-observation.ts:RuntimeCredentialObservationUnavailable.code':
+    [
+      'credential_observation_unavailable',
+      'Private group credential-source capture/revalidation, not a Session provider failure.',
+    ],
+  'src-server/services/orchestration/portable-group-preparation.ts:PortableGroupBudgetInsufficient.code':
+    [
+      'group_budget_insufficient',
+      'All-seat group budget preflight; delegation-groups returns its own refused 409, not provider account quota.',
+    ],
+  'src-server/services/orchestration/station-report-group-custody.ts:StationReportCustodyUnavailable.code':
+    [
+      'group_custody_unavailable',
+      'Report-group request/intent custody; report-groups returns its own unavailable response.',
+    ],
+  'src-server/services/orchestration/station-report-group-execution.ts:StationReportExecutionUnavailable.code':
+    [
+      'group_execution_unavailable',
+      'Multi-member report controller lifecycle; it does not identify one provider turn outcome.',
+    ],
+  'src-server/services/orchestration/station-report-group-input.ts:StationReportPreparationUnavailable.code':
+    [
+      'group_preparation_unavailable',
+      'Private report-group source/preparation admission, not a Session provider outcome.',
+    ],
+  'src-server/services/orchestration/station-report-group-runtime.ts:ReportContinuationUnavailable.code':
+    [
+      'report_continuation_finalizer_unavailable',
+      'Unqualified report finalizer capability; report-groups returns this explicit 503 without enabling it.',
+    ],
   'src-server/services/agents/agent-service.ts:UnknownEngineIdentityError.code':
     ['UNKNOWN_ENGINE_IDENTITY', 'Agent engine configuration validation.'],
   'src-server/services/agents/agent-service.ts:StationEngineIsAppSettingError.code':

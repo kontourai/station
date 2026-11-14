@@ -1,0 +1,7 @@
+{
+  "revision": "cdeffa591a7321a647ca7134b1d20feaecf25a65",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed published Flow9.4 retained-tariff contract and Station exact binding joins after7ba345ebf92: invoice label removed, Station tenancy and current principal/credential/source/model/options remain bound; no entitlement or invoice guarantee asserted. Owner explicitly lifted earlier publication/migration hold after controlled CLI consumer;9.4publication/adoption receipts remain separate from missing serving implementation. Unknown failed requests retain reservations; applicable provider caps/tariffs/error semantics still required.","inputs":["docs/plans/child-work-epic.md","src-server/runtime/conversation/bounded-api-provider-contract.ts","src-server/runtime/conversation/__tests__/bounded-api-provider-contract.test.ts"]}
+  ]
+}

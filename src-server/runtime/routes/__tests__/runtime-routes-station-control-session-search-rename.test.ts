@@ -295,6 +295,7 @@ describe('station-control session search and rename (#176)', () => {
       taskGraphService: taskGraph,
       projectService: projects,
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL,
         authorizeCredential: (credential: string) =>
@@ -308,7 +309,9 @@ describe('station-control session search and rename (#176)', () => {
         identifyDevice: () => undefined,
         canSharePersonalConversation: () => false,
         personalConversationOwnerIds: (id: string) => [id],
-        devicePairing: deepStub({}),
+        devicePairing: deepStub({
+          withCurrentRegistry: <T>(read: () => T): T => read(),
+        }),
       }),
     });
     Reflect.set(context as object, 'buildRuntimeContext', () => context);

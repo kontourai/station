@@ -1,0 +1,7 @@
+{
+  "revision": "bd352bf1562729444bcd7eb60577589203e69706",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Read independent 9df R3 review: 121 focused tests and real-owner/mock-CLI controls close seven prior findings within managed-owner scope. Retained executed absent-file ABA and late cwd/preset filesystem exceptions, unbooted composition, mocked credentials and unfinished group acceptance; no universal before-effect guarantee.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}

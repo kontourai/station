@@ -334,6 +334,8 @@ export interface AgentDelegationContext {
   rootAgentSlug: AgentId;
   rootConversationId?: string;
   allowedTools?: string[];
+  /** Additional inherited allowlists: a tool must match every group. Empty groups deny all tools. */
+  toolAllowlistConstraints?: string[][];
   blockedTools?: string[];
   denyApprovals?: boolean;
 }

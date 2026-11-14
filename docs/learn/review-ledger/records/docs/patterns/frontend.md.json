@@ -100,6 +100,8 @@
 
     "src-ui/src/hooks/ServerEventsMount.tsx",
 
+    "packages/sdk/src/theme-signature.ts",
+
     "scripts/unsaved-guard-gate.mjs",
 
     "src-ui/src/components/modals/ConfirmModal.tsx",

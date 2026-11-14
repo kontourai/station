@@ -26,6 +26,7 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { createMCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { awaitCanonicalRequestCommit } from '../../conversation/canonical-request-commit.js';
 import { createElicitationCallback } from '../../conversation/stream-orchestrator.js';
 import { InjectableStream } from '../../streaming/InjectableStream.js';
 import { loadAgentTools } from '../mcp-manager.js';
@@ -67,6 +68,9 @@ describe('#3284 MCP elicitation through a Station turn', () => {
   let askDetails: (options: Record<string, unknown>) => Promise<unknown>;
   let callback: ReturnType<typeof createElicitationCallback>;
   let endStream: () => void;
+  let commitObservation:
+    | ReturnType<typeof awaitCanonicalRequestCommit>
+    | undefined;
 
   beforeEach(async () => {
     tmp = makeTempDir('mcp-elicitation-turn-');
@@ -165,6 +169,17 @@ describe('#3284 MCP elicitation through a Station turn', () => {
       approvalRegistry,
       eventBus,
     });
+    const streamEvents = adapter.streamEvents.bind(adapter);
+    commitObservation = undefined;
+    vi.spyOn(adapter, 'streamEvents').mockImplementation(
+      async function* (options) {
+        for await (const event of streamEvents(options)) {
+          if (event.method === 'request.opened')
+            commitObservation = awaitCanonicalRequestCommit(event);
+          yield event;
+        }
+      },
+    );
     eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
     service = new OrchestrationService({
       adapterRegistry: {
@@ -193,6 +208,7 @@ describe('#3284 MCP elicitation through a Station turn', () => {
   });
 
   afterEach(async () => {
+    commitObservation?.cancel();
     endStream?.();
     await adapter.stopSession(THREAD).catch(() => undefined);
     await connection.close();
@@ -240,6 +256,54 @@ describe('#3284 MCP elicitation through a Station turn', () => {
       throw new Error(`no report in ${JSON.stringify(result)}`);
     return JSON.parse(text);
   }
+
+  test.each(['stored', 'append-failed', 'different-form'] as const)(
+    'canonical request commit acknowledgement requires the exact stored form: %s',
+    async (scenario) => {
+      const abort = new AbortController();
+      const append = eventStore.appendEvent.bind(eventStore);
+      if (scenario === 'append-failed')
+        vi.spyOn(eventStore, 'appendEvent').mockImplementation(
+          (event, ...args) => {
+            if (event.method === 'request.opened')
+              throw new Error('controlled append failure');
+            return append(event, ...args);
+          },
+        );
+      const read = eventStore.eventById.bind(eventStore);
+      if (scenario === 'different-form')
+        vi.spyOn(eventStore, 'eventById').mockImplementation(
+          (threadId, eventId) => {
+            const stored = read(threadId, eventId);
+            return stored?.payload.method === 'request.opened'
+              ? {
+                  ...stored,
+                  payload: {
+                    ...stored.payload,
+                    payload: { inputRequest: 'changed' },
+                  },
+                }
+              : stored;
+          },
+        );
+      const result = askDetails({
+        elicitation: callback,
+        abortController: abort,
+        conversationId: THREAD,
+      });
+      const observation = await eventually(() => commitObservation);
+      try {
+        expect(await observation.committed).toBe(scenario === 'stored');
+        const opens = eventStore
+          .listEvents(THREAD)
+          .filter((row) => row.payload.method === 'request.opened');
+        expect(opens).toHaveLength(scenario === 'append-failed' ? 0 : 1);
+      } finally {
+        abort.abort();
+        await result;
+      }
+    },
+  );
 
   test('the form opens for the turn, refuses invalid content, and an accept reaches the server', async () => {
     const { result, opened, command } = await openForm();

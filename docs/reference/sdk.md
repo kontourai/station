@@ -36,6 +36,32 @@ accepts `{ requestScope }` as its fourth argument. Pass a captured
 authority checks apply through credential resolution, dispatch and reading the
 receipt. This does not make a server command reversible.
 
+## Delegation group observations
+
+The group client functions under `@kontourai/station-sdk/client` use the host's
+caller-owned group routes. An older host's 404 becomes
+`DelegationGroupUnsupportedError`; route presence alone does not establish
+support for a selected source, model or topology. Group capability advertising
+remains off while combined qualification is unfinished.
+
+Creation checks aggregate reservation feasibility before invocation. Insufficient
+declared budget produces `DelegationGroupBudgetInsufficientError` with HTTP 409,
+code `group_budget_insufficient` and failure phase `refused`.
+
+Each member's `selection` records the Agent, runtime protocol, provider and model
+authenticated by the retained admission. It is an observation of that selection, not a fresh
+inventory or execution grant. Execution returning and cancellation being requested
+do not prove terminal completion or semantic acceptance.
+
+`readDelegationGroupMemberOutput(base, groupId, seatId, options)` returns one
+authenticated output page. Pass its `nextCodeUnit` as `options.afterCodeUnit`
+while `hasMore` is true. Offsets count UTF-16 code units; pages preserve surrogate
+pairs and refuse a cursor inside a pair. Concatenate `text` in cursor order and
+keep the same invocation identity. Each page repeats the **whole invocation's**
+usage; do not sum usage across pages. `station group member-output` exposes the
+same cursor as `--after-code-unit`, and the Station Control tool accepts
+`afterCodeUnit`.
+
 ## Terminal sessions
 
 `TerminalSessionStore` (from `@kontourai/station-sdk` and
@@ -628,6 +654,35 @@ context in place to before a turn and answer the typed
 `unsupported`. See the
 [session API](session-api.md#engine-continuity-and-rewind-sessionsthreadidcontinuity-rewind).
 
+### Read a reported child's transcript
+
+A child report's `source` records `tool-return`, `provider-summary`,
+`child-message`, or `provider-error`; absent provenance stays unknown. A structured
+Claude Agent/Task return is bound to its tracked child and call, and replaces an
+earlier summary while preserving recovery handles. Without summary text, a
+handle has no report provenance and does not supersede a returned report.
+Neither completion nor returned text establishes artifact verification or
+semantic acceptance.
+
+When a persisted transcript reference exists,
+`getChildWorkTranscript(apiBase, threadId, childId, page?, options?)` from the
+client entry reads bounded recorded messages. `threadId` is the reporting
+Session and `childId` its child-work identity. `page` accepts message `offset`
+and `limit` (1–50, default 30). The server resolves the reference from authorized
+facts; callers never supply a file path. A Session the caller cannot read, a
+missing child or absent transcript reference returns 404. A retained reference
+whose engine transcript is missing or unreadable returns 503.
+
+`useChildWorkTranscriptQuery({threadId, childId, enabled?, running?, requestScope?}, apiBase?)`
+from the SDK root loads 30 messages per page and exposes `fetchNextPage` using
+`nextOffset`. Setting `running` enables a two-second refetch interval; otherwise
+interval polling is off. Station's transcript component also refreshes on
+reported child revisions. Retained Claude subagent and Codex child
+thread references can be read through their respective bounded readers after
+Session authorization. A report without a supported reference has no guaranteed
+full-text recovery through this API. Source exports do not prove package
+publication or live restart/native acceptance.
+
 Trusted plugin Workspace Panes are wrapped in the canonical `SDKProvider` graph
 by the host, on both direct routes and placed Pane hosts. No plugin-side mock
 provider is required. Project identity comes from the server-issued Pane
@@ -1106,6 +1161,18 @@ contents; a file that grows beyond the limit is rejected rather than truncated.
 These legacy coding endpoints are separate from the built-in Workspace File Preview API.
 See the [reader](../../src-server/services/projects/file-tree-service.ts) and
 [route](../../src-server/routes/projects/coding.ts).
+
+### Inherited delegation policy
+
+A durable delegation or foreground-create key is bound to the inherited tool
+policy when the request carries `toolAllowlistConstraints`. Reusing that key
+with a different required policy produces HTTP 409; it does not return the
+previous result under the new restrictions. Continuation into an existing
+Session requires its persisted policy to retain the requested clauses.
+`delegationToolConstraintsV1` advertises preservation plus Station-owned
+enforcement or refusal. Capability discovery does not qualify a native engine
+or grant portable authority. See
+[delegated child restrictions](../guides/agent-configuration.md#delegated-child-restrictions).
 
 ### Conversation input-origin support
 
@@ -1667,10 +1734,10 @@ result is `{ ok: true, registryId }` or `{ ok: false, reason, message }`, with
   (⌘/), and the text-editing chords ⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z and ⌘A (Ctrl off a
   Mac), and Ctrl+Y. Station never lets a plugin shortcut fire on them.
 
-Plugin shortcuts use priority -1, below Station shortcuts at the normal
-priority 0, regardless of registration order. Deliberately yielding route
-fallbacks, such as Escape-up at priority -100, run after plugins. Reserved
-kernel and editing chords remain unavailable to plugins. See
+Plugin shortcuts rank below Station's own: a Station shortcut on the same
+chord wins whichever registered first, except the lower-priority “go up a level”
+Escape fallback, which yields to a plugin. Reserved Station and editing chords
+remain unavailable to plugins. See
 [plugin shortcuts](../guides/keyboard-shortcuts.md#plugin-shortcuts).
 
 A `when` string is a host context key (`'composerFocused'`,
@@ -5320,9 +5387,9 @@ that object; it never substitutes another turn's key. Repeated use with the same
 key keeps the association. Primitive throws cannot carry this association.
 Retain a caller-owned key separately when reusing an abort signal or error.
 Invalid-key validation happens before a key is chosen.
-The accessor does not prove dispatch, acceptance or completion. Queue, handoff,
-steer, delegation, answer, invoke and raw framework helpers do not yet register
-their errors with it.
+The accessor does not prove dispatch, acceptance or completion. Keyed delegation
+and ordinary steer helpers also register their errors. Queue, handoff, answer,
+invoke and raw framework helpers do not yet register their errors with it.
 
 Retain the key and the original input when inspecting an uncertain outcome.
 The SDK does not retry automatically. A `SyntaxError` can come from parsing a
@@ -5361,8 +5428,9 @@ one served by another live process, can instead end its stream with an error
 event. Resolved retries replay the conversation ID and a `completed` finish,
 without replaying output. Read the conversation after an uncertain send; do
 not automatically resend with a new key. Use a new `clientTurnId` only for a
-deliberate new request. The key is not yet bound to input or caller identity;
-legacy rows, older writers and retention limits still apply. See the
+deliberate new request. New rows bind the key to the original submitted-input
+digest; the key is not separately scoped to authenticated caller identity.
+Legacy rows with unknown input proof, older writers and retention limits still apply. See the
 [direct chat lifecycle](../architecture/module-map.md#turndeduplicator).
 Other refusals leave `outcome` unset.
 `getTurnDelivery(apiBase, conversationId, clientTurnId, { projectSlug? })`
@@ -5404,10 +5472,17 @@ head or conflicting key is a definitive refusal. Retain the original key,
 text and head after an unanswered request and reconcile against the same
 Station and authority before retrying. An unconfirmed handoff is never
 replayed automatically. Session snapshots and conversation-open execution also
-carry the current adapter's optional `durability` declaration; a missing field
-provides no steering authority. Conversation-open decoding accepts a complete
+carry the current adapter's optional `durability` declaration for ordinary
+Sessions. Trusted recorded sealed source Sessions carry their restrictive
+session-aware declaration instead. A missing field provides no steering authority. Conversation-open decoding accepts a complete
 adapter declaration, validates its capability states and placement/ownership
 fields, and rejects malformed declarations as `invalid-response`.
+An optional `queuedFollowUp: { state: 'none', detail: string }` cell declares
+that Queue submissions are unavailable for this Session. Its only supported
+state is `none`; omission retains existing client Queue behavior, while every
+submission still requires server admission. Older SDK versions with a closed
+profile field set may reject this extended declaration; update those clients
+before opening Sessions that declare it.
 Profile extraction uses the contracts' `readProviderDurabilityProfile` helper:
 absent carriers remain unknown, including legacy metadata without a declaration.
 Display notes have a separate 50-note capacity
@@ -6713,6 +6788,351 @@ A newer successful source check is required. UI consumers label historical data
 and unknown coverage explicitly, and never treat a saved ID as source authority.
 These APIs require matching server/contracts versions. Controlled tests and
 browser fixtures do not establish native/installed/release qualification.
+
+## Ensemble configuration inspection
+
+The local source client exports `inspectEnsemble(apiBase, input, options?)` from
+`@kontourai/station-sdk/client`. The root SDK exports `useInspectEnsemble(scope)`,
+an explicit mutation hook with no automatic retry and `gcTime: 0` for inactive
+mutation-cache entries. The mounted hook retains its result for display until
+reset or replacement; the cache setting does not clear that result. Its scope includes `apiBase`,
+`authorityKey` and `isCurrent`; responses are checked against current authority
+before becoming available. Keep preset paths in the POST body, outside URLs and
+persistent application state.
+
+The input and result types live in `@kontourai/station-contracts/ensemble`.
+Pass exactly one of `path` or `presetJson`; uploaded bytes require their exact
+`expectedPresetHash`. For a launch draft, send empty `bindings` and its
+`groupBindings` (`{target, needs}` per member). The target names an Agent, expected
+engine connection and Project/directory workspace, never a model override.
+Host-file requests retain the stricter local-grant requirement; uploaded
+inspection is available to the current personal Station's in-person operator.
+The response is an observation, not a retained launch capability.
+
+For an explicitly selected recorded group, pass `groupId`, the exact preset
+source and `expectedPresetHash`, with empty `bindings` and no `groupBindings` or
+`verifyAuthentication: true`. The optional `groupInspection` offer is
+`available`/`unavailable` on ordinary responses and `bound` with the exact group
+ID and safe integer revision on success. The SDK validates its closed shape and
+bounded strings. A bound request rejects a different group, missing cell or
+silent unbound success; older ordinary responses remain compatible.
+The Ensemble inspector exposes this as **Inspect a recorded group** after loading
+a preset or upload. It first checks the host's offer; only `available` exposes the
+explicit group-ID input. The result labels its recorded group and revision.
+Source or authority changes clear the displayed bound result. No group creation,
+run or sign-in check is implied by this read.
+Recorded Session/output and context ACK references are metadata observations,
+not output availability, native/shared memory, acceptance or execution grants.
+
+After an exact receiver draft has been inspected, a current host may offer
+`authenticationCheck: {state:'available'}`. An explicit
+`verifyAuthentication: true` repeats inspection with supported native engine
+sign-in checks under the local operator's current grant. A host browser may
+read uploaded configuration but cannot use that weaker grant for native checks.
+The SDK validates this optional cell and its bounded unavailable reason; a
+missing cell from an older host does not offer the action. No private native
+continuation, login file, credential or launch grant enters the response.
+Facts remain observations and running authenticates the roster again.
+
+Prerequisite facts may carry an optional `needs` list of declared member IDs.
+The configuration table and diagram consume the same facts; these references
+describe the draft, not Flow readiness or observed execution. Older responses
+without the list do not establish that the draft has no prerequisites.
+
+Ordinary inspection observes configuration only. Optional sign-in observations,
+unavailable facts and unknown effective capabilities are not permission to launch. See the
+[API contract](api.md#ensemble-configuration-inspection). The
+[epic record](../plans/child-work-epic.md) retains scoped HTTP, mounted UI, browser
+and independent-review evidence with its source revisions and limits. Checkout
+exports and those checks do not establish package publication, native/provider
+operation or whole-epic acceptance.
+
+## CLI session groups
+
+`@kontourai/station-sdk/client` exports `parseCliSessionGroupInput`,
+`createCliSessionGroup`, `listCliSessionGroups`, `getCliSessionGroup`, `runCliSessionGroup` and
+`cancelCliSessionGroup`, with `CliSessionGroupCreateInput` and
+`CliSessionGroupView`. They target the personal Station's
+[CLI session-group API](api.md#cli-session-groups), using the same credential and
+request-scope options as other client calls. Parsing accepts local named Agents,
+explicit expected engine connections, prompts and dependencies. It does not
+choose credentials, authorize an engine, or grant access to a workspace.
+Both create inputs accept optional `maxDispatches` (zero through roster size),
+which bounds total reserved member starts. Group views report the effective
+allowance and `admissionClosed: "dispatch-limit-exhausted"` when exhausted with
+pending work; event pages retain that reason. Unknown/refused reservations count
+and survive reopen. Dollar, token and physical-attempt guarantees stay unavailable.
+
+`parseCliSessionGroupSyncInput` validates the bounded folded-result request;
+`syncCliSessionGroup(apiBase, groupId, input, options)` submits it without an
+automatic retry or client timeout. The server deadline remains authoritative.
+The latest optional `contextSync` in `CliSessionGroupView` reports per-seat ACK,
+failed or unknown receipts and reserved logical attempts. It never carries the
+folded content or raw answer. Sync uses the retained conversation and currently
+requires the qualified Claude runtime described in the API reference; other
+engines refuse. An ACK does not accept the work. Existing SDK/server strict
+schema lockstep requirements apply to these additive response fields too.
+
+`parseEnsembleCliSessionGroupInput` and `createEnsembleCliSessionGroup` use the
+preset entry point in that API. The request supplies exactly one of a preset
+`path` or `presetJson`, its exact hash, a brief and receiver bindings; the server
+composes the authored models, byte-preserved additions, escaped current-member
+assignment and shared roster. The assignment binds the seat ID, codename, role
+and Stationmaster marker; it grants no authority and does not rewrite retained
+group briefs. Host-path reads require the
+current locally granted operator; caller-supplied JSON uses ordinary group
+request authority. Creation starts no engines. Use the returned group ID with
+`runCliSessionGroup` to start work.
+
+Running a saved preset-derived group performs an all-member login barrier
+before Flow claims and seat reservations. Unsupported observers or a failed
+member refuse the run without starting a member. Current Codex/Claude login
+observations are private to the exact saved intent and supervision lifetime;
+ACP/OpenCode presets currently refuse. Signals reach bounded login commands,
+and effect fences recheck configuration and permission currency. Each pending
+seat refreshes login before its start reservation, while concurrent preparation
+shares the probe. The closing launch fence still rejects observations aged
+30 seconds or more. Login is not selected-model entitlement, portable authority
+or fiscal enforcement. Creation,
+completed replay and zero-allowance execution do not probe login.
+The server retains a private continuation of the native executable, profile,
+launch environment and bounded local-file observation through actual spawn.
+Claude's macOS Keychain namespace also has a private equality witness checked
+before launch, followed by fresh request and admission checks. No credential
+bytes travel in the response. Serializing a login observation cannot reproduce
+its continuation. Other unwitnessable OS stores, helpers and detected
+managed/cloud policy refuse. See the [API's login
+limits](api.md#cli-session-groups); provider-side changes remain unverified.
+
+Preset-derived views may include the retained `preset` identity: preset ID,
+name, exact source hash and Stationmaster member ID. Its optional `members`
+array retains each seat's codename, color and role, without prompt additions.
+Older records can omit the roster or the entire preset identity. The value
+describes the source saved with the group, not a fresh file read or an
+execution-authority receipt. The strict SDK response schema must ship with the
+server that adds this field; an older strict SDK can reject a newer response.
+
+`readCliSessionGroupEvents(apiBase, groupId, afterRevision?, options?)` reads one
+bounded journal page. `subscribeCliSessionGroupEvents(apiBase, groupId,
+afterRevision, callbacks, options?)` delivers `onPage` observations and returns
+the ordinary SSE connection with `close()` and `completed`. It validates the
+group-bound checkpoint, contiguous revisions and explicit gaps/omissions before
+retaining a cursor. Duplicate pages cannot duplicate member events. Normal stream
+rotation reconnects read-only; malformed protocol and authority refusals stop it.
+The journal contains membership and Flow scheduling observations, not raw output
+or another acceptance verdict.
+
+A `syncCliSessionGroup` response identifies the requested operation and run;
+replaying an older operation does not return a newer operation's ACK. Read-only
+replay does not claim active supervision; a retained `syncing` entry projects as
+`incomplete` without changing its stored outcome or proving physical termination. Ordinary
+get/list views still expose the latest retained `contextSync`. The client refuses
+a mismatching group, operation or run instead of attributing that receipt.
+
+The root SDK exports `useCreateEnsembleCliSessionGroup(scope)`,
+`useRunCliSessionGroup(scope)` and `useCancelCliSessionGroup(scope)` for these
+explicit actions. They use the captured request scope and recheck its currency
+before dispatch and response publication, with retries disabled. The run hook
+aborts pending supervision on unmount or an authority-key change; this requests
+interruption, not proven engine termination. A failed mutation does not authorize
+a replacement group or a repeated launch.
+
+The root entry also exports `useCliSessionGroupsQuery(scope,
+{enabled, afterGroupId?})`. Its cache key includes the API base and authority
+key; it rechecks the supplied `isCurrent()` fence around the HTTP read. The
+inspector enables this query only after the user requests live groups. Polling
+is bounded to the mounted view, stops on errors, and does not retry dispatches.
+
+The SDK initially has no default deadline; a host may configure one (the CLI
+sets 30 seconds). Without an explicit `timeoutMs`, a supplied `signal` leaves
+cancellation timing to its caller rather than imposing the host default. Run
+waits for server supervision and disables that host-configured deadline. Pass a
+signal to cancel, or an explicit positive `timeoutMs` to bound the wait.
+Aborting requests interruption and preserves unknown occupied seats. There is no
+automatic launch retry. Responses validate the unbound-lineage and unavailable-cap
+disclosures; they cannot silently become a hard fiscal authority. Group completion
+is distinct from work acceptance. Terminal outcomes require exact initial-turn
+evidence in the server's bounded event window; a generic terminal session status,
+missing event or byte-elided error leaves the seat occupied. See the
+[terminal observation limits](api.md#cli-session-groups). Historical live session-group receipts are
+bound to the source revisions recorded in the [epic plan](../plans/child-work-epic.md);
+the `a39212fabf0` check includes a live exact-event MCP form answer and later
+authenticated member-event replay. A fresh mixed group at `27fafa8d48b6`
+subscribed with `fetchSSE` before creation and received the exact open question
+before sending its answer. The stream retained all three authored outputs and
+one initial completion per member; an invalid SSE credential received 401.
+These bounded receipts do not qualify the complete SDK/server surface, billing
+or package publication.
+
+## Qualified report groups
+
+`finalizeReportGroupContinuation` sends a finalizer operation key, expected
+revision and original continuation operation key. Station currently returns
+`report_continuation_finalizer_unavailable` and does not offer the preview
+until publication exclusion across rounds writers is qualified. A 404 from an
+older host is reported as unsupported.
+
+
+`@kontourai/station-sdk/client` exports these report operations:
+
+- Creation and reads: `parseReportGroupInput`, `createReportGroup`,
+  `getReportGroup`, `listReportGroups`, `readReportGroupEvents`,
+  `subscribeReportGroupEvents` and `readReportGroupResult`.
+- Context and input: `parseReportGroupContextSyncInput`,
+  `readReportGroupContextCheckpoint`, `syncReportGroupContext`,
+  `finalizeReportGroupSync`, `narrowReportGroupAfterInput` and
+  `syncReportGroupAfterInput`.
+- Continuation and recovery: `continueReportGroupReport`,
+  `finalizeReportGroupContinuation`, `cancelReportGroup`,
+  `finalizeReportGroupCancel` and `recoverReportGroupAccounting`.
+
+Public shapes live at `@kontourai/station-contracts/report-group`.
+Export availability does not imply that a host enables an operation; the
+continuation finalizer remains unavailable as described above.
+This personal-host advisory report surface is separate from CLI session groups.
+Optional create `flow` selectors
+bind a run ID and exact seat-to-step map; workspace and grants remain server-owned.
+Views distinguish independent advisory and retained Flow topology. Flow owns
+frontier, claims, joins and gates; reports grant no gate acceptance. See the
+[Flow selector and continuation limits](api.md#report-groups). Parsing and views
+do not qualify Flow execution: an earlier controlled HTTP composition reached
+its deadline under mismatched installed Flow module bindings. The API reference records
+the alignment prerequisite and remaining runtime proof. `parseReportGroupInput`
+preserves explicitly supplied finite initial continuation limits and rejects
+limits without Flow or beyond aggregate attempt capacity. Published Flow Agents
+9.8.0 supplies explicit initial-request sync admission; the installed runtime
+references pass its public assertion and the controlled same-Session report/ACK
+test passes. These are local controlled results, not live-provider qualification.
+Member `input: "operator-clarification-v1"` opts into the fixed qualified input
+profile and requires reserved continuation capacity as described in the API.
+The controlled mixed-member test checks exact canonical answer delivery,
+private receipt retention, empty tools on the plain-text member and effect-free
+create replay. Answering does not automatically invoke the model again.
+`narrowReportGroupAfterInput` now exposes the no-call renewal phase described
+below. `syncReportGroupAfterInput` runs the separate verified-answer no-tools
+ACK. `continueReportGroupReport` requests the separately funded report from an
+actual Flow route-back/retry state; reappraisal/retry authorization and full live
+qualification remain open. Legacy
+creates retain their single-attempt defaults, and changing limits on exact
+replay refuses.
+
+Create accepts configured Agent IDs, immutable operator intent and explicit
+aggregate token/inference-micro budgets. The server resolves runtime/model
+selection and qualifies the final transport. Exact operation replay only reads
+retained state; a timeout or unknown outcome does not authorize a new operation
+ID or automatic resend. Create/cancel default to the server lifetime; pass a
+signal to stop waiting/admission without claiming physical termination.
+
+Readers validate closed DTOs, group/member/invocation identities, contiguous
+event cursors and exact result offsets. Result pages count UTF-16 code units;
+concatenate them in order before interpreting a page boundary as a Unicode
+character. They intentionally expose authorized report text. Group views and
+event pages carry references/identities, not prompts or private authority data.
+Event subscriptions checkpoint only after `onPage` succeeds, reject foreign
+cursor domains, and terminal-stop malformed protocol data. Closing a stream is
+observation-only. The strict reader/server shapes ship together.
+
+`narrowReportGroupAfterInput(base, groupId, {operationKey, expectedRevision,
+seatId}, options)` makes one explicit mutation to remove the completed input
+member's tool grant. The server selects the private receipt and fresh witnesses;
+callers supply no authority or answer data. The operation key is limited to 96
+characters. The client validates the returned group/seat and revision, disables
+its ordinary request timeout, and retains caller cancellation. An explicit
+same-command retry recovers a retained renewal/adoption without another provider
+call. Original instruction/provider/model identity must match; older admissions
+without the private initial witness remain readable and refuse renewal. This
+method does not run the next ACK or paid report.
+
+`syncReportGroupAfterInput(base, groupId, {operationKey, expectedRevision,
+seatId, flowHead, renewalOperationKey}, options)` sends one explicit bounded
+request. The server selects the signed narrowing receipt and private answer;
+callers cannot substitute context text. It requires adopted narrowing and fresh
+same-Session admission, retains caller cancellation, and disables the ordinary
+request timeout. Exact replay observes the prior ACK operation without another
+model call. It does not authorize or send the separately funded report.
+
+`continueReportGroupReport(base, groupId, {operationKey, expectedRevision,
+seatId, flowHead, syncOperationKey, previousInvocationId, retryRef}, options)`
+makes one explicit paid-report request and returns the exact operation, seat and
+new invocation IDs beside the group projection. The server resolves the retained sync
+context and original brief; callers cannot supply replacement text. Flow admits
+only the current head/round with an acknowledged same-seat sync and the actual
+route-back or checked retry reference. A new invocation and client turn use fresh
+SDK/source custody in the same Session. Replay is observational even if the
+original command stopped part-way; it does not resume payment. The method keeps
+caller cancellation and disables the ordinary client timeout. This does not
+expose reappraisal/retry authorization or prove live serving.
+
+`syncReportGroupContext` accepts an explicit operation key, displayed revision,
+seat, exact Flow head and private context text of at most 64 KiB UTF-8. Its JSON
+request may occupy up to 512 KiB after escaping. It makes
+one HTTP request and leaves the server deadline in charge unless the caller
+supplies a shorter timeout. The server owns source, runtime, recipient and
+budget admission. Exact replay observes retained intent; it never resumes a
+paid exchange. `finalizeReportGroupSync` sends only a new operation key, revision,
+original sync key and retained prepared digest; its server path cannot launch a
+model.
+
+Views optionally carry `contextSyncs` with pending/prepared/acknowledged/incomplete
+state, closed reason codes, prepared digests and retained accounting/terminal
+observations. Null attempts means no complete operation-level snapshot was
+retained, not zero spend. Root accounting includes all invocations, including
+sync and unknown holds; known terminal usage and unsettled allocations are
+separate. Readers refuse contradictory ACK/usage/terminal shapes. `contextSyncAllowance` is the declared operation ceiling and count of recorded
+sync commands, not a claim of current execution eligibility. These fields
+carry no prompt, context bytes or execution capability. ACK does not establish
+semantic understanding, gate acceptance or billing reconciliation.
+
+
+The [API reference](api.md#report-groups) lists inputs, availability and remaining
+qualification. The controlled HTTP owner test exercises real SDK calls, serving,
+canonical task dispatch, SQLite and tariff custody; it is not live-provider or
+billing acceptance. The [CLI report commands](cli.md#qualified-report-groups)
+consume this client. `finalizeReportGroupCancel` requires the original cancel
+operation key and a distinct explicit recovery command/revision. It confirms
+retained requests without resending interrupts; missing or mismatched receipts
+remain pending. The Ensemble inspector uses `useReportGroupsQuery` and
+`useReportGroupResultQuery` for explicit report reads. Their query keys include
+the API base and authority key; current authority is checked before and after
+requests. Closing the view cancels reads, and errors stop polling. Raw reports
+are assembled from at most 64 pages before rendering, with consistent model
+and usage metadata and no persistent report cache. The UI labels unresolved
+accounting and termination without promoting them to acceptance.
+Flow joins and continuation remain open. Cancellation uses
+`useCancelReportGroup`: one explicit attempt sends the displayed revision and a
+fresh operation key, disables retries, and invalidates only the current
+authority's group queries on success. A lost/refused response leaves the outcome
+unknown and the action disabled in that mounted view. The displayed cancellation
+result does not confirm termination or accounting. `useFinalizeReportGroupCancel` explicitly checks retained cancellation receipts
+with the original cancel operation key and a distinct recovery key. The
+inspector offers it only for pending cancellation; a still-pending result
+confirms neither interruption nor termination. It never resends interrupts. Both
+mutation hooks check authority before and after the request and disable retries.
+`useSyncReportGroupContext` and `useFinalizeReportGroupSync` accept a scoped
+`{groupId, command}` mutation. Each has one active request, no automatic retry,
+current-authority checks and abort on authority change/unmount. A late response
+after abort is rejected before success data or invalidation. `useReportGroupContextCheckpoint`
+uses the same scoped lifetime for an explicit non-model checkpoint read; it
+does not invalidate group accounting. The checkpoint client checks group, seat
+and exact requested revision. It is an observation, not a source/SDK grant.
+
+`useCreateReportGroup` drives the inspector’s explicit paid-report form. The
+operator supplies Project/resource selectors, configured Agent IDs, separate
+briefs, per-member output limits and aggregate token/inference-cost budgets. A
+single operation ID is retained for that mounted form. Submission disables edits
+and repeat dispatch; unknown outcomes never cause automatic resend. Drafts use
+the canonical unsaved-changes guard. Unmount or authority change aborts the
+request without claiming physical termination. Creation results remain
+unassessed.
+
+Report accounting recovery uses `recoverReportGroupAccounting(base, groupId,
+{ seatId, invocationId, operationKey })` in the SDK, or
+`station group report-recover <group> <seat> <invocation> --operation=<key>`.
+It resumes retained accounting only, with no automatic retry or new model call.
+A 404 reports that the host does not support recovery and suggests updating it.
+Unknown usage remains held; an overrun may retain partial accounting writes.
+The response exposes amounts and a receipt reference, never private ledger records.
+
 ## Workspace visual files
 
 `@kontourai/station-sdk/workspace-file-preview` exports

@@ -1,0 +1,7 @@
+{
+  "revision": "890f747882213b99f84b4bb633d913202296aaa2",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Scoped review at 890f74788221 against main e1e50fc7dc4b: read the complete historical ADR and the 1674-line orchestration-service delta. Traced summary/detail/board/history construction to observeAnswerability and the required builder/wire member; attachment recovery still settles in finally, and open-requests still derives process-local observation without writing it. New sync restrictions, reserved source durability, canonical request commit acknowledgement, posture/receiver fences, interruption uncertainty and guarded answer settlement do not persist provider absence as a synthetic cancellation or replace live dispatch authority with answerability. Historical inventory and consumer-coverage limits remain accurate; no ADR prose change. EXECUTED: 25 owner/contract controls pass at this revision. REASONED scope: the named orchestration delta and answerability contract; no current native/provider/UI-wide qualification.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

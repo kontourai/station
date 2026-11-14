@@ -101,6 +101,17 @@ _Avoid_: compliance folder
 The [module map](../../architecture/module-map.md) links behavior tests. Read
 the actual receipt and its source revision before interpreting a summary badge.
 
+Session-group completion observations may satisfy Flow's dependency gate without
+accepting the member's work. The group reports semantic acceptance as
+`unassessed`; its context-sync ACK receipts likewise record receipt of context,
+not correctness, verified understanding or portable execution authority.
+
+Mounted report controls and CLI groups' logical start allowances do not establish
+full supported-group acceptance. The group capability and continuation finalizer
+remain disabled while create/frontier, budget, replay and installed-runtime
+qualification remain required. A report, ACK or narrow owner test cannot stand in
+for that combined evidence. See the [group contracts](../../reference/api.md#report-groups).
+
 ## Flagged Ambiguities
 
 **Approval / review / gate**:

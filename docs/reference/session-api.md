@@ -418,6 +418,16 @@ the calling Session's own recorded delegation context, so a request body cannot
 re-allow it. See [tool-policy delivery](../conformance/tool-policy-delivery.md)
 for the callers this covers.
 
+Inherited tool allowlists use `delegation.toolAllowlistConstraints`: each
+bounded inner list is a separate clause, and every clause must match a tool.
+An empty clause denies all tools. These requests currently require the
+Station-agent engine; native or unknown engines refuse before launch or turn
+dispatch with `delegation_lineage_unavailable`. Reusing an existing Session
+requires its recorded policy to retain every required clause. The same durable
+create or foreground key with changed required policy returns HTTP 409 rather
+than replaying the earlier result. These checks grant no portable authority;
+see [delegated child restrictions](../guides/agent-configuration.md#delegated-child-restrictions).
+
 A delegation's dispatch response (`POST /api/orchestration/delegations`) also
 carries `resolution.confinement` once its session has started (#2494). It is
 the session's confinement record, read back from that session's own
@@ -724,10 +734,21 @@ the current execution Session and its event sequence.
 
 `POST` to that same path accepts `{kind, key, message, expectedHead?}`.
 `kind` is `steer`, `follow-up` or `display`; steer requires the observed head.
-The key is idempotent over kind, sender, text and the supplied head. A matching
-retry returns its retained entry even after the head advances. Changed input
+The key is idempotent over kind, sender, text and the supplied head. For an
+ordinarily admitted Session, a matching retry returns its retained entry even
+after the head advances. Changed input
 returns HTTP409 `inbox_key_conflict`. A new entry with a stale head returns
 HTTP409 `inbox_stale_head` and `currentHead`, without a write.
+
+Sealed SDK source Sessions have no generic steering or follow-up admission.
+Their provider name does not imply the ordinary Station framework's durability
+profile. Fresh Steer and Queue submissions receive HTTP409
+`sealed_source_admission_required` before an effectful Inbox row; use the bounded
+report/group controls. Display notes remain available and send nothing to an
+engine. Central Inbox replay preserves an already accepted entry and rechecks
+fresh reactivation, but that owner guarantee does not establish public
+sealed-Session replay through the producer prechecks. A dead UI turn or retained
+message is never a grant to resend a paid source attempt.
 
 - **Steer:** text and head are durable before handoff. Native Claude/Codex
   placement is engine-defined and disclosed. Where Station owns the loop,
@@ -1015,9 +1036,11 @@ shown: an unknown or missing required field, or a value outside its type,
 length, format, range or choices, is refused with a reason before the
 request is resolved; nothing is coerced or cut to fit. Limits are 32 fields,
 64 options per field and 12,000 characters per text answer. A decline or
-cancel cannot carry content. Claude answers map back to question text; Codex
-answers retain question IDs and the original RPC ID; cancellation sends Codex
-an empty answer map.
+cancel cannot carry content. Claude answers map back to question text. Codex
+native questionnaire answers retain question IDs and the original RPC ID;
+cancellation sends an empty answer map. Codex MCP elicitation instead preserves
+the `accept`, `decline` or `cancel` action and carries validated content only
+on acceptance.
 
 The pre-#3390 `answers` field (`{ "question-id": { "optionIds": [...],
 "custom": "..." } }`) is deprecated since 0.9.0 and remains accepted in
@@ -1337,7 +1360,11 @@ The remaining controls are defined by
 - `setApprovalMode`: `{ type: 'setApprovalMode', threadId, approvalMode,
   basedOnSequence }` records an ordered posture decision. `basedOnSequence` is
   required: use the latest observed decision sequence, or `null` when none was
-  observed. A stale basis refuses the change. A mode above the machine's
+  observed. A stale basis holds a pick that is not provably at least as strict
+  as the standing decision, returning `recorded: false` with the standing mode
+  and sequence. Ask is always recorded; Auto can replace standing Auto or full
+  access despite a stale basis. Default is always held to its basis because
+  its resolved mode can change. A mode above the machine's
   managed approval ceiling is refused with `403` and
   `code: "managed-policy-approval-ceiling"`
   ([ceiling](../guides/managed-policy.md#approval-mode-ceiling)). An engine with no approval
@@ -1364,6 +1391,15 @@ Continue intent and returns the existing continuation with
 `alreadyAdopted: true`; `target` is described below),
 `interruptTurn` (`{ type: 'interruptTurn', threadId, turnId? }`, cancel an in-flight turn),
 and `stopSession` (`{ type: 'stopSession', threadId }`).
+
+For an internally reserved sealed-source Station turn, an exact-turn interrupt
+may return `termination-unconfirmed`. Station requests cancellation without
+claiming provider termination, emits no stop-settled marker for that response,
+and retains unknown accounting reservations. This mode is read from the stored
+session-start event; public metadata cannot select it. Other sessions retain
+the cooperative-stop budget and forced logical cleanup behavior. A logical stop
+is not evidence of provider termination or zero usage.
+
 
 External transcript observation does not grant control of the original terminal
 process. The engine capability matrix declares independent continuation support;

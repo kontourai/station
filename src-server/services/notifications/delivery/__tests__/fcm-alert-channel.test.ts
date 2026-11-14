@@ -98,7 +98,7 @@ async function harness(
 ) {
   const homeDir = makeTempDir('station-fcm-alert-');
   mkdirSync(join(homeDir, 'security'), { recursive: true, mode: 0o700 });
-  const pairing = new DevicePairingService({
+  const pairing = await DevicePairingService.create({
     homeDir,
     environmentId: ENVIRONMENT_ID,
   });

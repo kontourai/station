@@ -28,6 +28,7 @@ import { verifyStationRequest } from '../../../../deploy/push-gateway/src/statio
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
+import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import {
   type AgentActivitySessionRow,
   resolvePushGatewayConfig,
@@ -108,7 +109,7 @@ function row(
   } as AgentActivitySessionRow;
 }
 
-function harness(
+async function harness(
   options: {
     homeDir?: string;
     answer?: (call: GatewayCall) => Answer | undefined;
@@ -118,7 +119,7 @@ function harness(
   if (!options.homeDir) {
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
   }
-  const pairing = new DevicePairingService({
+  const pairing = await DevicePairingService.create({
     homeDir,
     environmentId: ENVIRONMENT_ID,
   });
@@ -359,14 +360,14 @@ function harness(
 }
 
 const seconds = (ms: number) => Math.floor(ms / 1000);
-type Harness = ReturnType<typeof harness>;
+type Harness = Awaited<ReturnType<typeof harness>>;
 
 const kind = (call: GatewayCall) =>
   call.path === '/v1/apns/channels' ? `delete` : String(call.body.event);
 
 describe('agent-activity publisher: iOS Live Activities', () => {
   test('first active card: one start with no channel; the channel the gateway made is kept on the activity', async () => {
-    const h = harness();
+    const h = await harness();
     const { deviceId, registration } = await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
 
@@ -407,7 +408,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
   });
 
   test('later changes update through the channel with its channelAuth; an approval alerts, once', async () => {
-    const h = harness();
+    const h = await harness();
     await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
     h.advance(10_000);
@@ -445,7 +446,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
   });
 
   test('finish: ends with the final card, and the channel is deleted only once the dismissal has passed', async () => {
-    const h = harness();
+    const h = await harness();
     const { deviceId } = await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
     const [channelId] = [...h.channels.keys()];
@@ -495,7 +496,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
   });
 
   test('a device that loses read access has its activity ended at once and its channel deleted in the same flush', async () => {
-    const h = harness();
+    const h = await harness();
     const { deviceId } = await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
     h.unreadable.add(deviceId);
@@ -516,7 +517,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
   });
 
   test('410 unregistered at start: the registration is cleared; the gateway already dropped the channel', async () => {
-    const h = harness({
+    const h = await harness({
       answer: (call) =>
         call.body.event === 'start'
           ? { status: 410, body: { result: 'unregistered' } }
@@ -536,7 +537,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
   ] as const)(
     '%s on an update: the activity is forgotten, and the retry starts afresh',
     async (_label, how) => {
-      const h = harness();
+      const h = await harness();
       const { deviceId } = await h.registerIos();
       await h.change([row('s1', 'running', START - 1000)]);
       const [first] = [...h.channels.keys()];
@@ -566,7 +567,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
   test('a fresh channelAuth in a 200 (secret rotation) is stored and used from then on', async () => {
     const rotated = `v1.${'R'.repeat(43)}`;
     let answered = false;
-    const h = harness({
+    const h = await harness({
       answer: (call) => {
         if (call.body.event !== 'update' || answered) return undefined;
         answered = true;
@@ -595,7 +596,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
   });
 
   test('a restart resumes the persisted activity: an update through its channel, no second start', async () => {
-    const first = harness();
+    const first = await harness();
     const { deviceId } = await first.registerIos();
     await first.change([row('s1', 'running', START - 1000)]);
     // An update well ahead of where the restarted clock will be.
@@ -614,7 +615,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
       )?.lastTimestamp,
     ).toBe(lastSent);
 
-    const restarted = harness({
+    const restarted = await harness({
       homeDir: first.homeDir,
       answer: (call) =>
         call.body.channelId === channelId &&
@@ -639,7 +640,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
   });
 
   test('a restart still deletes the channel of an activity ended before it', async () => {
-    const first = harness();
+    const first = await harness();
     await first.registerIos();
     await first.change([row('s1', 'running', START - 1000)]);
     first.advance(10_000);
@@ -647,7 +648,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
     await first.publisher.stop();
     const [channelId] = [...first.channels.keys()];
 
-    const restarted = harness({ homeDir: first.homeDir });
+    const restarted = await harness({ homeDir: first.homeDir });
     for (const [id, registration] of first.registered)
       restarted.registered.set(id, registration);
     restarted.setRows([row('s1', 'completed', START + 10_000)]);
@@ -663,7 +664,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
   });
 
   test('rollover at 7 h 30 m: end now, delete its channel, start fresh on a new one; timestamps strictly increasing', async () => {
-    const h = harness();
+    const h = await harness();
     const { deviceId } = await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
     const [first] = [...h.channels.keys()];
@@ -690,7 +691,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
 
   test('pacing and backoff are shared with Android: 3 s per phone, backoff on 429', async () => {
     let busy = 0;
-    const h = harness({
+    const h = await harness({
       answer: (call) => {
         if (!(busy > 0 && call.body.event === 'update')) return undefined;
         busy -= 1;
@@ -719,7 +720,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
 
   test('a channel delete that fails is retried with backoff and stays queued until it succeeds', async () => {
     let failures = 1;
-    const h = harness({
+    const h = await harness({
       answer: (call) => {
         if (!(call.body.op === 'delete' && failures > 0)) return undefined;
         failures -= 1;
@@ -751,7 +752,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
   });
 
   test('Android and iOS phones side by side: each gets its own route, Android unchanged', async () => {
-    const h = harness();
+    const h = await harness();
     await h.registerAndroid();
     await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
@@ -773,7 +774,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
 describe('agent-activity publisher: iOS review regressions', () => {
   test('P7: rollover end sent, then every start fails: the start is retried with bounded backoff and nothing spins', async () => {
     let starts = 0;
-    const h = harness({
+    const h = await harness({
       answer: (call) => {
         if (call.body.event !== 'start') return undefined;
         starts += 1;
@@ -803,7 +804,7 @@ describe('agent-activity publisher: iOS review regressions', () => {
 
   test('P4: rollover end sent, then the start is unregistered: the registration goes and the ended channel is still deleted', async () => {
     let starts = 0;
-    const h = harness({
+    const h = await harness({
       answer: (call) => {
         if (call.body.event !== 'start') return undefined;
         starts += 1;
@@ -830,11 +831,11 @@ describe('agent-activity publisher: iOS review regressions', () => {
   });
 
   test('P1: after a restart, a device narrowed below read access has its persisted activity ended first', async () => {
-    const first = harness();
+    const first = await harness();
     const { deviceId } = await first.registerIos();
     await first.change([row('s1', 'running', START - 1000)]);
     await first.publisher.stop();
-    const restarted = harness({ homeDir: first.homeDir });
+    const restarted = await harness({ homeDir: first.homeDir });
     for (const [id, r] of first.registered) restarted.registered.set(id, r);
     restarted.unreadable.add(deviceId);
     restarted.setRows([row('s1', 'running', START - 1000)]);
@@ -875,14 +876,16 @@ describe('agent-activity publisher: iOS review regressions', () => {
   ] as const)(
     'P2: an iPhone %s has its live activity ended now (empty, dismissed at once) and its channel deleted',
     async (_label, retire) => {
-      const h = harness();
+      const h = await harness();
       const { deviceId, registration } = await h.registerIos();
       await h.change([row('s1', 'running', START - 1000)]);
       const [channelId] = [...h.channels.keys()];
       h.advance(10_000);
       // No lifecycle event: the retirement itself asks for the flush.
       retire(h, deviceId, registration.stationKey);
-      await h.publisher.drain();
+      await vi.waitFor(() => expect(h.channels.size).toBe(0), {
+        timeout: 10_000,
+      });
       const [end, remove] = h.iosCalls().slice(1);
       expect(end?.body).toMatchObject({
         event: 'end',
@@ -900,12 +903,12 @@ describe('agent-activity publisher: iOS review regressions', () => {
   );
 
   test('P3: revoked after a restart, before any flush: the persisted activity is still ended and its channel deleted', async () => {
-    const first = harness();
+    const first = await harness();
     const { deviceId } = await first.registerIos();
     await first.change([row('s1', 'running', START - 1000)]);
     await first.publisher.stop();
     const [channelId] = [...first.channels.keys()];
-    const restarted = harness({ homeDir: first.homeDir });
+    const restarted = await harness({ homeDir: first.homeDir });
     for (const [id, r] of first.registered) restarted.registered.set(id, r);
     // The restarted gateway fake knows the first one's channel.
     restarted.channels.set(
@@ -923,7 +926,7 @@ describe('agent-activity publisher: iOS review regressions', () => {
 
   test('a retired activity whose end fails is retried with backoff and survives a restart', async () => {
     let failing = true;
-    const h = harness({
+    const h = await harness({
       answer: (call) =>
         failing && call.body.event === 'end'
           ? { status: 503, body: {} }
@@ -945,7 +948,7 @@ describe('agent-activity publisher: iOS review regressions', () => {
   });
 
   test('P6: an unreadable iOS file stalls only iOS: Android keeps getting cards and can still register', async () => {
-    const h = harness();
+    const h = await harness();
     const android = await h.registerAndroid();
     const ios = await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
@@ -981,7 +984,7 @@ describe('agent-activity publisher: iOS review regressions', () => {
 
   test('L1: a 200 start without a channel is retried with backoff, not taken as started', async () => {
     let starts = 0;
-    const h = harness({
+    const h = await harness({
       answer: (call) => {
         if (call.body.event !== 'start') return undefined;
         starts += 1;
@@ -1003,7 +1006,7 @@ describe('agent-activity publisher: iOS review regressions', () => {
   test.each(['ios', 'android'] as const)(
     'with the %s file unreadable, the publisher keeps the stalled cadence instead of re-flushing every millisecond',
     async (broken) => {
-      const h = harness();
+      const h = await harness();
       await h.registerAndroid();
       await h.registerIos();
       await h.change([row('s1', 'running', START - 1000)]);
@@ -1036,7 +1039,7 @@ describe('agent-activity publisher: iOS review regressions', () => {
   );
 
   test('a phone on an unreadable platform keeps its state: once the file reads again, an unchanged card is not re-sent', async () => {
-    const h = harness();
+    const h = await harness();
     await h.registerAndroid();
     await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
@@ -1060,7 +1063,7 @@ describe('agent-activity publisher: iOS review regressions', () => {
   test('revoked while its start is in flight: the activity that start made is still ended and its channel deleted', async () => {
     let deviceId = '';
     let revoked = false;
-    const h = harness({
+    const h = await harness({
       answer: (call) => {
         if (call.body.event === 'start' && !revoked) {
           revoked = true;
@@ -1079,10 +1082,10 @@ describe('agent-activity publisher: iOS review regressions', () => {
   });
 
   test('a retired activity older than 24 h is dropped without a request', async () => {
-    const h = harness();
+    const h = await harness();
     await h.registerIos(); // the push key
     const old = new NativePushIosRegistrationStore(
-      h.homeDir,
+      await HomeWriterOwner.forHome(h.homeDir),
       () => START - 25 * HOUR,
     );
     const token = 'ef'.repeat(40);
@@ -1119,7 +1122,7 @@ describe('agent-activity publisher: iOS review regressions', () => {
   test('revoked while an update is in flight: the retirement end is still ordered after that update', async () => {
     let deviceId = '';
     let revoked = false;
-    const h = harness({
+    const h = await harness({
       answer: (call) => {
         if (call.body.event === 'update' && !revoked) {
           revoked = true;
@@ -1147,7 +1150,7 @@ describe('agent-activity publisher: iOS review regressions', () => {
   test('revoked during a rollover: the new activity is ended too, and both channels are deleted', async () => {
     let deviceId = '';
     let revoked = false;
-    const h = harness({
+    const h = await harness({
       answer: (call) => {
         if (call.body.event === 'end' && !revoked) {
           revoked = true;

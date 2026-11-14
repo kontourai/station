@@ -147,6 +147,15 @@ authorities. The [runtime composition](../../src-server/runtime/routes/runtime-r
 mounts handlers and their request boundaries. A handler existing in source does
 not mean every deployment mounts or admits it.
 
+Home-writer contention is not failed authentication. A request refused before
+its operation runs returns 503 with `error.code: "home_writer_unavailable"`.
+If a callback ran but ownership or cleanup could not be confirmed, the response
+is 409 with
+`error.code: "home_writer_outcome_unconfirmed"`; callers must inspect current
+state rather than automatically replay the operation. Neither response revokes
+the client's credential. The [home writer owner](../../src-server/services/ssh/home-writer-owner.ts)
+supplies this distinction to the existing HTTP error boundary.
+
 ## Personal conversation resolution
 
 The default-off **Open and Settled inbox** (`conversation-resolution`) Feature
@@ -2708,6 +2717,282 @@ owns the protocol, saved authority and failure limits.
 
 ---
 
+## Report groups
+
+The source endpoint `POST /api/orchestration/report-groups/:groupId/continuation/finalize`
+accepts an operation key, expected revision and original continuation operation
+key. It currently returns `report_continuation_finalizer_unavailable`, and the
+**Report continuation recovery** preview is not offered, while Station qualifies
+publication exclusion across its rounds writers. No metadata lookup,
+retention, provider invocation or retry grant occurs. Hosted mode returns
+`report_groups_unavailable`; an older host may return 404.
+
+The personal host mounts `/api/orchestration/report-groups` for bounded reports
+using configured Station Agents and the qualified sealed SDK profile. Requests
+can be independent advisory reports or explicitly bound to a Project Flow run.
+This is separate from CLI session groups' logical start allowance. A returned
+report does not establish context ACKs or work acceptance. Qualified report
+attempts stream provisional text through their canonical member Session's
+`content.text-delta` events. Group journal SSE remains metadata-only; it does not
+carry these text chunks. Terminal result pages remain retained reads. Completion
+requires independent raw terminal/usage validation and evidence retention;
+partial text, stream EOF and client cancellation do not settle usage or prove
+provider termination. Returning turns preserve the captured Session's wire mode.
+Hosted mode and unavailable private storage return `report_groups_unavailable`.
+
+Report member Sessions carry a recorded sealed-source policy rather than the
+ordinary managed-journal policy for the same engine. They do not declare native
+crash continuation, tool replay or steering. Generic Steer and Queue require
+fresh bounded source admission and are refused with
+`sealed_source_admission_required`; display-only notes do not invoke the model.
+An interrupted-turn UI marker is not the exact provider terminal or an
+accounting refund. Use the bounded report operations below, not a generic
+follow-up or automatic resend, to request supported returning work.
+
+The Flow-bound serving composition is not runtime-qualified. An earlier
+controlled concurrent HTTP attempt reached its deadline while Station loaded
+Flow 5.2.2 and Flow Agents 9.5.1 loaded a separate Flow 5.2.0 module. Their
+actual `loadRun` and mutation-lock references differed; a timeout alone did not
+establish whether an attempt reached the provider. A prior returning-session
+attempt stopped before initial release under the positive-sync ACK policy.
+At the earlier 9.8.0 checkpoint, the controlled returning-session test passed with explicit initial-request
+admission. These local results do not qualify live providers or the complete
+serving composition. Independent advisory receipts do not qualify this path. Full group capability remains disabled while the remaining
+continuation/live obligations are open.
+
+- `POST /` accepts `operationId`, `projectSlug`, optional `resourceId`,
+  `deadlineAt`, `maxConcurrent`, aggregate `budget` (`inputTokens`, `outputTokens`,
+  `costMicros`) and 1–16 `members` (`seatId`, `agentId`, `brief`,
+  `maxOutputTokens`). JSON is bounded to 256 KiB. It executes under the request
+  lifetime; an exact retry observes the durable operation without launching
+  again. A changed intent refuses. An interrupted request may have reserved or
+  started work; it is not permission to use a new operation ID to resend it.
+  A member may explicitly set `input: "operator-clarification-v1"` for the
+  qualified Anthropic input profile. This requires Flow continuation intent with
+  at least four attempts per member, one sync and one renewal reserved. Only
+  opted-in members receive the fixed `station_request_input` tool. A supported
+  question uses the canonical exact-event answer path; its completed private
+  receipt is retained separately from public result text. Answer delivery does
+  not make another model request. The explicit narrowing operation below can
+  remove that tool grant. The input-sync operation then requests a fresh no-tools
+  ACK. The separate report operation requires actual Flow route-back/retry
+  admission; this opt-in alone does not qualify the full group capability.
+- `POST /:groupId/input/narrow` accepts `operationKey` (at most 96 characters),
+  `expectedRevision` and `seatId`. Its JSON body is limited to 4 KiB; callers
+  cannot supply a root, receipt or answer. The personal operator path verifies
+  the retained completed input, exact canonical question and original runtime
+  identity, then prepares fresh source/SDK witnesses in the actual Sessions.
+  It issues a successor through the published Flow Agents authority-renewal
+  contract, removing only the selected member's execution tool grant, and
+  separately adopts it in the rounds journal.
+  Original budgets, ceilings, roster and accounting remain unchanged. This
+  operation performs no model or MCP call. An interrupted adoption stays held;
+  explicitly retry the same command to adopt the retained epoch. Replay cannot
+  issue another epoch or recreate a wire. Admissions without the private initial
+  runtime witness remain readable but refuse renewal; no identity is inferred
+  or backfilled. The response is `{replayed, group}`, with no answer bytes.
+- `POST /:groupId/input/sync` accepts `operationKey`, `expectedRevision`,
+  `seatId`, exact `flowHead` and `renewalOperationKey`, in at most 4 KiB. It
+  accepts no answer text. The server verifies the signed latest adopted narrowing
+  receipt, recovers the completed private question/answer and rechecks authorized
+  canonical question/outcome access. It then runs the bounded paid no-tools ACK
+  protocol in the same actual Session. Earlier-epoch terminal receipts remain
+  immutable; their physical identity and canonical terminal are revalidated.
+  Exact replay observes the retained sync and never resends it. A missing or
+  unadopted narrowing, mismatched member or changed source refuses. This does not
+  run or authorize a second paid report; Flow route-back/retry admission remains
+  independently required.
+- `POST /:groupId/report` accepts `operationKey`, `expectedRevision`, `seatId`,
+  exact `flowHead`, `syncOperationKey`, `previousInvocationId` and `retryRef` in
+  at most 4 KiB. It accepts no replacement brief or context. Flow requires an
+  acknowledged same-seat sync for the current head/round and a real route-back or
+  checked retry transition naming the previous invocation. The server prepares a
+  fresh no-tools SDK wire, checks the actual Flow-prepended context/request, and
+  dispatches a distinct paid turn in the same retained Session. Original limits
+  are unchanged. Exact replay reads the committed command and never resumes an
+  interrupted release. Later result reads and cancellation use the signed
+  invocation-to-client-turn record; a missing record refuses rather than targeting
+  the initial turn. This candidate path does not yet expose the reappraisal and
+  retry-authorization operations or qualify live cancellation/accounting. Its
+  response names the exact `operationKey`, `seatId` and new `invocationId` beside
+  `{replayed, group}`; those identifiers are references, not execution authority.
+- `POST /:groupId/accounting/recover` accepts exactly `seatId`, `invocationId`
+  and `operationKey`. It authenticates retained original-turn evidence and resumes
+  published Flow/Dispatch accounting without another invocation or reservation.
+  Exact replay retains the same receipt. The response contains those identifiers,
+  `groupId`, `replayed`, `status` (`settled` or `held`), `reason`, nullable
+  `accounting` amounts and a receipt reference. Private ledger records and signatures
+  are excluded. `held` can include confirmed accounting writes for an overrun;
+  it never promises that nothing changed. Unknown usage retains reserved capacity.
+  Altered or conflicting retained evidence refuses; unavailable usage remains
+  held, and deleted unsigned history is not reconstructed.
+- `GET /` returns up to eight `groups`, `hasMore` and nullable `nextGroupId`.
+  Supply `afterGroupId` for the next page. `GET /:groupId` returns the retained
+  projection, or `null` when absent.
+- `GET /:groupId/events?afterRevision=0` pages the retained journal (at most
+  64 events/page), with `nextRevision`, `revision`, `hasMore` and explicit
+  byte-bound omissions. It projects event kind, revision and applicable
+  member/invocation IDs, never a command payload or authority record.
+  `GET /:groupId/events/stream` sends `report-group-events` SSE pages for at
+  most 60 seconds. Resume with the same query or `Last-Event-ID`; report,
+  group and member cursor domains cannot be interchanged. Each read/write
+  rechecks authority. Observation never resumes execution.
+  Each explicit subscription occupies its own fetch-SSE connection during that
+  lifetime. It uses a group/revision cursor, not the orchestration stream's
+  global event sequence or replay/snapshot protocol. The inspector uses scoped
+  metadata polling and explicit result reads rather than opening this stream.
+  This adds no connection-pool capacity or latency guarantee; see the historical
+  [transport decision](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md).
+- `GET /:groupId/members/:seatId/results/:invocationId?afterOffset=0` reads
+  a retained report or failure after canonical member-session read admission.
+  Result pages carry at most 16,384 UTF-16 code units, `nextOffset`, `hasMore`,
+  the reported model and retained integer usage. The reader verifies the exact
+  journal reference/digest and member/invocation join. This endpoint intentionally
+  reveals report text; the ordinary group projection does not.
+- `POST /:groupId/cancel` accepts `operationKey` and `expectedRevision`.
+  Cancellation closes admission, revokes the retained root and requests exact
+  nonterminal member interrupts. Exact replay is effect-free. A missing
+  acknowledgement leaves `pending`; cancellation never implies physical stop,
+  an accounting refund or semantic acceptance.
+- `POST /:groupId/cancel/finalize` accepts `operationKey`, `expectedRevision`
+  and the original `cancelOperationKey`. This explicit recovery uses the
+  cancellation-finalization contract introduced in Flow Agents 9.5.0. It revokes
+  the retained authority idempotently and observes
+  exact, signed member request receipts (or existing terminal references).
+  It never resends interrupts. A different-operation receipt or missing
+  acknowledgement refuses, leaving cancellation pending. Exact finalization
+  replay is effect-free. Requested cancellation remains distinct from stop,
+  reconciled accounting, refunds and acceptance.
+
+An optional create `flow` selector supplies `runId` and a `steps` object mapping
+every member seat ID to one distinct Flow step ID. The server resolves the
+workspace, definition and actor through the authenticated sealed Project/resource
+owner, and requires Project Flow mutation scope. Callers cannot supply a cwd,
+claim, authority or gate counter. Selected steps must declare no mutable resources.
+
+An optional initial `continuation` object requires `flow` and all six finite
+limits: `attemptsPerMember` (1–8), `maxRounds` (1–16), `maxSyncs` (0–32),
+`maxRenewals` (0–8), `maxEvaluations` (0–128), and `maxRecoveries` (0–16).
+Total attempt capacity is members × `attemptsPerMember`, at most 128. The initial
+roster plus two capacity slots per configured sync must fit that total. The
+aggregate input/output-token and inference-micro budgets must cover each member's
+qualified per-call reservation multiplied by its attempt ceiling; the server
+never raises the supplied aggregate budget. A seat's per-call allocation stays
+unchanged. Omitting `continuation` preserves one attempt per member and no sync
+or renewal allowance. New groups with a positive sync allowance select Flow's
+immutable `initial-request` admission policy: the first invocation can create its
+Session, while later releases retain their current-context ACK requirement.
+Older stored groups keep their existing policy. These limits enter immutable
+create intent: replay cannot add or raise them. Opt-in input is retained in bounded private storage for
+explicit operation recovery, with only a digest reference in signed admission
+metadata. Public projections still omit prompts. Missing or altered private input
+refuses mutation loading; historical metadata remains readable. Older records
+without that reference gain no reconstructed intent or continuation permission.
+The private input store has a 128-record lifetime cap. Input publication precedes
+signed admission: an interrupted or refused admission can leave an orphan input
+that still consumes a slot. No orphan collection or transactional rollback is
+currently provided.
+
+The candidate continuation routes are `POST /:groupId/sync` and
+`POST /:groupId/sync/finalize`. An explicit
+`POST /:groupId/members/:seatId/context-checkpoint` accepts `expectedRevision`
+and returns `{groupId, seatId, revision, flowHead}` after current source/Project
+Flow authority checks. It re-observes source under the original receipt and
+expiry and reads Flow; it never resolves a runtime, qualifies an SDK request,
+reserves budget or invokes a provider. Concurrent group/accounting drift refuses
+the read. The token is an observation; the paid final-fetch fence checks it again. Sync accepts `operationKey`, `expectedRevision`,
+`seatId`, exact `flowHead` and private `text` (at most 64 KiB UTF-8). This route
+allows a 512 KiB JSON body so worst-case text escaping fits. Input narrowing,
+input sync and report release use 4 KiB bodies; the remaining report mutations
+use the 256 KiB default. It reloads
+original intent, re-admits source under the returning Request, prepares a fresh
+qualified SDK request and attaches to the original live Session receipt. The
+server never opens a replacement Session or reconstructs authority from a cursor.
+Flow owns reserved attempts, exact ACK and accounting. Duplicate intent observes
+state without resending; changed intent with the same key refuses.
+
+Before a context turn is dispatched, private signed custody retains its exact
+invocation, client-turn and captured Session recipient binding. That binding
+cannot be replaced. Cancellation includes context invocations as well as report
+attempts, and names the bound native turn rather than the Session's latest turn.
+Missing delivery custody leaves cancellation pending with allocations retained.
+Interrupt receipts are distinct per seat/client-turn and replay does not resend.
+This candidate has controlled storage and missing-binding refusal evidence;
+active-context interruption through the full serving path remains unqualified.
+
+Finalization accepts `operationKey`, `expectedRevision`, `syncOperationKey` and
+`preparedDigest`. It checks retained terminal/provider evidence and publishes a
+prepared receipt through the storage-only Flow operation, without resolving a
+runtime or calling a provider. Views expose sync state and nullable retained
+attempt observations; root accounting includes unknown sync holds as well as
+ordinary reports. Context bytes and private grants remain absent from views.
+Context is carried separately from the bounded brief/Agent instructions in the
+SDK text payload. Ordinary report brief and wire bounds remain unchanged. The
+sync wire has a separate 2 MiB bound for the source plus escaped context, and
+private context observations allow 512 KiB. Neither allowance changes token,
+attempt or inference-micro reservations.
+
+
+This serving composition is not live-qualified. The earlier Flow Agents 9.8.0 checkpoint supplied the adopted initial-request policy and public reservation identities;
+Station's actual Flow references pass its same-realm assertion. A controlled
+returning request runs an initial report and a fresh no-tools context ACK in the
+same actual Session, and exact replay sends nothing. The controlled three-seat
+HTTP case also completes its Flow join. These results do not establish live
+provider/model-family diversity, answered MCP elicitation, active-context
+interruption or full live continuation acceptance. The explicit input narrowing,
+verified-answer ACK and separately funded report now have controlled runtime
+coverage. Retained accounting recovery is mounted and has controlled HTTP/SDK
+coverage, including Session deletion and partial dual-ledger settlement. Broader
+cross-process and live recovery qualification remains open. Reappraisal and
+retry-authorization serving remain unfinished. A declared limit or ACK is not semantic acceptance or
+permission to resend an uncertain attempt.
+
+The published Flow controller owns ready-frontier admission, durable claims,
+lease handling, dependency joins and gate evaluation. Initial create releases only
+currently ready, previously unattempted selected seats within the recorded round
+ceiling (by default, one round per member). Schedule, member-outcome and evaluation observations are retained before
+callbacks return. A final fetch requires the actual active claim under the Flow
+mutation lock. Reports are not converted into gate evidence; a required external
+gate can remain blocked. Views retain `{kind: "flow", runId}` rather than
+reconstructing topology from current files. Returned rounds do not imply that
+the whole Flow run completed. Exact operation replay remains read-only; this
+initial creation loop performs no evaluation-only retry, route-back continuation
+or context ACK. The explicit candidate sync operations remain subject to the
+qualification limits above. Inspect the Project Flow state for current gates and frontier.
+
+Every operation requires current local operator grant authority. Browser
+bootstrap credentials do not suffice. Responses use `Cache-Control: no-store`
+and `{success, data}` or a bounded error code. Views allowlist group/member and
+attempt identities, retained observation/terminal references, integer tariff
+allocations and nullable known usage. They disclose no grant, host path,
+credential witness, prompt or private admission record. Raw results require
+separately authorized canonical task/session reads. Historical reads and exact
+replay survive profile expiry; fresh paid execution still requires a current
+profile. Source remains a pristine bounded tracked tree; only the published
+generated Flow runtime directory is excluded and identity-witnessed. Other
+ignored/untracked files, runtime-directory links and tracked files placed under
+that generated directory refuse. Flow run/gate authority remains separate from
+this source-only exclusion. The bounded Anthropic and Google text profiles and their exclusions
+are described in the [module map](../architecture/module-map.md#narrow-google-source-preparation).
+Configured Agent selection must match a current profile; a public model listing does not prove
+current-account access. These profiles do not supply canonical elicitation.
+The [SDK client](sdk.md#qualified-report-groups) exposes these operations with
+strict response and cursor validation; the [CLI](cli.md#qualified-report-groups)
+consumes it. The Ensemble inspector also lists retained groups and explicitly
+loads authorized raw reports through scoped SDK queries. It displays unresolved
+reservations and unconfirmed termination separately from reported output.
+The [operator guide](../guides/agent-configuration.md#run-independent-advisory-reports)
+walks through the inspector. It also provides explicit budgeted paid-report submission,
+cancellation requests, and pending-cancellation receipt checks. Each mounted
+form allows one attempt, uses scoped authority, and never retries automatically.
+Receipt checks retain the original cancellation key and never resend interrupts.
+An unknown response remains unknown; cancellation is separate from physical
+termination and accounting. The browser create form defaults to independent
+reports and can explicitly select an existing Flow run, per-member steps and
+immutable continuation limits. The API/SDK accept the same selections. Selecting
+them does not establish current serving support; returning-session continuation
+and live-provider qualification remain open for this report-group surface.
+
 ## Connections
 
 The [connection routes](../../src-server/routes/connections/connections.ts)
@@ -2996,6 +3281,489 @@ normal request authentication runs first. See the
 [inference design](../design/inference-fleet.md) for the authority decision.
 
 ---
+
+## Ensemble configuration inspection
+
+`POST /api/orchestration/ensembles/inspect` observes receiver configuration. By
+default it performs no model discovery, login probes or provider turns. It uses `orchestration:operate`
+and requires a current in-person operator on a personal Station. Hosted, Agent
+and paired-device callers are unsupported. Reading a host `path` additionally
+requires the locally minted operator grant; a host browser can instead send
+`presetJson` without gaining host-path read authority.
+
+The closed JSON body contains exactly one of `path` or `presetJson`, `bindings`
+and optional `expectedPresetHash`, `groupBindings`, `groupId` and `verifyAuthentication`. Legacy `bindings` map exact
+preset member IDs to `{agent, projectSlug}`. Alternatively, with empty `bindings`,
+`groupBindings` carries the group draft's `{target, needs}` per member: exact
+Agent ID, expected engine connection, current environment, and Project or directory
+workspace. Model overrides are refused here: models/options always come from the
+preset. A source hash is required for uploaded bytes or either nonempty binding
+form. Empty legacy bindings permit an initial host-file declaration inspection.
+
+Set `groupId` to inspect one explicitly selected recorded Session group with the
+exact preset source and required `expectedPresetHash`. Keep `bindings` empty;
+`groupBindings` and `verifyAuthentication: true` are incompatible with this read.
+The existing group owner, inspection authorization and Session readability checks
+apply. Inspection never infers group membership from an Agent, directory or time.
+The recorded preset hash, ID, Stationmaster, member identities and seats must
+match; older records without member provenance remain unavailable.
+
+The optional `groupInspection` response cell is `{state:'available'}` when the
+host has its owner-backed reader, `{state:'unavailable',detail}` otherwise, or
+`{state:'bound',groupId,revision}` after a successful bound read. Older hosts omit
+it. This offers a metadata read, never authority. Bound facts retain exact
+Session/conversation/initial-turn/terminal references, recorded prerequisites,
+the Flow reference and context-sync receipt metadata. A reservation or launch
+intent without a confirmed handle is indeterminate. References do not assert
+output availability; context ACKs do not establish native/shared memory,
+acceptance or a grant. Schedule/webhook projection remains unavailable.
+The server rereads the authorized group snapshot after awaited inspection,
+checks its stored revision after Flow loading, and refuses changed snapshots as
+stale. Loaded preset-file identity and Knowledge registry currency are checked
+after the final awaited read. Read authority is checked again before publication;
+these checks are observations, not atomic external storage custody.
+Draft prerequisite provenance uses an immutable request snapshot digest, not a
+signed execution receipt.
+
+Set `verifyAuthentication: true` only for an explicit engine sign-in check. It
+requires the current local operator grant even for uploaded presets, and the
+whole roster must have supported native receivers and shared workspaces.
+It uses the same authentication owner as group startup, in each selected
+profile, model and directory; it never starts a Session or makes a model call.
+Private executable/authentication witnesses remain server-side and are checked
+again after the final awaited read. Grant loss refuses publication; changed
+or expired native witnesses return `409 ensemble_inspection_stale`.
+
+The optional `authenticationCheck` response cell offers `{state:'available'}`
+or explains `{state:'unavailable',detail}`. Older hosts omit it. Engine sign-in
+facts distinguish a bounded authenticated observation, a signed-out receiver
+and an unverified check. They do not prove backing API access, model entitlement,
+execution limits or permission to run. Running a group checks authentication
+again. The sign-in check does not begin an interactive login flow.
+
+The response envelope is `{success:true,data}` with version
+`station.ensemble.inspection/v1`, exact source hash, environment, observation time,
+allowlisted resolution receipts and bounded facts. Declared prerequisites remain
+authored draft facts, separate from runtime observations. A prerequisite ID absent
+from the preset is refused with `422 ensemble_inspection_invalid` before receiver
+resolution or capability inspection. Each prerequisite fact's optional `needs`
+list retains those exact member references for the diagram. Directed arrows and
+the accessible table use the same facts; neither computes Flow readiness or
+execution order. Diagram nodes and prerequisite references link to their fact
+rows. Missing and disabled
+MCP definitions are labeled; effective delivery and grants remain unknown. No
+prompt appends, credentials or raw definitions are returned.
+
+Each fact identifies its category, origin, state and owner reference. Categories
+cover members/models, routing/triggers, tools/services, workspace, memory,
+schedules/webhooks and output destinations. Missing live bindings and unsupported
+owner projections remain unavailable or unknown. Stationmaster is an identity,
+not a routing edge or grant. Native engine identity is separate from API model
+connection identity. A successful inspection grants no execution authority.
+
+For Project bindings, the inspector also reads the owning Project's tool defaults
+and knowledge namespace configuration. Built-in namespace identities take
+precedence over conflicting custom entries. It uses the storage owner's bounded,
+zero-write registry observation for registered Project stores; an unavailable
+registry is disclosed rather than treated as empty. A digest change before
+publication makes the response stale. Directory-only bindings never acquire a
+Project's tools or stores from a matching path.
+
+Each member shows at most four namespace details and four registered store
+metadata entries, with total configured/registered counts. Knowledge content,
+storage paths, embeddings, backend construction and secret resolution are not
+part of inspection. Registered metadata is not proof of adapter availability,
+retrieval, injection, conversation memory, delivery or write authority. The
+ordinary memory/continuity fact remains unavailable without a bound Session.
+
+Host-path requests are limited to 16 KiB; uploaded requests to 256 KiB, with the
+preset itself bounded to 128 KiB of UTF-8. Responses are limited to 256 KiB, with at most 512 facts and
+eight displayed tool references per member. Responses use `Cache-Control: no-store`.
+Authority refusal returns 403, stale source/configuration 409, and unavailable
+inspection 422; oversized requests return 413. Request validation errors use
+`ensemble_inspection_invalid`. Errors omit raw filesystem/provider diagnostics.
+Final source/configuration/request checks are observations, not atomic external
+filesystem custody. The Agents inspector is reached at `/agents?tab=ensembles`.
+The group form's **Inspect group configuration** action uses its exact draft
+bindings and the same read-only projection. Each member defaults to Directory;
+**Use a Project binding** replaces the directory input with a Project ID. The
+server resolves that Project's workspace and defaults. Switching back restores
+the directory draft, but only the selected binding is inspected or saved; a
+matching path never selects a Project automatically. Editing the draft clears
+the observation. Inspection neither saves nor launches the group; saving and
+running resolve and authorize current configuration again.
+
+## CLI session groups
+
+The personal runtime exposes an initial Station-authorized session-group path:
+
+Station Control offers `create_session_group`,
+`create_session_group_from_ensemble`, `list_session_groups`,
+`get_session_group`, `get_session_group_events`, `run_session_group`,
+`cancel_session_group` and `sync_session_group` to a bound caller with a
+recorded owner. New groups bind to the verified Session and its recorded
+principal, so a newly issued credential for that same Session can resume them.
+Each request still requires a current bound credential; a different Session or
+principal cannot continue them. Older credential-bound groups retain their
+original ownership and are not automatically rebound. Ensemble creation accepts inline preset JSON only.
+The event tool reads a bounded page using `afterRevision`; repeat with
+`nextRevision` to observe later changes. It does not run supervision.
+Unavailable hosts and current-authority failures are returned as refusals.
+
+The Agents inspector (`/agents?tab=ensembles`) has an explicit **Show session
+groups** action. Its bounded inventory displays the persisted members, their
+Flow dependencies, observed turn outcomes and unresolved starts. A read-only
+dependency graph and the member table use the same returned group revision.
+Arrows run from declared prerequisite seats to their dependents; fixed grid
+positions do not imply execution order. The retained preset hash identifies the
+source, without joining to a newer preset by name. Last-observed states do not
+prove work acceptance. **Open member
+session** navigates to the ordinary Activity session view. Inspection neither
+starts a group nor inherits mutation authority. The view withholds observations
+when current authority is lost or a refresh is refused.
+
+**Use a preset from this device** reads a user-selected UTF-8 JSON file of at
+most 128 KiB in the browser. It shows the roster and digest without a host-file
+read. After loading that file or inspecting a host preset, **Create a CLI session group** opens an explicit
+brief and receiver-binding form. **Save session group** persists the group without
+starting engines. **Run session group** starts supervision using the same current
+Station authority; **Cancel session group** requests interruption. Leaving the
+form aborts its pending supervision request. An unconfirmed creation or run is
+never automatically repeated; inspect the saved inventory before another action.
+The form reports scheduling completion separately from work acceptance.
+
+Before a preset-derived group reserves or starts any member, run supervision
+resolves the entire saved roster and observes each member's login in its actual
+Agent/profile, connection and canonical workspace context. All observations must
+succeed before Flow claims work. Codex and Claude support this non-model login
+check; ACP/OpenCode and non-shared Project workspaces currently refuse with
+`ensemble_auth_unsupported` before any member starts. Unauthenticated/unknown
+login returns `ensemble_auth_unverified`. Creating a preset group and ordinary
+configuration inspection perform no login probe and start no member Session.
+An explicit sign-in inspection uses the same observer without admitting work.
+
+Observations are private to that supervision run and bound to the persisted
+intent. Configuration/permission currency is rechecked at dispatch and the
+session/initial-turn effect boundaries. Each pending member gets a fresh login
+observation immediately before its start reservation; concurrent preparation
+shares that probe. Independent native status probes overlap only after the whole roster's receiver
+support has been established. The request waits for every probe to settle,
+including when a member refuses, so no probe outlives its request. The closing
+native-launch fence still requires an observation less than 30 seconds old. Slow dispatch preparation can still refuse rather than
+extend that window. A changed binding refuses rather than rebinds. Cancel/deadline abort the bounded login
+commands. Completed replay and zero-allowance groups need no new login probes.
+A later per-seat login refusal remains a bounded `dispatchFailure` on the pending
+seat without consuming a start reservation. Manual groups retain their ordinary
+dispatch path. Login proves neither selected
+model entitlement nor output, token, dollar or portable-envelope enforcement.
+
+The private login continuation also checks the resolved credential profile and
+native executable at launch, and witnesses bounded local auth/config files,
+including their absence. It does not travel in JSON or grant permission. Guarded
+Codex app-server starts use the observed member cwd; its session tool/confinement
+overrides may not change authentication configuration. Claude checks the SDK's
+actual process launch before confinement wrapping. At the `--settings` argument
+layer it permits only `fastMode` as a boolean and `disableAutoMode: "disable"`. Native bookkeeping changes do not
+invalidate an unchanged authentication projection.
+
+Codex requires a directly observed native executable; an unbound shell wrapper
+is not qualified. Dormant custom profiles and provider declarations do not
+invalidate default OpenAI authentication when no witnessed configuration layer
+selects a profile, a custom default provider, or an override of the built-in
+`openai` provider. Every configuration file remains witnessed. Activating a
+profile through another layer, changing a file after observation, or selecting
+a profile through launch arguments still refuses before effect.
+
+These checks support local file/env authentication and Claude's macOS Keychain
+namespace. The private Keychain witness retains only an in-memory equality digest,
+including explicit absence, and re-reads the item before native launch. Unavailable
+or changed items refuse. Request and admission currency are checked again after
+that bounded read. Credential bytes are neither logged nor included in group
+receipts. Non-file Codex stores, credential/policy helpers, detected managed
+preferences or cloud-config cache, Windows registry stores and alternate cloud
+credential chains currently refuse. Claude's effective-config and default-home
+`remote-settings.json` caches are refusal/absence witnesses; remote-settings path
+or mock-payload environment overrides are unsupported. File witnesses are bounded
+observations,
+not atomic file handles or protection from a hostile host owner. Remote policy,
+provider revocation and credential rotation after spawn remain unverified.
+
+Local-operator inventory inspection fails the whole page with 404 when any
+accepted member on that page fails the session-read check. It does not return a
+partial page or disclose which group was unreadable.
+
+
+- `POST /api/orchestration/session-groups`: create or replay an operation.
+- `POST /api/orchestration/session-groups/from-ensemble`: create from a preset and explicit receiver bindings.
+- `GET /api/orchestration/session-groups?afterGroupId=<cursor>`: list caller-owned groups in bounded pages.
+- `GET /api/orchestration/session-groups/:groupId`: inspect its durable members.
+- `GET /api/orchestration/session-groups/:groupId/events?afterRevision=0`: read retained group revision deltas.
+- `GET /api/orchestration/session-groups/:groupId/events/stream?afterRevision=0`: stream those deltas with resumable SSE checkpoints.
+- `POST /api/orchestration/session-groups/:groupId/run`: supervise the ready Flow frontier until return, cancellation or deadline.
+- `POST /api/orchestration/session-groups/:groupId/cancel`: close admission and request member interruption.
+- `POST /api/orchestration/session-groups/:groupId/sync`: send a folded result into the retained member conversations.
+
+**CLI session-group observation:** a group event subscription uses a separate,
+bounded-lifetime fetch-SSE connection with its own group/revision cursor and
+explicit journal-gap disclosure. It does not use the canonical orchestration
+stream's global sequence or snapshot protocol. The
+[group event route](../../src-server/routes/orchestration/cli-session-group-events.ts)
+reuses the shared SSE and group-stream lifetime owners and rechecks current read
+authority before publication. Observation does not reserve or start an engine.
+An explicit observer adds a connection for its subscription lifetime; the
+historical connection counts below are not a current all-surface census or a
+connection-capacity guarantee.
+
+This path is under development on the child-work branch. Controlled-adapter
+checks exercise the actual delegation, session and event-store path. A live
+three-seat OpenCode/GLM Flash group completed on source `fe998248b601`, including
+a dependency join and an inert supervision replay after runtime restart. That
+bounded result does not establish other engine families, billing, hosted or
+native acceptance. This path does not activate the separate hard-cap API group
+runtime or complete #205.
+
+Creation takes `operationId`, `maxConcurrent` (1–32), an absolute `deadlineAt`
+within 30 minutes, and 1–32 `members`. Optional `maxDispatches` bounds total
+reserved seat starts from zero through the roster size; omission uses the roster
+size. Reservations count even when a start is refused or remains uncertain.
+When this allowance is used while seats remain pending, `admissionClosed` is
+`dispatch-limit-exhausted` in the group view and revision journal. Reopen retains
+the count and closed admission; changing the allowance under the same operation
+conflicts. Previously reserved starts retain their accounting and supervision,
+and Flow continues to own its state. This bounds logical seat starts, not hidden
+provider attempts, tokens or charges. Each member has `seatId`, `prompt`, a local
+execution `target`, optional `parentTaskId` and optional `needs` naming predecessor
+seats. The target must include its expected engine connection. Station waits for its existing engine-start lease during group dispatch;
+accepted member turns can still overlap. Station reuses the
+ordinary delegation route's actor, posture, full-access, workspace, receiver and
+lineage decisions; a group does not authorize anything those decisions refuse.
+The preset entry point accepts exactly one source: `path` (a canonical JSON path
+on this Station, requiring the current locally granted operator), or `presetJson`
+(caller-supplied JSON bytes, under ordinary session-group request authority).
+The browser's `ui-bootstrap` credential can submit its selected file's JSON but
+cannot use this endpoint to read a host path. Supply `expectedPresetHash`, `brief`,
+`operationId`, `maxConcurrent`, `deadlineAt`, and `bindings` keyed by every preset
+member ID. Each binding supplies a local `target` with an Agent, expected engine
+connection and explicit Project or directory workspace, plus `needs` (an array,
+empty for independent members). The preset supplies the model, options, prompt
+additions and shared roster; bindings cannot override them. Each composed brief
+also identifies its own member by an escaped seat ID, codename, role and
+Stationmaster marker before the shared roster. Members using the same Agent or
+engine therefore receive distinct assignments even without prompt additions.
+Those declarations grant no permissions. Native engine names
+match the provider identity; a configured CLI engine uses its connection identity
+(for example `opencode`). Station resolves configuration without starting an
+authentication or model-discovery process. Creation persists composed member
+briefs; it does not start sessions or prove authentication. Editing the preset
+after creation does not change those briefs. Run performs the normal current
+delegation and engine-start checks. Hard fiscal guarantees remain unavailable.
+
+Context sync takes `{operationId, runId, content, deadlineAt}`. The complete
+folded result is bounded to 128 KiB of UTF-8 inside a 256 KiB request; the
+absolute sync deadline must be within 30 minutes. All seats must have returned
+successfully. The current implementation accepts retained Claude Code sessions
+only, with an exact native identity and configuration-home/credential binding;
+other engines refuse during group-wide preflight, before any sync attempt is
+reserved. Known nonpersistent Sessions also refuse that preflight. New durable
+Task launches request provider transcript retention; an old missing native
+transcript is not reconstructed from its cursor. The qualified native runtimes
+are Claude Code 2.1.308, 2.1.318 and 2.1.322. The 2.1.322 qualification uses
+Agent SDK 0.3.322 and synthetic loopback inference, including a real group caller's
+wrong-ACK retry and replay. It does not establish real-provider billing, restart
+recovery or portable authority; see the
+[retained-session conformance boundary](../conformance/tool-policy-delivery.md#retained-session-context-sync).
+Station stops the ordinary activation, resumes the same conversation with an
+empty builtin tool set and command-line wildcard denial, and sends through the
+canonical turn boundary. This restricts model-tool execution; it does not claim
+an empty advertised tool list, an OS sandbox or suppression of startup hooks.
+
+Each member has at most two durably reserved sync attempts. Only a completed
+turn with positive completion authority, contiguous observed events, no runtime
+error, no reported tool calls and a mismatching reply permits the second.
+The reply must equal `ACK SYNC <runId>` byte for byte; whitespace is not trimmed.
+A reported tool call fails the member even if the reply matches. An ambiguous
+start, missing terminal evidence, cancellation or lost authority retains an
+unknown attempt and is never resent. The activation remains fenced until an
+explicit Session stop confirms teardown. Prepared-turn replay cannot bypass the
+restriction after a restart. A successful sync parks the restricted activation;
+the next ordinary turn resumes the same native conversation normally.
+
+The private group record retains up to eight sync operations. The latest
+`contextSync` view and revision deltas report the content hash, run ID, per-seat
+status, reserved attempt count, timestamps and exact terminal evidence; completed
+receipts also carry an opaque native-identity hash and reported tool-call count.
+They omit folded content and raw output. Context is sent to the member Session and remains subject to its transcript
+authorization. `incomplete` and `unknown` remain visible; an
+ACK confirms received context, not accepted work or verified understanding.
+Sync POST responses carry the named operation's retained `contextSync`, including
+when a later operation exists. Read-only replay reports no active supervision;
+a retained `syncing` entry projects as `incomplete`, as it does on an idle GET.
+This does not establish physical termination. Ordinary get/list views expose the latest sync.
+Changed content or run identity conflicts. Replay still requires an idle group
+and a supplied future deadline within 30 minutes; an expired original request
+cannot recover through this POST. These observation checks never resend turns. New operations cannot bypass retained unknown attempts.
+No fiscal or physical-attempt guarantee follows from the two logical attempts.
+
+New preset-derived records also retain `preset` identity (`presetId`, `name`,
+`sha256`, `stationmaster`) and a bounded `members` roster of seat ID, codename,
+color and role. The inspector uses these retained labels across later reads;
+roles grant no permissions. The host path, raw preset JSON and prompt additions
+are omitted from this identity view. Exact source
+identity participates in operation replay, so changed bytes conflict even when
+they parse to the same roster. Older groups have no recorded preset identity;
+the server does not reconstruct it from prompt text. Records predating the
+retained member roster display seat IDs. Server reads refuse a retained roster
+whose unique seats do not match the group membership. A retry of a group that
+already stored the four-field preset identity can match that legacy projection
+when all source and launch inputs are unchanged. It returns the legacy
+record without backfilling names. New records continue to bind the complete
+retained identity; changed source bytes or briefs still conflict.
+
+Group event pages carry changed public member records and the scheduler events
+reported by published Flow. They contain no briefs or model output. Use the group
+view as the membership baseline and ordinary member session/delegation endpoints
+for raw output, input requests and responses. The journal observes writes; it does
+not evaluate readiness, joins or work acceptance.
+
+While supervised, a member may carry an `attention` observation: `needs-input`,
+`review-pending` or `blocked`, its observation time and, when reported, the
+existing request/event IDs. Question text and answer permissions remain with the
+ordinary session/delegation readers. Repeated identical observations add no
+journal entries; a resumed or terminal member clears the observation. A waiting
+member continues to occupy its seat. The inventory labels this as the last
+observation and directs the operator to the member session; it does not grant
+permission to answer.
+
+Completion follows the accepted initial provider turn, even if the conversation
+has already started a later turn. Its completion must report a provider-proven
+finish reason (`stop`, `tool-calls` or `max-tokens`). An absent reason or `other`
+does not release a required successor; cancellation remains a canceled outcome.
+These reasons establish an execution outcome, not semantic acceptance or a
+complete, untruncated result. Group interruption names that accepted turn when known,
+rather than interrupting a later turn in the same conversation. An unconfirmed
+turn cannot be targeted for interruption: admission closes, its capacity stays
+occupied and no stop is claimed. Missing initial completion evidence remains
+unconfirmed.
+
+Failure and cancellation also require an event naming that exact initial turn:
+`runtime.error` or `turn.aborted`, or a `turn.completed` event with the cancelled
+finish reason. A deferred, retriable Codex error is not terminal. Generic session
+status cannot close the seat. Supervision reads a bounded 20-turn event window;
+a missing terminal or a byte-elided error leaves the outcome unknown and the
+seat occupied. The reader does not infer omitted error fields or recover a
+terminal outside that window. A later visible initial-turn completion can still
+settle the seat while supervision remains active.
+
+Each page has `afterRevision`, `nextRevision`, `events`, `hasMore` and explicit
+`unavailable` entries for oversized rows. Pages hold at most 64 revisions and
+256 KiB; the private group record retains at most 4096 journal revisions within
+its existing 1 MiB bound. Oldest observations are evicted to keep those bounds;
+history capacity never blocks cancellation by itself. Older records and evicted
+history report `gap.availableFromRevision` when prior observations are absent;
+the server never reconstructs them from
+current state. A cursor ahead of the durable record is refused.
+
+The SSE event is `cli-group-events`; its ID binds the group and revision as
+`cli-group:<encoded-group-id>:<revision>`. A matching `Last-Event-ID` resumes
+after the acknowledged page. Other-group or backward checkpoints are refused.
+Streams rotate after 60 seconds. Same-process writes wake observers; a 15-second
+refresh also observes other processes and rechecks authority. Authority is checked
+again before publication. Stream failure reports an opaque `unavailable` frame;
+it never authorizes a launch, retry or cancellation.
+
+The authenticated credential/caller binding owns group mutations. The current
+in-person local operator may also inspect a group from another credential, but
+every accepted member must pass Station's existing session-read check. Inspection
+does not transfer run/cancel authority; a supplied user ID grants nothing.
+
+Published Flow owns readiness, durable claims, dependency joins and gate
+appraisal. Station records launch intent and server-minted session/client-turn
+identities before dispatch. An accepted handle adds the actual provider turn.
+A dependent seat is released only after Station observes the exact member turn's
+completion in the authorized event window and attaches that observation as an
+explicitly `assumed` Flow claim. This is scheduling evidence, not independent
+acceptance of the member's work; group `acceptance` remains `unassessed`.
+
+Members retain the existing delegation endpoints for status, raw events,
+interrupt, reply and continuation. Group supervision waits through `needs_input`;
+answer the member's existing request rather than starting another member. If the
+bounded event window cannot establish the original turn's completion, the seat
+stays occupied. A changed session does not silently replace the accepted one.
+
+Responses disclose `authority: "station-session"` and
+`portableFlowLineage: "unbound"`. Dollar, token and physical-attempt caps are
+`unavailable`. A session turn can contain hidden retries or other provider work;
+its identity is not a physical-attempt count. Existing session permissions and
+confinement still apply. The deadline stops admission and requests interruption;
+it is not proof of physical termination. With no supervisor running after a restart,
+the deadline does not itself issue interruption requests; use explicit cancel.
+Unknown cost is not zero.
+
+A dispatch refusal retains its HTTP status and closed code as `dispatchFailure`,
+without copying provider diagnostics into the group. When the shared route
+witnesses refusal before calling the delegation launcher, the seat becomes
+`terminal` with outcome `failed`, without inventing a session handle or provider
+terminal event. It is not resent after reopen and cannot satisfy a required
+dependency. A refusal response alone is not proof that no effect occurred:
+if the launcher was entered, uncertainty retains its occupied seat and reserved
+identifiers across
+restart. Re-running supervision never re-sends that seat. Cancellation is durable,
+and synchronous checks also fence the initial adapter start and turn after
+asynchronous setup. Interrupted supervision can re-observe accepted members;
+it does not manufacture a completion or a stop proof. Creation and context-sync
+request bodies are bounded to 256 KiB. The runtime retains at most 128 groups
+across all credential owners without automatic eviction.
+
+## Ensemble preparation observations
+
+> This unpublished diagnostic has passed bounded independent review at `9df426d7`
+> for managed-owner configuration currency and mocked login observations. Booted
+> Station composition, real credentials/providers and atomic filesystem-to-execution
+> custody remain unverified. It does not prepare or launch a bounded group.
+
+`POST /api/orchestration/ensembles/prepare` is a local preparation diagnostic, not a
+launch operation. The route belongs to `orchestration:operate` and additionally
+requires a bound host-minted local-operator grant on a personal Station. A raw
+operator credential alone does not qualify, even over loopback. Hosted, Agent
+and device authority do not qualify for this caller. Current request authority is
+rechecked around asynchronous resolution and last in a synchronous finalizer before
+each probe subprocess. Source-file witnesses, Project revisions, provider
+launchability and the runtime Agent configuration revision bind managed settings
+through asynchronous setup.
+
+The closed JSON request contains `path`, `expectedPresetHash` (`sha256:` followed
+by 64 lowercase hex digits), `brief` and `bindings`. Each binding is keyed by a
+preset member ID and contains `{agent, projectSlug}`. The server supplies the
+current Environment and resolves the receiver-owned Agent, engine connection,
+credential-profile selection and canonical shared Project folder. Preset bytes
+must match the supplied digest. Connections are read without model discovery;
+unknown readiness remains unknown. Ordinary execution still requires ready status.
+
+For supported Claude/Codex contexts without model-option discovery, the adapter
+runs a bounded, uncached login-status command using the selected executable,
+workspace and connection/profile environment. The returned observation contains
+`state`, an opaque `contextHash`, `checkedAt`, `modelEntitlement: "not-checked"`
+and `outputTokenLimitFidelity: "unavailable"`. It contains no CLI output or
+credential value. Observed identity, profile, folder or preset changes refuse the
+result. Managed-owner changes covered by the finalizer refuse before the probe.
+Direct external filesystem changes can race the sequential checks: late cwd or
+preset changes may permit a probe before postflight refusal, and creation then
+deletion of an initially absent source is not remembered. These observations do
+not establish atomic execution or hostile same-UID isolation.
+
+The current production caller always refuses bounded-group preparation: login
+alone establishes neither selected-model entitlement nor native output-token
+limits. It stops at the first unsupported member and issues no complete prepared
+snapshot, session or provider turn. API engines and presets requiring option or
+reasoning catalog discovery are unsupported in this caller.
+
+Responses use `{success:false,code,error?,observation?}`: invalid schema returns
+400, missing local-operator authority returns 403, and preparation refusals return
+422. Codes distinguish stale preset, unsupported workspace/authentication/options,
+changed context, unverified login and unavailable execution guarantees. Generic
+errors return `ensemble_preparation_refused` without exposing preset contents or
+credential paths. See the [service](../../src-server/services/orchestration/ensemble-execution-context.ts)
+and [route](../../src-server/routes/orchestration/ensemble-preparation.ts).
 
 ## Orchestration model launch behavior
 
@@ -3654,8 +4422,8 @@ Withdrawn and retention-expired observations are excluded; an expired or revoked
 companion binding refuses. Coverage
 is `{state:"unknown",reason:"retained-terminal-observations-only",retentionDays}`.
 Source revocation and person, tenant and companion changes end held responses.
-The route has no capability flag or SDK/UI client yet, and is not joined to
-product telemetry.
+The `privateOperationalOutcomes` capability flag and scoped SDK reader
+`fetchPrivateOutcomes` expose this route. It is not joined to product telemetry.
 
 ### Principal-owned saved analytics views
 
@@ -4095,14 +4863,17 @@ still return a string `error`; a message substring is not a universal API error
 code. Authentication, origin, scope, membership, and operation-specific refusals
 also have their own shapes.
 
-Every JSON response the runtime writes itself, success or refusal, carries the
-response header `x-station-envelope: 1`
+JSON responses that pass through the runtime's envelope-marker middleware,
+success or refusal, carry the response header `x-station-envelope: 1`
 (`STATION_ENVELOPE_HEADER` in `@kontourai/station-contracts/http`), and CORS
 exposes it. Because there is no universal envelope, a reverse proxy or gateway
 can answer with JSON in a Station shape; the header is how a client tells
 Station's own answer from one written in between. The header is set by
 [one middleware](../../src-server/runtime/bootstrap/runtime-http.ts) around
-every handler. The refusals Station writes outside that app set it
+downstream handlers. The earlier
+[outside-agent token-audience guard](../../src-server/security/outside-agent-token-audience.ts)
+can return an unmarked JSON 401 `{error: "invalid_token"}` before that middleware
+and CORS run. The refusals Station writes outside that app set it
 themselves: the [virtual application ingress](../../src-server/services/connections/virtual-application.ts)
 (its admission refusals, and the 502 that replaces an app answer which tried
 to set a cookie) and the self-hosted broker's
@@ -6645,7 +7416,7 @@ refusals from the same proxy or NAT.
 The public handshake and proof remain reachable. The landing page, `/doc`,
 `/ui`, and integration icons are exempt because navigation and image requests
 cannot attach this header. Other capability families, attested internal
-loopback callers, and the separate terminal/voice WebSocket listeners are
+loopback callers, and the terminal and voice WebSocket upgrade paths are
 outside this HTTP check. Exemptions follow the capability table, not a blanket
 exception for every iframe, image, or link request. See the
 [admission owner](../../src-server/security/client-protocol-admission.ts) and

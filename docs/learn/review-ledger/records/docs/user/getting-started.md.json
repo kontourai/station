@@ -286,6 +286,12 @@
 
     "src-ui/src/components/chat-dock/MobileInboxPanel.tsx",
 
+    "src-ui/src/utils/sessionDisplay.ts",
+
+    "src-ui/src/views/home/home-view-model.ts",
+
+    "src-ui/src/views/SessionsView.css",
+
     "docs/guides/deployment-authentication.md",
 
     "docs/guides/plugins.md",
@@ -295,10 +301,6 @@
     "src-ui/src/hooks/orchestration/childWorkHandlers.ts",
 
     "src-ui/src/utils/child-work-display.ts",
-
-    "src-ui/src/utils/sessionDisplay.ts",
-
-    "src-ui/src/views/home/home-view-model.ts",
 
     "src-ui/src/components/chat/message-bubble/MessageDeliveryNote.tsx",
 

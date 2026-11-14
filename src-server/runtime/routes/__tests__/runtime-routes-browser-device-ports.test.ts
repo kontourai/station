@@ -128,7 +128,12 @@ describe('runtime routes: the browser deny set includes every device port', () =
       }),
       taskGraphService: { listTasks: () => [] },
       projectService: { listProjects: () => [] },
-      environmentSecurityService: deepStub({}),
+      environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
+        devicePairing: deepStub({
+          withCurrentRegistry: <T>(read: () => T): T => read(),
+        }),
+      }),
     });
     Reflect.set(context as object, 'buildRuntimeContext', () => context);
     const result = configureRuntimeRoutes(

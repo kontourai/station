@@ -18,6 +18,8 @@
 
     "packages/sdk/src/mobile-device.ts",
 
+    "src-server/routes/__tests__/browser-agent-capture.test.ts",
+
     "src-server/routes/browser-agent.ts",
 
     "src-server/routes/browser.ts",
@@ -31,6 +33,8 @@
     "src-server/routes/live-surface.ts",
 
     "src-server/routes/mobile-device.ts",
+
+    "src-server/routes/orchestration/task-review-captures.ts",
 
     "src-server/runtime/routes/runtime-routes.ts",
 
@@ -90,7 +94,17 @@
 
     "src-server/services/mobile-device/mobile-device-host.ts",
 
+    "src-server/services/orchestration/project-task-room-runtime.ts",
+
+    "src-server/services/projects/task-browser-capture.ts",
+
+    "src-server/services/projects/task-browser-recording.ts",
+
+    "src-server/services/walkthroughs/task-walkthrough-store.ts",
+
     "src-server/tools/station-browser-mcp-server.ts",
+
+    "src-server/tools/station-browser-policy.ts",
 
     "src-server/tools/station-control-browser-tools.ts",
 
@@ -100,43 +114,31 @@
 
     "src-ui/src/live-surface/useLiveSurface.ts",
 
-    "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
+    "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx",
 
-    "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
+    "src-ui/src/views/task-workspace/review/TaskReviewClips.tsx",
 
-    "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
-
-    "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
+    "src-ui/src/views/task-workspace/review/TaskReviewTab.tsx",
 
     "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
 
     "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
 
+    "src-ui/src/workspace-panes/PaneOverflowMenu.tsx",
+
+    "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
+
     "src-ui/src/workspace-panes/browser-pane/BrowserPane.css",
 
-    "src-server/services/projects/task-browser-capture.ts",
+    "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
 
-    "src-server/routes/orchestration/task-review-captures.ts",
-
-    "src-server/routes/__tests__/browser-agent-capture.test.ts",
+    "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
 
     "src-ui/src/workspace-panes/browser-pane/BrowserTabs.tsx",
 
-    "src-ui/src/views/task-workspace/review/TaskReviewTab.tsx",
+    "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
 
     "tests/task-review.spec.ts",
-
-    "src-server/services/projects/task-browser-recording.ts",
-
-    "src-server/services/walkthroughs/task-walkthrough-store.ts",
-
-    "src-server/tools/station-browser-policy.ts",
-
-    "src-ui/src/views/task-workspace/review/TaskReviewClips.tsx",
-
-    "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx",
-
-    "src-ui/src/workspace-panes/PaneOverflowMenu.tsx",
 
     "src-ui/src/components/browser-activity/InlineBrowserActivity.tsx",
 

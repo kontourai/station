@@ -116,7 +116,7 @@ describe('no HTTP route returns an outbound peer bearer (#2377 C2b)', () => {
       return realGet.call(this, environmentId);
     });
 
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir,
       environmentId: '44444444-4444-4444-8444-444444444444',
     });
@@ -176,6 +176,7 @@ describe('no HTTP route returns an outbound peer bearer (#2377 C2b)', () => {
         list: () => [],
       }),
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           credential === OPERATOR_SECRET ||
           pairing.verifyCredential(credential),

@@ -127,9 +127,12 @@ async function receiverFixture(
 ) {
   const home = mkdtempSync(join(tmpdir(), 'station-connect-modal-receiver-'));
   receiverHomes.push(home);
-  mkdirSync(join(home, 'security'), { recursive: true });
+  mkdirSync(join(home, 'security'), { recursive: true, mode: 0o700 });
   const environmentId = '11111111-1111-4111-8111-111111110259';
-  const pairing = new DevicePairingService({ homeDir: home, environmentId });
+  const pairing = await DevicePairingService.create({
+    homeDir: home,
+    environmentId,
+  });
   let releaseDiscovery = () => {};
   const discovery = holdDiscovery
     ? new Promise<void>((resolve) => {

@@ -12,6 +12,12 @@
 > this record preserves the reasoning and defects that shaped extraction, not a
 > fresh certification of every current event ordering or ownership boundary.
 
+Current follow-up (2026-10-24): the test-only
+`restartCredentialProfileRecoverySession` forwarder described in trap T11 was
+removed. Its eight test call sites now reach the actual constructed
+`CredentialProfileRecovery.restartRecoverySession` owner through test support.
+The historical forwarder counts and line numbers below remain dated evidence.
+
 **Status (historical):** this was the working document for the
 decomposition epic (archive#4024, re-filed as #421, still open). Its last
 full derivation is Part II (2026-08-25); it is no longer maintained, and a

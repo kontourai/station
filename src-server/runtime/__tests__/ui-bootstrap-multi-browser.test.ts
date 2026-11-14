@@ -32,11 +32,11 @@ const TAILNET_ORIGIN = 'https://station.tailnet.example.test';
 const SHARED_PEER = '127.0.0.1';
 const MINT_PEER = '127.0.0.9';
 
-function createHarness() {
+async function createHarness() {
   const homeDir = makeTempDir('station-ui-bootstrap-multi-browser-');
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
   const secretPath = join(homeDir, 'runtime', 'local-grant.secret');
-  const pairing = new DevicePairingService({
+  const pairing = await DevicePairingService.create({
     homeDir,
     environmentId: '11111111-1111-4111-8111-111111111111',
   });
@@ -144,7 +144,7 @@ describe('sign-in links on more than one browser', () => {
   ])(
     'a second browser signing in on %s leaves the first signed in',
     async (_label, firstOrigin, secondOrigin) => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const desktop = await harness.openLinkInNewBrowser(firstOrigin);
       expect((await harness.load(desktop.cookie)).status).toBe(200);
 
@@ -169,7 +169,7 @@ describe('sign-in links on more than one browser', () => {
   );
 
   test('revoking one browser ends only that browser', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const desktop = await harness.openLinkInNewBrowser(UI_ORIGIN);
     const phone = await harness.openLinkInNewBrowser(TAILNET_ORIGIN);
 
@@ -182,7 +182,7 @@ describe('sign-in links on more than one browser', () => {
   test('a browser that already holds a session keeps its own device on a new link', async () => {
     // Re-opening a link in a signed-in browser stays idempotent: it neither
     // mints a second device for that browser nor touches the other one.
-    const harness = createHarness();
+    const harness = await createHarness();
     const desktop = await harness.openLinkInNewBrowser(UI_ORIGIN);
     const phone = await harness.openLinkInNewBrowser(TAILNET_ORIGIN);
     const before = harness.pairing.listDevices().length;

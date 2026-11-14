@@ -21,8 +21,8 @@ step 5 of that epic, written early so surfaces stop being argued one at a time.
 Station is converging on one composition model: **work surfaces are panes**,
 declared through the workspace-pane contract that plugins already use, and the
 shell is the fixed machinery that hosts them. This document is the decision
-rule for which side of that line a surface sits on, and the current
-classification of every surface the shell knows.
+rule for which side of that line a surface sits on, and the recorded migration
+classification of the surfaces considered at that time.
 
 ## The rule
 

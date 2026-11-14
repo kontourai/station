@@ -264,13 +264,16 @@ function validDurabilityProfile(value: unknown): boolean {
     'compaction',
     'partialOutput',
     'usage',
+    'queuedFollowUp',
   ];
   if (Object.keys(profile).some((key) => !cells.includes(key))) return false;
   for (const key of cells) {
     const value = profile[key];
+    if (key === 'queuedFollowUp' && value === undefined) continue;
     if (!value || typeof value !== 'object' || Array.isArray(value))
       return false;
     const cell = value as Record<string, unknown>;
+    if (key === 'queuedFollowUp' && cell.state !== 'none') return false;
     if (
       typeof cell.state !== 'string' ||
       !['native', 'emulated', 'none'].includes(cell.state) ||

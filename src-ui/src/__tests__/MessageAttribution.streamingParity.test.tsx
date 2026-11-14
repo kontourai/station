@@ -23,7 +23,16 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+
+const { mobile } = vi.hoisted(() => ({ mobile: { current: false } }));
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => mobile.current,
+}));
+afterEach(() => {
+  mobile.current = false;
+});
 
 vi.mock('../contexts/AgentsContext', () => ({
   // `agentEngineDescriptor({ slug: 'dev-agent' })` resolves this to
@@ -63,6 +72,7 @@ vi.mock('../hooks/useStreamingContent', () => ({
 }));
 
 import { ChatMessageList } from '../components/chat/ChatMessageList';
+import { StreamingMessage } from '../components/chat/StreamingMessage';
 
 const OWNER = { id: 'casey', label: 'Casey Example' };
 const GAP = { state: 'unavailable', reason: 'not-reported-by-engine' } as const;
@@ -81,6 +91,39 @@ function renderWithQueryClient(ui: ReactElement) {
 }
 
 describe('streaming vs. persisted row attribution parity (station#1424 review round 3 NEW-1, refined round 4)', () => {
+  test('mobile streaming retains recorded posture and clears it when no record is supplied', () => {
+    mobile.current = true;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = (
+      permissionPosture: 'delegated-worker' | 'delegated-task' | null,
+    ) => (
+      <StreamingMessage
+        sessionId="mobile-child"
+        agentIcon={<span />}
+        agentIconStyle={{}}
+        fontSize={14}
+        permissionPosture={permissionPosture}
+      />
+    );
+    const renderView = (
+      posture: 'delegated-worker' | 'delegated-task' | null,
+    ) => (
+      <QueryClientProvider client={queryClient}>
+        {view(posture)}
+      </QueryClientProvider>
+    );
+    const { container, rerender } = render(renderView('delegated-worker'));
+    expect(within(container).getByText('Delegated worker')).toBeTruthy();
+    rerender(renderView('delegated-task'));
+    expect(within(container).getByText('Delegated task')).toBeTruthy();
+    expect(within(container).queryByText('Delegated worker')).toBeNull();
+    rerender(renderView(null));
+    expect(within(container).queryByText('Delegated task')).toBeNull();
+    expect(within(container).queryByText('Read only')).toBeNull();
+  });
+
   test('streaming and persisted rows render identical agent identity, owner chip, and engine-chip presence state — no transition delta', () => {
     const { container: streaming } = renderWithQueryClient(
       <ChatMessageList
@@ -98,6 +141,11 @@ describe('streaming vs. persisted row attribution parity (station#1424 review ro
           updatedAt: Date.now(),
           source: 'manual',
           messages: [],
+        }}
+        orchestrationSession={{
+          threadId: 'parity-streaming-session',
+          controlMode: 'station-owned',
+          delegation: { taskId: 'child', mode: 'isolated-child' },
         }}
         fontSize={14}
         showReasoning
@@ -130,6 +178,11 @@ describe('streaming vs. persisted row attribution parity (station#1424 review ro
             },
           ],
         }}
+        orchestrationSession={{
+          threadId: 'parity-persisted-session',
+          controlMode: 'station-owned',
+          delegation: { taskId: 'child', mode: 'isolated-child' },
+        }}
         fontSize={14}
         showReasoning
         showToolDetails
@@ -140,6 +193,8 @@ describe('streaming vs. persisted row attribution parity (station#1424 review ro
     // Agent identity text is present, identically, on both rows.
     expect(within(streaming).getByText('Dev Agent')).toBeTruthy();
     expect(within(persisted).getByText('Dev Agent')).toBeTruthy();
+    expect(within(streaming).getByText('Delegated worker')).toBeTruthy();
+    expect(within(persisted).getByText('Delegated worker')).toBeTruthy();
 
     // Owner chip text is present, identically, on both rows.
     expect(within(streaming).getByText(/via Casey Example/)).toBeTruthy();

@@ -14,10 +14,13 @@ import {
 
 import { createHash } from 'node:crypto';
 import {
+  type BigIntStats,
   type Dirent,
   existsSync,
+  lstatSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   statSync,
 } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -341,6 +344,81 @@ export class ConfigLoader {
   /**
    * Load application configuration
    */
+  /** A synchronous source fence for the ordinary, receiver-owned preparation configuration. */
+  capturePreparationConfigurationFence(
+    agentIds: readonly string[],
+  ): () => void {
+    const ids = [...new Set(agentIds.map((id) => agentId(id)))].sort();
+    const home = this.projectHomeDir;
+    const witness = () => {
+      if (realpathSync(home) !== home)
+        throw new Error('Preparation configuration home is not canonical');
+      const paths = [
+        'config/app.json',
+        'config/agent-registry.json',
+        'config/acp.json',
+        ...ids.flatMap((id) => [
+          `agents/${id}/agent.json`,
+          `agents/${id}/${PLUGIN_AGENT_OWNER_FILE}`,
+        ]),
+      ];
+      return JSON.stringify(
+        paths.map((relativePath) => {
+          const path = join(home, relativePath);
+          for (
+            let dir = dirname(path);
+            dir !== dirname(home);
+            dir = dirname(dir)
+          ) {
+            try {
+              const entry = lstatSync(dir);
+              if (!entry.isDirectory() || entry.isSymbolicLink())
+                throw new Error('Unsupported preparation configuration path');
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+                throw error;
+            }
+            if (dir === home) break;
+          }
+          let before: BigIntStats;
+          try {
+            before = lstatSync(path, { bigint: true });
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+              return [relativePath, null];
+            throw error;
+          }
+          if (relativePath.endsWith(PLUGIN_AGENT_OWNER_FILE))
+            throw new Error('Plugin Agent preparation is unsupported');
+          const signature = (entry: typeof before) =>
+            [
+              entry.dev,
+              entry.ino,
+              entry.size,
+              entry.mtimeNs,
+              entry.ctimeNs,
+            ].join(':');
+          const content = readRegularFileNoFollow(home, path, {
+            maxBytes: 2 * 1024 * 1024,
+          });
+          const after = lstatSync(path, { bigint: true });
+          if (signature(before) !== signature(after))
+            throw new Error('Preparation configuration changed while read');
+          return [
+            relativePath,
+            signature(after),
+            createHash('sha256').update(content).digest('hex'),
+          ];
+        }),
+      );
+    };
+    const captured = witness();
+    return () => {
+      if (witness() !== captured)
+        throw new Error('Preparation configuration changed');
+    };
+  }
+
   async loadAppConfig(): Promise<AppConfig> {
     await this.ensureHomeSchema();
     // #4517: every reader sees the managed policy's values; the stored file

@@ -1150,10 +1150,18 @@ function LiveConversationBody({
     sessionSteeringPlacement(activeSession.orchestrationDurability).state ===
     'native';
   const steeringUnavailableReason = activeSession.orchestrationDurability
-    ? undefined
+    ? activeSession.orchestrationDurability.steerPlacement.state === 'none'
+      ? activeSession.orchestrationDurability.steerPlacement.detail?.trim() ||
+        'Steering is unavailable for this session.'
+      : undefined
     : activeOrchestrationSessionRead === 'pending'
       ? 'Loading steering support…'
       : 'Steering unavailable: the host did not report a durability profile.';
+  const queueUnavailableReason =
+    activeSession.orchestrationDurability?.queuedFollowUp?.state === 'none'
+      ? activeSession.orchestrationDurability.queuedFollowUp.detail?.trim() ||
+        'Queue is unavailable for this session.'
+      : undefined;
   const busyFollowUp =
     turnInFlight &&
     chatInput.attachments.length === 0 &&
@@ -2006,6 +2014,7 @@ function LiveConversationBody({
             pending={CHAT_MESSAGE_LIST_PENDING}
             componentProps={{
               activeSession: renderedSession,
+              orchestrationSession: activeOrchestrationSession,
               recordAgents: agents,
               suppressStreamingRow: transcript.openTurnProjected,
               fontSize: chatFontSize,
@@ -2927,6 +2936,7 @@ function LiveConversationBody({
             busyFollowUp={busyFollowUp}
             busyQueueTakesFiles={queueTakesFiles}
             busySteeringUnavailableReason={steeringUnavailableReason}
+            busyQueueUnavailableReason={queueUnavailableReason}
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
             onQueueFollowUp={handleQueueFollowUp}
             stopPending={!!activeSession.stopPending}

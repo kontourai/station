@@ -348,6 +348,7 @@ export {
   useTerminalProcessesQuery,
   useTerminalProcessQuery,
 } from './query-domains/chatRuntime';
+export { useCliSessionGroupsQuery } from './query-domains/cliSessionGroups';
 export {
   fetchPairedDevices,
   pairedDeviceQueries,
@@ -622,6 +623,13 @@ export {
   useMarkReadMutation,
   useReadMarkerSummaryQuery,
 } from './query-domains/readMarkers';
+export {
+  useCancelReportGroup,
+  useCreateReportGroup,
+  useFinalizeReportGroupCancel,
+  useReportGroupResultQuery,
+  useReportGroupsQuery,
+} from './query-domains/reportGroups';
 export {
   fetchIndependentReviewReceipts,
   reviewEvidenceQueryKey,

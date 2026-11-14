@@ -2,6 +2,26 @@
 
 Canonical cross-package contract ownership for Station.
 
+`AgentDelegationContext` in `@kontourai/station-contracts/agent` carries
+`toolAllowlistConstraints`: bounded inherited wildcard allowlists whose clauses
+all apply. Empty clauses deny every tool; an absent or empty outer list adds no
+clause. `allowedTools` retains its legacy empty-list meaning. These fields are
+policy data, not credentials or a published Flow delegation envelope. The
+`delegationToolConstraintsV1` handshake flag in `StationCapabilityFlags` promises
+preservation and Station-owned enforcement or refusal; unsupported native engines
+refuse inherited constraints before launch. See
+[delegated child restrictions](../guides/agent-configuration.md#delegated-child-restrictions)
+for bounds, Session reuse and remaining authority limits.
+
+The `delegation-group` module separates caller-owned portable group observations
+from Station Session groups. `DelegationGroupView` includes the authenticated
+Agent/runtime protocol/provider/model selection for each member.
+`DelegationGroupRawOutputResult` is a bounded page with UTF-16
+`afterCodeUnit`/`nextCodeUnit` cursors and `hasMore`;
+pages never split surrogate pairs. Its usage belongs to the whole invocation,
+not the page. These shapes do not supply execution authority or establish
+current host capability.
+
 `ModelOptionCapabilities` in [`tool.ts`](../../packages/contracts/src/tool.ts)
 carries optional `serviceTiers` (exact ids, names and descriptions) and a
 catalog `defaultServiceTier`. Consumers show only reported choices. Codex's
@@ -333,6 +353,9 @@ value; see [event content spill](../design/event-content-spill.md).
 | Module | Owns |
 | `@kontourai/station-contracts/walkthrough` | Versioned recording manifest, strict hand-written parser, limits, typed import outcomes and bounded list pages |
 |---|---|
+| `@kontourai/station-contracts/ensemble` | Versioned named-member preset parsing, deterministic escaped member assignments and roster/brief text, inspection facts with optional prerequisite references, explicit recorded-group selection/read offers, and an explicit native sign-in check request/availability cell; presets and observations grant no execution or authentication authority |
+| `@kontourai/station-contracts/delegation-group` | `CliSessionGroupView` under Station Session authority; CLI `maxDispatches` bounds reserved seat starts, not provider attempts. Dollar, token and physical-attempt caps remain unavailable, portable Flow lineage is unbound, and acceptance remains unassessed |
+| `@kontourai/station-contracts/report-group` | Report requests/views with independent-advisory or explicit Flow run/seat-step topology selectors, cancellation, explicit context-sync/finalization inputs, revision events and paged results; selectors grant no workspace or execution authority. Allocation, usage and accounting-terminal observations remain separate from acceptance; Flow serving remains unqualified as disclosed in the [API reference](api.md#report-groups) |
 | `@kontourai/station-contracts/chat-host-images` | The `chat-host-images` preview ID, the closed refusal vocabulary, a turn's path-to-attachment map, and pure helpers: `hostImagePathFromDestination` (the one path key both the server scan and the client lookup use), `chatHostImageMapFromEvent` and `chatHostImageRefusalText`. The `content.host-images` runtime event carries it; Station emits that event, engines cannot (`ProviderRuntimeEvent` excludes it). It grants no file or attachment access. See [images saved on the host](../user/html-replies.md#images-saved-on-the-host). |
 | `@kontourai/station-contracts/station-control-external-client` | Explicit initial tool selection, bounded lease request and secret-bearing client configuration response; a pure response parser grants no authority. Local operator setup, Session/Project validation and revocation remain server-owned. See [external client setup](session-api.md#external-clients-using-station-tools). |
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
@@ -383,7 +406,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/harness-questions` | Deprecated since 0.9.0; retained in 0.10.0 for stored events and legacy `answers` callers. Use the `input-request` shapes for new callers |
 | `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form`, `decision` and `url` bodies (a `url` body is a link for the person to open and carries no data back), accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation, a link request or an approval; reading and validation live in shared. `SessionGrantScope` (`server` \| `rule`) scopes a session decision option |
 | `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
-| `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
+| `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata; `resolveKnowledgeNamespaceConfiguration` merges built-ins before authored Project entries, retaining the first occurrence of each ID |
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header (including `h264` access units and their `keyframe` flag), input events, control lease, optional registered viewer `sourceId` on human batches and source open/close lease actions, stream params, their strict wire parsers, the length-prefixed binary record envelope, and an H.264 SPS reader (`parseLiveSurfaceH264Sequence`) |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state with a selected server-owned session and optional ordered list of up to twelve session IDs, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads, including bounded network metadata and picked-element provenance |
 | `@kontourai/station-contracts/knowledge-memory` | Wire shapes for private-memory review, recall, the session brief and the per-run measurement record (`station.memory-measurement/1`). Plain shapes only: the Knowledge Kit and Survey own what the words mean |
@@ -985,6 +1008,34 @@ recipient before they can seed the resumed run. Replay suppression retains the
 latest 64 SDK-frame, tool-call and resume-call identities per category; identities
 evicted from that bounded history are no longer recognized as replays.
 
+### Delegation initiation origin
+
+`OrchestrationInputOrigin.initiator`, when present, reports the first observed
+turn's validated client-origin actor kind and separately its self-reported
+client surface. It includes no Device identity and grants no authority. A later
+turn does not replace that initiating origin. Absence means the initial turn
+carried no valid origin observation; clients must not infer one from prompt
+text or User-Agent.
+
+### Child-work result reports
+
+Child-work result text may carry `source`: `tool-return`, `provider-summary`,
+`child-message`, or `provider-error`. A Claude Agent/Task `tool-return` is the
+structured completed report bound to the tracked tool call and child identity;
+it excludes the model-facing agentId/usage trailer. It replaces an earlier
+summary while preserving the authorized recovery handle. Later summaries do
+not overwrite it. Other sources identify reports, not returned results.
+`source` describes summary text only. A handle without text has no report
+provenance and does not replace an earlier report or recovery handle. Older
+reports omit provenance; readers must preserve that uncertainty.
+Claude task notifications and Muse workflow summaries are provider summaries;
+Codex child-turn messages are child messages, including its last-message
+fallback. A completed child without a structured return discloses that no
+returned result was reported. Completion status and a returned report do not
+establish successful task acceptance or a verified artifact. Child transcript
+access is read-only and uses the persisted, authorized child identity; a
+transcript handle is not permission to read an arbitrary path.
+
 ## Engine-neutral failures
 
 `@kontourai/station-contracts/provider-failure` owns the closed
@@ -1031,9 +1082,27 @@ partial/background work; they do not fail or replay the completed turn. Generic 
 can carry a more specific kind when structured quota details establish it.
 No existing diagnostic code is renamed or removed.
 
+`approval-posture-changed` refuses a provider start when the captured approval
+decision, effective confinement or grantor changed during preparation. The
+caller must inspect the current posture before making a new explicit attempt;
+the refusal does not authorize automatic replay.
+
+`usage_unknown` classifies incomplete raw-provider evidence as indeterminate.
+`bounded_api_execution_unavailable` refuses unsupported bounded execution before
+provider entry; `reserved_station_turn_unavailable` refuses missing or stale
+reserved-turn authority. None is eligible for automatic replay.
+
+Cold portable starts recheck the execution offer after preparation and verify
+the prepared input against the admitted Project association before provider
+entry. The receiver's `not_offered`, `unavailable`, `authority_changed` and
+`consent_stale` refusal codes retain nonretryable permission-denial metadata.
+Lazy materialization preserves a typed start refusal's closed code and rejected
+receipt just as an explicit start does. A refusal does not revoke work that was
+already accepted under an earlier admission.
 `async_event_queue_consumer_conflict` identifies an internal queue-ownership
 invariant violation, not a provider or caller error. Its `conflict` kind is
 non-retryable.
+
 
 | Diagnostic code | Kind | Retryable |
 | --- | --- | --- |
@@ -1058,7 +1127,15 @@ non-retryable.
 | `stage_incomplete` | `input_unsupported` | `false` |
 | `stage_invalid_upload` | `input_unsupported` | `false` |
 | `stage_capacity` | `busy` | `true` |
+| `usage_unknown` | `indeterminate` | `false` |
+| `bounded_api_execution_unavailable` | `input_unsupported` | `false` |
+| `reserved_station_turn_unavailable` | `permission_denied` | `false` |
+| `receiver_execution_not_offered` | `permission_denied` | `false` |
+| `receiver_execution_unavailable` | `permission_denied` | `false` |
+| `receiver_execution_authority_changed` | `permission_denied` | `false` |
+| `receiver_execution_consent_stale` | `permission_denied` | `false` |
 | `async_event_queue_consumer_conflict` | `conflict` | `false` |
+
 | `foreground_invocation_unavailable` | `conflict` | `false` |
 | `delegation_attempt_capacity` | `busy` | `true` |
 | `create_request_capacity` | `busy` | `true` |
@@ -1070,6 +1147,7 @@ non-retryable.
 | `adoption_continuation_in_progress` | `busy` | `true` |
 | `approval-escalation-requires-restart` | `warning` | `false` |
 | `approval-full-access-not-granted` | `permission_denied` | `false` |
+| `approval-posture-changed` | `permission_denied` | `false` |
 | `attachment_input_unsupported` | `input_unsupported` | `false` |
 | `authentication_rate_limited` | `rate_limited` | `true` |
 | `client_protocol_invalid` | `input_unsupported` | `false` |
@@ -1154,6 +1232,10 @@ turn execution or session startup. Class-field exclusions separately name applic
 configuration, storage, policy, and non-provider lifecycle failures. The guard refuses
 a new unclassified constant or class-field code. Object-literal API/validation codes
 are outside this inventory; strict `runtime.error` construction is checked separately.
+The exact lifecycle dispositions include bootstrap publication/drain, private
+group credential observations and report-group custody/preparation/finalizer
+errors. Those codes do not identify one Session's provider outcome; the group
+routes retain their separate refusal and unavailable responses.
 Existing server import paths forward the relocated contract constants.
 
 The inventory also reads the delegation-file refusal union in `attachment-staging.ts`
@@ -1622,8 +1704,9 @@ no progress was *observed* — quiet providers (for example a Muse build
 older than 1.3, which emits no `tool.started`) may be working quietly, and
 the marker must never be rendered as proof of a stall. It keys on the
 events the parent turn publishes (streamed text, reasoning, tool start,
-progress and completion, or a session-state transition). A tool in flight does
-not suspend it. `request.opened`, including input requests, suspends observation;
+progress and completion, or a session-state transition). While a tracked tool
+call is open, the silence window is disarmed; the last call’s completion
+re-arms it. `request.opened`, including input requests, suspends observation;
 `request.resolved` restarts it. So a Muse turn whose subagent is waiting on
 something writes only to that subagent's own session log, not to the
 parent's stdout, and reads as silent after the window, which is the
@@ -1640,7 +1723,8 @@ the affected turns' lifecycle or dispatching replacements. Only subsequent
 engine evidence establishes completion or failure. This applies across engines.
 Before that, a publish that fails on event-store contention (the SQLITE_BUSY
 family; SQLITE_LOCKED is not retried) is retried for the same event, with the
-same `eventId`, at most twice before the next event is consumed. When the
+same `eventId`, within a five-second retry budget before the next event is consumed.
+Retries wait asynchronously for write availability with bounded backoff. When the
 failure was the delta coalescer's flush of text buffered before that event,
 the text is kept, with no window timer, and the retry delivers it first. Once
 no retry is in flight its window timer is re-armed, so text left after
@@ -2229,6 +2313,13 @@ or transcript `seed` history ownership; an unreported owner preserves the seed.
 Consumers use these declarations rather than provider-name durability rules. These are
 delivery declarations, not permission to replay an effect with an unknown outcome.
 
+The optional `queuedFollowUp` cell is a separate submission denial:
+`{ state: 'none', detail: string }`. It does not grant Queue permission and
+supports no positive state. A Session can refuse Queue independently of steering;
+without this cell, clients retain their existing Queue behavior and the server
+still decides each submission. Sealed source Sessions use the denial to direct
+new work through their explicit report or group controls.
+
 Built-in adapters expose the profile in their metadata. The engine capability
 matrix carries the same profile for clients that describe an engine before a
 Session exists. Legacy third-party adapter metadata may omit it; omission is
@@ -2241,8 +2332,9 @@ never derives support from an engine name. Wire decoders still validate unknown
 values before exposing a profile.
 
 The engine description's **Recovery and delivery** disclosure reads these cells.
-Current Session summaries and conversation-open execution carry the registered
-adapter's `durability` declaration at read time. The live composer consumes that
+Current Session summaries and conversation-open execution use the registered
+adapter's `durability` declaration for ordinary Sessions. Trusted recorded sealed
+source Sessions instead carry their restrictive session-aware declaration. The live composer consumes that
 observation rather than resolving a provider-name table; absence stays unknown.
 Claude and Codex declare their live steering channels as native. ACP discloses a
 connection-dependent orchestration-command fallback that may interrupt and

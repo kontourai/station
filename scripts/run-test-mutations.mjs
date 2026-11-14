@@ -56,6 +56,23 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'report-preparation-after-store',
+    test: 'src-server/services/orchestration/__tests__/station-report-preparation-return.test.ts',
+    failure:
+      'source receipt changed after store return remains uncertain before launch',
+    files: [
+      {
+        path: 'src-server/services/orchestration/station-report-group-execution.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '                assertPreparationCurrent: () => executionCurrent(),\n',
+            '',
+          ),
+      },
+    ],
+  },
+  {
     id: 'codex-unbound-workspace',
     test: 'src-server/providers/__tests__/codex-adapter.test.ts',
     failure:

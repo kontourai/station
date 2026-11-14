@@ -47,7 +47,10 @@ normalized instance id, is contained under Station's owner-only service
 directory (mode `0700`), and the lock file itself is mode `0600`. This is an
 instance-scoped lock: distinct instances can reconcile concurrently; it is not
 a broad home lock. The shared lock implementation verifies live ownership,
-recovers only stale owner records, and removes its owned record on settlement.
+recovers only stale owner records, and attempts owner-checked cleanup on settlement.
+The production service Adapter uses the synchronous `acquireFileMutationLock`
+helper, whose release callback suppresses cleanup failures. A reconciliation
+outcome therefore does not attest successful lock removal.
 
 `deadlineMs <= 0` returns `timed-out` synchronously before acquiring that lock,
 inspecting, or starting an action. Positive deadlines are monotonic absolute
@@ -67,9 +70,9 @@ lock until its Adapter promise settles. An opposing desired state is therefore
 `contended` during that uncertainty. A timeout in the initial inspection releases
 the lock because no platform action has begun; it does not wait for that read
 to settle.
-An immediate owned-lock release failure is returned as `failed` before action
-or `partial` after action; delayed cleanup failure is logged with the already
-partial uncertainty rather than being silently discarded.
+If an Adapter release callback throws, an immediate failure is returned as
+`failed` before action or `partial` after action; a delayed failure is logged
+while the already partial outcome remains unchanged.
 
 Same-desired callers share the underlying work but not its deadline: each
 caller waits only until its own absolute deadline. A short caller returns

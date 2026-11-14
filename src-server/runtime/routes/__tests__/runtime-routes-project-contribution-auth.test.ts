@@ -183,6 +183,7 @@ describe('project contribution routes over the REAL auth path (execution offers 
 
   function environmentSecurityServiceFor(pairing: DevicePairingService) {
     return deepStub({
+      assessCredentialRoute: undefined,
       verifyCredential: (credential: string) =>
         credential === OPERATOR_CREDENTIAL ||
         pairing.verifyCredential(credential),
@@ -215,7 +216,7 @@ describe('project contribution routes over the REAL auth path (execution offers 
     const homeDir = mkdtempSync(join(tmpdir(), 'station-contribution-auth-'));
     directories.push(homeDir);
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir,
       environmentId: '33333333-3333-4333-8333-333333333333',
     });

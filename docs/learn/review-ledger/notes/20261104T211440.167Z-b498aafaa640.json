@@ -1,0 +1,7 @@
+{
+  "revision": "e3aeda86efeaba600ecad89bc1bf52fff585c7b6",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Reviewed only the API dependency delta at3b132925: the CLI session-group native-login paragraph now supports a bounded Claude macOS Keychain equality witness with closing request/admission checks. Re-read this terminal design transport boundary and its api.md terminal-socket anchor: ticket/first-frame admission, operator scope, PTY command ownership, framing, flow control, replay and sanitizer contracts are unchanged. Native Claude login witnessing grants no terminal access and changes no terminal surface. The unchanged terminal claims remain accurate for this source delta; no new terminal/native device/runtime qualification or full document re-audit is claimed.","inputs":["docs/design/terminal.md","docs/reference/api.md"]}
+  ]
+}

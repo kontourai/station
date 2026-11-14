@@ -230,7 +230,7 @@ async function harness(
   const homeDir = mkdtempSync(join(tmpdir(), 'station-agent-activity-'));
   homes.push(homeDir);
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-  const pairing = new DevicePairingService({
+  const pairing = await DevicePairingService.create({
     homeDir,
     environmentId: ENVIRONMENT_ID,
   });
@@ -419,15 +419,44 @@ function openCard(sealed: string, registration: NativePushRegistration) {
 }
 
 describe('agent-activity publisher', () => {
-  test('does nothing at all while no phone is registered', async () => {
+  test('coalesces empty registration checks without session reads or sends', async () => {
     const h = await harness();
     h.sessions.set('s1', sessionEvents('s1', 'running', START));
-    h.emit('turn.started');
-    await h.settle();
-    // The boot timer finds no registration either.
     await h.fireNextTimer();
+    const registrations = vi.spyOn(
+      h.pairing,
+      'listNativePushRegistrationsByPlatform',
+    );
+    const tombstones = vi.spyOn(h.pairing, 'listNativePushTombstones');
+    for (let index = 0; index < 32; index++) h.emit('turn.started');
+    expect(registrations).not.toHaveBeenCalled();
+    expect(tombstones).not.toHaveBeenCalled();
+    await h.settle();
+    expect(registrations).toHaveBeenCalledTimes(1);
+    expect(tombstones).toHaveBeenCalledTimes(1);
+    expect(h.liveTimers()).toHaveLength(0);
     expect(h.listSessions).not.toHaveBeenCalled();
     expect(h.fetchImpl).not.toHaveBeenCalled();
+    await h.publisher.stop();
+  });
+
+  test('a lifecycle burst defers registration reads and sends the latest card', async () => {
+    const h = await harness();
+    await h.pairAndRegister();
+    const registrations = vi.spyOn(
+      h.pairing,
+      'listNativePushRegistrationsByPlatform',
+    );
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    for (let index = 0; index < 32; index++) h.emit('turn.started');
+    h.sessions.set('s1', sessionEvents('s1', 'completed', START));
+    h.emit('turn.completed');
+    expect(registrations).not.toHaveBeenCalled();
+    expect(h.fetchImpl).not.toHaveBeenCalled();
+    await h.settle();
+    expect(h.listSessions).toHaveBeenCalledTimes(1);
+    expect(h.delivered).toHaveLength(1);
+    expect(h.delivered[0].card.activity_phase).toBe('completed');
     await h.publisher.stop();
   });
 
@@ -1148,7 +1177,7 @@ describe('agent-activity publisher', () => {
     expect(rotated.registrationId).toBe(registration.registrationId);
     const cards: Array<Record<string, string>> = [];
     // A new process: nothing in memory, only what is on disk.
-    const reopened = new DevicePairingService({
+    const reopened = await DevicePairingService.create({
       homeDir: h.homeDir,
       environmentId: ENVIRONMENT_ID,
     });
@@ -1519,8 +1548,8 @@ describe('agent-activity publisher: a device narrowed below read access (#2517)'
    * A new process over the same home: nothing in memory, only what is on
    * disk. Its boot flush is the only thing that runs.
    */
-  function restart(h: Awaited<ReturnType<typeof harness>>) {
-    const reopened = new DevicePairingService({
+  async function restart(h: Awaited<ReturnType<typeof harness>>) {
+    const reopened = await DevicePairingService.create({
       homeDir: h.homeDir,
       environmentId: ENVIRONMENT_ID,
     });
@@ -1618,7 +1647,7 @@ describe('agent-activity publisher: a device narrowed below read access (#2517)'
     await h.publisher.stop();
     h.pairing.setDeviceScope(deviceId, [...NO_READ], operator);
 
-    const first = restart(h);
+    const first = await restart(h);
     await first.boot();
     expect(first.cards).toHaveLength(1);
     expect(first.cards[0]?.active).toBe('false');
@@ -1631,7 +1660,7 @@ describe('agent-activity publisher: a device narrowed below read access (#2517)'
     await first.publisher.stop();
 
     // Once only: the next process sends it nothing.
-    const second = restart(h);
+    const second = await restart(h);
     await second.boot();
     expect(second.cards).toEqual([]);
     await second.publisher.stop();
@@ -1657,7 +1686,7 @@ describe('agent-activity publisher: a device narrowed below read access (#2517)'
     h.pairing.setDeviceScope(quiet.deviceId, [...NO_READ], operator);
     h.pairing.setDeviceScope(never.deviceId, [...NO_READ], operator);
 
-    const after = restart(h);
+    const after = await restart(h);
     await after.boot();
     expect(after.cards).toEqual([]);
     await after.publisher.stop();

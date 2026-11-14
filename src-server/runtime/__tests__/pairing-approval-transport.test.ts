@@ -59,11 +59,11 @@ function hostOwnIpv4(): string | undefined {
     .find((entry) => entry.family === 'IPv4' && !entry.internal)?.address;
 }
 
-function createPairingApp(allowedOrigins: string[]) {
+async function createPairingApp(allowedOrigins: string[]) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-pairing-transport-'));
   homes.push(homeDir);
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-  const pairing = new DevicePairingService({
+  const pairing = await DevicePairingService.create({
     homeDir,
     environmentId: ENVIRONMENT_ID,
   });
@@ -120,7 +120,7 @@ async function listenPairingApi(): Promise<{
 }> {
   const allowedOrigins: string[] = [];
   const server = serve({
-    fetch: createPairingApp(allowedOrigins).fetch,
+    fetch: (await createPairingApp(allowedOrigins)).fetch,
     port: 0,
   });
   await once(server as unknown as Server, 'listening');

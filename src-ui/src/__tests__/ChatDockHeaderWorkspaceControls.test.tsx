@@ -210,6 +210,26 @@ describe('header background tasks button (from #1064 AC3)', () => {
    * channels: a painted badge and the trigger's own accessible name (the badge
    * is `aria-hidden`, so the name is what a screen reader gets).
    */
+  test('limited history labels the badge and menu count as shown rows', async () => {
+    renderHeader({
+      workspaceControls: workspaceControls({
+        backgroundTasksRunningCount: 100,
+        backgroundTasksLimited: true,
+      }),
+    });
+    expect(
+      screen.getByRole('button', {
+        name: 'More dock actions — 100 background tasks running shown',
+      }),
+    ).toBeTruthy();
+    openMoreMenu();
+    expect(
+      await screen.findByRole('menuitem', {
+        name: 'Background tasks — 100 running shown',
+      }),
+    ).toBeTruthy();
+  });
+
   test('surfaces the running count on the closed menu’s trigger, in both channels', () => {
     renderHeader({
       workspaceControls: workspaceControls({

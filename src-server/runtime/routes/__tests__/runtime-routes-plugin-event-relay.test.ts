@@ -59,7 +59,7 @@ describe('configureRuntimeRoutes: /events relays plugin frames through the visib
   async function setup() {
     const homeDir = makeTempDir('station-plugin-event-relay-');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir,
       environmentId: '44444444-4444-4444-8444-444444444444',
     });
@@ -122,6 +122,7 @@ describe('configureRuntimeRoutes: /events relays plugin frames through the visib
       taskGraphService: { listTasks: () => [] },
       projectService: { listProjects: () => [] },
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           pairing.verifyCredential(credential),
         authorizeCredential: (credential: string) =>

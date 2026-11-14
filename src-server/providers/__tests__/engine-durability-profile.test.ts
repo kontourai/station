@@ -33,7 +33,16 @@ const adapters = [
   }),
 ];
 
-// Public profile shape: omission must fail instead of silently becoming unsupported.
+type RequiredProfileKey = {
+  [Field in keyof ProviderDurabilityProfile]-?: object extends Pick<
+    ProviderDurabilityProfile,
+    Field
+  >
+    ? never
+    : Field;
+}[keyof ProviderDurabilityProfile];
+
+// Required delivery cells remain complete; Session submission denial is optional.
 const fields = {
   steerPlacement: true,
   crashContinuation: true,
@@ -44,7 +53,7 @@ const fields = {
   compaction: true,
   partialOutput: true,
   usage: true,
-} satisfies Record<keyof ProviderDurabilityProfile, true>;
+} satisfies Record<RequiredProfileKey, true>;
 
 describe('built-in adapter durability conformance', () => {
   test.each(adapters)(

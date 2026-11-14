@@ -85,6 +85,106 @@ function dependencies(): ExecutionTargetExecutionDependencies {
 const makeCreateHome = trackTempDirs();
 
 describe('executeForegroundMessage', () => {
+  test.each([undefined, [['repo_write']], [['repo_read']]])(
+    'an existing Session retains required inherited clauses %j',
+    async (recorded) => {
+      const deps = dependencies();
+      deps.readSessionBinding = vi.fn(async () => ({
+        environmentId: 'environment-kontour',
+        agentId: 'station',
+        userId: 'owner',
+      }));
+      deps.resolveConversationSession = vi.fn(async () => ({
+        sessionId: 'active-child',
+        startRequired: false,
+      }));
+      deps.readSessionStartMetadata = vi.fn(() =>
+        recorded
+          ? { delegation: { toolAllowlistConstraints: recorded } }
+          : undefined,
+      );
+      const input = {
+        target: {
+          environment: { kind: 'current' as const },
+          agent: agentId('station'),
+        },
+        conversationId: 'conversation:test',
+        message: 'Respect the inherited policy',
+        userId: 'owner',
+        delegation: {
+          mode: 'isolated-child' as const,
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: agentId('parent'),
+          rootAgentSlug: agentId('root'),
+          toolAllowlistConstraints: [['repo_read']],
+        },
+      };
+      if (recorded?.[0]?.[0] === 'repo_read') {
+        await executeForegroundMessage(input, deps);
+        expect(deps.readSessionStartMetadata).toHaveBeenCalledWith(
+          expect.anything(),
+          'active-child',
+        );
+        expect(deps.sendTurn).toHaveBeenCalledTimes(1);
+      } else {
+        await expect(
+          executeForegroundMessage(input, deps),
+        ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+        expect(deps.sendTurn).not.toHaveBeenCalled();
+      }
+      expect(deps.startSession).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each(['claude', 'codex', 'acp'])(
+    'required inherited constraints refuse %s before any work starts',
+    async (provider) => {
+      const deps = dependencies();
+      deps.getAgent = async () => ({
+        slug: 'station',
+        available: true,
+        execution: { agentConnectionId: engineConnectionId(provider) },
+      });
+      deps.getConnection = async () => ({
+        id: provider,
+        name: provider,
+        kind: 'agent',
+        type: provider,
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+        config: { provider },
+        prerequisites: [],
+      });
+      const input = {
+        target: {
+          environment: { kind: 'current' as const },
+          agent: agentId('station'),
+        },
+        message: 'Remain restricted',
+        userId: 'owner',
+        delegation: {
+          mode: 'isolated-child' as const,
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: agentId('parent'),
+          rootAgentSlug: agentId('root'),
+          toolAllowlistConstraints: [['github_*']],
+        },
+      };
+      await expect(executeForegroundMessage(input, deps)).rejects.toMatchObject(
+        { code: 'delegation_lineage_unavailable' },
+      );
+      expect(deps.readSessionBinding).not.toHaveBeenCalled();
+      expect(deps.startSession).not.toHaveBeenCalled();
+      expect(deps.sendTurn).not.toHaveBeenCalled();
+      await executeForegroundMessage({ ...input, delegation: undefined }, deps);
+      expect(deps.startSession).toHaveBeenCalledTimes(1);
+      expect(deps.sendTurn).toHaveBeenCalledTimes(1);
+    },
+  );
+
   test('durably marks a claimed foreground create before the real session-start port', async () => {
     const home = makeCreateHome('foreground-create-mark-');
     const deps = dependencies();

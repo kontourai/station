@@ -118,6 +118,10 @@
 
     "src-ui/src/lib/appearance-cache.ts",
 
+    "packages/sdk/src/theme-signature.ts",
+
+    "src-ui/src/components/ActionRow.tsx",
+
     "src-ui/src/components/editor-controls.css",
 
     "package.json#/dependencies/@kontourai~1ui",

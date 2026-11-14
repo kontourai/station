@@ -9,6 +9,7 @@ import {
 import { basename, dirname, join, resolve } from 'node:path';
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
 import type { ConnectionRecoveryIntent } from '@kontourai/station-contracts/connection-recovery';
+import type { ContributionConfig } from '@kontourai/station-contracts/contribution';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -39,7 +40,12 @@ import {
   ProjectBindingsStore,
   projectBindingStorePath,
 } from '../../projects/project-binding-store.js';
+import {
+  ProjectContributionService,
+  receiverAdmittedCwd,
+} from '../../projects/project-contribution-service.js';
 import { ProjectManifestStore } from '../../projects/project-manifest-store.js';
+import { ProjectResourceResolver } from '../../projects/project-resource-resolver.js';
 import { createProjectSessionDirectoryResolver } from '../../projects/project-session-directory.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
@@ -119,14 +125,22 @@ describe('retained Project authority at recovery provider effects', () => {
   const runtimes: OrchestrationService[] = [];
   const stores: EventStore[] = [];
   const pauses: ReturnType<typeof pause>[] = [];
+  const configs: ConfigLoader[] = [];
   afterEach(async () => {
     for (const held of pauses.splice(0)) held.release();
     for (const runtime of runtimes.splice(0)) await runtime.shutdown();
     for (const store of stores.splice(0)) store.close();
+    for (const config of configs.splice(0)) {
+      config.dispose();
+      await config.whenWatcherClosed();
+    }
     vi.restoreAllMocks();
   });
 
-  async function fixture(identity: 'qualified' | 'refused' = 'qualified') {
+  async function fixture(
+    identity: 'qualified' | 'refused' = 'qualified',
+    portable = false,
+  ) {
     const home = realpathSync(makeTempDir('station-retained-recovery-'));
     const bound = join(home, 'bound');
     const replacement = join(home, 'replacement');
@@ -162,6 +176,39 @@ describe('retained Project authority at recovery provider effects', () => {
         state: 'bound',
       });
     await bind(bound);
+    const config = portable
+      ? new ConfigLoader({ projectHomeDir: home })
+      : undefined;
+    if (config) configs.push(config);
+    const contribution = config
+      ? new ProjectContributionService({
+          source: storage,
+          manifests,
+          bindings,
+          resolver: new ProjectResourceResolver({
+            homeDir: home,
+            source: storage,
+            manifests,
+            bindings,
+          }),
+          config,
+        })
+      : undefined;
+    let offer: ContributionConfig | null = null;
+    const setReceiverOffer = async (enabled: boolean) => {
+      if (!contribution) throw new Error('Portable fixture was not requested.');
+      offer = await contribution.setExecutionOffer(
+        {
+          portableProjectId: manifest.id,
+          localProjectId: project.id,
+          resourceId: manifest.repos[0].id,
+          expected: offer,
+          enabled,
+        },
+        () => true,
+      );
+    };
+    if (portable) await setReceiverOffer(true);
     const store = new EventStore(join(home, 'orchestration.sqlite'));
     stores.push(store);
     const engine = new RecoveryAdapter();
@@ -195,17 +242,58 @@ describe('retained Project authority at recovery provider effects', () => {
     });
     runtimes.push(runtime);
     const threadId = randomUUID();
-    await runtime.dispatch({
-      type: 'startSession',
-      input: {
-        threadId,
-        provider: 'claude',
-        metadata: {
-          projectSlug: project.slug,
-          executionAgentId: 'retained-agent',
+    const mintReceiverAdmission = async () => {
+      if (!contribution) throw new Error('Portable fixture was not requested.');
+      const captured = await contribution.authorizeReceiverExecution(
+        {
+          portableProjectId: manifest.id,
+          resourceId: manifest.repos[0].id,
         },
+        () => true,
+      );
+      return {
+        recheck: captured.recheck,
+        admitted: {
+          threadId,
+          projectSlug: captured.admittedProject.slug,
+          cwd: receiverAdmittedCwd(captured.admittedProject),
+          portableProjectId: captured.portableProjectId,
+          resourceId: captured.resourceId,
+          localProjectId: captured.admittedProject.localProjectId,
+        },
+      };
+    };
+    const initialReceiver = portable
+      ? await mintReceiverAdmission()
+      : undefined;
+    const initialInput = {
+      threadId,
+      provider: 'claude' as const,
+      ...(initialReceiver ? { cwd: initialReceiver.admitted.cwd } : {}),
+      metadata: {
+        projectSlug: project.slug,
+        executionAgentId: 'retained-agent',
       },
-    });
+    };
+    if (initialReceiver) {
+      runtime.initialize();
+      await awaitSessionRecoveryCompleted(runtime);
+      const begun = await runtime.startSessionInternal(
+        { type: 'start-session', input: initialInput },
+        {},
+        {
+          receiverExecutionAdmission: initialReceiver,
+          portableExecutionConsent: {
+            portableProjectId: manifest.id,
+            resourceId: manifest.repos[0].id,
+            localProjectId: project.id,
+          },
+        },
+      );
+      expect(begun).toMatchObject({ status: 'accepted' });
+    } else {
+      await runtime.dispatch({ type: 'startSession', input: initialInput });
+    }
     await vi.waitFor(() =>
       expect(runtime.firstStartedMetadataOfThread(threadId)).toMatchObject(
         identity === 'qualified'
@@ -466,6 +554,8 @@ describe('retained Project authority at recovery provider effects', () => {
       recoveryDispatch,
       dormant,
       installExperience,
+      setReceiverOffer,
+      mintReceiverAdmission,
     };
   }
 
@@ -528,6 +618,86 @@ describe('retained Project authority at recovery provider effects', () => {
     });
     expect(f.engine.sendTurn).toHaveBeenCalledTimes(1);
   });
+
+  test.each(['lazy send', 'explicit reattach'] as const)(
+    'cold portable %s rechecks its real execution offer after Agent preparation',
+    async (entry) => {
+      const f = await fixture('qualified', true);
+      const { cold, coldEngine, coldStore } = await f.dormant();
+      const held = f.hold();
+      f.agentPreparation.mockImplementationOnce(async (input) => {
+        await held.wait();
+        return input;
+      });
+      const receiver = await f.mintReceiverAdmission();
+      const command =
+        entry === 'lazy send'
+          ? {
+              type: 'sendTurn' as const,
+              input: { threadId: f.threadId, input: 'portable continue' },
+            }
+          : {
+              type: 'startSession' as const,
+              input: { threadId: f.threadId, provider: 'claude' as const },
+            };
+      const recovering = cold.dispatch(command, undefined, {
+        receiverExecutionAdmission: receiver,
+      });
+      void recovering.catch(() => {});
+      try {
+        await Promise.race([
+          held.entered,
+          recovering.then(() => {
+            throw new Error(
+              'Cold recovery skipped the held Agent preparation.',
+            );
+          }),
+        ]);
+        await f.setReceiverOffer(false);
+        expect(coldEngine.startSession).not.toHaveBeenCalled();
+        held.release();
+        const refusal = await recovering.then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+        expect(coldEngine.startSession).not.toHaveBeenCalled();
+        expect(coldEngine.sendTurn).not.toHaveBeenCalled();
+        expect(refusal).toMatchObject({
+          code: 'receiver_execution_not_offered',
+          receipt: { status: 'rejected' },
+          kind: 'permission_denied',
+          failurePhase: 'refused',
+          retryable: false,
+        });
+        expect(coldStore.readSessionByThread(f.threadId)).toMatchObject({
+          resumeCursor: { cursor: 'retained-provider' },
+        });
+        expect(
+          coldStore
+            .listEvents(f.threadId)
+            .filter((row) => row.payload.method === 'runtime.error')
+            .at(-1)?.payload,
+        ).toMatchObject({
+          code: 'receiver_execution_not_offered',
+          kind: 'permission_denied',
+          failurePhase: 'refused',
+          retryable: false,
+          retriable: false,
+        });
+        await f.setReceiverOffer(true);
+        await cold.dispatch(command, undefined, {
+          receiverExecutionAdmission: await f.mintReceiverAdmission(),
+        });
+        expect(coldEngine.startSession).toHaveBeenCalledTimes(1);
+        expect(coldEngine.sendTurn).toHaveBeenCalledTimes(
+          entry === 'lazy send' ? 1 : 0,
+        );
+      } finally {
+        held.release();
+        await recovering.catch(() => undefined);
+      }
+    },
+  );
 
   test.each([
     'before restart',

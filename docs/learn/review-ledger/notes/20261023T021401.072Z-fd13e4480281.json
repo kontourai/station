@@ -1,0 +1,7 @@
+{
+  "revision": "677be2c3663dd5886e22fb8174bee2ddd5832204",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Reviewed the changed approval-posture design dependency against the Automations authority bullet and retained-proposal status. Traced ApprovalPosture.resolve/defaultPosture and OrchestrationService start/turn callers: unsupported engines bypass posture resolution; recorded decisions, carried concrete posture and Agent defaults take precedence over the Station default. Corrected the unconditional default-at-every-start sentence. New confinement history, ACP control and device grant detail in the cited design do not activate Automation intake or grant unattended authority. No Automation runtime, provider, device or delivery execution performed; this is a scoped source/dependency review, not whole-proposal acceptance.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md"]}
+  ]
+}

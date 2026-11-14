@@ -1,0 +1,13 @@
+{
+  "revision": "3455e7f913f39d5262be09b839d1ef4379ecfc74",
+
+  "notes": [
+    {"path":"docs/reference/agent-plugins.md","note":"Source-only review at c53f1a9daf6113eef7cc82614f62b25ab89fcadc: config-loader preparation-fence additions and actual AgentService/credential-observation callers do not change Agent Plugins loading or plaintext override/secret-reference boundaries. Existing plugin overrides serialization remains unchanged. No runtime, security-wide, provider, or release qualification. Root verified reviewed document bytes unchanged at record time; all other packet-3 records remain incomplete, not approved.","inputs":["docs/reference/agent-plugins.md","src-server/domain/config-loader.ts"]},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Source-only review at c53f1a9daf6113eef7cc82614f62b25ab89fcadc: Flow Agents pin change to 9.5.1 leaves the manifest-authority route accurate; July–August package assessments remain explicitly historical. No import, runtime, publication, or interoperability claim is refreshed. Root verified reviewed document bytes unchanged at record time; all other packet-3 records remain incomplete, not approved.","inputs":["docs/strategy/kontour-integration-surface.md","package.json#/dependencies/@kontourai~1flow-agents"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Source-only review at c53f1a9daf6113eef7cc82614f62b25ab89fcadc: changed contracts-reference ownership/provenance additions preserve direct domain imports and pure contract-helper boundaries in contracts/AGENTS.md. This note covers instruction impact only, not runtime or full contracts-reference accuracy. Root verified reviewed document bytes unchanged at record time; all other packet-3 records remain incomplete, not approved.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"packaging/node-pty-prebuilds/README.md","note":"Source-only review at c53f1a9daf6113eef7cc82614f62b25ab89fcadc: lock packages/snapshots delta does not change node-pty version, resolution or dependency bytes, so the optional prebuild/empty-channel/refresh guidance has no affected native claim. Existing Linux/PTY and artifact evidence is not refreshed. Root verified reviewed document bytes unchanged at record time; all other packet-3 records remain incomplete, not approved.","inputs":["packaging/node-pty-prebuilds/README.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]}
+  ]
+}

@@ -137,6 +137,71 @@ describe('ConversationHistoryReadService', () => {
     );
   });
 
+  test('paginates the personal owner set without widening hosted or empty owner scopes', () => {
+    for (const [threadId, owner, at] of [
+      ['alpha-thread', 'owner-alpha', '2026-08-08T12:01:00.000Z'],
+      ['bravo-thread', 'owner-bravo', '2026-08-08T12:02:00.000Z'],
+      ['stranger-thread', 'owner-stranger', '2026-08-08T12:03:00.000Z'],
+    ]) {
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId,
+        status: 'closed',
+        tenantExecutionContext: { tenantId: 'alpha' as any, source: 'session' },
+        createdAt: at,
+        updatedAt: at,
+      });
+      eventStore.appendEvent({
+        eventId: `${threadId}-start`,
+        provider: 'claude',
+        threadId,
+        sessionId: threadId,
+        method: 'session.started',
+        createdAt: at,
+        metadata: { userId: owner, agentSlug: 'claude' },
+      });
+    }
+    const personalOwnerIds = vi.fn(() => ['owner-alpha', 'owner-bravo']);
+    const reader = new ConversationHistoryReadService({
+      ...readServiceOptions(eventStore),
+      personalOwnerIds,
+    });
+    const authority = sessionReadAuthorityFromRequest(
+      'owner-alpha',
+      undefined,
+      undefined,
+    );
+    const first = reader.list({ authority, limit: 1 });
+    expect(first.items.map((item) => item.id)).toEqual(['bravo-thread']);
+    expect(first.hasMore).toBe(true);
+    const second = reader.list({
+      authority,
+      limit: 1,
+      cursor: first.nextCursor,
+    });
+    expect(second.items.map((item) => item.id)).toEqual(['alpha-thread']);
+    expect(second.hasMore).toBe(false);
+
+    personalOwnerIds.mockClear();
+    const hosted = sessionReadAuthorityFromRequest(
+      'owner-alpha',
+      { tenantId: 'alpha' as any },
+      hostedRegistry,
+    );
+    expect(
+      reader
+        .list({ authority: hosted, limit: 10 })
+        .items.map((item) => item.id),
+    ).toEqual(['alpha-thread']);
+    expect(personalOwnerIds).not.toHaveBeenCalled();
+
+    personalOwnerIds.mockReturnValue([]);
+    expect(reader.list({ authority, limit: 10 })).toEqual({
+      items: [],
+      hasMore: false,
+    });
+  });
+
   test('projects child Sessions into Environment-scoped conversation rows with the newest accepted model', () => {
     eventStore.upsertSession({
       provider: 'claude',

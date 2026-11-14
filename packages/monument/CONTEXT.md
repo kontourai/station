@@ -6,8 +6,10 @@ This package holds the rules that must still give one answer after a crash.
 
 It is a Tier 1 package under
 [ADR 0005](../../docs/adr/0005-require-a-second-consumer-before-extraction.md).
-It is built in Station's workspace and publishable on its own. Station is its
-only product consumer. Its versioning is experimental until a second consumer exists.
+It is built in Station's workspace as a private experimental package. Its
+manifest defines standalone build and publication metadata, but publication is
+not enabled in this revision. Station is its only declared product consumer.
+Its versioning is experimental until a second consumer exists.
 
 ## Two layers
 
@@ -160,9 +162,10 @@ vite or vitest configs are accepted limits, left to review.
   `inboxSettledRetentionMs`; display notes use the same expiry. Steer keys and
   dismissed uncertain claims survive until explicit inbox deletion. Display
   notes have their own `inboxMaxDisplay` capacity (50 by default); a new note
-  past the bound answers `capacity`, while an existing key remains idempotent. An
-  inbox holds at most `inboxMaxUnsettled` unsettled entries; a queued submit past it
-  answers `capacity` and writes nothing. `inbox.forget` removes one inbox
+  past the bound answers `capacity`, while an existing key remains idempotent.
+  An inbox holds at most `inboxMaxUnsettled` unsettled entries; a submit past
+  its cap answers `capacity` without adding the submitted entry. Retention
+  runs first and may still commit deletions. `inbox.forget` removes one inbox
   outright, for a host whose conversation was deleted.
 - **Terminal-turn facts:** inputless legacy rows use retained provider turn ids a
   thread has seen end, which make a later acceptance of the same id

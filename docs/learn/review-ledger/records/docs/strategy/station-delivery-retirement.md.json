@@ -14,7 +14,9 @@
 
     "packages/contracts/src/flow-presentation.ts",
 
-    "src-server/routes/projects/projects.ts"
+    "src-server/routes/evidence/flow-runs.ts",
+
+    "src-server/services/orchestration/flow-policy-sidecar.ts"
   ],
 
   "checks": [

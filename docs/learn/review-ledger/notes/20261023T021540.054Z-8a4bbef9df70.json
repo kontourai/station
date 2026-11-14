@@ -1,0 +1,7 @@
+{
+  "revision": "ada9e1cd287e821b566c1f860b601397cc97a122",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Independent scoped source review identified the recorded Default exception. Corrected the authority bullet: a concrete recorded decision wins; recorded Default calls resolveDefaultPick then defaultPosture, allowing Agent then Station defaults. Rechecked resolve/defaultPosture/resolveDefaultPick and normal/recovery start callers. This note supersedes the prior note wording about all recorded decisions taking precedence. Retained proposal classification and unqualified Automation runtime/delivery limits remain unchanged.","inputs":["docs/design/automations.md"]}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "revision": "2a98453b6063a0320059c17c760f7afcfd6bbebf",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Reviewed exact API reference delta at b05ebba78af3 against this terminal design dependency. The only API prose change adds qualified native Claude2.1.318 alongside2.1.308 in the CLI session-group sync paragraph. Terminal request/observation/operation authority, journal, gateway and supervisor sections are unchanged; current terminal design claims and retained verification limits do not change. This is a scoped downstream source review, not new terminal execution evidence.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed only the exact claude-adapter.test.ts delta: existing retained-sync behavior case is parameterized for qualified308 and318 initialization and adds319 to unsupported controls. Unit mocks still establish adapter wiring, not provider/native acceptance. No ordinary delivery fixture, confidence matrix classification, transport guarantee or real model claim changed. Parent logs show intended pre-fix318 failure with429 controls and final adapter/confinement450 pass; native318 loopback evidence is separately bounded.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed the new20261106 runtime-requalification checkpoint against committed62405/b05 source,450-case final result, passing server-test types, independent receipt/file review and raw private controls. Exact318/SDK0.3.312 model-tool denial is separate from failed empty-advertised-wire assertion. Live ACK attempt was NOT_ADMITTED at99 percent CPU and starts no runtime/model. Finalizer baseline/profile and scoped-fixture candidate all retain original60000ms timeout; candidate restored byte-exactly and kept only as private patch. Portable native authority, finalizer, topology, final delivery and both disabled qualification flags remain open. No whole-epic completion assertion.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}

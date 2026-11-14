@@ -1,0 +1,95 @@
+{
+  "path": "docs/plans/child-work-epic.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Execution plan for the child-work epic outside master consolidation; distinguishes local source increments from required publication, adoption and final acceptance.",
+
+  "limits": "Scope/status classification only. Local and delegated receipts remain revision-bound; no final runtime, provider, native, hosted, publication or delivery qualification follows from this plan.",
+
+  "sources": [
+    "src-ui/src/views/CliSessionGroupsPanel.tsx",
+
+    "src-ui/src/views/CliSessionGroupsPanel.css",
+
+    "src-ui/src/views/__tests__/CliSessionGroupsPanel.test.tsx",
+
+    "src-server/runtime/conversation/reserved-provider-fetch.ts",
+
+    "src-server/runtime/conversation/reserved-sdk-source-attempt.ts",
+
+    "src-server/services/orchestration/delegation-group-persistence.ts",
+
+    "src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts",
+
+    "src-server/runtime/conversation/bounded-api-provider-contract.ts",
+
+    "src-server/runtime/conversation/__tests__/bounded-api-provider-contract.test.ts",
+
+    "packages/contracts/src/report-group.ts",
+
+    "packages/sdk/src/client/report-groups.ts",
+
+    "src-server/services/orchestration/station-report-group-input.ts",
+
+    "src-server/services/orchestration/station-report-group-preparation.ts",
+
+    "src-server/services/orchestration/station-report-group-execution.ts",
+
+    "src-server/services/orchestration/station-report-group-runtime.ts",
+
+    "src-server/services/orchestration/delegation-group-sdk-source-wire-owner.ts",
+
+    "src-server/runtime/conversation/reserved-station-turn.ts",
+
+    "src-server/providers/adapters/station-agent-adapter.ts",
+
+    "src-server/runtime/mcp/report-input-runtime.ts",
+
+    "src-server/services/orchestration/report-input-ledger.ts",
+
+    "src-server/services/orchestration/__tests__/station-report-input.integration.test.ts",
+
+    "src-server/services/orchestration/__tests__/report-input-runtime.integration.test.ts",
+
+    "src-server/services/orchestration/station-report-group-renewal.ts",
+
+    "src-server/services/orchestration/station-report-group-continuation.ts",
+
+    "src-server/services/orchestration/station-report-retained-turn.ts",
+
+    "src-server/services/orchestration/station-report-group-custody.ts",
+
+    "src-server/services/orchestration/station-report-group-admission.ts",
+
+    "src-server/services/orchestration/__tests__/station-report-group-continuation.test.ts",
+
+    "src-server/routes/orchestration/report-groups.ts",
+
+    "src-server/services/connections/native-model-container.ts",
+
+    "src-server/services/connections/native-model-stdio-channel.ts",
+
+    "src-server/services/connections/native-model-stdio-protocol.ts",
+
+    "src-server/services/connections/native-model-stdio-worker.ts",
+
+    "src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts",
+
+    "scripts/child-work-native-model-channel-lab.ts",
+
+    "src-server/services/orchestration/delegation-group-source-admission.ts",
+
+    "src-server/services/orchestration/create-request-claims.ts",
+
+    "src-server/services/orchestration/delegated-task-identity.ts",
+
+    "src-server/services/orchestration/__tests__/native-task-source-admission.test.ts"
+  ],
+
+  "checks": [
+    "Compared the plan with the existing feature branch, reviewed Ensemble handoff and current unpublished upstream source. Remaining group, credential, launch, UI and final exact-source obligations stay open."
+  ]
+}

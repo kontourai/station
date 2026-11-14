@@ -2700,11 +2700,14 @@ export function consentDecisionAuthority(
   return null;
 }
 
-function pathMatchesPrefix(path: string, prefix: string): boolean {
+function pathMatchesPrefix(
+  path: string,
+  prefix: string,
+  pathSegments: readonly string[],
+): boolean {
   if (prefix === '') return false;
   if (prefix.includes('/:')) {
-    const prefixSegments = prefix.split('/').filter(Boolean);
-    const pathSegments = path.split('/').filter(Boolean);
+    const prefixSegments = filteredPatternTokens(prefix);
     return (
       pathSegments.length >= prefixSegments.length &&
       prefixSegments.every(
@@ -2716,10 +2719,13 @@ function pathMatchesPrefix(path: string, prefix: string): boolean {
   return path === prefix || path.startsWith(`${prefix}/`);
 }
 
-function pathMatchesExact(path: string, prefix: string): boolean {
+function pathMatchesExact(
+  path: string,
+  prefix: string,
+  pathSegments: readonly string[],
+): boolean {
   if (prefix.includes('/:')) {
-    const prefixSegments = prefix.split('/').filter(Boolean);
-    const pathSegments = path.split('/').filter(Boolean);
+    const prefixSegments = filteredPatternTokens(prefix);
     return (
       pathSegments.length === prefixSegments.length &&
       prefixSegments.every(
@@ -3406,22 +3412,51 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
     },
   ];
 
-function ruleMatchesExternalSurface(
-  rule: ExternalSurfaceCapabilityRule,
-  method: string,
-  path: string,
-): boolean {
-  if (rule.method !== '*' && rule.method !== method.toUpperCase()) return false;
-  return rule.match === 'exact'
-    ? exactRoutePathMatches(rule.prefix, path)
-    : pathMatchesPrefix(path, rule.prefix);
+interface RoutePatternTokens {
+  readonly raw: readonly string[];
+  readonly filtered: readonly string[];
+}
+
+// Static grammar only; policy and winning rules are evaluated on every lookup.
+const ROUTE_PATTERN_TOKENS: ReadonlyMap<string, RoutePatternTokens> = (() => {
+  const tokens = new Map<string, RoutePatternTokens>();
+  for (const { prefix } of [
+    ...PAIRING_SCOPE_ROUTE_TABLE,
+    ...EXTERNAL_SURFACE_CAPABILITY_TABLE,
+  ]) {
+    if (!prefix.includes(':') || tokens.has(prefix)) continue;
+    const raw = Object.freeze(prefix.split('/'));
+    tokens.set(
+      prefix,
+      Object.freeze({
+        raw,
+        filtered: Object.freeze(raw.filter(Boolean)),
+      }),
+    );
+  }
+  return tokens;
+})();
+
+function rawPatternTokens(pattern: string): readonly string[] {
+  return ROUTE_PATTERN_TOKENS.get(pattern)?.raw ?? pattern.split('/');
+}
+
+function filteredPatternTokens(pattern: string): readonly string[] {
+  return (
+    ROUTE_PATTERN_TOKENS.get(pattern)?.filtered ??
+    pattern.split('/').filter(Boolean)
+  );
 }
 
 /** Hono's route inventory uses `:param`; live requests contain its value. */
-function exactRoutePathMatches(pattern: string, path: string): boolean {
+function exactRoutePathMatches(
+  pattern: string,
+  path: string,
+  actual: readonly string[],
+): boolean {
   if (pattern === path) return true;
-  const expected = pattern.split('/');
-  const actual = path.split('/');
+  if (!pattern.includes(':')) return false;
+  const expected = rawPatternTokens(pattern);
   return (
     expected.length === actual.length &&
     expected.every(
@@ -3440,10 +3475,19 @@ export function requiredExternalSurfaceCapability(
   method: string,
   path: string,
 ): ExternalSurfaceCapabilityRule | undefined {
+  const normalizedMethod = method.toUpperCase();
+  const pathSegments = path.split('/');
+  const nonemptyPathSegments = pathSegments.filter(Boolean);
   let best: ExternalSurfaceCapabilityRule | undefined;
   for (const rule of EXTERNAL_SURFACE_CAPABILITY_TABLE) {
     if (rule.transport !== transport) continue;
-    if (!ruleMatchesExternalSurface(rule, method, path)) continue;
+    if (rule.method !== '*' && rule.method !== normalizedMethod) continue;
+    if (
+      !(rule.match === 'exact'
+        ? exactRoutePathMatches(rule.prefix, path, pathSegments)
+        : pathMatchesPrefix(path, rule.prefix, nonemptyPathSegments))
+    )
+      continue;
     if (
       !best ||
       rule.prefix.length > best.prefix.length ||
@@ -3564,13 +3608,14 @@ export function matchPairingScopeRule(
   path: string,
 ): PairingScopeRouteRule | undefined {
   const normalizedMethod = method.toUpperCase();
+  const pathSegments = path.split('/').filter(Boolean);
   let best: PairingScopeRouteRule | undefined;
   for (const rule of PAIRING_SCOPE_ROUTE_TABLE) {
     if (rule.method !== '*' && rule.method !== normalizedMethod) continue;
     if (
       !(rule.exact
-        ? pathMatchesExact(path, rule.prefix)
-        : pathMatchesPrefix(path, rule.prefix))
+        ? pathMatchesExact(path, rule.prefix, pathSegments)
+        : pathMatchesPrefix(path, rule.prefix, pathSegments))
     )
       continue;
     if (
@@ -4493,6 +4538,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // Foreground execution has the same authority boundary as durable
     // delegation: both can resolve a target Environment and run an Agent.
     // POST therefore inherits the orchestration family's operate scope.
+    // Login observation only; the handler additionally requires the current local operator.
+    { method: 'POST', path: '/api/orchestration/ensembles/prepare' },
+    { method: 'POST', path: '/api/orchestration/ensembles/inspect' },
     { method: 'POST', path: '/api/orchestration/chat' },
     {
       method: 'GET',
@@ -4589,6 +4637,88 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'DELETE',
       path: '/api/orchestration/conversations/:conversationId/context-boundary/:idempotencyKey',
+    },
+    { method: 'GET', path: '/api/orchestration/report-groups' },
+    { method: 'POST', path: '/api/orchestration/report-groups' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/report-groups/:groupId/members/:seatId/context-checkpoint',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/report-groups/:groupId/input/narrow',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/report-groups/:groupId/input/sync',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/report-groups/:groupId/report',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/report-groups/:groupId/accounting/recover',
+    },
+    { method: 'POST', path: '/api/orchestration/report-groups/:groupId/sync' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/report-groups/:groupId/sync/finalize',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/report-groups/:groupId/continuation/finalize',
+    },
+    { method: 'GET', path: '/api/orchestration/report-groups/:groupId' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/report-groups/:groupId/cancel/finalize',
+    },
+    { method: 'GET', path: '/api/orchestration/report-groups/:groupId/events' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/report-groups/:groupId/events/stream',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/report-groups/:groupId/members/:seatId/results/:invocationId',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/report-groups/:groupId/cancel',
+    },
+    { method: 'GET', path: '/api/orchestration/groups' },
+    { method: 'POST', path: '/api/orchestration/groups' },
+    { method: 'GET', path: '/api/orchestration/groups/:groupId' },
+    { method: 'GET', path: '/api/orchestration/groups/:groupId/events' },
+    { method: 'POST', path: '/api/orchestration/groups/:groupId/run' },
+    { method: 'POST', path: '/api/orchestration/groups/:groupId/cancel' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/groups/:groupId/members/:seatId/events',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/groups/:groupId/members/:seatId/output',
+    },
+    { method: 'GET', path: '/api/orchestration/session-groups' },
+    { method: 'POST', path: '/api/orchestration/session-groups' },
+    { method: 'POST', path: '/api/orchestration/session-groups/from-ensemble' },
+    { method: 'GET', path: '/api/orchestration/session-groups/:groupId' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/session-groups/:groupId/events',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/session-groups/:groupId/events/stream',
+    },
+    { method: 'POST', path: '/api/orchestration/session-groups/:groupId/run' },
+    // Sync rechecks current request authority for its owned local group.
+    { method: 'POST', path: '/api/orchestration/session-groups/:groupId/sync' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/session-groups/:groupId/cancel',
     },
     { method: 'GET', path: '/api/orchestration/delegations' },
     { method: 'POST', path: '/api/orchestration/delegations' },

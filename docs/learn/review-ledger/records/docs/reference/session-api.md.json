@@ -164,7 +164,9 @@
 
     "src-ui/src/hooks/useDerivedSessions.ts",
 
-    "src-server/services/orchestration/__tests__/start-owner-publication-contention.test.ts"
+    "src-server/services/orchestration/__tests__/start-owner-publication-contention.test.ts",
+
+    "src-server/services/orchestration/delegation-tool-policy.ts"
   ],
 
   "checks": [

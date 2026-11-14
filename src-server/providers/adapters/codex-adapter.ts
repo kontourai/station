@@ -37,6 +37,7 @@ import type {
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
+import { inputRequestFromMcpElicitation } from '@kontourai/station-shared/mcp-elicitation';
 import type {
   PreToolPolicyDecision,
   StagedPreToolPolicyEvaluator,
@@ -49,7 +50,10 @@ import {
   observedConfinementRecord,
 } from '../../security/confinement/confinement-provider.js';
 import { managedEnginePrerequisites } from '../../security/managed-engine-limits.js';
-import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
+import type {
+  EngineSessionLaunchContext,
+  engineProxyLaunch,
+} from '../../services/connections/engine-proxy-routing.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import { prepareManagedEngineWorkspace } from '../../services/infra/managed-engine-workspace.js';
 import {
@@ -84,6 +88,8 @@ import {
   type ProviderAdoptionHooks,
   type ProviderChildSteerResult,
   type ProviderDiscardSessionRecovery,
+  type ProviderExecutionAuthInput,
+  type ProviderExecutionAuthObservation,
   type ProviderInterruptTurnResult,
   type ProviderNativeSessionIdentity,
   type ProviderSendTurnInput,
@@ -106,6 +112,14 @@ import {
   parseCliAuthState,
   runCliCommand,
 } from '../auth/cli-auth.js';
+import { observeExecutableInvocation } from '../auth/executable-observation.js';
+import {
+  assertNativeAuthenticationProfile,
+  captureNativeAuthenticationLaunch,
+  observeNativeAuthenticationLaunch,
+  retainNativeAuthenticationContinuation,
+} from '../auth/native-authentication-context.js';
+import { cliInvocation } from '../auth/windows-cli-invocation.js';
 import {
   effectiveModelMetadata,
   reportedModelMetadata,
@@ -152,6 +166,7 @@ import {
   CodexAdapterTransport,
   createCodexProcess,
   createCodexSessionRecord,
+  resolveCodexSpawnContext,
 } from './codex-adapter-transport.js';
 import {
   type CodexSessionRecord,
@@ -248,7 +263,9 @@ interface CodexAdapterOptions {
    * credentials, so it never blocks a spawn.
    */
   getConnectionEnv?: () => Promise<Record<string, string> | undefined>;
-  getConnectionLaunch?: () => Promise<ReturnType<typeof engineProxyLaunch>>;
+  getConnectionLaunch?: (
+    session?: EngineSessionLaunchContext,
+  ) => Promise<ReturnType<typeof engineProxyLaunch>>;
   /**
    * Readiness seams, injectable so the installed branch and the probe's
    * environment are exercised on any host (a host without `codex` would
@@ -1029,6 +1046,137 @@ export class CodexAdapter implements ProviderAdapterShape {
         ),
     );
     this.goals = new CodexGoals(this.transport);
+  }
+
+  async observeExecutionAuthentication(
+    input: ProviderExecutionAuthInput,
+  ): Promise<ProviderExecutionAuthObservation> {
+    (await input.assertCurrent())();
+    const context = async () => {
+      const home = await this.resolveAppHomeEnv(
+        input.credentialProfileRef ?? undefined,
+      );
+      const launch = await this.resolveConnectionLaunch();
+      const spawn = resolveCodexSpawnContext(
+        { ...launch.env, ...home?.env },
+        undefined,
+        launch.args,
+      );
+      const env = Object.fromEntries(
+        Object.entries(spawn.env).filter(
+          (entry): entry is [string, string] => entry[1] !== undefined,
+        ),
+      );
+      const executableIdentity = (
+        await observeExecutableInvocation(spawn.binary)
+      )?.fingerprint;
+      const hash = crypto
+        .createHash('sha256')
+        .update(
+          JSON.stringify({
+            input,
+            executableIdentity,
+            binary: spawn.binary,
+            env: Object.entries(env).sort(),
+            profile: home?.profileRef,
+            args: spawn.args,
+          }),
+        )
+        .digest('hex');
+      return {
+        ...spawn,
+        executableIdentity,
+        profileRef: home?.profileRef ?? null,
+        env,
+        hash,
+        routed:
+          Boolean(launch.route) ||
+          spawn.args.length !== 1 ||
+          spawn.args[0] !== 'app-server',
+      };
+    };
+    const before = await context();
+    const finalize = await input.assertCurrent();
+    // Only direct CLI launches have a qualified authentication witness.
+    const nativeContinuation =
+      cliInvocation(before.binary, []).command === before.binary
+        ? await observeNativeAuthenticationLaunch({
+            engine: 'codex',
+            profileRef: before.profileRef,
+            command: before.binary,
+            cwd: input.cwd,
+            env: before.env,
+            assertCurrent: () => {
+              input.signal?.throwIfAborted();
+              finalize();
+            },
+          })
+        : undefined;
+    // Login status does not authenticate a custom model-provider route.
+    const result =
+      before.routed ||
+      !before.executableIdentity ||
+      !isAbsolute(before.binary) ||
+      input.connectionId !== this.metadata.connectionId
+        ? null
+        : await runCliCommand(
+            before.binary,
+            ['login', 'status'],
+            input.signal,
+            before.env,
+            {
+              cwd: input.cwd,
+              assertCurrent: async () => {
+                const executable = await observeExecutableInvocation(
+                  before.binary,
+                );
+                if (
+                  !executable ||
+                  executable.fingerprint !== before.executableIdentity
+                )
+                  throw new Error(
+                    'Execution authentication executable changed',
+                  );
+                const finalize = await input.assertCurrent();
+                return () => {
+                  executable.assertCurrent();
+                  finalize();
+                };
+              },
+              timeoutMs: 10_000,
+              maxBuffer: 16_384,
+              killSignal: 'SIGKILL',
+            },
+          );
+    const after = await context();
+    let state: ProviderExecutionAuthObservation['state'] = 'unknown';
+    if (
+      before.hash === after.hash &&
+      result &&
+      !result.timedOut &&
+      !result.outputTruncated
+    ) {
+      const lines = [result.stdout.trim(), result.stderr.trim()];
+      if (lines.some((line) => /\bnot\b[^.\n]{0,40}logged\s+in/i.test(line)))
+        state = 'unauthenticated';
+      else if (
+        result.code === 0 &&
+        lines.some((line) =>
+          /^Logged in using (ChatGPT|API key)\b[^\r\n]*$/i.test(line),
+        )
+      )
+        state = 'authenticated';
+    }
+    return retainNativeAuthenticationContinuation(
+      {
+        state,
+        contextHash: `sha256:${before.hash}`,
+        checkedAt: Date.now(),
+        modelEntitlement: 'not-checked',
+        outputTokenLimitFidelity: 'unavailable',
+      },
+      before.hash === after.hash ? nativeContinuation : undefined,
+    );
   }
 
   async getPrerequisites(options?: {
@@ -2112,6 +2260,12 @@ export class CodexAdapter implements ProviderAdapterShape {
       appHomeEnv = resolvedHome?.env;
       appHome = appHomeEnv ? 'profile' : 'global';
     }
+    assertNativeAuthenticationProfile(
+      this,
+      input.threadId,
+      resolvedHome?.profileRef ?? null,
+      input.cwd,
+    );
     const quotaConnectionId = string(input.metadata?.connectionId);
     const toolServers = await this.resolveAgentToolServers(input);
     // station#2072: the connection env layer merges UNDER the app-home
@@ -2121,7 +2275,13 @@ export class CodexAdapter implements ProviderAdapterShape {
     // the ambient env. An explicit configHome lands here exactly when no
     // profile/affinity home did (the runtime resolves only one of
     // configHome/useAppHome into these layers).
-    const connectionLaunch = await this.resolveConnectionLaunch();
+    const connectionLaunch = await this.resolveConnectionLaunch(
+      Object.freeze({
+        threadId: input.threadId,
+        cwd: input.cwd,
+        modelId: input.modelId,
+      }),
+    );
     const connectionEnv = connectionLaunch.env;
     const spawnEnv =
       connectionEnv && appHomeEnv
@@ -2174,6 +2334,26 @@ export class CodexAdapter implements ProviderAdapterShape {
       ...spawnEnv,
       [WORKLOAD_SESSION_ENV]: input.threadId,
     };
+    const authenticatedLaunch = captureNativeAuthenticationLaunch(
+      this,
+      input.threadId,
+    );
+    if (authenticatedLaunch) {
+      const actual = resolveCodexSpawnContext(
+        sessionSpawnEnv,
+        sessionTmpDir,
+        spawnArgs,
+      );
+      const authenticationEnv = { ...actual.env };
+      delete authenticationEnv[WORKLOAD_SESSION_ENV];
+      const invocation = cliInvocation(actual.binary, actual.args);
+      authenticatedLaunch({
+        cwd: input.cwd,
+        command: invocation.command,
+        args: invocation.args,
+        env: authenticationEnv,
+      });
+    }
     // Without a session folder the call is exactly the two-argument one
     // the workload change made.
     const processHandle = sessionTmpDir
@@ -2546,6 +2726,11 @@ export class CodexAdapter implements ProviderAdapterShape {
           describeCodexSandboxGap(sandboxEvidence),
         );
       this.transport.setCodexThreadId(record, codexThread.id);
+      await this.assertAuthoredMcpReady(
+        record,
+        codexThread.id,
+        toolServers.report?.delivered ?? [],
+      );
       this.options.nativeSessionOwnership?.claim(
         nativeSessionIdentityKey(
           this.provider,
@@ -2762,6 +2947,53 @@ export class CodexAdapter implements ProviderAdapterShape {
         throw new EngineStartupFailure(startupFailure);
       }
       throw error;
+    }
+  }
+
+  private async assertAuthoredMcpReady(
+    session: CodexSessionRecord,
+    threadId: string,
+    serverIds: readonly string[],
+  ): Promise<void> {
+    const deadline = Date.now() + CODEX_ADOPTION_REQUEST_TIMEOUT_MS;
+    for (const serverName of serverIds) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0)
+        throw new Error('Codex required MCP inventory timed out.');
+      const response = record(
+        await this.boundedProviderRequest(
+          this.transport,
+          session,
+          'mcpServerStatus/list',
+          { threadId, serverName, detail: 'toolsAndAuthOnly' },
+          remaining,
+        ),
+      );
+      const rows = response?.data;
+      const matches = Array.isArray(rows)
+        ? rows.map(record).filter((row) => row?.name === serverName)
+        : [];
+      const refusal =
+        matches.length === 0
+          ? 'missing-server'
+          : matches.length !== 1
+            ? 'ambiguous-server'
+            : matches[0]?.authStatus === 'notLoggedIn'
+              ? 'authentication-required'
+              : !record(matches[0]?.tools) || matches[0]?.toolsError != null
+                ? 'tool-inventory-unavailable'
+                : matches[0]?.runtimeStatus !== undefined &&
+                    matches[0].runtimeStatus !== 'connected'
+                  ? 'not-connected'
+                  : undefined;
+      if (refusal) {
+        this.options.logger?.warn?.('Codex authored MCP inventory refused', {
+          threadId: session.externalThreadId,
+          serverId: serverName,
+          reason: refusal,
+        });
+        throw new Error('Codex required MCP server is unavailable.');
+      }
     }
   }
 
@@ -3097,11 +3329,13 @@ export class CodexAdapter implements ProviderAdapterShape {
    * block a spawn (the credential-profile branch of `resolveAppHomeEnv`
    * above stays the only fail-closed one).
    */
-  private async resolveConnectionLaunch(): Promise<
-    ReturnType<typeof engineProxyLaunch>
-  > {
+  private async resolveConnectionLaunch(
+    session?: EngineSessionLaunchContext,
+  ): Promise<ReturnType<typeof engineProxyLaunch>> {
     if (this.options.getConnectionLaunch)
-      return this.options.getConnectionLaunch();
+      return session
+        ? this.options.getConnectionLaunch(session)
+        : this.options.getConnectionLaunch();
     return { env: await this.resolveConnectionEnv(), args: [] };
   }
 
@@ -3125,6 +3359,8 @@ export class CodexAdapter implements ProviderAdapterShape {
   ): Promise<ProviderTurnStartResult> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const record = this.transport.requireSession(input.threadId);
+    if (record.session.status === 'connecting')
+      throw new Error('Codex session is still starting.');
     const turnStartedAt = Date.now();
     const invocationId = input.invocationId;
     const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
@@ -3833,8 +4069,18 @@ export class CodexAdapter implements ProviderAdapterShape {
       throw new Error('This Codex approval request is not open.');
     }
 
-    if (pending.method === 'item/tool/requestUserInput') {
-      const form = codexInputRequest(pending.payload);
+    const mcpForm =
+      pending.method === 'mcpServer/elicitation/request'
+        ? inputRequestFromMcpElicitation(
+            string(pending.payload.serverName) ?? 'an MCP server',
+            pending.payload,
+          )
+        : null;
+    if (
+      pending.method === 'item/tool/requestUserInput' ||
+      mcpForm?.body.fields.length
+    ) {
+      const form = mcpForm ?? codexInputRequest(pending.payload);
       if (
         !form ||
         !context?.expectedRequestEventId ||
@@ -3854,9 +4100,17 @@ export class CodexAdapter implements ProviderAdapterShape {
         rpcRequestId: pending.rpcRequestId,
         method: pending.method,
         ...(pending.blocking === false ? { blocking: false } : {}),
-        result: {
-          answers: content ? codexAnswers(form, content) : {},
-        },
+        result: mcpForm
+          ? {
+              action:
+                decision === 'accept'
+                  ? 'accept'
+                  : decision === 'decline'
+                    ? 'decline'
+                    : 'cancel',
+              ...(content ? { content } : {}),
+            }
+          : { answers: content ? codexAnswers(form, content) : {} },
         status: mapApprovalResolutionStatus(decision),
       });
       return;

@@ -37,10 +37,14 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { FileAuthorizationLedger } from '@kontourai/dispatch';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
@@ -48,11 +52,19 @@ import {
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
+import {
+  createReportGroup,
+  getReportGroup,
+  readReportGroupResult,
+  recoverReportGroupAccounting,
+} from '@kontourai/station-sdk/client';
 import { rmDirSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { createStationHomeBackup } from '@kontourai/station-shared/station-home-archive';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { findFreePortBlock } from '../../../scripts/lib/free-ports.mjs';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../domain/config-loader.js';
+import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { ensureStationHomeSchema } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
 import {
@@ -81,7 +93,15 @@ import {
   stageAccountSharingChange,
 } from '../../services/identity/account-sharing-setting.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
+import { createReportFlow } from '../../services/orchestration/__tests__/delegation-source-fixtures/flow.js';
+import { useAdvancingHistoricalClock } from '../../services/orchestration/__tests__/delegation-source-fixtures/report-clock.js';
+import { controlledTextStream } from '../../services/orchestration/__tests__/delegation-source-fixtures/streamed-text.js';
+import { AttachedSessionFollowService } from '../../services/orchestration/attached-session-follow-service.js';
+import { StationDelegationPersistence } from '../../services/orchestration/delegation-group-persistence.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import { StationReportGroupPreparation } from '../../services/orchestration/station-report-group-preparation.js';
+import { StationReportGroupRuntime } from '../../services/orchestration/station-report-group-runtime.js';
+import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { ProjectMembershipService } from '../../services/projects/project-membership-service.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
@@ -92,6 +112,7 @@ import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '../../services/usage-te
 import { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import * as fakeGh from '../../services/work-item-providers/__tests__/fixtures/fake-gh.js';
 import type { TaskFollowUpStoreHolder } from '../../services/work-item-providers/task-follow-up-store.js';
+import { execGit } from '../../utils/git-exec.js';
 import { installSignedStartupProvider } from './fixtures/signed-provider-startup.js';
 
 const TEST_PORT = 31_141;
@@ -133,26 +154,34 @@ const routeMocks = vi.hoisted(() => {
         announceRoutesConfigured = resolve;
       });
     },
-    configureRuntimeRoutes: vi.fn((context: any) => {
-      announceRoutesConfigured();
-      // This crosses the same Dispatcher Interface that task routes and
-      // capability bindings receive while `initializeRuntime` is still
-      // constructing VoltAgent/routes. Before archive#2528's ordering repair this
-      // access crashed because StationRuntime assigned the field only after
-      // initializeRuntime returned.
-      const dispatch = context.taskDispatcher.dispatch(
-        '__cold-start-missing__',
-        {},
-      );
-      taskDispatches.push(dispatch);
-      const services = {
-        schedulerService: { stop: vi.fn(async () => {}) },
-        notificationService: { shutdown: vi.fn() },
-        kitLifecycleReady: routeMocks.kitLifecycleReady,
-      };
-      servicePairs.push(services);
-      return services;
-    }),
+    configureRuntimeRoutes: vi.fn(
+      (
+        context: any,
+      ): {
+        schedulerService: { stop(): unknown };
+        notificationService: { shutdown(): unknown };
+        kitLifecycleReady: Promise<void>;
+      } => {
+        announceRoutesConfigured();
+        // This crosses the same Dispatcher Interface that task routes and
+        // capability bindings receive while `initializeRuntime` is still
+        // constructing VoltAgent/routes. Before archive#2528's ordering repair this
+        // access crashed because StationRuntime assigned the field only after
+        // initializeRuntime returned.
+        const dispatch = context.taskDispatcher.dispatch(
+          '__cold-start-missing__',
+          {},
+        );
+        taskDispatches.push(dispatch);
+        const services = {
+          schedulerService: { stop: vi.fn(async () => {}) },
+          notificationService: { shutdown: vi.fn() },
+          kitLifecycleReady: routeMocks.kitLifecycleReady,
+        };
+        servicePairs.push(services);
+        return services;
+      },
+    ),
   };
   state.armRoutesConfigured();
   return state;
@@ -267,9 +296,21 @@ vi.mock('../frameworks/voltagent-hono-runtime.js', () => ({
   }),
 }));
 
-vi.mock('../../routes/operations/voice.js', () => ({
+vi.mock('../../routes/operations/voice.js', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../routes/operations/voice.js')
+  >()),
   attachVoiceWebSocket: vi.fn(),
 }));
+
+vi.mock('../consent/consent-listener.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../consent/consent-listener.js')>();
+  return {
+    ...actual,
+    startConsentListener: vi.fn(actual.startConsentListener),
+  };
+});
 
 vi.mock('../../providers/llm/bedrock.js', async (importOriginal) => {
   const actual =
@@ -2229,6 +2270,87 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       .toBe('closed');
   });
 
+  it.each([
+    'adopt',
+    'station-choice',
+    'other-engine',
+    'other-setting',
+  ] as const)(
+    'preserves startup engine adoption authority: %s',
+    async (scenario) => {
+      home = await createSchemaHome('station-coldstart-engine-adoption-');
+      runtime = new StationRuntime({
+        projectHomeDir: home,
+        port: TEST_PORT,
+        host: '127.0.0.1',
+      });
+      const connectionId = engineConnectionId('claude');
+      const subject = runtime as unknown as {
+        configLoader: ConfigLoader;
+        listEngineConnections(): Promise<
+          Array<{
+            id: ReturnType<typeof engineConnectionId>;
+            type: string;
+            name: string;
+            enabled: boolean;
+            status: string;
+            capabilities: string[];
+          }>
+        >;
+      };
+      const loader = subject.configLoader;
+      let changed = false;
+      const resolve = vi
+        .spyOn(subject, 'listEngineConnections')
+        .mockImplementation(async () => {
+          if (!changed && scenario !== 'adopt') {
+            changed = true;
+            await loader.mutateAppConfig(() =>
+              scenario === 'station-choice'
+                ? { builtinAgentEngineConnectionId: null }
+                : scenario === 'other-engine'
+                  ? {
+                      builtinAgentEngineConnectionId:
+                        engineConnectionId('codex'),
+                    }
+                  : { systemPrompt: 'Concurrent authored prompt' },
+            );
+          }
+          return [
+            {
+              id: connectionId,
+              type: 'claude',
+              name: 'Claude',
+              enabled: true,
+              status: 'ready',
+              capabilities: ['agent-runtime'],
+            },
+          ];
+        });
+      try {
+        if (scenario === 'adopt') {
+          await expect(runtime.initialize()).resolves.toBeUndefined();
+        } else {
+          await expect(runtime.initialize()).rejects.toThrow(
+            'Runtime configuration changed while resolving the startup engine.',
+          );
+        }
+        const stored = await loader.loadAppConfig();
+        expect(stored.builtinAgentEngineConnectionId).toBe(
+          scenario === 'station-choice'
+            ? null
+            : scenario === 'other-engine'
+              ? engineConnectionId('codex')
+              : connectionId,
+        );
+        if (scenario === 'other-setting')
+          expect(stored.systemPrompt).toBe('Concurrent authored prompt');
+      } finally {
+        resolve.mockRestore();
+      }
+    },
+  );
+
   it('settles async route-service readiness before capturing agent configuration', async () => {
     home = await createSchemaHome('station-coldstart-route-ready-');
     runtime = new StationRuntime({
@@ -2456,6 +2578,41 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     ).toHaveBeenCalledTimes(1);
   });
 
+  it('does not begin deferred attached-session polling after shutdown', async () => {
+    home = await createSchemaHome('station-deferred-follow-shutdown-');
+    const stopped = new Set<AttachedSessionFollowService>();
+    const stopActual = AttachedSessionFollowService.prototype.stop;
+    const poll = vi
+      .spyOn(AttachedSessionFollowService.prototype, 'pollNow')
+      .mockResolvedValue();
+    const stop = vi
+      .spyOn(AttachedSessionFollowService.prototype, 'stop')
+      .mockImplementation(function (this: AttachedSessionFollowService) {
+        stopped.add(this);
+        return stopActual.call(this);
+      });
+    try {
+      runtime = new StationRuntime({ projectHomeDir: home, port: TEST_PORT });
+      await runtime.initialize();
+      await runtime.shutdown();
+      runtime = undefined;
+      expect(stopped.size).toBe(1);
+      for (const follower of stopped)
+        expect(poll.mock.contexts).not.toContain(follower);
+      poll.mockClear();
+      await new Promise<void>((resolve) => setTimeout(resolve, 2750));
+      for (const follower of stopped)
+        expect(poll.mock.contexts).not.toContain(follower);
+    } finally {
+      try {
+        for (const follower of stopped) await stopActual.call(follower);
+      } finally {
+        stop.mockRestore();
+        poll.mockRestore();
+      }
+    }
+  });
+
   it('preserves an explicit programmatic port 0 without defaulting it', async () => {
     home = await createSchemaHome('station-port-zero-');
     runtime = new StationRuntime({ projectHomeDir: home, port: 0 });
@@ -2481,6 +2638,803 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
           .backupDir,
       ).toBe(backupDir);
     } finally {
+      rmDirSyncRetrying(backupDir);
+    }
+  });
+
+  async function initializeReportFixture(
+    signal: AbortSignal,
+    providerFetch?: typeof fetch,
+    port = 0,
+  ) {
+    const core = await import('@voltagent/core');
+    const realCore =
+      await vi.importActual<typeof import('@voltagent/core')>(
+        '@voltagent/core',
+      );
+    const realHono = await vi.importActual<
+      typeof import('../frameworks/voltagent-hono-runtime.js')
+    >('../frameworks/voltagent-hono-runtime.js');
+    const realRoutes = await vi.importActual<
+      typeof import('../routes/runtime-routes.js')
+    >('../routes/runtime-routes.js');
+    const consent = await import('../consent/consent-listener.js');
+    const coreMock = vi.mocked(core.VoltAgent);
+    const honoMock = vi.mocked(stationHonoServer);
+    const consentMock = vi.mocked(consent.startConsentListener);
+    const previousCore = coreMock.getMockImplementation();
+    const previousHono = honoMock.getMockImplementation();
+    const previousRoutes =
+      routeMocks.configureRuntimeRoutes.getMockImplementation();
+    const previousConsent = consentMock.getMockImplementation();
+    const externalSourceRoots = [
+      ['STATION_EXTERNAL_CLAUDE_SOURCE_ROOT', 'claude'],
+      ['STATION_EXTERNAL_CODEX_SOURCE_ROOT', 'codex'],
+      ['STATION_EXTERNAL_OPENCODE_SOURCE_ROOT', 'opencode'],
+      ['STATION_EXTERNAL_GROK_SOURCE_ROOT', 'grok'],
+    ] as const;
+    const previousHome = process.env.STATION_HOME;
+    const previousInstance = process.env.STATION_INSTANCE;
+    const previousApiBase = process.env.STATION_API_BASE;
+    const previousSourceRoots = externalSourceRoots.map(
+      ([name]) => [name, process.env[name]] as const,
+    );
+    if (!previousCore || !previousHono || !previousRoutes || !previousConsent)
+      throw new Error('Cold-start mock implementations are required');
+    signal.throwIfAborted();
+    let boundPort: number | undefined;
+    let origin: string | undefined;
+    let factoryCalls = 0;
+    const factoryContexts: Array<
+      Parameters<typeof realRoutes.configureRuntimeRoutes>[0]
+    > = [];
+    let catalogReads = 0;
+    const outboundFetch: string[] = [];
+    const fetchActual = globalThis.fetch;
+    const fetchFence = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation((input, init) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+        );
+        const method =
+          init?.method ?? (input instanceof Request ? input.method : 'GET');
+        if (providerFetch && url.origin === 'https://api.anthropic.com') {
+          if (url.pathname === '/v1/models' && method === 'GET') {
+            catalogReads++;
+            return Promise.resolve(
+              Response.json({
+                data: [
+                  {
+                    id: 'claude-sonnet-4-6',
+                    type: 'model',
+                    display_name: 'Controlled Sonnet',
+                    created_at: '2026-02-17T00:00:00Z',
+                  },
+                ],
+                has_more: false,
+              }),
+            );
+          }
+          if (url.pathname === '/v1/messages' && method === 'POST')
+            return providerFetch(input, init);
+        }
+        if (url.origin !== origin) {
+          outboundFetch.push(url.origin);
+          return Promise.reject(
+            new Error('Unexpected outbound request during report boot'),
+          );
+        }
+        return fetchActual(input, init);
+      });
+    let restored = false;
+    const restore = () => {
+      if (restored) return;
+      restored = true;
+      for (const [name, value] of previousSourceRoots) vi.stubEnv(name, value);
+      vi.stubEnv('STATION_HOME', previousHome);
+      vi.stubEnv('STATION_INSTANCE', previousInstance);
+      vi.stubEnv('STATION_API_BASE', previousApiBase);
+      fetchFence.mockRestore();
+      coreMock.mockImplementation(previousCore);
+      honoMock.mockImplementation(previousHono);
+      routeMocks.configureRuntimeRoutes.mockImplementation(previousRoutes);
+      consentMock.mockImplementation(previousConsent);
+    };
+    onTestFinished(restore);
+    vi.stubEnv('STATION_HOME', home);
+    vi.stubEnv('STATION_API_BASE', undefined);
+    vi.stubEnv('STATION_INSTANCE', 'initialized-report-fixture');
+    const fixtureConfig = new ConfigLoader({ projectHomeDir: home });
+    await fixtureConfig.saveAppConfig({
+      ...(await fixtureConfig.loadAppConfig()),
+      lanDiscoveryEnabled: false,
+    });
+    for (const [name, suffix] of externalSourceRoots) {
+      const sourceRoot = join(home, 'fixture-external-sources', suffix);
+      mkdirSync(sourceRoot, { recursive: true, mode: 0o700 });
+      vi.stubEnv(name, sourceRoot);
+    }
+    coreMock.mockImplementation(function ForwardedVoltAgent(...args) {
+      return new realCore.VoltAgent(...args);
+    });
+    honoMock.mockImplementation((...args) => {
+      expect(args[1]).toBeUndefined();
+      const factory = realHono.stationHonoServer(...args);
+      return (deps) => {
+        const provider = factory(deps);
+        return {
+          ...provider,
+          async start() {
+            const result = await provider.start();
+            if (
+              !result ||
+              typeof result !== 'object' ||
+              !('port' in result) ||
+              typeof result.port !== 'number'
+            )
+              throw new Error(
+                'Actual HTTP provider did not report a bound port',
+              );
+            boundPort = result.port;
+            origin = `http://127.0.0.1:${boundPort}`;
+            return result;
+          },
+        };
+      };
+    });
+    routeMocks.configureRuntimeRoutes.mockImplementation((context) => {
+      factoryCalls++;
+      factoryContexts.push(context);
+      return realRoutes.configureRuntimeRoutes(context);
+    });
+    consentMock.mockImplementation(async () => ({
+      status: 'unavailable',
+      reason: 'Consent listener excluded from report-storage test',
+    }));
+    const initializedRuntime = new StationRuntime({
+      projectHomeDir: home,
+      port,
+      host: '127.0.0.1',
+    });
+    runtime = initializedRuntime;
+    let resolveConfiguration!: () => void;
+    let rejectConfiguration!: (error: unknown) => void;
+    const configurationReady = new Promise<void>((resolve, reject) => {
+      resolveConfiguration = resolve;
+      rejectConfiguration = reject;
+    });
+    void configurationReady.catch(() => {});
+    const reloadDefaultAgent =
+      initializedRuntime.reloadDefaultAgent.bind(initializedRuntime);
+    const observeConfiguration = vi
+      .spyOn(initializedRuntime, 'reloadDefaultAgent')
+      .mockImplementation(async () => {
+        try {
+          await reloadDefaultAgent();
+          resolveConfiguration();
+        } catch (error) {
+          rejectConfiguration(error);
+          throw error;
+        }
+      });
+    onTestFinished(() => observeConfiguration.mockRestore());
+    await initializedRuntime.initialize();
+    // ACP readiness publishes a real configuration generation after boot.
+    await configurationReady;
+    expect(factoryCalls).toBe(1);
+    expect(boundPort).toBeGreaterThan(0);
+    if (!origin) throw new Error('Actual loopback listener is required');
+    const minted = await fetch(
+      `${origin}/.well-known/station/v1/pairing/local-grant`,
+      {
+        signal,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secret: readFileSync(
+            join(home, 'runtime', 'local-grant.secret'),
+            'utf8',
+          ).trim(),
+          deviceName: 'initialized-report-custody',
+        }),
+      },
+    );
+    expect(minted.status).toBe(200);
+    const grant = await minted.json();
+    if (
+      !grant ||
+      typeof grant !== 'object' ||
+      !('credential' in grant) ||
+      typeof grant.credential !== 'string' ||
+      !grant.credential
+    )
+      throw new Error('The actual local-grant mint must return a credential');
+    const factoryContext = factoryContexts[0];
+    if (!factoryContext?.orchestrationEventStore)
+      throw new Error('Actual route factory EventStore is required');
+    return {
+      runtime: initializedRuntime,
+      origin,
+      credential: grant.credential,
+      context: factoryContext,
+      factoryCalls,
+      catalogReads,
+      outboundFetch,
+      restore,
+    };
+  }
+
+  it('serves a successful initialized Flow report and exact settled accounting replay through its owned store', async ({
+    signal,
+    onTestFinished,
+  }) => {
+    const originalDate = Date;
+    const previousAnthropicBaseUrl = process.env.ANTHROPIC_BASE_URL;
+    vi.stubEnv('ANTHROPIC_BASE_URL', undefined);
+    useAdvancingHistoricalClock(Date.parse('2026-11-13T20:31:00Z'));
+    onTestFinished(() => {
+      vi.stubGlobal('Date', originalDate);
+      vi.stubEnv('ANTHROPIC_BASE_URL', previousAnthropicBaseUrl);
+    });
+    home = realpathSync(
+      await createSchemaHome('station-initialized-report-success-'),
+    );
+    const repo = realpathSync(
+      makeTempDir('station-initialized-report-source-'),
+    );
+    const git = async (...args: string[]) =>
+      (
+        await execGit(args, {
+          cwd: repo,
+          timeout: 5000,
+          maxBuffer: 128 * 1024,
+          windowsHide: true,
+        })
+      ).stdout;
+    await git('init', '-q');
+    await git('config', 'user.name', 'Initialized report fixture');
+    await git('config', 'user.email', 'fixture@example.invalid');
+    writeFileSync(join(repo, 'source.txt'), 'Controlled initialized source\n');
+    await git('add', '--', 'source.txt');
+    await git('commit', '-qm', 'controlled source');
+    const config = new ConfigLoader({ projectHomeDir: home });
+    const storage = new FileStorageAdapter(home);
+    await storage.createProject({
+      id: 'initialized-local-project',
+      name: 'Source',
+      slug: 'source',
+      workingDirectory: repo,
+      createdAt: '2026-11-13T20:31:00Z',
+      updatedAt: '2026-11-13T20:31:00Z',
+    });
+    writeFileSync(
+      join(home, 'projects', 'source', 'manifest.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        id: 'prj_initialized_report',
+        repos: [{ kind: 'local-only', id: 'local:source' }],
+        createdAt: '2026-11-13T20:31:00Z',
+        updatedAt: '2026-11-13T20:31:00Z',
+      }),
+    );
+    await storage.saveProviderConnection({
+      id: 'anthropic-initialized',
+      name: 'Controlled initialized Anthropic',
+      type: 'anthropic',
+      enabled: true,
+      capabilities: ['llm'],
+      config: {
+        apiKey: 'synthetic-not-a-live-key',
+      },
+    });
+    await config.saveAgent('reviewer', {
+      name: 'Initialized reviewer',
+      prompt: 'Review the controlled source.',
+      project: 'source',
+      execution: {
+        modelConnectionId: 'anthropic-initialized',
+        modelId: 'claude-sonnet-4-6',
+      },
+    });
+    await config.saveAppConfig({
+      ...(await config.loadAppConfig()),
+      defaultLLMProvider: 'anthropic-initialized',
+      defaultModel: 'claude-sonnet-4-6',
+      invokeModel: '',
+      structureModel: '',
+      lanDiscoveryEnabled: false,
+    });
+    const flow = await createReportFlow(
+      { repo, git },
+      'initialized-report-flow',
+      [{ id: 'left' }],
+    );
+    const provider = vi.fn<typeof fetch>(async () =>
+      controlledTextStream(
+        'anthropic',
+        'claude-sonnet-4-6',
+        'Initialized retained report',
+        {
+          input_tokens: 4,
+          output_tokens: 2,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 0,
+        },
+      ),
+    );
+    const reserve = vi.spyOn(FileAuthorizationLedger.prototype, 'reserve');
+    const initializedInboxes: ThreadInboxDelivery[] = [];
+    const inboxStart = ThreadInboxDelivery.prototype.start;
+    const observeInbox = vi
+      .spyOn(ThreadInboxDelivery.prototype, 'start')
+      .mockImplementation(function (this: ThreadInboxDelivery) {
+        initializedInboxes.push(this);
+        return inboxStart.call(this);
+      });
+    const closedStores: EventStore[] = [];
+    const closeStore = EventStore.prototype.close;
+    const observeClose = vi
+      .spyOn(EventStore.prototype, 'close')
+      .mockImplementation(function (this: EventStore) {
+        const result = closeStore.call(this);
+        closedStores.push(this);
+        return result;
+      });
+    const scopedPhases: string[] = [];
+    const retiredScopes: Array<() => void> = [];
+    const authorityStore =
+      StationDelegationPersistence.prototype.roundsAuthorityStore;
+    const observeAuthority = vi
+      .spyOn(StationDelegationPersistence.prototype, 'roundsAuthorityStore')
+      .mockImplementation(function (
+        this: StationDelegationPersistence,
+        ...args
+      ) {
+        const actual = authorityStore.apply(this, args);
+        return {
+          transact: async (id, body) => {
+            const scope = args[2];
+            const check = (phase: string) => {
+              if (!scope)
+                throw new Error(
+                  'Initialized rounds store must bind the Home lease',
+                );
+              expect(scope.owner.homeDir).toBe(realpathSync(home));
+              scope.owner.runWithLease(scope.lease, () => undefined);
+              scopedPhases.push(phase);
+            };
+            const result = await actual.transact(id, async (previous) => {
+              const next = await body(previous);
+              check('body');
+              return next;
+            });
+            check('return');
+            if (scope)
+              retiredScopes.push(() =>
+                scope.owner.runWithLease(scope.lease, () => undefined),
+              );
+            return result;
+          },
+        };
+      });
+    onTestFinished(() => {
+      reserve.mockRestore();
+      observeInbox.mockRestore();
+      observeClose.mockRestore();
+      observeAuthority.mockRestore();
+    });
+    const reportFailures: unknown[] = [];
+    const dispatchActual = StationReportGroupPreparation.prototype.dispatch;
+    const observeDispatch = vi
+      .spyOn(StationReportGroupPreparation.prototype, 'dispatch')
+      .mockImplementation(async function (
+        this: StationReportGroupPreparation,
+        ...args
+      ) {
+        try {
+          const result = await dispatchActual.apply(this, args);
+          void result.result.catch((error: unknown) => {
+            reportFailures.push(error);
+          });
+          return result;
+        } catch (error) {
+          reportFailures.push(error);
+          throw error;
+        }
+      });
+    const createActual = StationReportGroupRuntime.prototype.create;
+    const observeCreate = vi
+      .spyOn(StationReportGroupRuntime.prototype, 'create')
+      .mockImplementation(async function (
+        this: StationReportGroupRuntime,
+        ...args
+      ) {
+        try {
+          return await createActual.apply(this, args);
+        } catch (error) {
+          reportFailures.push(error);
+          throw error;
+        }
+      });
+    const authorizeActual =
+      StationReportGroupRuntime.prototype.authorizeResponse;
+    const observeAuthorization = vi
+      .spyOn(StationReportGroupRuntime.prototype, 'authorizeResponse')
+      .mockImplementation(async function (
+        this: StationReportGroupRuntime,
+        ...args
+      ) {
+        try {
+          return await authorizeActual.apply(this, args);
+        } catch (error) {
+          reportFailures.push(error);
+          throw error;
+        }
+      });
+    onTestFinished(() => {
+      observeCreate.mockRestore();
+      observeAuthorization.mockRestore();
+      observeDispatch.mockRestore();
+    });
+    const allocatedPort: unknown = await findFreePortBlock(4);
+    if (typeof allocatedPort !== 'number' || allocatedPort < 1)
+      throw new Error('A non-default listener port is required');
+    const initialized = await initializeReportFixture(
+      signal,
+      provider,
+      allocatedPort,
+    );
+    expect(new URL(initialized.origin).port).toBe(String(allocatedPort));
+    const actualStore = initialized.context.orchestrationEventStore;
+    if (!actualStore)
+      throw new Error('Initialized runtime EventStore is required');
+    const startFacts: unknown[] = [];
+    const service = initialized.context.orchestrationService;
+    const startActual = service.startSessionInternal.bind(service);
+    const observeStart = vi
+      .spyOn(service, 'startSessionInternal')
+      .mockImplementation((...args) => {
+        const pending = startActual(...args);
+        void pending
+          .then((result) => {
+            const requested = args[0].input.threadId;
+            const started = requested
+              ? actualStore.latestEventByMethod(requested, 'session.started')
+              : undefined;
+            startFacts.push({
+              requested,
+              inputOwner: args[0].input.metadata?.userId,
+              commandOwner: args[1]?.userId,
+              status: result.status,
+              returned:
+                'session' in result ? result.session?.threadId : undefined,
+              persisted: Boolean(
+                requested && actualStore.readSessionByThread(requested),
+              ),
+              owner: requested
+                ? service.sessionRecordedOwnerId(requested)
+                : undefined,
+              started: Boolean(started),
+              startedOwner:
+                started?.payload.method === 'session.started'
+                  ? started.payload.metadata?.userId
+                  : undefined,
+            });
+          })
+          .catch((error: unknown) => {
+            reportFailures.push(error);
+          });
+        return pending;
+      });
+    onTestFinished(() => observeStart.mockRestore());
+    expect(initialized.catalogReads).toBeGreaterThan(0);
+    expect(provider).not.toHaveBeenCalled();
+    const options = {
+      signal,
+      credential: initialized.credential,
+      credentialOrigin: initialized.origin,
+    };
+    try {
+      const created = await createReportGroup(
+        initialized.origin,
+        {
+          operationId: 'initialized-success',
+          projectSlug: 'source',
+          resourceId: 'local:source',
+          flow,
+          deadlineAt: Date.now() + 120_000,
+          maxConcurrent: 1,
+          budget: {
+            inputTokens: 1048576,
+            outputTokens: 20,
+            costMicros: 3145878,
+          },
+          members: [
+            {
+              seatId: 'left',
+              agentId: 'reviewer',
+              brief: 'Review correctness',
+              maxOutputTokens: 10,
+            },
+          ],
+        },
+        options,
+      ).catch((error: unknown) => {
+        throw new AggregateError(
+          [
+            ...reportFailures,
+            error,
+            new Error(
+              `Initialized Session start facts: ${JSON.stringify(startFacts)}`,
+            ),
+          ],
+          'Initialized report creation failed at the actual Runtime boundary',
+        );
+      });
+      expect(created.replayed).toBe(false);
+      expect(created.group.execution).toBe('returned');
+      expect(created.group.members).toHaveLength(1);
+      expect(created.group.topology).toEqual({
+        kind: 'flow',
+        runId: 'initialized-report-flow',
+      });
+      const member = created.group.members[0];
+      const attempt = member.attempts[0];
+      if (!attempt)
+        throw new Error('Actual initialized invocation is required');
+      expect(attempt.accountingTerminal).toBe(true);
+      expect(attempt.usage).toEqual({
+        inputTokens: 4,
+        outputTokens: 2,
+        costMicros: 42,
+      });
+      expect(created.group.accounting?.unsettledInvocations).toBe(0);
+      expect(provider).toHaveBeenCalledTimes(1);
+      expect(reserve).toHaveBeenCalledTimes(1);
+      expect(
+        await getReportGroup(
+          initialized.origin,
+          created.group.groupId,
+          options,
+        ),
+      ).toEqual(created.group);
+      const result = await readReportGroupResult(
+        initialized.origin,
+        created.group.groupId,
+        member.seatId,
+        attempt.invocationId,
+        0,
+        options,
+      );
+      expect(result).toMatchObject({
+        kind: 'result',
+        text: 'Initialized retained report',
+        hasMore: false,
+      });
+      expect(actualStore.readSessionByThread(member.taskId)).toBeDefined();
+      expect(
+        actualStore
+          .listEvents(member.taskId)
+          .some(({ payload }) => payload.method === 'turn.completed'),
+      ).toBe(true);
+      scopedPhases.length = 0;
+      retiredScopes.length = 0;
+      const recovery = {
+        operationKey: 'initialized-recovery',
+        seatId: member.seatId,
+        invocationId: attempt.invocationId,
+      };
+      const recovered = await recoverReportGroupAccounting(
+        initialized.origin,
+        created.group.groupId,
+        recovery,
+        options,
+      );
+      expect(recovered).toMatchObject({
+        replayed: false,
+        status: 'settled',
+        reason: 'exact-settlement',
+        accounting: { inputTokens: 4, outputTokens: 2, costMicros: 42 },
+      });
+      expect(
+        await recoverReportGroupAccounting(
+          initialized.origin,
+          created.group.groupId,
+          recovery,
+          options,
+        ),
+      ).toEqual({ ...recovered, replayed: true });
+      expect(scopedPhases).toContain('body');
+      expect(scopedPhases).toContain('return');
+      expect(retiredScopes.length).toBeGreaterThan(0);
+      for (const check of retiredScopes) expect(check).toThrow();
+      expect(initializedInboxes).toHaveLength(1);
+      const inbox = initializedInboxes[0];
+      const owner =
+        initialized.context.orchestrationService.sessionRecordedOwnerId(
+          member.taskId,
+        );
+      if (!owner) throw new Error('Real sealed Session owner is required');
+      const payload = {
+        message: 'Ordinary input must not bypass sealed admission',
+        actor: { userId: owner },
+      };
+      expect(
+        inbox.submit({
+          conversationId: member.taskId,
+          clientTurnId: 'initialized-sealed-input',
+          payload,
+        }),
+      ).toMatchObject({
+        outcome: 'not-permitted',
+        reasonCode: 'sealed_source_admission_required',
+      });
+      expect(
+        actualStore
+          .threadInboxStore()
+          .read(member.taskId, 'initialized-sealed-input'),
+      ).toBeUndefined();
+      expect(
+        inbox.submitDisplay({
+          conversationId: member.taskId,
+          clientTurnId: 'initialized-display',
+          payload: { ...payload, message: 'Display only' },
+        }),
+      ).toMatchObject({
+        outcome: 'queued',
+        entry: { kind: 'display', state: 'sent' },
+      });
+      expect(
+        actualStore
+          .threadInboxStore()
+          .read(member.taskId, 'initialized-display'),
+      ).toMatchObject({ kind: 'display' });
+      expect(provider).toHaveBeenCalledTimes(1);
+      expect(reserve).toHaveBeenCalledTimes(1);
+      expect(closedStores).toEqual([]);
+      await initialized.runtime.shutdown();
+      runtime = undefined;
+      expect(closedStores).toEqual([actualStore]);
+      expect(initialized.outboundFetch).toEqual([]);
+    } finally {
+      try {
+        await initialized.runtime.shutdown();
+        runtime = undefined;
+      } finally {
+        initialized.restore();
+      }
+    }
+  }, 120_000);
+
+  it('defers initialized-runtime store close and Home release while report work is pending', async ({
+    signal,
+    onTestFinished,
+  }) => {
+    // Actual core, HTTP factory and local-grant ingress. This observes the store
+    // shutdown closes, not its identity with any route-served store or usability.
+    // Controlled: watcher, voice attach, Bedrock/Ollama probes, native priming and
+    // adoption, integrity worker, task-dispatch resolver and persistence fingerprint.
+    // Consent is unavailable to avoid port 3; port-0 self-callbacks and the MCP
+    // frame origin are not exercised. The fence covers fetch, not all network I/O.
+    // A null read followed by generic refusal does not establish refusal causality,
+    // applied recovery, success-response currentness or provider/native readiness.
+    const events: string[] = [];
+    const closeActual = EventStore.prototype.close;
+    const close = vi
+      .spyOn(EventStore.prototype, 'close')
+      .mockImplementation(function (this: EventStore) {
+        const result = closeActual.call(this);
+        events.push('store-close');
+        return result;
+      });
+    const missing = 'initialized-storage-missing-group';
+    let enter!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    signal.addEventListener('abort', release, { once: true });
+    let paused = 0;
+    let observed:
+      | Awaited<ReturnType<StationDelegationPersistence['readReportAdmission']>>
+      | undefined;
+    const readActual =
+      StationDelegationPersistence.prototype.readReportAdmission;
+    const read = vi
+      .spyOn(StationDelegationPersistence.prototype, 'readReportAdmission')
+      .mockImplementation(async function (
+        this: StationDelegationPersistence,
+        ...args
+      ) {
+        if (args[0] === missing) {
+          paused++;
+          enter();
+          await gate;
+        }
+        const result = await readActual.apply(this, args);
+        if (args[0] === missing) {
+          observed = result;
+          events.push('read-settled');
+        }
+        return result;
+      });
+    let response: Promise<Response> | undefined;
+    onTestFinished(() => {
+      read.mockRestore();
+      close.mockRestore();
+    });
+    home = realpathSync(await createSchemaHome('station-initialized-report-'));
+    const backupDir = `${home}-backup`;
+    try {
+      signal.throwIfAborted();
+      const initialized = await initializeReportFixture(signal);
+      const { origin, credential } = initialized;
+      const directory = statSync(join(home, 'report-groups'));
+      expect(directory.isDirectory()).toBe(true);
+      expect(directory.mode & 0o7777).toBe(0o700);
+      expect(directory.uid).toBe(process.getuid?.());
+      response = fetch(
+        `${origin}/api/orchestration/report-groups/${missing}/accounting/recover`,
+        {
+          signal,
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${credential}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            seatId: 'missing-seat',
+            invocationId: 'missing-invocation',
+            operationKey: 'boot-custody',
+          }),
+        },
+      );
+      expect(
+        await Promise.race([
+          entered.then(() => 'entered'),
+          response.then(() => 'responded'),
+        ]),
+      ).toBe('entered');
+      expect(paused).toBe(1);
+      await expect(initialized.runtime.shutdown()).rejects.toMatchObject({
+        code: 'runtime_publication_pending',
+      });
+      expect(close).not.toHaveBeenCalled();
+      expect(() =>
+        createStationHomeBackup({ homeDir: home, outputDir: backupDir }),
+      ).toThrow(/must be inactive before backup/);
+      release();
+      const refused = await response;
+      events.push('response-settled');
+      expect(observed).toBeNull();
+      expect(refused.status).toBe(503);
+      expect(await refused.json()).toEqual({
+        success: false,
+        code: 'report_group_unavailable',
+      });
+      expect(refused.headers.get('Cache-Control')).toBe('no-store');
+      await initialized.runtime.shutdown();
+      runtime = undefined;
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(close.mock.results[0].value).toMatchObject({ kind: 'closed' });
+      expect(events.indexOf('store-close')).toBeGreaterThan(
+        events.indexOf('response-settled'),
+      );
+      expect(
+        createStationHomeBackup({ homeDir: home, outputDir: backupDir })
+          .backupDir,
+      ).toBe(backupDir);
+      expect(initialized.outboundFetch).toEqual([]);
+    } finally {
+      release();
+      await response?.catch(() => undefined);
+      signal.removeEventListener('abort', release);
+      read.mockRestore();
+      close.mockRestore();
       rmDirSyncRetrying(backupDir);
     }
   });

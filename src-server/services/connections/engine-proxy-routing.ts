@@ -4,6 +4,13 @@ import { connectionSpawnEnv } from './connection-env.js';
 
 class EngineProxyConfigurationError extends Error {}
 
+/** Launch identity for route lookup only; no credential or resource authority is granted. */
+export interface EngineSessionLaunchContext {
+  readonly threadId: string;
+  readonly cwd?: string;
+  readonly modelId?: string;
+}
+
 export interface EngineProxyRoute {
   connectionId: string;
   label: string;

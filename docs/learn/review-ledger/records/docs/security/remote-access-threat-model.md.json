@@ -184,6 +184,10 @@
 
     "src-server/services/terminal/terminal-gateway.ts",
 
+    "src-server/services/ssh/__tests__/environment-security-assessment.test.ts",
+
+    "src-server/runtime/conversation/__tests__/local-grant-observation-owner.test.ts",
+
     "src-server/routes/environments/peer-chat-policy.ts",
 
     "src-server/routes/environments/peer-chat-routes.ts",

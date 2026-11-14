@@ -1,0 +1,9 @@
+{
+  "revision": "7ce69f028b2155bc630d37a2fb0a2e2bbbc9cc1c",
+
+  "notes": [
+    {"path":"CONTEXT.md","note":"Reviewed context routing and responsibility claims against module-map changes since the recorded baseline. Account preferences, themes, personal board, usage export, plugin telemetry and CLI session groups fit the five existing areas; Monument message delivery retains runtime ownership. All local routing targets exist. Re-read explicit Flow attachment guards (metadata.flowDefinition, cwd, service, retired refusal), idle versus terminal lifecycle contract, CLI published Flow scheduling and unavailable/unbound guarantees, and FIFO startup owner. These context pages remain accurate without prose changes. Scope is these explanations and routing, not certification of every detailed module section or live/provider/native acceptance.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Reviewed context routing and responsibility claims against module-map changes since the recorded baseline. Account preferences, themes, personal board, usage export, plugin telemetry and CLI session groups fit the five existing areas; Monument message delivery retains runtime ownership. All local routing targets exist. Re-read explicit Flow attachment guards (metadata.flowDefinition, cwd, service, retired refusal), idle versus terminal lifecycle contract, CLI published Flow scheduling and unavailable/unbound guarantees, and FIFO startup owner. These context pages remain accurate without prose changes. Scope is these explanations and routing, not certification of every detailed module section or live/provider/native acceptance.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]}
+  ]
+}

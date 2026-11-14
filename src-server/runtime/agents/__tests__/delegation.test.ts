@@ -1,3 +1,4 @@
+import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { describe, expect, test } from 'vitest';
 import { attestProposalSourceContext } from '../../../services/plugins/plugin-proposal-provenance.js';
@@ -21,12 +22,15 @@ describe('delegation helpers', () => {
           maxDepth: 3,
           allowedTools: ['github_*'],
           blockedTools: ['station-control_update_*'],
+          denyApprovals: false,
         },
       },
       current: {
         mode: 'isolated-child',
         depth: 1,
-        maxDepth: 3,
+        maxDepth: 2,
+        blockedTools: ['github_delete_*'],
+        denyApprovals: true,
         parentAgentSlug: agentId('root'),
         rootAgentSlug: agentId('root'),
         rootConversationId: 'conv-root',
@@ -36,7 +40,7 @@ describe('delegation helpers', () => {
     expect(context).toEqual({
       mode: 'isolated-child',
       depth: 2,
-      maxDepth: 3,
+      maxDepth: 2,
       parentAgentSlug: 'planner',
       parentConversationId: 'conv-parent',
       rootAgentSlug: 'root',
@@ -45,6 +49,7 @@ describe('delegation helpers', () => {
       blockedTools: [
         ...DEFAULT_CHILD_BLOCKED_TOOLS,
         'station-control_update_*',
+        'github_delete_*',
       ],
       denyApprovals: true,
     });
@@ -58,7 +63,7 @@ describe('delegation helpers', () => {
         spec: {
           name: 'Planner',
           prompt: 'Plan well',
-          delegation: { maxDepth: 2 },
+          delegation: { maxDepth: 4 },
         },
         current: {
           mode: 'isolated-child',
@@ -69,6 +74,104 @@ describe('delegation helpers', () => {
         },
       }),
     ).toThrow(/Delegation depth limit reached/);
+  });
+
+  test('retains a full inherited denial list without growing repeated built-ins', () => {
+    let current: AgentDelegationContext = {
+      mode: 'isolated-child',
+      depth: 1,
+      maxDepth: 4,
+      parentAgentSlug: agentId('parent'),
+      rootAgentSlug: agentId('root'),
+      blockedTools: [
+        ...DEFAULT_CHILD_BLOCKED_TOOLS,
+        ...Array.from({ length: 246 }, (_, i) => `restricted_${i}`),
+      ],
+    };
+    const required = [...current.blockedTools!];
+    expect(() =>
+      createChildDelegationContext({
+        agentSlug: 'parent',
+        spec: {
+          name: 'Parent',
+          prompt: 'Retain every denial',
+          delegation: { maxDepth: 4, blockedTools: ['one_more_tool'] },
+        },
+        current,
+      }),
+    ).toThrow('Delegation policy exceeds its tool-pattern bound');
+    for (let depth = 2; depth <= 4; depth++) {
+      current = createChildDelegationContext({
+        agentSlug: 'parent',
+        spec: {
+          name: 'Parent',
+          prompt: 'Remain bounded',
+          delegation: { maxDepth: 4 },
+        },
+        current,
+      });
+      expect(current.depth).toBe(depth);
+      expect(current.blockedTools).toEqual(required);
+      expect(current.blockedTools).toHaveLength(256);
+    }
+  });
+
+  test('conjoins wildcard allowlists across parent, child and grandchild', () => {
+    const context = (
+      allowedTools: string[],
+      current?: AgentDelegationContext,
+    ) =>
+      createChildDelegationContext({
+        agentSlug: 'planner',
+        spec: {
+          name: 'Planner',
+          prompt: 'Stay scoped',
+          delegation: { maxDepth: 3, allowedTools },
+        },
+        current,
+      });
+    const parent = context(['github/*']);
+    const child = context(['github_repo_*'], parent);
+    const grandchild = context(['github_*'], child);
+    const mapping = new Map([
+      [
+        'github_repo_search',
+        {
+          original: 'github/repo_search',
+          normalized: 'github_repo_search',
+          server: 'github',
+          tool: 'repo_search',
+        },
+      ],
+    ]);
+    expect(
+      isDelegatedToolAllowed({
+        toolName: 'github_repo_search',
+        delegation: grandchild,
+        toolNameMapping: mapping,
+      }),
+    ).toBe(true);
+    expect(
+      isDelegatedToolAllowed({
+        toolName: 'github_issue_search',
+        delegation: grandchild,
+        toolNameMapping: mapping,
+      }),
+    ).toBe(false);
+    expect(
+      isDelegatedToolAllowed({
+        toolName: 'files_read',
+        delegation: grandchild,
+        toolNameMapping: mapping,
+      }),
+    ).toBe(false);
+    expect(
+      isDelegatedToolAllowed({
+        toolName: 'github_repo_search',
+        delegation: { ...grandchild, toolAllowlistConstraints: [[]] },
+        toolNameMapping: mapping,
+      }),
+    ).toBe(false);
   });
 
   test('applies allowlists and blocklists to delegated child tools', () => {
@@ -226,6 +329,12 @@ describe('delegation helpers', () => {
       { conversationId: 'conv-parent', userId: 'user-1' },
     )) as Record<string, any>;
     expect(stamped._delegation.rootConversationId).toBe('conv-parent');
+    expect(
+      verifyDelegationContextAttestation(
+        { ...stamped._delegation, parentSessionId: 'another-session' },
+        stamped._delegationAttestation,
+      ),
+    ).toBe(false);
     expect(
       verifyDelegationContextAttestation(
         stamped._delegation,

@@ -13,8 +13,9 @@ superseded it, and its `2.0` state and migration have since shipped:
 
 - Browser pane state `2.0` persists a reference to a server-owned browser
   session instead of a loopback address.
-- Targets widened to any `http(s)` URL on personal hosts, except Station's own
-  listeners, for the operator and Project admins and owners.
+- Personal-host Browser sessions support HTTP(S) navigation subject to the
+  Browser workspace guide's authorization and egress policy, including
+  Station-listener denial and restrictions on non-public destinations.
 - Browser automation is in scope.
 - The streamed pane is the route for Web/PWA, Android and iOS clients, which
   supersedes the closing statement "Web/PWA and Android/iOS remain

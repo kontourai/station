@@ -27,6 +27,8 @@ const logger = createLogger({ name: 'websocket-listener' });
  */
 class StableWebSocketServer extends WebSocketServer {
   private readonly listener: Server;
+  private listenerClose?: Promise<void>;
+  private binding: Promise<void> = Promise.resolve();
 
   constructor(options: ServerOptions & { server: Server }) {
     super(options);
@@ -34,9 +36,49 @@ class StableWebSocketServer extends WebSocketServer {
   }
 
   override close(callback?: (error?: Error) => void): void {
-    void closeStableListener(this.listener);
+    this.listenerClose ??= this.listener.listening
+      ? closeStableListener(this.listener)
+      : this.binding.then(() => closeStableListener(this.listener));
     super.close(callback);
   }
+
+  trackBinding(binding: Promise<unknown>): void {
+    this.binding = binding.then(
+      () => undefined,
+      () => undefined,
+    );
+  }
+
+  whenListenerClosed(): Promise<void> {
+    return this.listenerClose ?? Promise.resolve();
+  }
+}
+
+/** Stop only this listener, terminate its clients and join both close owners. */
+export async function closeOwnedWebSocketListener(
+  wss: WebSocketServer,
+): Promise<void> {
+  const closed = new Promise<void>((resolve, reject) => {
+    wss.close((error) => (error ? reject(error) : resolve()));
+  });
+  const errors: unknown[] = [];
+  for (const client of wss.clients) {
+    try {
+      client.terminate();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  const results = await Promise.allSettled([
+    closed,
+    wss instanceof StableWebSocketServer
+      ? wss.whenListenerClosed()
+      : Promise.resolve(),
+  ]);
+  for (const result of results)
+    if (result.status === 'rejected') errors.push(result.reason);
+  if (errors.length)
+    throw new AggregateError(errors, 'WebSocket listener cleanup failed');
 }
 
 export function startWebSocketListener(
@@ -62,7 +104,9 @@ export function startWebSocketListener(
   wss.on('connection', (_ws, req) => link.upgraded(req.socket as Socket));
   // A bind failure reaches the WebSocket server's 'error' event, which `ws`
   // forwards from the HTTP server exactly as it does for a port it owns.
-  void link.listen(name, server, address).catch((error: unknown) => {
+  const binding = link.listen(name, server, address);
+  wss.trackBinding(binding);
+  void binding.catch((error: unknown) => {
     // Covers refusals that never reach the server's 'error' event, such as
     // a listen requested after this generation began draining.
     logger.error('WebSocket listener failed to bind', {

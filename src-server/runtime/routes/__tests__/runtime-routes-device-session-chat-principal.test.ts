@@ -295,11 +295,14 @@ describe('device-session chat principal resolution over the REAL auth path (stat
    * pairing-code/tailnet device — which is exactly the fact this regression
    * turns on.
    */
-  function pairRealDevice(homePossession = false, ownerDeviceStanding = false) {
+  async function pairRealDevice(
+    homePossession = false,
+    ownerDeviceStanding = false,
+  ) {
     const homeDir = mkdtempSync(join(tmpdir(), 'station-device-chat-'));
     directories.push(homeDir);
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir,
       environmentId: '22222222-2222-4222-8222-222222222222',
       ownerDeviceStanding,
@@ -348,6 +351,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
    * credential belongs to this device". */
   function environmentSecurityServiceFor(pairing: DevicePairingService) {
     return deepStub({
+      assessCredentialRoute: undefined,
       verifyCredential: (credential: string) =>
         credential === OPERATOR_SECRET || pairing.verifyCredential(credential),
       authorizeCredential: (credential: string) =>
@@ -442,7 +446,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       taskDispatcher?: unknown;
     } = {},
   ) {
-    const { pairing, paired } = pairRealDevice(
+    const { pairing, paired } = await pairRealDevice(
       searchMode === 'home',
       orchestrationExtras.ownerDeviceStanding,
     );
@@ -764,6 +768,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               canUserReadConversation:
                 orchestration!.canUserReadConversation.bind(orchestration),
               listSessions: orchestration!.listSessions.bind(orchestration),
+              listConversationHistoryPage:
+                orchestration!.listConversationHistoryPage.bind(orchestration),
               attachmentCandidateOwnerIds:
                 orchestration!.attachmentCandidateOwnerIds.bind(orchestration),
               readableSessionOwnerIds:
@@ -5302,7 +5308,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(remoteOperator.status, remoteOperator.body.toString()).toBe(404);
     });
 
-    test('personal conversation sharing admits a paired device to the operator’s thread, and still not to an ownerless one', async () => {
+    test('personal conversation sharing includes the operator in device history while refusing unpaired and ownerless records', async () => {
       let ref = '';
       let ownerlessRef = '';
       const { app, roomRuntime, paired, pairing } = await setup(
@@ -5313,7 +5319,15 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         false,
         {
           personalSharing: true,
+          extraSessions: [['stranger-owned', 'human:device:unpaired']],
           seed: (seedStore) => {
+            seedStore.upsertSession({
+              provider: 'claude',
+              threadId: 'operator-attachment-owned',
+              status: 'closed',
+              createdAt: '2026-09-24T00:00:00Z',
+              updatedAt: '2026-09-24T00:00:01Z',
+            });
             ref = attachmentTurn(
               seedStore,
               'operator-attachment-owned',
@@ -5342,10 +5356,31 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           LOCAL_OPERATOR_PRINCIPAL_ID,
         ),
       ).toBe(true);
+      expect(
+        pairing.canSharePersonalConversation(
+          devicePrincipal,
+          'human:device:unpaired',
+        ),
+      ).toBe(false);
 
       const shared = await fetchAttachment(app, ref, paired.credential);
       expect(shared.status, shared.body.toString()).toBe(200);
       expect(shared.body).toEqual(operatorBytes);
+
+      const history = await app.request(
+        '/api/conversations?limit=100',
+        { headers: { Authorization: `Bearer ${paired.credential}` } },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(history.status, await history.clone().text()).toBe(200);
+      const page = await responseData<{ items: Array<{ id: string }> }>(
+        history,
+      );
+      const ids = page.items.map((item) => item.id);
+      expect(ids).toContain('operator-attachment-owned');
+      expect(ids).not.toContain('ownerless-attachment');
+      expect(ids).not.toContain('alias-owned');
+      expect(ids).not.toContain('stranger-owned');
 
       const refused = await fetchAttachment(
         app,

@@ -816,6 +816,18 @@
 
     "packages/sdk/src/client/automations.ts",
 
+    "src-server/services/orchestration/conversation-history-read-service.ts",
+
+    "src-server/services/orchestration/session-authorization.ts",
+
+    "packages/sdk/src/query-domains/integrationStatus.ts",
+
+    "packages/sdk/src/query-domains/taskWriteBack.ts",
+
+    "packages/sdk/src/query-domains/scheduler.ts",
+
+    "src-server/runtime/routes/agent-schedule-composition.ts",
+
     "src-server/routes/chat/conversation-work-state.ts",
 
     "src-server/routes/chat/__tests__/conversation-work-state.test.ts",
@@ -846,9 +858,23 @@
 
     "src-server/services/orchestration/create-request-claims.ts",
 
-    "packages/sdk/src/__tests__/tool-library-query.test.tsx",
+    "src-server/providers/auth/claude-keychain-authentication.ts",
+
+    "src-server/providers/auth/__tests__/native-authentication-keychain.test.ts",
+
+    "src-server/services/orchestration/ensemble-session-group-authentication.ts",
+
+    "src-server/services/orchestration/__tests__/ensemble-execution-context.test.ts",
+
+    "src-server/routes/orchestration/__tests__/cli-session-group-runtime.integration.test.ts",
 
     "packages/sdk/src/release-notes-query.ts",
+
+    "packages/sdk/src/client/ensembles.ts",
+
+    "src-ui/src/views/EnsembleRecordedGroupInspection.tsx",
+
+    "packages/sdk/src/__tests__/tool-library-query.test.tsx",
 
     "src-ui/src/components/conversation/ConversationConnectionContext.tsx",
 
@@ -872,7 +898,13 @@
 
     "packages/sdk/src/terminal-view/session.ts",
 
-    "packages/sdk/src/__tests__/terminal-view/controller.test.ts"
+    "packages/sdk/src/__tests__/terminal-view/controller.test.ts",
+
+    "src-server/services/orchestration/delegation-tool-policy.ts",
+
+    "src-server/services/orchestration/turn-submission-digest.ts",
+
+    "src-server/services/execution-target/execution-target-execution.ts"
   ],
 
   "checks": [

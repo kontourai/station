@@ -11,7 +11,7 @@
  * enrollment policy (registration is not under test); Project membership is
  * granted over the real invitation routes.
  */
-import { mkdirSync } from 'node:fs';
+import { chmodSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -40,6 +40,7 @@ import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_INGRESS_IDENTITY_HEADER,
 } from '../../../utils/internal-api-token.js';
+import { StationRuntime } from '../../bootstrap/station-runtime.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
 vi.mock('../runtime-route-support.js', () => {
@@ -85,6 +86,7 @@ describe('account-tied personal access tokens over the production composition', 
   const makeTempDir = trackTempDirs();
   const directories: string[] = [];
   const loaded: LoadedLocalAccounts[] = [];
+  const publicationRuntimes: StationRuntime[] = [];
   const ambientHome = process.env.STATION_HOME;
   const ambientRoot = process.env.STATION_ROOT;
   const ambientOrigins = process.env.ALLOWED_ORIGINS;
@@ -99,6 +101,8 @@ describe('account-tied personal access tokens over the production composition', 
     process.env.ALLOWED_ORIGINS = ORIGIN;
   });
   afterEach(async () => {
+    for (const runtime of publicationRuntimes.splice(0))
+      await runtime.shutdown();
     await notificationServiceForFixture?.shutdown();
     notificationServiceForFixture = undefined;
     for (const accounts of loaded.splice(0)) await accounts.service.close();
@@ -112,9 +116,14 @@ describe('account-tied personal access tokens over the production composition', 
     directories.splice(0);
   });
 
-  async function setup() {
+  async function setup(publication = false) {
     const owned = directories[directories.length - 1];
     const homeDir = join(owned, 'data');
+    if (publication) chmodSync(homeDir, 0o700);
+    const publicationRuntime = publication
+      ? new StationRuntime({ projectHomeDir: homeDir })
+      : undefined;
+    if (publicationRuntime) publicationRuntimes.push(publicationRuntime);
     mkdirSync(join(homeDir, 'security'), { mode: 0o700, recursive: true });
     const security = new EnvironmentSecurityService({ homeDir });
     const { credential: operatorCredential } = await security.initialize();
@@ -127,16 +136,28 @@ describe('account-tied personal access tokens over the production composition', 
       storage,
     );
     // #4303: member passkeys are a Feature Preview; this Station opts in.
-    const previews = new FeaturePreviewRegistry(homeDir, {
-      debug() {},
-      info() {},
-      warn() {},
-      error() {},
-    } as never);
+    const previews = publicationRuntime
+      ? (Reflect.get(
+          publicationRuntime,
+          'featurePreviews',
+        ) as FeaturePreviewRegistry)
+      : new FeaturePreviewRegistry(homeDir, {
+          debug() {},
+          info() {},
+          warn() {},
+          error() {},
+        } as never);
+    const existingPreview = previews
+      .list()
+      .find((preview) => preview.id === MEMBER_PASSKEYS_PREVIEW_ID);
     const memberPasskeys = previews.bind({
       id: MEMBER_PASSKEYS_PREVIEW_ID,
-      label: 'Member passkeys',
-      description: 'Member passkeys under test.',
+      label: existingPreview?.label ?? 'Member passkeys',
+      description:
+        existingPreview?.description ?? 'Member passkeys under test.',
+      ...(existingPreview?.defaultEnabled === undefined
+        ? {}
+        : { defaultEnabled: existingPreview.defaultEnabled }),
     });
     await previews.setEnabled(MEMBER_PASSKEYS_PREVIEW_ID, true);
     const eventBus = new EventBus();
@@ -165,6 +186,15 @@ describe('account-tied personal access tokens over the production composition', 
     const app = new Hono();
     let appConfig: Record<string, unknown> = {};
     const context = deepStub({
+      ...(publicationRuntime
+        ? {
+            runtimePublicationParticipant: Reflect.get(
+              publicationRuntime,
+              'runtimePublicationParticipant',
+            ),
+            featurePreviews: previews,
+          }
+        : {}),
       discordGateway: {
         getGatewayStatus: () => ({
           state: 'unavailable' as const,
@@ -194,7 +224,7 @@ describe('account-tied personal access tokens over the production composition', 
       },
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
-      agentService: { listAgents: () => [] },
+      agentService: { listAgents: () => [], getProjectHomeDir: () => homeDir },
       agentMetadataMap: new Map(),
       agentFixedTokens: new Map(),
       agentTools: new Map(),
@@ -508,9 +538,119 @@ describe('account-tied personal access tokens over the production composition', 
       notifications,
       owner,
       ownerOperator,
+      previews,
     };
   }
 
+  test('production route composition does not offer the unqualified finalizer', async () => {
+    const h = await setup(true);
+    expect(
+      h.previews
+        ?.list()
+        .some((entry) => entry.id === 'report-continuation-finalizer'),
+    ).toBe(false);
+    const input = {
+      operationKey: 'finish',
+      expectedRevision: 0,
+      continuationOperationKey: 'original',
+    };
+    const request = () =>
+      h.request(
+        '/api/orchestration/report-groups/unknown/continuation/finalize',
+        h.operator({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        }),
+      );
+    const disabled = await request();
+    expect(disabled.status).toBe(503);
+    expect(await disabled.json()).toMatchObject({
+      code: 'report_continuation_finalizer_unavailable',
+    });
+  });
+
+  test.each(['self', 'operator', 'scope'] as const)(
+    '%s token mint refuses retired admission before publication',
+    async (route) => {
+      const h = await setup();
+      const member = await h.person('reset-member');
+      const control = await h.mintToken(member.device);
+      expect(control.status, await control.clone().text()).toBe(201);
+      const pairing = h.security.devicePairing;
+      const mint = pairing.mintPersonalToken.bind(pairing);
+      vi.spyOn(pairing, 'mintPersonalToken').mockImplementationOnce(
+        async (input, assertCurrent) => {
+          if (route === 'scope') {
+            const target = pairing
+              .listDevices()
+              .find(
+                (device) =>
+                  device.principalBinding?.subject === member.accountId,
+              );
+            expect(target).toBeDefined();
+            pairing.setDeviceScope(
+              target!.id,
+              ['orchestration:read'],
+              operatorApproval,
+            );
+          } else {
+            await h.security.resetEnvironment();
+          }
+          return mint(input, assertCurrent);
+        },
+      );
+      const response =
+        route !== 'operator'
+          ? await h.mintToken(member.device)
+          : await h.request(
+              `/api/pairing/people/${encodeURIComponent(member.principalId)}/tokens`,
+              h.operator({
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  name: 'racing',
+                  scope: 'orchestration:read',
+                }),
+              }),
+            );
+      expect(response.status, await response.clone().text()).toBe(403);
+      expect(pairing.listPersonalTokens()).toHaveLength(
+        route === 'scope' ? 1 : 0,
+      );
+    },
+  );
+
+  test.each(['self', 'operator'] as const)(
+    '%s token revocation rechecks admission after a reset',
+    async (route) => {
+      const h = await setup();
+      const member = await h.person('revoke-reset-member');
+      const minted = await h.mintToken(member.device);
+      expect(minted.status).toBe(201);
+      const token = (await readJson<{ token: { id: string } }>(minted)).token;
+      const pairing = h.security.devicePairing;
+      const revoke = pairing.revokePersonalToken.bind(pairing);
+      vi.spyOn(pairing, 'revokePersonalToken').mockImplementationOnce(
+        async (id, owner, assertCurrent) => {
+          await h.security.resetEnvironment();
+          return revoke(id, owner, assertCurrent);
+        },
+      );
+      const response =
+        route === 'self'
+          ? await h.request(
+              `/api/access/tokens/${token.id}`,
+              member.device({ method: 'DELETE' }),
+            )
+          : await h.request(
+              `/api/pairing/people/${encodeURIComponent(member.principalId)}/tokens/${token.id}`,
+              h.operator({ method: 'DELETE' }),
+            );
+      expect(response.status, await response.clone().text()).toBe(403);
+      expect(pairing.listPersonalTokens()).toEqual([]);
+    },
+  );
   test('integration status composes operator authority and the live probe', async () => {
     const exec = vi
       .spyOn(gitExec, 'execGitContextCommand')

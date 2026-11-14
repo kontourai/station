@@ -23,6 +23,7 @@ import type {
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
 import { MODEL_NOT_ADVERTISED_CODE } from '@kontourai/station-contracts/provider';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { parseCoreArgs } from '../../../../packages/cli/src/commands/core-api.js';
@@ -32,11 +33,20 @@ import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
+import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   SendTurnRefusedError,
   SessionStartRefusedError,
 } from '../../../providers/adapter-shape.js';
+import {
+  createOrchestrationRequestPrincipalResolver,
+  pairedDevicePrincipal,
+} from '../../../runtime/bootstrap/orchestration-request-principal.js';
+import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { currentAuthorizedTurnCorrelation } from '../../../runtime/conversation/authorized-turn-correlation.js';
+import { isRuntimeRequestPrincipalCurrent } from '../../../security/runtime-request-security.js';
+import { runAsStationServer } from '../../../security/station-server-scope.js';
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
@@ -44,7 +54,13 @@ import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import { createRemoteStationForwarder } from '../../../services/remote-stations/remote-station-forwarder.js';
-import { delegateTask } from '../../../tools/station-control-delegation.js';
+import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import {
+  type DelegatedTaskHandle,
+  delegateTask,
+  observeDelegatedTask,
+} from '../../../tools/station-control-delegation.js';
+import { createLogger } from '../../../utils/logger.js';
 import { createAttachmentStagingRoutes } from '../attachment-staging.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
@@ -65,6 +81,31 @@ class DelegateAdapter extends GateTestAdapter {
       metadata: input.metadata,
     });
     return session;
+  }
+  override async sendTurn(input: ProviderSendTurnInput) {
+    const turnId =
+      currentAuthorizedTurnCorrelation()?.turnId ?? crypto.randomUUID();
+    const base = {
+      provider: this.provider,
+      threadId: input.threadId,
+      turnId,
+      invocationId: input.invocationId,
+      createdAt: new Date().toISOString(),
+    };
+    this.events.push({
+      ...base,
+      eventId: crypto.randomUUID(),
+      method: 'turn.started',
+      prompt: input.displayInput ?? input.input,
+    });
+    this.events.push({
+      ...base,
+      eventId: crypto.randomUUID(),
+      method: 'turn.completed',
+      finishReason: 'stop',
+      outputText: `Result: ${input.input}`,
+    });
+    return { threadId: input.threadId, turnId };
   }
   override async hasSession(threadId?: string) {
     return threadId !== undefined && this.sessions.has(threadId);
@@ -294,6 +335,270 @@ describe('CLI delegation files through staging, route and real orchestration', (
         'Read the attached exact values.',
       ]),
     );
+
+  test('real HTTP create claims isolate two authenticated principals using the same client key', async () => {
+    vi.mocked(adapter.sendTurn).mockRestore();
+    const send = vi.spyOn(adapter, 'sendTurn');
+    const start = vi.spyOn(adapter, 'startSession');
+    const security = new EnvironmentSecurityService({
+      homeDir: join(root, 'auth-home'),
+    });
+    await security.initialize();
+    const { AgentRegistry, WorkflowRegistry, TriggerRegistry } = await import(
+      '@voltagent/core'
+    );
+    const { createVoltAgentApp } = await import('@voltagent/server-hono');
+    const { app } = await createVoltAgentApp(
+      {
+        agentRegistry: AgentRegistry.getInstance(),
+        workflowRegistry: WorkflowRegistry.getInstance(),
+        triggerRegistry: TriggerRegistry.getInstance(),
+      },
+      { cors: false, configureFullApp: () => {} },
+    );
+    configureRuntimeHttp({
+      app,
+      eventBus: new EventBus(),
+      logger: createLogger({ name: 'delegation-claim-auth', level: 'error' }),
+      security: {
+        verifyCredential: (candidate, request) =>
+          request
+            ? security.authorizeCredential(candidate, request)
+            : security.verifyCredential(candidate),
+        recognizeCredential: (candidate) =>
+          security.verifyCredential(candidate),
+        resolveGrantedScope: (candidate) =>
+          security.resolveGrantedScope(candidate),
+        resolveCredentialAuthority: (candidate) =>
+          security.verifyOperatorCredential(candidate)
+            ? 'operator-credential'
+            : security.identifyDevice(candidate)
+              ? 'device-credential'
+              : undefined,
+        resolveCredentialDeviceId: (candidate) =>
+          security.identifyDevice(candidate)?.id,
+        resolveCredentialDeviceKind: (candidate) =>
+          security.identifyDevice(candidate)?.kind,
+        resolvePairingSource: (candidate) =>
+          security.identifyDevice(candidate)?.source,
+        resolveCredentialLocality: (candidate) =>
+          security.credentialLocality(candidate),
+        resolveCredentialMintKind: (candidate) =>
+          security.credentialMintKind(candidate),
+      },
+    });
+    // Reuse this fixture's read-only catalogs; creation itself uses real owners below.
+    for (const path of [
+      '/.well-known/station/v1',
+      '/api/agents/reviewer',
+      '/api/projects/workspace',
+      '/api/connections/claude',
+    ]) {
+      app.get(path, () => fetch(`${apiBase}${path}`));
+    }
+    const resolvePrincipal = createOrchestrationRequestPrincipalResolver({
+      environmentSecurityService: security,
+    });
+    app.route(
+      '/api/orchestration',
+      createOrchestrationRoutes(service, {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn() },
+        resolvePrincipal,
+        isRequestPrincipalCurrent: (request) =>
+          isRuntimeRequestPrincipalCurrent(request, security),
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(root),
+        delegateTask: (input) =>
+          runAsStationServer(() =>
+            delegateTask(
+              {
+                ...input,
+                readAuthority: sessionReadAuthorityFromRequest(
+                  input.userId,
+                  undefined,
+                  undefined,
+                ),
+              },
+              service,
+              remote,
+            ),
+          ),
+        observeDelegatedTask: (input) =>
+          runAsStationServer(() =>
+            observeDelegatedTask(
+              {
+                ...input,
+                readAuthority: sessionReadAuthorityFromRequest(
+                  input.userId,
+                  undefined,
+                  undefined,
+                ),
+              },
+              service,
+              remote,
+            ),
+          ),
+      }),
+    );
+    const protectedServer = serve({
+      fetch: app.fetch,
+      port: 0,
+      hostname: '127.0.0.1',
+    });
+    try {
+      if (!protectedServer.listening)
+        await new Promise<void>((resolve) =>
+          protectedServer.once('listening', resolve),
+        );
+      const origin = `http://127.0.0.1:${(protectedServer.address() as AddressInfo).port}`;
+      vi.stubEnv('STATION_API_BASE', origin);
+      const pair = (name: string) => {
+        const pairing = security.devicePairing;
+        const offer = pairing.createOffer({
+          endpoint: origin,
+          scope: 'orchestration:read orchestration:operate',
+        });
+        const request = pairing.requestPairing({
+          requesterPosition: 'off-box',
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          deviceName: name,
+        });
+        pairing.confirmRequest(request.requestId, {
+          kind: 'presented-credential',
+        });
+        return pairing.exchange({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          requestId: request.requestId,
+        });
+      };
+      const a = pair('Caller A');
+      const b = pair('Caller B');
+      const ownerA = pairedDevicePrincipal(
+        a.device,
+        security.credentialLocality(a.credential),
+      ).id;
+      const ownerB = pairedDevicePrincipal(
+        b.device,
+        security.credentialLocality(b.credential),
+      ).id;
+      expect(ownerA).not.toBe(ownerB);
+      expect(security.credentialLocality(a.credential)).toBeUndefined();
+      expect(security.credentialLocality(b.credential)).toBeUndefined();
+      const key = 'shared-client-create-key';
+      const body = (prompt: string) => ({
+        clientTurnId: key,
+        prompt,
+        target: {
+          environment: { kind: 'current' },
+          agent: 'reviewer',
+          workspace: { kind: 'project', projectSlug: 'workspace' },
+        },
+      });
+      const create = (credential: string | undefined, prompt: string) =>
+        fetch(`${origin}/api/orchestration/delegations`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            ...(credential ? { authorization: `Bearer ${credential}` } : {}),
+          },
+          body: JSON.stringify(body(prompt)),
+        });
+      const anonymous = await create(undefined, 'A-only-input');
+      expect(anonymous.status).toBe(401);
+      expect(start).not.toHaveBeenCalled();
+      const firstResponse = await create(a.credential, 'A-only-input');
+      expect(firstResponse.status).toBe(200);
+      const first = await readJson<{
+        success: boolean;
+        data: DelegatedTaskHandle;
+      }>(firstResponse);
+      const secondResponse = await create(b.credential, 'B-only-input');
+      expect(secondResponse.status).toBe(200);
+      const second = await readJson<{
+        success: boolean;
+        data: DelegatedTaskHandle;
+      }>(secondResponse);
+      expect(first.success).toBe(true);
+      expect(second.success).toBe(true);
+      expect(first.data.taskId).not.toBe(second.data.taskId);
+      expect(first.data.turnId).toBeTruthy();
+      expect(first.data.initialTurnId).toBe(first.data.turnId);
+      expect(second.data.initialTurnId).toBe(second.data.turnId);
+      expect(start).toHaveBeenCalledTimes(2);
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(send.mock.calls.map(([input]) => input.input)).toEqual([
+        'A-only-input',
+        'B-only-input',
+      ]);
+      expect(
+        service.resolveSessionActingPrincipal(first.data.sessionId)?.id,
+      ).toBe(ownerA);
+      expect(
+        service.resolveSessionActingPrincipal(second.data.sessionId)?.id,
+      ).toBe(ownerB);
+      await vi.waitFor(() => {
+        for (const handle of [first.data, second.data]) {
+          expect(
+            store.listEventsByMethods(handle.sessionId, ['turn.completed']),
+          ).toHaveLength(1);
+        }
+      });
+      for (const [credential, prompt, expected] of [
+        [a.credential, 'A-only-input', first.data],
+        [b.credential, 'B-only-input', second.data],
+      ] as const) {
+        const replay = await create(credential, prompt);
+        expect(replay.status).toBe(200);
+        expect(await replay.json()).toMatchObject({
+          success: true,
+          data: expected,
+        });
+      }
+      const conflict = await create(a.credential, 'changed-input');
+      expect(conflict.status).toBe(409);
+      expect(await conflict.json()).toMatchObject({
+        success: false,
+        code: 'create_request_conflict',
+      });
+      expect(start).toHaveBeenCalledTimes(2);
+      expect(send).toHaveBeenCalledTimes(2);
+      for (const [credential, handle] of [
+        [a.credential, first.data],
+        [b.credential, second.data],
+      ] as const) {
+        const observed = await fetch(
+          `${origin}/api/orchestration/delegations/${encodeURIComponent(handle.taskId)}`,
+          { headers: { authorization: `Bearer ${credential}` } },
+        );
+        expect(observed.status).toBe(200);
+        expect(await observed.json()).toMatchObject({
+          success: true,
+          data: { taskId: handle.taskId, sessionId: handle.sessionId },
+        });
+      }
+      const foreign = await fetch(
+        `${origin}/api/orchestration/delegations/${encodeURIComponent(first.data.taskId)}`,
+        { headers: { authorization: `Bearer ${b.credential}` } },
+      );
+      expect(foreign.status).toBe(400);
+      const refused = await readJson<{ success: boolean; error: string }>(
+        foreign,
+      );
+      expect(refused.success).toBe(false);
+      expect(refused.error).toMatch(
+        /not found|does not match a delegated-task binding/,
+      );
+      expect(JSON.stringify(refused)).not.toContain('A-only-input');
+    } finally {
+      if ('closeAllConnections' in protectedServer)
+        protectedServer.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        protectedServer.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
 
   // Windows has no POSIX mkfifo; symlink privileges are also platform-dependent.
   test.skipIf(process.platform === 'win32').each(['fifo', 'symlink'] as const)(

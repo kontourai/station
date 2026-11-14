@@ -1,0 +1,7 @@
+{
+  "revision": "4b3b031026517dc95b80b269de91db37f10c5854",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Scoped connect-modal fixture delta review at 4b3b0310265: read the browser-smoke contract and complete test diff against main. Receiver fixture now creates security directory0700 and awaits DevicePairingService.create rather than invoking its old constructor; this adopts the actual prepared ownership factory without adding a mocked admission, changing journey steps, browser-health policy, manifest selection, timeouts or retries. The documented manual consent/keyboard/saved-host journey and synthetic-versus-live/provider limits remain accurate for this input. No prose change required; unchanged runner, aggregate receipt, health policy and other journeys retain prior review. Source review only: no Playwright run, fixture typecheck, seeded regression, browser/device/provider or hosted smoke qualification executed in this review.","inputs":["docs/testing/browser-smoke.md","tests/connect-modal.spec.ts"]}
+  ]
+}

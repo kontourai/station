@@ -100,9 +100,10 @@ stays silent in unrelated repositories. The required governance artifact rule
 rejects missing project files; `proof:repo-governance` checks their structure.
 A Conduit receipt proves installed bytes, while a normal Codex edit proves host
 execution. Run readiness for edits outside the hook's coverage. The earlier published
-Veritas 1.7.4 probe exercised `apply_patch` Add File under routed content rules; the plan records the
-published-package host probe. That recorded probe is not proof that every
-agent host or edit mechanism executes the hook today. Installation/trust and
+Veritas 1.7.4 probe exercised `apply_patch` Add File under routed content rules;
+the plan records that host probe. Read `package.json` for the current pin.
+That older probe does not qualify every current package, agent host or edit
+mechanism. Installation/trust and
 host execution are separate observations; these instructions do not grant
 blanket authority to change protected standards or install hooks elsewhere.
 

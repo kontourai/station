@@ -8,6 +8,7 @@ import {
 } from '../../../services/approvals/guardian-conversation.js';
 import { builtinStationControlServerPath } from '../../bootstrap/station-control-runtime-env.js';
 import { isAutoApprovedExternalTool } from '../../tools/tool-executor.js';
+import { createChildDelegationContext } from '../delegation.js';
 import { createStagedPreToolPolicyEvaluator } from '../pre-tool-policy.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -150,6 +151,39 @@ describe('createStagedPreToolPolicyEvaluator', () => {
     ).resolves.toMatchObject({ behavior: 'deny' });
   });
 
+  test('an inherited allowlist refuses the real pre-tool grant path', async () => {
+    const isGranted = vi.fn(() => true);
+    const evaluator = createEvaluator({ isGranted });
+    const delegation = createChildDelegationContext({
+      agentSlug: 'parent',
+      current: {
+        mode: 'isolated-child',
+        depth: 1,
+        maxDepth: 2,
+        parentAgentSlug: agentId('ancestor'),
+        rootAgentSlug: agentId('root'),
+        allowedTools: ['github_*'],
+      },
+    });
+    await expect(
+      evaluator(
+        tool,
+        { ...invocation, delegation },
+        {
+          interaction: 'external',
+          identity: {
+            delegationToolName: 'station-control_list_agents',
+            configProtectionToolName: 'list_agents',
+          },
+        },
+      ),
+    ).resolves.toMatchObject({
+      behavior: 'deny',
+      denial: { reason: expect.stringContaining('delegated child session') },
+    });
+    expect(isGranted).not.toHaveBeenCalled();
+  });
+
   test('matches a raw MCP name against delegated-tool restrictions', async () => {
     const evaluator = createEvaluator();
 
@@ -158,14 +192,22 @@ describe('createStagedPreToolPolicyEvaluator', () => {
         tool,
         {
           ...invocation,
-          delegation: {
-            mode: 'isolated-child',
-            depth: 1,
-            maxDepth: 2,
-            parentAgentSlug: agentId('parent'),
-            rootAgentSlug: agentId('root'),
-            blockedTools: ['station-control_*'],
-          },
+          delegation: createChildDelegationContext({
+            agentSlug: 'parent',
+            spec: {
+              name: 'Child policy',
+              prompt: 'Remain restricted',
+              delegation: { denyApprovals: false },
+            },
+            current: {
+              mode: 'isolated-child',
+              depth: 1,
+              maxDepth: 2,
+              parentAgentSlug: agentId('ancestor'),
+              rootAgentSlug: agentId('root'),
+              blockedTools: ['station-control_*'],
+            },
+          }),
         },
         {
           interaction: 'external',
@@ -195,14 +237,22 @@ describe('createStagedPreToolPolicyEvaluator', () => {
         tool,
         {
           ...invocation,
-          delegation: {
-            mode: 'isolated-child',
-            depth: 1,
-            maxDepth: 2,
-            parentAgentSlug: agentId('parent'),
-            rootAgentSlug: agentId('root'),
-            denyApprovals: true,
-          },
+          delegation: createChildDelegationContext({
+            agentSlug: 'parent',
+            spec: {
+              name: 'Child policy',
+              prompt: 'Remain restricted',
+              delegation: { denyApprovals: false },
+            },
+            current: {
+              mode: 'isolated-child',
+              depth: 1,
+              maxDepth: 2,
+              parentAgentSlug: agentId('ancestor'),
+              rootAgentSlug: agentId('root'),
+              denyApprovals: true,
+            },
+          }),
         },
         {
           interaction: 'external',

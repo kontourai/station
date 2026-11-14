@@ -1,0 +1,7 @@
+{
+  "revision": "5fc590a3517e1b99b87f81e2a8ad6f4154911d55",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed context-sync implementation and qualification against 38357c0fb20: actual caller, durable attempt/receipt bounds, native identity/config-home binding, activation fencing, support preflight and positive terminal authority. Source review and accepted delta are distinct from author tests and two mutation catches. Installed-native loopback production group/service probe passed retained context, ACK, Write refusal and ordinary restoration; initial omitted-refresh harness refusal retained. Independent native execution and real-provider/plugin/delegation/internal-effect/fiscal/full-epic acceptance remain open. No unrelated guide or source-topic freshness is being asserted.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}

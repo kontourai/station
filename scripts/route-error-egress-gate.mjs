@@ -124,10 +124,10 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   // peer text, or store content to any of these constructors, or widening
   // a branch's `instanceof` to a supertype that could carry a caught
   // message. A fifth branch is a new identity and gets reviewed.
-  'src-server/routes/orchestration/orchestration.ts :: route POST /delegations :: error.message :: 1',
-  'src-server/routes/orchestration/orchestration.ts :: route POST /delegations :: error.message :: 2',
-  'src-server/routes/orchestration/orchestration.ts :: route POST /delegations :: error.message :: 3',
-  'src-server/routes/orchestration/orchestration.ts :: route POST /delegations :: error.message :: 4',
+  'src-server/routes/orchestration/orchestration.ts :: function dispatchAuthorizedDelegation :: error.message :: 1',
+  'src-server/routes/orchestration/orchestration.ts :: function dispatchAuthorizedDelegation :: error.message :: 2',
+  'src-server/routes/orchestration/orchestration.ts :: function dispatchAuthorizedDelegation :: error.message :: 3',
+  'src-server/routes/orchestration/orchestration.ts :: function dispatchAuthorizedDelegation :: error.message :: 4',
 ]);
 
 const TRANSPORT_AND_DIAGNOSTIC_BOUNDARIES = [

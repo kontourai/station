@@ -1,0 +1,7 @@
+{
+  "revision": "16b24b64b7728d5ad7f513f37af2326c6b5bf0a7",
+
+  "notes": [
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Read the full historical assessment, current reading routes, classification and prior covering notes at 16b24b64b77. Inspected the official scoped catch-up delta: only package.json#/dependencies/@kontourai~1flow-agents remains pending, from the recorded 6.5.1 value through this branch to exact 9.7.0. Current installed package metadata agrees with that pin and exposes the public authority-service-v3 and group-rounds subpaths used by the consumer; that inspection is not publication or runtime proof. The document explicitly separates July/August API/version/incident assessments from current installed contracts, directs current versions to package.json and pnpm-lock.yaml, and routes current Flow/evidence/host/extension behavior to their canonical owners. Read current Flow service public imports and reviewed the affected Flow Agents historical section; no current 6.x/9.x behavior is claimed there. No prose change required. Preserve all historical measurements, merge-anchor limits and pending native/provider/hosted/release qualification; this note approves the scoped package-pin effect only, not the old API tables as current guidance.","inputs":["docs/strategy/kontour-integration-surface.md","package.json#/dependencies/@kontourai~1flow-agents"]}
+  ]
+}

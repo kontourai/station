@@ -383,20 +383,24 @@ describe('documentation impact', () => {
       { path: 'guide.md', recordRemoved: false, sourcesRemoved: ['code.ts'] },
     ]);
   });
-  it.each(['canonical', 'reformatted'] as const)(
+  it.each(['canonical', 'reformatted', 'duplicate-paths'] as const)(
     'keeps removed %s historical dependencies through the real CLI without relaxing current records',
     (layout) => {
       const { root, records, base, write } = fixture();
-      if (layout === 'reformatted') {
+      if (layout !== 'canonical') {
         const file = recordFile('guide.md');
+        const historical = JSON.parse(readFileSync(join(root, file), 'utf8'));
+        if (layout === 'duplicate-paths') {
+          delete historical.document;
+          historical.sources = ['code.ts', 'code.ts'];
+        }
         write(
           file,
-          `${JSON.stringify(
-            JSON.parse(readFileSync(join(root, file), 'utf8')),
-            null,
-            2,
-          )}\n`,
+          layout === 'duplicate-paths'
+            ? serializeRecordFile(historical)
+            : `${JSON.stringify(historical, null, 2)}\n`,
         );
+
         git(root, ['add', '.']);
         git(root, [
           '-c',
@@ -407,7 +411,7 @@ describe('documentation impact', () => {
         ]);
         const revision = git(root, ['rev-parse', 'HEAD']).trim();
         expect(() => readReviewStateAt(root, revision)).toThrow(
-          'canonical layout',
+          layout === 'duplicate-paths' ? 'source binding' : 'canonical layout',
         );
       }
       write('code.ts', 'changed after review');

@@ -39,6 +39,7 @@ import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
+import { InterruptedTurnRecovery } from '../interrupted-turn-recovery.js';
 import {
   type InterruptedTurnMemoryAdapter,
   OrchestrationService,
@@ -178,6 +179,7 @@ function sessionStartedEvent(input: {
   provider: string;
   agentSlug?: string;
   userId?: string;
+  sessionMetadata?: Record<string, unknown>;
 }): CanonicalRuntimeEvent {
   return {
     eventId: `session-started:${input.threadId}`,
@@ -187,6 +189,7 @@ function sessionStartedEvent(input: {
     method: 'session.started',
     sessionId: input.threadId,
     metadata: {
+      ...input.sessionMetadata,
       ...(input.agentSlug ? { agentSlug: input.agentSlug } : {}),
       ...(input.userId ? { userId: input.userId } : {}),
     },
@@ -212,6 +215,7 @@ function bootAfterCrash(options: {
   agentSlug?: string;
   userId?: string;
   boundaryState: 'invoking' | 'accepted';
+  sessionMetadata?: Record<string, unknown>;
   capturedInput?: boolean;
   /**
    * #3562: whether the dying process persisted `turn-1`'s start. Defaults to
@@ -236,6 +240,7 @@ function bootAfterCrash(options: {
       provider: options.provider,
       agentSlug: options.agentSlug,
       userId: options.userId,
+      sessionMetadata: options.sessionMetadata,
     }),
   );
   for (const event of options.beforeTurnStarted ?? []) dying.appendEvent(event);
@@ -3166,6 +3171,76 @@ describe('#3071: a request the interrupted turn opened is settled', () => {
       updatedAt: '2026-08-16T00:00:02.000Z',
     });
   }
+
+  test.each([
+    'sealed-source-no-tools',
+    'sealed-source-input',
+    'reattached',
+    'malformed',
+  ] as const)(
+    'saved %s mode bypasses managed recovery after a real storage reopen',
+    async (mode) => {
+      sleepProbe.delays.length = 0;
+      const threadId = `saved-${mode}`;
+      const store = bootAfterCrash({
+        path: databasePath(),
+        threadId,
+        provider: 'station-agent',
+        boundaryState: 'accepted',
+        capturedInput: true,
+        sessionMetadata: {
+          reservedSourceExecution: {
+            mode:
+              mode === 'sealed-source-input' ? mode : 'sealed-source-no-tools',
+            identity:
+              mode === 'malformed'
+                ? 'not-a-digest'
+                : `sha256:${'b'.repeat(64)}`,
+          },
+        },
+      });
+      stores.push(store);
+      if (mode === 'reattached')
+        store.appendEvent({
+          provider: 'station-agent',
+          threadId,
+          sessionId: threadId,
+          eventId: `${threadId}:reattached`,
+          method: 'session.started',
+          createdAt: '2026-08-16T00:00:03.000Z',
+          metadata: {},
+        });
+      const managed = vi.fn(async () => 'claimed' as const);
+      const recovery = new InterruptedTurnRecovery({
+        eventStore: () => store,
+        memoryAdapterFor: () => undefined,
+        publishEvent: (event) => {
+          store.appendEvent(event);
+          return true;
+        },
+        recoverDurableTurn: managed,
+        logger,
+      });
+      await recovery.consume();
+      expect(managed).not.toHaveBeenCalled();
+      expect(sleepProbe.delays).toEqual([]);
+      const events = store.listEvents(threadId).map((event) => event.payload);
+      expect(
+        events.filter((event) => event.method === 'turn.aborted'),
+      ).toMatchObject([{ turnId: 'turn-1', recoveryTerminal: true }]);
+      expect(events.some((event) => event.method === 'turn.completed')).toBe(
+        false,
+      );
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            method: 'session.state-changed',
+            sessionState: 'needs_input',
+          }),
+        ]),
+      );
+    },
+  );
 
   test('a durable recovery handoff retains the pending approval and turn boundary', async () => {
     const path = databasePath();

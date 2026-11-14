@@ -9,12 +9,7 @@ interface PermissionPostureBadgeProps {
   className?: string;
 }
 
-/**
- * Row-level permission-posture badge (archive#1424): flags a read-only
- * -attached row so a reader never mistakes it for an ordinary station-owned
- * turn. `posture` absent/null renders nothing — the common case (an
- * ordinary session has no posture to flag).
- */
+/** Recorded posture annotation; absence renders no badge. */
 export function PermissionPostureBadge({
   posture,
   className = '',

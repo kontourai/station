@@ -49,6 +49,16 @@ class DelegationDepthLimitError extends Error {
   }
 }
 
+class DelegationPolicyLimitError extends Error {
+  readonly code = 'delegation_lineage_unavailable' as const;
+  constructor(
+    message = 'Delegation policy exceeds its tool-pattern bound (256).',
+  ) {
+    super(message);
+    this.name = 'DelegationPolicyLimitError';
+  }
+}
+
 /**
  * The ONE derivation of a delegated child's context from its parent: the
  * parent Agent, its conversation, its Agent spec's delegation policy and the
@@ -64,14 +74,42 @@ export function createChildDelegationContext(options: {
 }): AgentDelegationContext {
   const policy = resolveDelegationPolicy(options.spec);
   const currentDepth = options.current?.depth ?? 0;
-  if (currentDepth >= policy.maxDepth) {
-    throw new DelegationDepthLimitError(policy.maxDepth);
+  const maxDepth = Math.min(
+    policy.maxDepth,
+    options.current?.maxDepth ?? policy.maxDepth,
+  );
+  if (currentDepth >= maxDepth) {
+    throw new DelegationDepthLimitError(maxDepth);
   }
+  const blockedTools = [...policy.blockedTools];
+  for (const pattern of options.current?.blockedTools ?? []) {
+    if (!blockedTools.includes(pattern)) blockedTools.push(pattern);
+  }
+  if (blockedTools.length > 256) throw new DelegationPolicyLimitError();
+  const toolAllowlistConstraints = (
+    options.current?.toolAllowlistConstraints ?? []
+  ).map((group) => [...group]);
+  if (options.current?.allowedTools?.length)
+    toolAllowlistConstraints.push([...options.current.allowedTools]);
+  if (
+    toolAllowlistConstraints.some(
+      (group) =>
+        group.length > 256 || group.some((pattern) => pattern.length > 256),
+    )
+  )
+    throw new DelegationPolicyLimitError(
+      'Delegation inherited allowlist exceeds its pattern bounds.',
+    );
+  if (toolAllowlistConstraints.length > 64)
+    throw new DelegationPolicyLimitError(
+      'Delegation allowlist ancestry exceeds 64 groups.',
+    );
+  const denyApprovals = policy.denyApprovals || options.current?.denyApprovals;
 
   return {
     mode: 'isolated-child',
     depth: currentDepth + 1,
-    maxDepth: policy.maxDepth,
+    maxDepth,
     parentAgentSlug: agentId(options.agentSlug),
     parentConversationId: options.conversationId,
     ...(options.sessionId ? { parentSessionId: options.sessionId } : {}),
@@ -81,10 +119,11 @@ export function createChildDelegationContext(options: {
     ...(policy.allowedTools.length > 0
       ? { allowedTools: policy.allowedTools }
       : {}),
-    ...(policy.blockedTools.length > 0
-      ? { blockedTools: policy.blockedTools }
+    ...(toolAllowlistConstraints.length > 0
+      ? { toolAllowlistConstraints }
       : {}),
-    ...(policy.denyApprovals ? { denyApprovals: true } : {}),
+    ...(blockedTools.length > 0 ? { blockedTools } : {}),
+    ...(denyApprovals ? { denyApprovals: true } : {}),
   };
 }
 
@@ -108,6 +147,14 @@ export function isDelegatedToolAllowed(options: {
   ) {
     return false;
   }
+
+  if (
+    delegation.toolAllowlistConstraints?.some(
+      (group) =>
+        !matchesToolPattern(options.toolName, group, options.toolNameMapping),
+    )
+  )
+    return false;
 
   if (
     delegation.blockedTools?.length &&

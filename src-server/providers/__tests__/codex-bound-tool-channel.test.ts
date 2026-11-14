@@ -1,4 +1,4 @@
-import { expect, test, vi } from 'vitest';
+import { expect, onTestFinished, test, vi } from 'vitest';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 import {
   emit,
@@ -511,6 +511,44 @@ test('device catalog uses the first control entry and excludes coordinator-deriv
         token: 'test',
       }),
     });
+    const inventory = (line: string) => {
+      const request: unknown = JSON.parse(line);
+      if (
+        request === null ||
+        typeof request !== 'object' ||
+        !('method' in request) ||
+        request.method !== 'mcpServerStatus/list'
+      )
+        return;
+      expect(request).toMatchObject({
+        params: { threadId: 'native', serverName: control.id },
+      });
+      if (!('id' in request))
+        throw Error('MCP inventory request has no RPC id');
+      queueMicrotask(() =>
+        child.stdout.write(
+          `${JSON.stringify({
+            id: request.id,
+            result: {
+              data: [
+                {
+                  name: control.id,
+                  runtimeStatus: 'connected',
+                  authStatus: 'bearerToken',
+                  tools: {},
+                  toolsError: null,
+                },
+              ],
+            },
+          })}\n`,
+        ),
+      );
+    };
+    child.stdin.on('line', inventory);
+    onTestFinished(async () => {
+      child.stdin.off('line', inventory);
+      await adapter.stopSession(`control-${firstDerived}`);
+    });
     const session = adapter.startSession({
       provider: 'codex',
       threadId: `control-${firstDerived}`,
@@ -522,9 +560,30 @@ test('device catalog uses the first control entry and excludes coordinator-deriv
         ],
       } as never,
     });
-    await flushIo();
-    await emit(child, { id: '1', result: { userAgent: 'test' } });
-    await emit(child, { id: '2', result: { thread: { id: 'native' } } });
+    const requestId = (method: string) =>
+      waitFor(() => {
+        for (const line of child.stdin.lines) {
+          const frame: unknown = JSON.parse(line);
+          if (
+            frame !== null &&
+            typeof frame === 'object' &&
+            'method' in frame &&
+            frame.method === method &&
+            'id' in frame &&
+            (typeof frame.id === 'string' || typeof frame.id === 'number')
+          )
+            return frame.id;
+        }
+        return undefined;
+      }, `outgoing ${method}`);
+    await emit(child, {
+      id: await requestId('initialize'),
+      result: { userAgent: 'test' },
+    });
+    await emit(child, {
+      id: await requestId('thread/start'),
+      result: { thread: { id: 'native' } },
+    });
     await withTimeout(session, 'start');
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ includeDevices: !firstDerived }),

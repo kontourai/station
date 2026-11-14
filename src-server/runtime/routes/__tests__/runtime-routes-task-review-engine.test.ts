@@ -200,7 +200,11 @@ describe('an engine keeps Task review through its own MCP connection', () => {
       taskGraphService: taskGraph,
       projectService,
       environmentSecurityService: deepStub({
-        devicePairing: deepStub({ listKnownPrincipals: () => [] }),
+        assessCredentialRoute: undefined,
+        devicePairing: deepStub({
+          withCurrentRegistry: <T>(read: () => T): T => read(),
+          listKnownPrincipals: () => [],
+        }),
         verifyCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL,
         authorizeCredential: (credential: string) =>

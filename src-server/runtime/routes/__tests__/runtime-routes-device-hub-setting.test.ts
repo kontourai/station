@@ -127,6 +127,10 @@ async function composedHarness(
           : undefined,
     },
     environmentSecurityService: deepStub({
+      assessCredentialRoute: undefined,
+      devicePairing: deepStub({
+        withCurrentRegistry: <T>(read: () => T): T => read(),
+      }),
       verifyCredential: (credential: string) => credential === OPERATOR_SECRET,
       authorizeCredential: (credential: string) =>
         credential === OPERATOR_SECRET,

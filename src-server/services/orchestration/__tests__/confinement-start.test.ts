@@ -18,6 +18,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { confinementProvidersForTests } from '../../../__test-utils__/confinement-providers.js';
+import { credentialRecoveryOwner } from '../../../__test-utils__/credential-recovery-owner.js';
 import { awaitSessionRecoveryCompleted } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
@@ -864,7 +865,7 @@ describe('#2494: a start resolves its confinement before the engine is touched',
     expect(persistedRecord('codex-credential')).toMatchObject({
       posture: 'confined',
     });
-    await service['credentialProfileRecovery'].restartRecoverySession({
+    await credentialRecoveryOwner(service).restartRecoverySession({
       threadId: 'codex-credential',
       input: 'retry',
       modelOptions: { approvalMode: 'ask' },

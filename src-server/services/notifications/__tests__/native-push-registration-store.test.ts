@@ -11,6 +11,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
+  HomeWriterOwner,
+  HomeWriterUnavailableError,
+} from '../../ssh/home-writer-owner.js';
+import {
   isValidNativePushRequest,
   NativePushIosRegistrationStore,
   NativePushRegistrationStore,
@@ -23,14 +27,16 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true });
 });
 
-function fixture() {
+async function fixture() {
   const home = mkdtempSync(join(tmpdir(), 'station-native-push-store-'));
   roots.push(home);
   mkdirSync(join(home, 'security'), { mode: 0o700 });
+  const writer = await HomeWriterOwner.forHome(home);
   return {
     home,
-    reopen: () => new NativePushRegistrationStore(home),
-    store: new NativePushRegistrationStore(home),
+    writer,
+    reopen: () => new NativePushRegistrationStore(writer),
+    store: new NativePushRegistrationStore(writer),
     path: join(home, 'security', 'native-push-registrations.json'),
   };
 }
@@ -44,8 +50,8 @@ const KEY = 'k'.repeat(43);
 const posix = process.platform !== 'win32';
 
 describe('NativePushRegistrationStore', () => {
-  test('creates nothing until a registration, then a 0600 file', () => {
-    const { store, path } = fixture();
+  test('creates nothing until a registration, then a 0600 file', async () => {
+    const { store, path } = await fixture();
     expect(store.list().size).toBe(0);
     const registration = store.upsert('device-1', REQUEST, KEY, 1);
     expect(registration.payloadKey).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -53,8 +59,8 @@ describe('NativePushRegistrationStore', () => {
     if (posix) expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 
-  test('keeps the registrationId and payload key across token rotation', () => {
-    const { store } = fixture();
+  test('keeps the registrationId and payload key across token rotation', async () => {
+    const { store } = await fixture();
     const first = store.upsert('device-1', REQUEST, KEY, 1);
     const rotated = store.upsert(
       'device-1',
@@ -66,16 +72,16 @@ describe('NativePushRegistrationStore', () => {
     expect(rotated.payloadKey).toBe(first.payloadKey);
   });
 
-  test('retain drops every device not kept', () => {
-    const { store } = fixture();
+  test('retain drops every device not kept', async () => {
+    const { store } = await fixture();
     store.upsert('keep', REQUEST, KEY, 1);
     store.upsert('drop', REQUEST, KEY, 1);
     store.retain(new Set(['keep']));
     expect([...store.list().keys()]).toEqual(['keep']);
   });
 
-  test('refuses a corrupt file rather than treating it as empty', () => {
-    const { store, path } = fixture();
+  test('refuses a corrupt file rather than treating it as empty', async () => {
+    const { store, path } = await fixture();
     writeFileSync(path, '{ nope', { mode: 0o600 });
     expect(() => store.list()).toThrow(NativePushRegistrationStoreError);
     expect(() => store.upsert('device-1', REQUEST, KEY, 1)).toThrow(
@@ -84,8 +90,8 @@ describe('NativePushRegistrationStore', () => {
     expect(readFileSync(path, 'utf8')).toBe('{ nope');
   });
 
-  test('refuses a record with an unknown field', () => {
-    const { store, path, reopen } = fixture();
+  test('refuses a record with an unknown field', async () => {
+    const { store, path, reopen } = await fixture();
     const registration = store.upsert('device-1', REQUEST, KEY, 1);
     writeFileSync(
       path,
@@ -98,15 +104,15 @@ describe('NativePushRegistrationStore', () => {
     expect(() => reopen().list()).toThrow(NativePushRegistrationStoreError);
   });
 
-  test.runIf(posix)('refuses a loosely permissioned file', () => {
-    const { store, path, reopen } = fixture();
+  test.runIf(posix)('refuses a loosely permissioned file', async () => {
+    const { store, path, reopen } = await fixture();
     store.upsert('device-1', REQUEST, KEY, 1);
     chmodSync(path, 0o644);
     expect(() => reopen().list()).toThrow(NativePushRegistrationStoreError);
   });
 
-  test('another process writing the file is seen at the next read', () => {
-    const { store, reopen } = fixture();
+  test('another process writing the file is seen at the next read', async () => {
+    const { store, reopen } = await fixture();
     store.upsert('device-1', REQUEST, KEY, 1);
     expect([...store.list().keys()]).toEqual(['device-1']);
     // A second writer over the same file (as `station environment reset`
@@ -119,8 +125,8 @@ describe('NativePushRegistrationStore', () => {
     expect([...reopen().list().keys()]).toEqual(['device-2']);
   });
 
-  test('its own writes keep the cache current', () => {
-    const { store, reopen } = fixture();
+  test('its own writes keep the cache current', async () => {
+    const { store, reopen } = await fixture();
     store.upsert('device-1', REQUEST, KEY, 1);
     store.upsert('device-2', REQUEST, KEY, 2);
     expect([...store.list().keys()].sort()).toEqual(['device-1', 'device-2']);
@@ -130,8 +136,8 @@ describe('NativePushRegistrationStore', () => {
     ]);
   });
 
-  test('a failed read is not cached: once the file is repaired, the next read sees it', () => {
-    const { store, path, reopen } = fixture();
+  test('a failed read is not cached: once the file is repaired, the next read sees it', async () => {
+    const { store, path, reopen } = await fixture();
     const good = reopen();
     good.upsert('device-1', REQUEST, KEY, 1);
     const goodContent = readFileSync(path, 'utf8');
@@ -141,8 +147,8 @@ describe('NativePushRegistrationStore', () => {
     expect([...store.list().keys()]).toEqual(['device-1']);
   });
 
-  test('records delivered alert ids durably, bounded, and keeps them across token rotation', () => {
-    const { store, reopen } = fixture();
+  test('records delivered alert ids durably, bounded, and keeps them across token rotation', async () => {
+    const { store, reopen } = await fixture();
     const first = store.upsert('device-1', REQUEST, KEY, 1);
     const ids = Array.from({ length: 130 }, (_, i) =>
       i.toString(16).padStart(64, '0'),
@@ -164,8 +170,8 @@ describe('NativePushRegistrationStore', () => {
     );
   });
 
-  test('records whether the phone shows rows durably, keeps it across token rotation, and writes nothing while false', () => {
-    const { store, path, reopen } = fixture();
+  test('records whether the phone shows rows durably, keeps it across token rotation, and writes nothing while false', async () => {
+    const { store, path, reopen } = await fixture();
     const first = store.upsert('device-1', REQUEST, KEY, 1);
     const before = readFileSync(path, 'utf8');
     // False is the absent key: an unchanged, older-readable record.
@@ -189,8 +195,8 @@ describe('NativePushRegistrationStore', () => {
     );
   });
 
-  test('refuses a cardShown that is not true', () => {
-    const { store, path, reopen } = fixture();
+  test('refuses a cardShown that is not true', async () => {
+    const { store, path, reopen } = await fixture();
     const registration = store.upsert('device-1', REQUEST, KEY, 1);
     writeFileSync(
       path,
@@ -220,12 +226,12 @@ const ACTIVITY = {
   channelAuth: CHANNEL_AUTH,
 };
 
-function iosFixture() {
-  const base = fixture();
+async function iosFixture() {
+  const base = await fixture();
   return {
     ...base,
-    ios: new NativePushIosRegistrationStore(base.home),
-    reopenIos: () => new NativePushIosRegistrationStore(base.home),
+    ios: new NativePushIosRegistrationStore(base.writer),
+    reopenIos: () => new NativePushIosRegistrationStore(base.writer),
     iosPath: join(base.home, 'security', 'native-push-ios-registrations.json'),
   };
 }
@@ -288,8 +294,8 @@ describe('isValidNativePushRequest (the registration union)', () => {
 });
 
 describe('NativePushIosRegistrationStore', () => {
-  test('round trip in its own 0600 file; the Android file is never created', () => {
-    const { ios, reopenIos, iosPath, path } = iosFixture();
+  test('round trip in its own 0600 file; the Android file is never created', async () => {
+    const { ios, reopenIos, iosPath, path } = await iosFixture();
     const registration = ios.upsert('device-1', IOS_REQUEST, KEY, 1);
     expect(registration).toEqual({
       ...IOS_REQUEST,
@@ -303,8 +309,8 @@ describe('NativePushIosRegistrationStore', () => {
     if (posix) expect(statSync(iosPath).mode & 0o777).toBe(0o600);
   });
 
-  test('the activity and its channel persist, and survive a token rotation on the same topic', () => {
-    const { ios, reopenIos } = iosFixture();
+  test('the activity and its channel persist, and survive a token rotation on the same topic', async () => {
+    const { ios, reopenIos } = await iosFixture();
     const { registrationId } = ios.upsert('device-1', IOS_REQUEST, KEY, 1);
     ios.updateLiveActivity('device-1', registrationId, { activity: ACTIVITY });
     const rotated = ios.upsert(
@@ -318,8 +324,8 @@ describe('NativePushIosRegistrationStore', () => {
     expect(reopenIos().list().get('device-1')).toEqual(rotated);
   });
 
-  test('a token for another bundle or environment queues the activity channel for deletion under its old topic', () => {
-    const { ios } = iosFixture();
+  test('a token for another bundle or environment queues the activity channel for deletion under its old topic', async () => {
+    const { ios } = await iosFixture();
     const { registrationId } = ios.upsert('device-1', IOS_REQUEST, KEY, 1);
     ios.updateLiveActivity('device-1', registrationId, { activity: ACTIVITY });
     const moved = ios.upsert(
@@ -341,8 +347,8 @@ describe('NativePushIosRegistrationStore', () => {
     ]);
   });
 
-  test('ending an activity and queueing its channel is one write; a stale run id or registration changes nothing', () => {
-    const { ios, reopenIos } = iosFixture();
+  test('ending an activity and queueing its channel is one write; a stale run id or registration changes nothing', async () => {
+    const { ios, reopenIos } = await iosFixture();
     const { registrationId } = ios.upsert('device-1', IOS_REQUEST, KEY, 1);
     ios.updateLiveActivity('device-1', registrationId, { activity: ACTIVITY });
     const queued = {
@@ -379,8 +385,8 @@ describe('NativePushIosRegistrationStore', () => {
     expect(reopenIos().list().get('device-1')?.channelDeletes).toBeUndefined();
   });
 
-  test('queued deletions are bounded, oldest dropped first', () => {
-    const { ios } = iosFixture();
+  test('queued deletions are bounded, oldest dropped first', async () => {
+    const { ios } = await iosFixture();
     const { registrationId } = ios.upsert('device-1', IOS_REQUEST, KEY, 1);
     for (let i = 0; i < 20; i += 1)
       ios.updateLiveActivity('device-1', registrationId, {
@@ -433,8 +439,8 @@ describe('NativePushIosRegistrationStore', () => {
       },
     ],
     ['an Android record', { platform: 'android' }],
-  ])('refuses a file holding %s', (_label, patch) => {
-    const { ios, reopenIos, iosPath } = iosFixture();
+  ])('refuses a file holding %s', async (_label, patch) => {
+    const { ios, reopenIos, iosPath } = await iosFixture();
     const registration = ios.upsert('device-1', IOS_REQUEST, KEY, 1);
     writeFileSync(
       iosPath,
@@ -447,8 +453,8 @@ describe('NativePushIosRegistrationStore', () => {
     expect(() => reopenIos().list()).toThrow(NativePushRegistrationStoreError);
   });
 
-  test('alertToken (#2589): stored when sent, restated by every registration, absent otherwise', () => {
-    const { ios, reopenIos, iosPath } = iosFixture();
+  test('alertToken (#2589): stored when sent, restated by every registration, absent otherwise', async () => {
+    const { ios, reopenIos, iosPath } = await iosFixture();
     const plain = ios.upsert('device-1', IOS_REQUEST, KEY, 1);
     // Without one, the record is exactly what earlier Stations wrote.
     expect(Object.keys(plain).sort()).toEqual([
@@ -481,8 +487,8 @@ describe('NativePushIosRegistrationStore', () => {
     expect(reopenIos().list().get('device-1')?.alertToken).toBeUndefined();
   });
 
-  test('clearAlertToken drops only a still-current alert token and keeps the activity', () => {
-    const { ios, reopenIos } = iosFixture();
+  test('clearAlertToken drops only a still-current alert token and keeps the activity', async () => {
+    const { ios, reopenIos } = await iosFixture();
     const alertToken = 'cd'.repeat(32);
     const { registrationId } = ios.upsert(
       'device-1',
@@ -501,8 +507,8 @@ describe('NativePushIosRegistrationStore', () => {
     expect(ios.clearAlertToken('device-2', alertToken)).toBe(false);
   });
 
-  test('a stored alertToken the pattern refuses makes the iOS file unreadable', () => {
-    const { ios, reopenIos, iosPath } = iosFixture();
+  test('a stored alertToken the pattern refuses makes the iOS file unreadable', async () => {
+    const { ios, reopenIos, iosPath } = await iosFixture();
     ios.upsert(
       'device-1',
       { ...IOS_REQUEST, alertToken: 'cd'.repeat(32) },
@@ -515,8 +521,8 @@ describe('NativePushIosRegistrationStore', () => {
     expect(() => reopenIos().list()).toThrow(NativePushRegistrationStoreError);
   });
 
-  test('downgrade safety: the Android store refuses an iOS record, which is why iOS has its own file', () => {
-    const { store, ios, reopen, path } = iosFixture();
+  test('downgrade safety: the Android store refuses an iOS record, which is why iOS has its own file', async () => {
+    const { store, ios, reopen, path } = await iosFixture();
     store.upsert('android-1', REQUEST, KEY, 1);
     const androidBytes = readFileSync(path, 'utf8');
     const iosRecord = ios.upsert('ios-1', IOS_REQUEST, KEY, 1);
@@ -542,28 +548,38 @@ describe('NativePushIosRegistrationStore tombstones', () => {
     activity: ACTIVITY,
   });
 
-  test('delete and retain retire a record with an activity; one without leaves nothing', () => {
-    const base = fixture();
-    const ios = new NativePushIosRegistrationStore(base.home, () => 7);
+  test('delete and retain retire a record with an activity; one without leaves nothing', async () => {
+    const base = await fixture();
+    const ios = new NativePushIosRegistrationStore(
+      await HomeWriterOwner.forHome(base.home),
+      () => 7,
+    );
     const live = ios.upsert('live', IOS_REQUEST, KEY, 1);
     ios.updateLiveActivity('live', live.registrationId, { activity: ACTIVITY });
     ios.upsert('idle', { ...IOS_REQUEST, token: 'cd'.repeat(40) }, KEY, 1);
     ios.delete('live');
     ios.retain(new Set());
-    const reopened = new NativePushIosRegistrationStore(base.home);
+    const reopened = new NativePushIosRegistrationStore(
+      await HomeWriterOwner.forHome(base.home),
+    );
     expect(reopened.list().size).toBe(0);
     expect(reopened.listTombstones()).toEqual([
       tombstoneOf(live.registrationId, live.payloadKey),
     ]);
     reopened.updateTombstone(live.registrationId, null);
     expect(
-      new NativePushIosRegistrationStore(base.home).listTombstones(),
+      new NativePushIosRegistrationStore(
+        await HomeWriterOwner.forHome(base.home),
+      ).listTombstones(),
     ).toEqual([]);
   });
 
-  test('tombstones are bounded and the drops are counted', () => {
-    const base = fixture();
-    const ios = new NativePushIosRegistrationStore(base.home, () => 7);
+  test('tombstones are bounded and the drops are counted', async () => {
+    const base = await fixture();
+    const ios = new NativePushIosRegistrationStore(
+      await HomeWriterOwner.forHome(base.home),
+      () => 7,
+    );
     for (let i = 0; i < 34; i += 1) {
       const token = i.toString(16).padStart(2, '0').repeat(40);
       const registration = ios.upsert(
@@ -581,8 +597,8 @@ describe('NativePushIosRegistrationStore tombstones', () => {
     expect(ios.droppedTombstones).toBe(2);
   });
 
-  test('the Android file refuses tombstones', () => {
-    const { store, path, reopen } = fixture();
+  test('the Android file refuses tombstones', async () => {
+    const { store, path, reopen } = await fixture();
     const registration = store.upsert('device-1', REQUEST, KEY, 1);
     writeFileSync(
       path,
@@ -596,8 +612,8 @@ describe('NativePushIosRegistrationStore tombstones', () => {
     expect(() => reopen().list()).toThrow(NativePushRegistrationStoreError);
   });
 
-  test('a malformed tombstone makes the iOS file unreadable', () => {
-    const { iosPath, reopenIos } = iosFixture();
+  test('a malformed tombstone makes the iOS file unreadable', async () => {
+    const { iosPath, reopenIos } = await iosFixture();
     writeFileSync(
       iosPath,
       JSON.stringify({
@@ -609,4 +625,31 @@ describe('NativePushIosRegistrationStore tombstones', () => {
     );
     expect(() => reopenIos().list()).toThrow(NativePushRegistrationStoreError);
   });
+});
+
+test('independent native sidecar stores cannot write while the home is held', async () => {
+  const base = await iosFixture();
+  const android = base.store.upsert('android', REQUEST, KEY, 1);
+  const ios = base.ios.upsert('ios', IOS_REQUEST, KEY, 1);
+  const beforeAndroid = readFileSync(base.path, 'utf8');
+  const beforeIos = readFileSync(base.iosPath, 'utf8');
+  const owner = await HomeWriterOwner.forHome(base.home);
+  const lease = await owner.acquire();
+  try {
+    expect(() =>
+      base.store.recordCardShown('android', android.registrationId, true),
+    ).toThrow(HomeWriterUnavailableError);
+    expect(() => base.ios.clearAlertToken('ios', 'missing')).toThrow(
+      HomeWriterUnavailableError,
+    );
+    expect(readFileSync(base.path, 'utf8')).toBe(beforeAndroid);
+    expect(readFileSync(base.iosPath, 'utf8')).toBe(beforeIos);
+    owner.runWithLease(lease, () =>
+      base.store.recordCardShown('android', android.registrationId, true),
+    );
+  } finally {
+    await lease.release();
+  }
+  expect(base.store.list().get('android')?.cardShown).toBe(true);
+  expect(base.ios.list().get('ios')?.registrationId).toBe(ios.registrationId);
 });

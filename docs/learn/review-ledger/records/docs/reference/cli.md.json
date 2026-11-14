@@ -242,6 +242,10 @@
 
     "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
 
+    "packages/cli/src/commands/ensemble.ts",
+
+    "packages/contracts/src/ensemble.ts",
+
     "packages/cli/src/commands/mcp-clients.ts",
 
     "packages/cli/src/__tests__/mcp-clients.test.ts",
@@ -260,7 +264,23 @@
 
     "packages/sdk/src/client/delegations.ts",
 
-    "packages/cli/src/__tests__/telemetry-command.test.ts"
+    "src-server/services/terminal/terminal-gateway.ts",
+
+    "src-server/runtime/frameworks/voltagent-hono-runtime.ts",
+
+    "src-ui/src/utils/sessionDisplay.ts",
+
+    "src-ui/src/views/home/home-view-model.ts",
+
+    "src-ui/src/views/SessionsView.css",
+
+    "packages/cli/src/__tests__/telemetry-command.test.ts",
+
+    "src-ui/src/components/home/HomeWorkRow.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockInboxRows.tsx",
+
+    "src-ui/src/components/home/__tests__/HomeWorkRow.projectMarks.test.tsx"
   ],
 
   "checks": [

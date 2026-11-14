@@ -1,0 +1,9 @@
+{
+  "revision": "d8619286dbf6e9384cc7ce8ff5ba361651384a1e",
+
+  "notes": [
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Reviewed the bootstrap delta against this managed-installation lifecycle contract. Publication admission is now captured from the existing exact home-runtime lease and joined before the prior configuration/service teardown. This does not change pluginInstallationHost construction/reconcile, artifact acquisition, applied installation selection, generation continuity or plugin process-custody ownership. A pending publication timeout retains dependencies; it is not a terminal plugin/process receipt. The document already distinguishes SDK closure from descendant/effect drainage and labels hosted adapters unimplemented. No prose update needed for this bootstrap impact. Source inspection only; no installation, Windows/process, hosted or live-provider evidence rerun.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Reviewed the StationRuntime delta against the applied-policy composition claims. The new home-publication participant and stop/drain ordering do not change registryTrust candidate observation, the existing configuration mutation owner, policy verification/CAS, selected signing keys or applied-policy epochs. The delta adds no claim-to-authority conversion and no trust fallback; existing pluginInstallationHost reconciliation and configuration teardown remain their owners after publication drains. Current document limits on publisher identity, hosted adaptation and signed-code safety remain necessary. No prose update needed for this impact; no registry installation, policy-race or crash experiment was executed.","inputs":["docs/design/registry-trust-policy.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

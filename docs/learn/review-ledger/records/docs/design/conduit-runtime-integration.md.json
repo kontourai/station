@@ -30,6 +30,8 @@
 
     "src-server/runtime/frameworks/voltagent-adapter.ts",
 
+    "pnpm-lock.yaml",
+
     "package.json#/dependencies/@kontourai~1conduit"
   ],
 

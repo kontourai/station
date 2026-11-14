@@ -1,0 +1,7 @@
+{
+  "revision": "02573ae045d3fac6620aba05db2c1bc4513a08b5",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the generated station-docs-content.ts delta at 02573ae045d3: its sole change is the module map's already-reviewed no-op rounds persistence paragraph, copied into the architecture topic. Documented Task/Session identity, delegation outcomes, evidence separation, private storage and generated-manual ownership remain unchanged. No handwritten generated edit, new delivery, authority, capability or runtime acceptance is introduced; previous complete-body review and qualification limits remain.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

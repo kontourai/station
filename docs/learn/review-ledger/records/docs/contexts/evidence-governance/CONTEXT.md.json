@@ -50,6 +50,10 @@
 
     "src-ui/src/contexts/MonitoringContext.tsx",
 
+    "src-server/services/orchestration/cli-session-group.ts",
+
+    "src-server/services/orchestration/station-report-group-runtime.ts",
+
     "src-server/routes/evidence/flow-runs.ts"
   ],
 

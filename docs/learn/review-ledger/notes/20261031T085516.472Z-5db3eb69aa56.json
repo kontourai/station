@@ -1,0 +1,11 @@
+{
+  "revision": "d9bd460fa95b350b46a5ea81d991467fc6154839",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed Data and privacy against the committed reserved-report review-scope addition in privacy-inventory.ts and generated privacy-policy.md. README already names external feature destinations and startup/background requests, links inventory review limits alongside the public policy, and explicitly refuses completeness from generated declarations. No prose change needed for this delta. This is a bounded source/wording assessment, not complete data-flow, legal, device, provider or publication approval.","inputs":["README.md","docs/privacy-policy.md","src-server/services/privacy-inventory.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed Local-First Data against the committed reserved-report/private-context inventory scope. The concepts guide already distinguishes home storage from external model/Engine/device/integration traffic, calls the linked inventory a working copy and separates declared settings from verified behavior. No prose change needed for this delta; report retention is not inferred from telemetry-outbox limits. No complete inventory, legal or runtime qualification is claimed.","inputs":["docs/user/concepts.md","docs/privacy-policy.md","src-ui/src/utils/child-work-display.ts"]},
+
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed the added checkpoint and current main identity against actual history/identity source repairs, retained intended-red and corrected fixture failures, focused72/251/302 logs, collected type exits, independent bounded source reports, independent normal browser9cd task-fact/layout report and natural-zero runner receipt. Verified normal mergef560 of main659, combined61 cases, server/UI type exits, parity and UI budget383944/53553. Preserved Activity selection FAIL, transient loading, prior browser FAILs, physical/desktop/provider/Flow-finalizer gaps, 16/17 Flow failure and historical146s UNKNOWN. Pre-merge browser evidence is not promoted to merged source. This reviews the new checkpoint delta; historical evidence retains its recorded scope and is not rerun or upgraded.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}

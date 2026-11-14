@@ -486,6 +486,12 @@
 
     "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
 
+    "src-server/routes/orchestration/ensemble-preparation.ts",
+
+    "src-server/services/orchestration/ensemble-execution-context.ts",
+
+    "src-server/providers/adapter-shape.ts",
+
     "src-server/services/projects/repository-acquisition-service.ts",
 
     "src-server/routes/projects/repository-acquisition-routes.ts",
@@ -584,6 +590,22 @@
 
     "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts",
 
+    "src-server/services/orchestration/cli-session-group.ts",
+
+    "src-server/routes/orchestration/cli-session-group-events.ts",
+
+    "src-server/routes/orchestration/ensemble-inspection.ts",
+
+    "src-server/services/orchestration/ensemble-inspection.ts",
+
+    "src-server/services/orchestration/ensemble-cli-session-group.ts",
+
+    "src-server/services/orchestration/ensemble-session-group-authentication.ts",
+
+    "packages/contracts/src/ensemble.ts",
+
+    "packages/sdk/src/client/cli-session-groups.ts",
+
     "src-server/services/terminal/terminal-gateway.ts",
 
     "src-server/services/terminal/terminal-channel-connection.ts",
@@ -626,6 +648,18 @@
 
     "src-server/routes/operations/automations.ts",
 
+    "src-server/services/orchestration/conversation-history-read-service.ts",
+
+    "src-server/services/orchestration/session-authorization.ts",
+
+    "src-server/services/integrations/integration-status-service.ts",
+
+    "src-server/services/orchestration/task-write-back-store.ts",
+
+    "src-server/services/scheduling/scheduled-conversation-runs.ts",
+
+    "src-server/runtime/routes/agent-schedule-composition.ts",
+
     "src-server/routes/chat/conversation-work-state.ts",
 
     "src-server/routes/chat/__tests__/conversation-work-state.test.ts",
@@ -641,6 +675,18 @@
     "src-server/services/orchestration/create-request-claims.ts",
 
     "src-server/services/orchestration/__tests__/create-request-claims.test.ts",
+
+    "src-server/capabilities/station-capability-flags.ts",
+
+    "packages/sdk/src/client/private-insights.ts",
+
+    "src-server/providers/auth/claude-keychain-authentication.ts",
+
+    "src-server/providers/auth/__tests__/native-authentication-keychain.test.ts",
+
+    "src-server/services/orchestration/__tests__/ensemble-execution-context.test.ts",
+
+    "src-server/routes/orchestration/__tests__/cli-session-group-runtime.integration.test.ts",
 
     "src-server/routes/environments/peer-chat-policy.ts",
 

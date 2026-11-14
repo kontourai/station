@@ -90,7 +90,11 @@
 
     "tests/container-self-host.spec.ts",
 
-    "package.json#/dependencies/@kontourai~1console-ui"
+    "package.json#/dependencies/@kontourai~1console-ui",
+
+    "src-server/services/plugins/workspace-home-role-service.ts",
+
+    "src-server/routes/plugins/plugin-home-role-routes.ts"
   ],
 
   "checks": [

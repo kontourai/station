@@ -830,8 +830,8 @@ That dependency command is not the repository's managed pinned-pnpm setup path;
 the current root has no npm lockfile. This supervisor's successful staging on a
 current revision needs qualification/correction before use, not a claim inferred
 from its older fixtures. [#2776](https://github.com/kontourai/station/issues/2776)
-tracks that correction. Promotion binds the configured API, terminal, voice,
-consent and UI listeners to `127.0.0.1`, verifies the exact build SHA locally and through
+tracks that correction. Promotion binds the configured API, voice, consent
+and UI listeners to `127.0.0.1`, verifies the exact build SHA locally and through
 Tailscale Serve HTTPS, and only then commits `active`/`previous` state. A build
 failure leaves the active process alone; a post-stop failure restarts and
 health-checks the previous built release.
@@ -983,8 +983,8 @@ fresh install), restores every file byte-for-byte with its owner/mode, and
 verifies the full Serve and launchd state, including restoring the prior client
 targets and plist `PATH`. Reinstall refuses semantic config
 changes; those require the controlled migration path. The installer runs one
-reconcile synchronously and requires state, local status provenance, all five
-listener owners and the API/terminal/voice/UI probes to agree before loading the persistent LaunchAgent or
+reconcile synchronously and requires state, local status provenance, all four
+listener owners and the API/voice/UI probes to agree before loading the persistent LaunchAgent or
 reporting success. Installation then requires launchd to keep the supervisor
 running before it commits the transaction. That synchronous reconcile defers release pruning so every
 SHA named by the pre-install state remains available for rollback. Only after
@@ -1022,7 +1022,7 @@ claimant cannot block later recovery.
 Promotion polling remains independently limited to once every five minutes, so
 the faster health cadence does not increase normal GitHub traffic. The target
 recovery budget is at most 60 seconds from a required listener loss through a
-same-SHA restart and successful API, terminal, voice, UI, and tailnet checks.
+same-SHA restart and successful API, voice, UI, and tailnet checks.
 Receipts reserve `intervalAllowanceMs: 15000` for the supervisor loop and
 record both `preDetectionDurationMs` and `postDetectionDurationMs`;
 `worstCaseEndToEndMs` adds those two durations and the interval allowance, then
@@ -1098,7 +1098,7 @@ navigations keep receiving the app instead of the recovery document.
 
 `health.status` is `unavailable` while a required listener is missing,
 `recovering` while the exact recorded release is restarting, and `ready` only
-after all five listener owners and the API/terminal/voice/UI probes and tailnet provenance pass. The bounded last
+after all four listener owners and the API/voice/UI probes and tailnet provenance pass. The bounded last
 20 `recoveryHistory` receipts retain the exact SHA, failed checks, detection,
 attempt, and recovery/failure timestamps, outcome, observed reason, and
 per-stage detection/stop/start/local/tailnet timing. SLA compliance is recorded
@@ -1127,9 +1127,9 @@ short-lived operation ID and expiry plus a completed, already-absent, or failed
 result; failed, orphaned, and expired operations cannot classify later exits as
 expected.
 
-The terminal and voice `/__station/health` upgrades are identity-only: they
-close before registering a business client, allocating a terminal, starting a
-voice provider, or creating a voice session. Managed instance state also pins
+The voice `/__station/health` upgrade is identity-only: it closes before
+registering a business client, starting a voice provider or creating a voice
+session. Terminal upgrades use the ticket-admitted main API path instead. Managed instance state also pins
 each backend/UI PID to its operating-system start token and command digest.
 Station verifies that fingerprint immediately before signaling; absent
 processes are already stopped, while reused PIDs and unrelated port owners are

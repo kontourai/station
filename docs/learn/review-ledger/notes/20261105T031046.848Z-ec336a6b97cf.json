@@ -1,0 +1,11 @@
+{
+  "revision": "1465464c58556d72114dd238faf742e94057b0eb",
+
+  "notes": [
+    {"path":"docs/design/cli-triage.md","note":"Scoped downstream review of the two-line CLI-reference Directory addition. Read the complete bounded guided-triage document and compared the exact reference delta. The addition describes workspace display for existing delegate --cwd targets; it changes no triage mode, source/bundle registration, artifact boundary, redaction, agent launch flags, approval, GitHub-consent instruction or command behavior. Existing prose remains accurate. This note does not re-execute installed-agent enforcement, diagnostics, providers or platforms, and preserves prior qualification limits.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Scoped downstream review of the CLI-reference Directory addition against the integration-routing table and the guide’s deployment boundaries. The exact two-line delta adds compact Directory display when Project attribution is absent, without adding an execution target, grant, API operation or workspace identity. Public CLI/API/SDK integration routes and required evidence remain unchanged. The hosted/AWS provider discussion stays an evolution target, not a new deployment or tenant-safety claim. No prose change is needed; no runtime, cloud, provider, device or whole-epic qualification is inferred.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"docs/plans/child-work-epic.md","note":"Scoped correction from independent Directory delta review: the compact-format evidence covers POSIX roots and Windows drive roots. UNC share roots retain suffix formatting and are not claimed to preserve their full root labels. Changed only this wording; no code, guard, source authority or qualification flag changed. The independent source/test review narrowly approved the four-file Directory delta, with actual new-head layout still pending because Activity clamps metadata to two lines. Earlier checkpoint failures and all wider epic limits remain open.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}

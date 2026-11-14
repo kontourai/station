@@ -1,0 +1,11 @@
+{
+  "revision": "c64153aaa8f3d7936089a4b92e7e837cf8bdcc10",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Traced frozen 21de inspection route, SDK exports, strict local operator admission and bounded fact response; documented configuration-only categories and pending independent/browser/publication qualification. No group execution or readiness follows from supplied 384 focused passes.","inputs":["docs/reference/api.md","packages/sdk/src/client/index.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Traced frozen 21de inspection route, SDK exports, strict local operator admission and bounded fact response; documented configuration-only categories and pending independent/browser/publication qualification. No group execution or readiness follows from supplied 384 focused passes.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/publicBarrel.test.ts","packages/sdk/src/index.ts","packages/sdk/src/telemetry.ts","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/execution-target/execution-target-resolver.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/orchestration-session-state.ts","src-ui/src/contexts/openRelatedOccurrence.ts","src-ui/src/main.tsx"]},
+
+    {"path":"docs/plans/child-work-epic.md","note":"Traced frozen 21de inspection route, SDK exports, strict local operator admission and bounded fact response; documented configuration-only categories and pending independent/browser/publication qualification. No group execution or readiness follows from supplied 384 focused passes.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}

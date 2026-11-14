@@ -343,6 +343,10 @@ on `ConnectionHealthSnapshot` / `ConnectionStatusResult`). It resumes on the nex
 `trigger()` — already reachable through a manual "Try now", the browser
 regaining network, or a saved-credential change). The coordinator keeps its own
 multi-endpoint polling loop; it does not instantiate `ConnectionSupervisor`.
+If React Strict Mode stops and immediately resubscribes during a probe, the
+coordinator suppresses the aborted result and then runs the queued probe. It
+does not wait for a focus event or the next polling interval to publish health.
+
 The hook shares coordinators through a registry, which is separate from the
 proposed reusable supervisor registry (#1096). See the
 [supervisor](../../packages/connect/src/core/ConnectionSupervisor.ts),
@@ -550,10 +554,11 @@ account-binding-required request instead opens pairing management; its attention
 item does not disclose the account identity. The confirm
 route takes the kept scope as `scope`, which must be a non-empty subset of the
 request; omitted, the device gets what it asked for. Requested extras are the
-operator's to grant: an approval that keeps one needs the operator credential or
-the desktop's own local grant, never an `access:approve` device or the
-unauthenticated at-the-machine approval, which may still approve the rest with
-the extras left out. The same rule covers an operator-created offer whose scope
+owner's to grant: keeping one requires the operator credential, a current local
+grant, the host-issued browser session, current owner-device standing, or an
+operator passkey session completing its exact per-action review. An
+`access:approve` credential without that standing, or the unauthenticated
+at-the-machine approval, may approve only the rest with the extras left out. The same rule covers an operator-created offer whose scope
 carries one. A delegation, relay or account-bound grant cannot be trimmed, and
 its **Needs attention** item carries no `requestedScope`; an account binding
 review shows the read-only grant. The pairing panel requests a fresh operator
@@ -766,8 +771,8 @@ remote WebSocket admission without rotating the operator credential or revoking
 other devices. Existing streams have their own revalidation boundaries; this is
 not a guarantee that revocation closes every already admitted socket. It does
 not recall data already delivered or guarantee cancellation of effects already
-dispatched. Paired credentials without owner-device standing cannot create
-pairing offers. An explicitly promoted
+dispatched. Ordinary remotely paired credentials without owner-device standing
+cannot create pairing offers. An explicitly promoted
 `access:devices` Device can list, change scopes, revoke and remove revoked
 records using the same authenticated principal in the Paired devices panel.
 Only the operator can grant or remove `access:devices`; a person-bound holder

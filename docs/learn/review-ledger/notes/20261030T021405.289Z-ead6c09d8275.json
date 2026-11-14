@@ -1,0 +1,7 @@
+{
+  "revision": "e2bf2ebdd3739a0c7e04cb86fd4a9be69ca003a0",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Scoped package-manager/verification-script review at 2cecedeb531 after normal main integration. Read the complete current root instructions, nvmrc24, packageManager pnpm11.25.0 and named managed setup, focused/changed/gate and coordinator entry points. dependencies:ci still selects the pinned managed pnpm and frozen lockfile path; test:focused uses exact files inside the active worktree and the shared heavy-check wrapper; test:changed remains a scoped selector with explicit deferred-lane reporting; gate:for composes the same hook scope deciders and is pre-edit guidance, not executed evidence. ci:fast and full:regression remain requests to the existing verification coordinator, not permission to run broad work merely because main moved. These script changes do not weaken no-stash/no-rebase, normal hooks, protected auto-merge, isolated home/ports or source-versus-hosted qualification rules. The existing Feature Preview requirement for new user-facing capability was relayed to the finalizer implementation owner. No root instruction/governance text change required for these named inputs. Source/configuration review only; no hook install, broad suite, queue action or new readiness/host/provider/device acceptance. No policy, baseline/classification/capture change.","inputs":["AGENTS.md"]}
+  ]
+}

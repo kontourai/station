@@ -1220,6 +1220,15 @@ export interface EnvironmentSecurityRecord {
  * or the service.
  */
 export interface StationCapabilityFlags {
+  /** Preserves inherited allowlist groups and checks their conjunction at Station-owned pre-tool seams. Not universal native interception. */
+  delegationToolConstraintsV1?: boolean;
+  /**
+   * The authenticated delegation-group lifecycle and supervision routes are
+   * mounted with their host authority owners. Absent/false means unsupported;
+   * single-delegation, preparation and client exports do not imply support.
+   * This static protocol flag does not establish provider availability or consent.
+   */
+  delegationGroups?: boolean;
   peerChatTunnelV1?: boolean;
   delegationLocalConversationV1?: boolean;
   /** Child steering and its separately paged instruction history. */

@@ -1,0 +1,7 @@
+{
+  "revision": "84cf11f92260e2d40ece695ad8b35cd5a0dd7312",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Reviewed the ChatDock delta against the pane relationship claims. The branch adds the selected chat limited-history subscription and forwards its value to context/header/trigger readers; it replaces the prior delegation label helper with delegationOriginLabel for the same observed inputOrigin. It does not modify opener target identity, relation persistence, guard ownership, portal placement, navigation history or Coding host occurrence. The documented independence of UI opener and domain ancestry remains accurate. No prose change needed. This source-impact review does not newly qualify phone folds, focus, guard races, plugin transport or the pane implementation plan acceptance items.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

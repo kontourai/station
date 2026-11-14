@@ -6,6 +6,12 @@ to choose model calls. This private workspace package is experimental Tier 1;
 it is not a released package. Station adopts its agent-turn protocol behind
 the **Crash-durable Station Agent** Feature Preview (off by default).
 
+Station's fixed, sealed SDK source Sessions are a separate execution mode.
+Their recorded Session policy excludes managed journal recovery and native tool
+replay, and generic Steer or Queue cannot supply their required fresh source
+admission. This preview does not turn them into native framework-loop turns;
+see [sealed-source Sessions](../../docs/contexts/agent-runtime/CONTEXT.md#sealed-source-sessions).
+
 The root entry exports the twelve model commands, coordinator, staged memory
 adapter, fixed policy and ordered outbox drain. `/sqlite` uses a host-supplied
 Node 24 `DatabaseSync`. `/ai-sdk`, `/voltagent` and `/strands` bind the pinned
@@ -237,7 +243,7 @@ shape is excluded; every enumerable schema value remains pinned. The codec
 never calls its functions, and its vendor label proves no origin or authority.
 Other hidden/accessor/symbol fields refuse, including at nested schema paths.
 
-Package tests use genuine native framework construction with scripted transports,
+The model-only package tests use genuine native framework construction with scripted transports,
 the actual SQLite BLOB/journal/sink, the public generic Monument crash store,
 and separate SIGKILL body controls. They do not qualify live provider behavior,
 Station FileMemory, `/chat`, approvals, boot recovery, terminal custody,

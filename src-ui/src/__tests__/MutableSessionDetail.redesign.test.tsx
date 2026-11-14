@@ -756,7 +756,8 @@ describe('fix round', () => {
       ).textContent;
     receipts.data = origin('cli');
     const known = await renderDetail(baseSession());
-    expect(metaText()).toContain('from CLI');
+    expect(metaText()).toContain('from CLI (reported)');
+    expect(screen.getByText(/^Operator · CLI \(reported\)/)).toBeTruthy();
     known.unmount();
     receipts.data = origin('unknown');
     await renderDetail(baseSession());

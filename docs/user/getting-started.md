@@ -961,6 +961,9 @@ when the turn ends, and the pending row names them. On a Station that cannot
 hold files yet, they wait in the draft, which says why, until you send it after
 the turn ends.
 
+Some report-member chats cannot take Queue or Steer messages. Their composer
+says to use the report or group controls to ask for another turn.
+
 The app attempts to save a text message on this device before sending it. If
 the write fails or times out, it sends without that saved row and keeps the
 saved draft. If the app closes or
@@ -1152,6 +1155,20 @@ marks a Task done or satisfies a gate.
 Task status alone does not establish that work passed a gate. Read the run and
 review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains
 how Station preserves the same work identity through retries and response loss.
+
+## Tell Running Work From Open Conversations
+
+**Running** means a turn or reported child work is in flight. **Idle** keeps
+an open conversation available for follow-up without calling it active or
+completed. **Needs you** identifies something you can answer; terminal
+outcomes appear under **Just finished** or **Earlier**. Home, Agents and the
+chat inbox use the same status classifier.
+
+A row without a Project can show **Directory · …/folder** from its recorded
+working directory. That label does not make the folder a Project. Delegation
+origin labels such as **CLI (reported)** name the client-reported surface;
+the details distinguish it from the authenticated caller. Station does not
+infer an external orchestrator from prompt text or a user agent.
 
 <a id="review-activity-without-changing-your-place"></a>
 

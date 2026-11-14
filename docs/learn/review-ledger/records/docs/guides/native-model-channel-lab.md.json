@@ -30,7 +30,27 @@
 
     "scripts/lib/heavy-check-slots.mjs",
 
-    "scripts/child-work-native-container-lifecycle-lab.ts"
+    "src-server/runtime/conversation/native-text-model-request.ts",
+
+    "src-server/runtime/conversation/__tests__/native-text-model-request.test.ts",
+
+    "src-server/runtime/conversation/bounded-api-provider-contract.ts",
+
+    "src-server/services/orchestration/delegation-group-sdk-source-wire-owner.ts",
+
+    "src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts",
+
+    "src-server/services/orchestration/delegation-group-source-admission.ts",
+
+    "scripts/child-work-native-container-lifecycle-lab.ts",
+
+    "src-server/services/orchestration/create-request-claims.ts",
+
+    "src-server/services/orchestration/delegated-task-identity.ts",
+
+    "src-server/services/orchestration/__tests__/native-task-source-admission.test.ts",
+
+    "src-server/routes/orchestration/orchestration.ts"
   ],
 
   "checks": []

@@ -24,6 +24,8 @@
 
     "scripts/verify-node-pty-prebuild.mjs",
 
+    "scripts/dependency-lifecycle.mjs",
+
     "pnpm-lock.yaml#/packages/node-pty@1.2.0-beta.18",
 
     "package.json#/dependencies/node-pty"

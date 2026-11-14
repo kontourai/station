@@ -1,0 +1,7 @@
+{
+  "revision": "de8995ad6d64f4fa5f3cfdbbf6622e4c88881b3c",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Delta reviewed through de8995ad6d6: actual initial turn retained in single and batch summary reads; delegated-row posture sources are execution-matched and metadata-only; shared origin label now reaches desktop identity and mobile action note while retaining reported-surface distinction. Mounted real streaming/settled parity passed2, mutation dropping streaming badge failed as intended, exact restored2 passed. Broader source-focused713 at5ea and browser2 reported-origin journey at81b plus testf998 are separate revision-bound receipts, not native/live proof. Existing child roster/sidebar placement remains source-reviewed; upstream groups/authority/Station integration still in progress and no delivery claim.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

@@ -18,13 +18,13 @@ afterEach(() => {
   for (const home of homes.splice(0))
     rmSync(home, { recursive: true, force: true });
 });
-function setup() {
+async function setup() {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-person-binding-'));
   homes.push(homeDir);
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
   const options = { homeDir, environmentId };
   return {
-    service: new DevicePairingService(options),
+    service: await DevicePairingService.create(options),
     options,
     file: join(homeDir, 'security', 'paired-devices.json'),
   };
@@ -58,8 +58,8 @@ function request(service: DevicePairingService, verified = true) {
   };
 }
 
-test('explicit approval persists two independently revocable devices for one verified person', () => {
-  const { service, options } = setup();
+test('explicit approval persists two independently revocable devices for one verified person', async () => {
+  const { service, options } = await setup();
   const first = request(service);
   const second = request(service);
   for (const item of [first, second])
@@ -79,7 +79,7 @@ test('explicit approval persists two independently revocable devices for one ver
   expect(a.device.principalBinding?.approvalId).not.toBe(
     b.device.principalBinding?.approvalId,
   );
-  const reopened = new DevicePairingService(options);
+  const reopened = await DevicePairingService.create(options);
   expect(reopened.identifyDevice(a.credential)?.principalBinding).toEqual(
     a.device.principalBinding,
   );
@@ -89,12 +89,12 @@ test('explicit approval persists two independently revocable devices for one ver
     'collaborator@example.test',
   );
   expect(
-    new DevicePairingService(options).identifyDevice(a.credential),
+    (await DevicePairingService.create(options)).identifyDevice(a.credential),
   ).toBeNull();
 });
 
-test('verified provenance alone does not bind a device and old grants are not silently migrated', () => {
-  const { service, options } = setup();
+test('verified provenance alone does not bind a device and old grants are not silently migrated', async () => {
+  const { service, options } = await setup();
   const item = request(service);
   service.confirmRequest(item.pending.requestId, {
     kind: 'presented-credential',
@@ -103,13 +103,14 @@ test('verified provenance alone does not bind a device and old grants are not si
   expect(result.device.requester?.login).toBe('collaborator@example.test');
   expect(result.device.principalBinding).toBeUndefined();
   expect(
-    new DevicePairingService(options).identifyDevice(result.credential)
-      ?.principalBinding,
+    (await DevicePairingService.create(options)).identifyDevice(
+      result.credential,
+    )?.principalBinding,
   ).toBeUndefined();
 });
 
-test('explicit account approval persists only the provider-verified candidate', () => {
-  const { service, options } = setup();
+test('explicit account approval persists only the provider-verified candidate', async () => {
+  const { service, options } = await setup();
   const offer = service.createOffer({
     endpoint: 'https://station.example.test',
   });
@@ -154,13 +155,14 @@ test('explicit account approval persists only the provider-verified candidate', 
     approvedBy: approver.principalId,
   });
   expect(
-    new DevicePairingService(options).identifyDevice(result.credential)
-      ?.principalBinding,
+    (await DevicePairingService.create(options)).identifyDevice(
+      result.credential,
+    )?.principalBinding,
   ).toEqual(result.device.principalBinding);
 });
 
-test('account approval refuses an unverified or incomplete candidate', () => {
-  const { service } = setup();
+test('account approval refuses an unverified or incomplete candidate', async () => {
+  const { service } = await setup();
   const item = request(service, false);
   expect(() =>
     service.confirmRequest(
@@ -171,8 +173,8 @@ test('account approval refuses an unverified or incomplete candidate', () => {
   ).toThrow('invalid_request');
 });
 
-test('required account access intent survives request through exchange and refuses broader approval', () => {
-  const { service } = setup();
+test('required account access intent survives request through exchange and refuses broader approval', async () => {
+  const { service } = await setup();
   const candidate = {
     issuer: 'station-local:environment',
     subject: 'account-123',
@@ -224,8 +226,8 @@ test('required account access intent survives request through exchange and refus
   });
 });
 
-test('unverified requests and non-credential approval cannot acquire person identity', () => {
-  const { service } = setup();
+test('unverified requests and non-credential approval cannot acquire person identity', async () => {
+  const { service } = await setup();
   const unknown = request(service, false);
   const verified = request(service);
   expect(() =>
@@ -250,8 +252,8 @@ test('unverified requests and non-credential approval cannot acquire person iden
   );
 });
 
-test('public binding projections cannot mutate authoritative identity', () => {
-  const { service } = setup();
+test('public binding projections cannot mutate authoritative identity', async () => {
+  const { service } = await setup();
   const item = request(service);
   service.confirmRequest(
     item.pending.requestId,
@@ -273,8 +275,8 @@ test('public binding projections cannot mutate authoritative identity', () => {
   ).toBe('collaborator@example.test');
 });
 
-test('a persistence failure exposes neither a credential nor a partially stored binding and permits exact retry', () => {
-  const { service, file, options } = setup();
+test('a persistence failure exposes neither a credential nor a partially stored binding and permits exact retry', async () => {
+  const { service, file, options } = await setup();
   const first = request(service);
   service.confirmRequest(first.pending.requestId, {
     kind: 'presented-credential',
@@ -289,20 +291,25 @@ test('a persistence failure exposes neither a credential nor a partially stored 
   renameSync(file, `${file}.retained`);
   mkdirSync(file);
   expect(() => service.exchange(next.exchange)).toThrow();
-  expect(service.listDevices()).toHaveLength(1);
-  expect(service.identifyDevice(active.credential)).not.toBeNull();
+  expect(() => service.listDevices()).toThrow('Unsafe paired-device registry');
+  expect(() => service.identifyDevice(active.credential)).toThrow(
+    'Unsafe paired-device registry',
+  );
   rmSync(file, { recursive: true });
   renameSync(`${file}.retained`, file);
+  expect(service.listDevices()).toHaveLength(1);
+  expect(service.identifyDevice(active.credential)).not.toBeNull();
   const result = service.exchange(next.exchange);
   expect(
-    new DevicePairingService(options).identifyDevice(result.credential)
-      ?.principalBinding,
+    (await DevicePairingService.create(options)).identifyDevice(
+      result.credential,
+    )?.principalBinding,
   ).toEqual(result.device.principalBinding);
   expect(() => service.exchange(next.exchange)).toThrow();
 });
 
-test('a binding that no longer matches its verified requester fails closed on reopen', () => {
-  const { service, file, options } = setup();
+test('a binding that no longer matches its verified requester fails closed on reopen', async () => {
+  const { service, file, options } = await setup();
   const item = request(service);
   service.confirmRequest(
     item.pending.requestId,
@@ -313,5 +320,7 @@ test('a binding that no longer matches its verified requester fails closed on re
   const data = JSON.parse(readFileSync(file, 'utf8'));
   data.devices[0].principalBinding.subject = 'attacker@example.test';
   writeFileSync(file, JSON.stringify(data));
-  expect(() => new DevicePairingService(options)).toThrow();
+  await expect(
+    async () => await DevicePairingService.create(options),
+  ).rejects.toThrow();
 });

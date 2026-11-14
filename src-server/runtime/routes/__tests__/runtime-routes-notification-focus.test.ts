@@ -83,7 +83,7 @@ describe('configureRuntimeRoutes: focus and in-app liveness reach delivery', () 
   async function setup() {
     const homeDir = makeTempDir('station-notification-focus-');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir,
       environmentId: '33333333-3333-4333-8333-333333333333',
     });
@@ -143,6 +143,7 @@ describe('configureRuntimeRoutes: focus and in-app liveness reach delivery', () 
       taskGraphService: { listTasks: () => [] },
       projectService: { listProjects: () => [] },
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           credential === OPERATOR_SECRET ||
           pairing.verifyCredential(credential),

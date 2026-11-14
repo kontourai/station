@@ -12,6 +12,7 @@ import {
   displayLines,
   displayText as sharedDisplayText,
 } from '@kontourai/station-shared/display-text';
+import { inputRequestFromMcpElicitation } from '@kontourai/station-shared/mcp-elicitation';
 import type { ProviderSession } from '../adapter-shape.js';
 import {
   addWorkspaceImageFile,
@@ -321,6 +322,8 @@ export function mapServerRequestToEvent(
       const meta = isRecord(payload._meta) ? payload._meta : {};
       const toolTitle = extractString(meta.tool_title);
       const serverName = extractString(payload.serverName) ?? 'an MCP server';
+      const form = inputRequestFromMcpElicitation(serverName, payload);
+      const inputRequest = form?.body.fields.length ? form : undefined;
       return {
         eventId: crypto.randomUUID(),
         provider: 'codex',
@@ -329,11 +332,13 @@ export function mapServerRequestToEvent(
         requestId,
         method: 'request.opened',
         requestType: 'approval',
-        title: toolTitle
-          ? `Allow ${serverName} to run "${toolTitle}"`
-          : `Allow ${serverName} MCP request`,
+        title: inputRequest
+          ? inputRequest.message
+          : toolTitle
+            ? `Allow ${serverName} to run "${toolTitle}"`
+            : `Allow ${serverName} MCP request`,
         description: extractString(payload.message) ?? undefined,
-        payload,
+        payload: { ...payload, ...(inputRequest ? { inputRequest } : {}) },
       };
     }
     default:

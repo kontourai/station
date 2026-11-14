@@ -1,4 +1,7 @@
-import type { ProviderSendTurnInput } from '@kontourai/station-contracts/provider';
+import {
+  type ProviderSendTurnInput,
+  RESERVED_SOURCE_EXECUTION_METADATA_KEY,
+} from '@kontourai/station-contracts/provider';
 import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
@@ -953,6 +956,75 @@ describe('StationAgentAdapter', () => {
     );
     expect(configured.metadata).not.toHaveProperty('capabilityDelivery');
   });
+
+  test.each([false, true])(
+    'a reserved cursor restricts sends without minting admitted source metadata (caller metadata: %s)',
+    async (withMetadata) => {
+      const fetchMock = vi.fn<typeof fetch>();
+      const adapter = new StationAgentAdapter({
+        apiBase: 'http://127.0.0.1:0',
+        hasAgent: () => true,
+        ...approvalDeps(),
+        fetch: fetchMock,
+      });
+      const identity = `sha256:${'a'.repeat(64)}`;
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      try {
+        const session = await adapter.startSession({
+          provider: 'station-agent',
+          threadId: 'cursor-restriction',
+          resumeCursor: {
+            agentId: 'reviewer',
+            reservedSourceIdentity: identity,
+          },
+          metadata: {
+            agentId: 'reviewer',
+            ...(withMetadata
+              ? {
+                  [RESERVED_SOURCE_EXECUTION_METADATA_KEY]: {
+                    identity,
+                    mode: 'sealed-source-input',
+                    tools: 'fixed-input-only',
+                    approvals: 'input-only',
+                    continuation: 'unavailable',
+                  },
+                }
+              : {}),
+          },
+        });
+        expect(session.resumeCursor).toMatchObject({
+          reservedSourceIdentity: identity,
+        });
+        const [started, configured] = await nextEvents(iterator, 2);
+        expect(started.method).toBe('session.started');
+        expect(configured.method).toBe('session.configured');
+        for (const event of [started, configured]) {
+          if (
+            event.method !== 'session.started' &&
+            event.method !== 'session.configured'
+          )
+            throw new Error('Expected a Session lifecycle observation.');
+          expect(event.metadata).not.toHaveProperty(
+            RESERVED_SOURCE_EXECUTION_METADATA_KEY,
+          );
+        }
+        await expect(
+          adapter.sendTurn({
+            threadId: session.threadId,
+            input: 'No reserved admission',
+          }),
+        ).rejects.toMatchObject({
+          name: 'SendTurnRefusedError',
+          kind: 'permission_denied',
+          failurePhase: 'refused',
+        });
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        await adapter.stopAll();
+        await iterator.return?.();
+      }
+    },
+  );
 
   test.each([undefined, 'station-origin'])(
     'runs a configured Station agent through the canonical resumable task stream (origin %s)',

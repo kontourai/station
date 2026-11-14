@@ -91,7 +91,7 @@ function row(state: 'running' | 'approval' | 'completed', at: number) {
 async function harness() {
   const homeDir = tempDir('station-apns-contract-');
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-  const pairing = new DevicePairingService({
+  const pairing = await DevicePairingService.create({
     homeDir,
     environmentId: ENVIRONMENT_ID,
   });

@@ -1018,8 +1018,12 @@ private binding sidecar, and a current admitted native Pion peer whose private
 facts (offer nonce, Station identity, surface) carry the request. The replay
 store lives at `<home>/security/native-device-proof-replay.sqlite`.
 
-The admitted POSTs are exactly native account-continuation challenge,
-exchange and revoke, plus `/api/account-auth/accept-invitation`. GET/HEAD admits
+The base admitted POSTs are native account-continuation challenge, exchange
+and revoke, plus `/api/account-auth/accept-invitation`. The pilot also admits
+the exact relay-management leaves and Project-access management leaves
+described above, under their separate current management grant, account and
+Project IAM checks. GET/HEAD additionally admits the Project-access view and
+exact relay-management reads. The ordinary observation/read set admits
 `/.well-known/station/v1`, `/api/system/status`, `/api/system/identity`,
 `/api/auth/authority`, `/api/projects`, `/api/projects/:slug`,
 `/api/projects/:slug/shared-work`, and that Task's `document`, `history` and
@@ -1028,9 +1032,10 @@ handshake/status/identity observations may use Device proof alone when no
 account material is supplied; account-bearing requests and Project reads retain
 current account verification. The status exception requires verified native
 Device proof; an ordinary account-bound Device with an account session still
-cannot read `/api/system/status`. Everything else — pairing, consent, terminal,
-plugin, operator and admin surfaces — refuses proof authority even for a broadly
-scoped Device. Each request re-proves: the JWS is verified against the exact
+cannot read `/api/system/status`. Apart from those exact management exceptions,
+pairing, consent, terminal, plugin, operator and other admin surfaces refuse
+proof authority even for a broadly scoped Device. Each request re-proves: the
+JWS is verified against the exact
 received bytes and private peer provenance, the JTI is consumed once, and the
 binding, paired Device and account binding are re-read at every seam,
 including before and after each provider await. Revoking the Device, its

@@ -355,9 +355,9 @@ lockfile linked above define the present checkout.
 Version drift between a pin and the install is guarded by
 `packages/cli/src/__tests__/kontour-dependency-drift.test.ts`.
 
-- **Datum and Bearing are not part of the fleet path.** Bearing arrives only
-  transitively (a hard dependency of Datum and an optional peer of Dispatch) and no
-  Station source imports it. Datum's only Station consumer is the
+- **Datum and Bearing are not part of the fleet capability path.** The separate
+  optional retail-price consumer uses Bearing through its directly declared
+  public catalog contract. Datum's only Station consumer is the
   secret-reference seam
   ([datum-secret-reference.ts](../../packages/contracts/src/datum-secret-reference.ts))
   that secret bindings use; nothing in fleet routing imports it. #33's Datum routing
@@ -431,6 +431,20 @@ own contract has no native streaming, and its docs are explicit that its
 compatibility path buffers a complete invocation and emits a stream afterward,
 and **must not be described as live token streaming**.
 
+**Current execution limits.** When a turn requires a bounded API companion,
+Station refuses [Dispatch construction and model effects](../../src-server/runtime/conversation/bounded-api-turn-grant.ts).
+Those restrictions do not supply physical-attempt budget admission. Cached models
+and lazy stream iteration retain the same restrictive
+[model guard](../../src-server/runtime/conversation/bounded-api-model.ts).
+
+Station's local and fleet candidates also use the current
+[provider durability wrapper](../../packages/agent-runtime/src/turn-model.ts).
+When a journaled turn reaches Relay's buffered `doGenerate` call, that wrapper
+refuses before invoking the provider. Fresh candidate invocation on this path is
+therefore unsupported while the **Crash-durable Station Agent** context is active;
+a catalog entry or failed attempt receipt does not qualify that combination.
+This does not describe replay of an already completed model tape.
+
 **This is the single largest product risk in the whole feature and it is
 independent of the fleet.** "Send my chat to the workstation's GPU" that
 returns a wall of text after twenty seconds of nothing is a worse experience
@@ -476,8 +490,8 @@ by default; nothing is routed to unverified; nothing degrades silently.
 | Relay | Invocation without credential leakage | pinned at 0.6.0; direct error-vocabulary imports in `fleet-inference-model.ts` and fake-runtime imports in routing tests; no native streaming (§2.6/§2.7) |
 | Station | Availability, consent, mobile control, presentation | shipped |
 
-Bearing remains transitive-only and Datum serves only secret references; the
-implemented fleet path directly
+Bearing's optional retail-price use and Datum's secret-reference seam do not
+compose fleet capability evidence; the implemented fleet path directly
 uses current pinned Dispatch and Relay contracts.
 **This doc does not pretend otherwise, and the slice plan in §11 sequences the
 composition rather than assuming it.** In particular, slices 1–4 deliberately

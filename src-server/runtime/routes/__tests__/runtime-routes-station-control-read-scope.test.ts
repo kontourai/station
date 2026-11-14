@@ -465,6 +465,7 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       taskGraphService: taskGraph,
       projectService: projects,
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL ||
           credential === TELEMETRY_OPERATOR_CREDENTIAL,
@@ -492,6 +493,7 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
         personalConversationOwnerIds: (id: string) => [id],
         credentialLocality: () => undefined,
         devicePairing: deepStub({
+          withCurrentRegistry: <T>(read: () => T): T => read(),
           identifyDevice: (_credential: string): { id: string } | undefined =>
             undefined,
         }),

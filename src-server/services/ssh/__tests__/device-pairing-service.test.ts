@@ -114,7 +114,7 @@ describe('manual pairing-code entropy (station#2060)', () => {
 
 describe('same-device relay credential aliases (station#2386)', () => {
   test('issues a read-only alias for the same Device without exposing it in inventory or local authority', async () => {
-    const { service, homeDir } = harness();
+    const { service, homeDir } = await harness();
     const offer = service.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -201,8 +201,8 @@ describe('same-device relay credential aliases (station#2386)', () => {
     );
   });
 
-  test('rejects wrong parent, nested aliases, broader parent scope, and unbounded lifetimes', () => {
-    const { service } = harness();
+  test('rejects wrong parent, nested aliases, broader parent scope, and unbounded lifetimes', async () => {
+    const { service } = await harness();
     const parent = pair(service).result;
     expect(() =>
       service.issueRelayCredentialAlias(
@@ -254,8 +254,8 @@ describe('same-device relay credential aliases (station#2386)', () => {
     ).toThrowError(new DevicePairingError('invalid_scope'));
   });
 
-  test('an account-bound Device alias preserves the exact approved issuer and subject', () => {
-    const { service } = harness();
+  test('an account-bound Device alias preserves the exact approved issuer and subject', async () => {
+    const { service } = await harness();
     const issuer = 'https://accounts.example.test';
     const subject = 'stable-provider-subject-7';
     const candidate = {
@@ -303,8 +303,8 @@ describe('same-device relay credential aliases (station#2386)', () => {
     expect(service.credentialAliasId(alias.credential)).toBe(alias.aliasId);
   });
 
-  test('alias expiry and alias-only revocation preserve the parent, while parent scope/revocation cascades', () => {
-    const { service, homeDir, advance } = harness();
+  test('alias expiry and alias-only revocation preserve the parent, while parent scope/revocation cascades', async () => {
+    const { service, homeDir, advance } = await harness();
     const parent = pair(service).result;
     const expiring = service.issueRelayCredentialAlias(
       parent.credential,
@@ -350,7 +350,7 @@ describe('same-device relay credential aliases (station#2386)', () => {
     ).toBe(1_101);
     service.revokeDevice(parent.device.id, 'operator-credential');
     expect(service.verifyCredential(parent.credential)).toBe(false);
-    const restarted = new DevicePairingService({
+    const restarted = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
       now: () => 1_101,
@@ -360,14 +360,14 @@ describe('same-device relay credential aliases (station#2386)', () => {
     expect(restarted.verifyCredential(second.credential)).toBe(false);
   });
 
-  test('credential aliases survive restart and v2 registry migration without changing the approved Device', () => {
-    const { service, homeDir } = harness();
+  test('credential aliases survive restart and v2 registry migration without changing the approved Device', async () => {
+    const { service, homeDir } = await harness();
     const parent = pair(service).result;
     const alias = service.issueRelayCredentialAlias(
       parent.credential,
       parent.device.id,
     );
-    const restarted = new DevicePairingService({
+    const restarted = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
       now: () => 1_000,
@@ -387,7 +387,7 @@ describe('same-device relay credential aliases (station#2386)', () => {
     writeFileSync(registryPath, `${JSON.stringify(versionTwo)}\n`, {
       mode: 0o600,
     });
-    const migrated = new DevicePairingService({
+    const migrated = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
       now: () => 1_000,
@@ -403,8 +403,8 @@ describe('same-device relay credential aliases (station#2386)', () => {
     });
   });
 
-  test('corrupt or broadened alias records fail closed on startup', () => {
-    const { service, homeDir } = harness();
+  test('corrupt or broadened alias records fail closed on startup', async () => {
+    const { service, homeDir } = await harness();
     const parent = pair(service).result;
     service.issueRelayCredentialAlias(parent.credential, parent.device.id);
     const registryPath = join(homeDir, 'security', 'paired-devices.json');
@@ -414,18 +414,18 @@ describe('same-device relay credential aliases (station#2386)', () => {
     writeFileSync(registryPath, `${JSON.stringify(registry)}\n`, {
       mode: 0o600,
     });
-    expect(
-      () =>
-        new DevicePairingService({
+    await expect(
+      async () =>
+        await DevicePairingService.create({
           homeDir,
           environmentId: ENVIRONMENT_ID,
           now: () => 1_000,
         }),
-    ).toThrow('Invalid paired-device record');
+    ).rejects.toThrow('Invalid paired-device record');
   });
 
-  test('duplicate root or alias credential hashes fail closed on startup', () => {
-    const { service, homeDir } = harness();
+  test('duplicate root or alias credential hashes fail closed on startup', async () => {
+    const { service, homeDir } = await harness();
     pair(service, 'First approved Device');
     pair(service, 'Second approved Device');
     const registryPath = join(homeDir, 'security', 'paired-devices.json');
@@ -434,18 +434,18 @@ describe('same-device relay credential aliases (station#2386)', () => {
     writeFileSync(registryPath, `${JSON.stringify(registry)}\n`, {
       mode: 0o600,
     });
-    expect(
-      () =>
-        new DevicePairingService({
+    await expect(
+      async () =>
+        await DevicePairingService.create({
           homeDir,
           environmentId: ENVIRONMENT_ID,
           now: () => 1_000,
         }),
-    ).toThrow('Invalid paired-device credential');
+    ).rejects.toThrow('Invalid paired-device credential');
   });
 });
 
-function harness(
+async function harness(
   now = 1_000,
   options: {
     maxActiveOffers?: number;
@@ -457,7 +457,7 @@ function harness(
   homes.push(homeDir);
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
   let current = now;
-  const service = new DevicePairingService({
+  const service = await DevicePairingService.create({
     homeDir,
     environmentId: ENVIRONMENT_ID,
     now: () => current,
@@ -543,8 +543,8 @@ afterEach(() => {
 });
 
 describe('DevicePairingService', () => {
-  test('relay enrollment uses a private proof, account-only approval and an inadmissible reserved Device until activation', () => {
-    const { service, homeDir } = harness();
+  test('relay enrollment uses a private proof, account-only approval and an inadmissible reserved Device until activation', async () => {
+    const { service, homeDir } = await harness();
     const enrollmentId = 'E'.repeat(43);
     const candidate = {
       issuer: 'https://identity.example.test',
@@ -644,7 +644,7 @@ describe('DevicePairingService', () => {
       service.resolvePendingRelayDevice(deviceId, 'F'.repeat(43)),
     ).toBeNull();
 
-    const reopened = new DevicePairingService({
+    const reopened = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
     });
@@ -672,8 +672,8 @@ describe('DevicePairingService', () => {
     expect(reopened.listDevices()).toEqual([]);
   });
 
-  test('relay enrollment refuses a caller-selected or reused Device ID without consuming its offer', () => {
-    const { service } = harness();
+  test('relay enrollment refuses a caller-selected or reused Device ID without consuming its offer', async () => {
+    const { service } = await harness();
     const existing = pair(service, 'Existing device').result;
     const pending = service.requestRelayEnrollmentAccess({
       enrollmentId: 'R'.repeat(43),
@@ -711,8 +711,8 @@ describe('DevicePairingService', () => {
     expect(service.isRelayEnrollmentRequest(pending.requestId)).toBe(true);
   });
 
-  test('approved personal devices share conversation owners without merging device identities', () => {
-    const { service } = harness();
+  test('approved personal devices share conversation owners without merging device identities', async () => {
+    const { service } = await harness();
     const first = pair(service, 'Phone').result;
     const second = pair(service, 'Desktop').result;
     const phone = humanPrincipal('device', first.device.id, 'Phone').id;
@@ -744,8 +744,8 @@ describe('DevicePairingService', () => {
     expect(service.verifyCredential(first.credential)).toBe(false);
   });
 
-  test('delegation credentials do not inherit the personal conversation account', () => {
-    const { service } = harness();
+  test('delegation credentials do not inherit the personal conversation account', async () => {
+    const { service } = await harness();
     const phone = pair(service).result;
     const offer = service.createOffer({
       endpoint: 'https://station.example.test',
@@ -772,8 +772,8 @@ describe('DevicePairingService', () => {
     ).toBe(false);
   });
 
-  test('records durable usage shape and only a server-derived coarse peer class', () => {
-    const { service, advance } = harness();
+  test('records durable usage shape and only a server-derived coarse peer class', async () => {
+    const { service, advance } = await harness();
     const paired = pair(service).result;
 
     expect(paired.device).toMatchObject({
@@ -799,8 +799,8 @@ describe('DevicePairingService', () => {
     ).toBe(false);
   });
 
-  test('tracks a successful credential use at the established minutely cadence', () => {
-    const { service, advance, homeDir } = harness();
+  test('tracks a successful credential use at the established minutely cadence', async () => {
+    const { service, advance, homeDir } = await harness();
     const paired = pair(service).result;
     const registryPath = join(homeDir, 'security', 'paired-devices.json');
 
@@ -820,8 +820,8 @@ describe('DevicePairingService', () => {
     expect(service.listDevices()[0].lastUsedAt).toBe(1_000 + 60_000);
   });
 
-  test('surfaces legacy records with no issue or use timestamp as unavailable', () => {
-    const { service, homeDir } = harness();
+  test('surfaces legacy records with no issue or use timestamp as unavailable', async () => {
+    const { service, homeDir } = await harness();
     const paired = pair(service).result;
     const registryPath = join(homeDir, 'security', 'paired-devices.json');
     const raw = JSON.parse(readFileSync(registryPath, 'utf8'));
@@ -831,7 +831,7 @@ describe('DevicePairingService', () => {
     raw.devices[0].lastUsedAt = null;
     writeFileSync(registryPath, `${JSON.stringify(raw)}\n`, { mode: 0o600 });
 
-    const reloaded = new DevicePairingService({
+    const reloaded = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
     });
@@ -840,8 +840,8 @@ describe('DevicePairingService', () => {
     expect(reloaded.verifyCredential(paired.credential)).toBe(true);
   });
 
-  test('a missing legacy key also reads as never used after reload', () => {
-    const { service, homeDir } = harness();
+  test('a missing legacy key also reads as never used after reload', async () => {
+    const { service, homeDir } = await harness();
     const paired = pair(service).result;
     const registryPath = join(homeDir, 'security', 'paired-devices.json');
     const raw = JSON.parse(readFileSync(registryPath, 'utf8'));
@@ -849,7 +849,7 @@ describe('DevicePairingService', () => {
     delete raw.devices[0].lastUsedAt;
     writeFileSync(registryPath, `${JSON.stringify(raw)}\n`, { mode: 0o600 });
 
-    const reloaded = new DevicePairingService({
+    const reloaded = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
     });
@@ -857,8 +857,8 @@ describe('DevicePairingService', () => {
     expect(reloaded.verifyCredential(paired.credential)).toBe(true);
   });
 
-  test('upgrades the concrete v1 registry to explicit unobserved activity state', () => {
-    const { service, homeDir } = harness();
+  test('upgrades the concrete v1 registry to explicit unobserved activity state', async () => {
+    const { service, homeDir } = await harness();
     const paired = pair(service).result;
     const registryPath = join(homeDir, 'security', 'paired-devices.json');
     const raw = JSON.parse(readFileSync(registryPath, 'utf8'));
@@ -870,7 +870,7 @@ describe('DevicePairingService', () => {
     delete raw.devices[0].revocation;
     writeFileSync(registryPath, `${JSON.stringify(raw)}\n`, { mode: 0o600 });
 
-    const upgraded = new DevicePairingService({
+    const upgraded = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
     });
@@ -886,8 +886,8 @@ describe('DevicePairingService', () => {
     });
   });
 
-  test('rejects v2-only and unknown nested fields instead of projecting corrupted registry state', () => {
-    const { service, homeDir } = harness();
+  test('rejects v2-only and unknown nested fields instead of projecting corrupted registry state', async () => {
+    const { service, homeDir } = await harness();
     const paired = pair(service).result;
     const registryPath = join(homeDir, 'security', 'paired-devices.json');
     const raw = JSON.parse(readFileSync(registryPath, 'utf8'));
@@ -898,10 +898,13 @@ describe('DevicePairingService', () => {
     delete raw.devices[0].lastActiveDay;
     raw.devices[0].revocation = { state: 'not-revoked' };
     writeFileSync(registryPath, `${JSON.stringify(raw)}\n`, { mode: 0o600 });
-    expect(
-      () =>
-        new DevicePairingService({ homeDir, environmentId: ENVIRONMENT_ID }),
-    ).toThrow(/Invalid paired-device/);
+    await expect(
+      async () =>
+        await DevicePairingService.create({
+          homeDir,
+          environmentId: ENVIRONMENT_ID,
+        }),
+    ).rejects.toThrow(/Invalid paired-device/);
 
     raw.schemaVersion = 2;
     raw.devices[0].activityTracking = 'tracked-since-issued';
@@ -916,15 +919,20 @@ describe('DevicePairingService', () => {
     raw.devices[0].source = 'tailnet';
     raw.devices[0].revocation = { state: 'not-revoked', extra: true };
     writeFileSync(registryPath, `${JSON.stringify(raw)}\n`, { mode: 0o600 });
-    expect(
-      () =>
-        new DevicePairingService({ homeDir, environmentId: ENVIRONMENT_ID }),
-    ).toThrow(/Invalid paired-device/);
-    expect(service.verifyCredential(paired.credential)).toBe(true);
+    await expect(
+      async () =>
+        await DevicePairingService.create({
+          homeDir,
+          environmentId: ENVIRONMENT_ID,
+        }),
+    ).rejects.toThrow(/Invalid paired-device/);
+    expect(() => service.verifyCredential(paired.credential)).toThrow(
+      /Invalid paired-device/,
+    );
   });
 
-  test('rejects contradictory recorded revocation actor and reason combinations', () => {
-    const { service, homeDir } = harness();
+  test('rejects contradictory recorded revocation actor and reason combinations', async () => {
+    const { service, homeDir } = await harness();
     const paired = pair(service).result;
     const registryPath = join(homeDir, 'security', 'paired-devices.json');
     const raw = JSON.parse(readFileSync(registryPath, 'utf8'));
@@ -944,16 +952,21 @@ describe('DevicePairingService', () => {
     ]) {
       raw.devices[0].revocation = revocation;
       writeFileSync(registryPath, `${JSON.stringify(raw)}\n`, { mode: 0o600 });
-      expect(
-        () =>
-          new DevicePairingService({ homeDir, environmentId: ENVIRONMENT_ID }),
-      ).toThrow(/Invalid paired-device/);
+      await expect(
+        async () =>
+          await DevicePairingService.create({
+            homeDir,
+            environmentId: ENVIRONMENT_ID,
+          }),
+      ).rejects.toThrow(/Invalid paired-device/);
     }
-    expect(service.verifyCredential(paired.credential)).toBe(true);
+    expect(() => service.verifyCredential(paired.credential)).toThrow(
+      /Invalid paired-device/,
+    );
   });
 
-  test('records bounded revocation provenance and refuses to erase a live credential', () => {
-    const { service } = harness();
+  test('records bounded revocation provenance and refuses to erase a live credential', async () => {
+    const { service } = await harness();
     const paired = pair(service).result;
 
     expect(() =>
@@ -980,8 +993,8 @@ describe('DevicePairingService', () => {
     expect(service.listDevices()).toEqual([]);
   });
 
-  test('bounds active credentials per verified requester without blocking replacement or re-pair', () => {
-    const { service } = harness(1_000, {
+  test('bounds active credentials per verified requester without blocking replacement or re-pair', async () => {
+    const { service } = await harness(1_000, {
       maxActiveCredentialsPerVerifiedIdentity: 1,
     });
     const requester = 'owner@example.test';
@@ -1027,8 +1040,8 @@ describe('DevicePairingService', () => {
     expect(service.verifyCredential(repaired.credential)).toBe(true);
   });
 
-  test('records home-possession locality only when exchange is told to, and omits it from the public device', () => {
-    const { service } = harness();
+  test('records home-possession locality only when exchange is told to, and omits it from the public device', async () => {
+    const { service } = await harness();
     const ordinary = pair(service, 'Ordinary pairing').result;
     expect(service.credentialLocality(ordinary.credential)).toBeUndefined();
     expect(ordinary.device).not.toHaveProperty('locality');
@@ -1056,8 +1069,8 @@ describe('DevicePairingService', () => {
     expect(minted.device).not.toHaveProperty('locality');
   });
 
-  test('records the mint KIND only alongside a possession proof, resolves it privately, and omits it from the public device (station#3677 PR 3)', () => {
-    const { service, homeDir } = harness();
+  test('records the mint KIND only alongside a possession proof, resolves it privately, and omits it from the public device (station#3677 PR 3)', async () => {
+    const { service, homeDir } = await harness();
 
     // Ordinary pairing: no locality, no kind.
     const ordinary = pair(service, 'Ordinary pairing').result;
@@ -1141,7 +1154,7 @@ describe('DevicePairingService', () => {
     // round 1, HIGH): the strict key check rejects any unknown key, so a
     // persisted field the reader does not know makes the whole registry
     // unreadable at the next boot — every paired device lost.
-    const reloaded = new DevicePairingService({
+    const reloaded = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
     });
@@ -1154,8 +1167,8 @@ describe('DevicePairingService', () => {
     expect(reloaded.verifyCredential(localGrant.credential)).toBe(true);
   });
 
-  test('refuses a hand-written mint kind that no possession proof backs, and an unknown kind (station#3677 PR 3)', () => {
-    const { service, homeDir } = harness();
+  test('refuses a hand-written mint kind that no possession proof backs, and an unknown kind (station#3677 PR 3)', async () => {
+    const { service, homeDir } = await harness();
     const paired = pair(service).result;
     const registryPath = join(homeDir, 'security', 'paired-devices.json');
 
@@ -1168,19 +1181,21 @@ describe('DevicePairingService', () => {
       const raw = JSON.parse(readFileSync(registryPath, 'utf8'));
       Object.assign(raw.devices[0], injected);
       writeFileSync(registryPath, `${JSON.stringify(raw)}\n`, { mode: 0o600 });
-      expect(
-        () =>
-          new DevicePairingService({
+      await expect(
+        async () =>
+          await DevicePairingService.create({
             homeDir,
             environmentId: ENVIRONMENT_ID,
           }),
-      ).toThrowError('Invalid paired-device record');
+      ).rejects.toThrowError('Invalid paired-device record');
     }
-    expect(service.verifyCredential(paired.credential)).toBe(true);
+    expect(() => service.verifyCredential(paired.credential)).toThrow(
+      /Invalid paired-device/,
+    );
   });
 
-  test('station#3816: an operator can NARROW a paired device without unpairing it', () => {
-    const { service, homeDir } = harness();
+  test('station#3816: an operator can NARROW a paired device without unpairing it', async () => {
+    const { service, homeDir } = await harness();
     const paired = pair(service, 'Phone').result;
     // Whatever it paired with, the operator can set it to read-only — the
     // point of the change: narrowing used to mean unpairing and starting
@@ -1197,7 +1212,7 @@ describe('DevicePairingService', () => {
 
     // Persisted before it is exposed: a restart must not restore what the
     // operator just took away.
-    const reloaded = new DevicePairingService({
+    const reloaded = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
     });
@@ -1206,8 +1221,8 @@ describe('DevicePairingService', () => {
     ).toBe('orchestration:read');
   });
 
-  test('station#3816: operator promotion is the mechanism consent:decide always declared and never had', () => {
-    const { service } = harness();
+  test('station#3816: operator promotion is the mechanism consent:decide always declared and never had', async () => {
+    const { service } = await harness();
     const paired = pair(service, 'Phone').result;
     const promoted = service.setDeviceScope(
       paired.device.id,
@@ -1220,8 +1235,8 @@ describe('DevicePairingService', () => {
     );
   });
 
-  test('home control cannot be granted at pairing time and requires operator promotion', () => {
-    const { service } = harness();
+  test('home control cannot be granted at pairing time and requires operator promotion', async () => {
+    const { service } = await harness();
     expect(() =>
       service.createOffer({
         endpoint: 'https://station.example.test',
@@ -1251,8 +1266,8 @@ describe('DevicePairingService', () => {
     expect(service.homeControlGrantRevision(paired.device.id)).toBe(3);
   });
 
-  test('station#3816: a token with no legitimate promotion path is refused', () => {
-    const { service } = harness();
+  test('station#3816: a token with no legitimate promotion path is refused', async () => {
+    const { service } = await harness();
     const paired = pair(service, 'Phone').result;
     // access:manage is inherited by migrated, scope-omitting and
     // continuity-flow credentials — a permanently ambiguous population the
@@ -1271,8 +1286,8 @@ describe('DevicePairingService', () => {
     ).toBe(paired.device.scope);
   });
 
-  test('station#3816: an unknown token, an empty scope, a revoked device, and a non-operator are all refused', () => {
-    const { service } = harness();
+  test('station#3816: an unknown token, an empty scope, a revoked device, and a non-operator are all refused', async () => {
+    const { service } = await harness();
     const paired = pair(service, 'Phone').result;
 
     expect(() =>
@@ -1302,8 +1317,8 @@ describe('DevicePairingService', () => {
     ).toThrowError(new DevicePairingError('device_revoked'));
   });
 
-  test('never lets a shared client instance revoke another verified identity', () => {
-    const { service } = harness();
+  test('never lets a shared client instance revoke another verified identity', async () => {
+    const { service } = await harness();
     const clientInstanceId = '11111111-1111-4111-8111-111111111111';
     const owner = pairTailnet(service, {
       login: 'owner@example.test',
@@ -1319,8 +1334,8 @@ describe('DevicePairingService', () => {
     expect(service.verifyCredential(other.credential)).toBe(true);
   });
 
-  test('account replacement distinguishes issuers even when subject and WhoIs match', () => {
-    const { service } = harness();
+  test('account replacement distinguishes issuers even when subject and WhoIs match', async () => {
+    const { service } = await harness();
     const clientInstanceId = '11111111-1111-4111-8111-111111111111';
     const exchangeAccount = (issuer: string) => {
       const offer = service.createOffer({
@@ -1367,8 +1382,8 @@ describe('DevicePairingService', () => {
     expect(service.verifyCredential(replacement.credential)).toBe(true);
   });
 
-  test('never lets one identityless source replace another by client instance', () => {
-    const { service } = harness();
+  test('never lets one identityless source replace another by client instance', async () => {
+    const { service } = await harness();
     const clientInstanceId = '11111111-1111-4111-8111-111111111111';
     const first = pair(service, 'Pairing code', clientInstanceId).result;
     const offer = service.createOffer({
@@ -1395,8 +1410,8 @@ describe('DevicePairingService', () => {
     expect(service.verifyCredential(second.credential)).toBe(true);
   });
 
-  test('does not merge distinct server-verified requester identities into one quota', () => {
-    const { service } = harness(1_000, {
+  test('does not merge distinct server-verified requester identities into one quota', async () => {
+    const { service } = await harness(1_000, {
       maxActiveCredentialsPerVerifiedIdentity: 1,
     });
 
@@ -1408,8 +1423,8 @@ describe('DevicePairingService', () => {
     ).toMatchObject({ device: { revokedAt: null } });
   });
 
-  test('bounds identityless issuance globally without treating a client instance as an identity', () => {
-    const { service } = harness(1_000, {
+  test('bounds identityless issuance globally without treating a client instance as an identity', async () => {
+    const { service } = await harness(1_000, {
       maxActiveCredentialsWithoutVerifiedIdentity: 1,
     });
     const first = pair(
@@ -1462,8 +1477,8 @@ describe('DevicePairingService', () => {
     ).not.toThrow();
   });
 
-  test('accepts cleartext http for loopback, LAN, and tailnet endpoints but not public hosts', () => {
-    const { service } = harness();
+  test('accepts cleartext http for loopback, LAN, and tailnet endpoints but not public hosts', async () => {
+    const { service } = await harness();
     for (const endpoint of [
       'http://localhost:3141',
       'http://127.0.0.1:3141',
@@ -1485,8 +1500,8 @@ describe('DevicePairingService', () => {
     ).not.toThrow();
   });
 
-  test('requires verified requester provenance for every tailnet request', () => {
-    const { service } = harness();
+  test('requires verified requester provenance for every tailnet request', async () => {
+    const { service } = await harness();
     const offer = service.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -1527,8 +1542,8 @@ describe('DevicePairingService', () => {
     });
   });
 
-  test('exchanges a host-confirmed offer once and persists only a credential hash', () => {
-    const { service, homeDir } = harness();
+  test('exchanges a host-confirmed offer once and persists only a credential hash', async () => {
+    const { service, homeDir } = await harness();
     const { offer, request, result } = pair(service);
 
     expect(result.environmentId).toBe(ENVIRONMENT_ID);
@@ -1562,8 +1577,8 @@ describe('DevicePairingService', () => {
     }
   });
 
-  test('confirmation and expiry mint no credential before a successful exchange', () => {
-    const { service, advance } = harness();
+  test('confirmation and expiry mint no credential before a successful exchange', async () => {
+    const { service, advance } = await harness();
     const offer = service.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -1589,8 +1604,8 @@ describe('DevicePairingService', () => {
     expect(service.listDevices()).toEqual([]);
   });
 
-  test('atomically supersedes only older active grants from the same client instance', () => {
-    const { service } = harness();
+  test('atomically supersedes only older active grants from the same client instance', async () => {
+    const { service } = await harness();
     const clientInstanceId = '11111111-1111-4111-8111-111111111111';
     const original = pair(
       service,
@@ -1628,8 +1643,8 @@ describe('DevicePairingService', () => {
     }
   });
 
-  test('reuses the unsuffixed display name only for the same client instance', () => {
-    const { service } = harness();
+  test('reuses the unsuffixed display name only for the same client instance', async () => {
+    const { service } = await harness();
     const clientInstanceId = '11111111-1111-4111-8111-111111111111';
     const first = pair(service, 'Same display name', clientInstanceId).result;
     const replacement = pair(
@@ -1644,8 +1659,8 @@ describe('DevicePairingService', () => {
     expect(service.verifyCredential(first.credential)).toBe(false);
   });
 
-  test('account-bound re-pair names distinguish the pending and issued person', () => {
-    const { service } = harness();
+  test('account-bound re-pair names distinguish the pending and issued person', async () => {
+    const { service } = await harness();
     const clientInstanceId = '11111111-1111-4111-8111-111111111111';
     const requestFor = (subject?: string) => {
       const offer = service.createOffer({
@@ -1704,8 +1719,8 @@ describe('DevicePairingService', () => {
 
   test.each(['personal', 'verified-ingress'] as const)(
     'optional account candidate reserves a distinct name when approved as %s',
-    (mode) => {
-      const { service } = harness();
+    async (mode) => {
+      const { service } = await harness();
       const clientInstanceId = '11111111-1111-4111-8111-111111111111';
       const request = (required: boolean) => {
         const offer = service.createOffer({
@@ -1767,8 +1782,8 @@ describe('DevicePairingService', () => {
     },
   );
 
-  test('an optional candidate does not reserve an account-bound pending name', () => {
-    const { service } = harness();
+  test('an optional candidate does not reserve an account-bound pending name', async () => {
+    const { service } = await harness();
     const clientInstanceId = '11111111-1111-4111-8111-111111111111';
     const request = (required: boolean) => {
       const offer = service.createOffer({
@@ -1799,8 +1814,8 @@ describe('DevicePairingService', () => {
     expect(request(false).deviceName).toBe('Pending browser');
   });
 
-  test('exchange rechecks the name when pending requests receive different approval bindings', () => {
-    const { service } = harness();
+  test('exchange rechecks the name when pending requests receive different approval bindings', async () => {
+    const { service } = await harness();
     const clientInstanceId = '11111111-1111-4111-8111-111111111111';
     const request = () => {
       const offer = service.createOffer({
@@ -1851,8 +1866,8 @@ describe('DevicePairingService', () => {
     ]);
   });
 
-  test('rejects an exchange whose client identity differs from the approved request', () => {
-    const { service } = harness();
+  test('rejects an exchange whose client identity differs from the approved request', async () => {
+    const { service } = await harness();
     const offer = service.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -1876,8 +1891,8 @@ describe('DevicePairingService', () => {
     expect(service.listDevices()).toEqual([]);
   });
 
-  test('does not add a client identity only after an identity-less request was approved', () => {
-    const { service } = harness();
+  test('does not add a client identity only after an identity-less request was approved', async () => {
+    const { service } = await harness();
     const offer = service.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -1900,8 +1915,8 @@ describe('DevicePairingService', () => {
     expect(service.listDevices()).toEqual([]);
   });
 
-  test('does not infer a client instance from display name or supersede another device', () => {
-    const { service } = harness();
+  test('does not infer a client instance from display name or supersede another device', async () => {
+    const { service } = await harness();
     const first = pair(
       service,
       'Same display name',
@@ -1926,53 +1941,65 @@ describe('DevicePairingService', () => {
     ]);
   });
 
-  test('transient Windows rename locks preserve exactly one durable activity increment', () => {
-    const { service, homeDir } = harness();
+  test('transient Windows rename locks preserve exactly one durable activity increment', async () => {
+    const { service, homeDir } = await harness();
     const paired = pair(service).result;
+    let attempts = 0;
     vi.mocked(renameSync)
       .mockClear()
-      .mockImplementationOnce(() => {
-        throw Object.assign(new Error('sharing violation'), { code: 'EPERM' });
+      .mockImplementation((source, target) => {
+        if (String(target).endsWith('paired-devices.json') && ++attempts === 1)
+          throw Object.assign(new Error('sharing violation'), {
+            code: 'EPERM',
+          });
+        return actualRename(source, target);
       });
     expect(service.recordCredentialActivity(paired.credential, 'lan')).toBe(
       true,
     );
-    expect(renameSync).toHaveBeenCalledTimes(2);
-    const restarted = new DevicePairingService({
+    expect(attempts).toBe(2);
+    const restarted = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
     });
     expect(restarted.identifyDevice(paired.credential)?.usageCount).toBe(1);
   });
 
-  test('persistent Windows rename locks remain failures without advancing memory or disk', () => {
-    const { service, homeDir } = harness();
+  test('persistent Windows rename locks remain failures without advancing memory or disk', async () => {
+    const { service, homeDir } = await harness();
     const paired = pair(service).result;
+    let attempts = 0;
     vi.mocked(renameSync)
       .mockClear()
-      .mockImplementation(() => {
-        throw Object.assign(new Error('sharing violation'), { code: 'EPERM' });
+      .mockImplementation((source, target) => {
+        if (String(target).endsWith('paired-devices.json')) {
+          attempts++;
+          throw Object.assign(new Error('sharing violation'), {
+            code: 'EPERM',
+          });
+        }
+        return actualRename(source, target);
       });
     expect(() =>
       service.recordCredentialActivity(paired.credential, 'lan'),
     ).toThrow('sharing violation');
-    expect(renameSync).toHaveBeenCalledTimes(5);
+    expect(attempts).toBe(5);
     vi.mocked(renameSync).mockImplementation(actualRename);
     expect(service.identifyDevice(paired.credential)?.usageCount).toBe(0);
-    const restarted = new DevicePairingService({
+    const restarted = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
     });
     expect(restarted.identifyDevice(paired.credential)?.usageCount).toBe(0);
   });
 
-  test('recorded activity survives restart', () => {
-    const { service, homeDir } = harness();
+  test('recorded activity survives restart', async () => {
+    const { service, homeDir } = await harness();
     const paired = pair(service).result;
     expect(service.recordCredentialActivity(paired.credential, 'lan')).toBe(
       true,
     );
-    const restarted = new DevicePairingService({
+    const restarted = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
     });
@@ -1982,8 +2009,8 @@ describe('DevicePairingService', () => {
     });
   });
 
-  test('suffixes a device name that collides with an existing active paired device', () => {
-    const { service } = harness();
+  test('suffixes a device name that collides with an existing active paired device', async () => {
+    const { service } = await harness();
     pair(service, 'Mac · Chrome');
 
     const { request, result } = pair(service, 'Mac · Chrome');
@@ -2000,8 +2027,8 @@ describe('DevicePairingService', () => {
     ]);
   });
 
-  test('does not suffix a name that only collides with a revoked device', () => {
-    const { service } = harness();
+  test('does not suffix a name that only collides with a revoked device', async () => {
+    const { service } = await harness();
     const first = pair(service, 'Mac · Chrome');
     service.revokeDevice(first.result.device.id, 'operator-credential');
 
@@ -2009,8 +2036,8 @@ describe('DevicePairingService', () => {
     expect(request.deviceName).toBe('Mac · Chrome');
   });
 
-  test('truncates a long colliding device name so its suffix stays within the length limit', () => {
-    const { service } = harness();
+  test('truncates a long colliding device name so its suffix stays within the length limit', async () => {
+    const { service } = await harness();
     const longName = 'X'.repeat(64);
     pair(service, longName);
 
@@ -2019,8 +2046,8 @@ describe('DevicePairingService', () => {
     expect(request.deviceName.length).toBe(64);
   });
 
-  test('suffixes a device name that collides with another still-pending request', () => {
-    const { service } = harness();
+  test('suffixes a device name that collides with another still-pending request', async () => {
+    const { service } = await harness();
     const offerA = service.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -2055,8 +2082,8 @@ describe('DevicePairingService', () => {
     expect(requestC.deviceName).toBe('Mac · Chrome (3)');
   });
 
-  test('suffixes a device name that collides with a confirmed-but-not-yet-exchanged request', () => {
-    const { service } = harness();
+  test('suffixes a device name that collides with a confirmed-but-not-yet-exchanged request', async () => {
+    const { service } = await harness();
     const offerA = service.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -2080,8 +2107,8 @@ describe('DevicePairingService', () => {
     expect(requestB.deviceName).toBe('Mac · Chrome (2)');
   });
 
-  test('does not reserve a name from an expired pending request', () => {
-    const { service, advance } = harness();
+  test('does not reserve a name from an expired pending request', async () => {
+    const { service, advance } = await harness();
     const offerA = service.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -2106,8 +2133,8 @@ describe('DevicePairingService', () => {
     expect(requestB.deviceName).toBe('Mac · Chrome');
   });
 
-  test('does not reserve a name from a denied (cancelled) request', () => {
-    const { service } = harness();
+  test('does not reserve a name from a denied (cancelled) request', async () => {
+    const { service } = await harness();
     const offerA = service.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -2131,8 +2158,8 @@ describe('DevicePairingService', () => {
     expect(requestB.deviceName).toBe('Mac · Chrome');
   });
 
-  test('truncates a colliding emoji-heavy name without splitting a surrogate pair, even at a double-digit suffix', () => {
-    const { service } = harness();
+  test('truncates a colliding emoji-heavy name without splitting a surrogate pair, even at a double-digit suffix', async () => {
+    const { service } = await harness();
     const emojiName = '😀'.repeat(32);
     expect(emojiName.length).toBe(64);
 
@@ -2168,8 +2195,8 @@ describe('DevicePairingService', () => {
     ).toBe(false);
   });
 
-  test('rejects expired, cancelled, altered, and unconfirmed offers', () => {
-    const { service, advance } = harness();
+  test('rejects expired, cancelled, altered, and unconfirmed offers', async () => {
+    const { service, advance } = await harness();
     const expired = service.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -2223,8 +2250,8 @@ describe('DevicePairingService', () => {
     ).toThrowError(new DevicePairingError('request_not_confirmed'));
   });
 
-  test('bounds active offers and prunes expired offers before allocating', () => {
-    const { service, advance } = harness(1_000, { maxActiveOffers: 2 });
+  test('bounds active offers and prunes expired offers before allocating', async () => {
+    const { service, advance } = await harness(1_000, { maxActiveOffers: 2 });
     const requestAccess = (deviceName: string) =>
       service.requestAccess({
         requesterPosition: 'off-box',
@@ -2247,8 +2274,8 @@ describe('DevicePairingService', () => {
     ]);
   });
 
-  test('denies a pending request and makes that decision final for exchange', () => {
-    const { service } = harness();
+  test('denies a pending request and makes that decision final for exchange', async () => {
+    const { service } = await harness();
     const access = service.requestAccess({
       requesterPosition: 'off-box',
       endpoint: 'https://station.example.test',
@@ -2270,8 +2297,8 @@ describe('DevicePairingService', () => {
     ).toThrowError(new DevicePairingError('request_denied'));
   });
 
-  test('revokes one device immediately without disrupting another', () => {
-    const { service } = harness();
+  test('revokes one device immediately without disrupting another', async () => {
+    const { service } = await harness();
     const first = pair(service, 'First phone').result;
     const second = pair(service, 'Second phone').result;
 
@@ -2286,7 +2313,7 @@ describe('DevicePairingService', () => {
   });
 
   test('allows only one winner when confirmed exchange attempts race', async () => {
-    const { service } = harness();
+    const { service } = await harness();
     const offer = service.createOffer({
       endpoint: 'https://station.example.test',
     });
@@ -2318,20 +2345,20 @@ describe('DevicePairingService', () => {
     expect(service.listDevices()).toHaveLength(1);
   });
 
-  test('rejects a registry from another environment instead of credential confusion', () => {
-    const { homeDir, service } = harness();
+  test('rejects a registry from another environment instead of credential confusion', async () => {
+    const { homeDir, service } = await harness();
     pair(service);
-    expect(
-      () =>
-        new DevicePairingService({
+    await expect(
+      async () =>
+        await DevicePairingService.create({
           homeDir,
           environmentId: '22222222-2222-4222-8222-222222222222',
         }),
-    ).toThrow(/environment/);
+    ).rejects.toThrow(/environment/);
   });
 
-  test('clears offers and every device credential when the environment resets', () => {
-    const { service } = harness();
+  test('clears offers and every device credential when the environment resets', async () => {
+    const { service } = await harness();
     const paired = pair(service).result;
     const pendingOffer = service.createOffer({
       endpoint: 'https://station.example.test',
@@ -2357,8 +2384,8 @@ describe('DevicePairingService', () => {
       keys: { p256dh: 'p256dh-key-value', auth: 'auth-key-value' },
     });
 
-    test('identifies a paired device by credential, sharing the timing-safe lookup with verifyCredential', () => {
-      const { service } = harness();
+    test('identifies a paired device by credential, sharing the timing-safe lookup with verifyCredential', async () => {
+      const { service } = await harness();
       const paired = pair(service, 'Casey phone').result;
 
       expect(service.identifyDevice(paired.credential)).toMatchObject({
@@ -2368,8 +2395,8 @@ describe('DevicePairingService', () => {
       expect(service.identifyDevice('unknown-credential')).toBeNull();
     });
 
-    test('never surfaces a push subscription through publicDevice/identifyDevice/listDevices', () => {
-      const { service } = harness();
+    test('never surfaces a push subscription through publicDevice/identifyDevice/listDevices', async () => {
+      const { service } = await harness();
       const paired = pair(service, 'Casey phone').result;
       service.setPushSubscription(paired.device.id, subscription());
 
@@ -2381,8 +2408,8 @@ describe('DevicePairingService', () => {
       }
     });
 
-    test('subscribes, lists for fan-out, and clears idempotently', () => {
-      const { service } = harness();
+    test('subscribes, lists for fan-out, and clears idempotently', async () => {
+      const { service } = await harness();
       const paired = pair(service, 'Casey phone').result;
 
       expect(service.listPushSubscriptions()).toEqual([]);
@@ -2398,8 +2425,8 @@ describe('DevicePairingService', () => {
       expect(service.listPushSubscriptions()).toEqual([]);
     });
 
-    test('throws device_not_found for an unknown device id on set/clear', () => {
-      const { service } = harness();
+    test('throws device_not_found for an unknown device id on set/clear', async () => {
+      const { service } = await harness();
       expect(() =>
         service.setPushSubscription('unknown-device-id', subscription()),
       ).toThrowError(new DevicePairingError('device_not_found'));
@@ -2408,8 +2435,8 @@ describe('DevicePairingService', () => {
       ).toThrowError(new DevicePairingError('device_not_found'));
     });
 
-    test('revoking a device explicitly nulls its push subscription and excludes it from fan-out', () => {
-      const { homeDir, service } = harness();
+    test('revoking a device explicitly nulls its push subscription and excludes it from fan-out', async () => {
+      const { homeDir, service } = await harness();
       const paired = pair(service, 'Casey phone').result;
       service.setPushSubscription(paired.device.id, subscription());
       expect(service.listPushSubscriptions()).toHaveLength(1);
@@ -2432,8 +2459,8 @@ describe('DevicePairingService', () => {
       expect(stored.revokedAt).not.toBeNull();
     });
 
-    test('rejects an invalid subscription shape from a corrupt registry load', () => {
-      const { service, homeDir } = harness();
+    test('rejects an invalid subscription shape from a corrupt registry load', async () => {
+      const { service, homeDir } = await harness();
       pair(service, 'Casey phone');
       const registryPath = join(homeDir, 'security', 'paired-devices.json');
       const raw = JSON.parse(readFileSync(registryPath, 'utf8'));
@@ -2442,17 +2469,17 @@ describe('DevicePairingService', () => {
         mode: 0o600,
       });
 
-      expect(
-        () =>
-          new DevicePairingService({
+      await expect(
+        async () =>
+          await DevicePairingService.create({
             homeDir,
             environmentId: ENVIRONMENT_ID,
           }),
-      ).toThrow(/push subscription/);
+      ).rejects.toThrow(/push subscription/);
     });
 
-    test('rejects unknown registry and device-record fields instead of surfacing hand-edited state', () => {
-      const { service, homeDir } = harness();
+    test('rejects unknown registry and device-record fields instead of surfacing hand-edited state', async () => {
+      const { service, homeDir } = await harness();
       pair(service, 'Casey phone');
       const registryPath = join(homeDir, 'security', 'paired-devices.json');
       const raw = JSON.parse(readFileSync(registryPath, 'utf8'));
@@ -2461,30 +2488,32 @@ describe('DevicePairingService', () => {
         mode: 0o600,
       });
 
-      expect(
-        () =>
-          new DevicePairingService({
+      await expect(
+        async () =>
+          await DevicePairingService.create({
             homeDir,
             environmentId: ENVIRONMENT_ID,
           }),
-      ).toThrowError('Invalid paired-device record');
+      ).rejects.toThrowError('Invalid paired-device record');
 
       delete raw.devices[0].untrustedAttribution;
       raw.unknownRegistryField = true;
       writeFileSync(registryPath, `${JSON.stringify(raw)}\n`, {
         mode: 0o600,
       });
-      expect(
-        () =>
-          new DevicePairingService({
+      await expect(
+        async () =>
+          await DevicePairingService.create({
             homeDir,
             environmentId: ENVIRONMENT_ID,
           }),
-      ).toThrowError('Invalid paired-device registry schema or environment');
+      ).rejects.toThrowError(
+        'Invalid paired-device registry schema or environment',
+      );
     });
 
-    test('treats a missing pushSubscription field on an older registry record as null (additive)', () => {
-      const { service, homeDir } = harness();
+    test('treats a missing pushSubscription field on an older registry record as null (additive)', async () => {
+      const { service, homeDir } = await harness();
       pair(service, 'Casey phone');
       const registryPath = join(homeDir, 'security', 'paired-devices.json');
       const raw = JSON.parse(readFileSync(registryPath, 'utf8'));
@@ -2493,7 +2522,7 @@ describe('DevicePairingService', () => {
         mode: 0o600,
       });
 
-      const reloaded = new DevicePairingService({
+      const reloaded = await DevicePairingService.create({
         homeDir,
         environmentId: ENVIRONMENT_ID,
       });
@@ -2502,8 +2531,8 @@ describe('DevicePairingService', () => {
   });
 
   describe('scoped pairing (station#1098)', () => {
-    test('an offer created without an explicit scope defaults to full access', () => {
-      const { service } = harness();
+    test('an offer created without an explicit scope defaults to full access', async () => {
+      const { service } = await harness();
       const offer = service.createOffer({
         endpoint: 'https://station.example.test',
       });
@@ -2512,8 +2541,8 @@ describe('DevicePairingService', () => {
       expect(result.device.scope).toBe(DEFAULT_GRANT_PAIRING_SCOPE);
     });
 
-    test('an offer created with a preset scope carries it through request and exchange (AC2)', () => {
-      const { service } = harness();
+    test('an offer created with a preset scope carries it through request and exchange (AC2)', async () => {
+      const { service } = await harness();
       const readOnlyScope = pairingScopePresetString('read-only');
       const offer = service.createOffer({
         endpoint: 'https://station.example.test',
@@ -2544,8 +2573,8 @@ describe('DevicePairingService', () => {
       ).toBe(false);
     });
 
-    test('rejects a wider issued session scope and leaves the confirmed offer usable', () => {
-      const { service } = harness();
+    test('rejects a wider issued session scope and leaves the confirmed offer usable', async () => {
+      const { service } = await harness();
       const readOnlyScope = pairingScopePresetString('read-only');
       const offer = service.createOffer({
         endpoint: 'https://station.example.test',
@@ -2576,8 +2605,8 @@ describe('DevicePairingService', () => {
       expect(result.device.scope).toBe(readOnlyScope);
     });
 
-    test('the standard preset excludes access:manage even though it grants terminal:operate', () => {
-      const { service } = harness();
+    test('the standard preset excludes access:manage even though it grants terminal:operate', async () => {
+      const { service } = await harness();
       const standardScope = pairingScopePresetString('standard');
       const offer = service.createOffer({
         endpoint: 'https://station.example.test',
@@ -2587,8 +2616,8 @@ describe('DevicePairingService', () => {
       expect(pairingScopeIncludes(offer.scope, 'access:manage')).toBe(false);
     });
 
-    test('rejects an unknown or malformed scope string', () => {
-      const { service } = harness();
+    test('rejects an unknown or malformed scope string', async () => {
+      const { service } = await harness();
       for (const scope of [
         '',
         'not-a-real-scope',
@@ -2603,8 +2632,8 @@ describe('DevicePairingService', () => {
       }
     });
 
-    test('migrates a pre-scoping (station:interactive) device to full access with no forced re-pair (R4/AC3)', () => {
-      const { homeDir } = harness();
+    test('migrates a pre-scoping (station:interactive) device to full access with no forced re-pair (R4/AC3)', async () => {
+      const { homeDir } = await harness();
       const registryPath = join(homeDir, 'security', 'paired-devices.json');
 
       // A registry exactly as it would have looked before scoped pairing
@@ -2634,7 +2663,7 @@ describe('DevicePairingService', () => {
         { mode: 0o600 },
       );
 
-      const migrated = new DevicePairingService({
+      const migrated = await DevicePairingService.create({
         homeDir,
         environmentId: ENVIRONMENT_ID,
       });
@@ -2652,8 +2681,8 @@ describe('DevicePairingService', () => {
       expect(onDisk.devices[0].scope).toBe(DEFAULT_GRANT_PAIRING_SCOPE);
     });
 
-    test('leaves an already-scoped registry record untouched on load', () => {
-      const { service, homeDir } = harness();
+    test('leaves an already-scoped registry record untouched on load', async () => {
+      const { service, homeDir } = await harness();
       const readOnlyScope = pairingScopePresetString('read-only');
       const offer = service.createOffer({
         endpoint: 'https://station.example.test',
@@ -2672,7 +2701,7 @@ describe('DevicePairingService', () => {
         requestId: request.requestId,
       });
 
-      const reloaded = new DevicePairingService({
+      const reloaded = await DevicePairingService.create({
         homeDir,
         environmentId: ENVIRONMENT_ID,
       });
@@ -2683,14 +2712,14 @@ describe('DevicePairingService', () => {
   });
 
   describe('delegation preset + PairedDevice.kind (station#1123 slice 1)', () => {
-    test('an offer created without an explicit kind exchanges to kind "device"', () => {
-      const { service } = harness();
+    test('an offer created without an explicit kind exchanges to kind "device"', async () => {
+      const { service } = await harness();
       const { result } = pair(service);
       expect(result.device.kind).toBe('device');
     });
 
-    test('an offer created with kind "delegation" exchanges to a delegation-kind device carrying the delegation preset scope', () => {
-      const { service } = harness();
+    test('an offer created with kind "delegation" exchanges to a delegation-kind device carrying the delegation preset scope', async () => {
+      const { service } = await harness();
       const delegationScope = pairingScopePresetString('delegation');
       const offer = service.createOffer({
         endpoint: 'https://station.example.test',
@@ -2736,8 +2765,8 @@ describe('DevicePairingService', () => {
       expect(service.verifyCredential(result.credential)).toBe(false);
     });
 
-    test('rejects an unknown kind', () => {
-      const { service } = harness();
+    test('rejects an unknown kind', async () => {
+      const { service } = await harness();
       const invalidKind = 'operator' as unknown as 'device' | 'delegation';
       expect(() =>
         service.createOffer({
@@ -2747,8 +2776,8 @@ describe('DevicePairingService', () => {
       ).toThrowError(new DevicePairingError('invalid_request'));
     });
 
-    test('a device paired before "kind" existed reads back as "device" with no forced re-pair', () => {
-      const { homeDir } = harness();
+    test('a device paired before "kind" existed reads back as "device" with no forced re-pair', async () => {
+      const { homeDir } = await harness();
       const registryPath = join(homeDir, 'security', 'paired-devices.json');
       const legacyCredential = 'legacy-plaintext-credential-no-kind-field-01';
       const credentialHash = createHash('sha256')
@@ -2776,7 +2805,7 @@ describe('DevicePairingService', () => {
         { mode: 0o600 },
       );
 
-      const migrated = new DevicePairingService({
+      const migrated = await DevicePairingService.create({
         homeDir,
         environmentId: ENVIRONMENT_ID,
       });
@@ -2795,8 +2824,8 @@ describe('DevicePairingService', () => {
    * These prove the exact record `exchange()` writes, not an imagined shape.
    */
   describe('device provenance (station#1878 slice 1)', () => {
-    test('a same-origin request exchanges to a device record carrying source "same-origin" and no requester', () => {
-      const { service } = harness();
+    test('a same-origin request exchanges to a device record carrying source "same-origin" and no requester', async () => {
+      const { service } = await harness();
       const offer = service.createOffer({
         endpoint: 'https://station.example.test',
       });
@@ -2824,16 +2853,16 @@ describe('DevicePairingService', () => {
       ]);
     });
 
-    test('a pairing-code request (the default provenance requestPairing/pair() exercises) exchanges to a device record carrying source "pairing-code"', () => {
-      const { service } = harness();
+    test('a pairing-code request (the default provenance requestPairing/pair() exercises) exchanges to a device record carrying source "pairing-code"', async () => {
+      const { service } = await harness();
       const { result } = pair(service);
 
       expect(result.device.source).toBe('pairing-code');
       expect(result.device).not.toHaveProperty('requester');
     });
 
-    test('a tailnet request exchanges to a device record carrying source "tailnet" and the verified requester', () => {
-      const { service } = harness();
+    test('a tailnet request exchanges to a device record carrying source "tailnet" and the verified requester', async () => {
+      const { service } = await harness();
       const offer = service.createOffer({
         endpoint: 'https://station.example.test',
       });
@@ -2887,8 +2916,8 @@ describe('DevicePairingService', () => {
       });
     });
 
-    test('a device paired before "source"/"requester" existed reads back with neither key, not a guessed default', () => {
-      const { homeDir } = harness();
+    test('a device paired before "source"/"requester" existed reads back with neither key, not a guessed default', async () => {
+      const { homeDir } = await harness();
       const registryPath = join(homeDir, 'security', 'paired-devices.json');
       const legacyCredential = 'legacy-plaintext-credential-no-provenance-01';
       const credentialHash = createHash('sha256')
@@ -2918,7 +2947,7 @@ describe('DevicePairingService', () => {
         { mode: 0o600 },
       );
 
-      const migrated = new DevicePairingService({
+      const migrated = await DevicePairingService.create({
         homeDir,
         environmentId: ENVIRONMENT_ID,
       });
@@ -2931,8 +2960,8 @@ describe('DevicePairingService', () => {
       expect(device).not.toHaveProperty('requester');
     });
 
-    test('rejects a persisted requester that is not paired with a tailnet source', () => {
-      const { homeDir } = harness();
+    test('rejects a persisted requester that is not paired with a tailnet source', async () => {
+      const { homeDir } = await harness();
       const registryPath = join(homeDir, 'security', 'paired-devices.json');
       writeFileSync(
         registryPath,
@@ -2962,13 +2991,13 @@ describe('DevicePairingService', () => {
         { mode: 0o600 },
       );
 
-      expect(
-        () =>
-          new DevicePairingService({
+      await expect(
+        async () =>
+          await DevicePairingService.create({
             homeDir,
             environmentId: ENVIRONMENT_ID,
           }),
-      ).toThrowError('Invalid paired-device record');
+      ).rejects.toThrowError('Invalid paired-device record');
     });
   });
 });
@@ -2982,8 +3011,8 @@ describe('DevicePairingService', () => {
  * here as `requesterPosition`).
  */
 describe('confirmRequest approval guard (station#1490)', () => {
-  test('account-bound access request is read-only at approval and exchange', () => {
-    const { service } = harness();
+  test('account-bound access request is read-only at approval and exchange', async () => {
+    const { service } = await harness();
     const access = service.requestAccess({
       endpoint: 'https://station.example.test',
       deviceName: 'Member browser',
@@ -3042,8 +3071,8 @@ describe('confirmRequest approval guard (station#1490)', () => {
     });
   }
 
-  test('an unauthenticated approval may not keep an elevated grant a device asked for, only approve without it', () => {
-    const { service } = harness();
+  test('an unauthenticated approval may not keep an elevated grant a device asked for, only approve without it', async () => {
+    const { service } = await harness();
     const access = accessRequest(
       service,
       'off-box',
@@ -3070,8 +3099,8 @@ describe('confirmRequest approval guard (station#1490)', () => {
     ).toBe('orchestration:read orchestration:operate terminal:operate');
   });
 
-  test('an approval keeps a non-empty part of the request, never more, and never trims a delegation', () => {
-    const { service } = harness();
+  test('an approval keeps a non-empty part of the request, never more, and never trims a delegation', async () => {
+    const { service } = await harness();
     const access = accessRequest(
       service,
       'off-box',
@@ -3104,8 +3133,8 @@ describe('confirmRequest approval guard (station#1490)', () => {
     ).toThrowError(expect.objectContaining({ code: 'invalid_request' }));
   });
 
-  test('refuses an unauthenticated approval of a request whose origin is unproven', () => {
-    const { service } = harness();
+  test('refuses an unauthenticated approval of a request whose origin is unproven', async () => {
+    const { service } = await harness();
     const access = accessRequest(service, 'unproven');
 
     expect(() =>
@@ -3134,8 +3163,8 @@ describe('confirmRequest approval guard (station#1490)', () => {
     ).toThrowError(expect.objectContaining({ code: 'request_not_confirmed' }));
   });
 
-  test('the same request is approvable by a caller that presented a credential', () => {
-    const { service } = harness();
+  test('the same request is approvable by a caller that presented a credential', async () => {
+    const { service } = await harness();
     const access = accessRequest(service, 'unproven');
 
     expect(
@@ -3150,8 +3179,8 @@ describe('confirmRequest approval guard (station#1490)', () => {
     ).toBe('Tunnel probe');
   });
 
-  test('still lets an unauthenticated caller approve a device that reached this Station from off-box', () => {
-    const { service } = harness();
+  test('still lets an unauthenticated caller approve a device that reached this Station from off-box', async () => {
+    const { service } = await harness();
     // The primary journey: a phone on the LAN opens Station's own UI and asks
     // for access; the operator approves from an unenrolled browser at the
     // machine, presenting nothing. Note the grant is the unscoped default —
@@ -3171,8 +3200,8 @@ describe('confirmRequest approval guard (station#1490)', () => {
     ).toBe(DEFAULT_GRANT_PAIRING_SCOPE);
   });
 
-  test('still lets an unauthenticated caller approve the scanned pairing-code journey', () => {
-    const { service } = harness();
+  test('still lets an unauthenticated caller approve the scanned pairing-code journey', async () => {
+    const { service } = await harness();
     const offer = service.createOffer({
       endpoint: 'https://station.example.test',
       scope: pairingScopePresetString('standard'),
@@ -3190,8 +3219,8 @@ describe('confirmRequest approval guard (station#1490)', () => {
     ).toBe('confirmed');
   });
 
-  test('refuses an unauthenticated approval of a pairing-code request of unproven origin', () => {
-    const { service } = harness();
+  test('refuses an unauthenticated approval of a pairing-code request of unproven origin', async () => {
+    const { service } = await harness();
     // The recombination that request provenance alone cannot distinguish: an
     // offer minted on the floor, its challenge read straight out of the
     // response, and a "pairing code" request submitted from the same position.
@@ -3214,8 +3243,8 @@ describe('confirmRequest approval guard (station#1490)', () => {
     );
   });
 
-  test('an unrecognized approval kind fails closed rather than inheriting the floor', () => {
-    const { service } = harness();
+  test('an unrecognized approval kind fails closed rather than inheriting the floor', async () => {
+    const { service } = await harness();
     const access = accessRequest(service, 'unproven', 'Future caller');
 
     // The guard must not read "not the unauthenticated literal" as
@@ -3237,8 +3266,8 @@ describe('confirmRequest approval guard (station#1490)', () => {
   // historical loopback compatibility floor, which archive#2051 retired for
   // ordinary callers; the service-level guard remains defense in depth.
   describe('device approval authority (station#1887)', () => {
-    test('an operator can promote a paired device, and the token is not granted at pairing time', () => {
-      const { service } = harness();
+    test('an operator can promote a paired device, and the token is not granted at pairing time', async () => {
+      const { service } = await harness();
       const { result } = pair(service);
       const deviceId = service.listDevices()[0]!.id;
 
@@ -3268,8 +3297,8 @@ describe('confirmRequest approval guard (station#1490)', () => {
       );
     });
 
-    test('an unauthenticated caller cannot promote — no off-box exception', () => {
-      const { service } = harness();
+    test('an unauthenticated caller cannot promote — no off-box exception', async () => {
+      const { service } = await harness();
       const { result } = pair(service);
       const deviceId = service.listDevices()[0]!.id;
 
@@ -3285,8 +3314,8 @@ describe('confirmRequest approval guard (station#1490)', () => {
       );
     });
 
-    test('the local-grant (desktop shell) path may promote', () => {
-      const { service } = harness();
+    test('the local-grant (desktop shell) path may promote', async () => {
+      const { service } = await harness();
       const { result } = pair(service);
       const deviceId = service.listDevices()[0]!.id;
       service.setDeviceApprovalAuthority(deviceId, true, {
@@ -3295,8 +3324,8 @@ describe('confirmRequest approval guard (station#1490)', () => {
       expect(service.credentialMayApprovePairing(result.credential)).toBe(true);
     });
 
-    test('a revoked device cannot be promoted — a tombstone is not re-armed', () => {
-      const { service } = harness();
+    test('a revoked device cannot be promoted — a tombstone is not re-armed', async () => {
+      const { service } = await harness();
       const { result } = pair(service);
       const deviceId = service.listDevices()[0]!.id;
       service.revokeDevice(deviceId, 'operator-credential');
@@ -3309,8 +3338,8 @@ describe('confirmRequest approval guard (station#1490)', () => {
       );
     });
 
-    test('promotion is idempotent and keeps the stored scope canonical', () => {
-      const { service } = harness();
+    test('promotion is idempotent and keeps the stored scope canonical', async () => {
+      const { service } = await harness();
       pair(service);
       const deviceId = service.listDevices()[0]!.id;
       const first = service.setDeviceApprovalAuthority(

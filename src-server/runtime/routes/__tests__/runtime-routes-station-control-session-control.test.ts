@@ -174,8 +174,9 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
     for (const close of closers.splice(0)) await close();
   });
 
-  async function setup() {
-    const homeDir = makeTempDir('station-control-session-control-');
+  async function setup(existingHome?: string) {
+    const homeDir =
+      existingHome ?? makeTempDir('station-control-session-control-');
     const service = new NotificationService(new EventBus(), homeDir, 999_999);
     closers.push(() => service.shutdown());
     support.notificationService = service;
@@ -308,6 +309,7 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
         getProject: (slug: string) => ({ slug }),
       },
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL,
         authorizeCredential: (credential: string) =>
@@ -319,7 +321,9 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
             ? 'orchestration:read orchestration:operate'
             : undefined,
         identifyDevice: () => undefined,
-        devicePairing: deepStub({}),
+        devicePairing: deepStub({
+          withCurrentRegistry: <T>(read: () => T): T => read(),
+        }),
       }),
     });
     Reflect.set(context as object, 'buildRuntimeContext', () => context);
@@ -344,7 +348,7 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
           server.close(() => resolve());
         }),
     );
-    return { base: `http://127.0.0.1:${await listening}`, db };
+    return { base: `http://127.0.0.1:${await listening}`, db, homeDir };
   }
 
   const internal = (extra: Record<string, string> = {}) => ({
@@ -367,6 +371,55 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
             ? mintStationControlMcpToken(sessionId, 'url-token').token
             : mintStationControlMcpHeaderAuth(4321, sessionId).token,
     });
+
+  test('runtime composition retains a session group across caller token rotation', async () => {
+    const { base, homeDir } = await setup();
+    const sessionId = 'person-caller-global';
+    const first = as('bound', sessionId)();
+    const created = await fetch(`${base}/api/orchestration/session-groups`, {
+      method: 'POST',
+      headers: first,
+      body: JSON.stringify({
+        operationId: 'wiring-proof',
+        maxConcurrent: 1,
+        deadlineAt: Date.now() + 60000,
+        members: [
+          {
+            seatId: 'one',
+            prompt: 'work',
+            target: {
+              agent: 'reviewer',
+              expectedEngine: { kind: 'connection', connectionId: 'claude' },
+            },
+          },
+        ],
+      }),
+    });
+    const initial = (await created.json()) as {
+      success: boolean;
+      data?: { groupId: string };
+      code?: string;
+    };
+    expect(initial.success, JSON.stringify(initial)).toBe(true);
+    const groupId = initial.data!.groupId;
+    const restarted = await setup(homeDir);
+    const rotated = as('bound', sessionId)();
+    const stale = await fetch(
+      `${restarted.base}/api/orchestration/session-groups/${groupId}`,
+      { headers: first },
+    );
+    expect(stale.status).toBe(403);
+    const read = await fetch(
+      `${restarted.base}/api/orchestration/session-groups/${groupId}`,
+      { headers: rotated },
+    );
+    const recovered = (await read.json()) as {
+      success: boolean;
+      data?: { groupId: string };
+    };
+    expect(recovered.success, JSON.stringify(recovered)).toBe(true);
+    expect(recovered.data?.groupId).toBe(groupId);
+  });
 
   let keyCounter = 0;
   const nextKey = () => {

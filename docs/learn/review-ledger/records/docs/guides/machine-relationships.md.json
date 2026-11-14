@@ -114,6 +114,10 @@
 
     "src-server/routes/environments/peer-credential-routes.ts",
 
+    "src-server/security/runtime-request-security.ts",
+
+    "src-server/security/pairing-route-scopes.ts",
+
     "src-server/routes/environments/peer-chat-policy.ts",
 
     "src-server/routes/environments/peer-chat-routes.ts",

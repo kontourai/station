@@ -1,3 +1,4 @@
+import { credentialRecoveryOwner } from '../../../__test-utils__/credential-recovery-owner.js';
 import { createEngineOAuthProxyRoutes } from '../../../routes/mcp/engine-oauth-proxy-route.js';
 import {
   ACP_ENGINE_DURABILITY,
@@ -1191,6 +1192,38 @@ describe('OrchestrationService', () => {
         service.firstStartedEngineOfThread('no-such-session'),
       ).toBeUndefined();
     });
+  });
+
+  test('native inherited tool constraints refuse at canonical start and recorded turn admission', async () => {
+    const delegation = {
+      mode: 'isolated-child', depth: 1, maxDepth: 2,
+      parentAgentSlug: 'parent', rootAgentSlug: 'root',
+      toolAllowlistConstraints: [['github_*']],
+    };
+    await expect(service.dispatch({
+      type: 'startSession',
+      input: { threadId: 'constrained-native', provider: 'claude', metadata: { delegation } },
+    })).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(claude.startSession).not.toHaveBeenCalled();
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: 'constrained-native', provider: 'claude' },
+    });
+    expect(claude.startSession).toHaveBeenCalledTimes(1);
+    await claude.startSession({ provider: 'claude', threadId: 'recorded-constrained-native' });
+    expect(claude.sessions.has('recorded-constrained-native')).toBe(true);
+    eventStore.appendEvent({
+      provider: 'claude', threadId: 'recorded-constrained-native',
+      eventId: 'constrained-native-record', createdAt: new Date().toISOString(),
+      method: 'session.started', sessionId: 'recorded-constrained-native',
+      metadata: { delegation },
+    } as CanonicalRuntimeEvent);
+    expect(service.firstStartedMetadataOfThread('recorded-constrained-native')?.delegation).toEqual(delegation);
+    await expect(service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'recorded-constrained-native', input: 'No unqualified effect' },
+    })).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(claude.sendTurn).not.toHaveBeenCalled();
   });
 
   test('respondToRequest hands the answering device to the adapter (#2344)', async () => {
@@ -6787,60 +6820,103 @@ describe('OrchestrationService', () => {
       expect(claude.respondToRequest).toHaveBeenCalledTimes(1);
     });
 
-    test('cold recovery under a fresh admission materializes and turns', async () => {
-      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
-      const started = await service.startSessionInternal(
-        {
-          type: 'start-session',
-          input: {
+    test.each([
+      'configured-only',
+      'sparse-start',
+      'sparse-config',
+      'conflicting-start',
+      'conflicting-config',
+    ] as const)(
+      'cold receiver recovery preserves recorded association: %s',
+      async (binding) => {
+        configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+        const started = await service.startSessionInternal(
+          {
+            type: 'start-session',
+            input: {
+              threadId: 'portable-cold-admitted',
+              provider: 'claude',
+              cwd: tmp,
+              metadata: { projectSlug: 'local' },
+            },
+          },
+          { userId: 'owner-user' },
+          {
+            receiverExecutionAdmission: admittedFor('portable-cold-admitted', tmp),
+            portableExecutionConsent: {
+              portableProjectId: 'prj_shared',
+              resourceId: 'git.example/acme/repo',
+              localProjectId: 'local-project-1',
+            },
+          },
+        );
+        if (started.status !== 'accepted') throw new Error(started.message);
+        if (binding !== 'configured-only') {
+          const metadata = binding.startsWith('conflicting')
+            ? { userId: 'owner-user', projectSlug: 'other' }
+            : { userId: 'owner-user' };
+          if (binding.endsWith('start')) {
+            eventStore.appendEvent({
+              eventId: randomUUID(),
+              provider: 'claude',
+              threadId: 'portable-cold-admitted',
+              sessionId: 'portable-cold-admitted',
+              createdAt: new Date().toISOString(),
+              method: 'session.started',
+              metadata,
+            });
+          } else {
+            eventStore.appendEvent({
+              eventId: randomUUID(),
+              provider: 'claude',
+              threadId: 'portable-cold-admitted',
+              sessionId: 'portable-cold-admitted',
+              createdAt: new Date().toISOString(),
+              method: 'session.configured',
+              metadata,
+            });
+          }
+        }
+        // Boot: a FRESH service over the SAME durable store, with a FRESH
+        // adapter holding no live engines — the restored session is dormant.
+        const coldClaude = new FakeAdapter('claude');
+        const cold = new RawOrchestrationService({
+          adapterRegistry: createRegistry([coldClaude]),
+          eventBus: new EventBus(),
+          eventStore,
+          listProjects: () => configuredProjects,
+          logger: { debug: vi.fn(), warn: vi.fn() },
+        });
+        // The fresh admission authorizes the spawn it needs: the engine
+        // materializes and the turn flows.
+        const turn = cold.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-cold-admitted', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: admittedFor('portable-cold-admitted', tmp),
+          },
+        );
+        if (binding.startsWith('conflicting')) {
+          await expect(turn).rejects.toThrow(
+            'The offered Project resource is unavailable.',
+          );
+          expect(coldClaude.startSession).not.toHaveBeenCalled();
+          expect(coldClaude.sendTurn).not.toHaveBeenCalled();
+        } else {
+          await turn;
+          expect(coldClaude.startSession).toHaveBeenCalledTimes(1);
+          expect(coldClaude.sendTurn).toHaveBeenCalledTimes(1);
+          expect(coldClaude.startSession.mock.calls[0]?.[0]).toMatchObject({
             threadId: 'portable-cold-admitted',
-            provider: 'claude',
             cwd: tmp,
             metadata: { projectSlug: 'local' },
-          },
-        },
-        { userId: 'owner-user' },
-        {
-          receiverExecutionAdmission: admittedFor(
-            'portable-cold-admitted',
-            tmp,
-          ),
-          portableExecutionConsent: {
-            portableProjectId: 'prj_shared',
-            resourceId: 'git.example/acme/repo',
-            localProjectId: 'local-project-1',
-          },
-        },
-      );
-      if (started.status !== 'accepted') throw new Error(started.message);
-      // Boot: a FRESH service over the SAME durable store, with a FRESH
-      // adapter holding no live engines — the restored session is dormant.
-      const coldClaude = new FakeAdapter('claude');
-      const cold = new RawOrchestrationService({
-        adapterRegistry: createRegistry([coldClaude]),
-        eventBus: new EventBus(),
-        eventStore,
-        listProjects: () => configuredProjects,
-        logger: { debug: vi.fn(), warn: vi.fn() },
-      });
-      // The fresh admission authorizes the spawn it needs: the engine
-      // materializes and the turn flows.
-      await cold.dispatchWithReceipt(
-        {
-          type: 'sendTurn',
-          input: { threadId: 'portable-cold-admitted', input: 'hello' },
-        },
-        undefined,
-        {
-          receiverExecutionAdmission: admittedFor(
-            'portable-cold-admitted',
-            tmp,
-          ),
-        },
-      );
-      expect(coldClaude.startSession).toHaveBeenCalledTimes(1);
-      expect(coldClaude.sendTurn).toHaveBeenCalledTimes(1);
-    });
+          });
+        }
+      },
+    );
 
     test('deletion retires the cached marker; a recreated thread id starts clean', async () => {
       // The default fake registers its sessions (the cwd-echo overrides in
@@ -12884,7 +12960,7 @@ describe('OrchestrationService', () => {
     adapter.sendTurn.mockRejectedValueOnce(new Error('replay dispatch failed'));
 
     await expect(
-      restartService['credentialProfileRecovery'].restartRecoverySession({
+      credentialRecoveryOwner(restartService).restartRecoverySession({
         threadId,
         input: 'replayed prompt',
         recoveryCorrelationId: 'replay-fail-correlation',
@@ -13223,7 +13299,7 @@ describe('OrchestrationService', () => {
       return { threadId: turn.threadId, turnId: 'credential-retry-turn' };
     });
 
-    await restartService['credentialProfileRecovery'].restartRecoverySession({
+    await credentialRecoveryOwner(restartService).restartRecoverySession({
       threadId,
       input: 'replay after credential recovery',
       recoveryCorrelationId: 'credential-retry-2732',
@@ -13303,7 +13379,7 @@ describe('OrchestrationService', () => {
       adapter.sendTurn.mockClear();
 
       await expect(
-        restartService['credentialProfileRecovery'].restartRecoverySession({
+        credentialRecoveryOwner(restartService).restartRecoverySession({
           threadId,
           input: 'must not replay',
           recoveryCorrelationId: 'credential-retry-resolution-failure',
@@ -13414,7 +13490,7 @@ describe('OrchestrationService', () => {
         userId: 'u1',
       },
     } as CanonicalRuntimeEvent);
-    await restartService['credentialProfileRecovery'].restartRecoverySession({
+    await credentialRecoveryOwner(restartService).restartRecoverySession({
       threadId,
       input: 'replay prompt',
       recoveryCorrelationId: 'recovery-1',
@@ -26523,6 +26599,24 @@ describe('OrchestrationService', () => {
 
       expect(claude.startSession).not.toHaveBeenCalled();
       expect(claude.interruptTurn).not.toHaveBeenCalled();
+
+      const ownedCurrent = vi.fn();
+      await expect(
+        service.dispatchWithReceipt(
+          { type: 'interruptTurn', threadId, turnId: 'missing-original-turn' },
+          undefined,
+          {
+            delegationGroupAdmission: {
+              assertCurrent: ownedCurrent,
+              signal: new AbortController().signal,
+            },
+          },
+        ),
+      ).rejects.toThrow('Owned interruption requires a live target.');
+      expect(ownedCurrent).toHaveBeenCalled();
+      expect(claude.startSession).not.toHaveBeenCalled();
+      expect(claude.interruptTurn).not.toHaveBeenCalled();
+      expect(claude.stopSession).not.toHaveBeenCalled();
     });
 
     /**
@@ -26685,6 +26779,22 @@ describe('OrchestrationService', () => {
         () => undefined,
       );
       await vi.waitFor(() => expect(claude.startSession).toHaveBeenCalled());
+
+      const ownedCurrent = vi.fn();
+      await expect(
+        service.dispatchWithReceipt(
+          { type: 'interruptTurn', threadId },
+          undefined,
+          {
+            delegationGroupAdmission: {
+              assertCurrent: ownedCurrent,
+              signal: new AbortController().signal,
+            },
+          },
+        ),
+      ).rejects.toThrow('Owned interruption requires a current adapter.');
+      expect(ownedCurrent).toHaveBeenCalled();
+      expect(claude.interruptTurn).not.toHaveBeenCalled();
 
       await expect(
         service.dispatch({ type: 'interruptTurn', threadId }),

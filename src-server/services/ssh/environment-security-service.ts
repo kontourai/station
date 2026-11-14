@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   createHash,
   createHmac,
@@ -77,7 +78,15 @@ import { isHostedTenantExecutionRequired } from '../../runtime/bootstrap/hosted-
 import { sleep } from '../../utils/sleep.js';
 import { principalForDeviceBinding } from '../access/device-binding-principal.js';
 import { StationGroupsService } from '../access/station-groups-service.js';
-import { DevicePairingService } from './device-pairing-service.js';
+import {
+  DevicePairingService,
+  readCanonicalPairingOperations,
+} from './device-pairing-service.js';
+import {
+  type HomeWriterLease,
+  HomeWriterOwner,
+  HomeWriterUnavailableError,
+} from './home-writer-owner.js';
 
 const SECURITY_DIRECTORY = 'security';
 const RECORD_FILE = 'environment.json';
@@ -212,12 +221,48 @@ function parseLockRecord(value: unknown): EnvironmentSecurityLockRecord {
   return lock as unknown as EnvironmentSecurityLockRecord;
 }
 
+const canonicalLocalGrantOriginBrand = Symbol('CanonicalLocalGrantOrigin');
+export interface CanonicalLocalGrantOrigin {
+  readonly [canonicalLocalGrantOriginBrand]: true;
+}
+export interface CanonicalLocalGrantOriginOperations {
+  withCurrentAuthority<Value>(check: () => Value): Value;
+  withObservationScope<Value>(check: () => Value): Value;
+  readUnboundScope(candidate: string): string | undefined;
+  borrowedRegion(): object | undefined;
+  readBorrowedUnboundScope(
+    candidate: string,
+    region: object,
+  ): string | undefined;
+}
+const canonicalLocalGrantOrigins = new WeakMap<
+  CanonicalLocalGrantOrigin,
+  {
+    owner: EnvironmentSecurityService;
+    operations: CanonicalLocalGrantOriginOperations;
+  }
+>();
+
+export function readCanonicalLocalGrantOrigin(
+  owner: EnvironmentSecurityService,
+  origin: CanonicalLocalGrantOrigin,
+): CanonicalLocalGrantOriginOperations {
+  const registered = canonicalLocalGrantOrigins.get(origin);
+  if (!registered || registered.owner !== owner)
+    throw new HomeWriterUnavailableError('identity-unavailable');
+  return registered.operations;
+}
+
 /**
  * Owns Station's stable environment identity and remote bearer credential.
  * The private record never belongs in an HTTP response; use getPublicHandshake
  * for remote discovery and verifyCredential at the authorization boundary.
  */
 export class EnvironmentSecurityService {
+  getProjectHomeDir(): string {
+    return this.#homeDir;
+  }
+
   readonly #homeDir: string;
   readonly #securityDir: string;
   readonly #recordPath: string;
@@ -232,6 +277,8 @@ export class EnvironmentSecurityService {
   readonly #localClientsOnly: boolean;
   readonly #managedOrganization: string | undefined;
   #devicePairingService?: DevicePairingService;
+  #homeWriter?: HomeWriterOwner;
+  #initialized = false;
   readonly #groups: StationGroupsService;
 
   constructor(options: EnvironmentSecurityServiceOptions) {
@@ -279,11 +326,17 @@ export class EnvironmentSecurityService {
    * record is never reseeded: a stored grant the operator raised or capped
    * since would otherwise re-promote someone. Everyone then sits in Member.
    */
-  async #seedGroups(pairing: DevicePairingService): Promise<void> {
+  async #seedGroups(
+    pairing: DevicePairingService,
+    owner: HomeWriterOwner,
+    lease: HomeWriterLease,
+  ): Promise<void> {
     if (this.#groups.activated()) return;
     if (!this.#groups.exists()) {
       const admins = new Set<string>();
-      for (const device of pairing.listDevices()) {
+      for (const device of owner.runWithLease(lease, () =>
+        pairing.listDevices(),
+      )) {
         if (
           device.revokedAt !== null ||
           !device.principalBinding ||
@@ -320,27 +373,32 @@ export class EnvironmentSecurityService {
 
   async initialize(): Promise<EnvironmentSecurityRecord> {
     await this.#ensureSecurityDirectory();
-    const record = await this.#withExclusiveLock(async () => {
-      const recordExists = existsSync(this.#recordPath);
-      const current = recordExists ? this.#readRecord() : createRecord();
-      if (!recordExists) {
-        this.#writeRecordAtomically(current);
-      }
-      this.#ensureRevisionEvidenceKey(current.environmentId);
+    const record = await this.#withExclusiveLock(async (lease, owner) => {
+      const current = owner.runWithLease(lease, () => {
+        const recordExists = existsSync(this.#recordPath);
+        const current = recordExists ? this.#readRecord() : createRecord();
+        if (!recordExists) this.#writeRecordAtomically(current);
+        this.#ensureRevisionEvidenceKey(current.environmentId);
+        return current;
+      });
+      this.#devicePairingService ??= await DevicePairingService.create(
+        {
+          homeDir: this.#homeDir,
+          environmentId: current.environmentId,
+          now: this.#now,
+          capScope: this.#capScope,
+          ownerDeviceStanding: !this.#hosted,
+          localClientsOnly: this.#localClientsOnly,
+          ...(this.#managedOrganization
+            ? { managedOrganization: this.#managedOrganization }
+            : {}),
+        },
+        lease,
+      );
+      await this.#seedGroups(this.#devicePairingService, owner, lease);
       return current;
     });
-    this.#devicePairingService ??= new DevicePairingService({
-      homeDir: this.#homeDir,
-      environmentId: record.environmentId,
-      now: this.#now,
-      capScope: this.#capScope,
-      ownerDeviceStanding: !this.#hosted,
-      localClientsOnly: this.#localClientsOnly,
-      ...(this.#managedOrganization
-        ? { managedOrganization: this.#managedOrganization }
-        : {}),
-    });
-    await this.#seedGroups(this.#devicePairingService);
+    this.#initialized = true;
     return record;
   }
 
@@ -356,57 +414,63 @@ export class EnvironmentSecurityService {
 
   async rotateCredential(): Promise<EnvironmentSecurityRecord> {
     await this.#ensureSecurityDirectory();
-    return this.#withExclusiveLock(async () => {
-      const current = this.#readRecord();
-      const rotated = createRecord(current.environmentId);
-      this.#writeRecordAtomically(rotated);
-      return rotated;
-    });
+    return this.#withExclusiveLock(async (lease, owner) =>
+      owner.runWithLease(lease, () => {
+        const current = this.#readRecord();
+        const rotated = createRecord(current.environmentId);
+        this.#writeRecordAtomically(rotated);
+        return rotated;
+      }),
+    );
   }
 
   async resetEnvironment(): Promise<EnvironmentSecurityRecord> {
     await this.#ensureSecurityDirectory();
-    return this.#withExclusiveLock(async () => {
+    return this.#withExclusiveLock(async (lease, owner) => {
       // A reset is explicit, but still refuses to overwrite corrupt state.
-      const current = this.#readRecord();
-      this.#devicePairingService ??= new DevicePairingService({
-        homeDir: this.#homeDir,
-        environmentId: current.environmentId,
-        now: this.#now,
-        capScope: this.#capScope,
-        ownerDeviceStanding: !this.#hosted,
-        localClientsOnly: this.#localClientsOnly,
-        ...(this.#managedOrganization
-          ? { managedOrganization: this.#managedOrganization }
-          : {}),
-        ...(this.#managedOrganization
-          ? { managedOrganization: this.#managedOrganization }
-          : {}),
-      });
+      const current = owner.runWithLease(lease, () => this.#readRecord());
+      this.#devicePairingService ??= await DevicePairingService.create(
+        {
+          homeDir: this.#homeDir,
+          environmentId: current.environmentId,
+          now: this.#now,
+          capScope: this.#capScope,
+          ownerDeviceStanding: !this.#hosted,
+          localClientsOnly: this.#localClientsOnly,
+          ...(this.#managedOrganization
+            ? { managedOrganization: this.#managedOrganization }
+            : {}),
+        },
+        lease,
+      );
+      const pairing = this.#devicePairingService;
       // #3557: personal access tokens go first, so a reset that cannot
       // revoke them fails before changing anything.
-      await this.#devicePairingService.clearPersonalTokens();
-      const reset = createRecord();
-      const resetKeyPath = this.#revisionEvidenceKeyPath(reset.environmentId);
-      this.#ensureRevisionEvidenceKey(reset.environmentId);
-      try {
-        // Publish the new identity only after its authority key is durable.
-        // A restart can therefore never observe a reset environment without
-        // the key needed to validate its revision evidence.
-        this.#writeRecordAtomically(reset);
-      } catch (error) {
-        rmSync(resetKeyPath, { force: true });
+      await pairing.clearPersonalTokens(lease);
+      const reset = owner.runWithLease(lease, () => {
+        const reset = createRecord();
+        const resetKeyPath = this.#revisionEvidenceKeyPath(reset.environmentId);
+        this.#ensureRevisionEvidenceKey(reset.environmentId);
+        try {
+          // Publish the new identity only after its authority key is durable.
+          // A restart can therefore never observe a reset environment without
+          // the key needed to validate its revision evidence.
+          this.#writeRecordAtomically(reset);
+        } catch (error) {
+          rmSync(resetKeyPath, { force: true });
+          this.#fsyncSecurityDirectory();
+          throw error;
+        }
+        rmSync(this.#revisionEvidenceKeyPath(current.environmentId), {
+          force: true,
+        });
         this.#fsyncSecurityDirectory();
-        throw error;
-      }
-      rmSync(this.#revisionEvidenceKeyPath(current.environmentId), {
-        force: true,
+        pairing.resetEnvironment(reset.environmentId);
+        return reset;
       });
-      this.#fsyncSecurityDirectory();
-      this.#devicePairingService.resetEnvironment(reset.environmentId);
-      // Again, for a token minted while the reset ran. A mint finishing after
-      // this can still survive, but its person's devices are gone by then.
-      await this.#devicePairingService.clearPersonalTokens();
+      // Clear again before releasing the same home lease; participating token
+      // mints cannot interleave with either pass.
+      await pairing.clearPersonalTokens(lease);
       return reset;
     });
   }
@@ -493,6 +557,86 @@ export class EnvironmentSecurityService {
     return this.#devicePairingService?.credentialMintKind(candidate);
   }
 
+  /** One synchronous authority check; borrowing ends before returning. */
+  withCurrentAuthority<T>(check: () => T): T {
+    if (!this.#homeWriter)
+      throw new HomeWriterUnavailableError('identity-unavailable');
+    // Pairing already owns this home's pre/post span and registry revision.
+    if (this.#devicePairingService)
+      return this.#devicePairingService.withCurrentRegistry(check);
+    return this.#homeWriter.runSynchronous(check);
+  }
+
+  /** Canonical raw facts only. Independent request policy remains separate. */
+  canonicalLocalGrantOrigin(): CanonicalLocalGrantOrigin {
+    const pairing = this.#devicePairingService;
+    if (!this.#initialized || !pairing || !this.#homeWriter)
+      throw new HomeWriterUnavailableError('identity-unavailable');
+    const reads = readCanonicalPairingOperations(pairing);
+    const origin: CanonicalLocalGrantOrigin = Object.freeze({
+      [canonicalLocalGrantOriginBrand]: true as const,
+    });
+    const regions = new AsyncLocalStorage<object>();
+    const active = new WeakMap<
+      object,
+      ReturnType<typeof reads.captureBorrowedScope>
+    >();
+    const requireOwner = () => {
+      if (!this.#initialized || this.#devicePairingService !== pairing)
+        throw new HomeWriterUnavailableError('identity-unavailable');
+    };
+    const borrowedRegion = () => {
+      requireOwner();
+      const currentRegion = regions.getStore();
+      return currentRegion &&
+        active.has(currentRegion) &&
+        reads.isRegistryScopeActive()
+        ? currentRegion
+        : undefined;
+    };
+    const withinCurrentAuthority = <Value>(check: () => Value): Value => {
+      requireOwner();
+      if (!reads.isRegistryScopeActive())
+        throw new HomeWriterUnavailableError('borrow-unavailable');
+      const region = Object.freeze({});
+      active.set(region, reads.captureBorrowedScope());
+      try {
+        return regions.run(region, check);
+      } finally {
+        active.delete(region);
+      }
+    };
+    const operations: CanonicalLocalGrantOriginOperations = Object.freeze({
+      withCurrentAuthority: <Value>(check: () => Value): Value => {
+        requireOwner();
+        return reads.withCurrentRegistry(() => withinCurrentAuthority(check));
+      },
+      withObservationScope: <Value>(check: () => Value): Value => {
+        requireOwner();
+        return reads.withCurrentRegistry(() => withinCurrentAuthority(check));
+      },
+      readUnboundScope: (candidate: string) => {
+        requireOwner();
+        return reads.readUnboundScope(candidate);
+      },
+      borrowedRegion,
+      readBorrowedUnboundScope: (candidate: string, region: object) => {
+        const witness = active.get(region);
+        if (borrowedRegion() !== region || !witness)
+          throw new HomeWriterUnavailableError('borrow-unavailable');
+        return reads.readBorrowedUnboundScope(candidate, witness);
+      },
+    });
+    canonicalLocalGrantOrigins.set(origin, { owner: this, operations });
+    return origin;
+  }
+
+  readCurrentUnboundLocalGrantScope(candidate: string): string | undefined {
+    return this.#devicePairingService?.readCurrentUnboundLocalGrantScope(
+      candidate,
+    );
+  }
+
   /**
    * The space-delimited {@link PairingScope} string granted to a credential
    * (archive#1098), or `undefined` when the credential is invalid/revoked.
@@ -512,6 +656,10 @@ export class EnvironmentSecurityService {
   resolveGrantedScope(candidate: string): string | undefined {
     if (this.verifyOperatorCredential(candidate))
       return DEFAULT_GRANT_PAIRING_SCOPE;
+    return this.#resolveDeviceGrantedScope(candidate);
+  }
+
+  #resolveDeviceGrantedScope(candidate: string): string | undefined {
     // #3557: never the raw grant: a device tied to a person is capped by
     // that person's Station group, here and in every reader of this.
     const scope = this.#devicePairingService?.effectiveScope(candidate);
@@ -679,6 +827,49 @@ export class EnvironmentSecurityService {
     },
   ): boolean {
     if (this.verifyOperatorCredential(candidate)) return true;
+    return this.#authorizeDeviceCredential(candidate, request);
+  }
+
+  assessCredentialRoute(
+    candidate: string,
+    route: { method: string; path: string },
+  ): Readonly<{ operator: boolean; grantedScope: string }> | undefined {
+    if (this.verifyOperatorCredential(candidate))
+      return Object.freeze({
+        operator: true,
+        grantedScope: DEFAULT_GRANT_PAIRING_SCOPE,
+      });
+    // Assessment must never turn a structurally supplied activity into a write.
+    const request = { method: route.method, path: route.path };
+    const pairing = this.#devicePairingService;
+    if (!pairing) return undefined;
+    const assess = () => {
+      // The following scope read proves liveness after route policy permits it.
+      if (
+        !this.#authorizeDeviceCredential(candidate, request, 'effective-scope')
+      )
+        return undefined;
+      const grantedScope = this.#resolveDeviceGrantedScope(candidate);
+      return grantedScope === undefined
+        ? undefined
+        : Object.freeze({ operator: false, grantedScope });
+    };
+    return readCanonicalPairingOperations(pairing).isRegistryScopeActive()
+      ? assess()
+      : pairing.withCurrentRegistry(assess);
+  }
+
+  #authorizeDeviceCredential(
+    candidate: string,
+    request: {
+      method: string;
+      path: string;
+      activity?: {
+        lastSeenFrom?: Exclude<PairedDevice['lastSeenFrom'], null>;
+      };
+    },
+    credentialValidation: 'direct' | 'effective-scope' = 'direct',
+  ): boolean {
     if (
       ['POST', 'PUT', 'PATCH', 'DELETE'].includes(
         request.method.toUpperCase(),
@@ -760,7 +951,7 @@ export class EnvironmentSecurityService {
       // so only the promoted-device half can admit here). Read-side surfaces
       // consume the same method, so what the UI offers and what this boundary
       // admits cannot drift.
-      const approved = this.credentialMayDecidePairingRequests(candidate);
+      const approved = this.#deviceMayDecidePairingRequests(candidate);
       return approved && request.activity
         ? (this.#devicePairingService?.recordCredentialActivity(
             candidate,
@@ -773,7 +964,8 @@ export class EnvironmentSecurityService {
           candidate,
           request.activity.lastSeenFrom,
         ) ?? false)
-      : (this.#devicePairingService?.verifyCredential(candidate) ?? false);
+      : credentialValidation === 'effective-scope' ||
+          (this.#devicePairingService?.verifyCredential(candidate) ?? false);
   }
 
   /**
@@ -791,8 +983,14 @@ export class EnvironmentSecurityService {
    * is not the caller acting.
    */
   credentialMayDecidePairingRequests(candidate: string): boolean {
-    if (
+    return (
       this.verifyOperatorCredential(candidate) ||
+      this.#deviceMayDecidePairingRequests(candidate)
+    );
+  }
+
+  #deviceMayDecidePairingRequests(candidate: string): boolean {
+    if (
       this.#devicePairingService?.isLocalGrantMintedCredential(candidate) ||
       this.#devicePairingService?.credentialMayManagePairing(candidate)
     )
@@ -812,10 +1010,20 @@ export class EnvironmentSecurityService {
     return this.#devicePairingService;
   }
 
+  async #readPublicRecord(): Promise<EnvironmentSecurityRecord> {
+    if (!this.#initialized) return this.initialize();
+    if (!this.#homeWriter)
+      throw new HomeWriterUnavailableError('identity-unavailable');
+    this.#homeWriter.assertCurrent();
+    const record = this.#readRecord();
+    this.#homeWriter.assertCurrent();
+    return record;
+  }
+
   async getPublicHandshake(
     peerChatEnabled = false,
   ): Promise<PublicStationHandshake> {
-    const { environmentId } = await this.initialize();
+    const { environmentId } = await this.#readPublicRecord();
     return {
       schemaVersion: PUBLIC_HANDSHAKE_SCHEMA_VERSION,
       environmentId,
@@ -842,7 +1050,7 @@ export class EnvironmentSecurityService {
   }
 
   async createPublicProof(nonce: string): Promise<PublicStationProofResponse> {
-    const { environmentId, credential } = await this.initialize();
+    const { environmentId, credential } = await this.#readPublicRecord();
     const signature = createHmac('sha256', Buffer.from(credential, 'base64url'))
       .update(buildStationProofMessage(environmentId, nonce))
       .digest('base64url');
@@ -885,7 +1093,37 @@ export class EnvironmentSecurityService {
     return assertExistingSecurityDirectory(securityDir, enforcePrivateMode);
   }
 
-  async #withExclusiveLock<T>(operation: () => Promise<T>): Promise<T> {
+  async #withExclusiveLock<T>(
+    operation: (lease: HomeWriterLease, owner: HomeWriterOwner) => Promise<T>,
+  ): Promise<T> {
+    const owner = await HomeWriterOwner.forHome(this.#homeDir);
+    this.#homeWriter = owner;
+    const lease = await owner.acquire();
+    let operationRan = false;
+    let outcome: { ok: true; value: T } | { ok: false; error: unknown };
+    try {
+      outcome = {
+        ok: true,
+        value: await this.#withLegacyEnvironmentLock(() => {
+          operationRan = true;
+          return operation(lease, owner);
+        }),
+      };
+    } catch (error) {
+      outcome = { ok: false, error };
+    }
+    try {
+      await lease.release();
+    } catch (error) {
+      throw new HomeWriterUnavailableError('cleanup-required', operationRan, {
+        cause: error,
+      });
+    }
+    if (!outcome.ok) throw outcome.error;
+    return outcome.value;
+  }
+
+  async #withLegacyEnvironmentLock<T>(operation: () => Promise<T>): Promise<T> {
     const deadline = this.#now() + this.#lockTimeoutMs;
     const nonce = randomUUID();
     const lock: EnvironmentSecurityLockRecord = {

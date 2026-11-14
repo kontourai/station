@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import {
   BUILTIN_KNOWLEDGE_NAMESPACES,
   type KnowledgeNamespaceConfig,
+  resolveKnowledgeNamespaceConfiguration,
 } from '@kontourai/station-contracts/knowledge';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { createLogger } from '../../utils/logger.js';
@@ -15,21 +16,12 @@ export function listKnowledgeNamespaces(
   projectSlug: string,
   storageAdapter?: IStorageAdapter,
 ): KnowledgeNamespaceConfig[] {
-  if (!storageAdapter) return [...BUILTIN_KNOWLEDGE_NAMESPACES];
+  if (!storageAdapter) return resolveKnowledgeNamespaceConfiguration();
   try {
     const project = storageAdapter.getProject(projectSlug);
-    const custom = project.knowledgeNamespaces ?? [];
-    const seen = new Set<string>();
-    const result: KnowledgeNamespaceConfig[] = [];
-    for (const namespace of [...BUILTIN_KNOWLEDGE_NAMESPACES, ...custom]) {
-      if (!seen.has(namespace.id)) {
-        seen.add(namespace.id);
-        result.push(namespace);
-      }
-    }
-    return result;
+    return resolveKnowledgeNamespaceConfiguration(project.knowledgeNamespaces);
   } catch {
-    return [...BUILTIN_KNOWLEDGE_NAMESPACES];
+    return resolveKnowledgeNamespaceConfiguration();
   }
 }
 

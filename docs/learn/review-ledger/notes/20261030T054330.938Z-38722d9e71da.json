@@ -1,0 +1,7 @@
+{
+  "revision": "75cd07400ac82dd1f7eab71191fb449333c732d6",
+
+  "notes": [
+    {"path":"examples/self-configuring-agent/README.md","note":"Scoped Station Control policy delta review at 75cd07400ac: read README and complete agent.json; compared policy changes since main. The eight added bound/self session-group policies are distinct named tools, none present in this example available list or four metadata-only autoApprove entries. Existing project/agent/skill metadata and single-task dispatch policy definitions remain unchanged by that delta. README remains accurate: attended Station engine configuration, explicit tools, skill edits/delegation subject to approval and current caller authority; group availability does not expand this allowlist or grant remote/operator authority. No prose change required for this policy input. Earlier unchanged configuration/dispatch/provider claims retain prior reviews and explicit limits; no model, provider, tool execution, unattended grant or native sandbox acceptance executed.","inputs":["examples/self-configuring-agent/README.md","src-server/tools/station-control-policy.ts","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/codex-adapter-transport.ts","src-server/routes/orchestration/orchestration.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

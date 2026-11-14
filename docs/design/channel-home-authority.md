@@ -432,6 +432,19 @@ through replay. A late provider result cannot undo an indeterminate dispatch.
 Known completion or compensation releases the record; uncertain effects or
 publication preparation retain it. Preparation requires the worker's actual
 durable acknowledgement; an unavailable write cannot be treated as success.
+Same-operation assignment compensation retains the root, subject and actor
+used for the claim. It does not re-resolve a changed Project workspace and
+treat a different namespace's idempotent no-op as cleanup. If the original
+context is unavailable, compensation stays indeterminate. Successful association
+also commits the original artifact namespace in a private dispatch-keyed store
+record, atomically with the public dispatch. Session-exit cleanup and startup
+reconciliation use that namespace with the persisted subject and actor; a later
+Project workspace change cannot redirect release. Reconciliation checks the exact
+Station actor before release and keeps the existing terminal-sibling guard.
+Legacy dispatches without original namespace custody remain unresolved rather than
+using the current workspace. Redispatch refuses before acquiring another claim
+when prior self-handoff cannot confirm release. This does not recover claims lost before association
+or establish cross-process custody for every retained external claim.
 The outbox refuses a different payload under an existing intent and refuses
 new lifecycle entries after the source seal. Tasks without a dispatch-associated Agent have no Task-dispatch
 Agent-start publication to prepare; independent room requests retain their own

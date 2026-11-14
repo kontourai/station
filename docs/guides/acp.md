@@ -1407,10 +1407,13 @@ passed to `authenticate`
 
 ### A previous ACP session cannot be restored
 
-Fresh starts use `newSession`; restoration uses the persisted ACP session ID
-and connection fingerprint with `loadSession`. Inspect the refusal when the
-CLI does not advertise loading, the cursor is missing/invalid, or the connection
-identity changed. Visible Station history alone does not prove that the engine
+Fresh starts use `newSession`. Adapter restoration checks the persisted ACP
+session ID and connection fingerprint, preferring advertised `session/resume`.
+It uses `loadSession` when resume is not advertised, or when resume returns
+method-not-found and loading is advertised. Station's upstream restore
+eligibility still requires observed `loadSession` support, as described under
+[Creation](#creation). Inspect the refusal when supported reattachment is
+unavailable, the cursor is missing/invalid, or the connection identity changed. Visible Station history alone does not prove that the engine
 can restore its private context. Start a new conversation explicitly if safe
 restoration is unavailable.
 

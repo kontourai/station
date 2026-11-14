@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { parsePairingScope } from '@kontourai/station-contracts/environment-security';
@@ -28,8 +28,11 @@ import {
   OPERATOR_SESSION_IDLE_MS,
   OperatorSessionService,
 } from '../../../services/identity/operator-sessions.js';
+import { RelayEnrollmentService } from '../../../services/identity/relay-enrollment-service.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
+import { openRelayEnrollmentJournal } from '../../../services/relay/relay-enrollment-journal.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import { HomeWriterOwner } from '../../../services/ssh/home-writer-owner.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
@@ -45,9 +48,11 @@ const ORIGIN = 'https://station.example.test:8443';
 const APP = 'https://station.example.test';
 const makeTemp = trackTempDirs();
 const registries: LazyOperatorPasskeyRegistry[] = [];
+const relayServices: RelayEnrollmentService[] = [];
 afterEach(() => {
   setClientCredentialResolver(undefined);
   vi.restoreAllMocks();
+  for (const relay of relayServices.splice(0)) relay.close();
   for (const registry of registries.splice(0)) registry.close();
 });
 
@@ -56,6 +61,7 @@ async function build(
     origin?: string | null;
     hosted?: boolean;
     accountBound?: boolean;
+    relayCleanup?: boolean;
   } = {},
 ) {
   const home = makeTemp('station-operator-session-');
@@ -254,7 +260,23 @@ async function build(
       String(isBoundRuntimeLocalOperator(c.req.raw)),
     );
   });
+  const relayEnrollment = options.relayCleanup
+    ? new RelayEnrollmentService({
+        stationId: 'operator-session-fixture',
+        requestOrigin: APP,
+        allowedClientOrigins: [APP],
+        pairing,
+        journal: openRelayEnrollmentJournal({
+          dbPath: join(home, 'operator-relay.sqlite'),
+          stationId: 'operator-session-fixture',
+          now: () => clock.now,
+        }),
+        now: () => clock.now,
+      })
+    : undefined;
+  if (relayEnrollment) relayServices.push(relayEnrollment);
   configureDevicePairingHostRoutes(api as never, pairing, {
+    relayEnrollment,
     consentChannel: channel,
     groups: {
       groupOf: (id) => security.groupOf(id),
@@ -377,6 +399,7 @@ async function build(
     api.request(path, { headers: { cookie, origin: APP } });
   return {
     home,
+    relayEnrollment,
     channel,
     audit,
     account,
@@ -1506,6 +1529,67 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
     });
   });
 
+  test.each(['current', 'expired', 'revoked'] as const)(
+    'pairing-request inventory rechecks a %s session after cleanup',
+    async (state) => {
+      const h = await build({ relayCleanup: true });
+      const signed = await h.signIn();
+      let pendingId: string | undefined;
+      const relay = h.relayEnrollment;
+      if (!relay) throw new Error('Missing real cleanup owner');
+      const cleanup = relay.cleanupExpired.bind(relay);
+      let entered!: () => void;
+      const enteredCleanup = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      vi.spyOn(relay, 'cleanupExpired').mockImplementation(async () => {
+        entered();
+        await released;
+        return cleanup();
+      });
+      const response = h.read(signed.cookie, '/api/pairing/requests');
+      try {
+        await enteredCleanup;
+        if (state === 'expired') h.clock.now += OPERATOR_SESSION_IDLE_MS;
+        if (state === 'revoked')
+          h.registry.existing()!.revoke(signed.passkey.id);
+        const offer = h.pairing.createOffer({
+          endpoint: APP,
+          scope: 'orchestration:read',
+        });
+        const pending = h.pairing.requestPairing({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          deviceName: 'Private pending browser',
+          source: 'pairing-code',
+          requesterPosition: 'unproven',
+        });
+        pendingId = pending.requestId;
+      } finally {
+        release();
+      }
+      const result = await response;
+      if (state === 'current') {
+        expect(result.status).toBe(200);
+        expect(await result.json()).toMatchObject({
+          requests: [expect.objectContaining({ requestId: pendingId })],
+        });
+      } else {
+        expect(result.status).toBe(403);
+        expect(await result.json()).toEqual({
+          error: { code: 'operator_session_required' },
+        });
+      }
+      expect(
+        h.pairing.listRequests().some((entry) => entry.requestId === pendingId),
+      ).toBe(true);
+    },
+  );
+
   test('a valid operator session starts review while an expired cookie does not block an independently authorized device', async () => {
     const h = await build();
     const approver = h.pair('Approver', 'orchestration:read access:approve');
@@ -1773,23 +1857,30 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
       const resume = new Promise<void>((resolve) => {
         release = resolve;
       });
+      let acquisitionPath: string | undefined;
       const acquire = fileLocks.acquireFileMutationLockAsync;
-      const lock = vi
-        .spyOn(fileLocks, 'acquireFileMutationLockAsync')
-        .mockImplementationOnce(async (...args) => {
-          expect(args[0]).toBe(
-            join(
-              h.home,
-              'security',
-              op === 'group'
-                ? 'station-groups.json.mutation'
-                : 'personal-tokens.json.mutation',
-            ),
-          );
-          enter();
-          await resume;
-          return acquire(...args);
-        });
+      const acquireHome = HomeWriterOwner.prototype.acquire;
+      const lock =
+        op === 'group'
+          ? vi
+              .spyOn(fileLocks, 'acquireFileMutationLockAsync')
+              .mockImplementationOnce(async (...args) => {
+                acquisitionPath = String(args[0]);
+                enter();
+                await resume;
+                return acquire(...args);
+              })
+          : vi
+              .spyOn(HomeWriterOwner.prototype, 'acquire')
+              .mockImplementationOnce(async function (
+                this: HomeWriterOwner,
+                ...args
+              ) {
+                acquisitionPath = this.homeDir;
+                enter();
+                await resume;
+                return acquireHome.apply(this, args);
+              });
       const committing = commitChange(h, signed, transaction.id, review);
       try {
         await entered;
@@ -1800,6 +1891,11 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
         lock.mockRestore();
       }
       const result = await committing;
+      expect(acquisitionPath).toBe(
+        op === 'group'
+          ? join(h.home, 'security', 'station-groups.json.mutation')
+          : realpathSync(h.home),
+      );
       expect(result.status).toBe(409);
       const reason = op === 'mint' ? 'target_changed' : 'session_ended';
       expect(await result.clone().json()).toMatchObject({ error: reason });

@@ -1,3 +1,4 @@
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import React, {
   useCallback,
@@ -28,6 +29,7 @@ import { visibleChildWorkNoticeKey } from '../../utils/child-work-display';
 import { isTurnStreamLive } from '../../utils/execution';
 import { isShallowEqual } from '../../utils/isShallowEqual';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
+import { sessionPermissionPosture } from '../../utils/sessionDisplay';
 import {
   chatWaitsOnUser,
   requestAttentionKind,
@@ -125,6 +127,10 @@ interface ChatMessageListProps {
   externalScrollContainerRef?: React.RefObject<HTMLDivElement | null>;
   preserveReading?: boolean;
   activeSession: ChatSession;
+  orchestrationSession?: Pick<
+    OrchestrationSessionSummary,
+    'threadId' | 'controlMode' | 'delegation'
+  > | null;
   scrollControlsTarget?: HTMLElement | null;
   /** The canonical window plus sequenced live events already renders this turn. */
   suppressStreamingRow?: boolean;
@@ -297,6 +303,7 @@ function ChatMessageListComponent({
   apiBase,
   agents,
   activeSession,
+  orchestrationSession,
   scrollControlsTarget,
   suppressStreamingRow,
   fontSize,
@@ -1709,6 +1716,7 @@ function ChatMessageListComponent({
       }).length,
     [activeSession.pendingApprovals, activeSession.answeredApprovals],
   );
+  const permissionPosture = sessionPermissionPosture(orchestrationSession);
   const callerContinue = conversationAccessFor(
     activeSession,
     target?.station,
@@ -1720,6 +1728,8 @@ function ChatMessageListComponent({
   const bubbleSession: MessageBubbleSession = useMemo(
     () => ({
       id: activeSession.id,
+      permissionPosture,
+      permissionPostureThreadId: orchestrationSession?.threadId,
       agentSlug: activeSession.agentSlug,
       agentName: activeSession.agentName,
       projectSlug: activeSession.projectSlug,
@@ -1745,6 +1755,8 @@ function ChatMessageListComponent({
     }),
     [
       turnLive,
+      permissionPosture,
+      orchestrationSession?.threadId,
       activeSession.conversationActivity?.openTurn?.turnId,
       activeSession.openTurnId,
       suppressStreamingRow,
@@ -2196,6 +2208,12 @@ function ChatMessageListComponent({
                               : undefined
                         }
                         attributionAgent={streamingAttributionAgent}
+                        permissionPosture={
+                          orchestrationSession?.threadId ===
+                          (activeSession.currentSessionId ?? activeSession.id)
+                            ? permissionPosture
+                            : null
+                        }
                         owner={owner}
                         onContentChange={pinToLatest}
                       />

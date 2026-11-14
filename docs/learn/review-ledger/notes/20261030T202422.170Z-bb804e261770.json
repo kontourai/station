@@ -1,0 +1,7 @@
+{
+  "revision": "c8bab1dfb559836094e56c05969848a870f2cfad",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed only the new Portable source-owner recovery increment against f33b6940b67, 67d080ec499, and 43c6cb70284 plus the focused owner/typecheck handoffs and independent replay delta reports. The text distinguishes retained-admission/no-journal recovery from actual process-crash evidence, discloses the weak overlapping-create barrier, and keeps production serving, bound Session credential authority, Flow, cancellation/member transport, physical/provider acceptance and #91 delivery open. This note does not approve the accumulated historical plan or qualify the untracked runtime drafts.","inputs":["docs/plans/child-work-epic.md","packages/contracts/src/report-group.ts","packages/sdk/src/client/report-groups.ts","src-server/routes/orchestration/report-groups.ts","src-server/services/orchestration/__tests__/station-report-group-continuation.test.ts","src-server/services/orchestration/delegation-group-persistence.ts","src-server/services/orchestration/station-report-group-admission.ts","src-server/services/orchestration/station-report-group-continuation.ts","src-server/services/orchestration/station-report-group-custody.ts","src-server/services/orchestration/station-report-group-execution.ts","src-server/services/orchestration/station-report-group-preparation.ts","src-server/services/orchestration/station-report-group-runtime.ts"]}
+  ]
+}

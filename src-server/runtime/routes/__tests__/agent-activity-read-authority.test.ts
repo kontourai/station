@@ -145,7 +145,7 @@ async function fixture() {
   const home = mkdtempSync(join(tmpdir(), 'station-activity-authority-'));
   cleanups.push(() => rmSync(home, { recursive: true, force: true }));
   mkdirSync(join(home, 'security'), { mode: 0o700 });
-  const pairing = new DevicePairingService({
+  const pairing = await DevicePairingService.create({
     homeDir: home,
     environmentId: ENVIRONMENT_ID,
   });

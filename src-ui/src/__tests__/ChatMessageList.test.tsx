@@ -901,6 +901,69 @@ describe('ChatMessageList', () => {
     );
   }
 
+  test('delegation records annotate real assistant rows and disappear when the viewed session changes', () => {
+    const session = {
+      ...resizeSession(),
+      messages: [
+        { role: 'assistant' as const, content: 'Child response', timestamp: 1 },
+        {
+          role: 'assistant' as const,
+          content: 'Earlier execution',
+          timestamp: 2,
+          sessionId: 'older-execution',
+        },
+      ],
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = (source?: {
+      threadId: string;
+      delegation?: { taskId: string; mode?: string };
+      controlMode: 'station-owned' | 'read-only-attached';
+    }) => (
+      <QueryClientProvider client={queryClient}>
+        <ChatMessageList
+          activeSession={session}
+          orchestrationSession={source}
+          fontSize={14}
+          showReasoning={false}
+          showToolDetails={false}
+        />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(
+      view({
+        threadId: session.id,
+        controlMode: 'station-owned',
+        delegation: { taskId: 'child', mode: 'isolated-child' },
+      }),
+    );
+    expect(screen.getByText('Delegated worker')).toBeTruthy();
+    expect(screen.queryByText('Read only')).toBeNull();
+    rerender(
+      view({
+        threadId: session.id,
+        controlMode: 'station-owned',
+        delegation: { taskId: 'child' },
+      }),
+    );
+    expect(screen.getByText('Delegated task')).toBeTruthy();
+    expect(screen.queryByText('Delegated worker')).toBeNull();
+    rerender(
+      view({
+        threadId: session.id,
+        controlMode: 'read-only-attached',
+        delegation: { taskId: 'child' },
+      }),
+    );
+    expect(screen.getByText('Read only')).toBeTruthy();
+    expect(screen.queryByText('Delegated task')).toBeNull();
+    rerender(view());
+    expect(screen.queryByText('Delegated task')).toBeNull();
+    expect(screen.queryByText('Read only')).toBeNull();
+  });
+
   test('station#1424 review fix (M2a): a real assistant row wires the owner prop through to the rendered "Managed by …" chip — removing the owner prop, or the MessageAttribution block that renders it, fails this test', () => {
     renderWithQueryClient(
       <ChatMessageList

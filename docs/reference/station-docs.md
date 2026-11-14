@@ -201,6 +201,13 @@ or terminal result must not be invented to make engines look uniform. An idle
 turn is not necessarily a terminal Session, and optional Flow gating must not
 be inferred from ordinary execution completion.
 
+Report-member Sessions can use a recorded sealed-source policy instead of the
+ordinary managed-journal policy for the same engine. They do not admit generic
+Steer or Queue as new paid work; use their bounded report/group controls. An
+interruption or saved cursor does not prove provider termination, release unknown
+accounting or authorize replay. See the [Session input restrictions](session-api.md#submit-steer-follow-up-or-display-input)
+and [report-group API](api.md#report-groups).
+
 ## Tasks and the task workspace
 
 A Task is a durable, user-addressable work identity belonging to a Project. It survives restarts and can span execution episodes. Sessions also retain persisted history; their purpose is to record an execution episode rather than own the durable work identity. A Task may correlate an exact Session, or none at all.
@@ -326,8 +333,11 @@ controls source availability across all Projects on this Station. External sourc
 also offer **Check for new tools** and **Edit connection**; built-in sources do not. Station-classified reads
 default to Always allow; changes and unknown actions default to Ask me on
 Station and Claude. **Tool settings** holds harness options. **Browser access** is separate;
-**Workflow files** holds workflow editing. Browser delivery currently connects
-Claude Code to Station's Project browser; other engines show its unavailability. Changes apply to new chats.
+**Workflow files** holds workflow editing. The editor's Browser access control
+currently configures Claude Code. Codex can receive bound browser and device
+tools when its default-off Feature Preview is enabled; see the
+[Browser guide](../guides/browser-workspace.md#agent-authority-and-human-input).
+Changes apply to new chats.
 Claude and Codex can keep their configured harness MCP integrations while adding
 Station's selections. Claude also offers native on-demand tool loading. Generic
 connected engines receive whole integrations and disclose unsupported restrictions.

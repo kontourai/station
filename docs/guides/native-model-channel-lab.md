@@ -103,6 +103,116 @@ These are same-live-controller cleanup controls. Controller-death reconstruction
 lost removal replies, paid native authority and general cleanup recovery remain
 unqualified.
 
+### Native text request preparation
+
+`--with-native-engines --with-bounded-text-wire` also exercises
+[`prepareNativeTextModelRequest`](../../src-server/runtime/conversation/native-text-model-request.ts)
+before generating the synthetic reply. The helper preserves text, imposes the
+server-selected output cap without increasing a smaller native cap, removes
+advertised tools and native beta/state headers, and selects standard service.
+Responses input containing opaque reasoning, tool results or server conversation
+references refuses. Pro reasoning mode refuses. This helper issues no grant,
+reserves no budget and performs no fetch. A future serving caller must authorize,
+quote and reserve the returned bytes, then attach its own observed credential.
+The original native request hash cannot authorize different prepared bytes.
+
+The private artifacts retain original and prepared request bodies as mode-0600
+files beside their hashes. At `b3bd8d03f0d2`, actual Claude 2.1.322 emits
+`max_tokens: 32000`; actual Codex 0.167.0 emits no output cap and advertises nine
+tools, including provider-side web search. Transport confinement alone therefore
+cannot establish provider-request budget or tool restrictions.
+
+At `4577e4312785`, both actual native clients complete synthetic turns through
+the prepared text requests: both caps are 2,048, Claude's thinking budget is
+2,047 and both tool arrays are empty. Codex uses `tool_choice: none` and disables
+parallel tools. The container is removed, its worker settled and pending channel
+requests are zero. The preceding integration fails because the helper refuses
+Claude's observed `?beta=true` route; the repair explicitly returns the standard
+path and strips beta headers. That failure remains retained.
+
+Independent cap-removal and tool-retention faults fail the intended final-byte
+assertions; each source is restored byte-exactly. These checks establish request
+construction and synthetic native consumption, not provider enforcement or
+monotonic ledger accounting. The [official Responses reasoning guide](https://developers.openai.com/api/docs/guides/reasoning#controlling-costs)
+documents that `max_output_tokens` includes reasoning and visible output. That
+does not supply a complete tariff, model entitlement or approved qualification
+record. Responses pricing, source admission and native issuance remain open.
+
+### Native qualification records
+
+The separate `native-text-single-request-v1` contract is resolved through
+[`resolveBoundedNativeApiProviderContract`](../../src-server/runtime/conversation/bounded-api-provider-contract.ts).
+Its caller must supply the expected server-owned image, executable, CLI version
+and request-preparation identity. The approved registry record must match all of
+them and include the executable, image and preparation hashes in its source set.
+The `sdkPackage` binding names the actual platform distribution for this profile;
+the current implementation accepts only the Claude Linux/arm64 package. It does
+not relabel a native client as the AI SDK.
+
+Native contracts require streaming text with an empty tool array. SDK resolution
+and SDK source-owner creation refuse native approvals. Native resolution refuses
+SDK approvals. Existing provider usage validation and tariff accounting apply;
+retained historical pricing remains inert after registry revocation. There is no
+default registry, production approval, native source grant or paid launch in this
+module. Hash membership validates the supplied approval's binding; it does not
+independently prove image construction or runtime confinement.
+
+At `690d47d6a47c`, the two contract/SDK-owner suites pass 146 cases. Separate
+producer-comparison, SDK-separation and native-tool-check faults each fail their
+intended API assertion. Byte-exact restoration passes the four selected positive
+and refusal cases. These are synthetic registry fixtures, not provider evidence.
+The parser split at `c86f6446c6` passes all 66 contract cases. Removing its SDK
+schema's native-metadata refusal fails the intended assertion; byte-exact
+restoration passes all 66 cases again. Server-test typing passes at the earlier
+profile checkpoint. Native source admission and physical reservation remain
+unfinished: the [existing source owner](../../src-server/services/orchestration/delegation-group-source-admission.ts)
+cannot lend its SDK lease or private prototype wire as a native grant. Its group
+methods must not receive invented group/seat identities for a single Task.
+Codex/Responses qualification and the full inherited-authority acceptance remain open.
+
+### Root Task source custody
+
+[`captureRootNativeTaskSnapshot`](../../src-server/services/orchestration/delegation-group-source-admission.ts)
+uses the live [durable create allocation](../../src-server/services/orchestration/create-request-claims.ts),
+not a caller-supplied Task or group identity. The HTTP route carries its exact
+Request object internally; that object is neither accepted from JSON nor stored
+in the claim ledger. Only newly server-minted Task identities qualify. Legacy
+claims without identity-origin evidence retain ordinary creation/replay behavior
+but cannot gain this native custody by inference.
+
+Current personal-operator authority is checked around protected synchronous
+source reads. The seal binds actual file bytes to the Task allocation in a
+separate private domain and returns references, never source text. Native and
+group snapshots share the existing four-holder and twelve-MiB retained-byte
+bounds. Native seal receipts have a 1,024-record refusal cap and are not evicted.
+Current-custody checks fail after the create callback closes, on Request
+replacement, receipt change, expiry or credential revocation. Releasing these
+source buffers is not evidence of runtime or accounting cleanup.
+
+At `0ac7fd7bff4d`, the native/create/route-claim selection passes forty cases;
+the restored native/create/group-source selection passes all 47. Two actual
+route cases prove that the server's Request replaces a JSON authority claim.
+Four isolated faults are caught: wrong-Request borrowing, provided-Task origin,
+ancestor-to-root fallback and skipped per-file authority. The last fault reads
+one extra source file after a committed revocation and fails its zero-read
+assertion. Each source is restored byte-exactly. Two empty table-case selections
+are retained as invalid mutation attempts, not catches.
+The later legacy-row control passes with the complete eight-case native suite:
+an old unmarked record permits ordinary callback entry but cannot infer native
+server-mint provenance.
+
+Earlier fixture failures remain separate: repeated filesystem spies recurse,
+and the first revocation control does not establish a committed independent
+revocation. The corrected control registers its action outside the source Home
+span, verifies the revocation commits and observes the next file remaining
+unread. No production guard or deadline is relaxed.
+
+This is allocation/source custody only: it proves neither Session existence nor
+native process start. Session-parent calls refuse before source capture until
+genuine ancestor-source admission exists. Native execution-resolution binding,
+safe producer hand-off, physical reservation and retained accounting are still
+unwired; both production qualification flags remain false.
+
 ## Evidence and limits
 
 The [real-worker process tests](../../src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts)

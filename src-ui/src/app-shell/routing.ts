@@ -302,6 +302,11 @@ export function resolveViewFromPath(
   const search = queryIndex >= 0 ? path.slice(queryIndex + 1) : '';
   path = queryIndex >= 0 ? path.slice(0, queryIndex) : path;
   const exactDestination = APP_DESTINATION_REGISTRY.resolveExactRoute(path);
+  if (
+    exactDestination?.type === 'agents' &&
+    new URLSearchParams(search).get('tab') === 'ensembles'
+  )
+    return { type: 'agents', tab: 'ensembles' };
   if (exactDestination) return exactDestination;
 
   if (path.startsWith('/agents/')) {
@@ -580,7 +585,7 @@ export function getPathForView(view: NavigationView): string | null {
     case 'home':
       return '/';
     case 'agents':
-      return '/agents';
+      return view.tab === 'ensembles' ? '/agents?tab=ensembles' : '/agents';
     case 'guidance':
       return `/guidance${view.selectedId ? `/${encodeURIComponent(view.selectedId)}` : ''}${view.tab ? `?tab=${view.tab}${view.filter ? `&filter=${view.filter}` : ''}` : ''}`;
     case 'plugins':

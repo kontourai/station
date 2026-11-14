@@ -1,0 +1,7 @@
+{
+  "revision": "2dee55c227b4cd6f7ecb093ca0cf9dba0292d7e8",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed #88 background-task presentation delta at 2dee55c227b: store pruning bounds 50 settled cards, 50 additional unrepresented bindings per parent and 100 raw unfinished tools; active-chat close/reopen routes preserve live or unresolved delegates until real settlement; absent snapshots map to unresolved and later explicit active or terminal evidence corrects it. Traced hook flag identity and shown-count propagation through dock/header/mobile/context/sheet/Agents pane. Local 152 focused tests across eight files and UI typecheck passed. Browser/native/live-provider and combined final epic acceptance remain unverified; this note does not qualify master delivery.","inputs":["docs/design/placement.md","packages/contracts/src/orchestration.ts","src-server/services/orchestration/event-store.ts","src-ui/src/__tests__/region-model.test.ts","src-ui/src/components/chat-dock/BackgroundTasksSheet.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/SubagentTranscriptCard.css","src-ui/src/contexts/__tests__/RegionModelContext-phone-layer-guard.test.tsx","src-ui/src/contexts/background-tasks-store.ts","src-ui/src/hooks/useUnsavedGuard.tsx","src-ui/src/regions/region-surface-panes.ts","src-ui/src/workspace-panes/AgentsWorkspacePane.tsx","src-ui/src/index.css"]}
+  ]
+}

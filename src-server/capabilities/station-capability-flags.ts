@@ -19,6 +19,10 @@
 import type { StationCapabilityFlags } from '@kontourai/station-contracts';
 
 export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
+  delegationToolConstraintsV1: true,
+  // UNWIRED(#91): full group qualification remains open; personal report routes are mounted.
+  // Keep this advertisement false until the remaining ownership and journey checks pass.
+  delegationGroups: false,
   peerChatTunnelV1: true,
   delegationLocalConversationV1: true,
   childWorkSteering: true,
@@ -83,8 +87,8 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   delegationAttemptClaims: true,
   // #2875 slice 1: the receiver understands the `project-portable-prepared`
   // workspace variant and starts it only when its admitted checkout is at
-  // the requested version when checked (typed refusals otherwise, before
-  // any session). A STATIC protocol fact, like the two flags above: it says
+  // the requested version when checked (typed refusals before a new session
+  // start or initial-turn dispatch). A STATIC protocol fact: it says
   // nothing about what is offered or at which version. Senders gate the
   // variant on it (station-control-delegation.ts).
   executionPreparation: true,

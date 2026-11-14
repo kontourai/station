@@ -7,8 +7,12 @@ ledger, fence, cancel, UI or retention protocol yet.
 All delegation creates require `clientTurnId`. The separate
 [CreateRequestClaims owner](../../src-server/services/orchestration/create-request-claims.ts)
 binds authenticated user/tenant/principal and verified calling Session to the
-request kind, key and input. Each intended request needs a unique key. Completed
-receipts replay for seven days of elapsed host uptime, then expire. Wall-clock
+request kind, key and input. The receiver's earlier portable-attempt claim also
+binds a required inherited tool policy. Reusing an attempt with added or changed
+`toolAllowlistConstraints` conflicts before the existing attempt can be named;
+unchanged policy still identifies the original attempt. These digests establish
+request identity, not authority. Each intended request needs a unique key.
+Completed receipts replay for seven days of elapsed host uptime, then expire. Wall-clock
 jumps do not change that duration; uptime resets conservatively preserve the
 remaining window. Dead unmarked requests reclaim immediately, including changed
 input and resumed Sessions; live, unknown or marked owners still refuse changed input. A starting mark without confirmed
@@ -45,8 +49,11 @@ delegation rules still apply. With it:
 
 `GET /api/orchestration/delegations/attempts/:attemptId`, served by the
 actual executing receiver only, requires the CURRENT verified delegation
-peer grant the claim is keyed by (same grant, live id match). Everyone else
-is refused with no data. The grant is re-resolved AFTER the store read, so
+peer grant the claim is keyed by (same grant, live id match). Callers without
+a current qualifying delegation-peer grant are refused with no data. A different
+valid peer grant reads only its own `(grant, attemptId)` namespace; when it has
+no matching claim, the response is `none`, without disclosing another grant's
+claim. The grant is re-resolved AFTER the store read, so
 a revocation landing mid-lookup is still refused; a store fault answers a
 fixed 503 with no exception text. The projection is closed — state, the
 reserved task reference, and (when accepted) the initial turn id. Never a
@@ -71,9 +78,12 @@ prompt, path, digest, transcript, or provider output. SDK:
 A `project-portable-prepared` create (version-matched execution, see
 [remote execution preparation](../design/remote-execution-preparation.md))
 must carry an `attemptId`: its version check is a phase of the attempt, the
-matched facts are bound with the admitted facts, and every preparation
-refusal the receiver raises after claiming is recorded as the tombstone's
-`refusalCode` (the bound preparation receipt is dropped on refusal).
+matched facts are bound with the admitted facts, and a preparation refusal
+after claiming is recorded as the tombstone's `refusalCode` when that state
+transition succeeds (the bound preparation receipt is dropped on refusal).
+If recording a refusal or unresolved outcome fails, the claim remains at its
+earlier durable state; that state still suppresses another invocation and never
+authorizes resend.
 
 Duplicates: same attempt + same validated intent joins (`pending` /
 `exists` 409, never a second effect); changed intent under the same key

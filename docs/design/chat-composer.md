@@ -4,7 +4,7 @@
 > records the 2026-07-26 audit; the sequencing and shipped-status statements
 > belong to their recorded work. Section 4 below describes the current public
 > HTTP entry points. Current control rendering and sending are owned by
-> [ChatDockBody](../../src-ui/src/components/chat-dock/ChatDockBody.tsx) and
+> [ConversationBody](../../src-ui/src/components/conversation/ConversationBody.tsx) and
 > [foreground dispatch](../../src-ui/src/lib/foregroundMessageDispatch.ts).
 > The mobile product decisions remain binding; this document is not a fresh
 > browser, accessibility, or native-device test result.
@@ -69,8 +69,11 @@ Basis read re-checks access for each new chip. Pending or failed, it stays
 During an authorized active-turn continuation wait, the composer accepts and
 preserves a draft. While this tab sees the turn in flight (a chat reopened
 mid-turn), Send steers or queues into that turn as it does in the tab that
-started it. A wait with no turn in flight here keeps Send blocked behind Check
-again until continuation is writable.
+started it, subject to the Session's declared input admission. Sealed report-member
+Sessions refuse generic Steer and Queue; bounded report controls must obtain new
+source admission. Display notes remain separate, and a retained or uncertain
+message cannot authorize paid replay. A wait with no turn in flight here keeps
+Send blocked behind Check again until continuation is writable.
 The shared popover shell opens toward the roomier viewport edge, including when
 the dock is maximized. Slash commands, `/model` and `@` file results all open
 through one anchored popup outside the composer, so no composer clipping can cut
@@ -987,7 +990,15 @@ a declaration, they disclose that steering is unavailable; neither Send-as-steer
 nor Retry-steering is offered. Follow-up Retry remains available. A durable
 steer already queued waits while Session materialization has not registered an
 adapter. A registered adapter without a declaration, or a declared placement of
-`none`, refuses it with `unsupported-engine` before any handoff.
+`none`, refuses it with `unsupported-engine` before any handoff. For a declared
+`none`, the Send-mode popover shows the adapter's trimmed explanation, or
+“Steering is unavailable for this session.” when that explanation is blank or
+missing. Native and emulated declarations do not show an unavailable note.
+A separate `queuedFollowUp: { state: 'none', detail }` declaration disables
+Queue and prevents the composer from submitting that follow-up. It does not
+follow from Steer being unavailable: ordinary sessions without this declaration
+keep Queue. Sealed source Sessions declare both unavailable and direct the
+person to the report or group controls for another turn.
 ACP's cancel-and-reprompt extension does not become an additive
 native composer action. Profile observations are not persisted in browser session
 state. After post-tool injection the entry remains claimed until model dispatch,
@@ -1272,15 +1283,17 @@ stays on the header control. No resize or
 navigation action requires a gesture.
 
 Mobile message rows prioritize the authored text and essential live approval or
-error state. Each row with text has a 44px copy button beside a separate 44px
-actions button; the actions button opens attribution, model facts, provenance,
+error state. Person-authored and assistant rows with text have a 44px copy button
+beside a separate 44px actions button; the actions button opens attribution, model facts, provenance,
 ratings, and Task references on demand, and omits itself from a user message
 that has none of them. On desktop a durable user message lists **Add input to
 Task** in its ⋯ menu, as an answer lists **Add to Task**, rather than as a
 button under every message. These details retain their original event-backed
 identities. Desktop attribution stays inline. On every screen size a message's
 copy control is one icon button, named "Copy your message" or "Copy answer";
-no menu repeats it as text.
+no menu repeats it as text. On phones, received-agent messages instead use the compact
+cause disclosure, containing their message content, sender attribution and
+available details; they do not render those inline Copy/actions controls.
 
 The executable contracts are `ChatDockMobileHeader.test.tsx` and the mobile
 project-switcher journey in `tests/cross-runtime-chat-switching.spec.ts`.

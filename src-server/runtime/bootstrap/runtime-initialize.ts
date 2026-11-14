@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import type { ACPConfig } from '@kontourai/station-contracts/acp';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { AppConfig } from '@kontourai/station-contracts/config';
@@ -102,6 +103,7 @@ import {
   type InterruptedTurnMemoryAdapter,
   OrchestrationService,
 } from '../../services/orchestration/orchestration-service.js';
+import { reservedSourceExecutionFromStart } from '../../services/orchestration/orchestration-session-state.js';
 import {
   builtinStationAgentSpec,
   createSessionAgentResolver,
@@ -345,6 +347,9 @@ export interface InitializeRuntimeDeps {
     usageAggregator?: UsageAggregator;
   }) => void | Promise<void>;
   onVoltAgentCreated: (voltAgent: VoltAgent) => void;
+  onVoiceWebSocketAttached?: (
+    listener: ReturnType<typeof attachVoiceWebSocket>,
+  ) => void;
 }
 
 interface InitializeRuntimeResult {
@@ -359,7 +364,6 @@ interface InitializeRuntimeResult {
   modelCatalog: BedrockModelCatalog;
   usageAggregator?: UsageAggregator;
   voltAgent: VoltAgent;
-  voiceWsAttached: boolean;
 }
 
 /**
@@ -441,6 +445,7 @@ export async function initializeRuntime(
   logger.debug('Initializing Station Runtime...');
 
   const appConfig = await configLoader.loadAppConfig();
+  const initialStoredAppConfig = structuredClone(appConfig);
   // The orchestration service starts before the model catalog is composed.
   // Keep this tiny forwarding seam stable, then install the real catalog
   // authority below before adapter streams can emit usage events.
@@ -686,7 +691,21 @@ export async function initializeRuntime(
     deps.environmentSecurityService,
   );
   const orchestrationService = new OrchestrationService({
-    recoverDurableTurn: (input) => durableOwner.recover(input),
+    recoverDurableTurn: (input) =>
+      reservedSourceExecutionFromStart(
+        orchestrationEventStore.latestEventByMethod(
+          input.record.threadId,
+          'session.started',
+        )?.payload,
+      ) !== undefined ||
+      reservedSourceExecutionFromStart(
+        orchestrationEventStore.firstEventByMethod(
+          input.record.threadId,
+          'session.started',
+        )?.payload,
+      ) !== undefined
+        ? Promise.resolve('not-owned')
+        : durableOwner.recover(input),
     nativeForkStoredReadVerifier: nativeForkStoredReadDomain.verifyForService,
     ...(deps.hostImagesPreview
       ? { hostImagesPreview: deps.hostImagesPreview }
@@ -1092,13 +1111,46 @@ export async function initializeRuntime(
   // inputs is the archive#1588/#3063 reload-loop anti-pattern.
   await materializeBuiltinIntegrations(deps.configLoader);
 
-  // First-run engine adoption persists AppConfig; finish that owned write before
-  // fencing agent construction against subsequent configuration changes.
+  const beforeEngineResolution = deps.captureAgentConfigurationRevisions?.();
   const builtinEngineBinding =
     await deps.resolveBuiltinEngineBinding?.(appConfig);
+  const afterEngineResolution = deps.captureAgentConfigurationRevisions?.();
+  const adoptedAppConfig = await configLoader.loadAppConfig();
+  const { builtinAgentEngineConnectionId: initialChoice, ...initialSettings } =
+    initialStoredAppConfig;
+  const { builtinAgentEngineConnectionId: adoptedChoice, ...adoptedSettings } =
+    adoptedAppConfig;
+  if (
+    !isDeepStrictEqual(initialSettings, adoptedSettings) ||
+    (adoptedChoice !== initialChoice &&
+      !(
+        initialChoice === undefined &&
+        builtinEngineBinding &&
+        adoptedChoice === builtinEngineBinding.connectionId
+      ))
+  ) {
+    throw new Error(
+      'Runtime configuration changed while resolving the startup engine.',
+    );
+  }
+  appConfig.builtinAgentEngineConnectionId = adoptedChoice;
+
   const registryPolicyApplication =
     await deps.registryTrustPolicyAuthority?.captureApplication();
   const configurationBefore = deps.captureAgentConfigurationRevisions?.();
+  if (
+    beforeEngineResolution &&
+    afterEngineResolution &&
+    configurationBefore &&
+    (beforeEngineResolution.provider !== configurationBefore.provider ||
+      beforeEngineResolution.selectedPackageFingerprint !==
+        configurationBefore.selectedPackageFingerprint ||
+      afterEngineResolution.appConfig !== configurationBefore.appConfig)
+  ) {
+    throw new Error(
+      'Runtime configuration changed while startup agents were being constructed.',
+    );
+  }
   // #4521: before the first agent exists, which would otherwise build
   // VoltAgent's remote-exporting default for itself.
   const managedVoltAgentObservability = installManagedVoltAgentObservability();
@@ -1329,7 +1381,7 @@ export async function initializeRuntime(
 
   // Bind the dedicated listener only after every awaited initialization step
   // succeeds, so a rejected startup cannot strand the global voice-port guard.
-  attachVoiceWebSocket(port + 2, voiceService, host, {
+  const voiceListener = attachVoiceWebSocket(port + 2, voiceService, host, {
     // Scoped pairing (archive#1098): a valid credential must ALSO carry
     // orchestration:operate. Shared with terminal's identical gate
     // (`runtime-service-bootstrap.ts`) via `credentialAuthorizedForScope`.
@@ -1343,13 +1395,16 @@ export async function initializeRuntime(
     browserOrigins: stationOriginPolicy({ port, host }),
     audit: (record) => logger.warn('Voice authentication denied', record),
   });
+  deps.onVoiceWebSocketAttached?.(voiceListener);
   // Defer Claude-transcript follow so the first event-loop turns can answer
   // identity/readiness probes. Immediate start() + bulk INSERT OR IGNORE of
   // large attached histories was wedging launchd health checks (port bound,
   // HTTP hung). Follow still runs; first poll is delayed slightly.
-  setTimeout(() => {
+  const attachedFollowStartTimer = setTimeout(() => {
     attachedSessionFollowService.start();
-  }, 2_500).unref?.();
+  }, 2_500);
+  attachedFollowStartTimer.unref?.();
+  timers.push(attachedFollowStartTimer);
   logger.info('Voice WebSocket listening', { port: port + 2 });
   logger.debug('Station Runtime initialized', { port });
 
@@ -1366,7 +1421,6 @@ export async function initializeRuntime(
     modelCatalog,
     usageAggregator: nextUsageAggregator,
     voltAgent,
-    voiceWsAttached: true,
   };
 }
 

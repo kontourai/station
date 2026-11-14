@@ -1,0 +1,9 @@
+{
+  "revision": "abbac2f2471aa4e6c0f64c2bf7e7c72c41273c89",
+
+  "notes": [
+    {"path":"docs/guides/operator-passkeys.md","note":"Scoped source-delta review of the Ensemble runtime callback: consent listener, enrollment, remote operator read, separate per-action step-up and passkey stores are unchanged. Native engine inspection requires the existing local operator grant and does not promote an operator browser session into that authority. Retained four captures re-opened separately; no new physical-authenticator or native qualification.","inputs":["docs/guides/operator-passkeys.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed affected runtime-composition security claims against the Ensemble-only diff. Existing principal resolution, peer credential reader, OPERATOR_MUTATION guard and peer enrollment scopes are unchanged. New explicit native sign-in inspection requires current local operator authority even for uploaded bytes, rechecks authority after awaits and publishes no native witness or execution grant. This is scoped source review, not a new full threat-model audit.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

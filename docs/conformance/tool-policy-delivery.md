@@ -125,6 +125,15 @@ station-control caller: a Codex URL token, an ACP header token or the Claude
 in-process server. A shell `station` CLI run under an operator credential is not
 that caller, so this is not coverage of every way a child could start work.
 
+Requests that carry inherited `toolAllowlistConstraints` require full
+conjunction enforcement. Station-agent sessions use the pre-tool chain; native
+and unknown engines refuse these requests before provisioning or turn dispatch
+with `delegation_lineage_unavailable`. Existing native sessions without these
+clauses keep the partial-delivery limits above. This admission refusal does not
+qualify native enforcement, portable resource/credential authority or finite
+budgets. The `delegationToolConstraintsV1` handshake advertises preservation and
+Station-owned enforcement or refusal, not full native interception.
+
 ### Codex approval policy and reviewer
 
 The session-level engine Ask mode is separate from the authored per-tool Ask
@@ -301,6 +310,42 @@ own tools or configurations. An explicit conversation engine override instead
 refuses startup when required profile delivery is unsupported or undelivered;
 it cannot reduce the selected Agent profile to fit the engine. See
 [execution overrides](../reference/session-api.md#preserve-an-agent-profile-with-an-execution-override).
+
+## Retained-session context sync
+
+Session-group context sync is separate from ordinary Agent grants and the
+matrix's general pre-tool policy cells. The current path accepts retained
+Claude Code 2.1.308, 2.1.318 and 2.1.322 conversations only; other runtimes refuse
+before a sync attempt is reserved. Known nonpersistent Sessions also refuse.
+Durable Task creation requests native transcript retention; the group performs
+preflight for every member.
+The 2.1.322 / Agent SDK 0.3.322 qualification uses real native CLI execution
+with synthetic loopback inference: ordinary and resumed effects run, while
+restricted Write, SDK MCP, plugin MCP and Agent-child Write are denied. A separate
+public-SDK/HTTP group caller qualifies one wrong-ACK retry and same-operation
+replay. These results do not establish provider billing, restart recovery,
+universal internal-effect suppression or portable authority. The
+[epic checkpoint](../plans/child-work-epic.md#current-native-wrong-ackretry-checkpoint-2026-11-13)
+retains the revision, negative controls and limits.
+
+The [session owner](../../src-server/services/orchestration/orchestration-service.ts)
+holds an exclusive activation generation through confirmed teardown, exact
+native resume and canonical turn dispatch. Its
+[process-local capability](../../src-server/services/orchestration/session-tool-restriction.ts)
+reaches the Claude adapter, which sets `tools: []` and command-line
+`disallowedTools: ['*']`. Ordinary turns and prepared replay cannot join the
+restricted activation. The native conversation and configuration binding must
+remain the ones the member retained.
+
+This restricts model-tool execution. It does not promise an empty advertised
+tool list, an OS sandbox, suppression of startup hooks, or complete coverage of
+plugin, delegation and autonomous internal effects. An exact ACK records receipt
+of folded context, not verified understanding or work acceptance. Logical
+attempt reservations do not establish physical-attempt, token or dollar caps.
+See the [session-group API](../reference/api.md#cli-session-groups) for bounds,
+retry conditions, unknown holds and qualified runtime limits. Controlled native
+loopback evidence does not establish real-provider sync or universal no-tools
+authority.
 
 ## Opt-in delivery evidence (#3824)
 

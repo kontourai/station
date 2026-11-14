@@ -1,0 +1,11 @@
+{
+  "revision": "6f1334df7797dea2f710e3e3f1729f5cd31ea9e9",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed the branch delta in orchestration.ts, runtime-routes.ts and orchestration-service.ts. The added CLI group routes reuse dispatchAuthorizedDelegation and the installed orchestration sessions; they add no managed-chat feature flag, store migration or station-agent inventory registration. Existing managed-chat cutover decision and historical evidence remain unchanged. Source review only; no production enable or provider acceptance inferred.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Reviewed changed OrchestrationInputOrigin.initiator and group admission fences against the current observeAnswerability/read-time summary path. The contract addition records authenticated actor beside reported surface; groupSnapshotSchema carries request identifiers only. No answerability persistence or synthetic request-resolution mechanism was added. Existing read-time decision stands; controlled group form evidence does not qualify every historical consumer.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","packages/contracts/src/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Traced CLI session-group events/stream through group-bound Last-Event-ID parsing, per-write authority recheck, durable page read, and SDK fetchSSE checkpoint validation. The frame-overhead repair changes bounded framing, not authenticated fetch or cursor transport. Historical connection counts and planned multiplexing remain explicitly non-current; no live pool saturation/native/proxy qualification claimed.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","packages/sdk/src/__tests__/fetch-sse.test.ts","packages/sdk/src/client/http.ts","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

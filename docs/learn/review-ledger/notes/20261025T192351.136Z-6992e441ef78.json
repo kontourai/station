@@ -1,0 +1,7 @@
+{
+  "revision": "187a8803415a434947d7a48f5d787b662afe20a0",
+
+  "notes": [
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Read the complete 266-line integration-surface document and its historical/classified record. The July-August package API tables, old version notes, retired sidecar integration and founding evidence pipeline are explicitly historical, not current instructions. Current opening routes delegate installed contracts to package.json/pnpm-lock.yaml and named Flow/Evidence/Knowledge/conformance/SDK owners. Checked the changed exact Flow Agents dependency is9.6.0 and inspected the installed public runtime/rounds/authority exports plus Station report preparation/execution/continuation consumers. The9.6.0 initial-request admission and separately pending narrowing do not contradict the document: there is no current-version or complete-group claim to refresh. No prose change required; retain historical/classified. This is a dependency-impact/classification review, not a current audit of every old package API, the historical pipeline, live providers, hosted/readiness, device or whole-epic acceptance.","inputs":["docs/strategy/kontour-integration-surface.md","package.json#/dependencies/@kontourai~1flow-agents"]}
+  ]
+}

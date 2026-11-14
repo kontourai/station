@@ -1,7 +1,7 @@
 /**
- * Which surfaces hold a live `/api/events` stream — the stream the in-app
- * toast arrives on — keyed the way focus presence (#2585) keys its surfaces
- * (#2620).
+ * Which surfaces receive general events through a live `/events` stream or
+ * the shared `/api/orchestration/events` connection, keyed the way focus
+ * presence (#2585) keys its surfaces (#2620).
  *
  * The notification router trusts a focused surface to quiet a person's other
  * surfaces only while that surface can actually show the in-app toast. Focus

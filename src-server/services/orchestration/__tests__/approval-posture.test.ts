@@ -21,6 +21,7 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { confinementProvidersForTests } from '../../../__test-utils__/confinement-providers.js';
+import { credentialRecoveryOwner } from '../../../__test-utils__/credential-recovery-owner.js';
 import { awaitSessionRecoveryCompleted } from '../../../__test-utils__/session-runtime-barriers.js';
 import type {
   ProviderAdapterMetadata,
@@ -163,6 +164,14 @@ function registry(adapters: ProviderAdapterShape[]): IProviderAdapterRegistry {
   };
 }
 
+function deferredVoid() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 const phone: ClientOrigin = {
   version: 1,
   actor: { kind: 'device', deviceId: 'phone' },
@@ -185,6 +194,8 @@ describe('server-ordered approval posture (#2436)', () => {
   let agentDefaults: Record<string, ApprovalMode | undefined>;
   let acpControls: Record<string, AcpApprovalControl>;
   let service: OrchestrationService;
+  let beforeAgentResolution: (() => Promise<void>) | undefined;
+  let beforeStationDefaultResolution: (() => Promise<void>) | undefined;
 
   function createService(): OrchestrationService {
     return new OrchestrationService({
@@ -192,15 +203,22 @@ describe('server-ordered approval posture (#2436)', () => {
       eventBus: bus,
       eventStore: store,
       acpApprovalControl: (connectionId) => acpControls[connectionId],
-      resolveStationDefaultApprovalMode: async () => stationDefault,
+      resolveStationDefaultApprovalMode: async () => {
+        const resolved = stationDefault;
+        await beforeStationDefaultResolution?.();
+        return resolved;
+      },
       // #2494: Seatbelt available on any host, so Claude resolves the same.
       confinementProviders: confinementProvidersForTests(),
       // The authored-Agent start gate (resolveSessionAgent) is satisfied the
       // way production resolves a defined Agent.
-      resolveSessionAgent: async (input) => ({
-        ...input,
-        agent: { slug: String(input.metadata?.agentSlug ?? 'claude') },
-      }),
+      resolveSessionAgent: async (input) => {
+        await beforeAgentResolution?.();
+        return {
+          ...input,
+          agent: { slug: String(input.metadata?.agentSlug ?? 'claude') },
+        };
+      },
       loadAgentExecutionConfig: async (slug) =>
         agentDefaults[slug] ? { approvalMode: agentDefaults[slug] } : undefined,
       logger: { debug: vi.fn(), warn: vi.fn() },
@@ -217,6 +235,8 @@ describe('server-ordered approval posture (#2436)', () => {
     stationDefault = undefined;
     agentDefaults = {};
     acpControls = {};
+    beforeAgentResolution = undefined;
+    beforeStationDefaultResolution = undefined;
     service = createService();
   });
 
@@ -584,6 +604,106 @@ describe('server-ordered approval posture (#2436)', () => {
     expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('never');
   });
 
+  test.each(['fresh', 'dormant', 'credential'] as const)(
+    '%s provider start refuses posture overtaken during Agent preparation',
+    async (path) => {
+      const threadId = `t-posture-race-${path}`;
+      if (path === 'credential') {
+        await start(threadId, 'claude', 'never');
+      } else {
+        if (path === 'dormant') {
+          store.upsertSession({
+            provider: 'claude',
+            threadId,
+            status: 'ready',
+            resumeCursor: { cursor: `resume-${threadId}` },
+            createdAt: '2026-09-01T00:00:00.000Z',
+            updatedAt: '2026-09-01T00:00:05.000Z',
+          });
+        }
+        expect(
+          await service.recordApprovalModeDecision({
+            threadId,
+            provider: 'claude',
+            approvalMode: 'never',
+            basedOnSequence: null,
+          }),
+        ).toMatchObject({ recorded: true });
+        if (path === 'dormant') {
+          service.initialize();
+          await awaitSessionRecoveryCompleted(service);
+        }
+      }
+      const startsBefore = claude.starts.length;
+      const entered = deferredVoid();
+      const release = deferredVoid();
+      beforeAgentResolution = async () => {
+        entered.resolve();
+        await release.promise;
+      };
+      const invoke = () =>
+        path === 'fresh'
+          ? service.dispatch({
+              type: 'startSession',
+              input: { provider: 'claude', threadId },
+            })
+          : path === 'dormant'
+            ? turn(threadId)
+            : credentialRecoveryOwner(service).restartRecoverySession({
+                threadId,
+                input: 'retry after credential replacement',
+                recoveryCorrelationId: `posture-race-${path}`,
+                signal: new AbortController().signal,
+                credentialProfileRef: 'backup',
+              });
+      const pending = invoke();
+      void pending.catch(() => {});
+      try {
+        await entered.promise;
+        expect(
+          await service.recordApprovalModeDecision({
+            threadId,
+            provider: 'claude',
+            approvalMode: 'ask',
+            basedOnSequence: latestDecisionSequence(threadId),
+          }),
+        ).toMatchObject({ recorded: true });
+        release.resolve();
+        await expect(pending).rejects.toThrow(/Approval settings changed/);
+        expect(claude.starts).toHaveLength(startsBefore);
+        if (path === 'dormant') {
+          await expect(pending).rejects.toMatchObject({
+            code: 'approval-posture-changed',
+            receipt: { status: 'rejected' },
+            kind: 'permission_denied',
+            failurePhase: 'refused',
+            retryable: false,
+          });
+          expect(
+            store
+              .listEvents(threadId)
+              .filter((row) => row.payload.method === 'runtime.error')
+              .at(-1)?.payload,
+          ).toMatchObject({
+            method: 'runtime.error',
+            code: 'approval-posture-changed',
+            kind: 'permission_denied',
+            retryable: false,
+            retriable: false,
+            failurePhase: 'refused',
+          });
+        }
+        beforeAgentResolution = undefined;
+        await invoke();
+        expect(claude.starts).toHaveLength(startsBefore + 1);
+        expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('ask');
+      } finally {
+        release.resolve();
+        await pending.catch(() => undefined);
+        beforeAgentResolution = undefined;
+      }
+    },
+  );
   describe('full access picked mid-chat on an engine spawned without its grant', () => {
     // Like Claude started with no Station mode: the live engine takes full
     // access only once a start at `never` spawned it with the grant.
@@ -1042,7 +1162,7 @@ describe('server-ordered approval posture (#2436)', () => {
     // user then tightens.
     await decide('t-recovery', 'ask', phone);
     claude.starts.length = 0;
-    await service['credentialProfileRecovery'].restartRecoverySession({
+    await credentialRecoveryOwner(service).restartRecoverySession({
       threadId: 't-recovery',
       input: 'retry',
       modelOptions: { approvalMode: 'never' },
@@ -1052,6 +1172,56 @@ describe('server-ordered approval posture (#2436)', () => {
     });
     expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('ask');
     expect(claude.lastTurnMode()).toBe('ask');
+  });
+
+  test('direct credential replay refuses posture overtaken after its process starts', async () => {
+    const threadId = 't-direct-replay-posture-race';
+    stationDefault = 'never';
+    await start(threadId);
+    await decide(threadId, 'connection-default');
+    const entered = deferredVoid();
+    const release = deferredVoid();
+    const originalStart = claude.startSession.bind(claude);
+    const startSpy = vi
+      .spyOn(claude, 'startSession')
+      .mockImplementation(async (input) => {
+        const result = await originalStart(input);
+        beforeStationDefaultResolution = async () => {
+          entered.resolve();
+          await release.promise;
+        };
+        return result;
+      });
+    const turnsBefore = claude.turns.length;
+    const invoke = () =>
+      credentialRecoveryOwner(service).restartRecoverySession({
+        threadId,
+        input: 'retry directly',
+        recoveryCorrelationId: 'direct-posture-race',
+        signal: new AbortController().signal,
+        credentialProfileRef: 'backup',
+      });
+    const pending = invoke();
+    void pending.catch(() => {});
+    try {
+      await entered.promise;
+      expect(await decide(threadId, 'ask', phone)).toMatchObject({
+        recorded: true,
+      });
+      release.resolve();
+      await expect(pending).rejects.toThrow(/Approval settings changed/);
+      expect(claude.turns).toHaveLength(turnsBefore);
+      beforeStationDefaultResolution = undefined;
+      startSpy.mockRestore();
+      await invoke();
+      expect(claude.turns).toHaveLength(turnsBefore + 1);
+      expect(claude.lastTurnMode()).toBe('ask');
+    } finally {
+      release.resolve();
+      await pending.catch(() => undefined);
+      beforeStationDefaultResolution = undefined;
+      startSpy.mockRestore();
+    }
   });
 
   describe('#2493: confinement is a server-derived axis beside the approval mode', () => {
@@ -1065,7 +1235,7 @@ describe('server-ordered approval posture (#2436)', () => {
     }
 
     function restartForCredentialProfile(threadId: string) {
-      return service['credentialProfileRecovery'].restartRecoverySession({
+      return credentialRecoveryOwner(service).restartRecoverySession({
         threadId,
         input: 'retry',
         // The source turn's own posture: exactly what a confined caller

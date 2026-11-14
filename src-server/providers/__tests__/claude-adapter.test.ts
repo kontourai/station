@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import * as childWorkload from '@kontourai/station-shared/child-workload';
@@ -150,6 +150,7 @@ import {
   sessionTempRoot,
   sessionTmpDirPath,
 } from '../../services/infra/session-tmpdir.js';
+import { withSessionToolRestriction } from '../../services/orchestration/session-tool-restriction.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
@@ -165,6 +166,7 @@ import {
   resolveSpawnableClaudeExecutable,
 } from '../adapters/claude-adapter.js';
 import { claudeRequestDisplayText } from '../adapters/claude-adapter-events.js';
+import { nativeResumeBindingKey } from '../adapters/native-resume-binding.js';
 import { createCredentialProfileAppHomeEnvResolver } from '../app-home/credential-profile-env.js';
 import { credentialProfileAppHomeDir } from '../app-home/credential-profile-registry.js';
 import {
@@ -290,6 +292,151 @@ async function completeClaudeTurn(
 }
 
 describe('ClaudeAdapter', () => {
+  test.each(['2.1.308', '2.1.318', '2.1.322'])(
+    'qualified runtime %s denies every tool at launch and rejects ordinary or stale sends',
+    async (version) => {
+      const controlled = Object.assign(createControlledMockQuery(), {
+        initializationResult: vi
+          .fn()
+          .mockResolvedValue({ claude_code_version: version }),
+      });
+      mockQuery.mockReturnValue(controlled);
+      let configHome = join(homedir(), '.claude');
+      const adapter = new ClaudeAdapter({
+        readBundledVersion: () => version,
+        getConnectionEnv: async () => ({ CLAUDE_CONFIG_DIR: configHome }),
+      });
+      let current = true;
+      const restriction = {
+        threadId: 'sync-thread',
+        nativeSessionId: 'native-sync',
+        nativeBindingKey: nativeResumeBindingKey(
+          'claude',
+          join(homedir(), '.claude'),
+          null,
+        ),
+        generation: 'generation-one',
+        clientTurnId: 'reserved-sync',
+        assertCurrent() {
+          if (!current) throw new Error('revoked');
+        },
+      };
+      try {
+        await adapter.assertContextSyncRuntime();
+        await withSessionToolRestriction(restriction, () =>
+          adapter.startSession({
+            threadId: restriction.threadId,
+            provider: 'claude',
+            resumeCursor: 'native-sync',
+          }),
+        );
+        expect(mockQuery.mock.calls.at(-1)?.[0].options).toMatchObject({
+          tools: [],
+          disallowedTools: ['*'],
+          resume: 'native-sync',
+        });
+        await expect(
+          adapter.sendTurn({
+            threadId: restriction.threadId,
+            input: 'ordinary',
+          }),
+        ).rejects.toThrow('group_sync_activation_changed');
+        await expect(
+          withSessionToolRestriction(restriction, () =>
+            adapter.sendTurn({
+              threadId: restriction.threadId,
+              input: 'wrong attempt',
+              clientTurnId: 'foreign',
+            }),
+          ),
+        ).rejects.toThrow('group_sync_activation_changed');
+        controlled.push({
+          type: 'system',
+          subtype: 'init',
+          session_id: 'native-sync',
+          tools: [],
+          mcp_servers: [],
+          model: 'claude-sonnet',
+        });
+        await withSessionToolRestriction(restriction, () =>
+          adapter.sendTurn({
+            threadId: restriction.threadId,
+            input: 'sync',
+            clientTurnId: 'reserved-sync',
+          }),
+        );
+        current = false;
+        expect(() =>
+          withSessionToolRestriction(restriction, () =>
+            adapter.sendTurn({
+              threadId: restriction.threadId,
+              input: 'stale',
+              clientTurnId: 'reserved-sync',
+            }),
+          ),
+        ).toThrow('revoked');
+        await adapter.stopSession(restriction.threadId);
+        current = true;
+        configHome = join(homedir(), '.claude-changed-sync');
+        const before = mockQuery.mock.calls.length;
+        await expect(
+          withSessionToolRestriction(restriction, () =>
+            adapter.startSession({
+              threadId: restriction.threadId,
+              provider: 'claude',
+              resumeCursor: 'native-sync',
+            }),
+          ),
+        ).rejects.toThrow('different engine home or credential profile');
+        expect(mockQuery).toHaveBeenCalledTimes(before);
+      } finally {
+        await adapter.stopAll();
+      }
+    },
+  );
+
+  test.each(['2.1.307', '2.1.319', '2.1.323', undefined])(
+    'refuses unqualified sync runtime %s before accepting a turn',
+    async (version) => {
+      const controlled = Object.assign(createMockQuery([]), {
+        initializationResult: vi
+          .fn()
+          .mockResolvedValue({ claude_code_version: version }),
+      });
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter({
+        readBundledVersion: () => version ?? null,
+      });
+      await expect(adapter.assertContextSyncRuntime()).rejects.toThrow(
+        'group_sync_policy_unavailable',
+      );
+      expect(mockQuery).not.toHaveBeenCalled();
+      await expect(
+        withSessionToolRestriction(
+          {
+            threadId: 'sync-thread',
+            nativeSessionId: 'native-sync',
+            nativeBindingKey: nativeResumeBindingKey(
+              'claude',
+              join(homedir(), '.claude'),
+              null,
+            ),
+            generation: 'generation',
+            clientTurnId: 'reserved',
+            assertCurrent() {},
+          },
+          () =>
+            adapter.startSession({
+              threadId: 'sync-thread',
+              provider: 'claude',
+              resumeCursor: 'native-sync',
+            }),
+        ),
+      ).rejects.toThrow('group_sync_policy_unavailable');
+      expect(controlled.close).toHaveBeenCalled();
+      expect(await adapter.hasSession('sync-thread')).toBe(false);
+    },
+  );
   test('does not overstate local recovery events as provider acceptance', () => {
     expect(new ClaudeAdapter().metadata.recovery).not.toHaveProperty(
       'dispatchSettlement',
@@ -10947,13 +11094,21 @@ echo '{"loggedIn":true}'
         ANTHROPIC_BASE_URL: 'https://ambient.example.internal',
       });
       mockQuery.mockReturnValue(createMockQuery([]));
-      const adapter = new ClaudeAdapter({
-        getConnectionEnv: async () => ({
-          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
-          ANTHROPIC_AUTH_TOKEN: 'cliproxy-local',
-          ANTHROPIC_API_KEY: '',
+      const launch = vi.fn(
+        async (session?: {
+          threadId: string;
+          cwd?: string;
+          modelId?: string;
+        }) => ({
+          env: {
+            ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+            ANTHROPIC_AUTH_TOKEN: `route:${session?.threadId}`,
+            ANTHROPIC_API_KEY: '',
+          },
+          args: [],
         }),
-      });
+      );
+      const adapter = new ClaudeAdapter({ getConnectionLaunch: launch });
       const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
       await adapter.startSession({
@@ -10965,12 +11120,37 @@ echo '{"loggedIn":true}'
       const call = mockQuery.mock.calls.at(-1)?.[0];
       expect(call.options.env).toMatchObject({
         ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
-        ANTHROPIC_AUTH_TOKEN: 'cliproxy-local',
+        ANTHROPIC_AUTH_TOKEN: 'route:thread-connection-env',
         ANTHROPIC_API_KEY: '',
+      });
+      expect(launch).toHaveBeenCalledWith({
+        threadId: 'thread-connection-env',
+        cwd: '/workspace/project',
+        modelId: undefined,
       });
       expect(call.options.env.TMPDIR).toBe(engineSpawnTmpDirPath());
       await iterator.next(); // session.started
       await iterator.next(); // session.configured
+    });
+
+    test('a Session route refusal never falls back to an unscoped model connection', async () => {
+      const refused = Error('Session model admission withdrawn');
+      mockQuery.mockImplementation(() => {
+        throw Error('unscoped native launch attempted');
+      });
+      const launch = vi.fn(async (session?: { threadId: string }) => {
+        if (session?.threadId === 'denied-session-route') throw refused;
+        return { env: { ANTHROPIC_AUTH_TOKEN: 'unscoped-route' }, args: [] };
+      });
+      const adapter = new ClaudeAdapter({ getConnectionLaunch: launch });
+      await expect(
+        adapter.startSession({
+          provider: 'claude',
+          threadId: 'denied-session-route',
+          cwd: '/workspace/project',
+        }),
+      ).rejects.toBe(refused);
+      expect(mockQuery).not.toHaveBeenCalled();
     });
 
     test('a selected credential profile still owns CLAUDE_CONFIG_DIR; connection routing keys survive', async () => {
@@ -11046,12 +11226,15 @@ echo '{"loggedIn":true}'
       try {
         mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
         mockQuery.mockReturnValue(createMockQuery([]));
-        const adapter = new ClaudeAdapter({
-          getConnectionEnv: async () => ({
+        const launch = vi.fn(async (session?: { threadId: string }) => ({
+          env: {
             ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+            ANTHROPIC_AUTH_TOKEN: `route:${session?.threadId}`,
             CLAUDE_CONFIG_DIR: '/user/chosen/home',
-          }),
-        });
+          },
+          args: [],
+        }));
+        const adapter = new ClaudeAdapter({ getConnectionLaunch: launch });
 
         await adapter.adoptSession?.({
           provider: 'claude',
@@ -11064,6 +11247,7 @@ echo '{"loggedIn":true}'
         const call = mockQuery.mock.calls.at(-1)?.[0];
         expect(call.options.env).toMatchObject({
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+          ANTHROPIC_AUTH_TOKEN: 'route:station-child-connection-env',
         });
         expect(call.options.env.CLAUDE_CONFIG_DIR).toBe('/operator/own/home');
       } finally {
@@ -11073,15 +11257,23 @@ echo '{"loggedIn":true}'
 
     test('model discovery sees the connection env — a routed connection lists its own catalog', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
-      const adapter = new ClaudeAdapter({
-        getConnectionEnv: async () => ({
+      const launch = vi.fn(async (session?: { threadId: string }) => ({
+        env: {
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
-        }),
-      });
+          ANTHROPIC_AUTH_TOKEN: session
+            ? 'wrong-scoped-route'
+            : 'metadata-route',
+        },
+        args: [],
+      }));
+      const adapter = new ClaudeAdapter({ getConnectionLaunch: launch });
 
       await adapter.listModelCatalog?.();
 
       const catalogCall = mockQuery.mock.calls.at(-1)?.[0];
+      expect(catalogCall.options.env.ANTHROPIC_AUTH_TOKEN).toBe(
+        'metadata-route',
+      );
       expect(catalogCall.options.env.ANTHROPIC_BASE_URL).toBe(
         'http://127.0.0.1:8318',
       );

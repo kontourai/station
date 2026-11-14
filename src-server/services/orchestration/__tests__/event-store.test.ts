@@ -594,6 +594,72 @@ describe('EventStore', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test('summary readers retain an originless first turn instead of attributing initiation to a follow-up', () => {
+    const threadId = 'originless-delegate';
+    const at = '2026-10-21T00:00:00.000Z';
+    const persisted = {
+      provider: 'claude' as const,
+      threadId,
+      status: 'ready' as const,
+      createdAt: at,
+      updatedAt: at,
+    };
+    store.upsertSession(persisted);
+    store.appendEvent({
+      provider: 'claude',
+      threadId,
+      eventId: 'origin-binding',
+      createdAt: at,
+      method: 'session.configured',
+      sessionId: threadId,
+      metadata: { taskId: threadId, targetKind: 'agent', targetId: 'reviewer' },
+    });
+    store.appendEvent({
+      provider: 'claude',
+      threadId,
+      eventId: 'actual-first-turn',
+      createdAt: at,
+      method: 'turn.started',
+      turnId: 'first',
+    });
+    store.appendEvent({
+      provider: 'claude',
+      threadId,
+      eventId: 'follow-up-turn',
+      createdAt: at,
+      method: 'turn.started',
+      turnId: 'follow-up',
+      prompt: 'Follow up',
+      clientOrigin: {
+        version: 1,
+        actor: { kind: 'internal' },
+        reported: { version: 1, surface: 'mcp', build: null },
+      },
+    });
+    const reads = [
+      store.listSessionProjectionEvents(threadId),
+      store.listSessionProjectionEventsForThreads([threadId]).get(threadId)!,
+    ];
+    for (const events of reads) {
+      expect(events.map((event) => event.id)).toContain('actual-first-turn');
+      const summary = buildOrchestrationSessionSummary({
+        persisted,
+        events: events.map((event) => event.payload),
+        answerability: {
+          threadAttachment: 'detached',
+          providerRegistered: true,
+          observedBy: 'origin-test',
+          observedAt: at,
+        },
+      });
+      expect(summary.inputOrigin).toEqual({
+        kind: 'delegation',
+        taskId: threadId,
+      });
+      expect(summary.displayTitle).toBe('Follow up');
+    }
+  });
+
   test.each(['appendEvent', 'appendEventIfAbsent'] as const)(
     '%s appends after a peer writer releases without upgrading a stale read snapshot',
     async (appendMethod) => {

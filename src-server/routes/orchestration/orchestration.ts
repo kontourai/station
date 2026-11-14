@@ -1,3 +1,6 @@
+import type { EnsembleInspectionService } from '../../services/orchestration/ensemble-inspection.js';
+import { createEnsembleInspectionRoutes } from './ensemble-inspection.js';
+
 export { isCreateRequestHandle as isForegroundDispatchHandle } from '../../services/orchestration/create-request-claims.js';
 
 import { createHash, randomUUID } from 'node:crypto';
@@ -29,6 +32,7 @@ import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
 } from '@kontourai/station-contracts/conversation-context-boundary';
+import type { EnsembleCliSessionGroupInput } from '@kontourai/station-contracts/ensemble';
 import {
   CLIENT_PROTOCOL_HEADER,
   readClientProtocolHeader,
@@ -74,6 +78,7 @@ import {
 import { isRuntimeEventContentDigest } from '@kontourai/station-contracts/runtime-event-content';
 import {
   ENGINE_MCP_SERVER_NAME_MAX_CHARS,
+  isDeferredRetriableTurnError,
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
@@ -107,6 +112,7 @@ import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
 } from '../../constants.js';
+import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
 import { providerFailure } from '../../providers/provider-failure.js';
 import type {
   RequestDelegationResolver,
@@ -117,8 +123,10 @@ import {
   tenantExecutionContextForRequest,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
+import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   type FullAccessGrant,
+  isOperatorInPersonNotAgent,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
 import { managedEngineRefusalBody } from '../../security/managed-engine-limits.js';
@@ -163,7 +171,10 @@ import {
   ForegroundMessageIndeterminateError,
   ForegroundMessageTurnIdentityUnavailableError,
 } from '../../services/execution-target/execution-target-execution.js';
-import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
+import {
+  LOCAL_OPERATOR_PRINCIPAL_ID,
+  PrincipalUnresolvedError,
+} from '../../services/identity/principal-resolver.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import {
   type ActionOperationTrackingService,
@@ -172,6 +183,12 @@ import {
 } from '../../services/operations/action-operation-tracker.js';
 import { ContinuationPlaceRefusedError } from '../../services/orchestration/attached-session-continuation-place.js';
 import { AttachmentStageError } from '../../services/orchestration/attachment-staging-service.js';
+import {
+  CliSessionGroupDispatchRefusal,
+  type CliSessionGroupHost,
+  CliSessionGroups,
+  CliSessionGroupUnavailable,
+} from '../../services/orchestration/cli-session-group.js';
 import { ConversationContextBoundaryNotFoundError } from '../../services/orchestration/conversation-lineage.js';
 import {
   DelegationAttemptCapacityError,
@@ -187,6 +204,7 @@ import type {
   DelegationResultDelivery,
 } from '../../services/orchestration/delegation-result-delivery.js';
 import type { DispatchCwdAdmission } from '../../services/orchestration/dispatch-cwd-admission.js';
+import type { PreparedEnsembleCliSessionGroup } from '../../services/orchestration/ensemble-cli-session-group.js';
 import type { MemoryExhaustionContinuation } from '../../services/orchestration/memory-exhaustion-continuation.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
@@ -260,6 +278,7 @@ import {
   refuseUngrantedPick,
   requestedApprovalMode,
 } from './approval-authority.js';
+import { createCliSessionGroupEventRoutes } from './cli-session-group-events.js';
 import {
   dispatchCwdRefusalFor,
   foregroundDispatchTarget,
@@ -794,9 +813,14 @@ const agentDelegationContextSchema = z.object({
   maxDepth: z.number().int().min(1).max(64),
   parentAgentSlug: z.string().min(1).max(64),
   parentConversationId: z.string().min(1).max(512).optional(),
+  parentSessionId: z.string().min(1).max(512).optional(),
   rootAgentSlug: z.string().min(1).max(64),
   rootConversationId: z.string().min(1).max(512).optional(),
   allowedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
+  toolAllowlistConstraints: z
+    .array(z.array(z.string().min(1).max(256)).max(256))
+    .max(64)
+    .optional(),
   blockedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
   denyApprovals: z.boolean().optional(),
 });
@@ -845,7 +869,8 @@ const stagedAttachmentReferencesSchema = z
       digest: z
         .string()
         .max(71)
-        .regex(/^sha256-[0-9a-f]{64}$/),
+        .regex(/^sha256-[0-9a-f]{64}$/)
+        .transform((value): `sha256-${string}` => `sha256-${value.slice(7)}`),
       expiresAt: z.string().max(40).datetime(),
     }),
   )
@@ -906,6 +931,13 @@ export const delegateTaskSchema = z.object({
     .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/)
     .optional(),
 });
+
+const groupDelegationIntentSchema = delegateTaskSchema.omit({
+  clientTurnId: true,
+});
+type DelegationRouteIntent = z.infer<typeof groupDelegationIntentSchema> & {
+  clientTurnId?: string;
+};
 
 const inputRequestReferenceSchema = z.object({
   threadId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
@@ -1320,6 +1352,8 @@ interface DelegateTaskRequest {
   fullAccessGrant: FullAccessGrant | null;
   /** #2873: `scopeDispatch`'s decision, run again at the engine spawn. */
   dispatchCwdAdmission?: DispatchCwdAdmission;
+  delegationGroupAdmission?: { assertCurrent(): void; signal: AbortSignal };
+  initialClientTurnId?: string;
   clientOrigin?: ClientOrigin;
   /**
    * #484 controller/receiver split: for a `project-portable` workspace
@@ -1350,6 +1384,9 @@ interface DelegateTaskRequest {
    */
   clientTurnId?: string;
   createRequestIntent?: unknown;
+  createRequestCallerSessionId?: string;
+  /** Server-only Request identity behind the durable create claim. */
+  createRequestAuthority?: Request;
   delegationAttemptId?: string;
   /**
    * #485: the verified delegation-kind device grant behind the CURRENT
@@ -2282,6 +2319,22 @@ export function createOrchestrationRoutes(
     ) => boolean;
     /** Revalidates protected point-read publication at its response boundary. */
     isRequestPrincipalCurrent?: (request: Request) => boolean;
+    /** Personal runtime composition; absent means session-group routes refuse. */
+    cliSessionGroupHome?: string;
+    ensembleInspection?: EnsembleInspectionService;
+    authenticateEnsembleSessionGroup?: (
+      input: import('../../services/orchestration/ensemble-session-group-authentication.js').EnsembleSessionGroupAuthenticationInput,
+      principal: PrincipalRef,
+      assertCurrent: () => void,
+    ) => Promise<
+      import('../../services/orchestration/cli-session-group.js').CliSessionGroupRunAdmission
+    >;
+    prepareEnsembleSessionGroup?: (
+      input: EnsembleCliSessionGroupInput,
+      request: Request,
+      principal: PrincipalRef,
+      assertCurrent: () => void,
+    ) => Promise<PreparedEnsembleCliSessionGroup>;
     /**
      * #3075: the request's read-marker person key (`readMarkerPersonKey`),
      * `undefined` for a caller that is not a person. A `/events` subscriber
@@ -2299,6 +2352,8 @@ export function createOrchestrationRoutes(
     /** Bounded caller-bound MCP App occurrences for session inventory. */
     sessionInventoryAppRead?: SessionInventoryAppReadModule;
     callerBindingForRequest?: (request: Request) => string | undefined;
+    bindSessionGroupCallerCurrent?: (request: Request) => () => boolean;
+    sessionGroupBindingForRequest?: (request: Request) => string | undefined;
     /**
      * Immutable deployment registry supplied by runtime wiring. Its presence,
      * rather than any request field, selects hosted authorization semantics.
@@ -2729,7 +2784,17 @@ export function createOrchestrationRoutes(
     submitted: ReturnType<ThreadInboxDelivery['submit']>,
     followUp: { conversationId: string; clientTurnId: string },
   ): Response | undefined => {
-    if (submitted.outcome === 'not-permitted') return undefined;
+    if (submitted.outcome === 'not-permitted')
+      return submitted.reasonCode
+        ? c.json(
+            {
+              success: false,
+              code: submitted.reasonCode,
+              error: submitted.reason ?? 'This message cannot be queued.',
+            },
+            409,
+          )
+        : undefined;
     if (submitted.outcome === 'conflict')
       return c.json(
         {
@@ -3172,6 +3237,11 @@ export function createOrchestrationRoutes(
         )
           throw new Error('The requested conversation is unavailable.');
         queueOnBusyRefusal = () => {
+          const refused = effectfulInboxAdmissionRefusal(
+            c,
+            followUp.conversationId,
+          );
+          if (refused) return refused;
           // Files wait in the blob store, not in the entry. A stage the live
           // attempt already bound keeps that binding; it is accepted only
           // once the entry is queued and released otherwise, so a resend of
@@ -3810,6 +3880,10 @@ export function createOrchestrationRoutes(
       )
         return c.json({ success: false, error: 'Conversation not found' }, 404);
       const body = getBody(c);
+      if (body.kind !== 'display') {
+        const refused = effectfulInboxAdmissionRefusal(c, conversationId);
+        if (refused) return refused;
+      }
       const actor = resolveDispatchActor(deps, c);
       if (!(await delegationConversationIsLocal(c, conversationId)))
         return c.json(
@@ -3867,7 +3941,16 @@ export function createOrchestrationRoutes(
           409,
         );
       if (result.outcome === 'not-permitted')
-        return c.json({ success: false, error: 'Conversation not found' }, 404);
+        return result.reasonCode
+          ? c.json(
+              {
+                success: false,
+                code: result.reasonCode,
+                error: result.reason ?? 'This message cannot be queued.',
+              },
+              409,
+            )
+          : c.json({ success: false, error: 'Conversation not found' }, 404);
       if (result.outcome === 'conflict')
         return c.json({ success: false, code: INBOX_KEY_CONFLICT_CODE }, 409);
       if (result.outcome === 'capacity')
@@ -4326,7 +4409,93 @@ export function createOrchestrationRoutes(
     },
   );
 
-  app.post('/delegations', validateFiles(delegateTaskSchema), async (c) => {
+  function effectfulInboxAdmissionRefusal(
+    c: Context,
+    conversationId: string,
+  ): Response | undefined {
+    if (
+      !orchestrationService.canUserReadSession(
+        conversationId,
+        readAuthorityFor(c),
+      )
+    )
+      return c.json({ success: false, error: 'Conversation not found' }, 404);
+    const refusal =
+      orchestrationService.conversationInputAdmissionRefusal(conversationId);
+    return refusal
+      ? c.json(
+          { success: false, code: refusal.reasonCode, error: refusal.reason },
+          409,
+        )
+      : undefined;
+  }
+
+  function authorizeDelegationTarget(
+    c: Context,
+    sent: DelegationRouteIntent,
+  ):
+    | {
+        body: DelegationRouteIntent;
+        scoped: {
+          readonly canonicalCwd?: string;
+          readonly spawn?: DispatchCwdAdmission;
+        };
+      }
+    | { refused: Response } {
+    // A station-control caller's new task with no workspace starts in its
+    // own Project (owner decision 2026-10-13): decided before every check
+    // below, so each one reads the target that is dispatched.
+    const body = {
+      ...sent,
+      target: withCallerProjectWorkspace(
+        c,
+        deps.stationControlDispatchScope,
+        sent.target,
+        true,
+      ),
+    };
+    // #2377 slice C3b: an agent delegates without an approval posture.
+    const postureRefused = refuseCarriedPosture(c, [
+      {
+        path: 'target.model.options',
+        value: (body as { target?: { model?: { options?: unknown } } }).target
+          ?.model?.options,
+        kind: 'options',
+      },
+    ]);
+    if (postureRefused) return { refused: postureRefused };
+    const fullAccessRefused = refuseUngrantedCarriedFullAccess(
+      c,
+      (body as { target?: { model?: { options?: unknown } } }).target?.model
+        ?.options,
+    );
+    if (fullAccessRefused) return { refused: fullAccessRefused };
+    const directoryRefused = refuseUngrantedDirectoryWorkspace(c, body.target);
+    if (directoryRefused) return { refused: directoryRefused };
+    // #2377 slice C2a: a new task starts in the Project the body names.
+    const scoped = scopeDispatch(
+      c,
+      deps.stationControlDispatchScope,
+      (ownerId) =>
+        ownerId
+          ? { kind: 'new', ownerId, ...newSessionFacts(body.target) }
+          : undefined,
+    );
+    if ('refused' in scoped) return { refused: scoped.refused };
+    return { body, scoped };
+  }
+
+  async function dispatchAuthorizedDelegation(
+    c: Context,
+    sent: z.infer<typeof delegateTaskSchema>,
+    delegationGroupAdmission?: {
+      assertCurrent(): void;
+      signal: AbortSignal;
+      sessionId: string;
+      initialClientTurnId: string;
+    },
+    onDispatch?: () => void,
+  ): Promise<Response> {
     if (!deps.delegateTask) {
       return c.json(
         { success: false, error: 'Task delegation is unavailable' },
@@ -4334,50 +4503,9 @@ export function createOrchestrationRoutes(
       );
     }
     try {
-      const sent = getBody(c);
-      // A station-control caller's new task with no workspace starts in its
-      // own Project (owner decision 2026-10-13): decided before every check
-      // below, so each one reads the target that is dispatched.
-      const body = {
-        ...sent,
-        target: withCallerProjectWorkspace(
-          c,
-          deps.stationControlDispatchScope,
-          sent.target,
-          true,
-        ),
-      };
-      // #2377 slice C3b: an agent delegates without an approval posture.
-      const postureRefused = refuseCarriedPosture(c, [
-        {
-          path: 'target.model.options',
-          value: (body as { target?: { model?: { options?: unknown } } }).target
-            ?.model?.options,
-          kind: 'options',
-        },
-      ]);
-      if (postureRefused) return postureRefused;
-      const fullAccessRefused = refuseUngrantedCarriedFullAccess(
-        c,
-        (body as { target?: { model?: { options?: unknown } } }).target?.model
-          ?.options,
-      );
-      if (fullAccessRefused) return fullAccessRefused;
-      const directoryRefused = refuseUngrantedDirectoryWorkspace(
-        c,
-        body.target,
-      );
-      if (directoryRefused) return directoryRefused;
-      // #2377 slice C2a: a new task starts in the Project the body names.
-      const scoped = scopeDispatch(
-        c,
-        deps.stationControlDispatchScope,
-        (ownerId) =>
-          ownerId
-            ? { kind: 'new', ownerId, ...newSessionFacts(body.target) }
-            : undefined,
-      );
-      if ('refused' in scoped) return scoped.refused;
+      const authorized = authorizeDelegationTarget(c, sent);
+      if ('refused' in authorized) return authorized.refused;
+      const { body, scoped } = authorized;
       const { principal, userId, ownerAttribution, fullAccessGrant } =
         resolveDispatchActor(deps, c);
       const references = body.attachmentRefs;
@@ -4387,7 +4515,7 @@ export function createOrchestrationRoutes(
           !deps.hydrateStagedAttachments ||
           !deps.acceptStagedAttachments ||
           !deps.releaseStagedAttachments ||
-          body.target.environment.kind !== 'current' ||
+          (body.target.environment?.kind ?? 'current') !== 'current' ||
           body.target.workspace?.kind === 'project-portable' ||
           body.target.workspace?.kind === 'project-portable-prepared' ||
           body.attemptId ||
@@ -4498,7 +4626,7 @@ export function createOrchestrationRoutes(
       let roomAttachments: ChatAttachmentInput[] | undefined;
       let releaseRoomRequestPublication: (() => void) | undefined;
       const dispatch = async (
-        sessionId?: string,
+        sessionId: string | undefined = delegationGroupAdmission?.sessionId,
         recheck?: () => Promise<void>,
         roomBinding?: TaskRoomInvocationAdmission['roomBinding'],
         contextSnapshot?: TaskRoomContextSnapshot,
@@ -4508,12 +4636,12 @@ export function createOrchestrationRoutes(
             deps.taskRoomWork?.holdPublication?.(roomRequest.taskId);
           await deps.taskRoomWork?.beforeInvocation?.(roomRequest.taskId);
         }
-        return delegate({
+        const callerSessionId = await createRequestCallerSession(c.req.raw);
+        const delegatedInput: DelegateTaskRequest = {
           ...request,
           createRequestIntent: body,
-          createRequestCallerSessionId: await createRequestCallerSession(
-            c.req.raw,
-          ),
+          createRequestCallerSessionId: callerSessionId,
+          createRequestAuthority: c.req.raw,
           ...(stagedFiles ? { stagedFiles } : {}),
           ...(roomAttachments ? { taskRoomAttachments: roomAttachments } : {}),
           ...(contextSnapshot
@@ -4537,7 +4665,10 @@ export function createOrchestrationRoutes(
           ...(scoped.spawn ? { dispatchCwdAdmission: scoped.spawn } : {}),
           clientOrigin,
           ...(sessionId
-            ? { sessionId, parentTaskId: roomRequest?.taskId }
+            ? {
+                sessionId,
+                ...(roomRequest ? { parentTaskId: roomRequest.taskId } : {}),
+              }
             : {}),
           ...(recheck && roomBinding
             ? {
@@ -4583,14 +4714,25 @@ export function createOrchestrationRoutes(
                   deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
               }
             : {}),
-        });
+          ...(delegationGroupAdmission
+            ? {
+                delegationGroupAdmission,
+                initialClientTurnId:
+                  delegationGroupAdmission.initialClientTurnId,
+                clientTurnId: delegationGroupAdmission.initialClientTurnId,
+              }
+            : {}),
+        };
+        delegationGroupAdmission?.assertCurrent();
+        onDispatch?.();
+        return delegate(delegatedInput);
       };
       if (roomRequest) {
         const work = deps.taskRoomWork;
         if (
           !work ||
           !principal ||
-          body.target.environment.kind !== 'current' ||
+          (body.target.environment?.kind ?? 'current') !== 'current' ||
           body.target.workspace?.kind !== 'project'
         )
           return c.json(
@@ -4895,7 +5037,649 @@ export function createOrchestrationRoutes(
         400,
       );
     }
+  }
+
+  const cliGroups = deps.cliSessionGroupHome
+    ? new CliSessionGroups(
+        deps.cliSessionGroupHome,
+        (input) => groupDelegationIntentSchema.parse(input),
+        deps.logger,
+      )
+    : undefined;
+  const groupMemberSchema = delegateTaskSchema
+    .pick({ prompt: true, target: true, parentTaskId: true })
+    .extend({
+      seatId: z
+        .string()
+        .min(1)
+        .max(128)
+        .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+      needs: z.array(z.string().min(1).max(128)).max(32).default([]),
+    })
+    .strict()
+    .refine(
+      (member) =>
+        (member.target.environment?.kind ?? 'current') === 'current' &&
+        member.target.expectedEngine?.kind === 'connection',
+      'Session groups currently require local targets.',
+    );
+  const groupCreateSchema = z
+    .object({
+      operationId: z.string().min(1).max(128),
+      members: z.array(groupMemberSchema).min(1).max(32),
+      maxConcurrent: z.number().int().min(1).max(32),
+      maxDispatches: z.number().int().min(0).max(32).optional(),
+      deadlineAt: z.number().int().positive(),
+    })
+    .strict();
+  const groupResponseSchema = z.object({
+    success: z.literal(true),
+    data: z.unknown(),
   });
+  const groupSnapshotSchema = z.object({
+    status: z.string(),
+    sessionId: z.string(),
+    pendingRequest: z
+      .object({
+        id: z.string().min(1).max(512),
+        eventId: z.string().min(1).max(512).optional(),
+      })
+      .optional(),
+  });
+  const groupAuthority = (c: Context) => {
+    const bindingForRequest =
+      deps.sessionGroupBindingForRequest ?? deps.callerBindingForRequest;
+    const binding = bindingForRequest?.(c.req.raw);
+    const actor = resolveDispatchActor(deps, c);
+    const callerCurrent = deps.bindSessionGroupCallerCurrent?.(c.req.raw);
+    const assertCurrent = () => {
+      if (
+        !binding ||
+        (stationControlRequestAuthority(c.req.raw)?.kind === 'caller' &&
+          callerCurrent?.() !== true) ||
+        deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+        bindingForRequest?.(c.req.raw) !== binding ||
+        resolveDispatchActor(deps, c).userId !== actor.userId
+      )
+        throw new CliSessionGroupUnavailable('group_authority_required');
+    };
+    assertCurrent();
+    const authorizeInspection =
+      actor.userId === LOCAL_OPERATOR_PRINCIPAL_ID &&
+      isOperatorInPersonNotAgent(c.req.raw)
+        ? () => {
+            assertCurrent();
+            if (!isOperatorInPersonNotAgent(c.req.raw))
+              throw new CliSessionGroupUnavailable('group_authority_required');
+          }
+        : undefined;
+    const assertReadable = (
+      group: import('@kontourai/station-contracts/delegation-group').CliSessionGroupView,
+    ) => {
+      if (!authorizeInspection) return;
+      authorizeInspection();
+      const authority = readAuthorityFor(c);
+      if (
+        group.members.some(
+          (member) =>
+            member.handle &&
+            !orchestrationService.canUserReadSession(
+              member.handle.sessionId,
+              authority,
+            ),
+        )
+      )
+        throw new CliSessionGroupUnavailable('group_not_found');
+    };
+    return {
+      owner: JSON.stringify([actor.userId, binding]),
+      assertCurrent,
+      authorizeInspection,
+      assertReadable,
+    };
+  };
+  if (deps.ensembleInspection)
+    app.route(
+      '/ensembles',
+      createEnsembleInspectionRoutes(
+        deps.ensembleInspection,
+        (c) => {
+          if (!deps.resolvePrincipal)
+            throw new PrincipalUnresolvedError(
+              'Ensemble inspection requires a request principal resolver',
+            );
+          return deps.resolvePrincipal(c);
+        },
+        cliGroups
+          ? (c) => {
+              let authority: ReturnType<typeof groupAuthority> | undefined;
+              return async (groupId) => {
+                c.req.raw.signal.throwIfAborted();
+                authority ??= groupAuthority(c);
+                authority.assertCurrent();
+                if (!authority.authorizeInspection)
+                  throw new CliSessionGroupUnavailable(
+                    'group_authority_required',
+                  );
+                authority.authorizeInspection();
+                const group = await cliGroups.view(
+                  groupId,
+                  authority.owner,
+                  authority.authorizeInspection,
+                  { requireCurrent: true },
+                );
+                authority.assertReadable(group);
+                authority.assertCurrent();
+                c.req.raw.signal.throwIfAborted();
+                return group;
+              };
+            }
+          : undefined,
+      ),
+    );
+  const sessionGroupHost = (
+    c: Context,
+    assertCurrent: () => void,
+  ): CliSessionGroupHost<z.infer<typeof groupDelegationIntentSchema>> => ({
+    assertCurrent,
+    prepareRun: async (input) => {
+      assertCurrent();
+      if (!deps.authenticateEnsembleSessionGroup)
+        throw new CliSessionGroupUnavailable('ensemble_auth_unsupported');
+      const principal = resolveDispatchActor(deps, c).principal;
+      if (!principal)
+        throw new CliSessionGroupUnavailable('group_authority_required');
+      const resolveMembers = () =>
+        input.members.map(({ seatId, input: member }) => {
+          const authorized = authorizeDelegationTarget(c, member);
+          if ('refused' in authorized)
+            throw new CliSessionGroupUnavailable('group_authority_required');
+          return {
+            seatId,
+            target: normalizeExecutionTarget(
+              withCanonicalCwd(
+                authorized.body.target,
+                authorized.scoped.canonicalCwd,
+              ),
+            ),
+          };
+        });
+      const members = resolveMembers();
+      const binding = JSON.stringify(members);
+      const assertProbeAuthority = () => {
+        assertCurrent();
+        if (JSON.stringify(resolveMembers()) !== binding)
+          throw new CliSessionGroupUnavailable('ensemble_binding_changed');
+        assertCurrent();
+      };
+      return deps.authenticateEnsembleSessionGroup(
+        {
+          groupId: input.groupId,
+          intentDigest: input.intentDigest,
+          members,
+          signal: input.signal,
+        },
+        principal,
+        assertProbeAuthority,
+      );
+    },
+    dispatch: async (input, admission) => {
+      assertCurrent();
+      let dispatched = false;
+      const response = await dispatchAuthorizedDelegation(
+        c,
+        { ...input, clientTurnId: admission.initialClientTurnId },
+        admission,
+        () => {
+          dispatched = true;
+        },
+      );
+      const payload: unknown = await response.json();
+      const result = groupResponseSchema.safeParse(payload);
+      if (!response.ok || !result.success) {
+        const failure = z
+          .object({
+            code: z
+              .string()
+              .max(128)
+              .regex(/^[a-zA-Z0-9_-]+$/)
+              .optional(),
+            error: z.string().optional(),
+          })
+          .safeParse(payload);
+        const code = failure.success
+          ? (failure.data.code ?? 'delegation_refused')
+          : 'delegation_refused';
+        deps.logger.warn?.('CLI group member dispatch refused', {
+          status: response.status,
+          code,
+          reason: failure.success ? failure.data.error : undefined,
+        });
+        throw new CliSessionGroupDispatchRefusal(
+          response.ok ? 503 : response.status,
+          code,
+          dispatched ? 'unknown' : 'not-dispatched',
+        );
+      }
+      return result.data.data;
+    },
+    observe: async (handle) => {
+      assertCurrent();
+      const response = await readAuthorizedDelegatedTask(c, handle.taskId, {});
+      assertCurrent();
+      const snapshot = groupSnapshotSchema.parse(
+        groupResponseSchema.parse(await response.json()).data,
+      );
+      if (!handle.initialTurnId) return { ...snapshot, status: 'unknown' };
+      const window = await orchestrationService.readSessionEventWindow(
+        handle.sessionId,
+        { turnLimit: 20, authority: readAuthorityFor(c) },
+      );
+      assertCurrent();
+      const terminal = window?.events.find(
+        ({ event, elided }) =>
+          event.threadId === handle.sessionId &&
+          event.turnId === handle.initialTurnId &&
+          (event.method === 'turn.completed' ||
+            event.method === 'turn.aborted' ||
+            (event.method === 'runtime.error' &&
+              elided !== 'byte_limit' &&
+              !isDeferredRetriableTurnError(event))),
+      );
+      if (terminal && terminal.event.method !== 'turn.completed')
+        return {
+          sessionId: snapshot.sessionId,
+          status:
+            terminal.event.method === 'turn.aborted' ? 'canceled' : 'failed',
+          terminalEvent: {
+            eventId: terminal.event.eventId,
+            turnId: handle.initialTurnId,
+          },
+        };
+      if (
+        terminal?.event.method === 'turn.completed' &&
+        terminal.event.finishReason === 'cancelled'
+      )
+        return {
+          sessionId: snapshot.sessionId,
+          status: 'canceled',
+          terminalEvent: {
+            eventId: terminal.event.eventId,
+            turnId: handle.initialTurnId,
+          },
+        };
+      const completed =
+        terminal?.event.method === 'turn.completed' &&
+        PROVIDER_PROVEN_FINISH_REASONS.has(terminal.event.finishReason ?? '');
+      return completed
+        ? {
+            sessionId: snapshot.sessionId,
+            status: 'completed',
+            completedEvent: {
+              eventId: terminal.event.eventId,
+              turnId: handle.initialTurnId,
+            },
+          }
+        : ['completed', 'failed', 'canceled'].includes(snapshot.status)
+          ? { ...snapshot, status: 'unknown' }
+          : snapshot;
+    },
+    interrupt: async (handle) => {
+      assertCurrent();
+      if (!handle.initialTurnId)
+        throw new CliSessionGroupUnavailable('group_turn_unconfirmed');
+      const response = await interruptAuthorizedDelegatedTask(
+        c,
+        handle.taskId,
+        { turnId: handle.initialTurnId },
+      );
+      groupResponseSchema.parse(await response.json());
+    },
+    prepareSync: async (handle) => {
+      assertCurrent();
+      const scopeRefused = refuseOutOfScopeDispatch(
+        c,
+        deps.stationControlDispatchScope,
+        () => ({ kind: 'task', taskId: handle.taskId, remote: false }),
+      );
+      if (scopeRefused)
+        throw new CliSessionGroupUnavailable('group_authority_required');
+      const response = await readAuthorizedDelegatedTask(c, handle.taskId, {});
+      const snapshot = groupSnapshotSchema.parse(
+        groupResponseSchema.parse(await response.json()).data,
+      );
+      assertCurrent();
+      if (!response.ok || snapshot.sessionId !== handle.sessionId)
+        throw new CliSessionGroupUnavailable('group_not_found');
+      await orchestrationService.assertRetainedSessionSyncAvailable(
+        handle.sessionId,
+        resolveDispatchActor(deps, c),
+      );
+      assertCurrent();
+    },
+    sync: async (handle, input) => {
+      assertCurrent();
+      const scopeRefused = refuseOutOfScopeDispatch(
+        c,
+        deps.stationControlDispatchScope,
+        () => ({ kind: 'task', taskId: handle.taskId, remote: false }),
+      );
+      if (scopeRefused)
+        throw new CliSessionGroupUnavailable('group_authority_required');
+      const { principal, userId, ownerAttribution, fullAccessGrant } =
+        resolveDispatchActor(deps, c);
+      const response = await readAuthorizedDelegatedTask(c, handle.taskId, {});
+      const snapshot = groupSnapshotSchema.parse(
+        groupResponseSchema.parse(await response.json()).data,
+      );
+      assertCurrent();
+      if (!response.ok || snapshot.sessionId !== handle.sessionId)
+        throw new CliSessionGroupUnavailable('group_not_found');
+      return orchestrationService.syncRetainedSession({
+        threadId: handle.sessionId,
+        ...input,
+        assertCurrent: () => {
+          assertCurrent();
+          input.assertCurrent();
+        },
+        context: {
+          principal,
+          userId,
+          ownerAttribution,
+          fullAccessGrant,
+          clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          requestCurrent: () =>
+            deps.isRequestPrincipalCurrent?.(c.req.raw) === true,
+        },
+      });
+    },
+  });
+  const sessionGroupFailure = (c: Context, error: unknown) => {
+    const code =
+      error instanceof CliSessionGroupUnavailable
+        ? error.code
+        : error instanceof z.ZodError ||
+            error instanceof SyntaxError ||
+            (error instanceof Error &&
+              error.message === 'group_stream_cursor_invalid')
+          ? 'group_invalid'
+          : 'group_unavailable';
+    return c.json(
+      { success: false, code },
+      code === 'group_authority_required'
+        ? 403
+        : code === 'group_not_found'
+          ? 404
+          : 409,
+    );
+  };
+  app.route(
+    '/session-groups',
+    createCliSessionGroupEventRoutes({
+      failure: sessionGroupFailure,
+      bind(c, groupId) {
+        if (!cliGroups)
+          throw new CliSessionGroupUnavailable('group_unavailable');
+        const authority = groupAuthority(c);
+        let observedGroup:
+          | import('@kontourai/station-contracts/delegation-group').CliSessionGroupView
+          | undefined;
+        const assertCurrent = () => {
+          authority.assertCurrent();
+          if (observedGroup) authority.assertReadable(observedGroup);
+        };
+        return {
+          assertCurrent,
+          subscribe: (listener) => cliGroups.subscribe(groupId, listener),
+          read: async (afterRevision) => {
+            authority.assertCurrent();
+            const page = await cliGroups.events(
+              groupId,
+              authority.owner,
+              afterRevision,
+              authority.authorizeInspection,
+            );
+            const group = await cliGroups.view(
+              groupId,
+              authority.owner,
+              authority.authorizeInspection,
+            );
+            observedGroup = group;
+            assertCurrent();
+            return page;
+          },
+        };
+      },
+    }),
+  );
+  const respondSessionGroup = async (
+    c: Context,
+    operation: (
+      groups: NonNullable<typeof cliGroups>,
+      authority: ReturnType<typeof groupAuthority>,
+    ) => Promise<unknown>,
+  ) => {
+    c.header('Cache-Control', 'private, no-store');
+    try {
+      if (!cliGroups)
+        return c.json({ success: false, code: 'group_unavailable' }, 503);
+      const authority = groupAuthority(c);
+      const data = await operation(cliGroups, authority);
+      authority.assertCurrent();
+      return c.json({ success: true, data });
+    } catch (error) {
+      return sessionGroupFailure(c, error);
+    }
+  };
+  app.post('/session-groups', (c) =>
+    respondSessionGroup(c, async (groups, authority) => {
+      const body = await readBoundedRequestBody(c.req.raw, 262_144);
+      if (body.status !== 'ok')
+        throw new CliSessionGroupUnavailable('group_invalid');
+      const input = groupCreateSchema.parse(JSON.parse(body.body));
+      return groups.create(
+        authority.owner,
+        input.operationId,
+        {
+          seats: input.members.map(({ seatId, needs, ...member }) => ({
+            seatId,
+            needs,
+            input: groupDelegationIntentSchema.parse(member),
+          })),
+          maxConcurrent: input.maxConcurrent,
+          ...(input.maxDispatches === undefined
+            ? {}
+            : { maxDispatches: input.maxDispatches }),
+          deadlineAt: input.deadlineAt,
+        },
+        authority.assertCurrent,
+      );
+    }),
+  );
+  app.post('/session-groups/from-ensemble', (c) =>
+    respondSessionGroup(c, async (groups, authority) => {
+      if (!deps.prepareEnsembleSessionGroup)
+        throw new CliSessionGroupUnavailable('group_unavailable');
+      const body = await readBoundedRequestBody(c.req.raw, 262_144);
+      if (body.status !== 'ok')
+        throw new CliSessionGroupUnavailable('group_invalid');
+      const schema = groupCreateSchema
+        .omit({ members: true })
+        .extend({
+          path: z.string().min(1).max(4096).optional(),
+          presetJson: z.string().min(1).max(131_072).optional(),
+          expectedPresetHash: z
+            .string()
+            .max(71)
+            .regex(/^sha256:[0-9a-f]{64}$/),
+          brief: z.string().min(1).max(100_000),
+          bindings: z
+            .record(
+              z.string().min(1).max(64),
+              z
+                .object({
+                  target: executionTargetSchema
+                    .omit({ model: true })
+                    .extend({
+                      agent: z.string().min(1).max(64),
+                      environment: z
+                        .object({ kind: z.literal('current') })
+                        .strict()
+                        .optional(),
+                      expectedEngine: z
+                        .object({
+                          kind: z.literal('connection'),
+                          connectionId: z.string().min(1).max(256),
+                        })
+                        .strict(),
+                      workspace: z.discriminatedUnion('kind', [
+                        z
+                          .object({
+                            kind: z.literal('project'),
+                            projectSlug: z.string().min(1).max(256),
+                            cwd: z.string().min(1).max(4096).optional(),
+                          })
+                          .strict(),
+                        z
+                          .object({
+                            kind: z.literal('directory'),
+                            cwd: z.string().min(1).max(4096),
+                          })
+                          .strict(),
+                      ]),
+                    })
+                    .strict(),
+                  needs: z.array(z.string().min(1).max(128)).max(16),
+                })
+                .strict(),
+            )
+            .refine((bindings) => Object.keys(bindings).length <= 16),
+        })
+        .strict();
+      const parsed = schema.parse(JSON.parse(body.body));
+      const principal = resolveDispatchActor(deps, c).principal;
+      if (!principal)
+        throw new CliSessionGroupUnavailable('group_authority_required');
+      const input = await deps.prepareEnsembleSessionGroup(
+        {
+          ...parsed,
+          bindings: Object.fromEntries(
+            Object.entries(parsed.bindings).map(([id, binding]) => [
+              id,
+              {
+                ...binding,
+                target: {
+                  ...binding.target,
+                  agent: agentId(binding.target.agent),
+                  expectedEngine: {
+                    kind: 'connection' as const,
+                    connectionId: engineConnectionId(
+                      binding.target.expectedEngine.connectionId,
+                    ),
+                  },
+                },
+              },
+            ]),
+          ),
+        },
+        c.req.raw,
+        principal,
+        authority.assertCurrent,
+      );
+      const { preset, ...creation } = input;
+      const validated = groupCreateSchema.parse(creation);
+      return groups.create(
+        authority.owner,
+        validated.operationId,
+        {
+          seats: validated.members.map(({ seatId, needs, ...member }) => ({
+            seatId,
+            needs,
+            input: groupDelegationIntentSchema.parse(member),
+          })),
+          maxConcurrent: validated.maxConcurrent,
+          ...(validated.maxDispatches === undefined
+            ? {}
+            : { maxDispatches: validated.maxDispatches }),
+          deadlineAt: validated.deadlineAt,
+          preset,
+        },
+        authority.assertCurrent,
+      );
+    }),
+  );
+  app.get('/session-groups', (c) =>
+    respondSessionGroup(c, async (groups, authority) => {
+      const page = await groups.list(
+        authority.owner,
+        c.req.query('afterGroupId'),
+        authority.authorizeInspection,
+      );
+      page.groups.forEach(authority.assertReadable);
+      return page;
+    }),
+  );
+  app.get('/session-groups/:groupId', (c) =>
+    respondSessionGroup(c, async (groups, authority) => {
+      const group = await groups.view(
+        param(c, 'groupId'),
+        authority.owner,
+        authority.authorizeInspection,
+      );
+      authority.assertReadable(group);
+      return group;
+    }),
+  );
+  app.post('/session-groups/:groupId/run', (c) =>
+    respondSessionGroup(c, (groups, authority) =>
+      groups.run(
+        param(c, 'groupId'),
+        authority.owner,
+        sessionGroupHost(c, authority.assertCurrent),
+        c.req.raw.signal,
+      ),
+    ),
+  );
+  app.post('/session-groups/:groupId/cancel', (c) =>
+    respondSessionGroup(c, (groups, authority) =>
+      groups.cancel(
+        param(c, 'groupId'),
+        authority.owner,
+        sessionGroupHost(c, authority.assertCurrent),
+      ),
+    ),
+  );
+  app.post('/session-groups/:groupId/sync', (c) =>
+    respondSessionGroup(c, async (groups, authority) => {
+      const body = await readBoundedRequestBody(c.req.raw, 262_144);
+      if (body.status !== 'ok')
+        throw new CliSessionGroupUnavailable('group_invalid');
+      const input = z
+        .object({
+          operationId: z.string().min(1).max(128),
+          runId: z.string().min(1).max(128),
+          content: z
+            .string()
+            .min(1)
+            .max(128 * 1024),
+          deadlineAt: z.number().int().positive().safe(),
+        })
+        .strict()
+        .parse(JSON.parse(body.body));
+      authority.assertCurrent();
+      return groups.sync(
+        param(c, 'groupId'),
+        authority.owner,
+        input,
+        sessionGroupHost(c, authority.assertCurrent),
+        c.req.raw.signal,
+      );
+    }),
+  );
+
+  app.post('/delegations', validateFiles(delegateTaskSchema), (c) =>
+    dispatchAuthorizedDelegation(c, getBody(c)),
+  );
 
   app.post(
     '/delegations/options',
@@ -5025,16 +5809,18 @@ export function createOrchestrationRoutes(
     }
   });
 
-  app.get('/delegations/:taskId', async (c) => {
+  async function readAuthorizedDelegatedTask(
+    c: Context,
+    taskId: string,
+    query: z.infer<typeof delegatedTaskQuerySchema>,
+  ): Promise<Response> {
     if (!deps.observeDelegatedTask) {
       return c.json(
         { success: false, error: 'Delegated task lookup is unavailable' },
         503,
       );
     }
-    const parsed = delegatedTaskQuerySchema.safeParse({
-      environmentId: c.req.query('environmentId'),
-    });
+    const parsed = delegatedTaskQuerySchema.safeParse(query);
     if (!parsed.success) {
       return c.json(
         { success: false, error: 'Invalid delegated task query' },
@@ -5052,7 +5838,7 @@ export function createOrchestrationRoutes(
     try {
       const data = await deps.observeDelegatedTask({
         ...parsed.data,
-        taskId: param(c, 'taskId'),
+        taskId,
         userId: resolveActorPrincipal(deps, c).userId,
       });
       // #3158: the parent read its own child at rest; that result is not
@@ -5076,7 +5862,13 @@ export function createOrchestrationRoutes(
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
-  });
+  }
+
+  app.get('/delegations/:taskId', (c) =>
+    readAuthorizedDelegatedTask(c, param(c, 'taskId'), {
+      environmentId: c.req.query('environmentId'),
+    }),
+  );
 
   app.get('/delegations/:taskId/events', async (c) => {
     if (!deps.observeDelegatedTaskEvents) {
@@ -5472,84 +6264,83 @@ export function createOrchestrationRoutes(
     },
   );
 
+  async function interruptAuthorizedDelegatedTask(
+    c: Context,
+    taskId: string,
+    body: InterruptDelegatedTaskBody,
+  ): Promise<Response> {
+    if (!deps.interruptDelegatedTask) {
+      return c.json(
+        { success: false, error: 'Delegated task interrupt is unavailable' },
+        503,
+      );
+    }
+    // #2377 slice C3: stopping a task's turn stays in the caller's scope,
+    // like a follow-up to it (another Station needs a bound operator).
+    const scopeRefused = refuseOutOfScopeDispatch(
+      c,
+      deps.stationControlDispatchScope,
+      () => ({
+        kind: 'task',
+        taskId: taskId,
+        remote: body.environmentId !== undefined,
+      }),
+    );
+    if (scopeRefused) return scopeRefused;
+    try {
+      const { principal, userId, ownerAttribution } = resolveDispatchActor(
+        deps,
+        c,
+      );
+      // #3158: the recorded parent's interrupt fences the turn it stops and
+      // cancels results not yet delivered. Fenced before the effect (the
+      // stopped turn's settlement is delivered synchronously from the
+      // event), and undone below if the interrupt is refused or the
+      // service reports it stopped nothing. A named turn is the only turn
+      // the service will stop, so it is the only one fenced.
+      const canceller =
+        body.environmentId === undefined
+          ? delegationResultCanceller(c, userId)
+          : undefined;
+      const cancellation = canceller
+        ? bestEffortDelegationResult(deps.logger, 'cancel', () =>
+            deps.delegationResults?.beginCancel(taskId, canceller, body.turnId),
+          )
+        : undefined;
+      let data: DelegatedTaskInterruptResult;
+      try {
+        data = await deps.interruptDelegatedTask({
+          ...body,
+          taskId: taskId,
+          userId,
+          principal,
+          ownerAttribution,
+          clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        });
+      } catch (error) {
+        if (cancellation)
+          bestEffortDelegationResult(deps.logger, 'reopen', () =>
+            deps.delegationResults?.reopenCancellation(cancellation),
+          );
+        throw error;
+      }
+      if (cancellation)
+        bestEffortDelegationResult(deps.logger, 'settle', () =>
+          deps.delegationResults?.settleCancellation(
+            cancellation,
+            data.interruptOutcome,
+          ),
+        );
+      return c.json({ success: true, data });
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  }
+
   app.post(
     '/delegations/:taskId/interrupt',
     validateFiles(interruptDelegatedTaskBodySchema),
-    async (c) => {
-      if (!deps.interruptDelegatedTask) {
-        return c.json(
-          { success: false, error: 'Delegated task interrupt is unavailable' },
-          503,
-        );
-      }
-      // #2377 slice C3: stopping a task's turn stays in the caller's scope,
-      // like a follow-up to it (another Station needs a bound operator).
-      const scopeRefused = refuseOutOfScopeDispatch(
-        c,
-        deps.stationControlDispatchScope,
-        () => ({
-          kind: 'task',
-          taskId: param(c, 'taskId'),
-          remote:
-            (getBody(c) as { environmentId?: unknown }).environmentId !==
-            undefined,
-        }),
-      );
-      if (scopeRefused) return scopeRefused;
-      try {
-        const { principal, userId, ownerAttribution } = resolveDispatchActor(
-          deps,
-          c,
-        );
-        // #3158: the recorded parent's interrupt fences the turn it stops and
-        // cancels results not yet delivered. Fenced before the effect (the
-        // stopped turn's settlement is delivered synchronously from the
-        // event), and undone below if the interrupt is refused or the
-        // service reports it stopped nothing. A named turn is the only turn
-        // the service will stop, so it is the only one fenced.
-        const body = getBody(c) as InterruptDelegatedTaskBody;
-        const canceller =
-          body.environmentId === undefined
-            ? delegationResultCanceller(c, userId)
-            : undefined;
-        const cancellation = canceller
-          ? bestEffortDelegationResult(deps.logger, 'cancel', () =>
-              deps.delegationResults?.beginCancel(
-                param(c, 'taskId'),
-                canceller,
-                body.turnId,
-              ),
-            )
-          : undefined;
-        let data: DelegatedTaskInterruptResult;
-        try {
-          data = await deps.interruptDelegatedTask({
-            ...getBody(c),
-            taskId: param(c, 'taskId'),
-            userId,
-            principal,
-            ownerAttribution,
-            clientOrigin: resolveClientOriginForRequest(c.req.raw),
-          });
-        } catch (error) {
-          if (cancellation)
-            bestEffortDelegationResult(deps.logger, 'reopen', () =>
-              deps.delegationResults?.reopenCancellation(cancellation),
-            );
-          throw error;
-        }
-        if (cancellation)
-          bestEffortDelegationResult(deps.logger, 'settle', () =>
-            deps.delegationResults?.settleCancellation(
-              cancellation,
-              data.interruptOutcome,
-            ),
-          );
-        return c.json({ success: true, data });
-      } catch (error) {
-        return c.json({ success: false, error: errorMessage(error) }, 400);
-      }
-    },
+    (c) => interruptAuthorizedDelegatedTask(c, param(c, 'taskId'), getBody(c)),
   );
 
   /**
@@ -7571,6 +8362,14 @@ export function createOrchestrationRoutes(
       const shared =
         c.req.query('includeGeneral') === '1' && deps.generalEventProducer;
       const abortShared = () => stream.abort();
+      const assertStreamCurrent = () => {
+        if (stream.aborted) throw new Error('stream_closed');
+        if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
+          closeReason ??= 'authorization-expired';
+          stream.abort();
+          throw new Error('Orchestration stream authorization expired');
+        }
+      };
       try {
         if (shared) {
           c.req.raw.signal.addEventListener('abort', abortShared, {
@@ -7580,11 +8379,13 @@ export function createOrchestrationRoutes(
           void shared(
             c,
             stream,
-            (frame) =>
-              stream.writeSSE({
+            (frame) => {
+              assertStreamCurrent();
+              return stream.writeSSE({
                 event: 'station:general',
                 data: JSON.stringify(frame),
-              }),
+              });
+            },
             authority,
           ).then(abortShared, abortShared);
         }
@@ -7642,12 +8443,7 @@ export function createOrchestrationRoutes(
         // are flushed, so a live event can never overtake buffered history.
         let deliveredSequence = 0;
         const writeAuthorized = async (frame: StreamFrame) => {
-          if (stream.aborted) throw new Error('stream_closed');
-          if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
-            closeReason ??= 'authorization-expired';
-            stream.abort();
-            throw new Error('Orchestration stream authorization expired');
-          }
+          assertStreamCurrent();
           // Queued frames cannot carry yesterday's authorization into a later write.
           if (
             frame.isAuthorized

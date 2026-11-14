@@ -7,12 +7,39 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PAIRING_SCOPE_ROUTE_TABLE } from '../../../security/pairing-route-scopes.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { HomeWriterUnavailableError } from '../../../services/ssh/home-writer-owner.js';
 import type { Logger } from '../../../utils/logger.js';
 import { RouteError } from '../../../utils/route-error.js';
 import {
   configureRuntimeHttp,
   resolveRuntimeCorsOrigin,
 } from '../runtime-http.js';
+
+test.each([false, true])(
+  'home writer unavailability preserves a distinct HTTP outcome (operation ran: %s)',
+  async (operationRan) => {
+    const app = new Hono();
+    configureRuntimeHttp({
+      app: app as never,
+      logger: createCapturingLogger(),
+      eventBus: { emit: vi.fn() } as unknown as EventBus,
+    });
+    app.get('/home-writer-refusal', () => {
+      throw new HomeWriterUnavailableError('cleanup-required', operationRan);
+    });
+    const response = await app.request(
+      'http://station.test/home-writer-refusal',
+    );
+    expect(response.status).toBe(operationRan ? 409 : 503);
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: operationRan
+          ? 'home_writer_outcome_unconfirmed'
+          : 'home_writer_unavailable',
+      },
+    });
+  },
+);
 
 test.each([
   // A newly declared read-tier POST must obey the same HTTP side-effect rule.

@@ -1,0 +1,7 @@
+{
+  "revision": "44fc55802354eb20d3155d561f457a74bd73d7d6",
+
+  "notes": [
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reviewed receipt/evidence/gate distinctions against explicit Flow-policy binding, readiness bridge, review-evidence validation and exception forwarding. Readiness remains an assumed Station governance.merge-readiness claim; exception authority remains a supplied label rather than human identity proof. Group dependency completion and exact sync ACK do not establish semantic acceptance, verified understanding or portable execution authority. Source/caller review only; the separate route-suite execution does not qualify hosted readiness, provider behavior or a release.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-command-module.ts"]}
+  ]
+}

@@ -1,4 +1,11 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -6,6 +13,7 @@ import {
   DevicePairingService,
   type PairingApproval,
 } from '../device-pairing-service.js';
+import { HomeWriterUnavailableError } from '../home-writer-owner.js';
 
 /**
  * archive#3277: the persist-before-mutate contract on the clone-and-swap
@@ -31,14 +39,18 @@ import {
  * transiently unwritable registry must not turn credential verification into
  * a thrown error. That behaviour has its own test below.
  */
-const renameFault = vi.hoisted(() => ({ armed: false }));
+const renameFault = vi.hoisted(() => ({
+  armed: false,
+  cleanup: false,
+  staged: undefined as (() => void) | undefined,
+}));
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
   return {
     ...actual,
     renameSync: (from: never, to: never) => {
-      if (renameFault.armed) {
+      if (renameFault.armed && String(to).endsWith('paired-devices.json')) {
         const error = new Error(
           `EACCES: permission denied, rename '${String(from)}' -> '${String(to)}'`,
         ) as NodeJS.ErrnoException;
@@ -46,6 +58,24 @@ vi.mock('node:fs', async (importOriginal) => {
         throw error;
       }
       return actual.renameSync(from, to);
+    },
+    writeFileSync: (...args: Parameters<typeof actual.writeFileSync>) => {
+      const result = actual.writeFileSync(...args);
+      if (typeof args[1] === 'string' && args[1].includes('"devices":[')) {
+        const staged = renameFault.staged;
+        renameFault.staged = undefined;
+        staged?.();
+      }
+      return result;
+    },
+    rmSync: (...args: Parameters<typeof actual.rmSync>) => {
+      if (
+        renameFault.cleanup &&
+        String(args[0]).includes('.paired-devices.json.') &&
+        String(args[0]).endsWith('.tmp')
+      )
+        throw new Error('injected post-publication cleanup failure');
+      return actual.rmSync(...args);
     },
   };
 });
@@ -91,12 +121,14 @@ function pair(name: string, clientInstanceId?: string) {
 }
 
 describe('device pairing persistence faults (portable seam, station#3277/#3324)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     renameFault.armed = false;
+    renameFault.cleanup = false;
+    renameFault.staged = undefined;
     homeDir = mkdtempSync(join(tmpdir(), 'station-pairing-fault-'));
-    mkdirSync(join(homeDir, 'security'), { recursive: true });
+    mkdirSync(join(homeDir, 'security'), { recursive: true, mode: 0o700 });
     clock = 1_000;
-    service = new DevicePairingService({
+    service = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
       now: () => clock,
@@ -105,6 +137,8 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
 
   afterEach(() => {
     renameFault.armed = false;
+    renameFault.cleanup = false;
+    renameFault.staged = undefined;
     rmSync(homeDir, { recursive: true, force: true });
   });
 
@@ -150,7 +184,7 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
     expect(registryContents()).not.toContain('Replacement phone');
   });
 
-  test('persists revocation before changing live state, so failure, retry, and restart agree', () => {
+  test('persists revocation before changing live state, so failure, retry, and restart agree', async () => {
     const paired = pair('Casey phone').result;
 
     renameFault.armed = true;
@@ -165,14 +199,14 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
 
     service.revokeDevice(paired.device.id, 'operator-credential');
     expect(service.verifyCredential(paired.credential)).toBe(false);
-    const restarted = new DevicePairingService({
+    const restarted = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
     });
     expect(restarted.verifyCredential(paired.credential)).toBe(false);
   });
 
-  test('alias mint and revocation faults leave both credential states unapplied until durable retry', () => {
+  test('alias mint and revocation faults leave both credential states unapplied until durable retry', async () => {
     const paired = pair('Cookie-paired browser').result;
     renameFault.armed = true;
     try {
@@ -210,7 +244,7 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
     ).toBe(true);
     expect(service.verifyCredential(alias.credential)).toBe(false);
     expect(service.verifyCredential(paired.credential)).toBe(true);
-    const restarted = new DevicePairingService({
+    const restarted = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
       now: () => clock,
@@ -219,7 +253,7 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
     expect(restarted.verifyCredential(paired.credential)).toBe(true);
   });
 
-  test('persists activity before changing live state, so failure, retry, and restart agree', () => {
+  test('persists activity before changing live state, so failure, retry, and restart agree', async () => {
     const paired = pair('Casey phone').result;
 
     renameFault.armed = true;
@@ -235,7 +269,7 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
     expect(service.recordCredentialActivity(paired.credential, 'lan')).toBe(
       true,
     );
-    const restarted = new DevicePairingService({
+    const restarted = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
     });
@@ -245,7 +279,7 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
     });
   });
 
-  test('persists tombstone removal before changing live state', () => {
+  test('persists tombstone removal before changing live state', async () => {
     // The fourth clone-and-swap replacement path, and the one the chmod
     // tests never covered on any platform.
     const paired = pair('Casey phone').result;
@@ -266,14 +300,14 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
 
     service.removeRevokedDevice(paired.device.id, 'operator-credential');
     expect(service.listDevices()).toEqual([]);
-    const restarted = new DevicePairingService({
+    const restarted = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
     });
     expect(restarted.listDevices()).toEqual([]);
   });
 
-  test('persists an approval-authority grant before changing live state', () => {
+  test('persists an approval-authority grant before changing live state', async () => {
     const paired = pair('Casey phone').result;
 
     renameFault.armed = true;
@@ -299,14 +333,14 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
       OPERATOR_APPROVAL,
     );
     expect(service.credentialMayApprovePairing(paired.credential)).toBe(true);
-    const restarted = new DevicePairingService({
+    const restarted = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
     });
     expect(restarted.credentialMayApprovePairing(paired.credential)).toBe(true);
   });
 
-  test('persists a push subscription, and its removal, before changing live state', () => {
+  test('persists a push subscription, and its removal, before changing live state', async () => {
     const paired = pair('Casey phone').result;
     const subscription = {
       endpoint: 'https://push.example.test/subscription/abc',
@@ -341,14 +375,14 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
 
     service.clearPushSubscription(paired.device.id);
     expect(service.listPushSubscriptions()).toEqual([]);
-    const restarted = new DevicePairingService({
+    const restarted = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
     });
     expect(restarted.listPushSubscriptions()).toEqual([]);
   });
 
-  test('persists an environment reset before adopting it', () => {
+  test('persists an environment reset before adopting it', async () => {
     const paired = pair('Casey phone').result;
 
     renameFault.armed = true;
@@ -367,14 +401,14 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
 
     service.resetEnvironment('33333333-3333-4333-8333-333333333333');
     expect(service.verifyCredential(paired.credential)).toBe(false);
-    const restarted = new DevicePairingService({
+    const restarted = await DevicePairingService.create({
       homeDir,
       environmentId: '33333333-3333-4333-8333-333333333333',
     });
     expect(restarted.listDevices()).toEqual([]);
   });
 
-  test('a write fault on the lastUsedAt touch does not break credential verification', () => {
+  test('a write fault on the lastUsedAt touch does not break credential verification', async () => {
     const paired = pair('Casey phone').result;
     const lastUsedBeforeFault = service.identifyDevice(
       paired.credential,
@@ -403,24 +437,169 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
     // because the fault is disarmed, and measure the retry rather than the
     // state under fault.
     expect(service.listDevices()[0]?.lastUsedAt).toBe(lastUsedBeforeFault);
-    const restarted = new DevicePairingService({
+    const restarted = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
+      now: () => clock,
     });
     // Read the persisted value before verifying: verifyCredential performs
     // the same touch, which would succeed now and overwrite what we came to
     // measure.
     expect(restarted.listDevices()[0]?.lastUsedAt).toBe(lastUsedBeforeFault);
-    expect(restarted.verifyCredential(paired.credential)).toBe(true);
+    expect(
+      restarted.withCurrentRegistry(() =>
+        restarted.verifyCredential(paired.credential),
+      ),
+    ).toBe(true);
+    expect(restarted.listDevices()[0]?.lastUsedAt).toBe(clock);
   });
 
-  test('the fault seam is armed only on demand, so an unarmed write persists', () => {
+  test("a stale bookkeeping writer cannot overwrite another owner's committed revocation", async () => {
+    const paired = pair('Casey phone').result;
+    const other = await DevicePairingService.create({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+      now: () => clock,
+    });
+    other.revokeDevice(paired.device.id, 'operator-credential');
+    const revoked = registryContents();
+    advanceClock(LAST_USED_WRITE_INTERVAL_MS * 2);
+
+    // The legacy no-throw verification contract does not turn a failed
+    // bookkeeping publication into a successful registry replacement.
+    expect(service.verifyCredential(paired.credential)).toBe(false);
+    expect(registryContents()).toBe(revoked);
+    expect(service.recordCredentialActivity(paired.credential)).toBe(false);
+    expect(registryContents()).toBe(revoked);
+    const restarted = await DevicePairingService.create({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+    });
+    expect(restarted.verifyCredential(paired.credential)).toBe(false);
+  });
+
+  test.each(['created', 'deleted'] as const)(
+    'a registry %s after the held snapshot refuses publication from that preimage',
+    async (change) => {
+      const originalEmptyOwner = await DevicePairingService.create({
+        homeDir,
+        environmentId: ENVIRONMENT_ID,
+        now: () => clock,
+      });
+      pair('Casey phone');
+      const path = join(homeDir, 'security', 'paired-devices.json');
+      const persisted = registryContents();
+      if (change === 'created') rmSync(path);
+      renameFault.staged = () => {
+        if (change === 'created')
+          writeFileSync(path, persisted, { mode: 0o600 });
+        else rmSync(path);
+      };
+      const stale = change === 'created' ? originalEmptyOwner : service;
+      expect(() => stale.resetEnvironment(ENVIRONMENT_ID)).toThrow(
+        'Paired-device registry revision changed',
+      );
+      if (change === 'deleted') expect(existsSync(path)).toBe(false);
+      else expect(registryContents()).toBe(persisted);
+    },
+  );
+
+  test('a post-publication cleanup error fences stale activity until explicit reconstruction', async () => {
+    const paired = pair('Casey phone').result;
+    renameFault.cleanup = true;
+    try {
+      expect(() =>
+        service.revokeDevice(paired.device.id, 'operator-credential'),
+      ).toThrow(HomeWriterUnavailableError);
+    } finally {
+      renameFault.cleanup = false;
+    }
+    const committed = registryContents();
+    expect(JSON.parse(committed).devices[0].revokedAt).toBe(clock);
+    advanceClock(LAST_USED_WRITE_INTERVAL_MS * 2);
+    expect(() => service.verifyCredential(paired.credential)).toThrow(
+      HomeWriterUnavailableError,
+    );
+    expect(registryContents()).toBe(committed);
+    const restarted = await DevicePairingService.create({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+    });
+    expect(restarted.verifyCredential(paired.credential)).toBe(false);
+  });
+
+  test('an unconfirmed published exchange cannot consume the same offer again', () => {
+    const offer = service.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const request = service.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'uncertain exchange',
+      requesterPosition: 'off-box',
+    });
+    service.confirmRequest(request.requestId, OPERATOR_APPROVAL);
+    const input = {
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: request.requestId,
+    };
+    renameFault.cleanup = true;
+    try {
+      expect(() => service.exchange(input)).toThrow(HomeWriterUnavailableError);
+    } finally {
+      renameFault.cleanup = false;
+    }
+    const committed = registryContents();
+    expect(JSON.parse(committed).devices).toHaveLength(1);
+    expect(() => service.exchange(input)).toThrow(HomeWriterUnavailableError);
+    expect(registryContents()).toBe(committed);
+  });
+
+  test('distinct invalid UTF-8 byte revisions cannot share a writer preimage', async () => {
+    const paired = pair('Casey phone').result;
+    const path = join(homeDir, 'security', 'paired-devices.json');
+    const bytes = readFileSync(path);
+    const marker = Buffer.from('Casey phone');
+    const offset = bytes.indexOf(marker);
+    expect(offset).toBeGreaterThan(-1);
+    const changed = Buffer.concat([
+      bytes.subarray(0, offset),
+      Buffer.from([0x80]),
+      bytes.subarray(offset + marker.length),
+    ]);
+    writeFileSync(path, changed);
+    const owner = await DevicePairingService.create({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+      now: () => clock,
+    });
+    changed[offset] = 0x81;
+    renameFault.staged = () => writeFileSync(path, changed);
+    expect(() => owner.recordCredentialActivity(paired.credential)).toThrow(
+      'Paired-device registry revision changed',
+    );
+    expect(readFileSync(path)).toEqual(changed);
+  });
+
+  test('a reset observer cannot publish activity from the pre-reset cache', () => {
+    const paired = pair('Casey phone').result;
+    const activity: boolean[] = [];
+    service.onNativePushRetired(() => {
+      activity.push(service.recordCredentialActivity(paired.credential));
+    });
+    service.resetEnvironment(ENVIRONMENT_ID);
+    expect(activity).toEqual([false]);
+    expect(JSON.parse(registryContents()).devices).toEqual([]);
+  });
+
+  test('the fault seam is armed only on demand, so an unarmed write persists', async () => {
     // Without this, every assertion above could pass against a service that
     // never persists anything at all: the fault would be indistinguishable
     // from a no-op writer.
     const paired = pair('Casey phone').result;
     expect(registryContents()).toContain(paired.device.id);
-    const restarted = new DevicePairingService({
+    const restarted = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
     });

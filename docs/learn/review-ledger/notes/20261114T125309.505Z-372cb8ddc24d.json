@@ -1,0 +1,7 @@
+{
+  "revision": "020e4338c7d068c23caa21700b85bf63c038231a",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Scoped Activity-retirement/Directory amendment only. The old SessionsView and ActivityList owner test were deleted by main a5752ec5b3. Current HomeWorkRow renders the shared InboxRow; its Directory context is selected only for a projectless cwd, using the existing sessionCwdLabel/home projection. The current HomeWorkRow project-marks test checks the actual Directory label. The CLI guide now names Home and the inbox, removing the retired Activity claim. No other CLI command, permission, native, service, provider or release claim is requalified here; unrelated changed source inputs remain outstanding.","inputs":["docs/reference/cli.md","src-ui/src/views/SessionsView.tsx","src-ui/src/views/activity/__tests__/ActivityList.test.tsx","src-ui/src/views/home/home-view-model.ts","src-ui/src/components/home/HomeWorkRow.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/home/__tests__/HomeWorkRow.projectMarks.test.tsx"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "fe32a5728df05603940082705dbb0b49a660bfd0",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Delta review: Ensemble inspection changes only the existing workspace-isolation fact origin/state/settings owner using already-resolved mode and fenced Project configuration. Terminal proposal and actual terminal-session currentness/cwd/sequence/receipt boundaries are unchanged; inspector adds no terminal, filesystem provisioning or execution authority. Runtime isolation stays explicitly unverified. Existing complete-body review and platform limits remain; no prose correction required.","inputs":["docs/design/terminal.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed Ensemble configuration inspection section against final inspector ad1390a528dc and closed route: same operation/scope/body/response version, existing origin/state enum and owner references. Authored Project/directory and inherited defaults are distinguished using existing fenced sources; absent observation stays unknown and runtime provisioning is unverified. No probe, secret, model launch, schema addition or new capability. Existing category/missing-live-binding/tool-grant limits remain accurate; no prose correction required.","inputs":["docs/reference/api.md","src-server/services/orchestration/ensemble-inspection.ts"]}
+  ]
+}

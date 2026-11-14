@@ -2,7 +2,13 @@ import { once } from 'node:events';
 import { createServer as createTcpServer, type Server, Socket } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
+import WebSocket from 'ws';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
+import { allocateFreePortBlock } from '../bootstrap/allocate-port-block.js';
+import {
+  closeOwnedWebSocketListener,
+  startWebSocketListener,
+} from '../bootstrap/websocket-listener.js';
 
 const LOOPBACK = '127.0.0.1';
 const CONNECT_TIMEOUT_MS = 1_000;
@@ -117,4 +123,53 @@ describe('explicit Station WebSocket listener host isolation', () => {
       ).toBe('refused');
     }
   });
+});
+
+it('closing the owned voice listener terminates its connected client and releases its port', async () => {
+  const voice = attachVoiceWebSocket(
+    0,
+    { createSession: () => {} } as any,
+    LOOPBACK,
+  );
+  if (!voice) throw new Error('Voice listener was not created');
+  let client: WebSocket | undefined;
+  const rebound = createTcpServer();
+  try {
+    await once(voice, 'listening');
+    const address = voice.address();
+    if (!address || typeof address === 'string')
+      throw new Error('Voice address missing');
+    client = new WebSocket(`ws://${LOOPBACK}:${address.port}/`);
+    await once(client, 'open');
+    const closed = once(client, 'close');
+    await closeOwnedWebSocketListener(voice);
+    await closed;
+    expect(client.readyState).toBe(WebSocket.CLOSED);
+    await new Promise<void>((resolve, reject) => {
+      rebound.once('error', reject);
+      rebound.listen(address.port, LOOPBACK, resolve);
+    });
+    expect(rebound.listening).toBe(true);
+  } finally {
+    client?.terminate();
+    if (voice.address()) await close(voice);
+    if (rebound.listening) await close(rebound);
+  }
+});
+
+it('closing during listener bind waits for that exact listener to retire', async () => {
+  const port = await allocateFreePortBlock(LOOPBACK);
+  const voice = startWebSocketListener('voice', { port, host: LOOPBACK }, {});
+  const rebound = createTcpServer();
+  try {
+    await closeOwnedWebSocketListener(voice);
+    await new Promise<void>((resolve, reject) => {
+      rebound.once('error', reject);
+      rebound.listen(port, LOOPBACK, resolve);
+    });
+    expect(rebound.listening).toBe(true);
+  } finally {
+    if (rebound.listening) await close(rebound);
+    if (voice.address()) await close(voice);
+  }
 });

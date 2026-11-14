@@ -1620,6 +1620,12 @@
 
     "packages/agent-runtime/src/__tests__/turn-retention.process.test.ts",
 
+    "src-ui/src/views/EnsembleRecordedGroupInspection.tsx",
+
+    "src-ui/src/views/__tests__/EnsembleRecordedGroupInspection.test.tsx",
+
+    "src-server/services/orchestration/ensemble-presets.ts",
+
     "src-ui/src/views/task-workspace/TaskCapabilityPath.tsx",
 
     "src-ui/src/views/task-workspace/__tests__/TaskCapabilityPath.test.tsx",
@@ -1760,7 +1766,15 @@
 
     "src-server/providers/registries/agent-registry-provider.ts",
 
-    "src-server/providers/registries/confined-local-read.ts"
+    "src-server/providers/registries/confined-local-read.ts",
+
+    "src-server/runtime/conversation/native-text-model-request.ts",
+
+    "src-server/services/orchestration/delegated-task-identity.ts",
+
+    "src-server/services/orchestration/__tests__/native-task-source-admission.test.ts",
+
+    "src-server/services/orchestration/delegation-group-source-admission.ts"
   ],
 
   "checks": [

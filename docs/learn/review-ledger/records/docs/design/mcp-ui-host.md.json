@@ -72,7 +72,35 @@
 
     "src-server/runtime/agents/__tests__/runtime-default-agent.test.ts",
 
-    "src-server/security/__tests__/pairing-route-scopes.test.ts"
+    "src-server/security/__tests__/pairing-route-scopes.test.ts",
+
+    "src-server/runtime/mcp/report-input-runtime.ts",
+
+    "src-server/runtime/conversation/runtime-fenced-credential-observation.ts",
+
+    "src-server/runtime/conversation/local-grant-observation-owner.ts",
+
+    "src-server/services/agents/agent-service.ts",
+
+    "src-server/services/orchestration/station-report-group-preparation.ts",
+
+    "src-server/services/orchestration/cancellation-fence.ts",
+
+    "src-server/services/orchestration/ownership-tree.ts",
+
+    "packages/monument/src/recovery-ledger.ts",
+
+    "packages/monument/src/sqlite-recovery.ts",
+
+    "src-server/tools/station-control-delegation-group-tools.ts",
+
+    "src-server/tools/station-control-session-group-tools.ts",
+
+    "src-server/services/plugins/agent-plugin-loader.ts",
+
+    "package.json#/dependencies/@modelcontextprotocol~1client",
+
+    "patches/modelcontextprotocol-client-2.4.0.patch"
   ],
 
   "checks": [

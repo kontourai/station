@@ -1,0 +1,7 @@
+{
+  "revision": "f25f630ec0341d74fc8a198dd7e48856dddadf0d",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reconciled historical candidate wording with implemented and source-reviewed local sync controls; kept unsupported OpenCode/Codex, broad effect coverage, real-provider and full epic acceptance open. Prior probe outcomes are unchanged.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}

@@ -16,6 +16,8 @@
 
     "packages/contracts/src/agent-identity.ts",
 
+    "packages/contracts/src/child-work.ts",
+
     "packages/contracts/src/session-lifecycle.ts",
 
     "packages/sdk/src/client/execution.ts",
@@ -26,41 +28,51 @@
 
     "src-server/routes/orchestration/orchestration.ts",
 
+    "src-server/services/orchestration/cli-session-group.ts",
+
     "src-server/services/orchestration/session-command-module.ts",
 
-    "src-ui/src/contexts/work-observation.ts",
+    "src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx",
 
-    "src-ui/src/hooks/orchestration/useSessionEventWindow.ts",
+    "src-ui/src/__tests__/useOutboundQueueFlush.test.ts",
 
-    "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
+    "src-ui/src/components/chat-dock/BackgroundTasksSheet.tsx",
 
-    "src-ui/src/views/home/useInboxWorkItems.ts",
-
-    "src-ui/src/views/home/useHomeViewModel.ts",
-
-    "src-ui/src/views/home/work-status.ts",
+    "src-ui/src/components/chat-dock/ChatDock.tsx",
 
     "src-ui/src/components/chat-dock/ChatDockBody.tsx",
 
     "src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx",
 
-    "src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx",
-
     "src-ui/src/components/chat-dock/conversationOpenController.ts",
-
-    "src-ui/src/components/chat-dock/ChatDock.tsx",
-
-    "src-ui/src/views/home/useObservedWorkStatus.ts",
-
-    "src-ui/src/hooks/useConversationInbox.ts",
 
     "src-ui/src/components/chat/ConversationInboxMessages.tsx",
 
-    "src-ui/src/lib/outboundQueue.ts",
+    "src-ui/src/contexts/work-observation.ts",
+
+    "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
+
+    "src-ui/src/hooks/orchestration/useSessionEventWindow.ts",
 
     "src-ui/src/hooks/outboundQueueProjection.ts",
 
-    "src-ui/src/__tests__/useOutboundQueueFlush.test.ts"
+    "src-ui/src/hooks/useConversationInbox.ts",
+
+    "src-ui/src/lib/outboundQueue.ts",
+
+    "src-ui/src/utils/child-work-display.ts",
+
+    "src-ui/src/utils/clientOrigin.ts",
+
+    "src-ui/src/views/home/home-lane-model.ts",
+
+    "src-ui/src/views/home/useHomeViewModel.ts",
+
+    "src-ui/src/views/home/useInboxWorkItems.ts",
+
+    "src-ui/src/views/home/useObservedWorkStatus.ts",
+
+    "src-ui/src/views/home/work-status.ts"
   ],
 
   "checks": [

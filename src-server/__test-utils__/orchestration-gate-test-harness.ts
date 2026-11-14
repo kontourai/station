@@ -34,7 +34,7 @@ import { AsyncEventQueue } from '../providers/sessions/async-event-queue.js';
  * instead of a mock.
  */
 export class GateTestAdapter implements ProviderAdapterShape {
-  readonly provider = 'claude' as const;
+  constructor(readonly provider: ProviderAdapterShape['provider'] = 'claude') {}
   readonly metadata: ProviderAdapterMetadata = {
     displayName: 'Claude Code',
     description: 'Test adapter for real-service ownership-gate suites',
@@ -82,14 +82,16 @@ export class GateTestAdapter implements ProviderAdapterShape {
 
 export function createGateTestRegistry(
   adapter: ProviderAdapterShape,
+  ...additional: ProviderAdapterShape[]
 ): IProviderAdapterRegistry {
+  const adapters = [adapter, ...additional];
   return {
     register() {},
     get(provider) {
-      return provider === adapter.provider ? adapter : undefined;
+      return adapters.find((entry) => entry.provider === provider);
     },
     list() {
-      return [adapter];
+      return [...adapters];
     },
   };
 }

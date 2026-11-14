@@ -1,0 +1,7 @@
+{
+  "revision": "26e94a23a9760e7239d097c5335a741c2550dcc2",
+
+  "notes": [
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Read the complete proposal and reviewed affected Claude browser-delivery claims through current resolveStationBrowser, start query wiring, buildOptions builtin server path and in-process server token reuse. Editor browser toggle remains Claude-only and resolver carries browserTools:false; absent agent/runtime factory or browserTools:false omits server. Adapter still serves Station Project browser, not a Claude-owned target. New auth/confinement/no-tools code does not implement the proposed common cross-engine browser/computer layer. Existing unchanged browser/device authority guides retain their prior review scope; this note does not renew full authority internals or provide runtime/provider/control proof. Proposal remains unscheduled and explicitly unimplemented beyond named current paths.","inputs":["docs/design/agent-interaction-capabilities.md","src-server/providers/adapters/claude-adapter.ts"]}
+  ]
+}

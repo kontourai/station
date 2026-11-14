@@ -205,9 +205,27 @@ describe('conversation-open adapter durability', () => {
       durability: STEERING_ENGINE_DURABILITY,
       accepted: true,
     },
+    {
+      name: 'queued follow-up denial',
+      durability: {
+        ...STATION_ENGINE_DURABILITY,
+        queuedFollowUp: { state: 'none', detail: 'Use the group controls.' },
+      },
+      accepted: true,
+    },
     ...[
       null,
       {},
+      { ...STATION_ENGINE_DURABILITY, queuedFollowUp: null },
+      { ...STATION_ENGINE_DURABILITY, queuedFollowUp: { state: 'none' } },
+      {
+        ...STATION_ENGINE_DURABILITY,
+        queuedFollowUp: { state: 'native', detail: 'Not a denial.' },
+      },
+      {
+        ...STATION_ENGINE_DURABILITY,
+        queuedFollowUp: { state: 'none', detail: 'Denied.', extra: true },
+      },
       { ...STATION_ENGINE_DURABILITY, steerPlacement: { state: 'native' } },
       {
         ...STATION_ENGINE_DURABILITY,

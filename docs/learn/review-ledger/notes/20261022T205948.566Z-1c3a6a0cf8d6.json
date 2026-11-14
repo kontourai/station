@@ -1,0 +1,7 @@
+{
+  "revision": "3b0ad93555b77d4da4063a8db920f29b72036a83",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Read the complete historical ADR and its ADR0014 successor at 3b0ad93555b. Rechecked the changed orchestration route against its retained current-status claim: /chat, /chat/delegated and /chat/background still share handleForegroundMessage and the injected executeForegroundMessage owner; the new busy-inbox, delivery-receipt and exact-provider-turn refusal branches do not revive flag-controlled direct chat. Traced the live CLI sendExecutionTargetChat and UI dispatchForeground callers through the SDK sendExecutionMessage orchestration endpoint. The private station-agent provider remains excluded by listProviders. No prose change is needed to the historical-status boundary or retained destination/privacy rationale. This note reviews the changed orchestration route input only as it bears on those claims; it does not certify every route change, current managed execution parity, original rollout probes, legacy migration behavior, provider execution or release acceptance.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

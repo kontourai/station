@@ -76,6 +76,17 @@ const DECISION_2_OPERATOR_READS = [
   'list_delegation_environments',
   'read_pull_request_guide',
 ];
+// Group custody requires the original bound Session; a copied bearer is insufficient.
+const CALLER_CUSTODIED_GROUP_READS = [
+  'list_session_groups',
+  'get_session_group',
+  'get_session_group_events',
+  'list_delegation_groups',
+  'get_delegation_group',
+  'get_delegation_group_events',
+  'get_delegation_group_member_events',
+  'get_delegation_group_member_output',
+];
 // Decision 2 (slice B): reads scoped to the principal the caller's session
 // acts for. Transcribed from the slice B brief, independently of the table.
 const DECISION_2_PRINCIPAL_READS = [
@@ -362,14 +373,19 @@ describe('station-control authority table: no label nothing computes', () => {
     expect(missing).toEqual([]);
   });
 
-  test('read-only entries are never person-only; only the operator-wide reads need more than any caller', () => {
+  test('read-only entries preserve operator-wide and caller-custodied group assurance', () => {
     for (const [name, policy] of TABLE) {
       if (policy.toolClass !== 'read-only') continue;
       expect([name, policy.personOnly]).toEqual([name, 'never']);
       expect([name, policy.assurance]).toEqual([
         name,
-        DECISION_2_OPERATOR_READS.includes(name) ? 'bound' : 'any',
+        DECISION_2_OPERATOR_READS.includes(name) ||
+        CALLER_CUSTODIED_GROUP_READS.includes(name)
+          ? 'bound'
+          : 'any',
       ]);
+      if (CALLER_CUSTODIED_GROUP_READS.includes(name))
+        expect([name, policy.role]).toEqual([name, 'self']);
     }
   });
 

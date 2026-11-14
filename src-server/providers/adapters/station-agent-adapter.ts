@@ -3,13 +3,15 @@ import type { AgentFrame, DurableApproval } from '@kontourai/agent-runtime';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
-import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import { STATION_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
-  InputRequestContent,
+  InputRequestForm,
   InputRequestResponse,
 } from '@kontourai/station-contracts/input-request';
-import { stripReservedOrchestrationMetadata } from '@kontourai/station-contracts/provider';
+import {
+  RESERVED_SOURCE_EXECUTION_METADATA_KEY,
+  stripReservedOrchestrationMetadata,
+} from '@kontourai/station-contracts/provider';
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   type ApprovalStatus,
@@ -24,7 +26,11 @@ import {
   parseTurnProvenanceContextInjection,
   type TurnProvenanceContextInjection,
 } from '@kontourai/station-contracts/turn-provenance-context';
-import { readInputRequestForm } from '@kontourai/station-shared/input-request';
+import {
+  readInputRequestForm,
+  readInputRequestResponse,
+  validateInputRequestContent,
+} from '@kontourai/station-shared/input-request';
 import {
   type DurableFrameMarker,
   decodeDurableAgentFrame,
@@ -41,6 +47,7 @@ import {
   INTERNAL_TURN_CORRELATION_HEADER,
   issueAuthorizedTurnCorrelationHandoff,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import { awaitCanonicalRequestCommit } from '../../runtime/conversation/canonical-request-commit.js';
 import {
   INTERNAL_NATIVE_WORKSPACE_HEADER,
   NativeExecutionWorkspaceUnavailableError,
@@ -49,6 +56,17 @@ import {
   currentNativeForegroundRelay,
   INTERNAL_NATIVE_FOREGROUND_HEADER,
 } from '../../runtime/conversation/native-foreground-invocation.js';
+import {
+  admitReservedStationPublication,
+  admitReservedStationSessionBinding,
+  admitReservedStationSessionOpen,
+  assertReservedStationTurnCurrent,
+  bindReservedStationSession,
+  currentReservedStationTurn,
+  executeReservedStationTurn,
+  type ReservedStationInputOpen,
+  type ReservedStationSession,
+} from '../../runtime/conversation/reserved-station-turn.js';
 import {
   extractToolPurpose,
   takeToolPurpose,
@@ -67,7 +85,10 @@ import {
   runAsStationServer,
   stationServerScopeHeaders,
 } from '../../security/station-server-scope.js';
-import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import type {
+  ApprovalRegistry,
+  CanonicalApprovalRegistration,
+} from '../../services/approvals/approval-registry.js';
 import { derivedConversationTitle } from '../../services/orchestration/conversation-title.js';
 import type {
   EventBus,
@@ -151,6 +172,7 @@ export class StationAgentStreamStallError extends Error {
 }
 
 interface StationAgentResumeCursor {
+  reservedSourceIdentity?: string;
   agentId: string;
   projectSlug?: string;
   userId?: string;
@@ -161,6 +183,8 @@ interface StationAgentResumeCursor {
 type TurnOrigin = Readonly<Pick<ProviderSendTurnInput, 'invocationId'>>;
 
 interface StationAgentSessionRecord {
+  reservedSession?: ReservedStationSession;
+  reservedSourceIdentity?: string;
   conversationTitle?: string;
   workspaceRequired: boolean;
   session: ProviderSession;
@@ -180,6 +204,15 @@ interface StationAgentSessionRecord {
       turnId: string;
       origin: TurnOrigin;
       elicitation?: true;
+      canonical?: {
+        registration: CanonicalApprovalRegistration;
+        eventId: string;
+        form: InputRequestForm;
+        assertCurrent(): void;
+        admitCurrent?(
+          effect: Parameters<typeof admitReservedStationPublication>[1],
+        ): Promise<void>;
+      };
     }
   >;
   approvedTools: Set<string>;
@@ -269,7 +302,9 @@ interface StationAgentAdapterOptions {
   /** Recovery starts before the runtime has finished populating activeAgents. */
   isAgentRegistryReady?: () => boolean;
   approvalRegistry: Pick<ApprovalRegistry, 'has' | 'resolve'> &
-    Partial<Pick<ApprovalRegistry, 'isPendingForSession'>>;
+    Partial<
+      Pick<ApprovalRegistry, 'registerCanonicalAnswer' | 'isPendingForSession'>
+    >;
   eventBus: Pick<EventBus, 'subscribe'>;
   fetch?: typeof fetch;
   now?: () => Date;
@@ -399,6 +434,9 @@ function parseResumeCursor(value: unknown): StationAgentResumeCursor | null {
   if (!agentId) return null;
   return {
     agentId,
+    ...(stringField(record.reservedSourceIdentity)
+      ? { reservedSourceIdentity: stringField(record.reservedSourceIdentity) }
+      : {}),
     ...(stringField(record.projectSlug)
       ? { projectSlug: stringField(record.projectSlug) }
       : {}),
@@ -949,6 +987,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const record = this.sessions.get(threadId);
     return (
       !!record &&
+      !record.reservedSourceIdentity &&
       (!record.activeTurnId || record.activeTurnId === turnId) &&
       this.agentRegistryReady()
     );
@@ -959,6 +998,8 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     invocationId?: string,
   ): void {
     const record = this.requireSession(threadId);
+    if (record.reservedSourceIdentity)
+      throw new Error('Reserved Station turns do not use managed recovery.');
     if (record.activeTurnId && record.activeTurnId !== turnId)
       throw new Error('Another turn owns this Session.');
     record.activeTurnId = turnId;
@@ -1198,6 +1239,10 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     options.eventBus.subscribe((event) => this.handleApprovalEvent(event));
   }
 
+  reservedStationSession(threadId: string): ReservedStationSession | undefined {
+    return this.sessions.get(threadId)?.reservedSession;
+  }
+
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
@@ -1209,6 +1254,19 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     ) {
       throw new Error(`Unknown Station agent: ${agentId ?? '(none provided)'}`);
     }
+    const preparedReservedTurn = currentReservedStationTurn();
+    const reserved = preparedReservedTurn
+      ? await admitReservedStationSessionOpen(
+          preparedReservedTurn,
+          input.threadId,
+          recovered?.reservedSourceIdentity,
+        )
+      : undefined;
+    const reservedInput = reserved?.hasInput ?? false;
+    const sessionMetadata = { ...input.metadata };
+    delete sessionMetadata[RESERVED_SOURCE_EXECUTION_METADATA_KEY];
+    const reservedSourceIdentity =
+      reserved?.identity ?? recovered?.reservedSourceIdentity;
     const now = this.now().toISOString();
     const projectSlug =
       stringField(input.metadata?.projectSlug) ?? recovered?.projectSlug;
@@ -1222,6 +1280,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const tenantExecutionContext = input.tenantExecutionContext;
     const resumeCursor: StationAgentResumeCursor = {
       agentId,
+      ...(reservedSourceIdentity ? { reservedSourceIdentity } : {}),
       ...(projectSlug ? { projectSlug } : {}),
       ...(userId ? { userId } : {}),
       ...(delegation ? { delegation } : {}),
@@ -1241,7 +1300,8 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       updatedAt: now,
     };
     startNativeKnowledgeSession(input.threadId);
-    this.sessions.set(input.threadId, {
+    const record: StationAgentSessionRecord = {
+      ...(reservedSourceIdentity ? { reservedSourceIdentity } : {}),
       workspaceRequired:
         input.workspaceIsolation?.mode === 'worktree' ||
         (input.metadata?.workspaceIsolation as { mode?: unknown } | undefined)
@@ -1259,7 +1319,21 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       approvedTools: new Set(),
       resolvedBeforeOpen: new Map(),
       openToolCalls: new Map(),
-    });
+    };
+    const threadId = input.threadId;
+    this.sessions.set(threadId, record);
+    record.reservedSession = preparedReservedTurn
+      ? await admitReservedStationSessionBinding(
+          preparedReservedTurn,
+          threadId,
+          record,
+          () => this.sessions.get(threadId) === record,
+        )
+      : bindReservedStationSession(
+          threadId,
+          record,
+          () => this.sessions.get(threadId) === record,
+        );
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -1268,7 +1342,24 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       method: 'session.started',
       sessionId: input.threadId,
       initialState: 'created',
-      metadata: { ...input.metadata, agentId, cwd: input.cwd },
+      metadata: {
+        ...sessionMetadata,
+        agentId,
+        cwd: input.cwd,
+        ...(reserved
+          ? {
+              [RESERVED_SOURCE_EXECUTION_METADATA_KEY]: {
+                identity: reserved.identity,
+                mode: reservedInput
+                  ? 'sealed-source-input'
+                  : 'sealed-source-no-tools',
+                tools: reservedInput ? 'fixed-input-only' : 'unavailable',
+                approvals: reservedInput ? 'input-only' : 'unavailable',
+                continuation: 'unavailable',
+              },
+            }
+          : {}),
+      },
     });
     this.publish({
       eventId: crypto.randomUUID(),
@@ -1284,7 +1375,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       // evidence; server metadata and the resolved agent id win last.
       metadata: {
         ...stripReservedOrchestrationMetadata(input.modelOptions),
-        ...input.metadata,
+        ...sessionMetadata,
         agentId,
       },
     });
@@ -1298,6 +1389,12 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const origin: TurnOrigin =
       invocationId === undefined ? {} : { invocationId };
     const record = this.requireSession(input.threadId);
+    const reservedTurn = currentReservedStationTurn();
+    if (Boolean(reservedTurn) !== Boolean(record.reservedSourceIdentity))
+      throw new SendTurnRefusedError(
+        'This session requires its reserved Station turn.',
+        'permission_denied',
+      );
     if (!(await this.options.hasAgent(record.agentId))) {
       throw new Error(`Unknown Station agent: ${record.agentId}`);
     }
@@ -1390,6 +1487,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       metadata: modelMetadata,
     } satisfies CanonicalRuntimeEvent;
     if (
+      !reservedTurn &&
       this.options.durable?.enabled() &&
       turnCorrelation &&
       origin.invocationId
@@ -1399,6 +1497,126 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         invocationId: origin.invocationId,
       });
     this.publish(startedEvent);
+
+    if (reservedTurn) {
+      let result: ReturnType<typeof executeReservedStationTurn>;
+      try {
+        result = executeReservedStationTurn(
+          reservedTurn,
+          { ...input, modelId },
+          turnId,
+          record.reservedSourceIdentity,
+          record,
+          controller.signal,
+          (delta, check) => {
+            check(() => {
+              assertReservedStationTurnCurrent(reservedTurn);
+              if (
+                record.activeTurnId !== turnId ||
+                record.activeController !== controller
+              )
+                throw new Error('Reserved stream turn changed.');
+            });
+            this.publish({
+              eventId: crypto.randomUUID(),
+              provider: this.provider,
+              threadId: input.threadId,
+              turnId,
+              itemId: turnId,
+              ...origin,
+              createdAt: this.now().toISOString(),
+              method: 'content.text-delta',
+              delta,
+            });
+          },
+          (form, beforeOpen, inputSignal) =>
+            this.openReservedInputRequest(
+              record,
+              turnId,
+              controller,
+              origin,
+              form,
+              beforeOpen,
+              () => assertReservedStationTurnCurrent(reservedTurn),
+              (publish) =>
+                admitReservedStationPublication(reservedTurn, publish),
+              inputSignal,
+            ),
+          (attempt, check) => {
+            const current = check(() => {
+              assertReservedStationTurnCurrent(reservedTurn);
+              return (
+                this.sessions.get(input.threadId) === record &&
+                record.activeTurnId === turnId &&
+                record.activeController === controller
+              );
+            });
+            if (!current) return;
+            const reason = attempt.sdkResult.finishReason;
+            const observedFinish =
+              reason && typeof reason === 'object' && 'unified' in reason
+                ? reason.unified
+                : reason;
+            this.publish({
+              eventId: crypto.randomUUID(),
+              provider: this.provider,
+              threadId: input.threadId,
+              turnId,
+              ...origin,
+              createdAt: this.now().toISOString(),
+              method: 'token-usage.updated',
+              promptTokens: attempt.accounting.inputTokens,
+              completionTokens: attempt.accounting.outputTokens,
+            });
+            this.publish({
+              eventId: crypto.randomUUID(),
+              provider: this.provider,
+              threadId: input.threadId,
+              turnId,
+              ...origin,
+              createdAt: this.now().toISOString(),
+              method: 'turn.completed',
+              finishReason: controller.signal.aborted
+                ? 'cancelled'
+                : observedFinish === 'stop'
+                  ? 'stop'
+                  : observedFinish === 'length'
+                    ? 'max-tokens'
+                    : 'other',
+              outputText: attempt.sdkResult.text,
+              metadata: {
+                ...modelMetadata,
+                [RESERVED_SOURCE_EXECUTION_METADATA_KEY]: {
+                  identity: record.reservedSourceIdentity,
+                  mode: attempt.sdkResult.inputRequest
+                    ? 'sealed-source-input'
+                    : 'sealed-source-no-tools',
+                  outputDelivery: attempt.outputDelivery,
+                  providerEvidence: attempt.evidenceReference,
+                  ...(attempt.inputReceipt
+                    ? { inputReceipt: attempt.inputReceipt }
+                    : {}),
+                },
+              },
+            });
+            this.updateSession(record, 'ready');
+            this.publishState(record, 'running', 'idle');
+            this.clearReservedTurn(record, turnId);
+          },
+        );
+      } catch (error) {
+        this.failTurn(record, turnId, controller, origin);
+        throw error;
+      }
+      void result.catch(() =>
+        this.failReservedTurn(record, turnId, controller, origin),
+      );
+      return {
+        threadId: input.threadId,
+        turnId,
+        resumeCursor: record.session.resumeCursor,
+      };
+    }
 
     let response: Response;
     let rejectionReason: string | undefined;
@@ -1611,6 +1829,8 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const activeController = record.activeController;
     const origin = record.activeOrigin;
     if (!activeTurnId || !activeController) {
+      if (record.reservedSourceIdentity)
+        return { outcome: 'no-active-turn' } as const;
       const retained = this.options.durable?.activeTurn?.(threadId) ?? turnId;
       if (
         retained &&
@@ -1628,6 +1848,13 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     }
     if (turnId && turnId !== activeTurnId) {
       return { outcome: 'target-mismatch', activeTurnId } as const;
+    }
+    if (record.reservedSourceIdentity) {
+      activeController.abort('interrupted');
+      return {
+        outcome: 'termination-unconfirmed',
+        turnId: activeTurnId,
+      } as const;
     }
     if (this.options.durable?.snapshot(threadId, activeTurnId)) {
       await this.options.durable.cancel(threadId, activeTurnId);
@@ -1664,64 +1891,101 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
-    context?: {
-      clientOrigin?: ClientOrigin;
-      inputContent?: InputRequestContent;
-    },
+    context?: Parameters<ProviderAdapterShape['respondToRequest']>[3],
   ): Promise<void> {
     const record = this.requireSession(threadId);
     const pending = record.pendingRequests.get(requestId);
     if (!pending) {
       throw new Error(`Unknown Station agent approval request: ${requestId}`);
     }
-    if (
-      this.options.durable?.approval(threadId, pending.turnId, requestId) &&
-      !this.options.approvalRegistry.isPendingForSession?.(requestId, threadId)
-    )
-      throw new Error('The durable approval is not waiting for this Session.');
-    // #3284: a form's answer is the person's own action, carried whole. The
-    // orchestration command already validated accepted content against the
-    // form; the tool wrapper re-checks it before the server sees it.
-    let answer: InputRequestResponse | undefined;
-    if (pending.elicitation) {
-      if (decision === 'acceptForSession')
+    const resolve: Parameters<typeof admitReservedStationPublication>[1] = (
+      check,
+    ) => {
+      if (pending.canonical) {
+        const canonical = pending.canonical;
+        check(() => {
+          canonical.assertCurrent();
+          if (record.pendingRequests.get(requestId) !== pending)
+            throw new Error('The reserved input request changed.');
+          if (context?.expectedRequestEventId !== canonical.eventId)
+            throw new Error('The reserved input request event changed.');
+          context?.assertAnswerCurrent?.();
+        });
+      }
+      if (
+        this.options.durable?.approval(threadId, pending.turnId, requestId) &&
+        !this.options.approvalRegistry.isPendingForSession?.(
+          requestId,
+          threadId,
+        )
+      )
         throw new Error(
-          'A tool server form is answered once, not for a session.',
+          'The durable approval is not waiting for this Session.',
         );
-      if (decision === 'accept' && !context?.inputContent)
-        throw new Error('Fill in the form before sending it.');
-      answer =
-        decision === 'accept'
-          ? { action: 'accept', content: context!.inputContent! }
-          : { action: decision };
-    } else if (context?.inputContent !== undefined) {
-      throw new Error('Only a tool server form takes form content.');
-    }
-    this.resolutionOverrides.set(
-      requestId,
-      decision === 'accept' || decision === 'acceptForSession'
-        ? 'approved'
-        : decision === 'decline'
-          ? 'denied'
-          : 'cancelled',
-    );
-    // #2344: `approval.resolved` records which device answered.
-    const resolved = this.options.approvalRegistry.resolve(
-      requestId,
-      decision === 'accept' || decision === 'acceptForSession',
-      context?.clientOrigin,
-      answer,
-    );
-    if (!resolved) {
-      record.pendingRequests.delete(requestId);
-      this.resolutionOverrides.delete(requestId);
-      throw new Error(`Stale Station agent approval request: ${requestId}`);
-    }
-    // #2316: the session grant is minted only by a decision that actually
-    // resolved its request. A stale entry refuses above without widening
-    // what this session auto-approves.
-    if (decision === 'acceptForSession' && pending.toolName) {
-      record.approvedTools.add(pending.toolName);
+      // #3284: a form's answer is the person's own action, carried whole. The
+      // orchestration command already validated accepted content against the
+      // form; the tool wrapper re-checks it before the server sees it.
+      let answer: InputRequestResponse | undefined;
+      if (pending.elicitation) {
+        if (decision === 'acceptForSession')
+          throw new Error(
+            'A tool server form is answered once, not for a session.',
+          );
+        if (decision === 'accept' && !context?.inputContent)
+          throw new Error('Fill in the form before sending it.');
+        answer =
+          decision === 'accept'
+            ? {
+                action: 'accept',
+                content: pending.canonical
+                  ? validateInputRequestContent(
+                      pending.canonical.form,
+                      context!.inputContent!,
+                    )
+                  : context!.inputContent!,
+              }
+            : { action: decision };
+      } else if (context?.inputContent !== undefined) {
+        throw new Error('Only a tool server form takes form content.');
+      }
+      this.resolutionOverrides.set(
+        requestId,
+        decision === 'accept' || decision === 'acceptForSession'
+          ? 'approved'
+          : decision === 'decline'
+            ? 'denied'
+            : 'cancelled',
+      );
+      // #2344: `approval.resolved` records which device answered.
+      const approved = decision === 'accept' || decision === 'acceptForSession';
+      const resolved = pending.canonical
+        ? pending.canonical.registration.resolve(
+            approved,
+            context?.clientOrigin,
+            structuredClone(answer),
+          )
+        : this.options.approvalRegistry.resolve(
+            requestId,
+            approved,
+            context?.clientOrigin,
+            answer,
+          );
+      if (!resolved) {
+        if (!pending.canonical) record.pendingRequests.delete(requestId);
+        this.resolutionOverrides.delete(requestId);
+        throw new Error(`Stale Station agent approval request: ${requestId}`);
+      }
+      // #2316: the session grant is minted only by a decision that actually
+      // resolved its request. A stale entry refuses above without widening
+      // what this session auto-approves.
+      if (decision === 'acceptForSession' && pending.toolName) {
+        record.approvedTools.add(pending.toolName);
+      }
+    };
+    if (pending.canonical?.admitCurrent)
+      await pending.canonical.admitCurrent(resolve);
+    else {
+      resolve((work) => work());
     }
   }
 
@@ -1733,7 +1997,8 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       await knowledgeCleanup;
       return;
     }
-    await this.options.durable?.cancel(threadId, record.activeTurnId);
+    if (!record.reservedSourceIdentity)
+      await this.options.durable?.cancel(threadId, record.activeTurnId);
     this.cancelPendingApprovals(record);
     record.activeController?.abort('session stopped');
     this.sessions.delete(threadId);
@@ -1803,7 +2068,11 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       await this.options.durable?.pause();
       await Promise.all(
         [...this.sessions.keys()]
-          .filter((threadId) => !this.options.durable?.retained(threadId))
+          .filter(
+            (threadId) =>
+              this.sessions.get(threadId)?.reservedSourceIdentity ||
+              !this.options.durable?.retained(threadId),
+          )
           .map((threadId) => this.stopSession(threadId)),
       );
     } finally {
@@ -2010,6 +2279,65 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     record.activeOrigin = undefined;
   }
 
+  private clearReservedTurn(
+    record: StationAgentSessionRecord,
+    turnId: string,
+  ): void {
+    finishNativeKnowledgeTurn(record.session.threadId, turnId);
+    record.activeTurnId = undefined;
+    record.activeController = undefined;
+    record.activeOrigin = undefined;
+  }
+
+  private failReservedTurn(
+    record: StationAgentSessionRecord,
+    turnId: string,
+    controller: AbortController,
+    origin: TurnOrigin,
+  ): void {
+    if (
+      this.sessions.get(record.session.threadId) !== record ||
+      record.activeTurnId !== turnId ||
+      record.activeController !== controller
+    )
+      return;
+    if (controller.signal.aborted) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.session.threadId,
+        turnId,
+        ...origin,
+        createdAt: this.now().toISOString(),
+        method: 'turn.aborted',
+        reason: 'interrupted',
+        metadata: {
+          physicalTermination: 'unconfirmed',
+          accounting: 'unknown-held',
+        },
+      });
+    } else {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.session.threadId,
+        turnId,
+        ...origin,
+        createdAt: this.now().toISOString(),
+        method: 'runtime.error',
+        severity: 'error',
+        message: 'Reserved Station turn failed; accounting remains held.',
+        ...providerFailure('provider_error'),
+        code: 'reserved_station_turn_failed',
+        retriable: false,
+        retryable: false,
+      } satisfies ProviderRuntimeErrorEvent);
+    }
+    this.updateSession(record, 'error');
+    this.publishState(record, 'running', 'errored');
+    this.clearReservedTurn(record, turnId);
+  }
+
   private failTurn(
     record: StationAgentSessionRecord,
     turnId: string,
@@ -2099,6 +2427,151 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       from,
       to,
     });
+  }
+
+  private async openReservedInputRequest(
+    record: StationAgentSessionRecord,
+    turnId: string,
+    controller: AbortController,
+    origin: TurnOrigin,
+    suppliedForm: InputRequestForm,
+    beforeOpen: Parameters<ReservedStationInputOpen>[1],
+    assertAdmissionCurrent: () => void,
+    admitPublication: (
+      publish: Parameters<typeof admitReservedStationPublication>[1],
+    ) => Promise<void>,
+    signal: AbortSignal,
+  ): Promise<InputRequestResponse> {
+    const assertCurrent = () => {
+      assertAdmissionCurrent();
+      signal.throwIfAborted();
+      if (
+        this.sessions.get(record.session.threadId) !== record ||
+        record.activeTurnId !== turnId ||
+        record.activeController !== controller
+      )
+        throw new Error('Reserved input turn changed.');
+    };
+    const admitCurrent = (
+      effect: Parameters<typeof admitReservedStationPublication>[1],
+    ) =>
+      admitPublication((check) => {
+        check(assertCurrent);
+        // Effects publish outside the borrowed Home span, in the same synchronous turn.
+        effect(check);
+      });
+    await admitCurrent(() => {});
+    const form = readInputRequestForm(structuredClone(suppliedForm));
+    if (!form?.source.startsWith('mcp:'))
+      throw new Error('Reserved input requires an MCP form.');
+    const requestId = crypto.randomUUID();
+    const event = {
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.session.threadId,
+      turnId,
+      ...origin,
+      createdAt: this.now().toISOString(),
+      method: 'request.opened' as const,
+      requestId,
+      requestType: 'approval' as const,
+      title: `${form.requester} needs your input`,
+      description: form.message,
+      payload: { inputRequest: form },
+    };
+    let registration: CanonicalApprovalRegistration | undefined;
+    let confirmOpen!: () => void;
+    const openCommitted = new Promise<void>((resolve) => {
+      confirmOpen = resolve;
+    });
+    let observation: ReturnType<typeof awaitCanonicalRequestCommit> | undefined;
+    const onAbort = () => {
+      observation?.cancel();
+      registration?.cancel();
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    try {
+      await admitCurrent(() => {});
+      await beforeOpen(structuredClone(event));
+      await admitPublication((check) => {
+        check(assertCurrent);
+        registration = this.options.approvalRegistry.registerCanonicalAnswer?.(
+          requestId,
+          {
+            sessionId: record.session.threadId,
+            metadata: {
+              source: 'runtime',
+              title: event.title,
+              conversationId: record.session.threadId,
+              orchestrationThreadId: record.session.threadId,
+              description: form.message,
+              server: form.requester,
+            },
+            timeoutMs: 10 * 60 * 1000,
+          },
+        );
+        if (!registration)
+          throw new Error('Reserved input admission unavailable.');
+        check(assertCurrent);
+        const admitted = registration;
+        record.pendingRequests.set(requestId, {
+          turnId,
+          origin,
+          elicitation: true,
+          canonical: {
+            registration: admitted,
+            eventId: event.eventId,
+            form,
+            assertCurrent,
+            admitCurrent: async (effect) => {
+              // A reply can arrive as soon as the canonical event is visible,
+              // before its queued commit-marking admission has finished.
+              await Promise.race([
+                openCommitted,
+                admitted.result.then(() => {
+                  throw new Error('Reserved input admission expired.');
+                }),
+              ]);
+              await admitCurrent(effect);
+            },
+          },
+        });
+        observation = awaitCanonicalRequestCommit(event);
+        void registration.result.then(() => observation?.cancel());
+        if (!registration.publishOpened())
+          throw new Error('Reserved input admission cancelled.');
+        check(assertCurrent);
+        this.publish(event);
+      });
+      if (!observation || !registration)
+        throw new Error('Reserved input admission unavailable.');
+      if (!(await observation.committed))
+        throw new Error('Reserved input event was not committed.');
+      const admitted = registration;
+      await admitCurrent(() => {
+        if (!admitted.markOpenCommitted())
+          throw new Error('Reserved input admission expired.');
+        confirmOpen();
+      });
+      const { outcome, answer } = await registration.result;
+      let disclosed: InputRequestResponse = { action: 'cancel' };
+      await admitCurrent(() => {
+        const response = readInputRequestResponse(answer);
+        if (outcome === 'approved' && response?.action === 'accept')
+          disclosed = {
+            action: 'accept',
+            content: validateInputRequestContent(form, response.content),
+          };
+        if (outcome === 'denied' && response?.action === 'decline')
+          disclosed = { action: 'decline' };
+      });
+      return disclosed;
+    } finally {
+      signal.removeEventListener('abort', onAbort);
+      observation?.cancel();
+      registration?.cancel();
+      record.pendingRequests.delete(requestId);
+    }
   }
 
   private publish(event: CanonicalRuntimeEvent): void {
@@ -2253,7 +2726,11 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         continue;
       }
       this.resolutionOverrides.set(requestId, 'cancelled');
-      if (!this.options.approvalRegistry.resolve(requestId, false)) {
+      const canonical = record.pendingRequests.get(requestId)?.canonical;
+      const cancelled = canonical
+        ? canonical.registration.cancel()
+        : this.options.approvalRegistry.resolve(requestId, false);
+      if (!cancelled) {
         record.pendingRequests.delete(requestId);
         this.resolutionOverrides.delete(requestId);
       }

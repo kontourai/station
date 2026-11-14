@@ -1,0 +1,7 @@
+{
+  "revision": "ea5f27d868be9013b2fb0ee7be34a10a07ec10e0",
+
+  "notes": [
+    {"path":"packages/contracts/README.md","note":"Reviewed stale child-work delta against ChildWorkSummarySource, normalizeResult/enrichResult and existing return/handle-only regression owner: structured tool-return promotes report text and preserves recovery; handle-only provenance is discarded, old uncertainty stays. Full README and manifest source exports/files/root barrel checked; live-surface/task-basis examples remain pure structural helpers, not authorization. Delegation-group contains both inactive Flow API metadata and separate CLI logical-start views with unavailable fiscal/physical caps. No runtime, publication or provider acceptance inferred.","inputs":["packages/contracts/README.md","packages/contracts/src/child-work.ts","packages/contracts/package.json#/exports"]}
+  ]
+}

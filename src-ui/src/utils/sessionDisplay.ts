@@ -1,5 +1,6 @@
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import type { OrchestrationInputOrigin } from '@kontourai/station-contracts/orchestration';
 import {
   foldedSessionLifecycleState,
   isSessionLifecycleStateAtRest,
@@ -257,26 +258,59 @@ export function sessionCwdLabel(
  * onto `sessionProjectLabel` in `sessionProjectSection.test.ts`.
  */
 
-/**
- * Row-level permission posture (archive#1424) — flags a message row whose
- * session Station only reads, never authored/controls. Deliberately narrowed
- * to the one variant with a real, reachable call site today
- * (`AttachedSessionDetail`'s per-row transcript, gated on the same
- * `controlMode === 'read-only-attached'` check `SessionsView.tsx` already
- * uses) — a `delegated-worker`/`delegated-task` posture was cut in review
- * (archive#1424) because no chat/stream transcript surface
- * renders a delegated session's messages today (`SessionsView`/
- * `SessionDetailHeader` already show the equivalent page-level label via
- * `sessionKindLabel`); reintroduce it alongside a real wired call site in
- * the delegated-posture fast-follow, not as speculative machinery ahead of
- * one. `null` means no posture to flag — no badge renders.
- */
-export type PermissionPosture = 'read-only-attached';
+export function delegationOriginLabel(
+  origin: OrchestrationInputOrigin,
+): string {
+  const surface = origin.initiator?.reportedSurface;
+  if (!surface || surface === 'unknown') return 'Driven from delegation';
+  const label =
+    surface === 'cli' || surface === 'mcp' ? surface.toUpperCase() : surface;
+  return `Delegation · ${label} (reported)`;
+}
+
+export function delegationOriginDescription(
+  origin: OrchestrationInputOrigin,
+): string {
+  const task = origin.title
+    ? `Driven from delegated task: ${origin.title}`
+    : `Driven from delegated task ${origin.taskId}`;
+  const initiator = origin.initiator;
+  if (!initiator) return task;
+  const caller =
+    initiator.actor === 'unknown'
+      ? 'Caller not recorded'
+      : `Authenticated caller: ${initiator.actor}`;
+  return `${task} · ${caller} · Client surface is self-reported`;
+}
+
+/** Recorded session posture, not a claim about sandboxing or tool authority. */
+export type PermissionPosture =
+  | 'read-only-attached'
+  | 'delegated-worker'
+  | 'delegated-task';
+
+export function sessionPermissionPosture(
+  session:
+    | Pick<OrchestrationSessionSummary, 'controlMode' | 'delegation'>
+    | null
+    | undefined,
+): PermissionPosture | null {
+  if (session?.controlMode === 'read-only-attached')
+    return 'read-only-attached';
+  if (!session?.delegation) return null;
+  return session.delegation.mode === 'isolated-child'
+    ? 'delegated-worker'
+    : 'delegated-task';
+}
 
 export function permissionPostureLabel(posture: PermissionPosture): string {
   switch (posture) {
     case 'read-only-attached':
       return 'Read only';
+    case 'delegated-worker':
+      return 'Delegated worker';
+    case 'delegated-task':
+      return 'Delegated task';
   }
 }
 

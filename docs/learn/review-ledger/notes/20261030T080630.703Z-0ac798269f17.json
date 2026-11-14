@@ -1,0 +1,7 @@
+{
+  "revision": "5cbdbeeb69b330a6de4bce2af791094e312f362d",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Reviewed added report-continuation-finalizer row against configureRuntimeRoutes binding and StationReportGroupRuntime: a personal host with the bootstrap publication owner binds Report continuation recovery, but REPORT_FINALIZER_PUBLICATION_QUALIFIED is false and requests refuse before metadata lookup even when enabled. Added the missing user-table row with that current limitation and no-provider/no-retry boundary. Existing preview semantics remain default-off; the implementation owner has the offered-capability truth issue while qualifying production serving. Executed feature-preview documentation check PASS for10 bindings and links PASS517 Markdown after the edit. This is not finalizer enablement, production/CAS/shutdown acceptance or whole readiness PASS.","inputs":["docs/user/settings.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

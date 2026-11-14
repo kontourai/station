@@ -1,0 +1,7 @@
+{
+  "revision": "5158dc0ee356281fa4ea0a73b434060745ed9d2f",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Reviewed the Ensemble inspection addition against CLI dispatch, help, bounded file loading, exact byte hash, parser, terminal-safe output and refusal tests at a9b6c19f79b5fcacd5eeeb0dcbf1aaa8bab325cb. Existing command sections are unchanged. Inspection does not authenticate, validate effective adapter values or launch; publication remains unverified.","inputs":["docs/reference/cli.md","packages/cli/src/cli.ts","packages/cli/src/help.ts","packages/cli/src/commands/ensemble.ts","packages/contracts/src/ensemble.ts"]}
+  ]
+}

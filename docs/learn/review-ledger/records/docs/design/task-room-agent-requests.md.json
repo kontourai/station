@@ -86,6 +86,8 @@
 
     "src-server/routes/orchestration/__tests__/task-room-attachments.test.ts",
 
+    "src-server/services/orchestration/project-task-room-source-seal.ts",
+
     "src-ui/src/components/room/RoomComposer.tsx"
   ],
 

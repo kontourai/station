@@ -1,0 +1,7 @@
+{
+  "revision": "c28633ffc36ba296cf3455f0f44d11d4d2b2d0fc",
+
+  "notes": [
+    {"path":"README.md","note":"Read the complete README and reviewed its changed child-work navigation row against current Agents row/transcript and Background tasks sheet. Source-labelled reports, retained activity and conditional authorized detail are present; no report/completed turn becomes accepted work. Independent row review found no issue. Module-map and CLI-reference citations are reading routes, not mirrored inventories; remove those navigation-only dependencies while retaining actual CLI dispatch/distribution and other behavior owners, and add direct UI owners for the new claim. CLI group/Ensemble/telemetry additions do not change the README doctor/help/setup advice. Published-version, engine, network, installer and privacy qualifiers remain. No whole-product, provider/native, cloud or publication qualification inferred.","inputs":["README.md","docs/architecture/module-map.md","docs/reference/cli.md","packages/cli/src/cli.ts","src-ui/src/workspace-panes/agents/ChildWorkRow.tsx","src-ui/src/components/chat-dock/BackgroundTasksSheet.tsx"]}
+  ]
+}

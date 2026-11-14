@@ -9,6 +9,10 @@ import {
   chatEngineIdentity,
   type EngineDescriptor,
 } from '../../utils/engine';
+import {
+  delegationOriginDescription,
+  delegationOriginLabel,
+} from '../../utils/sessionDisplay';
 import { engineChipLabel } from '../badges/EngineChip';
 import { FlowGatedChip } from '../flow/FlowGatedChip';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -80,6 +84,14 @@ export function ChatDockActiveIdentity({
 }: ChatDockActiveIdentityProps) {
   const childTrail = useChildChatTrail();
   const closeTabShortcut = useShortcutDisplay('dock.closeTab');
+  const originText = inputOrigin
+    ? delegationOriginLabel(inputOrigin)
+    : undefined;
+  const originTitle = inputOrigin
+    ? inputOrigin.initiator
+      ? delegationOriginDescription(inputOrigin)
+      : delegatedTaskLabel(inputOrigin)
+    : undefined;
 
   const bindingAgent = executionAgent === undefined ? agent : executionAgent;
   const configuredEngine = bindingAgent
@@ -223,9 +235,9 @@ export function ChatDockActiveIdentity({
         {inputOrigin && (
           <span
             className="chat-dock__active-identity-engine"
-            title={delegationTitle ?? undefined}
+            title={originTitle}
           >
-            Driven from delegation
+            {originText}
           </span>
         )}
       </div>

@@ -52,6 +52,8 @@ import {
   currentUnattendedRunId,
 } from '../agents/unattended-principal-context.js';
 import { currentAuthorizedTurnCorrelation } from '../conversation/authorized-turn-correlation.js';
+import { guardBoundedApiModel } from '../conversation/bounded-api-model.js';
+import { assertBoundedApiExecutionAvailable } from '../conversation/bounded-api-turn-grant.js';
 import { createConfiguredDispatchModel } from '../conversation/dispatch-model-policy.js';
 import { createInboxStepPreparation } from '../conversation/inbox-model-step.js';
 import * as MCPManager from '../mcp/mcp-manager.js';
@@ -1288,33 +1290,35 @@ export class VoltAgentFramework {
           .filter((tool) => purposeEnabledVoltTools.has(tool))
           .map((tool) => tool.name),
       );
-      const agent = new Agent({
-        name: slug,
-        instructions: opts.processedPrompt,
-        model,
-        memory,
-        // Normalize to real VoltAgent Tools so builtin/hand-rolled tools (plain
-        // objects) actually forward to the model; MCP/VoltAgent tools pass through.
-        tools: normalizedTools,
-        hooks,
-        ...(spec.guardrails && {
-          temperature: spec.guardrails.temperature,
-          maxOutputTokens:
-            spec.guardrails.maxTokens ??
-            config.appConfig.defaultMaxOutputTokens,
+      const agent = guardBoundedApiModel(
+        new Agent({
+          name: slug,
+          instructions: opts.processedPrompt,
+          model,
+          memory,
+          // Normalize to real VoltAgent Tools so builtin/hand-rolled tools (plain
+          // objects) actually forward to the model; MCP/VoltAgent tools pass through.
+          tools: normalizedTools,
+          hooks,
+          ...(spec.guardrails && {
+            temperature: spec.guardrails.temperature,
+            maxOutputTokens:
+              spec.guardrails.maxTokens ??
+              config.appConfig.defaultMaxOutputTokens,
+          }),
+          // maxSteps controls VoltAgent's agentic loop limit (VoltAgent's own
+          // default is a stingy 10). Priority: agent guardrails > agent spec >
+          // app config > high default (no artificial limit).
+          maxSteps: resolveMaxSteps({
+            guardrailsMaxSteps: spec.guardrails?.maxSteps,
+            specMaxSteps: spec.maxSteps,
+            defaultMaxTurns: config.appConfig.defaultMaxTurns,
+          }),
+          ...(!spec.guardrails && config.appConfig.defaultMaxOutputTokens
+            ? { maxOutputTokens: config.appConfig.defaultMaxOutputTokens }
+            : {}),
         }),
-        // maxSteps controls VoltAgent's agentic loop limit (VoltAgent's own
-        // default is a stingy 10). Priority: agent guardrails > agent spec >
-        // app config > high default (no artificial limit).
-        maxSteps: resolveMaxSteps({
-          guardrailsMaxSteps: spec.guardrails?.maxSteps,
-          specMaxSteps: spec.maxSteps,
-          defaultMaxTurns: config.appConfig.defaultMaxTurns,
-        }),
-        ...(!spec.guardrails && config.appConfig.defaultMaxOutputTokens
-          ? { maxOutputTokens: config.appConfig.defaultMaxOutputTokens }
-          : {}),
-      });
+      );
       bindDurableAgent(agent, {
         home: config.projectHomeDir,
         memory: opts.memoryAdapter,
@@ -1423,6 +1427,7 @@ export class VoltAgentFramework {
     spec: AgentSpec,
     config: AgentCreationConfig,
   ): Promise<any> {
+    assertBoundedApiExecutionAvailable('managed VoltAgent model resolution');
     const binding = await resolveManagedModelBinding(spec, {
       appConfig: config.appConfig,
       listProviderConnections: config.listProviderConnections,
@@ -1477,41 +1482,46 @@ export class VoltAgentFramework {
           .filter((tool) => purposeEnabledVoltTools.has(tool))
           .map((tool) => tool.name),
       );
-      const agent = new Agent({
-        name: opts.name,
-        instructions: opts.instructions,
-        model:
-          opts.model?.specificationVersion === 'v3'
-            ? durableStationLanguageModel(opts.model)
-            : opts.model,
-        // Temp/default agents bypass persisted-agent loading, but must still
-        // register hand-rolled Station tools as real Volt tools.
-        tools: normalizedTools,
-        maxSteps: opts.maxSteps,
-        // archive#1834: temp agents used to get NO lifecycle hooks, so the
-        // default agent (and every scheduler//invoke/CLI call riding it)
-        // executed tools without ever evaluating beforeToolCall. Wired exactly
-        // as `createAgent` does when the caller supplies hooks.
-        hooks: withDurableVoltEntry(
-          opts.hooks
-            ? createVoltAgentLifecycleHooks(
-                opts.agentId
-                  ? runtimeAgentKey(publicAgentIdFromRuntimeKey(opts.agentId))
-                  : opts.name,
-                conformAgentHooks('voltagent', durableAgentHooks(opts.hooks)),
-              )
-            : {},
-        ),
-        ...(opts.memoryAdapter
-          ? {
-              memory: new Memory({
-                storage: durableAgentMemory(
-                  createPromptOnlyMemoryView(opts.memoryAdapter, opts.agentId),
-                ),
-              }),
-            }
-          : {}),
-      });
+      const agent = guardBoundedApiModel(
+        new Agent({
+          name: opts.name,
+          instructions: opts.instructions,
+          model:
+            opts.model?.specificationVersion === 'v3'
+              ? durableStationLanguageModel(opts.model)
+              : opts.model,
+          // Temp/default agents bypass persisted-agent loading, but must still
+          // register hand-rolled Station tools as real Volt tools.
+          tools: normalizedTools,
+          maxSteps: opts.maxSteps,
+          // archive#1834: temp agents used to get NO lifecycle hooks, so the
+          // default agent (and every scheduler//invoke/CLI call riding it)
+          // executed tools without ever evaluating beforeToolCall. Wired exactly
+          // as `createAgent` does when the caller supplies hooks.
+          hooks: withDurableVoltEntry(
+            opts.hooks
+              ? createVoltAgentLifecycleHooks(
+                  opts.agentId
+                    ? runtimeAgentKey(publicAgentIdFromRuntimeKey(opts.agentId))
+                    : opts.name,
+                  conformAgentHooks('voltagent', durableAgentHooks(opts.hooks)),
+                )
+              : {},
+          ),
+          ...(opts.memoryAdapter
+            ? {
+                memory: new Memory({
+                  storage: durableAgentMemory(
+                    createPromptOnlyMemoryView(
+                      opts.memoryAdapter,
+                      opts.agentId,
+                    ),
+                  ),
+                }),
+              }
+            : {}),
+        }),
+      );
       if (opts.durable)
         bindDurableAgent(agent, {
           ...opts.durable,

@@ -374,7 +374,10 @@ Four findings shape the design.
   [`pre-tool-policy.ts`](../../src-server/runtime/agents/pre-tool-policy.ts);
   the full-access ceiling `DispatchIntent.fullAccessGrant` in
   [`task-dispatcher.ts`](../../src-server/services/projects/task-dispatcher.ts);
-  `AppConfig.defaultApprovalMode`, applied at every session start (see
+  `AppConfig.defaultApprovalMode`, used at session start for engines supporting
+  approval control, below a concrete recorded decision, carried concrete
+  posture or Agent default. A recorded Default resolves through the configured
+  Agent and Station defaults (see
   [server-ordered approval posture](approval-posture-server-ordered.md));
   and attribution through `PrincipalRef` in
   [`principal.ts`](../../packages/contracts/src/principal.ts).

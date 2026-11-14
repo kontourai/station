@@ -1,0 +1,7 @@
+{
+  "revision": "c0cf68214e743e5cfe5449c772e663830583eede",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Read the complete SDK scope instructions and reviewed their reference relationship after the SDK guide delta. The guide link is navigation to the canonical public tutorial, not a mirrored declaration of its exports or behavior. Instructions still require stable SDK exports, affected consumer tests and observing both cache and waiting caller in races. Remove only this navigation dependency so additions to the tutorial do not imply these normative instructions changed. Retain package-map and query-core owners. This does not approve the SDK tutorial or implementations; their separate review obligations remain.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

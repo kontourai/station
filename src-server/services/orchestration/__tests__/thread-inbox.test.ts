@@ -2093,6 +2093,184 @@ describe('thread inbox (#3568)', () => {
     ]);
   });
 
+  test.each(['steer', 'follow-up'] as const)(
+    'submission policy refuses a fresh %s before any inbox entry, turn claim or steer receipt',
+    async (kind) => {
+      const refusal = {
+        reasonCode: 'sealed_source_admission_required',
+        reason: 'Fresh bounded admission required.',
+      };
+      const submissionRefusal = vi.fn(() => refusal);
+      const world = boot(path(), { submissionRefusal });
+      await runningFirstTurn(world);
+      const input = {
+        conversationId: THREAD,
+        clientTurnId: `refused-${kind}`,
+        payload,
+        expectedHead: world.inbox.currentHead(THREAD),
+      };
+      const submit =
+        kind === 'steer'
+          ? world.inbox.submitSteer.bind(world.inbox)
+          : world.inbox.submit.bind(world.inbox);
+      expect(submit(input)).toEqual({ outcome: 'not-permitted', ...refusal });
+      expect(submissionRefusal).toHaveBeenCalledExactlyOnceWith({
+        conversationId: THREAD,
+        kind,
+        payload,
+      });
+      expect(
+        world.store.threadInboxStore().read(THREAD, input.clientTurnId),
+      ).toBeUndefined();
+      expect(world.inbox.list(THREAD)).toEqual([]);
+      expect(
+        world.service.inspectTurnDelivery(
+          THREAD,
+          input.clientTurnId,
+          INTERNAL_SESSION_READ_SCOPE,
+        ),
+      ).toEqual({ outcome: 'not-received' });
+      expect(
+        world.store.readSteerInput({
+          threadId: THREAD,
+          clientInputId: input.clientTurnId,
+          input: FOLLOW_UP,
+          turnId: 'turn-1',
+        }),
+      ).toBeUndefined();
+      await world.inbox.idle();
+      expect(sends).toEqual(['read the file']);
+      expect(world.adapter.steers).toEqual([]);
+    },
+  );
+
+  test('accepted-key retries keep their original result when submission policy later refuses fresh work', async () => {
+    let refuse = false;
+    const submissionRefusal = vi.fn(() =>
+      refuse
+        ? {
+            reasonCode: 'fresh_admission_required',
+            reason: 'Use bounded admission.',
+          }
+        : undefined,
+    );
+    const world = boot(path(), { submissionRefusal });
+    const turn = await runningFirstTurn(world);
+    const input = {
+      conversationId: THREAD,
+      clientTurnId: 'accepted-before-policy-change',
+      payload,
+      expectedHead: world.inbox.currentHead(THREAD),
+    };
+    const accepted = world.inbox.submit(input);
+    expect(accepted).toMatchObject({ outcome: 'queued' });
+    expect(submissionRefusal).toHaveBeenCalledTimes(1);
+    refuse = true;
+    expect(world.inbox.submit(input)).toEqual(accepted);
+    expect(submissionRefusal).toHaveBeenCalledTimes(1);
+    expect(
+      world.inbox.submit({
+        ...input,
+        payload: { ...payload, message: 'changed' },
+      }),
+    ).toEqual({ outcome: 'conflict' });
+    expect(
+      world.inbox.submit({ ...input, clientTurnId: 'new-after-policy-change' }),
+    ).toMatchObject({
+      outcome: 'not-permitted',
+      reasonCode: 'fresh_admission_required',
+    });
+    expect(world.inbox.list(THREAD)).toHaveLength(1);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, turn);
+    await settle(world);
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+    const delivered = world.inbox.submit(input);
+    expect(delivered).toMatchObject({
+      outcome: 'queued',
+      entry: { state: 'sent' },
+    });
+    await world.inbox.idle();
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+    expect(submissionRefusal).toHaveBeenCalledTimes(2);
+  });
+
+  test.each(['refused', 'cancelled'] as const)(
+    'reactivating a %s never-delivered entry requires fresh submission admission',
+    async (state) => {
+      let refuseFresh = false;
+      const submissionRefusal = vi.fn(() =>
+        refuseFresh
+          ? {
+              reasonCode: 'fresh_admission_required',
+              reason: 'Use bounded admission.',
+            }
+          : undefined,
+      );
+      const world = boot(path(), {
+        submissionRefusal,
+        placementRefusal: () => ({
+          reasonCode: 'sender_withdrawn',
+          reason: 'Sender withdrew this message.',
+        }),
+      });
+      const turn = await runningFirstTurn(world);
+      const input = {
+        conversationId: THREAD,
+        clientTurnId: 'reactivated-key',
+        payload,
+      };
+      expect(world.inbox.submit(input)).toMatchObject({ outcome: 'queued' });
+      if (state === 'cancelled') {
+        expect(world.inbox.cancel(THREAD, input.clientTurnId, OWNER).kind).toBe(
+          'cancelled',
+        );
+      } else {
+        await emit(world, 'turn.completed', { turnId: 'turn-1' }, turn);
+        await settle(world);
+      }
+      const before = world.store
+        .threadInboxStore()
+        .read(THREAD, input.clientTurnId);
+      expect(before).toMatchObject({ state });
+      if (state === 'cancelled') expect(before?.placement).toBeNull();
+      refuseFresh = true;
+      expect(world.inbox.submit(input)).toMatchObject({
+        outcome: 'not-permitted',
+        reasonCode: 'fresh_admission_required',
+      });
+      expect(
+        world.store.threadInboxStore().read(THREAD, input.clientTurnId),
+      ).toEqual(before);
+      expect(submissionRefusal).toHaveBeenCalledTimes(2);
+      await world.inbox.idle();
+      expect(followUpSends()).toEqual([]);
+    },
+  );
+
+  test('display notes bypass submission policy and never start an engine turn', async () => {
+    const submissionRefusal = vi.fn(() => {
+      throw new Error('Display notes must not consult effectful admission.');
+    });
+    const world = boot(path(), { submissionRefusal });
+    await runningFirstTurn(world);
+    expect(
+      world.inbox.submitDisplay({
+        conversationId: THREAD,
+        clientTurnId: 'display-without-admission',
+        payload,
+      }),
+    ).toMatchObject({
+      outcome: 'queued',
+      entry: { kind: 'display', state: 'sent' },
+    });
+    await world.inbox.idle();
+    expect(submissionRefusal).not.toHaveBeenCalled();
+    expect(world.inbox.list(THREAD)).toMatchObject([
+      { kind: 'display', message: FOLLOW_UP },
+    ]);
+    expect(sends).toEqual(['read the file']);
+  });
+
   test('a sender placement would refuse is never accepted', async () => {
     const world = boot(path());
     await runningFirstTurn(world);

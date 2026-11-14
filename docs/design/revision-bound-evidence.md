@@ -202,15 +202,20 @@ These are local runtime tests, not installed-release or browser qualification.
 `reader().resolve({ scope, revisionId })` is the later room/SDK seam. It
 projects text, parents, actor, and correlation only after exact scope matching;
 canonical snapshots, opaque attestations, storage metadata, and local paths
-remain server-only. `EventStore.close()` fences and clears every Module it
-created before closing SQLite, so retained readers cannot serve cached content.
+remain server-only. When EventStore closure reaches revision-module teardown,
+it fences and clears every Module it created before closing SQLite. A close
+returning `pending` or `unavailable` before that teardown leaves those Modules
+open; calling `EventStore.close()` alone does not prove retained readers are
+unavailable.
+
 EventStore registers the Module before its first callback-bearing restore. A
 lifecycle generation is captured around every attribution verify/attest,
-canonical proposed-change lookup, durable persist, and cache admission; close
-increments the generation, and every callback return plus every cache mutation
-or available/duplicate/imported return rechecks it. A reentrant close after
-COMMIT therefore returns unavailable and leaves no cache, while the durable row
-remains honestly recoverable by a new EventStore instance.
+canonical proposed-change lookup, durable persist, and cache admission. Module
+close increments the generation, and every callback return plus every cache
+mutation or available/duplicate/imported return rechecks it. A reentrant close
+after COMMIT that reaches Module teardown therefore returns unavailable and
+leaves no cache, while the durable row remains recoverable by a new EventStore
+instance.
 Corrupt, unavailable, and closed storage is explicit through revision lookup,
 portable export, proposed-change resolution, evidence/gate resolution, and the
 room reader. `station.revision_evidence.outcomes` records bounded freeze,

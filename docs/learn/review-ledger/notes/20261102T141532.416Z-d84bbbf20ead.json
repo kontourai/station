@@ -1,0 +1,7 @@
+{
+  "revision": "4852b044d45bcb03b5e45b16fa885f891ebb5443",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Scoped classified-decision review at 4852b044d45: read full ADR including dated investigation and residuals; inspected projectRequestAnswerability in open-requests.ts, required answerability members in orchestration contracts, observeAnswerability and initialize finally-settlement in OrchestrationService, and interrupted-turn recovery request.resolved/turn.aborted publication. Against db857573504 the projection owner and its two cited tests are unchanged; contract changes add initial reported-origin fields and termination-unconfirmed interruption, not answerability. The serving-process identity/time and attachment observation remain read-time inputs; startup still settles in finally on failure. Interrupted-turn recovery records expired undecided requests rather than process-local cancelled observations. No prose correction to the bounded status note. Historical fold counts, mutation receipts, client consumer inventory and residual completion are not current qualification; no tests or live runtime were run for this documentation review.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

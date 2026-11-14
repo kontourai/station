@@ -1,0 +1,7 @@
+{
+  "revision": "0a8bf525ec9442fe3ec0f125af2231d572409a47",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed the child-work branch delta in active-chats-state and Codex adapter against the replay isolation and steering claims. BackgroundTaskNotice gains summarySource without changing replay identity or serialization; isDurableActiveChat still rejects replay, and ReplayPlayer rewrites retained history identities and clears currentSessionId. Codex authentication observation, authored MCP readiness and elicitation changes do not change steerTurn: it still checks the active turn and sends turn/steer with expectedTurnId before publishing the Station steer event. No prose change needed for this delta. Source inspection only; this review does not rerun browser replay, provider steering, native devices or the historical browser matrix.","inputs":["docs/design/session-tape-replay.md","src-server/providers/adapters/codex-adapter.ts","src-ui/src/contexts/active-chats-state.ts"]}
+  ]
+}

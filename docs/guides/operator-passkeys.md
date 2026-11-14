@@ -88,8 +88,9 @@ attention** or the pairing panel. If asked, sign in as operator and return to
 the request. Choose **Approve**, then open **Review and confirm with passkey**
 and confirm the requested access. The request remains pending until the
 passkey confirmation succeeds; a denied, expired or changed request cannot be
-approved by an earlier review. Account-bound and delegation requests still
-require the host approval path.
+approved by an earlier review. Pairing an invited person’s browser uses the
+separate account review described below. Delegation requests still require the
+host approval path.
 
 The session uses `__Host-station-operator`, a Secure, HttpOnly,
 SameSite=Strict cookie with Path=/ and no Domain. Cookies are scoped by hostname,

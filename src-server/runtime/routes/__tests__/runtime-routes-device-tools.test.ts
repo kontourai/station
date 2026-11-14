@@ -222,7 +222,7 @@ describe('device tools lease rule in the runtime composition (S3)', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'station-device-tools-'));
     directories.push(homeDir);
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir,
       environmentId: '33333333-3333-4333-8333-333333333333',
     });
@@ -292,6 +292,7 @@ describe('device tools lease rule in the runtime composition (S3)', () => {
       taskGraphService: { listTasks: () => [] },
       projectService: { listProjects: () => [] },
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           isOperatorSecret(credential) || pairing.verifyCredential(credential),
         authorizeCredential: (credential: string) =>

@@ -14,6 +14,7 @@ import {
   AGENT_PROFILE_CAPABILITIES,
   type AgentProfileCapability,
 } from '@kontourai/station-contracts/enriched-agent';
+import type { StationCapabilityFlags } from '@kontourai/station-contracts/environment-security';
 import {
   type ExecutionConfinementRecord,
   STATION_CONFINEMENT_RECORD_METADATA_KEY,
@@ -93,6 +94,7 @@ import {
   providerQuotaFactsFromDetails,
 } from '../providers/provider-plan-quota.js';
 import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-tenant-context.js';
+import type { ReservedStationTurn } from '../runtime/conversation/reserved-station-turn.js';
 import type { FullAccessGrant } from '../security/coding-authority.js';
 import { WORKING_DIRECTORY_NOT_GRANTED_CODE } from '../security/coding-authority.js';
 import { readConfinementRecord } from '../security/confinement/confinement-provider.js';
@@ -122,6 +124,7 @@ import {
   recordCreateRequestStartResult,
   runDelegationCreate,
 } from '../services/orchestration/create-request-claims.js';
+import { isDelegatedTaskSessionId } from '../services/orchestration/delegated-task-identity.js';
 import {
   DelegationAttemptCapacityError,
   DelegationAttemptClaimStore,
@@ -135,6 +138,10 @@ import {
   type DelegationStagedFiles,
   materializeDelegationFiles,
 } from '../services/orchestration/delegation-files.js';
+import {
+  assertInheritedDelegationToolPolicy,
+  captureInheritedDelegationToolContext,
+} from '../services/orchestration/delegation-tool-policy.js';
 import {
   DISPATCH_CANONICAL_CWD_METADATA_KEY,
   type DispatchCwdAdmission,
@@ -152,6 +159,7 @@ import {
   type PresentableOpenRequest,
   presentOpenRequest,
 } from '../services/orchestration/request-presentation.js';
+import type { SessionCommandInternalOptions } from '../services/orchestration/session-command-module.js';
 import type { StartOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary-binding.js';
 import { snapshotTurnSubmissionFields } from '../services/orchestration/turn-submission-digest.js';
@@ -328,12 +336,7 @@ async function readExecutionProject(
 
 interface StationHandshake {
   environmentId: string;
-  capabilities?: {
-    portableExecutionOffers?: boolean;
-    delegationAttemptClaims?: boolean;
-    executionPreparation?: boolean;
-    delegatedInputAnswers?: boolean;
-  };
+  capabilities?: StationCapabilityFlags;
 }
 
 interface SshEnvironmentView {
@@ -410,12 +413,20 @@ interface DelegationEnvironmentSelection {
 }
 
 export interface DelegateTaskInput {
+  /** Server-owned sealed SDK turn; no public delegation schema accepts it. */
+  reservedStationTurn?: ReservedStationTurn;
+  /** Trusted group admission, checked synchronously at initial session/turn effects. */
+  delegationGroupAdmission?: SessionCommandInternalOptions['delegationGroupAdmission'];
+  /** Server-minted first-turn join for a durable session group. */
+  initialClientTurnId?: string;
   /** Server-only current-host staging authority, composed by the authenticated route. */
   stagedFiles?: DelegationStagedFiles;
   prompt: string;
   clientTurnId?: string;
   createRequestIntent?: unknown;
   createRequestCallerSessionId?: string;
+  /** Exact route-owned Request; never accepted from JSON or persisted in a claim. */
+  createRequestAuthority?: Request;
   /** Route-owned human message, before appending the Task brief. */
   title?: string;
   target: ExecutionTarget;
@@ -596,6 +607,8 @@ interface ResolvedDelegationProject {
 }
 
 export interface DelegatedTaskHandle {
+  /** Alias of the accepted first-turn receipt for group consumers. */
+  initialTurnId?: string;
   turnId?: string;
   clientTurnId?: string;
   /** Durable conversation identity; `taskId` is the legacy compatibility alias. */
@@ -1938,22 +1951,6 @@ function localServiceRequiredInHostedMode(
     );
   }
 }
-/**
- * archive#4543 LOW-2: the exact shape `delegateTask` itself mints
- * (`task:${randomUUID()}`) — and the only shape `metadata.conversationId`/
- * `metadata.environmentId` may be re-stamped from via the
- * `conversationIdentity` internal escape hatch (see `delegateTask`'s
- * `sessionId` validation below). `environmentId` is always server-resolved
- * (`target.environmentId`), but `conversationId` is stamped from
- * `sessionId`, and an MCP tool caller MAY supply a custom `sessionId`
- * (`station-control-operations-tools.ts`'s `sessionId` param) — an
- * unvalidated arbitrary string would otherwise get laundered through a
- * RESERVED_ORCHESTRATION_METADATA_KEYS key whose contract
- * (`provider.ts`'s `CONVERSATION_ID_RESERVED_METADATA_KEY` docblock) is
- * "always resolved by Station", not caller-supplied.
- */
-const TASK_SESSION_ID_PATTERN =
-  /^task:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TASK_EVENT_CURSOR_PREFIX = 'station-task-events:v1:';
 const DEFAULT_TASK_EVENT_LIMIT = 50;
 const MAX_TASK_EVENT_LIMIT = 100;
@@ -2042,6 +2039,26 @@ async function postCanonical<T>(
     throw new Error(answerText(target, payload.error, unavailableMessage, 200));
   }
   return payload.data;
+}
+
+async function requireDelegationToolConstraintSupport(
+  target: DelegationTarget,
+  delegation: AgentDelegationContext | undefined,
+): Promise<void> {
+  if (!delegation?.toolAllowlistConstraints?.length) return;
+  const handshake = await readJson<StationHandshake>(
+    target,
+    `${target.apiBase}/.well-known/station/v1`,
+    { headers: target.requestOptions?.headers ?? {} },
+    'The selected Station could not confirm inherited tool-policy support.',
+  );
+  if (
+    handshake.environmentId !== target.environmentId ||
+    handshake.capabilities?.delegationToolConstraintsV1 !== true
+  )
+    throw new Error(
+      'The selected Station cannot preserve inherited tool restrictions.',
+    );
 }
 
 /** Error envelopes the runtime auth boundary and the delegation route emit. */
@@ -5535,9 +5552,20 @@ export async function delegateTask(
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskHandle> {
-  input = { ...input, clientTurnId: input.clientTurnId ?? randomUUID() };
+  input = {
+    ...input,
+    clientTurnId: input.clientTurnId ?? randomUUID(),
+    delegation: captureInheritedDelegationToolContext(input.delegation),
+  };
   if (input.taskRoomAttachments?.length && !input.taskRoomInvocationAdmission)
     throw new Error('Task attachments require Task room invocation admission.');
+  if (
+    input.reservedStationTurn &&
+    (input.target.environment.kind !== 'current' || input.stagedFiles)
+  )
+    throw new Error(
+      'Reserved Station turns require the current sealed-source runtime.',
+    );
   if (
     input.taskRoomInvocationAdmission &&
     (input.target.environment.kind !== 'current' ||
@@ -5583,6 +5611,15 @@ export async function delegateTask(
     remote,
     orchestrationService,
   );
+  if (input.reservedStationTurn) {
+    const { admitReservedStationEnvironment } = await import(
+      '../runtime/conversation/reserved-station-turn.js'
+    );
+    await admitReservedStationEnvironment(
+      input.reservedStationTurn,
+      selectedTarget.environmentId,
+    );
+  }
   if (
     input.stagedFiles &&
     (selectedTarget.kind !== 'current' ||
@@ -5679,17 +5716,19 @@ export async function delegateTask(
     orchestrationService,
   );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
-    const pinnedTarget = await pinSshDispatchWorkspace(
-      selectedTarget,
-      input.target,
-    );
-    // #2601: settled before the authority recheck below, so no await sits
-    // between that recheck and the forward.
     const forwarded = input.stationControlToolCall
       ? delegationToForward(input)
       : input.delegation
         ? { delegation: input.delegation }
         : {};
+    await requireDelegationToolConstraintSupport(
+      selectedTarget,
+      forwarded.delegation,
+    );
+    const pinnedTarget = await pinSshDispatchWorkspace(
+      selectedTarget,
+      input.target,
+    );
     // Target discovery and capability probes awaited above. Recheck the
     // sending request before its stored peer credential can cause an effect.
     // postCanonical reaches fetch without another asynchronous preparation.
@@ -5833,7 +5872,7 @@ export async function delegateTask(
       );
     }
     const reservedTaskId =
-      input.sessionId && TASK_SESSION_ID_PATTERN.test(input.sessionId)
+      input.sessionId && isDelegatedTaskSessionId(input.sessionId)
         ? input.sessionId
         : `task:${randomUUID()}`;
     // The storage key is the unambiguous length-prefixed tuple of the
@@ -5847,11 +5886,14 @@ export async function delegateTask(
       key: claimKey,
       attemptId: input.delegationAttemptId,
       callerDeviceId: attemptCaller.deviceId,
-      intentDigest: delegationAttemptIntentDigest({
-        prompt: input.prompt,
-        target: input.target,
-        ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
-      }),
+      intentDigest: delegationAttemptIntentDigest(
+        {
+          prompt: input.prompt,
+          target: input.target,
+          ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+        },
+        input.delegation,
+      ),
       taskId: reservedTaskId,
     });
     // Same tuple + same validated intent: join the existing claim and name
@@ -5983,7 +6025,7 @@ export async function delegateTask(
     // than let it be stamped into a reserved key whose contract promises
     // Station resolution. A server-minted id always conforms, so this only
     // ever rejects caller input.
-    if (input.sessionId && !TASK_SESSION_ID_PATTERN.test(input.sessionId)) {
+    if (input.sessionId && !isDelegatedTaskSessionId(input.sessionId)) {
       throw new Error(
         `Invalid session id '${input.sessionId}': a custom session id must match the 'task:<uuid>' form Station mints (e.g. 'task:${randomUUID()}').`,
       );
@@ -6023,6 +6065,7 @@ export async function delegateTask(
       input.target,
       resolverDependencies,
     );
+    assertInheritedDelegationToolPolicy(resolved.provider, input.delegation);
     // #484 receiver placement: a portable intent that resolves to worktree
     // isolation refuses HERE — before any session exists, before any
     // filesystem provisioning, and before any provider effect. This
@@ -6083,6 +6126,8 @@ export async function delegateTask(
           path: resolved.workspace.cwd,
         }
       : undefined;
+    if (input.reservedStationTurn && resolved.provider !== 'station-agent')
+      throw new Error('Reserved Station turns require the Station engine.');
     const create = async (sessionId: string): Promise<DelegatedTaskHandle> => {
       const resolvedCwd = resolved.workspace?.cwd;
       // #484 phase A: the server-minted admitted coordinate for the provider
@@ -6351,6 +6396,12 @@ export async function delegateTask(
               environmentId: target.environmentId,
             },
             resourceAdmissionIntent: 'delegated_background',
+            ...(input.delegationGroupAdmission
+              ? { delegationGroupAdmission: input.delegationGroupAdmission }
+              : {}),
+            ...(input.reservedStationTurn
+              ? { reservedStationTurn: input.reservedStationTurn }
+              : {}),
             // #3323: stamped beside `delegation` after the reserved-key strip.
             ...(input.delegation && input.delegationProvenance
               ? {
@@ -6459,6 +6510,7 @@ export async function delegateTask(
                 : {}),
               clientTurnId:
                 input.taskRoomInvocationAdmission?.clientTurnId ??
+                input.initialClientTurnId ??
                 input.clientTurnId ??
                 randomUUID(),
               ...(input.stagedFiles
@@ -6480,6 +6532,12 @@ export async function delegateTask(
               environmentId: target.environmentId,
             },
             resourceAdmissionIntent: 'delegated_background',
+            ...(input.delegationGroupAdmission
+              ? { delegationGroupAdmission: input.delegationGroupAdmission }
+              : {}),
+            ...(input.reservedStationTurn
+              ? { reservedStationTurn: input.reservedStationTurn }
+              : {}),
             // #4512: the delegated Session's first turn, sent by Station.
             dispatchOrigin: 'delegation',
             ...(input.taskRoomInvocationAdmission
@@ -6569,7 +6627,12 @@ export async function delegateTask(
       }
       return {
         ...handleFor(input, target, project, sessionId),
-        ...(attemptInitialTurnId ? { turnId: attemptInitialTurnId } : {}),
+        ...(attemptInitialTurnId
+          ? {
+              turnId: attemptInitialTurnId,
+              initialTurnId: attemptInitialTurnId,
+            }
+          : {}),
         ...(input.clientTurnId ? { clientTurnId: input.clientTurnId } : {}),
         target: { kind: 'agent', id: resolved.agentId },
         resolution: {
@@ -6736,6 +6799,10 @@ export async function executeExecutionTargetMessage(
       },
     };
   }
+  input = {
+    ...input,
+    delegation: captureInheritedDelegationToolContext(input.delegation),
+  };
   const readAuthority = readAuthorityForInput(input);
   const selectedTarget = await resolveTarget(
     {
@@ -6795,6 +6862,15 @@ export async function executeExecutionTargetMessage(
         RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_not_offered,
       );
     }
+    const forwarded = input.stationControlToolCall
+      ? delegationToForward(input)
+      : input.delegation
+        ? { delegation: input.delegation }
+        : {};
+    await requireDelegationToolConstraintSupport(
+      selectedTarget,
+      forwarded.delegation,
+    );
     const pinnedTarget = await pinSshDispatchWorkspace(
       selectedTarget,
       input.target,
@@ -6813,11 +6889,6 @@ export async function executeExecutionTargetMessage(
       delegationProvenance: _delegationProvenance,
       ...remoteInput
     } = input;
-    const forwarded = input.stationControlToolCall
-      ? delegationToForward(input)
-      : input.delegation
-        ? { delegation: input.delegation }
-        : {};
     return postForegroundMessage(
       selectedTarget,
       forwarded.delegation

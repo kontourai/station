@@ -1,0 +1,7 @@
+{
+  "revision": "67d9b4e3c9d47800e6bcf774b2e840763e65d87f",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed the later direct-native plugin restriction control and its excluded failed prerequisites. Ordinary and restored plugin calls execute markers; the restricted activation of the same native session has empty wire tools and a native error for injected calls. Removing only the wildcard deny makes the restricted marker execute and the separate private harness fail; the original passes again. Artifact hashes, empty recorded failure arrays, retained history and current exact-owned-path process absence were checked. Independent source/artifact review accepts the nonvacuous causality, but harness pass alone omits some failure/cleanup predicates and historical port identities were not retained. Direct SDK evidence is not production group/service plugin sync, startup/hooks/internal/delegation suppression, real-provider sync or portable/fiscal authority.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}

@@ -85,8 +85,11 @@ so the host can size the frame to the card within its 160–2,000px bounds.
 While loading it reserves 360px, so the first height report can change layout. It makes no tool, message or link
 requests. The result is a plain MCP content envelope. The tool definition declares
 `_meta.ui.resourceUri`, which makes it eligible for both transcript previews
-and layout pins when Station already has the integration connected. Extending the demo with tool actions uses the View SDK under the same
-network-blocking policy; this resource declares no external domains.
+and layout pins when Station already has the integration connected. Extending
+the demo with tool actions uses the View SDK under the same CSP restrictions;
+this resource declares no external domains. These restrictions do not guarantee
+network isolation: CSP does not block WebRTC ICE. See the
+[HTML replies boundary](../../docs/decisions/html-replies.md).
 Set `approvalPolicy` to `require` for the host's inbox approval or `inherit`
 for the current client confirmation dialog. `read-only` refuses these calls.
 The dedicated proxy and opaque `srcdoc` fallback have different frame origins;

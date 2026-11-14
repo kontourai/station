@@ -113,6 +113,10 @@ const OWNED_LAYOUT_MAX_BYTES = 2 * 1024 * 1024;
 const OWNED_LAYOUT_IMMUTABLE_FIELDS = ['id', 'createdAt'] as const;
 
 export class FileStorageAdapter implements IStorageAdapter {
+  getProjectHomeDir(): string {
+    return this.projectHomeDir;
+  }
+
   readonly #transactions: ProjectFileTransactions;
 
   constructor(
@@ -192,6 +196,13 @@ export class FileStorageAdapter implements IStorageAdapter {
     }
     return Object.freeze({
       value: stored.value,
+      assertCurrent: () => {
+        if (!stored.assertCurrent)
+          throw new FileStorageUnavailableError(
+            'Project preparation fence is unavailable',
+          );
+        stored.assertCurrent();
+      },
       withCurrentRead: <R>(operation: (value: ProjectConfig) => Promise<R>) =>
         stored.withCurrentRead!(operation),
       replaceManifest: (

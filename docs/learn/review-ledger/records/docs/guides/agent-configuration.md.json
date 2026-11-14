@@ -260,6 +260,12 @@
 
     "packages/shared/src/tool-server-credential-store.ts",
 
+    "src-server/services/orchestration/delegation-tool-policy.ts",
+
+    "src-server/services/orchestration/create-request-claims.ts",
+
+    "src-server/services/orchestration/turn-submission-digest.ts",
+
     "src-server/services/approvals/guardian-conversation.ts",
 
     "src-server/services/orchestration/turn-authorship.ts",

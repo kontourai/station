@@ -7,6 +7,7 @@
  * anyone's tokens from the People routes instead.
  */
 
+import { isDeepStrictEqual } from 'node:util';
 import {
   isPairingScopeSubset,
   type PairedDevice,
@@ -53,6 +54,7 @@ export function parseTokenExpiry(
 
 export function createPersonalTokenRoutes(
   pairing: TokenPairing,
+  isRequestPrincipalCurrent: (request: Request) => boolean,
   now: () => number = Date.now,
 ) {
   const app = new Hono();
@@ -88,6 +90,39 @@ export function createPersonalTokenRoutes(
     };
   };
 
+  const assertCallerCurrent = (
+    c: Context,
+    expected: Exclude<ReturnType<typeof caller>, Response>,
+    requestedScope?: string,
+  ): void => {
+    if (!isRequestPrincipalCurrent(c.req.raw))
+      throw new DevicePairingError('request_denied');
+    const live = caller(c);
+    if (
+      live instanceof Response ||
+      live.device.id !== expected.device.id ||
+      live.ownerPrincipalId !== expected.ownerPrincipalId ||
+      !isDeepStrictEqual(
+        live.device.principalBinding,
+        expected.device.principalBinding,
+      )
+    )
+      throw new DevicePairingError('request_denied');
+    const scope = pairing.effectiveScope(expected.credential);
+    if (
+      scope === undefined ||
+      !isPairingScopeSubset(
+        requestedScope === undefined
+          ? 'orchestration:read'
+          : 'orchestration:operate',
+        scope,
+      ) ||
+      (requestedScope !== undefined &&
+        !isPairingScopeSubset(requestedScope, scope))
+    )
+      throw new DevicePairingError('scope_changed');
+  };
+
   app.get('/', (c) => {
     c.header('Cache-Control', 'no-store');
     const self = caller(c);
@@ -118,18 +153,27 @@ export function createPersonalTokenRoutes(
     const usable = pairing.effectiveScope(self.credential);
     if (usable === undefined || !isPairingScopeSubset(body.scope, usable))
       return c.json({ error: { code: 'scope_exceeds_access' } }, 400);
+    const requestedScope = body.scope;
     try {
       return c.json(
-        await pairing.mintPersonalToken({
-          name: body.name,
-          binding: self.device.principalBinding,
-          ownerPrincipalId: self.ownerPrincipalId,
-          scope: body.scope,
-          expiresAt,
-        }),
+        await pairing.mintPersonalToken(
+          {
+            name: body.name,
+            binding: self.device.principalBinding,
+            ownerPrincipalId: self.ownerPrincipalId,
+            scope: body.scope,
+            expiresAt,
+          },
+          () => assertCallerCurrent(c, self, requestedScope),
+        ),
         201,
       );
     } catch (error) {
+      if (
+        error instanceof DevicePairingError &&
+        (error.code === 'request_denied' || error.code === 'scope_changed')
+      )
+        return c.json({ error: { code: error.code } }, 403);
       if (
         error instanceof DevicePairingError &&
         error.code === 'identity_credential_quota_reached'
@@ -155,10 +199,16 @@ export function createPersonalTokenRoutes(
       return (await pairing.revokePersonalToken(
         c.req.param('tokenId'),
         self.ownerPrincipalId,
+        () => assertCallerCurrent(c, self),
       ))
         ? c.json({ revoked: true })
         : c.json({ error: { code: 'not_found' } }, 404);
     } catch (error) {
+      if (
+        error instanceof DevicePairingError &&
+        (error.code === 'request_denied' || error.code === 'scope_changed')
+      )
+        return c.json({ error: { code: error.code } }, 403);
       if (error instanceof PersonalTokenUnavailableError)
         return c.json({ error: { code: 'tokens_unavailable' } }, 503);
       throw error;

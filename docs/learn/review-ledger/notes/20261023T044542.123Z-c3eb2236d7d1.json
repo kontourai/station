@@ -1,0 +1,7 @@
+{
+  "revision": "8913f6e52a938e81915c15f834816b760ccd0eeb",
+
+  "notes": [
+    {"path":"examples/builder-delivery-viewer/README.md","note":"Reviewed managed published Flow Agents 9.4.0 pin and installed schema/root exports against server/plugin.mjs validators, bounded descriptor reader and sessionsFor limits; UI still uses raw fetch and Project/session query keys and exact flow_run.run_id joins. README describes these source limits accurately and explicitly avoids claiming new browser/native qualification. No prose change required for package adoption; no execution or remote credential proof performed.","inputs":["examples/builder-delivery-viewer/README.md","examples/builder-delivery-viewer/package.json","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]}
+  ]
+}

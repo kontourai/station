@@ -153,11 +153,15 @@ provenance verification and image promotion.
 
 ### Which verbs answer from which entry point
 
-Current command availability, with background in the [CLI product design](../design/cli-product.md):
+This checkout's command admission rules, with background in the
+[CLI product design](../design/cli-product.md). A released client's command set
+depends on its source revision; this table does not establish publication of
+the group or Ensemble additions.
 
 | Tier | Verbs | Bundled `station` | `./station` |
 |------|-------|-------------------|-------------|
-| Client | `chat`, `agents`, `sessions`, `approvals`, `operate`, `projects`, `tasks`, `skills`, every surface verb, `registry`, `stations`, `target`, `triage`, `setup existing`/`hosted`, `config`, `checkpoints`, `export`/`import`, `plugin`, `environment access request`, `environment access devices`/`scope`/`revoke`/`remove` (explicit administration grant) | yes | yes |
+| Client | `chat`, `agents`, `sessions`, `approvals`, `operate`, `delegate`, `group`, `projects`, `tasks`, `skills`, every surface verb, `registry`, `stations`, `target`, `triage`, `setup existing`/`hosted`, `config`, `checkpoints`, `export`/`import`, `plugin`, `environment access request`, `environment access devices`/`scope`/`revoke`/`remove` (explicit administration grant) | yes | yes |
+| Local file inspection | `ensemble inspect` | yes, preset file required | yes, preset file required |
 | Host-local | `open`, `doctor`, `environment show`, `environment credential show`, `environment offer`, `environment access list`/`approve`/`deny`, `environment operator passkeys`, `service status`/`start`/`stop` | yes, existing local installation required for local authority | yes |
 | Host mutation | `environment credential rotate`, `environment reset`, `environment peers`, service install/uninstall | repository launcher required | yes |
 | Contributor | `build`, `dev`, `fresh`, `home`, `link`, `restart`, `shortcut`, `start`, `stop`, `supervisor`, `upgrade` | fails, naming `./station <command>` | yes |
@@ -534,7 +538,18 @@ deadline would abandon healthy work:
 | `monitoring events` (live form) | Same — a live stream, ended by interrupting it. |
 | `knowledge reindex` / `knowledge migrate` | Duration scales with your corpus, not with Station's health. |
 | `flow attach-command` | Runs a gate command server-side; bounded by its own `--timeout-ms`. |
+| `group session-run` / `group session-sync` | Supervision uses the server's absolute deadline and caller cancellation; the SDK disables its ordinary client request timeout. |
+| `group report-create` / `report-cancel` / `report-finalize-cancel` / `report-sync` / `report-finalize-sync` / `report-recover` | Explicit paid execution, cancellation and accounting recovery operations use caller cancellation; creation retains its server deadline and unknown outcomes never authorize resend. |
+| `group session-events` / `report-events` with `--follow` | Observation streams have no overall deadline; SIGINT closes observation without sending cancellation. |
 | `start`/`build` readiness probes | Already enforce their own startup deadlines. |
+
+Report accounting recovery uses `recoverReportGroupAccounting(base, groupId,
+{ seatId, invocationId, operationKey })` in the SDK, or
+`station group report-recover <group> <seat> <invocation> --operation=<key>`.
+It resumes retained accounting only, with no automatic retry or new model call.
+A 404 reports that the host does not support recovery and suggests updating it.
+Unknown usage remains held; an overrun may retain partial accounting writes.
+The response exposes amounts and a receipt reference, never private ledger records.
 
 This is the shared SDK client contract, not a guarantee for every raw network
 call in the CLI. The current `operate` stream path bypasses that client; its
@@ -866,8 +881,11 @@ station telemetry producers revoke flow-agents
 `create` prints the token once, with the ingest URL (`<api-base>/v1/agent-events`).
 With `--token-file=<path>` it writes the token to a new file with mode `0600`
 instead and does not print it; an existing path is refused before any token is
-made. A token works only from this machine unless created with
-`--allow-remote`, and has no expiry unless `--expires-in-days=<n>` is given.
+made. Unless created with `--allow-remote`, a token accepts only requests the
+server classifies as local. A plain SSH local forward also counts as local;
+this is not proof that the sender runs on the same machine. See the
+[ingest locality rules](api.md#telemetry-ingest). A token has no expiry unless
+`--expires-in-days=<n>` is given.
 Value flags take the `--flag=value` form; the switches `--allow-remote` and
 `--json` take no value (`--allow-remote=true` is a usage error). `--json`
 prints the result object. If the request was sent but no usable reply came back
@@ -1037,6 +1055,104 @@ station import ~/Library/Application\ Support/Claude/claude_desktop_config.json
 ```
 
 ---
+
+<a id="qualified-report-groups"></a>
+
+## Report groups: qualified profile and candidate continuation
+
+These personal-host commands use configured Station Agents and the qualified
+sealed SDK profile. They are separate from CLI session groups' logical start
+allowance and do not establish Flow-backed joins or semantic acceptance.
+
+```bash
+station group report-create --file=report.json --json
+station group report-list --after-group=<last-group-id> --json
+station group report-get <group-id> --json
+station group report-events <group-id> --after-revision=0 --json
+station group report-events <group-id> --after-revision=0 --follow --json
+station group report-result <group-id> <seat-id> <invocation-id> --after-offset=0 --json
+station group report-cancel <group-id> --operation=<cancel-key> --revision=<revision> --json
+station group report-finalize-cancel <group-id> --operation=<recovery-key> --cancel-operation=<cancel-key> --revision=<revision> --json
+station group report-narrow-input <group-id> --seat=<seat-id> --operation=narrow-1 --revision=42 --json
+station group report-sync-input <group-id> --seat=<seat-id> --operation=answer-sync --revision=43 --flow-head=<head> --renewal-operation=narrow-1 --json
+station group report-continue <group-id> --seat=<seat-id> --operation=report-2 --revision=44 --flow-head=<head> --sync-operation=answer-sync --previous-invocation=<id> --retry-ref=<transition-hash> --json
+station group report-sync <group-id> --file=context-sync.json --json
+station group report-finalize-sync <group-id> --operation=<recovery-key> --sync-operation=<sync-key> --prepared-digest=<sha256:digest> --revision=<revision> --json
+```
+
+Every report operation requires current local-grant-minted operator authority
+on the personal host. Ordinary pairing and browser-bootstrap credentials do not
+suffice. Target flags select the receiver; they do not grant authority.
+
+Context sync requires a Flow-backed group whose original immutable creation
+intent reserved continuation and paid-attempt capacity. This candidate CLI has
+no checkpoint command. Obtain the current revision/Flow head through the
+[API checkpoint operation](api.md#report-groups) or SDK
+`readReportGroupContextCheckpoint`; the observation invokes no provider and
+grants no future admission. Paid sync rechecks that observation and consumes
+reserved attempts. The [continuation contract](api.md#report-groups) owns those
+limits and refusal conditions.
+
+`report-sync` reads a regular UTF-8 JSON file of at most 512 KiB containing the
+explicit operation key, revision, seat, exact Flow head and private context
+text (at most 64 KiB UTF-8). `report-finalize-sync`
+only publishes a prepared receipt; it never resends an ACK request. Each command
+makes one SDK mutation, disables the ordinary client request timeout and uses
+caller cancellation; paid sync retains the server deadline. Finite report
+list/get/events/result reads retain the configured client deadline alongside
+SIGINT.
+`report-narrow-input` removes the selected input member's tool grant through
+one SDK mutation; it performs no inference or MCP call. It uses caller
+cancellation and disables the ordinary request timeout. Retry only the same
+operation/revision/seat after uncertain delivery; the server recovers the retained
+epoch and adoption. It cannot change budgets or infer a missing original runtime
+identity. It does not run a fresh ACK or the answer-informed follow-up.
+
+`report-sync-input` makes one SDK mutation for the verified-answer ACK after
+narrowing. Supply the current checkpoint revision/head and the exact narrowing
+operation key. It accepts no text file or answer bytes; the server recovers the
+private answer and rechecks the same Session. It disables the ordinary request
+timeout and retains caller cancellation. Exact replay never resends. The command
+does not send or authorize the separately funded report.
+
+`report-continue` makes one SDK mutation for a distinct paid report. It accepts
+no replacement prompt or answer. The named ACK must match the current Flow head
+and round; the previous invocation and retry reference must identify a real Flow
+route-back or checked retry. The server prepares a fresh same-Session no-tools
+turn and retains its exact invocation/client-turn identity. Exact replay never
+resumes a partly completed paid command. Caller cancellation and the server
+deadline remain in force; the ordinary client request timeout is disabled.
+Reappraisal/retry-authorization commands and full live qualification remain open.
+
+These commands remain unqualified for full live serving. Positive sync allowances
+select the published initial-request policy, and controlled tests exercise its
+same-Session ACK and funded post-input follow-up paths. Those controlled results
+do not establish live providers, billing or native/device acceptance.
+Inspect `report-get` and retained sync/accounting state after an unknown response.
+
+`report-create` reads one regular UTF-8 JSON file of at most 256 KiB. Its fields
+are the [report-group API input](api.md#report-groups): an immutable operation ID,
+Project/source selection, deadline, concurrency, aggregate token/inference-micro
+budget and bounded member Agent IDs/briefs/output limits. The server resolves
+model/runtime identity; no root authority or provider credentials are accepted
+in that file. Use the existing `--station` or explicit API-base/credential target
+options for a protected request.
+
+Exact operation replay observes retained state without another paid attempt.
+Ctrl-C aborts the request or closes observation; it does not issue a group cancel,
+prove termination or authorize a resend with a new operation ID. Cancellation is
+an explicit operation/revision command. `report-finalize-cancel` is a separate
+recovery command naming the original cancellation and current revision; it
+observes retained receipts without resending interrupts. Missing or mismatched
+receipts refuse. Unknown delivery/accounting remains retained. Follow uses bounded server rotations and the SDK's report-specific
+checkpoint; malformed protocol data terminal-stops instead of reconnecting.
+
+Result pages intentionally expose authorized report text through terminal-safe
+JSON. Offsets count UTF-16 code units; concatenate successive pages in order.
+Raw result read admission and digest checks are separate from group metadata.
+The focused CLI tests use controlled transport; actual serving/SDK/canonical-task
+proof remains a separate controlled HTTP owner receipt, not live provider proof.
+
 
 ## Core Workspace
 
@@ -1471,6 +1587,110 @@ A claimant is always a Session today, so there is no `claim`, `release` or
 2 Station unreachable, 3 refused (including a Station too old to answer work
 claims).
 
+### `ensemble`
+
+Inspect a local versioned Ensemble preset before preparing or launching any members.
+
+```bash
+station ensemble inspect ./team.json
+station ensemble inspect ./team.json --json
+```
+
+The file must be regular, at most 128 KiB, valid UTF-8 and valid
+`station.ensemble/v1` JSON. Paths containing symbolic links are refused. The loader
+checks file and ancestor identities around the bounded read and reports the SHA-256
+of the exact bytes. A preset describes up to 16 named members, a Stationmaster,
+models, options and prompt additions; these declarations grant no authority.
+
+JSON success output is the inspection object itself, with `kind:
+"station.ensemble.inspection"`, `version: 1`, `path`, `bytes`, `sha256`, `preset`
+and `roster`. Errors use `{success:false,error}` and exit 1. Human-readable output
+includes the roster, options and digest; terminal control characters are escaped.
+Use `--` before a filename beginning with `-`.
+
+This command inspects declarations only. It does not resolve installed engines,
+validate effective adapter option values, authenticate credentials or launch a
+session. The command and `/ensemble` contracts subpath currently exist in this
+checkout; published CLI/contracts availability requires separate release evidence.
+
+### `group`
+
+The CLI-session path uses the personal Station's existing authority and
+confinement. The unfinished portable delegation-group transport is not shipped;
+its `delegationGroups` capability remains unavailable. These commands operate
+retained session groups:
+
+```bash
+station group session-create --file=local-group.json --json
+station group session-from-ensemble --file=ensemble-group.json --json
+station group session-list --json
+station group session-get <group-id> --json
+station group session-events <group-id> --after-revision=0 --json
+station group session-events <group-id> --after-revision=0 --follow --json
+station group session-run <group-id> --json
+station group session-cancel <group-id> --json
+station group session-sync <group-id> --file=sync.json --json
+```
+
+The JSON file follows the [CLI session-group API](api.md#cli-session-groups): an
+explicit operation ID, bounded roster, expected engine connection, concurrency
+and absolute deadline. Optional `maxDispatches` sets the total reserved-start
+allowance (zero through roster size); omission permits one reserved start per
+seat. The CLI validates request shape before submission; the server enforces
+the allowance against the saved roster. Create does not start members.
+Exhaustion is retained as `admissionClosed: "dispatch-limit-exhausted"`; uncertain
+and refused starts still use the allowance. Physical provider attempts and
+charges remain outside this logical bound. Run supervises the server's Flow frontier and can wait up to its deadline.
+
+`session-sync` reads `{operationId, runId, content, deadlineAt}` from its local
+JSON file. It sends the complete folded result to each retained member and
+prints the recorded per-member ACK status; it does not create replacement
+sessions. See the API reference for the qualified Claude runtime, exact ACK,
+one mismatch retry, unknown holds and logical-attempt limits. Ctrl-C aborts
+supervision and requests interruption; it does not prove provider termination.
+The request is never automatically repeated.
+
+`session-from-ensemble` instead reads the preset-group request described in that
+API reference. Its `path` names the preset on the receiving Station; `--file`
+names the request file on the CLI host. Host-path reads require a locally granted
+operator. The request may instead supply `presetJson`, which uses ordinary group
+request authority. Both source forms require an exact preset hash. Preset-derived
+runs authenticate the whole roster before any member starts. Current login
+observers support Codex/Claude in canonical directories or shared Projects;
+ACP/OpenCode presets refuse before member dispatch until an actual-context
+observer is available. This login check grants no model entitlement or fiscal
+authority. Manual session groups keep their existing dispatch path. The saved briefs include each member's prompt additions
+and the full roster. It does not call an engine until `session-run`.
+The run's private login continuation checks executable, profile, native launch
+environment and bounded local auth/config witnesses before spawning. Unsupported
+OS credential stores, dynamic credential/policy helpers and detected managed
+policy refuse; see the [API's login limits](api.md#cli-session-groups). Remote
+policy and credential changes after spawn are not qualified.
+Ctrl-C disconnects that supervision and requests interruption; it is not proof of
+physical termination. Inspect the same group after an uncertain response; never
+create a replacement merely because the response was lost. Member handles use
+ordinary `station delegate` status/events/respond/interrupt/continuation commands.
+
+`session-events` reads bounded durable group deltas; `--follow` reconnects the
+read stream with its accepted checkpoint. It never runs the group. SIGINT closes
+this observation stream without cancelling members. Historical gaps and oversized
+entries remain explicit in the JSON pages; inspect the ordinary member endpoints
+for raw output and elicitation details.
+
+Output explicitly reports unbound portable Flow lineage and unavailable dollar,
+token and physical-attempt caps. Unknown cost is not free. These commands have
+controlled-adapter integration evidence. Historical source-runtime receipts
+include a three-seat OpenCode/GLM Flash group at `fe998248b601` and a mixed
+OpenCode/GLM Flash and Codex group at `ca15aa85c11`, with overlapping independent
+turns and an exact-initial-turn dependency join. At `a39212fabf0`, another mixed
+group answered an exact-event MCP form through Station, refused a mismatched
+event and duplicate reply, and retained all three exact outputs. Its member SSE
+receipt is retrospective replay. At `27fafa8d48b6`, the SDK event stream was
+subscribed before a fresh mixed group started and delivered its question before
+the exact-event answer, then all three authored outputs and initial completions.
+An invalid credential on the SSE endpoint returned 401. These revision-bound source checks do not
+qualify every runtime, packaged identity, billing or a published client.
+
 ### `delegate`
 
 Hand Station a Task (create) to an Agent, get back a durable Conversation identity, and headlessly supervise
@@ -1655,7 +1875,9 @@ This reads the actual receiver's
 `GET /api/orchestration/delegations/attempts/:attemptId` endpoint once. `--on`
 is refused because lookup is receiver-local, not forwarded. Authenticate with
 the **same current delegation-peer grant** that owns the claim. An ordinary
-operator/Device credential or a different peer grant is refused. A CLI talking
+operator/Device credential is refused. A different valid delegation-peer grant
+looks up its own claim namespace: without its own matching attempt, the result
+is `none`, not another grant's claim or a refusal. A CLI talking
 to a forwarding controller cannot use that controller's server-held peer
 credential automatically; this command does not export it or broaden access.
 
@@ -1730,6 +1952,8 @@ nothing. `--cwd=<path>` (create only) binds to an explicit directory
 instead of a project — use `--project`/`--project-path` or `--cwd`, not
 both; a follow-up selected by `--session` reuses the workspace bound at
 creation and rejects `--cwd`.
+When no Project is attributed, Home and the inbox show a compact
+**Directory** context for the workspace.
 
 `--on=<environment>` is accepted on every sub-verb (not just `create`/
 `targets`) so a task living on a non-current SSH environment can still be
@@ -1944,8 +2168,8 @@ the file at `--path`, relative to the Task's working directory, under
 `--title`; `--media` declares a media type. Repeating the same `--operation`
 with the same inputs returns the earlier record; reusing it with different
 inputs, or after that output was deleted, is refused. `list-outputs` and
-`get-output` print the records (`get-output` needs the output ID even though
-the in-terminal help shows it as optional). `download-output` writes the bytes
+`get-output` print the records; `get-output` requires the output ID.
+`download-output` writes the bytes
 to an absolute `--out` path and prints the destination, size, media type and
 `etag`. It refuses a relative path, a symlink, an existing file and a missing or
 symlinked parent directory. It writes a private temporary file and links it
@@ -2980,7 +3204,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 |------|---------|-------------|
 | `--port=<n>` | worktree-derived development port (or explicit release channel port) | API server port |
 | `--ui-port=<n>` | worktree-derived development port (or explicit release channel port) | UI static file server port |
-| `--host=<address>` | existing lifecycle default (`127.0.0.1` under a managed policy without `remote` clients) | Explicit bind address for all four Station listeners: API, terminal, voice, and UI. Dogfood uses `127.0.0.1`. Under a [managed policy](../guides/managed-policy.md#network-exposure) without `remote` clients, a non-loopback address is refused, and so is a non-loopback `STATION_HOST` in the environment. |
+| `--host=<address>` | existing lifecycle default (`127.0.0.1` under a managed policy without `remote` clients) | Explicit bind address for all four Station listeners: API, voice, consent, and UI. The terminal socket uses the API listener. Dogfood uses `127.0.0.1`. Under a [managed policy](../guides/managed-policy.md#network-exposure) without `remote` clients, a non-loopback address is refused, and so is a non-loopback `STATION_HOST` in the environment. |
 | `--clean` | — | Clean the selected Station home before starting |
 | `--force` | — | Skip the confirmation prompt for destructive cleanup |
 | `--allow-default-home-clean` | — | Required together with `--force` to delete the selected default runtime home |

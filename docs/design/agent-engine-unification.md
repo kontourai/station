@@ -250,6 +250,27 @@ Seed matrix (initial honest state — entries move as slices land):
 | Model + knobs | native (Model connection) | session (model, effort, thinking, fastMode) | session (model, approvalPolicy, sandbox, serviceTier) | model selection unavailable until the adapter invokes an ACP model-category configuration operation |
 | Approvals / interrupt / resume | per adapter metadata (`ConnectionCapability`) | yes/yes/yes | yes/yes/yes | per-CLI probe |
 
+For an authored Codex MCP server, configuration delivery is followed by a
+thread-bound `mcpServerStatus/list` read before startup returns or a turn can
+start. The adapter requires one matching server with a tool inventory, no
+reported tool-list/authentication failure, and `connected` when the engine
+reports an explicit runtime status. Older responses may omit that status.
+The one-shot reads share a 15-second response deadline and the existing bounded
+response limit; they do not poll or retry a `starting` server. Unavailable or
+ambiguous inventory refuses startup and stops the process. Server logs retain
+the authored server ID and a closed refusal reason, not native error text.
+This is MCP availability evidence, not proof that a model selected or called
+a tool. Sessions without authored servers make no additional inventory call.
+
+Codex MCP data forms use the shared MCP-to-input-request parser and the same
+exact opened-event binding as harness questions. Accepted answers are validated
+against that form and returned as MCP `action`/`content`; they never create a
+session grant. Empty-schema tool gates keep their existing decision behavior.
+Malformed or unsupported forms cannot acquire fabricated content. A recorded
+answer is distinct from Codex's acknowledgement of its reply. A native
+connection configured to never ask may decline an elicitation before Station
+receives it; that is not a successful answer.
+
 ### 4.1b Declared vs observed capability basis (archive#1549, slice 1)
 
 A matrix cell is *static per engine*. Some capabilities are not: ACP's HTTP
@@ -546,11 +567,20 @@ here because leaving it implicit is what produced archive#3662:
   moment a *second* capable engine became ready the ambiguity rule below
   withdrew the first: on 2026-10-22 the built-in assistant stopped running on
   OpenCode because Claude Code's credentials had been repaired. The write is
-  existence-gated — it runs only while the key is absent, and writing removes
+  existence-gated — it rechecks absence inside ConfigLoader's locked app
+  mutation, so an engine or explicit Station choice committed after readiness
+  was captured is preserved. It runs only while the key is absent, and writing removes
   its own condition — so it converges after one pass and cannot become the
   reload-writes-its-own-inputs loop archive#3063/#1588 exist to prevent. A home
   the process cannot write keeps the previous behavior: the adoption stays
   implicit for that boot.
+  Cold startup completes that resolution before capturing the agent-construction
+  configuration revision. It rereads the stored config and permits only an
+  unchanged choice or the exact absent-to-resolved-engine adoption; a concurrent
+  different engine, explicit Station choice, or other app setting refuses startup
+  without overwriting the newer value. Provider and selected-package changes
+  across resolution, and configuration changes during construction, still refuse
+  startup (`runtime-cold-start-custom-agent.test.ts`).
 - **It is resolved per boot, not persisted onto the Agent.**
   `resolveBuiltinAgentEngineBinding` weighs live readiness, control-plane capability
   and per-connection runtime observation, and fails safe to Station's own engine *for

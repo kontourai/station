@@ -1,0 +1,9 @@
+{
+  "revision": "50efa456237fbe35a52475f2eca81453a43a448d",
+
+  "notes": [
+    {"path":"docs/guides/discord-gateway.md","note":"Reviewed the StationRuntime bootstrap delta against the Discord continuation journey. Publication participant capture/stop/drain precedes existing teardown but adds no Discord configuration, identity allowlist, channel binding, queue, approval grant or token reload path. Discord/chat-apps owners have no epic delta. The guide still requires explicit private operator setup and describes continuation through the bound conversation authority, not a new group or provider grant. No prose change needed for this bootstrap impact; no Discord connection, external message, bot credential or live provider effect was exercised.","inputs":["docs/guides/discord-gateway.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed current runtime-route changes against this staged operator/passkey record. Added group/ensemble routes and their request-bound admission do not create an operator session or reusable passkey window. Personal-token mint/revoke rechecks current operator/binding inside its mutation; HomeWriter failures remain unavailable or outcome-unconfirmed, not successful access changes. Operator session/consent owners have no epic delta. The existing banner distinguishes implemented read sessions/per-action step-up and later access:devices/native paths from dated assumptions. No prose update needed for this impact; no passkey/native/remote-CLI/physical/release acceptance was executed.","inputs":["docs/design/operator-device-access.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/ssh/environment-security-service.ts","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

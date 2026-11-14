@@ -1,0 +1,7 @@
+{
+  "revision": "98277439b1e66df5be4602ad7ceee5ddc497861f",
+
+  "notes": [
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Scoped semantic review of c6ae01856501 historical locator and prepared-transaction changes. Read report candidate/publication/returning-session claims against custody.finalizeContinuation and report-rounds-publication. Historical locator guards now use exact child lifetime, physical Home lease and captured POST authority without nested roster revalidation; the outer fence still checks every locator, signed source stamps/Git identities and parent/group. Prepared transaction check retains currentness before/after its captured callback; parent accessor handling unchanged. Exact lifetime and authority removal mutants are caught in actual returned guards, with real parent/sibling positive and retired child refusal before registry reads. Restored5currentness cases and server-test types pass; full60slost-reappraisal stillfails,1200-thread10sprojection stillfails. Metadata finalization remainsunavailable and qualificationfalse. Existing context accurately separates source/fixture evidence from serving/provider/native/peer/SSH/wholeepic acceptance; no prose change for these inputs.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/services/orchestration/report-rounds-publication.ts","src-server/services/orchestration/station-report-group-custody.ts"]}
+  ]
+}

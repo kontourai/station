@@ -88,6 +88,16 @@
 
     "src-ui/src/components/OnboardingGate.tsx",
 
+    "src-server/services/connections/connection-service.ts",
+
+    "src-server/providers/app-home/credential-profile-env.ts",
+
+    "src-server/providers/auth/native-authentication-context.ts",
+
+    "src-server/services/orchestration/recovery-dispatch-adapter.ts",
+
+    "src-server/services/orchestration/session-recovery-coordinator.ts",
+
     "src-ui/src/__tests__/OnboardingGate.test.tsx",
 
     "src-ui/src/__tests__/local-restart-notice.browser.test.tsx",

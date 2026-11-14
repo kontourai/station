@@ -1375,6 +1375,155 @@ describe('fetchSSE stall watchdog (station#2301)', () => {
   });
 });
 
+describe('bounded and failed SSE attempts', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setClientCredentialResolver(undefined);
+  });
+
+  it('bounds incremental frame bytes including comments and ids before a delimiter', async () => {
+    for (const prefix of ['data: ', 'id: ', ': ']) {
+      const cancel = vi.fn();
+      let body!: ReadableStreamDefaultController<Uint8Array>;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(
+              new ReadableStream({
+                start(c) {
+                  body = c;
+                },
+                cancel,
+              }),
+            ),
+        ),
+      );
+      const errors: unknown[] = [];
+      const stream = fetchSSE('https://station.test/stream', {
+        maxFrameBytes: 32,
+        maxRetries: 0,
+        onMessage() {
+          throw new Error('oversized frame delivered');
+        },
+        onError(error) {
+          errors.push(error);
+        },
+      });
+      try {
+        await vi.waitFor(() => expect(body).toBeDefined());
+        body.enqueue(new TextEncoder().encode(prefix + 'é'.repeat(10)));
+        await Promise.resolve();
+        expect(errors).toHaveLength(0);
+        body.enqueue(new TextEncoder().encode('é'.repeat(10)));
+        await vi.waitFor(() => expect(errors).toHaveLength(1));
+        expect(String(errors[0])).toMatch(/byte limit/);
+        expect(cancel).toHaveBeenCalledOnce();
+      } finally {
+        stream.close();
+        await stream.completed;
+      }
+    }
+  });
+
+  it('applies the byte bound per frame rather than per chunk or stream', async () => {
+    const data = 'data: é\n\n';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => sseResponse(data.repeat(100))),
+    );
+    const onMessage = vi.fn();
+    const stream = fetchSSE('https://station.test/stream', {
+      maxFrameBytes: 16,
+      maxRetries: 0,
+      onMessage,
+    });
+    try {
+      await stream.completed;
+      expect(onMessage).toHaveBeenCalledTimes(100);
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+  });
+
+  it('cancels the rejected reader and aborts its request before reconnect', async () => {
+    const signals: AbortSignal[] = [];
+    const cancel = vi.fn();
+    let first = true;
+    const fetch = vi.fn(async (_url, init) => {
+      if (!first) {
+        expect(signals[0].aborted).toBe(true);
+        expect(cancel).toHaveBeenCalledOnce();
+      }
+      signals.push(init.signal);
+      first = false;
+      return new Response(
+        new ReadableStream({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('data: malformed\n\n'));
+          },
+          cancel,
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetch);
+    const stream = fetchSSE('https://station.test/stream', {
+      retryDelayMs: 1,
+      maxRetries: 1,
+      onMessage() {
+        throw new Error('bad page');
+      },
+    });
+    try {
+      await stream.completed;
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(signals.every((s) => s.aborted)).toBe(true);
+      expect(cancel).toHaveBeenCalledTimes(2);
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+  });
+
+  it('rechecks captured authority after delivery before accepting a checkpoint or a second frame', async () => {
+    let current = true;
+    setClientCredentialResolver(() => ({
+      credential: CREDENTIAL,
+      origin: 'https://station.test',
+      requestAuthority: {
+        apiBase: 'https://station.test',
+        authorityKey: 'scope',
+        isCurrent: () => current,
+      },
+    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        sseResponse('id: 1\ndata: first\n\nid: 2\ndata: second\n\n'),
+      ),
+    );
+    const onMessage = vi.fn(() => {
+      current = false;
+    });
+    const onCheckpoint = vi.fn();
+    const stream = fetchSSE('https://station.test/stream', {
+      requestScope: { apiBase: 'https://station.test', authorityKey: 'scope' },
+      maxRetries: 0,
+      onMessage,
+      onCheckpoint,
+    });
+    try {
+      await stream.completed;
+      expect(onMessage).toHaveBeenCalledOnce();
+      expect(onCheckpoint).not.toHaveBeenCalled();
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+  });
+});
+
 describe('SSE connection recovery before headers', () => {
   afterEach(() => {
     setClientCredentialResolver(undefined);

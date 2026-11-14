@@ -1,0 +1,7 @@
+{
+  "revision": "7a6ea515c6987fcdce43cc693d418934b7471459",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Full frozen ADR read at 7a6ea515c698. Scoped review of environment-security.ts against main: the only added contract members are optional delegationToolConstraintsV1 and delegationGroups capability advertisements. Client API protocol constants/ranges and launcher, channel, signing, home-schema and pairing-identity contracts described by this historical decision are unchanged by those members. The current capability comments explicitly separate mounted authority owners from provider availability and universal native interception. No ADR prose was changed; its historical implementation and NOT_VERIFIED limits remain intact. This review does not re-run or qualify Windows/native release evidence or refresh any other ADR source.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/contracts/src/environment-security.ts"]}
+  ]
+}

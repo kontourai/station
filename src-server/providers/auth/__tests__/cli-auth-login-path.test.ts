@@ -317,6 +317,42 @@ describe('runCliCommand connection env overlay', () => {
     return captured;
   }
 
+  test('runs a bounded argv probe in the selected workspace without boot secrets', async () => {
+    vi.stubEnv('STATION_INTERNAL_API_TOKEN', 'private-boot-token');
+    execFileMock.mockImplementation((_file, _args, _opts, callback) => {
+      callback(null, { stdout: 'Logged in using ChatGPT', stderr: '' });
+    });
+    const { runCliCommand } = await import('../cli-auth.js');
+    await runCliCommand(
+      '/selected/bin/codex',
+      ['login', 'status'],
+      undefined,
+      { CODEX_HOME: '/selected/profile' },
+      {
+        cwd: '/selected/project',
+        timeoutMs: 1234,
+        maxBuffer: 4321,
+        killSignal: 'SIGKILL',
+      },
+    );
+    expect(execFileMock).toHaveBeenCalledWith(
+      '/selected/bin/codex',
+      ['login', 'status'],
+      expect.objectContaining({
+        cwd: '/selected/project',
+        windowsHide: true,
+        timeout: 1234,
+        maxBuffer: 4321,
+        killSignal: 'SIGKILL',
+        env: expect.objectContaining({ CODEX_HOME: '/selected/profile' }),
+      }),
+      expect.any(Function),
+    );
+    expect(
+      execFileMock.mock.calls[0][2].env.STATION_INTERNAL_API_TOKEN,
+    ).toBeUndefined();
+  });
+
   test('the overlay reaches the probe, over the inherited value', async () => {
     vi.stubEnv('CODEX_HOME', '/home/test-user/.codex');
     const env = await probedEnv({ CODEX_HOME: '/home/test-user/.codex_vibe' });

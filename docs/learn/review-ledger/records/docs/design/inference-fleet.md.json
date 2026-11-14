@@ -34,9 +34,25 @@
 
     "package.json#/dependencies/@kontourai~1ferry",
 
+    "src-server/runtime/conversation/bounded-api-turn-grant.ts",
+
+    "src-server/runtime/conversation/bounded-api-model.ts",
+
+    "src-server/runtime/frameworks/framework-model-factory.ts",
+
+    "packages/agent-runtime/src/turn-model.ts",
+
+    "src-server/analytics/reviewed-tariff-config.ts",
+
+    "src-server/analytics/bearing-usage-pricing-snapshot-capture.ts",
+
     "package.json#/dependencies/@kontourai~1relay",
 
     "package.json#/dependencies/@kontourai~1bearing",
+
+    "packages/agent-runtime/src/turn-effects.ts",
+
+    "packages/agent-runtime/src/turn-journal.ts",
 
     "packages/contracts/package.json#/dependencies/@kontourai~1datum"
   ],

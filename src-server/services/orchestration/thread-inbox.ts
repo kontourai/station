@@ -800,6 +800,15 @@ export interface ThreadInboxDeliveryPorts {
    */
   deviceMaySend?(deviceId: string, since: number): boolean;
   /**
+   * Pure synchronous admission only: no effects or writes. Fresh effectful
+   * submissions only; accepted-key retries and display notes bypass it.
+   */
+  submissionRefusal?(input: {
+    readonly conversationId: string;
+    readonly kind: 'follow-up' | 'steer';
+    readonly payload: ThreadInboxPayload;
+  }): { readonly reasonCode: string; readonly reason: string } | undefined;
+  /**
    * A sender's own placement policy, checked when an entry is about to be
    * placed, after the live send rule. A refusal settles the entry `refused`
    * with that code; nothing is sent. #3628: a coordinator wake whose
@@ -889,7 +898,11 @@ export type ThreadInboxSubmission =
    * Placement would refuse this sender; nothing was written, and the caller
    * sends it the live way (which refuses it at once).
    */
-  | { readonly outcome: 'not-permitted' };
+  | {
+      readonly outcome: 'not-permitted';
+      readonly reasonCode?: string;
+      readonly reason?: string;
+    };
 
 type ThreadInboxHeadSubmission =
   | ThreadInboxSubmission
@@ -1336,12 +1349,20 @@ export class ThreadInboxDelivery {
       return { outcome: 'not-permitted' };
     this.inspectDelivery(inbox, input.clientTurnId, input.payload);
     const prior = this.ports.store.read(inbox, input.clientTurnId);
-    if (
-      kind === 'steer' &&
-      (!prior ||
-        prior.state === 'refused' ||
-        (prior.state === 'cancelled' && prior.placement === null))
-    ) {
+    // Monument requeues refused and never-placed cancelled entries as fresh work.
+    const replaysExisting =
+      prior !== undefined &&
+      prior.state !== 'refused' &&
+      (prior.state !== 'cancelled' || prior.placement !== null);
+    if (kind !== 'display' && !replaysExisting) {
+      const refusal = this.ports.submissionRefusal?.({
+        conversationId: inbox,
+        kind,
+        payload: input.payload,
+      });
+      if (refusal) return { outcome: 'not-permitted', ...refusal };
+    }
+    if (kind === 'steer' && !replaysExisting) {
       const threadId = this.ports.currentSessionId(inbox);
       this.assertSteerKeyUnclaimed({
         threadId,

@@ -20,6 +20,9 @@ import {
   bedrockStrandsCredentials,
 } from '../../providers/llm/bedrock-credentials.js';
 import { resolveBedrockRegion } from '../../providers/llm/bedrock-region.js';
+import { guardBoundedApiModel } from '../conversation/bounded-api-model.js';
+import { boundedApiTransport } from '../conversation/bounded-api-transport.js';
+import { assertBoundedApiExecutionAvailable } from '../conversation/bounded-api-turn-grant.js';
 import {
   directModelImplementationBinding,
   inheritDirectModelIdentity,
@@ -42,33 +45,35 @@ export function durableStationLanguageModel(
   const provider = model.provider.split('.')[0];
   return inheritDirectModelIdentity(
     model,
-    durableLanguageModel(model, {
-      layer,
-      affinity: (id, current) => {
-        if (provider === 'anthropic') {
-          const previous = current?.anthropic;
-          const metadata = previous?.metadata;
-          return {
-            anthropic: {
-              ...previous,
-              metadata: {
-                ...(metadata &&
-                typeof metadata === 'object' &&
-                !Array.isArray(metadata)
-                  ? metadata
-                  : {}),
-                userId: id,
+    guardBoundedApiModel(
+      durableLanguageModel(model, {
+        layer,
+        affinity: (id, current) => {
+          if (provider === 'anthropic') {
+            const previous = current?.anthropic;
+            const metadata = previous?.metadata;
+            return {
+              anthropic: {
+                ...previous,
+                metadata: {
+                  ...(metadata &&
+                  typeof metadata === 'object' &&
+                  !Array.isArray(metadata)
+                    ? metadata
+                    : {}),
+                  userId: id,
+                },
               },
-            },
-          };
-        }
-        if (provider === 'openai-compat' || provider === 'ollama')
-          return {
-            [provider]: { ...current?.[provider], prompt_cache_key: id },
-          };
-        return undefined;
-      },
-    }),
+            };
+          }
+          if (provider === 'openai-compat' || provider === 'ollama')
+            return {
+              [provider]: { ...current?.[provider], prompt_cache_key: id },
+            };
+          return undefined;
+        },
+      }),
+    ),
   );
 }
 export function durableModelBinding(model: object) {
@@ -126,52 +131,61 @@ function buildRawAiSdkLanguageModel(opts: AiSdkModelOptions): LanguageModelV3 {
     case 'openai-compat':
     case 'ollama': {
       const baseURL = normalizeOpenAICompatibleBaseUrl(opts.type, baseUrl);
-      return createOpenAICompatible({
-        name: opts.type || 'openai-compatible',
-        baseURL,
-        // Ollama ONLY: ask for `stream_options: { include_usage: true }`
-        // so streamed turns carry usage even under strict OpenAI streaming
-        // semantics (archive#4197). Deliberately NOT set for generic
-        // 'openai-compat' connections — that type fronts a population of
-        // gateways/proxies (OpenRouter, Groq, Azure-style, self-hosted)
-        // where some reject unrecognized request params, and a 4xx on
-        // stream_options would break previously-working chat turns to fix
-        // a maybe-missing usage figure. Ollama's own
-        // compat layer accepts the param.
-        ...(opts.type === 'ollama' ? { includeUsage: true } : {}),
-        ...(apiKey ? { apiKey } : {}),
-        ...(fetchOverride ? { fetch: fetchOverride } : {}),
-      }).chatModel(opts.modelId);
+      return guardBoundedApiModel(
+        createOpenAICompatible({
+          name: opts.type || 'openai-compatible',
+          baseURL,
+          // Ollama ONLY: ask for `stream_options: { include_usage: true }`
+          // so streamed turns carry usage even under strict OpenAI streaming
+          // semantics (archive#4197). Deliberately NOT set for generic
+          // 'openai-compat' connections — that type fronts a population of
+          // gateways/proxies (OpenRouter, Groq, Azure-style, self-hosted)
+          // where some reject unrecognized request params, and a 4xx on
+          // stream_options would break previously-working chat turns to fix
+          // a maybe-missing usage figure. Ollama's own
+          // compat layer accepts the param.
+          ...(opts.type === 'ollama' ? { includeUsage: true } : {}),
+          ...(apiKey ? { apiKey } : {}),
+          ...(fetchOverride ? { fetch: fetchOverride } : {}),
+        }).chatModel(opts.modelId),
+      );
     }
     case 'anthropic': {
-      return createAnthropic({
-        ...(apiKey ? { apiKey } : {}),
-        ...(baseUrl ? { baseURL: baseUrl } : {}),
-        ...(fetchOverride ? { fetch: fetchOverride } : {}),
-      }).languageModel(opts.modelId);
+      return guardBoundedApiModel(
+        createAnthropic({
+          ...(apiKey ? { apiKey } : {}),
+          ...(baseUrl ? { baseURL: baseUrl } : {}),
+          ...(fetchOverride ? { fetch: fetchOverride } : {}),
+        }).languageModel(opts.modelId),
+      );
     }
     case 'google': {
-      return createGoogleGenerativeAI({
-        ...(apiKey ? { apiKey } : {}),
-        ...(baseUrl ? { baseURL: baseUrl } : {}),
-        ...(fetchOverride ? { fetch: fetchOverride } : {}),
-      }).languageModel(opts.modelId);
+      return guardBoundedApiModel(
+        createGoogleGenerativeAI({
+          ...(apiKey ? { apiKey } : {}),
+          ...(baseUrl ? { baseURL: baseUrl } : {}),
+          ...(fetchOverride ? { fetch: fetchOverride } : {}),
+        }).languageModel(opts.modelId),
+      );
     }
     case 'bedrock': {
-      return createAmazonBedrock({
-        // archive#1557: the caller has already resolved through
-        // `resolveBedrockRegion`; a second default here would be a third
-        // opinion about the region, reachable only when a caller forgets.
-        region: resolveBedrockRegion({
-          configRegion: opts.region,
-          env: process.env,
-        }).region,
-        ...bedrockAiSdkCredentials({
-          authMode: opts.authMode,
-          profile: opts.profile,
-          apiKey,
-        }),
-      }).languageModel(opts.modelId);
+      assertBoundedApiExecutionAvailable('Bedrock construction');
+      return guardBoundedApiModel(
+        createAmazonBedrock({
+          // archive#1557: the caller has already resolved through
+          // `resolveBedrockRegion`; a second default here would be a third
+          // opinion about the region, reachable only when a caller forgets.
+          region: resolveBedrockRegion({
+            configRegion: opts.region,
+            env: process.env,
+          }).region,
+          ...bedrockAiSdkCredentials({
+            authMode: opts.authMode,
+            profile: opts.profile,
+            apiKey,
+          }),
+        }).languageModel(opts.modelId),
+      );
     }
     default:
       throw new Error(
@@ -218,9 +232,10 @@ function isCompletionEndpoint(url: string): boolean {
  */
 function requestBodyDefaultsFetch(
   defaults: Record<string, unknown> | undefined,
-): typeof fetch | undefined {
+): typeof fetch {
+  const transport = boundedApiTransport();
   const entries = Object.entries(defaults ?? {});
-  if (entries.length === 0) return undefined;
+  if (entries.length === 0) return transport;
   return async (input, init) => {
     const url =
       typeof input === 'string'
@@ -235,20 +250,20 @@ function requestBodyDefaultsFetch(
       typeof body !== 'string' ||
       !isCompletionEndpoint(url)
     ) {
-      return fetch(input, init);
+      return transport(input, init);
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
     } catch {
-      return fetch(input, init);
+      return transport(input, init);
     }
     if (
       parsed === null ||
       typeof parsed !== 'object' ||
       Array.isArray(parsed)
     ) {
-      return fetch(input, init);
+      return transport(input, init);
     }
     const merged = parsed as Record<string, unknown>;
     let changed = false;
@@ -263,8 +278,8 @@ function requestBodyDefaultsFetch(
         changed = true;
       }
     }
-    if (!changed) return fetch(input, init);
-    return fetch(input, { ...init, body: JSON.stringify(merged) });
+    if (!changed) return transport(input, init);
+    return transport(input, { ...init, body: JSON.stringify(merged) });
   };
 }
 
@@ -290,27 +305,30 @@ export function createVoltAgentManagedModel(
     !options.providerConnection ||
     options.providerConnection.type === 'bedrock'
   ) {
+    assertBoundedApiExecutionAvailable('native VoltAgent Bedrock construction');
     // archive#1557 review fix: pass the RAW scopes, not a pre-resolved value
     // in both fields. Pre-resolving made `createBedrockProvider`'s own
     // resolution a no-op that always hit its first branch, so the env
     // fallback it advertises was unreachable from the only caller it has.
-    return durableLanguageModel(
-      createBedrockProvider({
-        appConfig: {
-          defaultModel: options.modelId,
-          region: options.appConfig.region,
-        } as AppConfig,
-        agentSpec: {
-          model: options.modelId,
-          region: options.spec.region,
-        } as AgentSpec,
-        connectionRegion:
-          typeof options.providerConnection?.config.region === 'string'
-            ? options.providerConnection.config.region
-            : undefined,
-        auth: resolveBedrockAuth(options),
-      }),
-      { layer: 'provider' },
+    return guardBoundedApiModel(
+      durableLanguageModel(
+        createBedrockProvider({
+          appConfig: {
+            defaultModel: options.modelId,
+            region: options.appConfig.region,
+          } as AppConfig,
+          agentSpec: {
+            model: options.modelId,
+            region: options.spec.region,
+          } as AgentSpec,
+          connectionRegion:
+            typeof options.providerConnection?.config.region === 'string'
+              ? options.providerConnection.config.region
+              : undefined,
+          auth: resolveBedrockAuth(options),
+        }),
+        { layer: 'provider' },
+      ),
     );
   }
 
@@ -324,6 +342,7 @@ export async function createStrandsManagedModel(
     !options.providerConnection ||
     options.providerConnection.type === 'bedrock'
   ) {
+    assertBoundedApiExecutionAvailable('native Strands Bedrock construction');
     const { BedrockModel } = await import('@strands-agents/sdk');
     const bedrockOptions = {
       modelId: options.modelId,
@@ -335,31 +354,35 @@ export async function createStrandsManagedModel(
       temperature: options.spec.guardrails?.temperature,
       topP: options.spec.guardrails?.topP,
     };
-    return durableStrandsModel(
-      new BedrockModel(bedrockOptions),
-      modelConnectionConfigurationDigest(options),
-      {
-        layer: 'provider',
-        dispatch: (messages, streamOptions) =>
-          new BedrockModel({
-            ...bedrockOptions,
-            clientConfig: { maxAttempts: 1 },
-          }).stream(messages, streamOptions),
-      },
+    return guardBoundedApiModel(
+      durableStrandsModel(
+        new BedrockModel(bedrockOptions),
+        modelConnectionConfigurationDigest(options),
+        {
+          layer: 'provider',
+          dispatch: (messages, streamOptions) =>
+            new BedrockModel({
+              ...bedrockOptions,
+              clientConfig: { maxAttempts: 1 },
+            }).stream(messages, streamOptions),
+        },
+      ),
     );
   }
 
   const { VercelModel } = await import('@strands-agents/sdk/models/vercel');
-  return durableStrandsModel(
-    new VercelModel({
-      provider: createManagedLanguageModel(options),
-      maxTokens:
-        options.spec.guardrails?.maxTokens ??
-        options.appConfig.defaultMaxOutputTokens,
-      temperature: options.spec.guardrails?.temperature,
-      topP: options.spec.guardrails?.topP,
-    }),
-    modelConnectionConfigurationDigest(options),
+  return guardBoundedApiModel(
+    durableStrandsModel(
+      new VercelModel({
+        provider: createManagedLanguageModel(options),
+        maxTokens:
+          options.spec.guardrails?.maxTokens ??
+          options.appConfig.defaultMaxOutputTokens,
+        temperature: options.spec.guardrails?.temperature,
+        topP: options.spec.guardrails?.topP,
+      }),
+      modelConnectionConfigurationDigest(options),
+    ),
   );
 }
 
@@ -417,21 +440,23 @@ export async function createStrandsAiSdkModel(
   options: Pick<FrameworkModelOptions, 'spec' | 'appConfig'>,
 ): Promise<VercelModel> {
   const { VercelModel } = await import('@strands-agents/sdk/models/vercel');
-  return durableStrandsModel(
-    new VercelModel({
-      provider,
-      maxTokens:
-        options.spec.guardrails?.maxTokens ??
-        options.appConfig.defaultMaxOutputTokens,
-      temperature: options.spec.guardrails?.temperature,
-      topP: options.spec.guardrails?.topP,
-    }),
-    modelConnectionConfigurationDigest({
-      modelId: provider.modelId,
-      provider: provider.provider,
-      binding: directModelImplementationBinding(provider),
-      ...options,
-    }),
+  return guardBoundedApiModel(
+    durableStrandsModel(
+      new VercelModel({
+        provider,
+        maxTokens:
+          options.spec.guardrails?.maxTokens ??
+          options.appConfig.defaultMaxOutputTokens,
+        temperature: options.spec.guardrails?.temperature,
+        topP: options.spec.guardrails?.topP,
+      }),
+      modelConnectionConfigurationDigest({
+        modelId: provider.modelId,
+        provider: provider.provider,
+        binding: directModelImplementationBinding(provider),
+        ...options,
+      }),
+    ),
   );
 }
 

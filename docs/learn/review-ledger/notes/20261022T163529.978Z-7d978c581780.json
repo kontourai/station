@@ -1,0 +1,7 @@
+{
+  "revision": "d6c43ad648e4de527abd2b2b0afb1f49c38f25fe",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed exact-source 27fafa8d48b6 live-at-question SSE evidence and retained failure/correction history. Stream was caught up before create, exact question observed before answer, foreign/exact/duplicate statuses409/200/409, invalid credential on actual SSE401, all three authored outputs and initial starts/completions retained, Flow dependent held then joined. Independent artifact review verified hashes and temporal gates without provider execution. Initial plain-node import failure and optional ACP terminal output comparison errors remain, as does post-completion cleanup cancellation. Source server stopped with recorded absent PID/closed owned ports; checkout-derived identity, fiscal/portable/native/physical/hosted limits unchanged. This updates the plan only; broad API/SDK/CLI/source documentation records remain unreviewed.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}

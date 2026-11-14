@@ -1,0 +1,7 @@
+{
+  "revision": "310a1b6820734362c6f86aba40539a7ec6af6972",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed full README and complete verification-policy source delta since42b6272: static command additions, submission guidance and bounded Git discovery preserve the documented selector-first gate. Cross-checked package scripts, repo-map required/default checks and routed enforcement levels. Readiness at14e4392293a passed governance, lint and verification policy but failed documentation truth; no merge or full-test claim. Corrected current-pin wording:1.7.4 is the historical apply_patch host probe, while package.json owns the current pin1.11.3; no new host execution qualified. Named artifact/structural limits remain explicit. This review covers this README only, not the outstanding documentation backlog.","inputs":[".veritas/README.md","scripts/verification-policy-gate.mjs"]}
+  ]
+}

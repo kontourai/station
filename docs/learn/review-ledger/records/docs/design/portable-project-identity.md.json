@@ -38,7 +38,33 @@
 
     "src-server/services/projects/project-identity-service.ts",
 
-    "src-ui/src/hooks/useNewProjectSubmit.ts"
+    "src-ui/src/hooks/useNewProjectSubmit.ts",
+
+    "src-server/services/orchestration/orchestration-session-state.ts",
+
+    "src-server/services/orchestration/credential-profile-recovery.ts",
+
+    "src-server/services/projects/project-contribution-service.ts",
+
+    "src-server/services/projects/project-response-guard.ts",
+
+    "src-server/routes/system/config.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/runtime/bootstrap/runtime-initialize.ts",
+
+    "src-server/tools/station-control-delegation.ts",
+
+    "src-server/security/runtime-request-security.ts",
+
+    "src-server/services/ssh/device-pairing-service.ts",
+
+    "src-server/domain/config-loader.ts",
+
+    "src-server/services/acp/acp-session-terminals.ts",
+
+    "src-server/domain/managed-settings.ts"
   ],
 
   "checks": [

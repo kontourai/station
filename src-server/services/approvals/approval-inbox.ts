@@ -637,6 +637,7 @@ export function wireApprovalInboxNotifications(
   const unsubscribe = eventBus.subscribe((message) => {
     notificationService.dispatch('approval-inbox-event', async () => {
       if (message.event === SERVER_EVENTS.APPROVAL_OPENED) {
+        if (message.data?.settlement === 'canonical-request') return;
         // #2589: a Station-agent relay's approval, which the adapter also
         // opens as the thread's orchestration request: on the card only when
         // it is the relayed conversation's own and that thread is listed.

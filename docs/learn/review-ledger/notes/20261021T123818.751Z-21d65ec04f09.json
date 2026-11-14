@@ -1,0 +1,7 @@
+{
+  "revision": "baeb4781a6ff2bf9b7e4676a929803a81cbf547c",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Traced route principal admission, real runtime owner composition, adapter observation and runner finalizer at reviewed9df. Matched bounded independent121test review and seven repaired findings. Explicitly retained executed latecwd/preset and absentcreate/deleteABA limits; bootedprovider andlaunch acceptance remain unverified.","inputs":["docs/reference/api.md","src-server/domain/config-loader.ts","src-server/domain/file-storage-adapter.ts","src-server/providers/adapter-shape.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/ensemble-execution-context.ts"]}
+  ]
+}

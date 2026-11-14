@@ -4416,6 +4416,15 @@ describe('useCancelMessage', () => {
       /^Stopped\. .*forced the turn to stop/,
     ],
     [
+      'termination-unconfirmed',
+      {
+        outcome: 'termination-unconfirmed',
+        threadId: 'server-thread-1',
+        turnId: 't',
+      },
+      /Provider termination is not confirmed/,
+    ],
+    [
       'turn-completed',
       { outcome: 'turn-completed', threadId: 'server-thread-1', turnId: 't' },
       /finished before the stop took effect/,
@@ -4439,6 +4448,10 @@ describe('useCancelMessage', () => {
       expect(outcome).toEqual({ kind: 'settled', result: serverResult });
       const copy = describeStopTurnOutcome(outcome as StopTurnOutcome);
       expect(copy).toMatch(expected);
+      if (serverResult.outcome === 'termination-unconfirmed')
+        expect(
+          activeChatsStore.getSnapshot()[sessionId]?.stopSettledTurnId,
+        ).toBeUndefined();
       // The raw engine field never reaches the reader (#898).
       expect(copy).not.toContain('stop_reason');
     },

@@ -1,0 +1,7 @@
+{
+  "revision": "66519d138c879b6d3b5630b5b0da5da9ada5369e",
+
+  "notes": [
+    {"path":"packages/sdk/README.md","note":"Reviewed the README delta and destination reference against the actual client and query exports. The new recovery link targets the reported-child transcript section; getChildWorkTranscript sends encoded reporting Session/child ids and bounded page inputs, never a path, and the hook uses the client through an infinite query rather than polling. The canonical reference discloses Claude-only retained recovery, missing/unreadable refusal and absent-provenance uncertainty. Inspected opt-in workspace modules: browser-preview exports pure contracts while file-preview exports bounded clients and queries, so the corrected distinction is accurate. No further prose change needed. This is source/link impact review, not execution, package publication, provider recovery or new browser/device evidence.","inputs":["packages/sdk/README.md"]}
+  ]
+}

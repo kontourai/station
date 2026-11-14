@@ -1,0 +1,7 @@
+{
+  "revision": "f73f42332560bce7a70ef96f0a6a90ff09c686a8",
+
+  "notes": [
+    {"path":"docs/design/local-bootstrap-token.md","note":"Read complete101line historicaldesign and current header. Reviewed current mint/exchange route bodies and direct-loopback predicate: purpose-specific currenttoken mint requires secret/directsocket/noingress/proxyattestation; exchange trustedbrowserorigin, existingvalidsession preservation/capabilityspend and newHttpOnlyStrictcookie issuance remain. Browser capture strips validfragment synchronously beforefetch; refusal and proxy-unavailable are now expliciterrors/retryowners, consistent with historicalclassification limits. CLI open still showsnonsecretURL andonlyopenedbrowsergetsfragment. Corrected technical Referer claim: fragments are not HTTPReferer content; history/clientcode/copiedURLs remainrisks. This note binds affected runtime-routes claims, not full ingress/auth/rate/recovery or all related source files; no new launch/provider/native/securityproof.","inputs":["docs/design/local-bootstrap-token.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

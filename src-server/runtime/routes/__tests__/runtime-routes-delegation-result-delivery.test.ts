@@ -14,6 +14,8 @@ import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { serve } from '@hono/node-server';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
+import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -26,6 +28,13 @@ import {
   EventStore,
   type PersistedRuntimeEvent,
 } from '../../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import {
+  createTaskLeadReader,
+  TaskQuestionWake,
+  taskQuestionWakeKey,
+} from '../../../services/orchestration/task-question-wake.js';
+import { ThreadInboxDelivery } from '../../../services/orchestration/thread-inbox.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-control-shared.js';
 import {
   getInternalApiToken,
@@ -155,6 +164,13 @@ async function composeOver(
   support.notificationService = notifications;
   __resetStationServerSelfAttestationForTests();
   const bus = new EventBus();
+  const policyService = new OrchestrationService({
+    adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+    eventBus: bus,
+    eventStore: store,
+    logger: { debug() {}, warn() {} },
+  });
+  closers.unshift(() => policyService.shutdown());
   const app = new Hono();
   const context = deepStub({
     delegationAttemptClaims: new FileDelegationAttemptClaimStore(homeDir),
@@ -235,14 +251,18 @@ async function composeOver(
         source: 'session-owner' as const,
       }),
       sessionRecordedOwnerId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
+      conversationInputAdmissionRefusal: (conversationId: string) =>
+        policyService.conversationInputAdmissionRefusal(conversationId),
       hasSessionStartRecord: () => true,
       currentConversationSessionId: (conversationId: string) => conversationId,
       canUserReadSession: () => true,
       inspectTurnDelivery: (conversationId: string, clientTurnId: string) =>
         support.inspect?.(conversationId, clientTurnId),
       hasActiveTurn: (threadId: string) => support.busy.has(threadId),
-      steerFidelityForThread: () =>
-        support.inboxNativeSteer ? 'native' : 'none',
+      steerFidelityForThread: (threadId: string) =>
+        support.inboxNativeSteer
+          ? 'native'
+          : policyService.steerFidelityForThread(threadId),
       dispatchWithReceipt: async (
         command: Record<string, unknown>,
         dispatchContext: Record<string, unknown>,
@@ -292,13 +312,16 @@ async function composeOver(
       getProject: (slug: string) => ({ slug }),
     },
     environmentSecurityService: deepStub({
+      assessCredentialRoute: undefined,
       verifyCredential: () => false,
       authorizeCredential: () => false,
       verifyOperatorCredential: () => false,
       resolveGrantedScope: () => undefined,
       identifyDevice: () => undefined,
       deviceMaySendChat: (deviceId: string) => support.devices.has(deviceId),
-      devicePairing: deepStub({}),
+      devicePairing: deepStub({
+        withCurrentRegistry: <T>(read: () => T): T => read(),
+      }),
     }),
   });
   Reflect.set(context as object, 'buildRuntimeContext', () => context);
@@ -333,6 +356,7 @@ async function composeOver(
     base: `http://127.0.0.1:${await listening}`,
     emit,
     delegationResultStore,
+    policyService,
     /**
      * The runtime's own shutdown step, handed the orchestration service this
      * composition was built over, as `StationRuntime.shutdown` hands its own.
@@ -670,6 +694,199 @@ describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {
     seed(store);
     return { store, ...(await composeOver(homeDir, store, closers)) };
   }
+
+  function recordSealedParent(store: EventStore) {
+    const started = event(PARENT, 'session.started', {
+      provider: 'station-agent',
+      sessionId: PARENT,
+      metadata: {
+        userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        reservedSourceExecution: {
+          mode: 'sealed-source-input',
+          identity: `sha256:${'a'.repeat(64)}`,
+        },
+      },
+    });
+    store.upsertSession({
+      threadId: PARENT,
+      provider: 'station-agent',
+      status: 'ready',
+      createdAt: started.createdAt,
+      updatedAt: started.createdAt,
+    });
+    store.appendEvent(started);
+  }
+
+  test('a real internal Task question producer is refused before the runtime Inbox accepts sealed work', async ({
+    onTestFinished,
+  }) => {
+    let inbox: ThreadInboxDelivery | undefined;
+    const start = ThreadInboxDelivery.prototype.start;
+    const capture = vi
+      .spyOn(ThreadInboxDelivery.prototype, 'start')
+      .mockImplementation(function (this: ThreadInboxDelivery) {
+        if (inbox) throw new Error('Expected one runtime Inbox');
+        inbox = this;
+        return start.call(this);
+      });
+    onTestFinished(() => capture.mockRestore());
+    support.inspect = () => ({ outcome: 'not-received' });
+    const { store, policyService } = await compose(recordSealedParent);
+    if (!inbox) throw new Error('The real runtime Inbox must start');
+    const actualInbox = inbox;
+    const incarnation = {
+      taskId: 'sealed-lead-task',
+      taskCreatedAt: '2026-10-13T00:00:00.000Z',
+    };
+    const task: TaskRecord = {
+      id: incarnation.taskId,
+      projectId: 'source',
+      title: 'Sealed lead',
+      description: '',
+      priority: 'normal',
+      status: 'in_progress',
+      createdBy: LOCAL_OPERATOR_PRINCIPAL_ID,
+      createdAt: incarnation.taskCreatedAt,
+      updatedAt: incarnation.taskCreatedAt,
+      sessionId: PARENT,
+    };
+    const memory = store.taskMemoryStore();
+    const written = memory.writeRecord({
+      ...incarnation,
+      projectId: task.projectId,
+      author: { kind: 'session', sessionId: CHILD },
+      write: { kind: 'question', key: 'tier', text: 'Which tier?' },
+    });
+    expect(written.kind).toBe('recorded');
+    if (written.kind !== 'recorded')
+      throw new Error('The actual Task question must commit');
+    const producer = new TaskQuestionWake({
+      outbox: memory,
+      mayReadTask: () => true,
+      readTask: (id) => (id === task.id ? task : null),
+      readLead: createTaskLeadReader({
+        eventStore: store,
+        service: policyService,
+      }),
+      conversationOf: (id) =>
+        store.conversationForSession(id)?.conversationId ?? id,
+      submit: (input) => actualInbox.submit(input),
+      logger: { warn() {} },
+    });
+    const key = taskQuestionWakeKey(incarnation, written.record);
+    const outcome = await producer.wake({
+      incarnation,
+      record: written.record,
+    });
+    expect(outcome).toEqual({
+      kind: 'failed',
+      reason: 'not-permitted',
+      clientTurnId: key,
+    });
+    expect(memory.listRecords(incarnation)).toMatchObject([
+      { key: 'tier', version: 1 },
+    ]);
+    expect(store.threadInboxStore().read(PARENT, key)).toBeUndefined();
+    expect(
+      policyService.inspectTurnDelivery(
+        PARENT,
+        key,
+        INTERNAL_SESSION_READ_SCOPE,
+      ),
+    ).toEqual({ outcome: 'not-received' });
+    await actualInbox.idle();
+    expect(support.continued).toEqual([]);
+    expect(support.commands).toEqual([]);
+  });
+
+  test('startup refuses a legacy queued sealed follow-up with the source-admission reason', async () => {
+    support.inspect = () => ({ outcome: 'not-received' });
+    const { store } = await compose((store) => {
+      recordSealedParent(store);
+      held(store, 'legacy-sealed-follow-up');
+      store.threadInboxStore().submit({
+        conversationId: PARENT,
+        clientTurnId: 'legacy-display-note',
+        kind: 'display',
+        payload: {
+          message: 'Retained note',
+          actor: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+        },
+        now: Date.now(),
+      });
+    });
+    await vi.waitFor(() =>
+      expect(
+        store.threadInboxStore().read(PARENT, 'legacy-sealed-follow-up'),
+      ).toMatchObject({ state: 'refused' }),
+    );
+    expect(
+      store.threadInboxStore().read(PARENT, 'legacy-display-note'),
+    ).toMatchObject({ state: 'placed', kind: 'display' });
+    const entry = store
+      .threadInboxStore()
+      .read(PARENT, 'legacy-sealed-follow-up');
+    expect(JSON.parse(entry?.outcome ?? '{}')).toEqual({
+      reasonCode: 'sealed_source_admission_required',
+      reason:
+        'This sealed source Session needs fresh bounded admission. Use its report or group controls.',
+    });
+    expect(support.continued).toEqual([]);
+    expect(support.commands).toEqual([]);
+  });
+
+  test('startup refuses a legacy sealed steer while busy without invoking placement policy or delivery', async ({
+    onTestFinished,
+  }) => {
+    support.busy.add(PARENT);
+    support.inspect = () => ({ outcome: 'not-received' });
+    const admission = vi.spyOn(
+      OrchestrationService.prototype,
+      'conversationInputAdmissionRefusal',
+    );
+    onTestFinished(() => admission.mockRestore());
+    const key = 'legacy-sealed-steer';
+    const message = 'Legacy queued steer';
+    const { store, policyService } = await compose((store) => {
+      recordSealedParent(store);
+      store.threadInboxStore().submit({
+        conversationId: PARENT,
+        clientTurnId: key,
+        kind: 'steer',
+        payload: { message, actor: { userId: LOCAL_OPERATOR_PRINCIPAL_ID } },
+        now: Date.now(),
+      });
+    });
+    await vi.waitFor(() =>
+      expect(store.threadInboxStore().read(PARENT, key)).toMatchObject({
+        state: 'refused',
+        kind: 'steer',
+      }),
+    );
+    expect(await policyService.steerFidelityForThread(PARENT)).toBe('none');
+    const entry = store.threadInboxStore().read(PARENT, key);
+    expect(JSON.parse(entry?.outcome ?? '{}')).toEqual({
+      reasonCode: 'unsupported-engine',
+      reason: 'The engine has no declared steering support. Nothing was sent.',
+    });
+    expect(admission).not.toHaveBeenCalled();
+    expect(
+      store.readSteerInput({
+        threadId: PARENT,
+        clientInputId: key,
+        input: message,
+      }),
+    ).toBeUndefined();
+    expect(
+      policyService.inspectTurnDelivery(
+        PARENT,
+        key,
+        INTERNAL_SESSION_READ_SCOPE,
+      ),
+    ).toEqual({ outcome: 'not-received' });
+    expect(support.continued).toEqual([]);
+    expect(support.commands).toEqual([]);
+  });
 
   test.each([false, true])(
     'startup places a held follow-up through the production port (background=%s)',

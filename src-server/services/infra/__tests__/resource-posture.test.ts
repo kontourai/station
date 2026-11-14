@@ -85,6 +85,48 @@ describe('runtime resource diagnostics', () => {
     expect(sample).toHaveBeenCalledOnce();
   });
 
+  test('supervised starts wait FIFO, canceled waiters release their place, and ordinary starts still refuse', async () => {
+    const controller = createRuntimeResourcePostureController();
+    const first = controller.reserveEngineStart();
+    const cancelled = new AbortController();
+    const active = new AbortController();
+    const abandoned = controller.waitForEngineStart(cancelled.signal);
+    const cancellation = new Error('cancelled');
+    const refusal = expect(abandoned).rejects.toBe(cancellation);
+    const admissionOrder: string[] = [];
+    const next = controller.waitForEngineStart(active.signal).then((lease) => {
+      admissionOrder.push('second');
+      return lease;
+    });
+    const last = controller.waitForEngineStart(active.signal).then((lease) => {
+      admissionOrder.push('third');
+      return lease;
+    });
+    expect(() => controller.reserveEngineStart()).toThrow(
+      ConcurrentEngineStartCapacityError,
+    );
+    cancelled.abort(cancellation);
+    await refusal;
+    expect(admissionOrder).toEqual([]);
+    first.release();
+    const second = await Promise.race([next, last]);
+    expect(admissionOrder).toEqual(['second']);
+    first.release();
+    expect(() => controller.reserveEngineStart()).toThrow(
+      ConcurrentEngineStartCapacityError,
+    );
+    expect(admissionOrder).toEqual(['second']);
+    second.release();
+    const third = await last;
+    expect(admissionOrder).toEqual(['second', 'third']);
+    expect(() => controller.reserveEngineStart()).toThrow(
+      ConcurrentEngineStartCapacityError,
+    );
+    third.release();
+    const final = controller.reserveEngineStart();
+    final.release();
+  });
+
   test('classifies malformed observations as unavailable', () => {
     expect(deriveRuntimeResourcePosture({ source: 'test' })).toMatchObject({
       kind: 'unavailable',

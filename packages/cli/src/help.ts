@@ -73,6 +73,61 @@ const TARGET_FLAGS = [
 ];
 
 const VERBS: Record<string, VerbSpec> = {
+  group: {
+    group: 'Core Workspace',
+    summary: 'Read and supervise a server-owned delegation group',
+    usage: [
+      'station group create --file=<group.json> [--json]',
+      'station group list [--after-group=<id>] [--json]',
+      'station group get <group> [--json]',
+      'station group events <group> [--after-revision=<n>] [--json]',
+      'station group run|cancel <group> --operation=<id> --revision=<n> [--json]',
+      'station group member-events <group> <seat> [--after-sequence=<n>] [--json]',
+      'station group member-output <group> <seat> [--after-code-unit=<cursor>] [--json]',
+      'station group session-create --file=<local-group.json> [--json]',
+      'station group session-from-ensemble --file=<ensemble-group.json> [--json]',
+      'station group session-list [--after-group=<id>] [--json]',
+      'station group session-get|session-run|session-cancel <group> [--json]',
+      'station group session-events <group> [--after-revision=<n>] [--follow] [--json]',
+      'station group session-sync <group> --file=<sync.json> [--json]',
+    ],
+    actions: [
+      'create',
+      'list',
+      'get',
+      'events',
+      'run',
+      'cancel',
+      'member-events',
+      'member-output',
+      'session-create',
+      'session-from-ensemble',
+      'session-list',
+      'session-get',
+      'session-events',
+      'session-run',
+      'session-cancel',
+      'session-sync',
+    ],
+    detail: [
+      'Portable groups require current host source, caller and budget admission; unsupported hosts or source protocols refuse.',
+      'Session groups use existing Station authority; portable Flow lineage and hard dollar/token/attempt limits remain unavailable.',
+      'session-run follows the server deadline. Ctrl-C requests interruption, not proven provider termination.',
+      'Follow streams stop locally on Ctrl-C; this does not cancel the group.',
+      'Output is terminal-safe JSON. Group completion is separate from Flow acceptance.',
+    ],
+  },
+  ensemble: {
+    group: 'Core Workspace',
+    summary: 'Inspect an Ensemble preset file and its member roster',
+    usage: ['station ensemble inspect <file> [--json]'],
+    actions: ['inspect'],
+    detail: [
+      'Shows the file digest, version, members, models, options, colors, and Stationmaster.',
+      'Inspection only; no members launched.',
+      '--json prints the inspection as JSON.',
+    ],
+  },
   start: {
     group: 'Lifecycle',
     summary: 'Start the application (auto-builds if needed)',
@@ -1572,8 +1627,7 @@ export function usageText(): string {
   lines.push('  station <command> [action] [options]');
   lines.push('');
   lines.push('  station --help          This summary');
-  lines.push('  station <command> --help');
-  lines.push('                         Actions and flags for one command');
+  lines.push('  station <command> --help  Actions and flags for one command');
   lines.push('  station --version       CLI version and build provenance');
 
   const width = 28;

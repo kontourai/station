@@ -948,3 +948,9 @@ describe('retired Activity route (#928)', () => {
     });
   });
 });
+
+test('Ensemble inspection stays in the canonical Agents route and round-trips its tab', () => {
+  const view = { type: 'agents', tab: 'ensembles' } as const;
+  expect(resolveViewFromPath('/agents?tab=ensembles')).toEqual(view);
+  expect(getPathForView(view)).toBe('/agents?tab=ensembles');
+});

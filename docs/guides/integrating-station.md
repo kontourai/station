@@ -45,6 +45,9 @@ business rules in your application and use a documented Station boundary.
 | Build or extend Station | [Development](development.md), [example catalog](../../examples/README.md), [testing](testing.md) | Focused executable example and relevant checks |
 
 Use the selected reference's actual authentication and configuration contract.
+A reference may describe an inactive contract or an unpublished client command;
+confirm availability and capability on the selected client and runtime before
+using it. Documentation and exported types alone do not activate a serving route.
 Do not invent a generic API key or infer supported methods from internal code.
 Examples should run with your own project, provider, domain, and credentials;
 Kontour infrastructure must not be an undocumented prerequisite. Keep secrets

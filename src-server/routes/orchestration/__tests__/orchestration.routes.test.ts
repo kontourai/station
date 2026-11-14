@@ -3037,7 +3037,7 @@ describe('Orchestration Routes', () => {
       delegateTask,
     });
 
-    const res = await app.request('/delegations', {
+    const requestAuthority = new Request('http://localhost/delegations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -3049,12 +3049,14 @@ describe('Orchestration Routes', () => {
           model: { override: 'gpt-5.6-sol' },
         },
         userId: 'spoofed-user',
+        createRequestAuthority: { taskId: 'claimed-authority' },
         taskId: 'task:poisoned',
         conversationId: 'conversation:poisoned',
         sessionId: 'session:poisoned',
         currentSessionId: 'session:current-poisoned',
       }),
     });
+    const res = await app.request(requestAuthority);
 
     expect(res.status).toBe(200);
     expect(await readJson(res)).toMatchObject({
@@ -3063,6 +3065,7 @@ describe('Orchestration Routes', () => {
     });
     expect(delegateTask).toHaveBeenCalledWith({
       clientTurnId: 'fixture-delegation-key',
+      createRequestAuthority: requestAuthority,
       createRequestIntent: expect.objectContaining({
         clientTurnId: 'fixture-delegation-key',
       }),
@@ -3110,7 +3113,7 @@ describe('Orchestration Routes', () => {
     });
     app.route('/', routes);
 
-    const res = await app.request('/delegations', {
+    const requestAuthority = new Request('http://localhost/delegations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -3124,10 +3127,12 @@ describe('Orchestration Routes', () => {
         },
       }),
     });
+    const res = await app.request(requestAuthority);
 
     expect(res.status).toBe(200);
     expect(delegateTask).toHaveBeenCalledWith({
       clientTurnId: 'fixture-delegation-key',
+      createRequestAuthority: requestAuthority,
       createRequestIntent: expect.objectContaining({
         clientTurnId: 'fixture-delegation-key',
       }),
@@ -6949,6 +6954,73 @@ describe('Orchestration Routes', () => {
         expect(presence.isConnected(ROUTE_TEST_USER_ID)).toBe(false);
       });
       await reader.cancel();
+    });
+
+    test('shared general publication rechecks the route grant after asynchronous audience admission', async () => {
+      const bus = new EventBus();
+      const presence = new OrchestrationStreamPresence();
+      const release = vi.fn();
+      let current = true;
+      let admit!: (allowed: boolean) => void;
+      const admission = new Promise<boolean>((resolve) => {
+        admit = resolve;
+      });
+      const authorizeAudience = vi.fn(() => admission);
+      const generalEventProducer = createEventStreamProducer({
+        eventBus: bus,
+        getACPStatus: () => ({ connected: false, connections: [] }),
+        logger: { debug: vi.fn() },
+        connectClientSession: () => ({ touch: vi.fn(), release }),
+        isPairedDeviceConnectionCurrent: () => true,
+        canReadPluginDraftEvent: authorizeAudience,
+      });
+      const service = new OrchestrationService({
+        adapterRegistry: createGateTestRegistry(new GateTestAdapter()),
+        eventBus: bus,
+        eventStore,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      const app = createOrchestrationRoutes(service, {
+        getUserId: () => ROUTE_TEST_USER_ID,
+        eventBus: bus,
+        logger: { debug: vi.fn() },
+        presence,
+        generalEventProducer,
+        isRequestPrincipalCurrent: () => current,
+      });
+      const response = await app.request('/events?includeGeneral=1');
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      try {
+        let initial = '';
+        while (!initial.includes('orchestration:caughtUp')) {
+          const chunk = await reader.read();
+          expect(chunk.done).toBe(false);
+          initial += decoder.decode(chunk.value, { stream: true });
+        }
+        bus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+          project: 'allowed',
+          marker: 'must-not-publish-after-route-grant-loss',
+        });
+        await vi.waitFor(() =>
+          expect(authorizeAudience).toHaveBeenCalledOnce(),
+        );
+        current = false;
+        admit(true);
+        const next = await reader.read();
+        expect(decoder.decode(next.value)).not.toContain(
+          'must-not-publish-after-route-grant-loss',
+        );
+        expect(next.done).toBe(true);
+        await vi.waitFor(() => {
+          expect(release).toHaveBeenCalledOnce();
+          expect(presence.isConnected(ROUTE_TEST_USER_ID)).toBe(false);
+        });
+      } finally {
+        admit(false);
+        await reader.cancel();
+        await service.shutdown();
+      }
     });
 
     test('a below-threshold oversized replay switches to a bounded snapshot frame', async () => {

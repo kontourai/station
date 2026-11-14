@@ -153,7 +153,7 @@ the adapter mechanisms below do not by themselves establish the dock capability:
 
 | Noun | Station fact | When |
 | --- | --- | --- |
-| **Queue** | The server inbox holds eligible input and places a **new** turn after terminal. | Any engine when Queue is selected. |
+| **Queue** | The server inbox holds eligible input and places a **new** turn after terminal. | When the Session durability profile admits queued follow-up. |
 | **Steer** | `steerTurn` → `turn.started` with `inputKind: 'steer'` | Additional user input on the **open** turn. |
 
 Send-while-busy uses `sessionAdapterSupportsSteering`, not a connection
@@ -170,6 +170,10 @@ turn's ownership: a start-less or late event for the turn lands on the row
 after the steer, never on the one before it. Attachments have no steer channel, so
 they remain in the composer until the current turn finishes. Durable outbound replay stays durable (`skipInMemoryQueueOnBusy`)
 and is never collapsed into either path.
+
+Sealed report-member Sessions refuse generic Steer and Queue. Their bounded
+controls require a fresh source admission; engine support alone does not admit
+another input or paid replay.
 
 Adapter mappings, same Station event:
 

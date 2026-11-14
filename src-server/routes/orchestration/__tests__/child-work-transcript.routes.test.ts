@@ -1,8 +1,9 @@
+import { join } from 'node:path';
 /**
  * #3163: the child transcript route, end to end: the persisted child-work
  * facts a REAL Claude capture produced (replayed through the adapter's own
  * mapper), a fresh transcript module holding no adapter state (a restarted
- * server), and the SDK's transcript reader over a transcript on disk.
+ * server), and the production bounded reader over a transcript on disk.
  */
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -20,6 +21,7 @@ import {
 } from '../../../providers/__tests__/codex-collab-fixtures.js';
 import { installCodexSubagentRollout } from '../../../providers/__tests__/codex-subagent-rollout-fixture.js';
 import { createChildWorkTranscriptModule } from '../../../services/orchestration/child-work-transcript.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
 import type { OrchestrationService } from '../../../services/orchestration/orchestration-service';
 import { createOrchestrationRoutes } from '../orchestration';
 
@@ -45,10 +47,11 @@ function persistedHistory(): CanonicalRuntimeEvent[] {
 function fixture(
   history: CanonicalRuntimeEvent[] = persistedHistory(),
   thread = THREAD,
+  readHistory?: (threadId: string) => CanonicalRuntimeEvent[],
 ) {
   let current = true;
   let readable = true;
-  const listChildWorkHistory = vi.fn(() => history);
+  const listChildWorkHistory = vi.fn(readHistory ?? (() => history));
   const readChildSteerInstructions = vi.fn(() => ({ entries: [] }));
   const childWorkTranscripts = createChildWorkTranscriptModule({
     listChildWorkHistory,
@@ -66,6 +69,7 @@ function fixture(
     isRequestPrincipalCurrent: () => current,
   });
   return {
+    childWorkTranscripts,
     listChildWorkHistory,
     readChildSteerInstructions,
     request: (childId = TRANSCRIPT_AGENT_ID, query = '') =>
@@ -122,6 +126,44 @@ describe('#3163 GET /sessions/:threadId/child-work/:childId/transcript', () => {
     ]);
     expect(body.data.entries.at(-1)?.text).toBe('INNER DONE');
     expect(f.listChildWorkHistory).toHaveBeenCalledWith(THREAD);
+  });
+
+  test('a reopened SQLite history drives a fresh transcript reader after the parent exits', async () => {
+    const database = join(makeTempDir('cold-child-history-'), 'events.sqlite');
+    const history = persistedHistory();
+    const writer = new EventStore(database);
+    try {
+      for (const event of history) writer.appendEvent(event);
+    } finally {
+      writer.close();
+    }
+    history.length = 0;
+    const reader = new EventStore(database);
+    try {
+      const f = fixture([], THREAD, (threadId) =>
+        (
+          reader.listChildWorkHistoryForThreads([threadId]).get(threadId) ?? []
+        ).map((row) => row.payload),
+      );
+      const response = await f.request();
+      expect(response.status).toBe(200);
+      expect(response.headers.get('cache-control')).toContain('no-store');
+      const body = (await response.json()) as {
+        data: { entries: Array<{ kind: string; text?: string }> };
+      };
+      expect(body.data.entries.map((entry) => entry.kind)).toEqual([
+        'text',
+        'tool-call',
+        'tool-result',
+        'text',
+      ]);
+      expect(body.data.entries.at(-1)?.text).toBe('INNER DONE');
+      expect(f.listChildWorkHistory).toHaveBeenCalledWith(THREAD);
+      f.revokeSession();
+      await unavailable(await f.request());
+    } finally {
+      reader.close();
+    }
   });
 
   test('pages are bounded by the query', async () => {
@@ -219,6 +261,30 @@ describe('#3163 GET /sessions/:threadId/child-work/:childId/transcript', () => {
     await unavailable(await caller.request());
     expect(caller.listChildWorkHistory).not.toHaveBeenCalled();
   });
+
+  test.each(['session', 'caller'] as const)(
+    '%s revocation after the real transcript read refuses disclosure',
+    async (revoked) => {
+      const f = fixture();
+      const read = f.childWorkTranscripts.read.bind(f.childWorkTranscripts);
+      const observed = vi
+        .spyOn(f.childWorkTranscripts, 'read')
+        .mockImplementation(async (input) => {
+          const outcome = await read(input);
+          expect(outcome.status).toBe('found');
+          if (revoked === 'session') f.revokeSession();
+          else f.revokeCaller();
+          return outcome;
+        });
+      try {
+        await unavailable(await f.request());
+        expect(observed).toHaveBeenCalledOnce();
+        expect(f.listChildWorkHistory).toHaveBeenCalledOnce();
+      } finally {
+        observed.mockRestore();
+      }
+    },
+  );
 
   test('an app-home session’s transcript is read from the profile it ran under, not the server’s config home', async () => {
     // The session ran under its own profile; the server's global config home

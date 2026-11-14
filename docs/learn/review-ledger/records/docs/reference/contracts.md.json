@@ -408,7 +408,9 @@
 
     "packages/contracts/src/managed-policy-controls.ts",
 
-    "packages/contracts/src/managed-policy-status.ts"
+    "packages/contracts/src/managed-policy-status.ts",
+
+    "src-server/services/orchestration/delegation-tool-policy.ts"
   ],
 
   "checks": [

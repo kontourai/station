@@ -237,6 +237,57 @@ test('exports deterministic scoped provenance without untracked content or inven
   expect(alpha.body).toContain('Historical reason for addition is unknown');
 });
 
+test('module selection keeps a closed graph with distinct snapshot identities and refuses unknown selections', () => {
+  const { root } = repository();
+  const whole = exportRepositoryKnowledge({ root });
+  const subset = validateKnowledgeSnapshot(
+    exportRepositoryKnowledge({ root, moduleNames: ['Alpha'] }),
+  );
+  expect(subset.selection).toEqual({ modules: ['Alpha'] });
+  expect(
+    subset.records
+      .filter((record) => record.category === 'repository.module')
+      .map((record) => record.title),
+  ).toEqual(['Alpha']);
+  const ids = new Set(subset.records.map((record) => record.id));
+  expect(
+    subset.records
+      .flatMap((record) => record.links)
+      .every((link) => ids.has(link.target_id)),
+  ).toBe(true);
+  const document = subset.records.find(
+    (record) =>
+      record.title === 'docs/architecture/module-map.md' &&
+      record.category === 'repository.document',
+  );
+  const source = subset.records.find(
+    (record) => record.title === 'src-server/alpha.js',
+  );
+  expect(document.links).toContainEqual(
+    expect.objectContaining({
+      target_id: source.id,
+      kind: 'review-dependency',
+    }),
+  );
+  expect(source.id).not.toBe(
+    whole.records.find((record) => record.title === source.title).id,
+  );
+  expect(
+    exportRepositoryKnowledge({ root, moduleNames: ['Beta', 'Alpha'] }),
+  ).toEqual(
+    exportRepositoryKnowledge({ root, moduleNames: ['Alpha', 'Beta'] }),
+  );
+  for (const moduleNames of [[], ['Unknown'], ['Alpha', 'Alpha']])
+    expect(() => exportRepositoryKnowledge({ root, moduleNames })).toThrow(
+      'Select unique module names',
+    );
+  const altered = structuredClone(subset);
+  altered.selection.modules = ['Beta'];
+  expect(() => validateKnowledgeSnapshot(altered)).toThrow(
+    'Snapshot input digest mismatch',
+  );
+});
+
 test('exports path-only dependencies without presenting stored digest approval', () => {
   const { root, put } = repository();
   const file = recordFile('docs/architecture/module-map.md');

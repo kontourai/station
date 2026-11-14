@@ -24,6 +24,11 @@ const AgentConnectionView = lazy(() =>
     default: module.AgentConnectionView,
   })),
 );
+const EnsembleInspectionView = lazy(() =>
+  import('../views/EnsembleInspectionView').then((module) => ({
+    default: module.EnsembleInspectionView,
+  })),
+);
 const AgentsView = lazy(() =>
   import('../views/AgentsView').then((module) => ({
     default: module.AgentsView,
@@ -270,6 +275,9 @@ function AppViewContentBody({
         onNavigate={onNavigate}
       />
     );
+  }
+  if (currentView.type === 'agents' && currentView.tab === 'ensembles') {
+    return <EnsembleInspectionView />;
   }
   if (
     currentView.type === 'agents' ||

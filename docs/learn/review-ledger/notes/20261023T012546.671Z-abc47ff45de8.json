@@ -1,0 +1,7 @@
+{
+  "revision": "1c4629a1b8c440bbfc3a0eeaea991f8f2cfb5a91",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Independent source-only review read complete historical/design record and affected current orchestration-service producer delta at1c4629a1b8c. External read-only-attached completion/approval exclusion and publisher summary controlMode/card-phase exclusion remain wired. Publisher still flushes on lifecycle events; service now appends and commits durable projection before in-memory summary and event bus publication, avoiding pre-commit notifications. This does not establish gateway delivery. No prose correction needed; retain service dependency because lifecycle/read-model ownership affects eligibility. Early foreground/freezer/DNS and deployment receipts remain historical. No requalification of full native/feed/auth/registration/crypto/provider accounts/CI/installed-device behavior or all source dependencies.","inputs":["docs/design/notification-delivery.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

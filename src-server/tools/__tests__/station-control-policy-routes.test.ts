@@ -161,6 +161,74 @@ const GUIDE_TARGET = {
 
 /** Arguments that pass each tool's own schema, so it reaches Station. */
 const ARGS: Record<string, Record<string, unknown>> = {
+  create_delegation_group: {
+    operationId: 'op',
+    projectSlug: 'project-a',
+    deadlineAt: 2000000000000,
+    maxConcurrent: 1,
+    budget: { inputTokens: 10, outputTokens: 10, costMicros: 100 },
+    members: [
+      {
+        seatId: 'seat',
+        agentId: 'reviewer',
+        brief: 'work',
+        maxOutputTokens: 10,
+      },
+    ],
+  },
+  get_delegation_group: { groupId: 'group' },
+  get_delegation_group_events: { groupId: 'group', afterRevision: 0 },
+  run_delegation_group: {
+    groupId: 'group',
+    operationId: 'op',
+    expectedRevision: 1,
+  },
+  cancel_delegation_group: {
+    groupId: 'group',
+    operationId: 'op',
+    expectedRevision: 1,
+  },
+  get_delegation_group_member_events: {
+    groupId: 'group',
+    seatId: 'seat',
+    afterSequence: 0,
+  },
+  get_delegation_group_member_output: { groupId: 'group', seatId: 'seat' },
+  create_session_group: {
+    operationId: 'op',
+    maxConcurrent: 1,
+    deadlineAt: 2000000000000,
+    members: [
+      {
+        seatId: 'seat',
+        prompt: 'work',
+        target: {
+          agent: 'writer',
+          expectedEngine: { kind: 'connection', connectionId: 'engine' },
+        },
+      },
+    ],
+  },
+  create_session_group_from_ensemble: {
+    operationId: 'op',
+    maxConcurrent: 1,
+    deadlineAt: 2000000000000,
+    presetJson: '{}',
+    expectedPresetHash: `sha256:${HEX64}`,
+    brief: 'work',
+    bindings: {},
+  },
+  get_session_group: { groupId: 'group' },
+  get_session_group_events: { groupId: 'group' },
+  run_session_group: { groupId: 'group' },
+  cancel_session_group: { groupId: 'group' },
+  sync_session_group: {
+    groupId: 'group',
+    operationId: 'op',
+    runId: 'run',
+    content: 'context',
+    deadlineAt: 2000000000000,
+  },
   list_walkthroughs: { projectSlug: 'project-a' },
   get_walkthrough: { projectSlug: 'project-a', id: 'walkthrough-1' },
   read_pull_request_guide: { target: GUIDE_TARGET },

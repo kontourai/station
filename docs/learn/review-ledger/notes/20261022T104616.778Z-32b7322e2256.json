@@ -1,0 +1,7 @@
+{
+  "revision": "44fc55802354eb20d3155d561f457a74bd73d7d6",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed operations definitions and owner routing against current scheduling, notification, telemetry and verification contracts, including child-result correction and retained activity. Stored notification, delivery, viewing and physical display remain distinct; terminal process state and logs alone do not establish accepted work. Focused diagnostics remain separate from hosted exact-source promotion. No prose change required. Source review only: no scheduler/provider/telemetry receiver/device/promotion execution or new production delivery receipt is claimed.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-command-module.ts"]}
+  ]
+}

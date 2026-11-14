@@ -21,10 +21,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-proxy-route.js';
 import { revokeStationControlMcpToken } from '../../runtime/mcp/station-control-mcp-token.js';
+import { withSessionToolRestriction } from '../../services/orchestration/session-tool-restriction.js';
 import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
 import { createEngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
 import { ToolServerCredentialStore } from '../../services/plugins/tool-server-credential-store.js';
 import { StationToolServerOAuthProvider } from '../../services/plugins/tool-server-oauth.js';
+import { nativeResumeBindingKey } from '../adapters/native-resume-binding.js';
 
 const { mockForkSession, mockQuery, mockPlatform } = vi.hoisted(() => ({
   mockForkSession: vi.fn(),
@@ -85,6 +87,7 @@ import {
 import {
   commitEngineLaunch,
   installSessionTmpDirPolicy,
+  launchedRootOf,
   sessionTempRoot,
   sessionTmpRoot,
 } from '../../services/infra/session-tmpdir.js';
@@ -771,6 +774,66 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
       await adapter.stopSession('confined-images');
       // Seatbelt removes its directory at stop; the root goes with it.
       expect(sessionTempRoot('confined-images')).toBeUndefined();
+    } finally {
+      uninstall();
+    }
+  });
+
+  test('failed confined startup retires only its host-image launch', async () => {
+    vi.stubEnv('STATION_HOME', stationHome);
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    try {
+      createAdapter();
+      startingQuery(Promise.resolve({ claude_code_version: '2.1.307' }));
+      const threadId = 'restricted-images';
+      const restriction = {
+        threadId,
+        nativeSessionId: 'native-sync',
+        nativeBindingKey: nativeResumeBindingKey(
+          'claude',
+          join(stationHome, 'confined-homes', 'claude'),
+          null,
+        ),
+        generation: 'generation',
+        clientTurnId: 'reserved',
+        assertCurrent() {},
+      };
+      await expect(
+        withSessionToolRestriction(restriction, () =>
+          startConfined(threadId, { resumeCursor: 'native-sync' }),
+        ),
+      ).rejects.toThrow('group_sync_policy_unavailable');
+      expect(launchedRootOf(threadId)).toBeUndefined();
+      expect(existsSync(spawnedEnv().TMPDIR)).toBe(false);
+
+      const failedHandshake = deferred<unknown>();
+      startingQuery(failedHandshake.promise);
+      const failing = startConfined('refused-images');
+      await vi.waitFor(() =>
+        expect(launchedRootOf('refused-images')).toBeDefined(),
+      );
+      const refusedDir = spawnedEnv().TMPDIR;
+      failedHandshake.reject(new Error('handshake failed'));
+      await expect(failing).rejects.toBeInstanceOf(ConfinementRefusedError);
+      expect(launchedRootOf('refused-images')).toBeUndefined();
+      expect(existsSync(refusedDir)).toBe(false);
+
+      const handshake = deferred<unknown>();
+      startingQuery(handshake.promise);
+      const starting = startConfined('abandoned-images');
+      await vi.waitFor(() =>
+        expect(launchedRootOf('abandoned-images')).toBeDefined(),
+      );
+      const abandoned = launchedRootOf('abandoned-images');
+      const newerDir = join(stationHome, 'newer-launch');
+      mkdirSync(newerDir, { mode: 0o700 });
+      commitEngineLaunch('abandoned-images', { confined: newerDir });
+      const newer = launchedRootOf('abandoned-images');
+      expect(newer).not.toBe(abandoned);
+      handshake.reject(new Error('handshake failed'));
+      await expect(starting).rejects.toBeInstanceOf(ConfinementRefusedError);
+      expect(launchedRootOf('abandoned-images')).toBe(newer);
+      expect(sessionTempRoot('abandoned-images')).toBe(newerDir);
     } finally {
       uninstall();
     }

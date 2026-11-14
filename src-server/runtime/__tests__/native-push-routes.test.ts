@@ -27,6 +27,7 @@ import {
   DevicePairingError,
   DevicePairingService,
 } from '../../services/ssh/device-pairing-service.js';
+import { HomeWriterOwner } from '../../services/ssh/home-writer-owner.js';
 import type { Logger } from '../../utils/logger.js';
 import { configureRuntimeHttp } from '../bootstrap/runtime-http.js';
 
@@ -57,7 +58,7 @@ function logger(): Logger {
   };
 }
 
-function createHarness(
+async function createHarness(
   options: {
     enabled?: boolean;
     deliverable?: boolean;
@@ -71,7 +72,7 @@ function createHarness(
   const homeDir = mkdtempSync(join(tmpdir(), 'station-native-push-routes-'));
   homes.push(homeDir);
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-  const pairing = new DevicePairingService({
+  const pairing = await DevicePairingService.create({
     homeDir,
     environmentId: ENVIRONMENT_ID,
   });
@@ -162,7 +163,7 @@ function createHarness(
 }
 
 async function pairDevice(
-  harness: ReturnType<typeof createHarness>,
+  harness: Awaited<ReturnType<typeof createHarness>>,
   name = 'Pixel',
   offerOptions: { kind?: 'device' | 'delegation'; scope?: string } = {},
 ) {
@@ -206,7 +207,7 @@ afterEach(() => {
 
 describe('native push routes', () => {
   test('a paired device registers, and the key is created by that registration and not before', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
     expect(existsSync(harness.keyPath)).toBe(false);
 
@@ -247,7 +248,7 @@ describe('native push routes', () => {
   });
 
   test('re-registering after token rotation keeps the registrationId and the key', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
     const first = (await (
       await harness.register(paired.credential, androidBody(TOKEN_A))
@@ -272,7 +273,7 @@ describe('native push routes', () => {
   });
 
   test('two devices get distinct registrationIds', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const a = await pairDevice(harness, 'A');
     const b = await pairDevice(harness, 'B');
     const ra = (await (
@@ -286,7 +287,7 @@ describe('native push routes', () => {
   });
 
   test('a relay alias of a paired device cannot register (403) and creates no key', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
     const alias = harness.pairing.issueRelayCredentialAlias(
       paired.credential,
@@ -343,7 +344,7 @@ describe('native push routes', () => {
   });
 
   test('an operator credential is not a paired device (403) and creates no key', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const response = await harness.register(
       MASTER_CREDENTIAL,
       androidBody(TOKEN_A),
@@ -358,7 +359,7 @@ describe('native push routes', () => {
   });
 
   test('no credential is refused at the runtime floor', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const response = await harness.register(undefined, androidBody(TOKEN_A));
     expect(response.status).toBe(401);
     expect(existsSync(harness.keyPath)).toBe(false);
@@ -378,7 +379,7 @@ describe('native push routes', () => {
       { packageName: 'io.kontourai.station', platform: 'android' },
     ],
   ])('rejects %s without storing anything', async (_label, body) => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
     const response = await harness.register(paired.credential, body);
     expect(response.status).toBe(400);
@@ -387,7 +388,7 @@ describe('native push routes', () => {
   });
 
   test('delete clears only the caller’s own registration', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const a = await pairDevice(harness, 'A');
     const b = await pairDevice(harness, 'B');
     await harness.register(a.credential, androidBody(TOKEN_A));
@@ -406,7 +407,7 @@ describe('native push routes', () => {
   });
 
   test('a new registration after delete gets a new registrationId', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
     const first = (await (
       await harness.register(paired.credential, androidBody(TOKEN_A))
@@ -419,7 +420,7 @@ describe('native push routes', () => {
   });
 
   test('hosted mode answers 404 and touches nothing', async () => {
-    const harness = createHarness({ enabled: false });
+    const harness = await createHarness({ enabled: false });
     const paired = await pairDevice(harness);
     expect(
       (await harness.register(paired.credential, androidBody(TOKEN_A))).status,
@@ -432,7 +433,7 @@ describe('native push routes', () => {
   });
 
   test('the registration is private: no device listing carries it, and it survives a reload', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
     const { registrationId } = (await (
       await harness.register(paired.credential, androidBody(TOKEN_A))
@@ -454,7 +455,7 @@ describe('native push routes', () => {
     expect(readFileSync(harness.sidecarPath, 'utf8')).toContain(TOKEN_A);
     if (process.platform !== 'win32')
       expect(statSync(harness.sidecarPath).mode & 0o777).toBe(0o600);
-    const reloaded = new DevicePairingService({
+    const reloaded = await DevicePairingService.create({
       homeDir: harness.homeDir,
       environmentId: ENVIRONMENT_ID,
     });
@@ -470,7 +471,7 @@ describe('native push routes', () => {
   });
 
   test('revoking the device drops its registration', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
     await harness.register(paired.credential, androidBody(TOKEN_A));
     harness.pairing.revokeDevice(paired.device.id, 'operator-credential');
@@ -483,7 +484,7 @@ describe('native push routes', () => {
   });
 
   test('a new registration after delete gets a new payload key; rotation keeps it', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
     const first = (await (
       await harness.register(paired.credential, androidBody(TOKEN_A))
@@ -500,7 +501,7 @@ describe('native push routes', () => {
   });
 
   test('a registry written by the pre-release build (nativePush on the device) still loads, and the field is dropped at once', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
     const registry = JSON.parse(readFileSync(harness.registryPath, 'utf8'));
     registry.devices[0].nativePush = {
@@ -513,7 +514,7 @@ describe('native push routes', () => {
     writeFileSync(harness.registryPath, JSON.stringify(registry), {
       mode: 0o600,
     });
-    const reloaded = new DevicePairingService({
+    const reloaded = await DevicePairingService.create({
       homeDir: harness.homeDir,
       environmentId: ENVIRONMENT_ID,
     });
@@ -529,7 +530,7 @@ describe('native push routes', () => {
   });
 
   test('an invalid gateway URL makes registration unavailable (503), not a silent promise', async () => {
-    const harness = createHarness({ deliverable: false });
+    const harness = await createHarness({ deliverable: false });
     const paired = await pairDevice(harness);
     const response = await harness.register(
       paired.credential,
@@ -544,7 +545,7 @@ describe('native push routes', () => {
   });
 
   test('a corrupt push key file answers 503 and registers nothing', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
     writeFileSync(harness.keyPath, '{ not json', { mode: 0o600 });
     const response = await harness.register(
@@ -560,7 +561,7 @@ describe('native push routes', () => {
   });
 
   test('a pairing refusal from the store is a 4xx, not a 500', async () => {
-    const harness = createHarness({
+    const harness = await createHarness({
       setNativePush: () => {
         throw new DevicePairingError('device_not_found');
       },
@@ -575,7 +576,7 @@ describe('native push routes', () => {
   });
 
   test('the store itself refuses a revoked device', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
     harness.pairing.revokeDevice(paired.device.id, 'operator-credential');
     expect(() =>
@@ -587,11 +588,13 @@ describe('native push routes', () => {
     ).toThrow(DevicePairingError);
   });
   test('a registration left behind for a revoked device is never listed', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
     harness.pairing.revokeDevice(paired.device.id, 'operator-credential');
     // As if dropping it had failed: the entry is still in the sidecar.
-    new NativePushRegistrationStore(harness.homeDir).upsert(
+    new NativePushRegistrationStore(
+      await HomeWriterOwner.forHome(harness.homeDir),
+    ).upsert(
       paired.device.id,
       androidBody(TOKEN_A) as NativePushAndroidRegistrationRequest,
       'k'.repeat(43),
@@ -601,7 +604,7 @@ describe('native push routes', () => {
     expect(harness.pairing.listNativePushRegistrations()).toEqual([]);
   });
   test('a device that cannot read sessions cannot register (the publisher would never read for it)', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const paired = await pairDevice(harness);
     // Operate is what the route table demands; reading sessions needs read.
     harness.pairing.setDeviceScope(
@@ -622,7 +625,7 @@ describe('native push routes', () => {
   });
 
   test('another Station’s delegation grant cannot register', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const delegation = await pairDevice(harness, 'Peer Station', {
       kind: 'delegation',
     });
@@ -640,7 +643,7 @@ describe('native push routes', () => {
 
   describe('registration status (GET)', () => {
     test('an operator credential is not a paired device (403)', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const response = await harness.status(MASTER_CREDENTIAL);
       expect(response.status).toBe(403);
       expect(await response.json()).toEqual({
@@ -649,7 +652,7 @@ describe('native push routes', () => {
     });
 
     test('follows the device through register, a gateway "unregistered" clear, and register again', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const paired = await pairDevice(harness);
       const before = await harness.status(paired.credential);
       expect(before.status).toBe(200);
@@ -695,7 +698,7 @@ describe('native push routes', () => {
     });
 
     test('a device sees only its own registration', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const a = await pairDevice(harness, 'A');
       const b = await pairDevice(harness, 'B');
       const ra = (await (
@@ -719,7 +722,7 @@ describe('native push routes', () => {
     });
 
     test('answers for an iOS registration without its tokens', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const paired = await pairDevice(harness, 'iPhone');
       const alertToken = 'ef'.repeat(40);
       const { registrationId } = (await (
@@ -741,7 +744,7 @@ describe('native push routes', () => {
     });
 
     test('answers even when this Station cannot deliver', async () => {
-      const harness = createHarness({ deliverable: false });
+      const harness = await createHarness({ deliverable: false });
       const paired = await pairDevice(harness);
       const response = await harness.status(paired.credential);
       expect(response.status).toBe(200);
@@ -752,7 +755,7 @@ describe('native push routes', () => {
     });
 
     test('an unreadable registration file answers 503, not "not registered"', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const paired = await pairDevice(harness);
       await harness.register(paired.credential, androidBody(TOKEN_A));
       writeFileSync(harness.sidecarPath, '{not json', { mode: 0o600 });
@@ -765,11 +768,11 @@ describe('native push routes', () => {
   });
 
   describe('iOS (Live Activities)', () => {
-    const iosPath = (harness: ReturnType<typeof createHarness>) =>
+    const iosPath = (harness: Awaited<ReturnType<typeof createHarness>>) =>
       join(harness.homeDir, 'security', 'native-push-ios-registrations.json');
 
     test('registers into its own file, answers the same shape, and leaves the Android file alone', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const paired = await pairDevice(harness, 'iPhone');
       const response = await harness.register(
         paired.credential,
@@ -807,7 +810,7 @@ describe('native push routes', () => {
     });
 
     test('an alert token (#2589) is stored lower-cased beside the push-to-start token; without one nothing changes', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const paired = await pairDevice(harness, 'iPhone');
       const alertToken = 'cd'.repeat(32);
       const response = await harness.register(paired.credential, {
@@ -841,7 +844,7 @@ describe('native push routes', () => {
       ['shorter than 32 bytes', 'cd'.repeat(31)],
       ['not a string', 42],
     ])('refuses an alert token that is %s', async (_label, alertToken) => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const paired = await pairDevice(harness);
       const response = await harness.register(paired.credential, {
         ...iosBody(),
@@ -852,7 +855,7 @@ describe('native push routes', () => {
     });
 
     test('an Android registration never stores an alert token', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const paired = await pairDevice(harness);
       const response = await harness.register(paired.credential, {
         ...androidBody(TOKEN_A),
@@ -865,7 +868,7 @@ describe('native push routes', () => {
     });
 
     test('a device that moves from Android to iOS keeps one registration', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const paired = await pairDevice(harness);
       await harness.register(paired.credential, androidBody(TOKEN_A));
       expect(
@@ -902,7 +905,7 @@ describe('native push routes', () => {
       ['a token of odd length', iosBody(`${IOS_TOKEN}a`)],
       ['an FCM token', iosBody(TOKEN_A)],
     ])('rejects %s without storing anything', async (_label, body) => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const paired = await pairDevice(harness);
       const response = await harness.register(paired.credential, body);
       expect(response.status).toBe(400);
@@ -912,7 +915,7 @@ describe('native push routes', () => {
     });
 
     test('delete and revoke clear the iOS file too', async () => {
-      const harness = createHarness();
+      const harness = await createHarness();
       const a = await pairDevice(harness, 'A');
       const b = await pairDevice(harness, 'B');
       await harness.register(a.credential, iosBody());

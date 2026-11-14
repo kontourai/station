@@ -162,7 +162,8 @@ one-shot diagnosis: Codex with approval disabled, its read-only sandbox, an
 ephemeral session, and user config ignored, or Claude in safe plan mode with
 only Read/Glob/Grep tools, using argv arrays and a run-local prompt file. With
 both agents available, a terminal asks which to use; otherwise select one
-explicitly. No available agent still leaves portable artifacts successfully.
+explicitly. No available agent still leaves portable artifacts successfully unless an
+unavailable agent was explicitly selected, which retains the artifacts but fails.
 The bundled triage command does not collect local host filesystem diagnostics
 or run the source-only doctor report. `--search-issues` (or the equivalent TTY
 confirmation) authorizes a fixed, read-only Station issue search. Launching an
@@ -204,10 +205,40 @@ SDK-backed requests give up after 30 seconds. Override with
 `STATION_REQUEST_TIMEOUT_MS=<ms>`, or `0` to disable the deadline. Streams —
 orchestration and approval events and live monitoring — have no overall
 deadline. Chat sends a bounded JSON acceptance request, then observes the turn
-on a separate event stream. Knowledge reindexing and migration also opt out of
-the request deadline. The current Operate event-stream path bypasses the shared
-credential client and cannot authenticate to a protected Station; see the
-reference.
+on a separate event stream. Knowledge reindexing, migration and session-group
+run/sync also opt out of the client request deadline; group supervision retains
+its server deadline and caller cancellation. Report create/cancel/finalize-cancel,
+report-sync, report-sync-input, report-continue, report-finalize-sync and report-narrow-input also disable the client request timeout and
+use caller cancellation, and group event streams with `--follow`
+have no overall deadline. Finite report list/get/event/result reads retain the
+configured SDK deadline alongside SIGINT cancellation. The current Operate event-stream path bypasses the shared credential client and cannot
+authenticate to a protected Station; see the reference.
+
+## Session groups
+
+The source CLI's `station group session-*` commands create, inspect, run, cancel
+and sync retained member Sessions through the personal Station's mounted
+session-group routes. Create starts no engines. Run follows Flow's ready
+frontier; Ctrl-C requests interruption without proving physical termination.
+`session-events --follow` only observes and closes locally on Ctrl-C.
+
+This path uses existing Station permissions and confinement. Portable Flow
+lineage is unbound; dollar, token and physical-attempt caps remain unavailable.
+See [group commands](../../docs/reference/cli.md#group) for inputs and qualified runtime limits. Source command presence does not establish publication or compatibility with an older Station.
+
+## Advisory report groups
+
+The separate source commands `station group report-*` run and inspect advisory
+reports on a personal host. Every operation requires current local-grant-minted
+operator authority; ordinary pairing and browser-bootstrap credentials do not
+suffice. The sealed Anthropic and Google profiles are text-only, with fixed
+qualification expiry and SDK-byte pins. Report text and private sync context
+cross the configured model boundary; authorized result reads expose report text.
+Ctrl-C closes the request or observation and does not issue group cancellation
+or prove termination. See [report groups](../../docs/reference/cli.md#qualified-report-groups)
+for explicit cancellation, recovery, context-checkpoint prerequisites and the
+published initial-sync dependency. Source command presence does not establish
+publication or qualified serving.
 
 ## What this CLI does not do
 

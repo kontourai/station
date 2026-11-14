@@ -78,10 +78,10 @@ The UI may describe an agent as a **Station agent** (run by Station's engine)
 or an **External agent** (run by any other engine), but engine selection is a
 property of the agent rather than a permanent type chosen from a type picker.
 
-The reserved agent named **Station** is a role, not the Station-engine category.
+The reserved agent named **Station Assistant** is a role, not the Station-engine category.
 It owns Station Control and Station Docs by definition, while its engine is a
 separate Station setting: Station's engine, Claude Code, Codex, or a capable
-custom engine may execute it. A label must therefore read like “Station ·
+custom engine may execute it. A label must therefore read like “Station Assistant ·
 OpenCode”, never infer the engine from the agent's name.
 
 ## Connections
@@ -128,6 +128,7 @@ records delivery differences.
 - **Project Room** — a Project-level shared conversation with messages, a shared note, presence and explicit Agent requests, divided into named channels. `#general` is the default channel; each channel keeps its own messages, note and Agent requests. It is separate from a Task's Conversation and direct Agent chats. Each operation requires its applicable current membership action and transport permission; execution also requires host execution permission.
 - **Task experience** — a working mode inside one Task workspace. **Direct** is Station-owned; **Deliver**, **Learn**, and **Operate** name intended Builder Kit, Knowledge Kit, and Console integrations. Installed, enabled plugin capability declarations make the optional tabs visible. Their current panels describe the integration boundary; visibility does not prove an operational integration. See [the Task experience resolver](../src-ui/src/views/task-experiences.ts) and [Task workspace](../src-ui/src/views/TaskWorkspaceView.tsx).
 - **Session** — one bounded execution episode. A Task may have no Session or correlate an exact Session; a Session is not itself a durable Task.
+- **Sealed-source Session** — a report-member Session whose canonical start records a bounded source-execution policy. The engine can also serve ordinary chats, but this Session does not admit generic Steer/Queue, native tool replay or automatic crash continuation. A saved cursor or interrupted turn is not new paid execution authority; use the [bounded report controls](reference/api.md#report-groups).
 - **Task memory** — the judgment a Task's Sessions and people record, kept apart from the facts Station derives (session digests, Project activity, kept outputs): one **Task summary** and keyed decisions, open questions and dead ends, each `standing` (shown in every Task brief) or `on_topic` (counted only). Every revision and version is kept, and every bound is a refusal. An open question puts a live Task in Needs you. See [Tracker-backed Tasks](design/tracker-backed-tasks.md#task-memory).
 - **Task summary** — the one bounded text (at most 4,000 characters) in Task memory that agents and people rewrite rather than append to: what is true now, what works, what is next, what is risky. A write names the revision it read and is refused, with the current text, when someone wrote since.
 - **Learning candidate** — an active, standing decision or dead end of a done Task, offered in the Task workspace ("Lessons for the Project") for the Project's knowledge store. A person promotes it, edited, as one knowledge record with the Task and record version in its provenance, or dismisses it. Derived on read; a record version is promoted at most once. See [Tracker-backed Tasks](design/tracker-backed-tasks.md#learning-promoting-a-done-tasks-lessons).

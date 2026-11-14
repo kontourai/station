@@ -83,6 +83,58 @@ afterAll(() => {
   rmSync(TEST_TEMP_ROOT, { force: true, recursive: true });
 });
 
+describe('doctor migration dispatch', () => {
+  test('bundled migration refuses before target dispatch while ordinary doctor still reaches it', async () => {
+    const target = vi.fn(async () => {});
+    vi.doMock('../commands/target-command.js', () => ({
+      runTargetCommand: target,
+    }));
+    vi.stubGlobal('__STATION_CLI_BUNDLE__', {
+      version: '0.6.0',
+      sourceSha: 'a'.repeat(40),
+      channel: 'development',
+    });
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    try {
+      const { runCli } = await import('../cli.js');
+      await expect(
+        runCli(['doctor', '--migrate-playbooks', '--dry-run', '--json']),
+      ).rejects.toThrow("only available through the repo's ./station launcher");
+      expect(target).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+      await runCli(['doctor', '--json']);
+      expect(target).toHaveBeenCalledExactlyOnceWith([]);
+    } finally {
+      vi.doUnmock('../commands/target-command.js');
+      vi.unstubAllGlobals();
+    }
+  });
+  test('source doctor forwards dry-run to the injected migration owner', async () => {
+    delete (globalThis as { __STATION_CLI_BUNDLE__?: unknown })
+      .__STATION_CLI_BUNDLE__;
+    const migration = vi.fn(async () => ({
+      status: 'ok',
+      skills: [],
+      agents: [],
+      unboundAgentPins: [],
+      conflicts: [],
+      failedAgents: [],
+      pluginRowsLeftInPlace: 0,
+      errors: [],
+    }));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { runCli } = await import('../cli.js');
+    await runCli(['doctor', '--migrate-playbooks', '--dry-run', '--json'], {
+      runPlaybookSkillMigration: migration,
+    });
+    expect(migration).toHaveBeenCalledExactlyOnceWith({
+      homeDir: expect.any(String),
+      dryRun: true,
+    });
+    expect(JSON.parse(String(log.mock.calls[0]![0])).status).toBe('ok');
+  });
+});
+
 describe('bundled client admission', () => {
   test('a TTY bare invocation refuses before credential setup or lazy-start probing', async () => {
     const lazyStart = vi.fn();

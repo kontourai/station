@@ -144,6 +144,8 @@ export interface MCPNegotiation {
 export interface MCPManagerOptions {
   /** OAuth provider for remote HTTP transports. */
   authProvider?: OAuthClientProvider | AuthProvider;
+  /** Server-owned transport construction; never read from a serialized tool definition. */
+  transportFactory?: () => Transport;
   /** Internal OAuth seam used to complete a browser redirect round trip. */
   onTransport?: (transport: Transport) => void;
   /**
@@ -369,11 +371,13 @@ export function prepareMCPConnection(
         Promise.resolve().then(async () => {
           try {
             assertCurrent();
-            transport = createMCPTransport(
-              normalized,
-              opts?.authProvider,
-              opts?.authorizationFetch,
-            );
+            transport = opts?.transportFactory
+              ? opts.transportFactory()
+              : createMCPTransport(
+                  normalized,
+                  opts?.authProvider,
+                  opts?.authorizationFetch,
+                );
             const rawTransport = transport;
             const originalTransportClose =
               rawTransport.close.bind(rawTransport);

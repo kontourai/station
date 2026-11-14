@@ -52,6 +52,14 @@ import {
   currentAuthorizedTurnCorrelation,
   currentNativeMemoryHistory,
 } from '../conversation/authorized-turn-correlation.js';
+import {
+  guardBoundedApiModel,
+  runWithModelInvocationCancellation,
+} from '../conversation/bounded-api-model.js';
+import {
+  assertBoundedApiExecutionAvailable,
+  currentBoundedApiTurnCompanion,
+} from '../conversation/bounded-api-turn-grant.js';
 import { createConfiguredDispatchModel } from '../conversation/dispatch-model-policy.js';
 import type { NativeMemoryHistoryCompanion } from '../conversation/native-memory-history.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
@@ -70,6 +78,7 @@ import type {
   IStreamResult,
   ITool,
   ModelInputComposer,
+  TokenUsage,
   ToolCallDenial,
 } from '../types.js';
 import { conformAgentHooks } from './conduit-framework-adapter.js';
@@ -348,6 +357,7 @@ class StrandsAgentWrapper implements IAgent {
   }
 
   async streamText(input: string, _options?: any): Promise<IStreamResult> {
+    const boundedApiTurn = currentBoundedApiTurnCompanion();
     const owned = await this.nativeInvocation(_options);
     if (owned) return owned.streamText(input, _options);
     // #3112 known gap: Strands keeps the prompt it is handed as the user
@@ -362,7 +372,14 @@ class StrandsAgentWrapper implements IAgent {
     // Per-request identity is WeakMap-bound to this invocation's state object
     // identity (never stored in the tool-writable bag, never a shared mutable
     // object — archive#1834 rounds 3-4); see invocationOptions.
-    const invokeOptions = this.invocationOptions(_options);
+    const cancellation = new AbortController();
+    const invocationSignal = _options?.signal
+      ? AbortSignal.any([_options.signal, cancellation.signal])
+      : cancellation.signal;
+    const invokeOptions = this.invocationOptions({
+      ..._options,
+      signal: invocationSignal,
+    });
     const agent = this.strandsAgent;
     let resolveUsage: (u: any) => void;
     let resolveFinish: (r: string) => void;
@@ -379,12 +396,28 @@ class StrandsAgentWrapper implements IAgent {
     });
 
     const self = this;
+    let fullText = '';
+    let settled = false;
+    const settle = (
+      text: string,
+      finish: string,
+      usage: TokenUsage | undefined,
+    ) => {
+      if (settled) return;
+      settled = true;
+      resolveText(text);
+      resolveFinish(finish);
+      resolveUsage(usage);
+    };
 
-    async function* streamGenerator(): AsyncIterable<IStreamChunk> {
-      let fullText = '';
+    async function* streamGenerator(): AsyncGenerator<IStreamChunk> {
       const accUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
       let observedUsage = false;
       try {
+        assertBoundedApiExecutionAvailable(
+          'Strands stream invocation',
+          boundedApiTurn,
+        );
         if (
           self.native?.isHistoryCurrent &&
           !(await self.native.isHistoryCurrent())
@@ -429,9 +462,11 @@ class StrandsAgentWrapper implements IAgent {
         for await (const event of stream) {
           if (event.type === 'agentResultEvent') {
             const agentResult = (event as any).result as AgentResult;
-            resolveText(agentResult.toString());
-            resolveFinish(agentResult.stopReason || 'end_turn');
-            resolveUsage(accUsage);
+            settle(
+              agentResult.toString(),
+              agentResult.stopReason || 'end_turn',
+              accUsage,
+            );
             continue;
           }
 
@@ -504,19 +539,71 @@ class StrandsAgentWrapper implements IAgent {
         if (emittedTextStart) yield { type: 'text-end', id: '0' };
         yield { type: 'finish-step', id: '0' };
 
-        resolveText(fullText);
-        resolveFinish('end_turn');
-        resolveUsage(accUsage);
+        settle(fullText, 'end_turn', accUsage);
       } catch (error) {
-        resolveText(fullText);
-        resolveFinish('error');
-        resolveUsage(observedUsage ? accUsage : undefined);
+        settle(fullText, 'error', observedUsage ? accUsage : undefined);
         throw error;
+      } finally {
+        settle(fullText, 'cancelled', undefined);
       }
     }
 
+    const iterator = streamGenerator();
+    const done: IteratorResult<IStreamChunk> = { done: true, value: undefined };
+    let closePending!: (result: IteratorResult<IStreamChunk>) => void;
+    const closed = new Promise<IteratorResult<IStreamChunk>>((resolve) => {
+      closePending = resolve;
+    });
+    const fullStream: AsyncIterableIterator<IStreamChunk> = {
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+      next: () =>
+        Promise.race([
+          closed,
+          runWithModelInvocationCancellation(invocationSignal, async () => {
+            // Let a synchronous consumer return close the invocation before SDK work begins.
+            await Promise.resolve();
+            if (cancellation.signal.aborted) return done;
+            try {
+              const result = await iterator.next();
+              return cancellation.signal.aborted ? done : result;
+            } catch (error) {
+              if (cancellation.signal.aborted) return done;
+              throw error;
+            }
+          }),
+        ]),
+      // Returning an unstarted generator never enters its finally block.
+      return: (value) => {
+        cancellation.abort();
+        closePending(done);
+        settle(fullText, 'cancelled', undefined);
+        void iterator.return(value).catch((error) =>
+          logger.warn('Strands iterator cleanup failed after cancellation', {
+            error,
+          }),
+        );
+        return Promise.resolve({ done: true, value });
+      },
+      throw: (error) => {
+        cancellation.abort();
+        closePending(done);
+        settle(fullText, 'error', undefined);
+        void iterator
+          .return(undefined)
+          .catch((cleanupError) =>
+            logger.warn(
+              'Strands iterator cleanup failed after consumer error',
+              { error: cleanupError },
+            ),
+          );
+        return Promise.reject(error);
+      },
+    };
+
     return {
-      fullStream: streamGenerator(),
+      fullStream,
       text: textPromise,
       usage: usagePromise,
       finishReason: finishPromise,
@@ -530,18 +617,20 @@ class StrandsAgentWrapper implements IAgent {
     // Use structuredOutputSchema if provided for native structured output
     const schema = _options?.structuredOutputSchema;
     if (schema) {
-      const tempAgent = new StrandsAgent({
-        model: this.strandsAgent.model,
-        systemPrompt: (this.strandsAgent as any).systemPrompt,
-        tools: [],
-        structuredOutputSchema: schema._zod
-          ? schema
-          : z.fromJSONSchema(
-              (await asSchema(schema).jsonSchema) as Parameters<
-                typeof z.fromJSONSchema
-              >[0],
-            ),
-      });
+      const tempAgent = guardBoundedApiModel(
+        new StrandsAgent({
+          model: this.strandsAgent.model,
+          systemPrompt: (this.strandsAgent as any).systemPrompt,
+          tools: [],
+          structuredOutputSchema: schema._zod
+            ? schema
+            : z.fromJSONSchema(
+                (await asSchema(schema).jsonSchema) as Parameters<
+                  typeof z.fromJSONSchema
+                >[0],
+              ),
+        }),
+      );
       const result = await tempAgent.invoke(prompt);
       const text = result.toString();
       return {
@@ -621,16 +710,18 @@ export class StrandsFramework {
         typeof opts.processedPrompt === 'function'
           ? opts.processedPrompt()
           : opts.processedPrompt;
-      const strandsAgent = new StrandsAgent({
-        model,
-        messages: history,
-        systemPrompt: resolvedPrompt,
-        tools: createStrandsFunctionTools(
-          viewTools,
-          deniedToolCalls,
-          purposeEnabledToolNames,
-        ),
-      });
+      const strandsAgent = guardBoundedApiModel(
+        new StrandsAgent({
+          model,
+          messages: history,
+          systemPrompt: resolvedPrompt,
+          tools: createStrandsFunctionTools(
+            viewTools,
+            deniedToolCalls,
+            purposeEnabledToolNames,
+          ),
+        }),
+      );
 
       const invocationCtx: InvocationContext = ownedInvocation ?? {
         agentSlug: slug,
@@ -795,16 +886,18 @@ export class StrandsFramework {
     ): StrandsAgentWrapper => {
       const deniedToolCalls = new Map<string, ToolCallDenial>();
       const purposeEnabledToolNames = new Set<string>();
-      const agent = new StrandsAgent({
-        model: opts.model,
-        messages: history,
-        systemPrompt: resolved,
-        tools: createStrandsFunctionTools(
-          viewTools,
-          deniedToolCalls,
-          purposeEnabledToolNames,
-        ),
-      });
+      const agent = guardBoundedApiModel(
+        new StrandsAgent({
+          model: opts.model,
+          messages: history,
+          systemPrompt: resolved,
+          tools: createStrandsFunctionTools(
+            viewTools,
+            deniedToolCalls,
+            purposeEnabledToolNames,
+          ),
+        }),
+      );
       // Agent-scoped BASE identity shared by the gate and the wrapper
       // (mirrors createAgent) — agentSlug only, never mutated. Per-request
       // identity (conversationId/userId/delegation) travels per invocation:
@@ -916,6 +1009,7 @@ export class StrandsFramework {
     spec: AgentSpec,
     config: AgentCreationConfig,
   ): Promise<{ model: any; resolvedModel: string }> {
+    assertBoundedApiExecutionAvailable('managed Strands model resolution');
     const binding = await resolveManagedModelBinding(spec, {
       appConfig: config.appConfig,
       listProviderConnections: config.listProviderConnections,

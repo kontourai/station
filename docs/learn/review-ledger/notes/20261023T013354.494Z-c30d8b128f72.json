@@ -1,0 +1,7 @@
+{
+  "revision": "dee8176007e2e3952a790f4558fbf6305e119aca",
+
+  "notes": [
+    {"path":"docs/design/answer-share-permalinks.md","note":"Independent source audit read complete439line design and affectedenvironment-security/runtime-routes/pairing-route-scopes changes ata341de78951. Corrected stale registered-before-middleware/PUBLIC_ROUTES explanation: exactPOSTpath declared in central external-surface table, handler authenticates sharetoken. One shared service instance serves view/manage; management uses request conversation-read authority plus access:manage; hostedmint409 and NO_CHANNEL_LOG_OBSERVER limitations remain. New access:devices/tokenmetadata/routes do not widen share authority. Retain all3triggered dependencies. This renews affected mount/scope/view-authority claims only, not complete ingressauth/projection/storage validators, recipient cache/reachability, browser/native/build or historical execution receipts.","inputs":["docs/design/answer-share-permalinks.md","packages/contracts/src/environment-security.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

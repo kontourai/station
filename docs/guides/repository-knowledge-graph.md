@@ -22,7 +22,12 @@ for them.
 | `references-document` / `references-decision` | The section links that document or public Station issue/PR. Remote content is not fetched. |
 | `review-dependency` | The whole document's review record names the source. Path-only records export this relationship without judging review history; legacy records include a digest comparison. This is not per-module claim certification. |
 
-The current export includes the atlas's module set, including retained contract
+The exporter accepts exact atlas module names through repeated `--module`
+options; the example selects `ChildWork`. Without a selection it requests the
+whole atlas, which may exceed the fixed export limits. Select a smaller subset
+rather than treating a failed whole export as complete. Selection participates
+in snapshot identity; whole-document review dependencies remain whole-document
+edges, even for a module subset. Valid atlas membership includes retained contract
 work. A graph node does not mean that a feature is mounted in production. Read
 the canonical section's implementation status and evidence limits.
 

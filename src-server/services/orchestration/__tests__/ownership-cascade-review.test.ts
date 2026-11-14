@@ -902,3 +902,77 @@ test.each([false, true])(
     }
   },
 );
+
+test.each(['request', 'group'] as const)(
+  'owned cancellation rechecks captured %s currency before its durable cascade',
+  async (authority) => {
+    const f = await fixture('held');
+    let current = true;
+    let firstGuardPassed = false;
+    let faultApplied = false;
+    const withdrawal = new Error('controlled group withdrawal');
+    const targets = f.store.ownedStopTargets.bind(f.store);
+    expect(targets('parent')).toContain('child');
+    const lookup = vi
+      .spyOn(f.store, 'ownedStopTargets')
+      .mockImplementation((id) => {
+        const result = targets(id);
+        if (id === 'parent' && firstGuardPassed && !faultApplied) {
+          expect(result).toContain('child');
+          faultApplied = true;
+          current = false;
+        }
+        return result;
+      });
+    try {
+      await expect(
+        f.service.dispatchWithReceipt(
+          { type: 'interruptTurn', threadId: 'parent' },
+          {
+            userId: 'owner',
+            requestCurrent: () => {
+              firstGuardPassed = true;
+              return authority === 'request' ? current : true;
+            },
+          },
+          authority === 'group'
+            ? {
+                delegationGroupAdmission: {
+                  signal: new AbortController().signal,
+                  assertCurrent: () => {
+                    if (!current) throw withdrawal;
+                  },
+                },
+              }
+            : undefined,
+        ),
+      ).rejects.toMatchObject({
+        name: 'OrchestrationCommandDispatchError',
+        message:
+          authority === 'group'
+            ? withdrawal.message
+            : 'Request authority changed before interruption.',
+        receipt: {
+          commandType: 'interruptTurn',
+          threadId: 'parent',
+          status: 'failed',
+        },
+        receiptStatus: 'persisted',
+      });
+      expect(faultApplied).toBe(true);
+      expect(f.stop).not.toHaveBeenCalled();
+      expect(f.store.pendingCascadeStops()).toEqual([]);
+      expect(
+        f.store
+          .listEvents('parent')
+          .some(
+            ({ payload }) =>
+              payload.method === 'session.cancellation-requested',
+          ),
+      ).toBe(false);
+    } finally {
+      lookup.mockRestore();
+      await f.close();
+    }
+  },
+);

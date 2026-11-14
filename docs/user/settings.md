@@ -34,6 +34,10 @@ for filesystem repair. **Workspace** edits the Project's local working folder.
 
 ## Feature previews
 
+Report continuation recovery is not currently offered. Its metadata-finalization
+endpoint returns `report_continuation_finalizer_unavailable` while publication
+qualification is incomplete; it starts no provider work and grants no retry.
+
 **Paired Station chats** lets New Chat use another paired Station. Choose its
 Project; the chat header says **Via <Station>**. Full access, folder selection,
 mentions, offline copies and local integrations are unavailable over relay.

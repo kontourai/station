@@ -1,0 +1,7 @@
+{
+  "revision": "02405baafef6cbfcc38683e38ad199338ad69931",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Scoped review of the actual confined native model-channel checkpoint. Inspected 7a761679a11a driver/catalog changes, strict native event assertions, exact model slug and pinned binary inputs, actual lwDMgF positive receipt and owner journal, historical ChdjPV error-event catch with exit-zero clients, prior fsGrny/tdXotu/9sfFZd failures and independent source/receipt review. Both actual CLIs exchanged synthetic provider requests and exact replies; owner removal and pending-zero observations are retained. This does not qualify native tools, upstream models, live billing, budget/credential authority, peer/SSH, parent-child, global descendant closure or full epic readiness. Historical sections retain their own revisions and limits.","inputs":["docs/plans/child-work-epic.md","scripts/child-work-native-model-channel-lab.ts"]}
+  ]
+}

@@ -126,10 +126,14 @@ async function createHarness(
             : undefined,
       resolveCredentialDeviceId: (credential) =>
         security.devicePairing.identifyDevice(credential)?.id,
+      resolveCredentialDeviceKind: (credential) =>
+        security.devicePairing.identifyDevice(credential)?.kind,
       resolveCredentialLocality: (credential) =>
         security.credentialLocality(credential),
       resolveCredentialMintKind: (credential) =>
         security.credentialMintKind(credential),
+      resolveCredentialOwnerStanding: (credential) =>
+        security.credentialHasOwnerStanding(credential),
       allowedOrigins: [ORIGIN],
     },
   });
@@ -169,7 +173,9 @@ async function createHarness(
   );
   app.route(
     '/api/access/tokens',
-    createPersonalTokenRoutes(security.devicePairing),
+    createPersonalTokenRoutes(security.devicePairing, (request) =>
+      isRuntimeRequestPrincipalCurrent(request, security),
+    ),
   );
   app.route(
     '/api/attention',
@@ -566,7 +572,10 @@ describe('a request that asks for an elevated grant', () => {
 
   test('lists what it asks for, and an access:approve device may approve it only with the elevated grant left out', async () => {
     const harness = await createHarness();
-    const promoted = await harness.pairDevice('Promoted tablet');
+    const promoted = await harness.pairDevice(
+      'Promoted tablet',
+      'orchestration:read',
+    );
     harness.security.devicePairing.setDeviceApprovalAuthority(
       promoted.device.id,
       true,
@@ -652,7 +661,10 @@ describe('a request that asks for an elevated grant', () => {
 
   test("an operator's own offer carrying an elevated grant is held to the same rule", async () => {
     const harness = await createHarness();
-    const promoted = await harness.pairDevice('Promoted tablet');
+    const promoted = await harness.pairDevice(
+      'Promoted tablet',
+      'orchestration:read',
+    );
     harness.security.devicePairing.setDeviceApprovalAuthority(
       promoted.device.id,
       true,

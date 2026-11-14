@@ -16,7 +16,9 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { build } from 'esbuild';
 import { z } from 'zod/v3';
+import { prepareNativeTextModelRequest } from '../src-server/runtime/conversation/native-text-model-request.js';
 import { NativeModelContainer } from '../src-server/services/connections/native-model-container.js';
+import type { NativeModelRequest } from '../src-server/services/connections/native-model-stdio-protocol.js';
 import { acquireHeavyCheckSlot } from './lib/heavy-check-slots.mjs';
 import { runLabCommand } from './lib/local-collaboration-process.mjs';
 
@@ -29,6 +31,8 @@ process.once('exit', slot.release);
 const base =
   'node@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54';
 const includeEngines = process.argv.includes('--with-native-engines');
+const boundedTextWire = process.argv.includes('--with-bounded-text-wire');
+assert.ok(!boundedTextWire || includeEngines);
 const fixtureModel = 'station-channel-fixture';
 const fixtureCatalog = JSON.stringify({
   models: [
@@ -85,7 +89,7 @@ writeFileSync(join(dockerConfig, 'config.json'), '{}\n', {
 const controllerCanary = `host-only-${randomUUID()}`;
 const requests: unknown[] = [];
 let deliveries = 0;
-let currentEngine: string | undefined;
+let currentEngine: (typeof engines)[number]['name'] | undefined;
 const receipt: Record<string, unknown> = {
   sourceHead: process.env.CHILD_WORK_NATIVE_LAB_SOURCE_HEAD,
   driverSha256: createHash('sha256')
@@ -95,6 +99,7 @@ const receipt: Record<string, unknown> = {
   nativeEngineQualified: false,
   portableAuthorityQualified: false,
   providerBillingQualified: false,
+  boundedTextWire,
   requests,
 };
 const save = () =>
@@ -103,6 +108,24 @@ const save = () =>
     JSON.stringify(receipt, null, 2),
   );
 let container: NativeModelContainer | undefined;
+function prepareLabNativeRequest(
+  input: NativeModelRequest,
+  engine: 'claude' | 'codex',
+) {
+  if (!boundedTextWire) return input;
+  const anthropic = engine === 'claude';
+  const final = prepareNativeTextModelRequest(input, {
+    provider: anthropic ? 'anthropic' : 'openai',
+    modelId: anthropic ? 'claude-sonnet-4-5' : fixtureModel,
+    maxOutputTokens: 2048,
+  });
+  const body = JSON.parse(final.body.toString('utf8'));
+  assert.equal(anthropic ? body.max_tokens : body.max_output_tokens, 2048);
+  assert.deepEqual(body.tools, []);
+  if (!anthropic) assert.equal(body.tool_choice, 'none');
+  return final;
+}
+
 try {
   assert.match(
     process.env.CHILD_WORK_NATIVE_LAB_SOURCE_HEAD ?? '',
@@ -165,6 +188,8 @@ try {
       'scripts/child-work-native-model-channel-lab.ts',
       'scripts/lib/local-collaboration-process.mjs',
       'scripts/lib/owned-process.mjs',
+      'src-server/runtime/conversation/native-text-model-request.ts',
+      'src-server/runtime/conversation/bounded-api-provider-contract.ts',
       'src-server/services/connections/native-model-container.ts',
       'src-server/services/connections/native-model-stdio-channel.ts',
       'src-server/services/connections/native-model-stdio-protocol.ts',
@@ -243,7 +268,8 @@ try {
           input.path.split('?')[0],
           currentEngine === 'claude' ? '/v1/messages' : '/v1/responses',
         );
-        const body = JSON.parse(input.body.toString('utf8'));
+        const finalInput = prepareLabNativeRequest(input, currentEngine);
+        const body = JSON.parse(finalInput.body.toString('utf8'));
         assert.equal(
           body.model,
           currentEngine === 'codex' ? fixtureModel : 'claude-sonnet-4-5',
@@ -252,7 +278,20 @@ try {
           engine: currentEngine,
           path: input.path,
           bodySha256: createHash('sha256').update(input.body).digest('hex'),
+          finalBodySha256: createHash('sha256')
+            .update(finalInput.body)
+            .digest('hex'),
         });
+        writeFileSync(
+          join(artifacts, `native-request-${requests.length}.json`),
+          input.body,
+          { mode: 0o600, flag: 'wx' },
+        );
+        writeFileSync(
+          join(artifacts, `native-final-request-${requests.length}.json`),
+          finalInput.body,
+          { mode: 0o600, flag: 'wx' },
+        );
         const text = `CONFINED_${currentEngine.toUpperCase()}_REPLY`;
         const message = {
           id: `msg_${randomUUID()}`,

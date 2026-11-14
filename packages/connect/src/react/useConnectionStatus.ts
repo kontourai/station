@@ -82,9 +82,11 @@ function registryEntry(
       return () => {
         unsubscribe();
         entry.refs -= 1;
-        if (entry.refs === 0 && registry.get(key) === entry) {
-          registry.delete(key);
-        }
+        queueMicrotask(() => {
+          if (entry.refs === 0 && registry.get(key) === entry) {
+            registry.delete(key);
+          }
+        });
       };
     },
   };

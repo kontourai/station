@@ -56,6 +56,11 @@ import { FileDelegationAttemptClaimStore } from '../../../services/orchestration
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import {
+  gateMediatedMcpCall,
+  resetPersonApprovedCalls,
+} from '../../../services/plugins/mediated-untrusted-content-gate.js';
+import { UntrustedContentLedger } from '../../../services/plugins/untrusted-content-policy.js';
 import { createNotificationRoutes } from '../../operations/notifications.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
@@ -95,6 +100,14 @@ class PostureAdapter extends GateTestAdapter {
   answerGate: Promise<void> | undefined;
   /** Whether an answer has reached the engine (and any gate). */
   answering = false;
+  answerStarts = 0;
+  readyGate: Promise<void> | undefined;
+  readyEntered = false;
+
+  async whenSessionReady(): Promise<void> {
+    this.readyEntered = true;
+    await this.readyGate;
+  }
   /**
    * Resolves once the request's resolution is persisted, so an answer
    * returns only after the store reads the request as resolved, as a fast
@@ -111,6 +124,7 @@ class PostureAdapter extends GateTestAdapter {
     context?: Record<string, unknown>,
   ): Promise<void> {
     this.answering = true;
+    this.answerStarts += 1;
     await this.answerGate;
     this.answers.push({ requestId, decision });
     this.answerContexts.push(context);
@@ -554,6 +568,7 @@ describe('approval posture probe table under server order (#2436)', () => {
   const harnesses: Harness[] = [];
 
   afterEach(async () => {
+    resetPersonApprovedCalls();
     for (const harness of harnesses.splice(0)) {
       await harness.service.shutdown();
       harness.store.close();
@@ -587,6 +602,218 @@ describe('approval posture probe table under server order (#2436)', () => {
     expect(h.adapter.lastTurnPosture()).toBe('ask');
     // A new child Session spawned for that turn, in the recorded posture.
     expect(h.adapter.starts.at(-1)?.modelOptions?.approvalMode).toBe('ask');
+  });
+
+  test('a turn waiting for adapter readiness cannot overtake a newer Ask decision', async () => {
+    const h = await harness();
+    await h.firstSend('never');
+    const threadId = h.currentThread()!;
+    h.adapter.waiting.add(threadId);
+    const before = h.adapter.turns.length;
+    let release!: () => void;
+    h.adapter.readyGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    h.adapter.readyEntered = false;
+    const pending = h.service.dispatchWithReceipt(
+      {
+        type: 'sendTurn',
+        input: {
+          threadId,
+          input: 'waiting turn',
+          clientTurnId: 'posture-race-turn',
+        },
+      },
+      { userId: OWNER },
+    );
+    void pending.catch(() => {});
+    try {
+      await eventually(() => expect(h.adapter.readyEntered).toBe(true));
+      await h.decide('ask');
+      release();
+      await expect(pending).rejects.toThrow(/Approval settings changed/);
+      expect(h.adapter.turns).toHaveLength(before);
+      expect(h.decisions().at(-1)).toBe('ask');
+      h.adapter.readyGate = undefined;
+      await h.service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: {
+            threadId,
+            input: 'waiting turn',
+            clientTurnId: 'posture-race-turn',
+          },
+        },
+        { userId: OWNER },
+      );
+      expect(h.adapter.turns).toHaveLength(before + 1);
+      expect(h.adapter.turns.at(-1)?.modelOptions?.approvalMode).toBe('ask');
+    } finally {
+      release();
+      await pending.catch(() => undefined);
+    }
+  });
+
+  test('a synchronous admission posture change refuses without stranding the thread', async () => {
+    const h = await harness();
+    await h.firstSend('never');
+    const threadId = h.currentThread()!;
+    h.adapter.waiting.add(threadId);
+    const before = h.adapter.turns.length;
+    let changed = false;
+    const pending = h.service.dispatchWithReceipt(
+      {
+        type: 'sendTurn',
+        input: {
+          threadId,
+          input: 'post-accounting refusal',
+          clientTurnId: 'post-accounting-refused',
+        },
+      },
+      { userId: OWNER },
+      {
+        delegationGroupAdmission: {
+          signal: new AbortController().signal,
+          assertCurrent: () => {
+            if (changed) return;
+            changed = true;
+            expect(
+              h.service.recordApprovalModeDecision({
+                threadId,
+                provider: h.adapter.provider,
+                approvalMode: 'ask',
+                basedOnSequence: null,
+              }),
+            ).toMatchObject({ recorded: true });
+          },
+        },
+      },
+    );
+    await expect(pending).rejects.toThrow(/Approval settings changed/);
+    expect(changed).toBe(true);
+    expect(h.adapter.turns).toHaveLength(before);
+    await h.service.dispatchWithReceipt(
+      {
+        type: 'sendTurn',
+        input: {
+          threadId,
+          input: 'new explicit attempt',
+          clientTurnId: 'post-accounting-new-attempt',
+        },
+      },
+      { userId: OWNER },
+    );
+    expect(h.adapter.turns).toHaveLength(before + 1);
+    expect(h.adapter.turns.at(-1)?.modelOptions?.approvalMode).toBe('ask');
+  });
+
+  describe('person answers and one-use mediated approvals', () => {
+    const allowance = (threadId: string) => {
+      const ledger = new UntrustedContentLedger();
+      ledger.markConversation(threadId, Promise.resolve(true));
+      return () =>
+        gateMediatedMcpCall({
+          conversationIds: [threadId],
+          serverId: 'mail',
+          toolNames: ['send_reply'],
+          definition: async () => undefined,
+          ledger,
+        });
+    };
+
+    test('a definitive Skill admission refusal leaves no mediated approval', async () => {
+      const h = await harness();
+      await h.firstSend('ask');
+      const requestId = 'mediated-refused';
+      const threadId = await h.openRequest(requestId, {
+        toolName: 'mcp__mail__send_reply',
+      });
+      const check = allowance(threadId);
+      expect((await check()).allowed).toBe(false);
+      await expect(
+        h.service.dispatchWithReceipt(
+          {
+            type: 'respondToRequest',
+            threadId,
+            requestId,
+            decision: 'accept',
+            expectedRequestEventId: `${requestId}:opened`,
+            expectedSkillExperience: {
+              eventId: 'missing-experience',
+              identity: {
+                pluginId: 'fixture',
+                pluginVersion: '1.0.0',
+                experienceId: 'fixture',
+                incarnation: 'fixture',
+                materialization: 'fixture',
+                contentDigest: 'a'.repeat(64),
+                definitionDigest: 'b'.repeat(64),
+              },
+            },
+          },
+          { userId: OWNER, personAnswer: true },
+        ),
+      ).rejects.toThrow('Skill experience execution is unavailable.');
+      expect(h.adapter.answerStarts).toBe(0);
+      expect((await check()).allowed).toBe(false);
+    });
+
+    test('concurrent answers to one open request cannot mint a second mediated approval', async () => {
+      const h = await harness();
+      await h.firstSend('ask');
+      const requestId = 'mediated-duplicate';
+      const threadId = await h.openRequest(requestId, {
+        toolName: 'mcp__mail__send_reply',
+      });
+      const check = allowance(threadId);
+      expect((await check()).allowed).toBe(false);
+      let release!: () => void;
+      h.adapter.answerGate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const answer = () =>
+        h.service.dispatchWithReceipt(
+          {
+            type: 'respondToRequest',
+            threadId,
+            requestId,
+            decision: 'accept',
+            expectedRequestEventId: `${requestId}:opened`,
+          },
+          { userId: OWNER, personAnswer: true },
+        );
+      const first = answer();
+      void first.catch(() => {});
+      let duplicate: ReturnType<typeof answer> | undefined;
+      try {
+        await eventually(() => expect(h.adapter.answerStarts).toBe(1));
+        duplicate = answer();
+        let duplicateSettled = false;
+        void duplicate.then(
+          () => {
+            duplicateSettled = true;
+          },
+          () => {
+            duplicateSettled = true;
+          },
+        );
+        await eventually(() =>
+          expect(h.adapter.answerStarts > 1 || duplicateSettled).toBe(true),
+        );
+        expect((await check()).allowed).toBe(true);
+        expect((await check()).allowed).toBe(false);
+        expect(h.adapter.answerStarts).toBe(1);
+        release();
+        const outcomes = await Promise.allSettled([first, duplicate]);
+        expect(outcomes.map((outcome) => outcome.status)).toEqual([
+          'fulfilled',
+          'rejected',
+        ]);
+      } finally {
+        release();
+        await Promise.allSettled(duplicate ? [first, duplicate] : [first]);
+      }
+    });
   });
 
   describe('#2915: an "Auto-accept file edits for this session" answer', () => {

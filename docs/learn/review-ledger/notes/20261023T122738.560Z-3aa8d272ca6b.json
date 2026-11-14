@@ -1,0 +1,7 @@
+{
+  "revision": "29c8b001c170dacc57201109e40c9af8df032e9d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed only the operator report-group custody additions against ce67b2970c7 and 29c8b001c17. Traced signature/host/principal joins, actual rounds/authority invocation checks, canonical reserved client-turn lookup and foreign-session refusal. Traced fresh POST grant and operation scope through published v3 authority cancellation and current-request persistence/readback. This revokes the exact retained root, denies issuance/execution/renewal, preserves known and unknown accounting and neither updates group cancellation nor interrupts descendants. Owner16/types/scoped lint pass; delivery-session fault proof restored16; revocation-action mutant2 intended failures/14 controls with exact restore rerun pending. Independent source review no blockers. Public serving and full cancellation remain explicitly required. Other module-map sections are outside this scoped note.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

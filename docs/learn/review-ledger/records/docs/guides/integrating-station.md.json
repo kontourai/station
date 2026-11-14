@@ -20,14 +20,6 @@
 
     "docs/guides/workspace-packages.md",
 
-    "docs/reference/api.md",
-
-    "docs/reference/cli.md",
-
-    "docs/reference/contracts.md",
-
-    "docs/reference/sdk.md",
-
     "packages/contracts/src/deployment-authentication.ts",
 
     "src-server/runtime/bootstrap/__tests__/hosted-persistence-boundary.test.ts",
@@ -35,6 +27,10 @@
     "src-server/runtime/bootstrap/hosted-persistence-boundary.ts",
 
     "src-server/runtime/bootstrap/runtime-tenant-context.ts",
+
+    "packages/cli/src/commands/service-run.ts",
+
+    "packages/cli/src/commands/service-liveness.ts",
 
     "src-server/services/knowledge/knowledge-document-import-service.ts",
 

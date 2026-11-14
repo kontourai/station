@@ -102,7 +102,7 @@ describe('runtime routes: device pairing security wiring', () => {
     process.env.ALLOWED_ORIGINS = ORIGIN;
     const homeDir = makeTempDir('station-pairing-wiring-');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir,
       environmentId: 'env-pairing-wiring',
     });

@@ -33,10 +33,15 @@ import {
   spawnOwnedChild,
 } from '../../services/infra/process-utils.js';
 import { stampLaunchExit } from '../../services/infra/session-tmpdir.js';
+import { WORKLOAD_SESSION_ENV } from '../../services/infra/workload-budget.js';
 import { raceWithSignal } from '../../utils/bounded-async.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { onNdjsonLines } from '../../utils/ndjson-lines.js';
 import { findCliBinary, resolveAugmentedPathSync } from '../auth/cli-auth.js';
+import {
+  assertNativeAuthenticationLaunch,
+  nativeAuthenticationSpawnCwd,
+} from '../auth/native-authentication-context.js';
 import { cliInvocation } from '../auth/windows-cli-invocation.js';
 import { providerFailure } from '../provider-failure.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
@@ -1636,6 +1641,37 @@ export class CodexAdapterTransport {
   }
 }
 
+/** The managed launch owned by every real fresh Codex process. */
+export function resolveCodexSpawnContext(
+  extraEnv?: Record<string, string>,
+  tmpDir?: string,
+  extraArgs: readonly string[] = [],
+): {
+  binary: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+} {
+  assertEngineAllowedByManagedPolicy('codex');
+  const launch = managedEngineLaunch(
+    'codex',
+    {
+      command:
+        managedEngineBinaryPath('codex') ?? findCliBinary('codex') ?? 'codex',
+      args: ['app-server', ...extraArgs],
+      env: { ...process.env, PATH: resolveAugmentedPathSync(), ...extraEnv },
+    },
+    'station',
+  );
+  return {
+    binary: launch.command,
+    args: [...launch.args],
+    env: childProcessEnvironment({
+      ...launch.env,
+      TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
+    }),
+  };
+}
+
 const toMiB = (bytes: number) => Math.round(bytes / 1024 / 1024);
 
 /** User-facing copy: what happened, and what Station does on the next turn. */
@@ -1653,27 +1689,12 @@ export function spawnCodexProcess(
   /** A session's own Station-owned TMPDIR (`session-tmpdir.ts`), never env-supplied. */
   tmpDir?: string,
 ): ChildProcessWithoutNullStreams {
-  // #4515: every `codex app-server` child (sessions, model listing) starts
-  // here, so an engine the managed policy does not allow is refused before
-  // anything is resolved or spawned.
-  assertEngineAllowedByManagedPolicy('codex');
-  // #4520: a managed policy's pinned binary, arguments and environment are
-  // merged into every Codex launch (`managedEngineLaunch`).
-  const launch = managedEngineLaunch(
-    'codex',
-    {
-      command:
-        managedEngineBinaryPath('codex') ?? findCliBinary('codex') ?? 'codex',
-      args: ['app-server', ...(extraArgs ?? [])],
-      env: {
-        ...process.env,
-        PATH: resolveAugmentedPathSync(),
-        ...extraEnv,
-      } as Record<string, string | undefined>,
-    },
-    'station',
+  const { binary, args, env } = resolveCodexSpawnContext(
+    extraEnv,
+    tmpDir,
+    extraArgs,
   );
-  const invocation = cliInvocation(launch.command, [...launch.args]);
+  const invocation = cliInvocation(binary, args);
   // archive#1195: `extraArgs` carries `-c mcp_servers.<id>....` session-layer
   // config overrides (codex-mcp-passthrough.ts) — appended AFTER
   // `app-server` on the spawn argv itself, never written to any config
@@ -1707,15 +1728,22 @@ export function spawnCodexProcess(
   // an unwritable or untrusted temp dir into a Codex outage, while the
   // in-process termination paths work either way. The record is released
   // only once the whole group has exited.
+  const cwd = nativeAuthenticationSpawnCwd();
+  const authenticationEnv = { ...env };
+  delete authenticationEnv[WORKLOAD_SESSION_ENV];
+  assertNativeAuthenticationLaunch({
+    cwd,
+    command: invocation.command,
+    args: invocation.args,
+    env: authenticationEnv,
+  });
   const { proc, release } = spawnOwnedChild(
     invocation.command,
     invocation.args,
     {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: childProcessEnvironment({
-        ...launch.env,
-        TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
-      }),
+      cwd,
+      env,
     },
   );
   releaseOwnedChildAfterGroupExit(proc, release);

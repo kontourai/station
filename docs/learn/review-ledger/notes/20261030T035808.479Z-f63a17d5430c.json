@@ -1,0 +1,7 @@
+{
+  "revision": "d2c24750ac8a0229b0bd4991ae3acf48df913e1d",
+
+  "notes": [
+    {"path":"examples/getting-started-starter/README.md","note":"Scoped CLI-dispatch input review at d2c24750ac8. Read the complete starter README, its plugin/host-action manifest and SDK component imports, then the current CLI plugin preview/install and registry dispatch branches. Those commands still pass parsed target/input to the existing install owner; the ordinary local-directory versus explicit-target/Git-source boundary is not changed by the doctor-migration dispatch fix, new group commands or passive CLI refactoring. The manifest retains package-owned Agent selection, agents.invoke/navigation permissions and the explicit Explain workspace host action. Documentation already requires separate grants/model setup and refuses uncertain automatic launch replay; static example presence is not execution readiness. No prose change required for this named CLI input. This does not requalify every unchanged Project-isolation/native execution claim or prove the example was installed/rendered. Source inspection only; no CLI install, registry mutation, model/provider/native/browser or package-publication run. No baseline/classification/capture change.","inputs":["examples/getting-started-starter/README.md","packages/cli/src/cli.ts"]}
+  ]
+}

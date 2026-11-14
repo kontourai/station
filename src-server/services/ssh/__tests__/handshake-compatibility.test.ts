@@ -1,7 +1,9 @@
+import { createHmac } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parsePublicStationHandshake } from '@kontourai/station-contracts';
+import { buildStationProofMessage } from '@kontourai/station-contracts/environment-security';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import packageJson from '../../../../package.json' with { type: 'json' };
@@ -10,6 +12,7 @@ import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../../runtime/bootstrap/host
 import { configureRuntimePublicRoutes } from '../../../runtime/routes/runtime-routes.js';
 import { projectFleetContributionManifest } from '../../connections/fleet-contribution-manifest.js';
 import { EnvironmentSecurityService } from '../environment-security-service.js';
+import { HomeWriterOwner } from '../home-writer-owner.js';
 
 const homes: string[] = [];
 
@@ -34,6 +37,39 @@ afterEach(() => {
 });
 
 describe('public handshake compatibility block', () => {
+  test('reads current public identity without blocking credential checks on a held writer', async () => {
+    const homeDir = makeHome();
+    const service = new EnvironmentSecurityService({ homeDir });
+    const initial = await service.initialize();
+    const rotated = await service.rotateCredential();
+    const owner = await HomeWriterOwner.forHome(homeDir);
+    const lease = await owner.acquire();
+    const nonce = Buffer.alloc(32, 7).toString('base64url');
+    try {
+      const handshake = await service.getPublicHandshake();
+      const proof = await service.createPublicProof(nonce);
+      expect(handshake.environmentId).toBe(rotated.environmentId);
+      expect(proof.signature).toBe(
+        createHmac('sha256', Buffer.from(rotated.credential, 'base64url'))
+          .update(buildStationProofMessage(rotated.environmentId, nonce))
+          .digest('base64url'),
+      );
+      expect(proof.signature).not.toBe(
+        createHmac('sha256', Buffer.from(initial.credential, 'base64url'))
+          .update(buildStationProofMessage(initial.environmentId, nonce))
+          .digest('base64url'),
+      );
+      owner.runWithLease(lease, () => {
+        expect(service.verifyOperatorCredential(rotated.credential)).toBe(true);
+      });
+    } finally {
+      await lease.release();
+    }
+    writeFileSync(join(homeDir, 'security/environment.json'), '{broken');
+    await expect(service.getPublicHandshake()).rejects.toThrow();
+    await expect(service.createPublicProof(nonce)).rejects.toThrow();
+  }, 30_000);
+
   test('advertises the contract versions and the real package version', async () => {
     const service = new EnvironmentSecurityService({ homeDir: makeHome() });
 
@@ -103,6 +139,8 @@ describe('public handshake capability flags (station#1095)', () => {
       resolveStationCapabilityFlags({ hosted: false }),
     );
     expect(handshake.capabilities).toEqual({
+      delegationGroups: false,
+      delegationToolConstraintsV1: true,
       delegationLocalConversationV1: true,
       childWorkSteering: true,
       privateOperationalOutcomes: true,
@@ -151,6 +189,8 @@ describe('public handshake capability flags (station#1095)', () => {
     // affordance no human can reach. Add it here only in the change that
     // ships those surfaces.
     expect(body.capabilities).toEqual({
+      delegationGroups: false,
+      delegationToolConstraintsV1: true,
       delegationLocalConversationV1: true,
       childWorkSteering: true,
       privateOperationalOutcomes: true,

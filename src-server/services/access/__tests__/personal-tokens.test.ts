@@ -13,7 +13,12 @@ import type { AccountDirectory } from '../../identity/account-directory.js';
 import type { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
 import {
+  HomeWriterOwner,
+  HomeWriterUnavailableError,
+} from '../../ssh/home-writer-owner.js';
+import {
   PERSONAL_TOKENS_FILE,
+  PersonalTokenStore,
   PersonalTokenUnavailableError,
 } from '../personal-token-store.js';
 
@@ -107,6 +112,26 @@ describe('personal access tokens', () => {
     expect(
       readFileSync(join(homeDir, 'security', 'paired-devices.json'), 'utf8'),
     ).not.toContain(minted.token.id);
+  });
+
+  test('credential lookup commits token activity synchronously without a deferred writer', async () => {
+    const { homeDir, security, now } = await station();
+    const casey = pairCasey(security.devicePairing);
+    const minted = await security.devicePairing.mintPersonalToken({
+      name: 'lookup',
+      binding: casey.device.principalBinding!,
+      ownerPrincipalId: 'human:tailscale-serve:casey',
+      scope: 'orchestration:read',
+      expiresAt: null,
+    });
+    const path = join(homeDir, 'security', PERSONAL_TOKENS_FILE);
+    expect(
+      JSON.parse(readFileSync(path, 'utf8')).tokens[0].lastUsedAt,
+    ).toBeNull();
+    expect(security.verifyCredential(minted.secret)).toBe(true);
+    expect(JSON.parse(readFileSync(path, 'utf8')).tokens[0].lastUsedAt).toBe(
+      now(),
+    );
   });
 
   test('an expired or revoked token authenticates no one', async () => {
@@ -209,28 +234,75 @@ describe('personal access tokens', () => {
     expect(security.verifyCredential(minted.secret)).toBe(false);
   });
 
-  test('a token minted while a reset runs does not survive it', async () => {
+  test('a competing token mint rechecks its credential after the reset home hold', async () => {
     const { security } = await station();
     const casey = pairCasey(security.devicePairing);
     const pairing = security.devicePairing;
     const clear = pairing.clearPersonalTokens.bind(pairing);
-    let minted: { secret: string } | undefined;
-    // A mint lands right after the reset's first revocation pass.
+    let outcome: Promise<unknown> | undefined;
     vi.spyOn(pairing, 'clearPersonalTokens').mockImplementationOnce(
-      async () => {
-        await clear();
-        minted = await pairing.mintPersonalToken({
-          name: 'racer',
-          binding: casey.device.principalBinding!,
-          ownerPrincipalId: 'human:tailscale-serve:casey',
-          scope: 'orchestration:read',
-          expiresAt: null,
-        });
+      async (within) => {
+        await clear(within);
+        outcome = pairing
+          .mintPersonalToken(
+            {
+              name: 'racer',
+              binding: casey.device.principalBinding!,
+              ownerPrincipalId: 'human:tailscale-serve:casey',
+              scope: 'orchestration:read',
+              expiresAt: null,
+            },
+            () => {
+              if (!pairing.verifyCredential(casey.credential))
+                throw new Error('reset caller no longer current');
+            },
+          )
+          .then(
+            () => 'minted',
+            (error: unknown) => error,
+          );
       },
     );
     await security.resetEnvironment();
-    expect(minted).toBeDefined();
-    expect(security.verifyCredential(minted!.secret)).toBe(false);
+    expect(await outcome).toMatchObject({
+      message: 'reset caller no longer current',
+    });
+    expect(pairing.listPersonalTokens()).toEqual([]);
+  });
+
+  test('the real token store refuses every writer during an independent home hold', async () => {
+    const { homeDir, security, now } = await station();
+    const casey = pairCasey(security.devicePairing);
+    const minted = await security.devicePairing.mintPersonalToken({
+      name: 'owned',
+      binding: casey.device.principalBinding!,
+      ownerPrincipalId: 'human:tailscale-serve:casey',
+      scope: 'orchestration:read',
+      expiresAt: null,
+    });
+    const owner = await HomeWriterOwner.forHome(homeDir);
+    const store = new PersonalTokenStore({ writer: owner, now });
+    const path = join(homeDir, 'security', PERSONAL_TOKENS_FILE);
+    const before = readFileSync(path, 'utf8');
+    const lease = await owner.acquire();
+    try {
+      expect(() => store.touch(minted.token.id, now())).toThrow(
+        HomeWriterUnavailableError,
+      );
+      await expect(store.revoke(minted.token.id)).rejects.toBeInstanceOf(
+        HomeWriterUnavailableError,
+      );
+      await expect(store.clear()).rejects.toBeInstanceOf(
+        HomeWriterUnavailableError,
+      );
+      expect(readFileSync(path, 'utf8')).toBe(before);
+      owner.runWithLease(lease, () => store.touch(minted.token.id, now()));
+    } finally {
+      await lease.release();
+    }
+    expect(store.find(minted.secret)?.lastUsedAt).toBe(now());
+    await store.revoke(minted.token.id);
+    expect(store.find(minted.secret)).toBeUndefined();
   });
 
   test('a reset that cannot revoke tokens changes nothing', async () => {

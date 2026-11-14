@@ -2,14 +2,17 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import {
   acquireStationHomeMaintenanceLease,
   acquireStationHomeRuntimeLease,
+  captureStationHomeRuntimeProof,
   StationHomeActiveError,
 } from '@kontourai/station-shared/station-home-lifecycle';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import { RuntimePublicationParticipant } from '../runtime-publication-participant.js';
 import {
   NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS,
   StationRuntime,
@@ -602,4 +605,59 @@ describe('broker cleanup and the Station home lease', () => {
     expect(release).not.toHaveBeenCalled();
     expect(runtime.selfHostedBroker).toBe(broker);
   });
+});
+
+test('shutdown refuses admission and joins a publication before closing its dependencies', async () => {
+  const home = makeTempDir('runtime-publication-shutdown-');
+  const homeLease = acquireStationHomeRuntimeLease(home);
+  const { runtime, log } = shutdownDouble();
+  const participant = new RuntimePublicationParticipant(
+    captureStationHomeRuntimeProof(home, homeLease),
+  );
+  runtime.runtimePublicationParticipant = participant;
+  runtime.stationHomeRuntimeLease = {
+    ownerId: homeLease.ownerId,
+    release() {
+      log.push('lease-released');
+      homeLease.release();
+    },
+  };
+  let releaseBody!: () => void;
+  let bodyEntered!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    bodyEntered = resolve;
+  });
+  const barrier = new Promise<void>((resolve) => {
+    releaseBody = resolve;
+  });
+  const file = join(home, 'publication.json');
+  const publication = participant.run(async (lease) => {
+    bodyEntered();
+    await barrier;
+    await publishJsonFileWithOwnedLock(
+      file,
+      { revision: 1 },
+      {
+        finalizeCommit: () => {
+          lease.assertCurrent();
+          return undefined;
+        },
+      },
+    );
+    log.push('published');
+  });
+  await entered;
+  const closing = runtime.shutdown();
+  expect(() => participant.acquire()).toThrow('publication');
+  expect(log).toEqual([]);
+  releaseBody();
+  await publication;
+  await closing;
+  expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ revision: 1 });
+  expect(log).toEqual([
+    'published',
+    'event-store-closed',
+    'loader-disposed',
+    'lease-released',
+  ]);
 });

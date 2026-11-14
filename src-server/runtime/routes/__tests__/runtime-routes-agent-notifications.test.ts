@@ -134,6 +134,7 @@ describe('configureRuntimeRoutes: agent notifications', () => {
       taskGraphService: { listTasks: () => [] },
       projectService: { listProjects: () => [] },
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL,
         authorizeCredential: (credential: string) =>
@@ -145,7 +146,9 @@ describe('configureRuntimeRoutes: agent notifications', () => {
             ? 'orchestration:read orchestration:operate'
             : undefined,
         identifyDevice: () => undefined,
-        devicePairing: deepStub({}),
+        devicePairing: deepStub({
+          withCurrentRegistry: <T>(read: () => T): T => read(),
+        }),
       }),
     });
     Reflect.set(context as object, 'buildRuntimeContext', () => context);

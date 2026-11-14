@@ -145,6 +145,25 @@ function optionalStrings(value: unknown): string[] | undefined | false {
     : false;
 }
 
+function optionalToolConstraints(
+  value: unknown,
+): string[][] | undefined | false {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 64) return false;
+  const groups: string[][] = [];
+  for (const group of value) {
+    const parsed = optionalStrings(group);
+    if (
+      !Array.isArray(parsed) ||
+      parsed.length > 256 ||
+      parsed.some((pattern) => pattern.length > 256)
+    )
+      return false;
+    groups.push(parsed);
+  }
+  return groups;
+}
+
 /**
  * The context the calling session was started with, read back from its own
  * record. `undefined` for a root session; `false` for a record that is not a
@@ -160,6 +179,9 @@ function recordedDelegation(
   const rootAgentSlug = nonEmptyString(record.rootAgentSlug);
   const allowedTools = optionalStrings(record.allowedTools);
   const blockedTools = optionalStrings(record.blockedTools);
+  const toolAllowlistConstraints = optionalToolConstraints(
+    record.toolAllowlistConstraints,
+  );
   if (
     record.mode !== 'isolated-child' ||
     !Number.isInteger(record.depth) ||
@@ -169,7 +191,8 @@ function recordedDelegation(
     !parentAgentSlug ||
     !rootAgentSlug ||
     allowedTools === false ||
-    blockedTools === false
+    blockedTools === false ||
+    toolAllowlistConstraints === false
   )
     return false;
   const parentConversationId = nonEmptyString(record.parentConversationId);
@@ -185,6 +208,7 @@ function recordedDelegation(
     ...(rootConversationId ? { rootConversationId } : {}),
     ...(allowedTools ? { allowedTools } : {}),
     ...(blockedTools ? { blockedTools } : {}),
+    ...(toolAllowlistConstraints ? { toolAllowlistConstraints } : {}),
     ...(record.denyApprovals === true ? { denyApprovals: true } : {}),
   };
 }

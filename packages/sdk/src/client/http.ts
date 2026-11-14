@@ -617,6 +617,9 @@ export class StationReadOnlyError extends Error {
   }
 }
 
+/** A configured SSE wire bound was violated. */
+export class StationSseProtocolError extends Error {}
+
 /**
  * An SSE attempt abandoned because its body delivered nothing for
  * `stallTimeoutMs` (station#2301). Classified transient: the stream reconnects
@@ -768,6 +771,8 @@ function bindRequestAuthority(
   return assertCurrent;
 }
 
+const responseAuthority = new WeakMap<Response, () => void>();
+
 /** Guard owned body readers as well as the request/response boundary. */
 function guardResponseStream(
   body: ReadableStream<Uint8Array>,
@@ -917,7 +922,7 @@ function guardResponseAuthority(
   assertCurrent: () => void,
 ): Response {
   let guardedBody: ReadableStream<Uint8Array> | null | undefined;
-  return new Proxy(response, {
+  const guarded = new Proxy(response, {
     get(target, property) {
       if (property === 'body') {
         assertCurrent();
@@ -955,7 +960,9 @@ function guardResponseAuthority(
       const value = Reflect.get(target, property, target);
       return typeof value === 'function' ? value.bind(target) : value;
     },
-  }) as Response;
+  });
+  responseAuthority.set(guarded, assertCurrent);
+  return guarded;
 }
 
 function nativeTransportInit(
@@ -1748,6 +1755,12 @@ export interface FetchSseOptions extends ClientRequestOptions {
    * Visibility, focus and online transitions also check the elapsed silence.
    */
   stallTimeoutMs?: number | null;
+  /** Per-frame wire byte limit, including fields and comments, before buffering. */
+  maxFrameBytes?: number;
+  /** Validate every checkpoint, including id-only frames, before retention. */
+  validateCheckpoint?: (checkpoint: { id?: string; retry?: number }) => void;
+  /** Close instead of retrying an endpoint's terminal protocol/authority failure. */
+  stopOnError?: (error: unknown) => boolean;
   onOpen?: (response: Response) => void;
   /** Return false when the frame was rejected and must not advance its checkpoint. */
   onMessage: (message: FetchSseMessage) => unknown;
@@ -2040,6 +2053,7 @@ async function consumeSseResponse(
   onMessage: (message: FetchSseMessage) => unknown,
   onCheckpoint: (checkpoint: { id?: string; retry?: number }) => void,
   stallTimeoutMs?: number,
+  maxFrameBytes?: number,
 ): Promise<void> {
   if (signal.aborted) {
     void response.body?.cancel().catch(() => {});
@@ -2055,8 +2069,10 @@ async function consumeSseResponse(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let frameBytes = 0;
+  let frameParts: number[] = [];
   const cancelReader = () => {
-    void reader.cancel().catch(() => {});
+    void reader.cancel().catch(() => undefined);
   };
   signal.addEventListener('abort', cancelReader, { once: true });
   const stopWatchdog = watchForStall(stallTimeoutMs, cancelReader);
@@ -2064,18 +2080,53 @@ async function consumeSseResponse(
     while (!signal.aborted) {
       const chunk = await reader.read();
       stopWatchdog.touch();
-      buffer += decoder.decode(chunk.value, { stream: !chunk.done });
-      const frames = buffer.split(/\r?\n\r?\n/);
-      buffer = frames.pop() ?? '';
-      for (const frame of frames) {
-        const result = dispatchSseFrame(frame.split(/\r?\n/), onMessage);
+      if (signal.aborted) break;
+      const dispatch = (text: string) => {
+        const result = dispatchSseFrame(text.split(/\r?\n/), onMessage);
         if (result.accepted) onCheckpoint(result);
+      };
+      if (maxFrameBytes === undefined) {
+        buffer += decoder.decode(chunk.value, { stream: !chunk.done });
+        const frames = buffer.split(/\r?\n\r?\n/);
+        buffer = frames.pop() ?? '';
+        for (const frame of frames) dispatch(frame);
+      } else {
+        // Enforce the wire-byte limit before UTF-8 conversion or frame accumulation.
+        const bytes = chunk.value ?? new Uint8Array();
+        for (const byte of bytes) {
+          frameBytes++;
+          if (frameBytes > maxFrameBytes)
+            throw new StationSseProtocolError(
+              'SSE frame exceeds its byte limit.',
+            );
+          frameParts.push(byte);
+          const n = frameParts.length;
+          if (
+            (byte === 10 && frameParts[n - 2] === 10) ||
+            (byte === 10 &&
+              frameParts[n - 2] === 13 &&
+              frameParts[n - 3] === 10)
+          ) {
+            dispatch(
+              decoder
+                .decode(new Uint8Array(frameParts))
+                .replace(/\r?\n\r?\n$/, ''),
+            );
+            frameParts = [];
+            frameBytes = 0;
+          }
+        }
       }
       if (chunk.done) break;
     }
   } finally {
     stopWatchdog.stop();
     signal.removeEventListener('abort', cancelReader);
+    try {
+      await reader.cancel();
+    } catch {
+      /* An errored reader may reject cancellation. */
+    }
     reader.releaseLock();
   }
   // Cancelling the reader resolves the pending read as `done`, which on its
@@ -2182,6 +2233,7 @@ export function fetchSSE(
   };
   page?.addEventListener('pagehide', abortOnPageHide);
   opts.signal?.addEventListener('abort', abort, { once: true });
+  if (opts.signal?.aborted) abort();
   const origin = requestOrigin(url);
   const initialRetryDelay = opts.retryDelayMs ?? 1000;
   const openingTimeoutMs =
@@ -2271,16 +2323,25 @@ export function fetchSSE(
         // stream was open when it was about to fail. Gate on the same
         // predicate `consumeSseResponse` uses to decide whether to consume
         // the body, so the callback's name is true for every caller.
-        if (response.ok) opts.onOpen?.(response);
+        const assertAuthority =
+          responseAuthority.get(response) ?? (() => undefined);
+        if (response.ok) {
+          assertAuthority();
+          opts.onOpen?.(response);
+        }
         await consumeSseResponse(
           response,
           attemptSignal,
           (message) => {
+            assertAuthority();
             const accepted = opts.onMessage(message) !== false;
             if (accepted) attemptMessages++;
             return accepted;
           },
           (checkpoint) => {
+            assertAuthority();
+            opts.validateCheckpoint?.(checkpoint);
+            assertAuthority();
             if (checkpoint.id !== undefined) {
               lastEventId = checkpoint.id;
             }
@@ -2296,6 +2357,7 @@ export function fetchSSE(
           opts.stallTimeoutMs === null
             ? undefined
             : (opts.stallTimeoutMs ?? 75_000),
+          opts.maxFrameBytes,
         );
         if (!controller.signal.aborted) {
           throw new Error('SSE stream ended unexpectedly');
@@ -2368,9 +2430,13 @@ export function fetchSSE(
             }
           }
           opts.onError?.(error);
-          if (classification === 'terminal') opts.onTerminal?.(error);
+          if (opts.stopOnError?.(error)) {
+            opts.onTerminal?.(error);
+            controller.abort();
+          } else if (classification === 'terminal') opts.onTerminal?.(error);
         }
       } finally {
+        attemptController.abort();
         if (activeAttempt === attemptController) activeAttempt = null;
       }
       if (controller.signal.aborted) break;

@@ -24,6 +24,8 @@ import type {
   ForegroundMessageHandle,
   ForegroundMessageInput,
 } from '../execution-target/execution-target-execution.js';
+import { isDelegatedTaskSessionId } from './delegated-task-identity.js';
+import { bindInheritedDelegationToolIntent } from './delegation-tool-policy.js';
 import { chatTurnSubmissionDigest } from './turn-submission-digest.js';
 
 const MAX_CLAIMS = 1024;
@@ -38,6 +40,7 @@ interface Claim {
   kind: 'delegation' | 'foreground';
   digest: string;
   sessionId: string;
+  sessionIdentityOrigin?: 'server' | 'provided';
   starting?: true;
   startedAt?: number;
   tombstoneAt?: number;
@@ -142,10 +145,41 @@ export class CreateRequestIndeterminateError extends Error {
 
 const activeCreate = new AsyncLocalStorage<{
   open: boolean;
+  kind: Claim['kind'];
+  request?: Request;
+  principalId: string | null;
+  callerSessionId: string | null;
+  sessionIdentityOrigin: Claim['sessionIdentityOrigin'];
   sessionId: string;
   mark: () => Promise<void>;
   refused: () => Promise<void>;
 }>();
+
+/** Creation identity only, not source or execution authority. The Request must
+ * be the route-owned object currently inside the durable delegation claim. */
+export function captureDelegationCreateCustody(request: Request) {
+  const active = activeCreate.getStore();
+  if (!active) throw new Error('delegation_create_custody_unavailable');
+  const assertCurrent = () => {
+    if (
+      !(request instanceof Request) ||
+      !active.open ||
+      active.kind !== 'delegation' ||
+      active.sessionIdentityOrigin !== 'server' ||
+      active.request !== request ||
+      activeCreate.getStore() !== active ||
+      !isDelegatedTaskSessionId(active.sessionId)
+    )
+      throw new Error('delegation_create_custody_unavailable');
+  };
+  assertCurrent();
+  return Object.freeze({
+    taskId: active.sessionId,
+    principalId: active.principalId,
+    callerSessionId: active.callerSessionId,
+    assertCurrent,
+  });
+}
 /** Called immediately before session start or an initial turn on an existing session. */
 export async function markCreateRequestStarting(
   sessionId: string,
@@ -215,6 +249,9 @@ export class CreateRequestClaims {
         ) ||
         typeof claim.sessionId !== 'string' ||
         !claim.sessionId ||
+        (claim.sessionIdentityOrigin !== undefined &&
+          claim.sessionIdentityOrigin !== 'server' &&
+          claim.sessionIdentityOrigin !== 'provided') ||
         !['delegation', 'foreground'].includes(claim.kind) ||
         (claim.starting !== undefined && claim.starting !== true) ||
         (claim.tombstoneAt !== undefined &&
@@ -271,6 +308,7 @@ export class CreateRequestClaims {
       principal: PrincipalRef | undefined;
       authority: SessionReadAuthority;
       callerSessionId?: string;
+      request?: Request;
       requestKey: string;
       intent: unknown;
       sessionId?: string;
@@ -360,6 +398,8 @@ export class CreateRequestClaims {
         const row: Claim = {
           kind: input.kind,
           digest,
+          sessionIdentityOrigin:
+            input.sessionId === undefined ? 'server' : 'provided',
           sessionId:
             input.sessionId ??
             `${input.kind === 'delegation' ? 'task' : 'conversation'}:${randomUUID()}`,
@@ -409,6 +449,11 @@ export class CreateRequestClaims {
       try {
         const active = {
           open: true,
+          kind: input.kind,
+          request: input.request,
+          principalId: input.principal?.id ?? null,
+          callerSessionId: callerSessionId ?? null,
+          sessionIdentityOrigin: claim.sessionIdentityOrigin,
           sessionId: claim.sessionId,
           refused: async () => {
             await this.#update((ledger) => {
@@ -495,15 +540,19 @@ export async function runDelegationCreate(
       principal: input.principal,
       authority,
       callerSessionId: input.createRequestCallerSessionId,
+      request: input.createRequestAuthority,
       requestKey: input.clientTurnId!,
-      intent: input.createRequestIntent ?? {
-        prompt: input.prompt,
-        attemptId: input.delegationAttemptId ?? null,
-        target: input.target,
-        parentTaskId: input.parentTaskId ?? null,
-        sessionId: input.sessionId ?? null,
-        attachments: input.taskRoomAttachments ?? null,
-      },
+      intent: bindInheritedDelegationToolIntent(
+        input.createRequestIntent ?? {
+          prompt: input.prompt,
+          attemptId: input.delegationAttemptId ?? null,
+          target: input.target,
+          parentTaskId: input.parentTaskId ?? null,
+          sessionId: input.sessionId ?? null,
+          attachments: input.taskRoomAttachments ?? null,
+        },
+        input.delegation,
+      ),
       sessionId: existingAttemptSessionId ?? input.sessionId,
       hasSessionStartRecord,
     },
@@ -537,7 +586,7 @@ export async function runForegroundCreateClaim(
       authority,
       callerSessionId,
       requestKey: input.clientTurnId,
-      intent,
+      intent: bindInheritedDelegationToolIntent(intent, input.delegation),
       hasSessionStartRecord,
     },
     async (conversationId) =>

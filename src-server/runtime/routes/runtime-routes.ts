@@ -59,7 +59,10 @@ import { createReviewedTariffRoutes } from '../../routes/operations/reviewed-tar
 import { createSourceEnrollmentRoutes } from '../../routes/operations/source-enrollments.js';
 import { createSourceGrantApprovalRoutes } from '../../routes/operations/source-grant-approvals.js';
 import { createSourceGrantExportRoutes } from '../../routes/operations/source-grant-export.js';
+import { createDelegationGroupRoutes } from '../../routes/orchestration/delegation-groups.js';
+import { createEnsemblePreparationRoutes } from '../../routes/orchestration/ensemble-preparation.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
+import { createReportGroupRoutes } from '../../routes/orchestration/report-groups.js';
 import { createTaskReviewCaptureRoutes } from '../../routes/orchestration/task-review-captures.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
@@ -202,7 +205,20 @@ import { PULL_REQUEST_GUIDE_SERVICE_PRINCIPAL } from '../../services/identity/se
 import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import type { MediaToolsAcquisition } from '../../services/media-tools/media-tools-acquisition.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
+import { EnsembleCliSessionGroupPreparation } from '../../services/orchestration/ensemble-cli-session-group.js';
+import {
+  createLocalEnsembleInventory,
+  EnsembleExecutionContext,
+} from '../../services/orchestration/ensemble-execution-context.js';
+import { EnsembleInspectionService } from '../../services/orchestration/ensemble-inspection.js';
+import {
+  authenticateEnsembleSessionGroup,
+  type EnsembleSessionAuthenticationObserver,
+  type EnsembleSessionGroupAuthenticationInput,
+} from '../../services/orchestration/ensemble-session-group-authentication.js';
+import { DelegationGroupRuntime } from '../../services/orchestration/portable-group-runtime.js';
 import { sessionOwnerStampFor } from '../../services/orchestration/session-owner-attribution.js';
+import { StationReportGroupRuntime } from '../../services/orchestration/station-report-group-runtime.js';
 import { createProjectChatDefaultsService } from '../../services/projects/project-chat-defaults.js';
 import { createProjectCheckoutFreshnessReader } from '../../services/projects/project-checkout-freshness.js';
 import type {
@@ -959,6 +975,7 @@ import {
   type PairingRequesterPosition,
 } from '../../services/ssh/device-pairing-service.js';
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
+import { HomeWriterUnavailableError } from '../../services/ssh/home-writer-owner.js';
 import {
   type NativeDeviceProofBindingService,
   NativeDeviceProofOperatorAuthority,
@@ -1099,6 +1116,7 @@ import {
   composeContextEfficiencyRuntime,
 } from '../context-efficiency-runtime.js';
 import { nativeRuntimeSpecMatches } from '../conversation/native-foreground-invocation.js';
+import { createSessionGroupRequestAuthority } from '../mcp/session-group-request-authority.js';
 import {
   createAgentDispatchActorResolver,
   createStationControlCallerRecordResolver,
@@ -1210,6 +1228,7 @@ export async function pullRequestSessionForReader<
 }
 
 export interface ConfigureRuntimeRoutesContext {
+  runtimePublicationParticipant?: import('../bootstrap/runtime-publication-participant.js').RuntimePublicationParticipant;
   discordGateway?: Pick<DiscordGatewayService, 'getGatewayStatus'>;
   retainProjectRoomRuntime?: (runtime: { close(): Promise<void> }) => void;
   relayInvitationOwner?: RelayInvitationOwner;
@@ -1956,6 +1975,10 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService.verifyCredential(credential),
     resolveGrantedScope: (credential: string) =>
       context.environmentSecurityService.resolveGrantedScope(credential),
+    withCurrentCredentialResolution: <T>(select: () => T): T =>
+      context.environmentSecurityService.devicePairing.withCurrentRegistry(
+        select,
+      ),
     resolveCredentialAuthority: (credential: string) =>
       context.environmentSecurityService.verifyOperatorCredential(credential)
         ? 'operator-credential'
@@ -7005,7 +7028,10 @@ export function configureRuntimeRoutes(
         return automationActions;
       },
       store: eventStore.threadInboxStore(),
+      submissionRefusal: ({ conversationId }) =>
+        service.conversationInputAdmissionRefusal(conversationId),
       placementRefusal: (input) =>
+        service.conversationInputAdmissionRefusal(input.conversationId) ??
         coordinatorPlacement?.placementRefusal({
           conversationId: input.conversationId,
           clientTurnId: input.clientTurnId,
@@ -7228,6 +7254,94 @@ export function configureRuntimeRoutes(
     }
   })();
 
+  const ensembleInventory = createLocalEnsembleInventory({
+    getConfiguredAcpConnection: async (id) =>
+      (await context.configLoader.loadACPConfig()).connections.find(
+        (entry) => entry.id === id,
+      ),
+    captureAgentConfigurationFence: (ids) =>
+      context.agentService.capturePreparationConfigurationFence(
+        ids,
+        context.getAgentConfigurationRevision,
+      ),
+    getProjectRevision: (slug) => context.storageAdapter.projectRevision(slug),
+    getProviderRevision: () =>
+      context.providerService.getLaunchabilityRevision() +
+      context.configLoader.getLaunchabilityRevision(),
+    environmentId: () =>
+      context.environmentSecurityService.devicePairing.environmentId(),
+    getAgent: (id) => context.agentService.getAgent(id),
+    listEngineConnectionIdentities: async () => {
+      const identities =
+        await context.connectionService.listEngineConnectionIdentities();
+      if (identities.length > 256)
+        throw new Error('Inspection inventory exceeds its limit');
+      return identities;
+    },
+    loadAppConfig: () => context.configLoader.loadAppConfig(),
+    getProject: (slug) => context.projectService.getProject(slug),
+    getProviderAdapter: (provider) =>
+      context.orchestrationService.getProviderAdapter(provider),
+  });
+  const authenticateEnsemble = (
+    input: EnsembleSessionGroupAuthenticationInput,
+    principal: PrincipalRef,
+    assertCurrent: () => void,
+    observe?: EnsembleSessionAuthenticationObserver,
+  ) =>
+    authenticateEnsembleSessionGroup(
+      input,
+      ensembleInventory,
+      principal.id,
+      () =>
+        context.environmentSecurityService.withCurrentAuthority(assertCurrent),
+      observe,
+    );
+  const ensembleInspection = new EnsembleInspectionService({
+    verifyAuthentication: async (...args) => {
+      await authenticateEnsemble(...args);
+    },
+    readProject: (slug) => context.projectService.getProject(slug),
+    observeKnowledgeRoots: () =>
+      context.storageAdapter.observeKnowledgeStoreRoots(),
+    readIntegration: (id) =>
+      context.configLoader.readIntegrationAppDefinition(id),
+    security: context.environmentSecurityService,
+    inventory: ensembleInventory,
+  });
+  const ensembleCliGroups = new EnsembleCliSessionGroupPreparation(
+    ensembleInspection,
+    ensembleInventory,
+  );
+  context.app.route(
+    '/api/orchestration/ensembles',
+    createEnsemblePreparationRoutes(
+      new EnsembleExecutionContext({
+        security: context.environmentSecurityService,
+        inventory: createLocalEnsembleInventory({
+          captureAgentConfigurationFence: (ids) =>
+            context.agentService.capturePreparationConfigurationFence(
+              ids,
+              context.getAgentConfigurationRevision,
+            ),
+          getProjectRevision: (slug) =>
+            context.storageAdapter.projectRevision(slug),
+          getProviderRevision: () =>
+            context.providerService.getLaunchabilityRevision(),
+          environmentId: () =>
+            context.environmentSecurityService.devicePairing.environmentId(),
+          getAgent: (id) => context.agentService.getAgent(id),
+          listEngineConnectionIdentities: () =>
+            context.connectionService.listEngineConnectionIdentities(),
+          loadAppConfig: () => context.configLoader.loadAppConfig(),
+          getProject: (slug) => context.projectService.getProject(slug),
+          getProviderAdapter: (provider) =>
+            context.orchestrationService.getProviderAdapter(provider),
+        }),
+      }),
+      resolveOrchestrationRequestPrincipal,
+    ),
+  );
   // Automations that target a conversation run there as a framed Station
   // turn through the same inbox, so they run on whatever engine the
   // conversation runs on. Without an inbox (hosted) such a job fails without
@@ -7593,6 +7707,25 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
+      ensembleInspection,
+      ...(isPersonalHost
+        ? {
+            cliSessionGroupHome: context.configLoader.getProjectHomeDir(),
+            authenticateEnsembleSessionGroup: authenticateEnsemble,
+            prepareEnsembleSessionGroup: (
+              input,
+              request,
+              principal,
+              assertCurrent,
+            ) =>
+              ensembleCliGroups.compose(
+                input,
+                request,
+                principal,
+                assertCurrent,
+              ),
+          }
+        : {}),
       eventBus: context.eventBus,
       readMarkerPersonKey: (c) =>
         readMarkerPersonKeyFor(
@@ -7670,6 +7803,10 @@ export function configureRuntimeRoutes(
       sessionInventory,
       sessionInventoryAppRead,
       callerBindingForRequest: taskBasisCallerBinding,
+      ...createSessionGroupRequestAuthority(
+        resolveStationControlCallerRecord,
+        taskBasisCallerBinding,
+      ),
       listThreadCheckpoints: (threadId) =>
         listThreadRecordsWithObjectStatus(
           checkpointIndexStore,
@@ -8069,6 +8206,74 @@ export function configureRuntimeRoutes(
   }
 
   const runtimeContext = context.buildRuntimeContext();
+  const createGroupRuntimeOwners = (): ConstructorParameters<
+    typeof StationReportGroupRuntime
+  >[0]['runtime'] => ({
+    configLoader: context.configLoader,
+    agentService: context.agentService,
+    storageAdapter: context.storageAdapter,
+    environmentSecurityService: context.environmentSecurityService,
+    requestSecurity: context.environmentSecurityService,
+    canonicalLocalGrantOrigin:
+      context.environmentSecurityService.canonicalLocalGrantOrigin(),
+    runtime: {
+      getAgentConfigurationRevision: context.getAgentConfigurationRevision,
+      commitAgentConfigurationRead: (revision, work) =>
+        context
+          .buildRuntimeContext()
+          .commitAgentConfigurationRead(revision, work),
+    },
+  });
+  let delegationGroups: DelegationGroupRuntime | null = null;
+  if (
+    isPersonalHost &&
+    context.orchestrationEventStore &&
+    context.projectMembership
+  ) {
+    try {
+      delegationGroups = new DelegationGroupRuntime({
+        delegationAttemptClaimStore: context.delegationAttemptClaims,
+        runtime: createGroupRuntimeOwners(),
+        orchestration: context.orchestrationService,
+        rawFetch: fetch,
+        resolveDelegation: createRequestDelegationResolver(
+          requestDelegationSources,
+        ),
+        stationControl: {
+          orchestration: context.orchestrationService,
+          eventStore: context.orchestrationEventStore,
+          projects: context.projectService,
+          membership: context.projectMembership,
+          coordinatorEnabled: coordinatorSessionEnabled,
+        },
+      });
+    } catch {
+      context.logger.warn('Delegation group private owners are unavailable.');
+    }
+  }
+  context.app.route(
+    '/api/orchestration/groups',
+    createDelegationGroupRoutes(delegationGroups),
+  );
+  let reportGroups: StationReportGroupRuntime | null = null;
+  if (isPersonalHost) {
+    try {
+      reportGroups = new StationReportGroupRuntime({
+        delegationAttemptClaimStore: context.delegationAttemptClaims,
+        publicationParticipant: context.runtimePublicationParticipant,
+        runtime: createGroupRuntimeOwners(),
+        orchestration: context.orchestrationService,
+        rawFetch: fetch,
+      });
+    } catch {
+      reportGroups = null;
+      context.logger.warn('Report group private storage is unavailable.');
+    }
+  }
+  context.app.route(
+    '/api/orchestration/report-groups',
+    createReportGroupRoutes(reportGroups),
+  );
 
   context.app.route(
     '/api/agents',
@@ -8342,7 +8547,10 @@ export function configureRuntimeRoutes(
   // #3557: a person's own personal access tokens (see the module).
   context.app.route(
     '/api/access/tokens',
-    createPersonalTokenRoutes(context.environmentSecurityService.devicePairing),
+    createPersonalTokenRoutes(
+      context.environmentSecurityService.devicePairing,
+      isRequestPrincipalCurrent,
+    ),
   );
   context.app.route(
     '/api/operator/accounts',
@@ -13190,6 +13398,7 @@ async function readPairingOfferJson(
 }
 
 function pairingErrorStatus(error: unknown): 400 | 403 | 404 | 409 | 410 | 429 {
+  if (error instanceof HomeWriterUnavailableError) throw error;
   if (!(error instanceof DevicePairingError)) return 400;
   if (error.code === 'offer_capacity_reached') return 429;
   // 403, not 401: the caller may well have presented nothing, but the fix is
@@ -15237,6 +15446,13 @@ export function configureDevicePairingHostRoutes(
     } catch {
       return c.json({ error: 'pairing_unavailable' }, 503);
     }
+    // Cleanup can yield; admission must still hold before publishing inventory.
+    if (
+      getRuntimeAuthenticatedRequestPrincipal(c.req.raw)?.authority ===
+        'operator-session' &&
+      !operatorSession(c.req.raw)
+    )
+      return c.json({ error: { code: 'operator_session_required' } }, 403);
     return c.json({ requests: pairing.listRequests() });
   });
   app.post('/api/pairing/requests/:requestId/account-consent', async (c) => {
@@ -16139,16 +16355,39 @@ export function configureDevicePairingHostRoutes(
 
     try {
       return c.json(
-        await pairing.mintPersonalToken({
-          name: body.name,
-          binding,
-          ownerPrincipalId: principalId,
-          scope: body.scope,
-          expiresAt,
-        }),
+        await pairing.mintPersonalToken(
+          {
+            name: body.name,
+            binding,
+            ownerPrincipalId: principalId,
+            scope: body.scope,
+            expiresAt,
+          },
+          () => {
+            if (!currentOperator(c, request))
+              throw new DevicePairingError('request_denied');
+            const live = pairing
+              .listDevices()
+              .some(
+                (device) =>
+                  device.revokedAt === null &&
+                  device.kind !== 'delegation' &&
+                  device.principalBinding !== undefined &&
+                  principalForDeviceBinding(device.principalBinding).id ===
+                    principalId &&
+                  isDeepStrictEqual(device.principalBinding, binding),
+              );
+            if (!live) throw new DevicePairingError('request_denied');
+          },
+        ),
         201,
       );
     } catch (error) {
+      if (
+        error instanceof DevicePairingError &&
+        error.code === 'request_denied'
+      )
+        return c.json({ error: 'request_denied' }, 403);
       if (
         error instanceof DevicePairingError &&
         error.code === 'identity_credential_quota_reached'
@@ -16227,10 +16466,19 @@ export function configureDevicePairingHostRoutes(
       return (await pairing.revokePersonalToken(
         c.req.param('tokenId'),
         c.req.param('principalId'),
+        () => {
+          if (!currentOperator(c, c.req.raw))
+            throw new DevicePairingError('request_denied');
+        },
       ))
         ? c.json({ revoked: true })
         : c.json({ error: 'not_found' }, 404);
     } catch (error) {
+      if (
+        error instanceof DevicePairingError &&
+        error.code === 'request_denied'
+      )
+        return c.json({ error: 'request_denied' }, 403);
       if (error instanceof PersonalTokenUnavailableError)
         return c.json({ error: 'tokens_unavailable' }, 503);
       throw error;

@@ -133,6 +133,16 @@ function runtimeContext(app: Hono, homeDir: string) {
       ),
       environmentSecurityService: new Proxy(
         {
+          assessCredentialRoute: undefined,
+          devicePairing: new Proxy(
+            { withCurrentRegistry: <T>(read: () => T): T => read() },
+            {
+              get(target, property) {
+                if (property in target) return Reflect.get(target, property);
+                return deepCallable();
+              },
+            },
+          ),
           authorizeCredential: (candidate: string) =>
             scopeFor(candidate) !== undefined,
           resolveGrantedScope: (candidate: string) => scopeFor(candidate),

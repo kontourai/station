@@ -14,7 +14,11 @@
 
     "packages/contracts/package.json#/exports",
 
-    "packages/contracts/package.json#/name"
+    "packages/contracts/package.json#/name",
+
+    "packages/contracts/package.json",
+
+    "packages/contracts/src/stall-watchdog.ts"
   ],
 
   "checks": [

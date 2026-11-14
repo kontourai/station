@@ -1,0 +1,7 @@
+{
+  "revision": "fe28b92800b5f34ca8517fd6b04b842c9d7b8650",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Read the complete concepts guide and revised the delegated-work paragraph against shared live lane labels and reported-origin rendering. Home/Sessions/inbox use Needs you/Running/Idle; idle is not a terminal outcome. Client surfaces remain reported, separate from authenticated actor; no external caller inference from text/User-Agent. Independent paragraph review found no accuracy issue. Module map is navigation/ownership context, not a source for any module inventory asserted here; replaced that overbroad dependency with direct lane/origin owners while retaining existing behavior owners. Existing group prose remains limited to logical starts, retained uncertain attempts and ACKs without work acceptance; unmounted paid-group routes do not activate it. No new browser/native/provider or full-epic execution; historical evidence stays revision-bound.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/cli-session-group.ts","src-ui/src/views/home/home-lane-model.ts","src-ui/src/utils/clientOrigin.ts"]}
+  ]
+}

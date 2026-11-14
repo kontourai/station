@@ -94,7 +94,9 @@
 
     "tests/container-self-host.spec.ts",
 
-    "scripts/code-health-gate.mjs"
+    "scripts/code-health-gate.mjs",
+
+    "package.json"
   ],
 
   "checks": [

@@ -1,0 +1,7 @@
+{
+  "revision": "acd1b777e50979252badc2f9fca38a3a877e29e5",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed the new current checkpoint against testcommitsca7214adef25/5a212193a67d,86 retention/status/hook passes,130 capturedadapter/service/projection/history passes,53 restored reader/route/row passes,UI/server-test types and two independentlyreviewed testdeltas. Both clean-checkpoint mutations fail namednewtests and production is restored byteexactly. Readability remainsastub; no fullauthorization/processrestart/returned-result/native/provider/physicalscreenreader/wholeChatDock claim. No production/API/flagchange, historicalfailures and remainingepic/registry gaps retained.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}

@@ -400,11 +400,14 @@ export async function runCliCommand(
    * only; a grandchild of a wrapper launcher (mise/npx) can outlive it.
    */
   bounds?: {
+    cwd?: string;
+    assertCurrent?: () => Promise<() => void>;
     timeoutMs?: number;
     maxBuffer?: number;
     killSignal?: NodeJS.Signals;
   },
 ): Promise<CliCommandResult | null> {
+  let authorityRefused = false;
   try {
     const augmented = await augmentedSpawnEnv();
     const env = envOverlay
@@ -414,12 +417,22 @@ export async function runCliCommand(
           TMPDIR: augmented.TMPDIR,
         })
       : augmented;
+    if (bounds?.assertCurrent) {
+      try {
+        const finalize = await bounds.assertCurrent();
+        finalize();
+      } catch (error) {
+        authorityRefused = true;
+        throw error;
+      }
+    }
     const invocation = cliInvocation(command, args);
     const { stdout, stderr } = await execFile(
       invocation.command,
       invocation.args,
       {
         encoding: 'utf-8',
+        ...(bounds?.cwd ? { cwd: bounds.cwd } : {}),
         // User-managed launchers may resolve the real CLI through mise/npx.
         // Keep the probe bounded, but allow that indirection to finish on a
         // cold cache (observed at ~6s on the media-server dogfood host).
@@ -437,6 +450,7 @@ export async function runCliCommand(
       code: 0,
     };
   } catch (error) {
+    if (authorityRefused) throw error;
     throwIfAborted(signal);
     if (error && typeof error === 'object') {
       const result = error as {

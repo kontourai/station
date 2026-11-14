@@ -4576,6 +4576,74 @@ test('session summaries expose the captured route when the loaded runtime has no
   ).toBeUndefined();
 });
 
+test('delegation initiation preserves authenticated actor separately from the reported CLI surface', () => {
+  const events: CanonicalRuntimeEvent[] = [
+    {
+      provider: 'claude',
+      threadId: 'origin-child',
+      eventId: 'binding',
+      createdAt: '2026-10-21T00:00:00Z',
+      method: 'session.configured',
+      sessionId: 'origin-child',
+      metadata: {
+        taskId: 'origin-child',
+        targetKind: 'agent',
+        targetId: 'reviewer',
+      },
+    },
+    {
+      provider: 'claude',
+      threadId: 'origin-child',
+      eventId: 'first-turn',
+      createdAt: '2026-10-21T00:00:01Z',
+      method: 'turn.started',
+      turnId: 'first',
+      prompt: 'Review',
+      clientOrigin: {
+        version: 1,
+        actor: { kind: 'operator' },
+        reported: { version: 1, surface: 'cli', build: null },
+      },
+    },
+    {
+      provider: 'claude',
+      threadId: 'origin-child',
+      eventId: 'later-turn',
+      createdAt: '2026-10-21T00:00:02Z',
+      method: 'turn.started',
+      turnId: 'later',
+      prompt: 'Follow up',
+      clientOrigin: {
+        version: 1,
+        actor: { kind: 'internal' },
+        reported: { version: 1, surface: 'mcp', build: null },
+      },
+    },
+  ];
+  const project = (input: CanonicalRuntimeEvent[]) =>
+    buildOrchestrationSessionSummary({
+      answerability: OBSERVATION,
+      persisted: {
+        provider: 'claude',
+        threadId: 'origin-child',
+        status: 'ready',
+        createdAt: '2026-10-21T00:00:00Z',
+        updatedAt: '2026-10-21T00:00:02Z',
+      },
+      events: input,
+    });
+  expect(project(events).inputOrigin).toMatchObject({
+    initiator: { actor: 'operator', reportedSurface: 'cli' },
+  });
+  const withoutInitialOrigin = events.map((event) =>
+    event.eventId === 'first-turn'
+      ? { ...event, clientOrigin: undefined }
+      : event,
+  );
+  expect(project(withoutInitialOrigin).inputOrigin).not.toHaveProperty(
+    'initiator',
+  );
+});
 test('summary carries unresolved input kinds alongside blocking ids', () => {
   const loaded = {
     provider: 'codex' as const,

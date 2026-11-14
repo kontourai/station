@@ -1,0 +1,7 @@
+{
+  "revision": "d7e6e1624a0b3a44e4dbac78a7266a6cf61b1c84",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed group SDK HTTP/SSE exports, command field projection, distinct qualified cursor identities, response bounds and five mock-transport tests at cdea8505cf9; SDK types pass. Server group routes remain unmounted, qualification registry and paid issuer absent, live provider and package publication unverified. Existing Ensemble section retained pending broader final audit.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

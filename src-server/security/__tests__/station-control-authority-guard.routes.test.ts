@@ -330,6 +330,17 @@ beforeAll(async () => {
     return c.json(body);
   };
   const ok = { success: true, data: { ok: true } };
+  for (const [method, route] of [
+    ['post', '/api/orchestration/session-groups'],
+    ['post', '/api/orchestration/session-groups/from-ensemble'],
+    ['get', '/api/orchestration/session-groups'],
+    ['get', '/api/orchestration/session-groups/:groupId'],
+    ['get', '/api/orchestration/session-groups/:groupId/events'],
+    ['post', '/api/orchestration/session-groups/:groupId/run'],
+    ['post', '/api/orchestration/session-groups/:groupId/cancel'],
+    ['post', '/api/orchestration/session-groups/:groupId/sync'],
+  ] as const)
+    app[method](route, record(method.toUpperCase() + ' ' + route, ok));
   app.get('/agents', record('GET /agents', []));
   app.put('/config/app', record('PUT /config/app', { success: true }));
   app.put(
@@ -1802,6 +1813,81 @@ describe('a tool’s call to a saved Environment (#2377 slice C2b)', () => {
       expect(dispatchBodies[0]).not.toHaveProperty('delegation');
     },
   );
+});
+
+test('session-group tools reach their guarded routes only for a bound caller', async () => {
+  const target = {
+    agent: 'writer',
+    expectedEngine: { kind: 'connection', connectionId: 'engine' },
+  };
+  const common = {
+    operationId: 'op-1',
+    maxConcurrent: 1,
+    deadlineAt: 2000000000000,
+  };
+  const calls = [
+    [
+      'create_session_group',
+      { ...common, members: [{ seatId: 'one', prompt: 'work', target }] },
+      'POST /api/orchestration/session-groups',
+    ],
+    [
+      'create_session_group_from_ensemble',
+      {
+        ...common,
+        presetJson: '{}',
+        expectedPresetHash: 'sha256:' + 'a'.repeat(64),
+        brief: 'work',
+        bindings: {},
+      },
+      'POST /api/orchestration/session-groups/from-ensemble',
+    ],
+    ['list_session_groups', {}, 'GET /api/orchestration/session-groups'],
+    [
+      'get_session_group',
+      { groupId: 'g' },
+      'GET /api/orchestration/session-groups/:groupId',
+    ],
+    [
+      'get_session_group_events',
+      { groupId: 'g', afterRevision: 3 },
+      'GET /api/orchestration/session-groups/:groupId/events',
+    ],
+    [
+      'run_session_group',
+      { groupId: 'g' },
+      'POST /api/orchestration/session-groups/:groupId/run',
+    ],
+    [
+      'cancel_session_group',
+      { groupId: 'g' },
+      'POST /api/orchestration/session-groups/:groupId/cancel',
+    ],
+    [
+      'sync_session_group',
+      {
+        groupId: 'g',
+        operationId: 'op',
+        runId: 'run',
+        content: 'context',
+        deadlineAt: 2000000000000,
+      },
+      'POST /api/orchestration/session-groups/:groupId/sync',
+    ],
+  ] as const;
+  for (const [name, args, route] of calls) {
+    const allowed = await callTool('bound', 'person-group', name, args);
+    expect(allowed.hits, name).toEqual([route]);
+    expect(allowed.result, name).toEqual({ success: true, data: { ok: true } });
+    const denied = await callTool(
+      'delegated-custody',
+      'person-group',
+      name,
+      args,
+    );
+    expect(denied.hits, name).toEqual([]);
+    expect(denied.result.error, name).toBeDefined();
+  }
 });
 
 describe('after untrusted content, station-control applies the permission (#3483)', () => {

@@ -1,0 +1,9 @@
+{
+  "revision": "f541a2415d58b31823ff5a5ddd00c9d89e8eb64c",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Scoped review of the process-heavy manifest delta at f541a2415d58. The merged manifest retains the epic source, report-publication, durable-store and owned-child fixture classifications alongside main native sidecar classification. No gate is disabled and no deadline or fixture bound is changed by these entries. The instruction to classify child-process tests and retain actual exit/settlement evidence remains accurate. Read the instruction and manifest diff; current verification policy passes in readiness veritas-1794641114843. This note does not qualify every classified test or the full finalizer caller, which still times out at 60000ms.","inputs":["scripts/AGENTS.md","scripts/dependency-lifecycle.mjs","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Scoped review of the scripts/vitest-resource-manifest.mjs dependency delta at f541a2415d58. The additions classify shared JSON, reserved-turn, report/source and owned Home-contender fixtures as process-heavy; they do not alter either model-only or agent-turn protocols, their Monument boundary, native replay authority, or the context distinction between process/death, fixture, provider and release evidence. Read the context and manifest delta; no prose change is needed for this scheduling-only input. Readiness veritas-1794641114843 passes verification policy; this is not agent-runtime or full epic qualification.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

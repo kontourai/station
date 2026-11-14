@@ -3,6 +3,7 @@ export {
   CODEX_DECISION_UNACKNOWLEDGED_CODE,
 } from '@kontourai/station-contracts/provider-failure';
 
+import { readInputRequestResponse } from '@kontourai/station-shared/input-request';
 import { isRecord } from '../../utils/is-record.js';
 import type { JsonRpcId } from './codex-adapter-types.js';
 
@@ -89,6 +90,19 @@ export function refuseCodexApprovalReply(
         ? undefined
         : 'the reply does not carry a permission grant Codex accepts';
     case 'mcpServer/elicitation/request':
+      if (result.action === 'accept' && Object.hasOwn(result, 'content'))
+        return readInputRequestResponse(result) &&
+          isRecord(result.content) &&
+          Object.values(result.content).every(
+            (value) =>
+              typeof value === 'string' ||
+              typeof value === 'boolean' ||
+              (typeof value === 'number' && Number.isFinite(value)) ||
+              (Array.isArray(value) &&
+                value.every((entry) => typeof entry === 'string')),
+          )
+          ? undefined
+          : 'the reply does not carry elicitation content Codex accepts';
       return typeof result.action === 'string' &&
         ELICITATION_ACTIONS.has(result.action) &&
         Object.keys(result).length === 1

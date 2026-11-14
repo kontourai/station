@@ -514,6 +514,9 @@ external engines through that wrapper. Terminal receipts are appended to
 `<STATION_HOME>/monitoring/model-dispatch-receipts.ndjson`; they contain digests,
 opaque candidate identifiers, outcome, timing, token, and estimated-cost data,
 but not prompts, credentials, endpoints, connection IDs, or model configuration.
+Successful attempts retain `model` when the runtime reports it. `modelSource`
+is copied only when reported as `provider-reported` or `configured`; an absent
+source is not inferred from the selected configuration.
 
 #### `policy.minimumEvidence` and `policy.requiredCapabilities`
 

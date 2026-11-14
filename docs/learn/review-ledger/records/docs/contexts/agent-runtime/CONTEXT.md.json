@@ -46,6 +46,12 @@
 
     "packages/agent-runtime/src/__tests__/r4-replay.test.ts",
 
+    "src-server/services/orchestration/station-report-group-runtime.ts",
+
+    "src-server/services/orchestration/station-report-retained-turn.ts",
+
+    "src-server/services/orchestration/station-report-group-custody.ts",
+
     "src-server/services/orchestration/conversation-context-seed-witness.ts",
 
     "src-server/services/orchestration/conversation-start-context.ts",
@@ -93,6 +99,8 @@
     "packages/contracts/src/connection-recovery.ts",
 
     "src-ui/src/components/chat-dock/UsageLimitBanner.tsx",
+
+    "src-server/services/orchestration/report-rounds-publication.ts",
 
     "src-server/runtime/conversation/inbox-model-step.ts",
 

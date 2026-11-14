@@ -246,6 +246,27 @@ const REVIEWED_PROTOCOL_BRANCHES = [
       'Constructs only the Station relay-specific memory binding schema; ownership selection uses the profile.',
   },
   {
+    file: 'src-server/services/orchestration/orchestration-service.ts',
+    expression: "session?.provider !== 'claude'",
+    count: 1,
+    reason:
+      'Selects the sole implemented native no-tools context-sync restart protocol: Claude Code 2.1.308 with a private generation/client-turn restriction and exact native session/binding. Runtime qualification and current ownership remain independently required; this does not supply generic durability fidelity or enable another adapter.',
+  },
+  {
+    file: 'src-server/services/orchestration/orchestration-service.ts',
+    expression: "provider === 'station-agent'",
+    count: 1,
+    reason:
+      'Scopes the Station-owned sealed-source start-metadata decoder to its current provider/thread context; restrictive durability comes from the canonical recorded mode, while other providers retain their declared profiles without Station-specific event reads.',
+  },
+  {
+    file: 'src-server/services/orchestration/station-report-group-renewal.ts',
+    expression: "event.provider !== 'station-agent'",
+    count: 1,
+    reason:
+      'Authenticates the retained Station report-input request.opened protocol before recovering its signed question/answer context; provider identity is not used to choose generic continuation fidelity.',
+  },
+  {
     file: 'src-server/services/orchestration/session-transcript-reads.ts',
     expression: "event.provider === 'station-agent'",
     count: 2,

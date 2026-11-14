@@ -143,6 +143,36 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Real Node sidecars verify native model relay framing, queued delivery and cancellation settlement.
   'src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts',
+  // Isolated short Node children verify rejected async finalizers cannot escape as unhandled rejections.
+  'packages/shared/src/__tests__/json-file-storage.test.ts',
+  // Canonical reserved turns use real Git snapshots and isolated SQLite/runtime fixtures.
+  'src-server/services/orchestration/__tests__/reserved-station-session-binding.test.ts',
+  'src-server/services/orchestration/__tests__/reserved-input-turn.integration.test.ts',
+  'src-server/services/orchestration/__tests__/reserved-input-responder.integration.test.ts',
+  'src-server/services/orchestration/__tests__/report-input-runtime.integration.test.ts',
+  'src-server/services/orchestration/__tests__/report-input-lifetime.integration.test.ts',
+  'src-server/services/orchestration/__tests__/report-rounds-publication-check.test.ts',
+  'src-server/services/orchestration/__tests__/station-report-input.integration.test.ts',
+  'src-server/services/orchestration/__tests__/station-report-preparation-return.test.ts',
+  'src-server/services/orchestration/__tests__/station-report-authority-installation.test.ts',
+  'src-server/services/orchestration/__tests__/station-report-group-continuation.test.ts',
+  'src-server/services/orchestration/__tests__/station-report-sync-recovery.test.ts',
+  'src-server/services/orchestration/__tests__/station-report-accounting-recovery.test.ts',
+  'src-server/services/orchestration/__tests__/station-report-answer-recovery-publication.test.ts',
+  'src-server/services/orchestration/__tests__/station-report-custody-publication.test.ts',
+  'src-server/services/orchestration/__tests__/delegation-group-persistence.test.ts',
+  // Uses real Git/SDK source fixtures and durable authority/intent stores for single-execution replay.
+  'src-server/services/orchestration/__tests__/single-delegation-wire-intent.test.ts',
+  // Native source custody uses real Git snapshots under durable create allocations; no timing assertion.
+  'src-server/services/orchestration/__tests__/native-task-source-admission.test.ts',
+  'src-server/services/orchestration/__tests__/station-report-checkpoint.test.ts',
+  'src-server/services/orchestration/__tests__/station-report-credential-sharing.test.ts',
+  'src-server/services/orchestration/__tests__/google-sealed-preparation.test.ts',
+  'src-server/services/orchestration/__tests__/delegation-flow-lock-admission.test.ts',
+  'src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts',
+  // One owned Node contender exercises cross-process home exclusion and bounded cleanup.
+  'src-server/services/orchestration/__tests__/report-rounds-home-exclusion.test.ts',
+
   // #4828: short-lived `git init`, `git config` and `git status` children
   // prove the persistence protection reads the effective core.hooksPath from
   // git and runs no repository-named program; no wall-clock assertion.

@@ -1,10 +1,27 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import { DatabaseSync } from 'node:sqlite';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { GateTestAdapter } from '../../../__test-utils__/orchestration-gate-test-harness.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
+import { ApprovalRegistry } from '../../approvals/approval-registry.js';
+import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
+import { StationDelegationPersistence } from '../delegation-group-persistence.js';
+import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
+import { OrchestrationService } from '../orchestration-service.js';
 import { SessionEventReads } from '../session-event-reads.js';
+import {
+  captureReportTerminalWitness,
+  verifyReportTerminalWitness,
+} from '../station-report-terminal-witness.js';
 
 const directories: string[] = [];
 
@@ -49,6 +66,503 @@ function seedRoot(store: EventStore, rootId: string): void {
     updatedAt: '2026-08-25T00:00:00.000Z',
   });
 }
+
+const historicalHomes = trackTempDirs();
+const historicalTurn = {
+  conversationId: 'report-thread',
+  sessionId: 'report-thread',
+  clientTurnId: 'report-client-turn',
+  turnId: 'report-provider-turn',
+};
+const historicalAuthority = sessionReadAuthorityFromRequest(
+  'report-owner',
+  undefined,
+  undefined,
+);
+function seedHistoricalTurn(store: EventStore): void {
+  seedRoot(store, historicalTurn.sessionId);
+  const fields = {
+    provider: 'claude' as const,
+    threadId: historicalTurn.sessionId,
+    createdAt: '2026-10-26T00:00:00.000Z',
+  };
+  store.appendEvent({
+    ...fields,
+    eventId: 'report-session-start',
+    method: 'session.started',
+    sessionId: historicalTurn.sessionId,
+    metadata: { userId: 'report-owner' },
+  });
+  const claim = store.createTurnDeduplicator().claim({
+    threadId: historicalTurn.sessionId,
+    clientTurnId: historicalTurn.clientTurnId,
+  });
+  if (claim.kind !== 'owner') throw new Error('Fixture must own its real turn');
+  claim.claim.beginInvocation();
+  claim.claim.resolve(historicalTurn.turnId);
+  store.appendEvent({
+    ...fields,
+    eventId: 'report-terminal',
+    method: 'turn.completed',
+    turnId: historicalTurn.turnId,
+    finishReason: 'stop',
+  });
+}
+
+describe('recorded sealed source Session policy', () => {
+  test('uses saved Session mode across point, list and event-page reads without changing ordinary provider defaults', async () => {
+    const store = createStore();
+    const eventBus = new EventBus();
+    const logger = { debug() {}, warn() {} };
+    const fetchModel = vi.fn<typeof fetch>(async () => {
+      throw new Error('A recorded-mode read must not invoke a model');
+    });
+    const adapter = new StationAgentAdapter({
+      apiBase: 'http://recorded-mode.test',
+      hasAgent: () => true,
+      eventBus,
+      approvalRegistry: new ApprovalRegistry(logger, { eventBus }),
+      fetch: fetchModel,
+    });
+    const external = new GateTestAdapter();
+    external.metadata.durability = STEERING_ENGINE_DURABILITY;
+    const service = new OrchestrationService({
+      eventStore: store,
+      eventBus,
+      adapterRegistry: {
+        register() {},
+        get: (provider) =>
+          provider === adapter.provider
+            ? adapter
+            : provider === external.provider
+              ? external
+              : undefined,
+        list: () => [adapter, external],
+      },
+      logger,
+    });
+    const identity = `sha256:${'a'.repeat(64)}`;
+    const record = (
+      threadId: string,
+      mode: unknown,
+      cursor = false,
+      provider: 'station-agent' | 'claude' = 'station-agent',
+    ) => {
+      store.upsertSession({
+        provider,
+        threadId,
+        status: 'ready',
+        createdAt: '2026-10-26T00:00:00.000Z',
+        updatedAt: '2026-10-26T00:00:00.000Z',
+        ...(cursor
+          ? { resumeCursor: { reservedSourceIdentity: identity } }
+          : {}),
+      });
+      store.appendEvent({
+        provider,
+        threadId,
+        sessionId: threadId,
+        eventId: `${threadId}:start`,
+        method: 'session.started',
+        createdAt: '2026-10-26T00:00:00.000Z',
+        metadata: {
+          userId: 'mode-owner',
+          ...(mode !== undefined ? { reservedSourceExecution: mode } : {}),
+        },
+      });
+    };
+    record('sealed-no-tools', { mode: 'sealed-source-no-tools', identity });
+    record('sealed-input', { mode: 'sealed-source-input', identity });
+    record('malformed-sealed', {
+      mode: 'sealed-source-input',
+      identity: 'not-a-digest',
+    });
+    record('ordinary', undefined);
+    record('cursor-only', undefined, true);
+    record('external-ordinary', undefined, false, 'claude');
+    record(
+      'external-shaped',
+      { mode: 'sealed-source-input', identity },
+      false,
+      'claude',
+    );
+    record('external-historical-station', {
+      mode: 'sealed-source-input',
+      identity,
+    });
+    store.upsertSession({
+      provider: 'claude',
+      threadId: 'external-historical-station',
+      status: 'ready',
+      createdAt: '2026-10-26T00:00:00.000Z',
+      updatedAt: '2026-10-26T00:00:01.000Z',
+    });
+    store.appendEvent({
+      provider: 'claude',
+      threadId: 'external-historical-station',
+      sessionId: 'external-historical-station',
+      eventId: 'external-historical-station:reattach',
+      method: 'session.started',
+      createdAt: '2026-10-26T00:00:01.000Z',
+      metadata: { userId: 'mode-owner' },
+    });
+    // A later unmarked reattach does not erase the first canonical declaration.
+    store.appendEvent({
+      provider: 'station-agent',
+      threadId: 'sealed-input',
+      sessionId: 'sealed-input',
+      eventId: 'sealed-input:reattach',
+      method: 'session.started',
+      createdAt: '2026-10-26T00:00:01.000Z',
+      metadata: { userId: 'mode-owner' },
+    });
+    try {
+      const ordinary = service.durabilityProfileForProvider('station-agent');
+      expect(ordinary).toBeDefined();
+      const listed = await service.listSessionReadModel(
+        INTERNAL_SESSION_READ_SCOPE,
+      );
+      for (const threadId of [
+        'sealed-no-tools',
+        'sealed-input',
+        'malformed-sealed',
+      ]) {
+        const queueReason =
+          threadId === 'malformed-sealed'
+            ? 'The recorded sealed source declaration is unavailable.'
+            : "This session can't take Steer or Queue messages. To ask for another turn, use the report or group controls.";
+        const point = await service.readSession(
+          threadId,
+          INTERNAL_SESSION_READ_SCOPE,
+        );
+        const page = await service.readSessionEventPage(threadId, {
+          afterSequence: 0,
+          limit: 20,
+          authority: INTERNAL_SESSION_READ_SCOPE,
+        });
+        for (const summary of [
+          point?.session,
+          page?.session,
+          listed.find((row) => row.threadId === threadId),
+        ]) {
+          expect(summary?.durability).toMatchObject({
+            queuedFollowUp: { state: 'none', detail: queueReason },
+            steerPlacement: { state: 'none', detail: queueReason },
+            crashContinuation: { state: 'none' },
+            toolReplay: { state: 'none' },
+            pendingApprovals: { state: 'none' },
+            fork: { state: 'none' },
+          });
+          expect(summary?.durability?.contextCarriage.history).not.toBe(
+            'station-memory',
+          );
+          expect(summary?.durability?.steerPlacement.boundary).toBeUndefined();
+        }
+        expect(await service.steerFidelityForThread(threadId)).toBe('none');
+        expect(
+          service.canSteerAtPostToolBoundary(threadId, 'not-injected'),
+        ).toBe(false);
+        const count = store.countEventsByThread(threadId);
+        expect(() =>
+          service.recordPostToolSteer({
+            threadId,
+            turnId: 'not-injected',
+            clientInputId: 'not-injected',
+            payload: { message: 'must not inject' },
+          }),
+        ).toThrow('do not support post-tool steering');
+        expect(store.countEventsByThread(threadId)).toBe(count);
+        expect(service.conversationInputAdmissionRefusal(threadId)).toEqual({
+          reasonCode: 'sealed_source_admission_required',
+          reason: queueReason,
+        });
+      }
+      for (const threadId of ['ordinary', 'cursor-only']) {
+        const point = await service.readSession(
+          threadId,
+          INTERNAL_SESSION_READ_SCOPE,
+        );
+        expect(point?.session.durability).toEqual(ordinary);
+        expect(
+          service.conversationInputAdmissionRefusal(threadId),
+        ).toBeUndefined();
+      }
+      for (const threadId of [
+        'external-ordinary',
+        'external-shaped',
+        'external-historical-station',
+      ]) {
+        const point = await service.readSession(
+          threadId,
+          INTERNAL_SESSION_READ_SCOPE,
+        );
+        const page = await service.readSessionEventPage(threadId, {
+          afterSequence: 0,
+          limit: 20,
+          authority: INTERNAL_SESSION_READ_SCOPE,
+        });
+        for (const summary of [
+          point?.session,
+          page?.session,
+          listed.find((row) => row.threadId === threadId),
+        ]) {
+          expect(summary?.provider).toBe('claude');
+          expect(summary?.durability).toEqual(STEERING_ENGINE_DURABILITY);
+        }
+      }
+      const latest = vi.spyOn(store, 'latestEventByMethod');
+      const first = vi.spyOn(store, 'firstEventByMethod');
+      try {
+        expect(
+          service.durabilityProfileForSession('station-agent', 'sealed-input')
+            ?.steerPlacement.state,
+        ).toBe('none');
+        expect(latest).toHaveBeenCalledWith('sealed-input', 'session.started');
+        expect(first).toHaveBeenCalledWith('sealed-input', 'session.started');
+        for (const threadId of [
+          'external-ordinary',
+          'external-shaped',
+          'external-historical-station',
+        ]) {
+          latest.mockClear();
+          first.mockClear();
+          const current = store.readSessionByThread(threadId);
+          expect(current?.provider).toBe('claude');
+          expect(
+            service.durabilityProfileForSession(current?.provider, threadId),
+          ).toEqual(STEERING_ENGINE_DURABILITY);
+          expect(
+            latest,
+            'external-engine durability lookup must not query the Station metadata namespace',
+          ).not.toHaveBeenCalled();
+          expect(
+            first,
+            'external-engine durability lookup must not query the Station metadata namespace',
+          ).not.toHaveBeenCalled();
+        }
+      } finally {
+        latest.mockRestore();
+        first.mockRestore();
+      }
+      expect(service.durabilityProfileForProvider('station-agent')).toEqual(
+        ordinary,
+      );
+      expect(fetchModel).not.toHaveBeenCalled();
+    } finally {
+      await service.shutdown();
+      store.close();
+    }
+  });
+});
+
+describe('historical report terminal snapshots', () => {
+  test('retains an authenticated original-turn witness after Session deletion and refuses altered identities', async () => {
+    const home = historicalHomes('report-terminal-witness-');
+    const environment = new EnvironmentSecurityService({ homeDir: home });
+    await environment.initialize();
+    const persistence = new StationDelegationPersistence(home);
+    const store = createStore();
+    const orchestration = new OrchestrationService({
+      eventStore: store,
+      eventBus: new EventBus(),
+      adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+      logger: { debug() {}, warn() {} },
+    });
+    const current = (): undefined => undefined;
+    const input = {
+      groupId: 'report-group',
+      seatId: 'reviewer',
+      invocationId: 'report-invocation',
+      root: {
+        id: 'report-root',
+        authority_epoch: 0,
+        digest: `sha256:${'1'.repeat(64)}`,
+      },
+      envelope: {
+        id: 'report-envelope',
+        generation: 0,
+        digest: `sha256:${'2'.repeat(64)}`,
+      },
+      evidence: {
+        id: 'physical-evidence',
+        domain: 'station.provider-evidence' as const,
+        digest: `sha256:${'3'.repeat(64)}`,
+      },
+      turn: historicalTurn,
+      ownerId: 'report-owner',
+    };
+    try {
+      seedHistoricalTurn(store);
+      expect(
+        captureReportTerminalWitness(
+          { environment, orchestration, current },
+          { ...input, ownerId: 'foreign-owner' },
+        ),
+      ).toBeNull();
+      const witness = captureReportTerminalWitness(
+        { environment, orchestration, current },
+        input,
+      );
+      expect(witness).not.toBeNull();
+      if (!witness) throw new Error('Expected actual terminal witness');
+      const observation = {
+        groupId: input.groupId,
+        seatId: input.seatId,
+        invocationId: input.invocationId,
+        observation: {
+          kind: 'terminal' as const,
+          evidence: input.evidence,
+          taskId: historicalTurn.conversationId,
+          sessionId: historicalTurn.sessionId,
+          turnId: historicalTurn.turnId,
+          eventId: 'report-terminal',
+          witness,
+        },
+      };
+      const reference = await persistence.retainReportObservation(
+        observation,
+        current,
+      );
+      await expect(
+        persistence.retainReportObservation(
+          { ...observation, invocationId: 'foreign-invocation' },
+          current,
+        ),
+      ).rejects.toThrow('Report terminal witness identity mismatch');
+      store.deleteThread(historicalTurn.sessionId);
+      expect(
+        orchestration.readHistoricalReportTurn(
+          historicalTurn,
+          historicalAuthority,
+        ),
+      ).toBeNull();
+      const retained = await new StationDelegationPersistence(
+        home,
+      ).readReportObservation(
+        input.groupId,
+        input.invocationId,
+        reference,
+        current,
+      );
+      if (
+        retained.observation.kind !== 'terminal' ||
+        !retained.observation.witness
+      )
+        throw new Error('Expected retained witness');
+      expect(
+        verifyReportTerminalWitness(retained.observation.witness, environment),
+      ).toBe(true);
+      const changed = structuredClone(retained.observation.witness);
+      changed.data.terminal.turnId = 'foreign-turn';
+      expect(verifyReportTerminalWitness(changed, environment)).toBe(false);
+      const other = new EnvironmentSecurityService({
+        homeDir: historicalHomes('foreign-terminal-witness-'),
+      });
+      await other.initialize();
+      expect(verifyReportTerminalWitness(witness, other)).toBe(false);
+    } finally {
+      await orchestration.shutdown();
+      store.close();
+    }
+  });
+
+  test('refuses corrupt tenant storage instead of interpreting parsed absence as personal', () => {
+    const file = join(
+      historicalHomes('report-tenant-storage-'),
+      'events.sqlite',
+    );
+    const store = new EventStore(file);
+    const database = new DatabaseSync(file);
+    try {
+      seedHistoricalTurn(store);
+      const reads = readsFor(store, historicalTurn.sessionId);
+      expect(
+        reads.readHistoricalReportTurn(historicalTurn, historicalAuthority),
+      ).not.toBeNull();
+      for (const corrupted of ['malformed', '{}', 'null', ' '.repeat(65_537)]) {
+        database
+          .prepare(
+            'UPDATE provider_session_state SET tenant_execution_context = ? WHERE thread_id = ?',
+          )
+          .run(corrupted, historicalTurn.sessionId);
+        expect(
+          reads.readHistoricalReportTurn(historicalTurn, historicalAuthority),
+        ).toBeNull();
+      }
+    } finally {
+      database.close();
+      store.close();
+    }
+  });
+
+  test('refuses a personal report authority on a hosted runtime', async () => {
+    const store = createStore();
+    const service = new OrchestrationService({
+      eventStore: store,
+      eventBus: new EventBus(),
+      adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+      logger: { debug() {}, warn() {} },
+      requireTenantExecutionContext: () => true,
+    });
+    try {
+      seedHistoricalTurn(store);
+      expect(
+        service.readHistoricalReportTurn(historicalTurn, historicalAuthority),
+      ).toBeNull();
+    } finally {
+      await service.shutdown();
+      store.close();
+    }
+  });
+
+  test('refuses foreign owners, mismatched tuples and ambiguous completion without trusting cached authorization', () => {
+    const store = createStore();
+    try {
+      seedHistoricalTurn(store);
+      const reads = readsFor(store, historicalTurn.sessionId, undefined, {
+        canReadSession: () => true,
+      });
+      expect(
+        reads.readHistoricalReportTurn(
+          historicalTurn,
+          sessionReadAuthorityFromRequest(
+            'foreign-owner',
+            undefined,
+            undefined,
+          ),
+        ),
+      ).toBeNull();
+      for (const patch of [
+        { conversationId: 'foreign-conversation' },
+        { clientTurnId: 'unreceived-turn' },
+        { turnId: 'another-provider-turn' },
+      ])
+        expect(
+          reads.readHistoricalReportTurn(
+            { ...historicalTurn, ...patch },
+            historicalAuthority,
+          ),
+        ).toBeNull();
+      expect(
+        reads.readHistoricalReportTurn(historicalTurn, historicalAuthority),
+      ).not.toBeNull();
+      store.appendEvent({
+        eventId: 'second-report-terminal',
+        provider: 'claude',
+        threadId: historicalTurn.sessionId,
+        turnId: historicalTurn.turnId,
+        method: 'turn.completed',
+        createdAt: '2026-10-26T00:00:01.000Z',
+        finishReason: 'stop',
+      });
+      expect(
+        reads.readHistoricalReportTurn(historicalTurn, historicalAuthority),
+      ).toBeNull();
+    } finally {
+      store.close();
+    }
+  });
+});
 
 afterEach(() => {
   for (const directory of directories.splice(0)) {

@@ -1,0 +1,7 @@
+{
+  "revision": "a312076140acfff411a62229012d3bb27eef5338",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Verified the Pages-admitted Concepts guide uses the absolute GitHub link for the non-Pages API reference; public-docs hygiene passes. Added owner source bindings preserve reviewed provenance/retention/group claims. Regenerated credential-free static MCP topics from unchanged canonical module/atlas inputs to include CliSessionGroups; docs:mcp:check confirms118topics. This fixes generation parity, not the remaining semantic review backlog.","inputs":["docs/user/concepts.md"]}
+  ]
+}

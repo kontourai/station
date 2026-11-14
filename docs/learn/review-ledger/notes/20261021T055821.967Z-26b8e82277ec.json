@@ -1,0 +1,7 @@
+{
+  "revision": "761717c61ed972455f881122cacfa2591f8db2ed",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed epic commits 2dee through a35 and b35 placement claims against background store/chat lifecycle and hook plus dock/header/mobile/context/sheet/Agents callers. Open alias tracking prevents terminal snapshot resurrection; tool starts and own progress share a 100-row bound; 50 settled cards and 50 unrepresented bindings remain per parent. Omitted counts are labeled shown; unknown snapshot outcomes can recover from active or terminal facts. Reviewed projectless directory row context and initial-turn actor versus self-reported surface. Local 152 initial tests, 82 lifecycle repair tests, 228 origin/directory tests, 200 final repair tests and UI/server typechecks are distinct revision-bound evidence. Browser/native/live/provider and combined final epic acceptance remain unverified; #91 remains a published-contract dependency.","inputs":["docs/design/placement.md","packages/contracts/src/orchestration.ts","src-server/providers/adapters/claude-adapter-child-work.ts","src-ui/src/components/chat/BackgroundTaskNoticeCard.tsx","src-ui/src/components/chat/SubagentTranscriptCard.tsx","src-ui/src/contexts/background-tasks-store.ts","src-ui/src/hooks/orchestration/childWorkHandlers.ts","src-ui/src/utils/child-work-display.ts","src-ui/src/workspace-panes/agents/ChildWorkRow.tsx"]}
+  ]
+}

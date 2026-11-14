@@ -19,6 +19,7 @@ import type { ChatMessage } from '../../types';
 import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { absoluteTime, messageTime } from '../../utils/relativeTime';
+import type { PermissionPosture } from '../../utils/sessionDisplay';
 import { describeStationFailure } from '../../utils/stationFailure';
 import type { OverflowMenuHandle } from '../ActionOverflowMenu';
 import { Button } from '../Button';
@@ -123,6 +124,8 @@ const loadShareAnswerButton = () =>
  */
 export interface MessageBubbleSession {
   id: string;
+  permissionPosture?: PermissionPosture | null;
+  permissionPostureThreadId?: string;
   agentSlug: string;
   /**
    * archive#1424: the session's own threaded
@@ -788,6 +791,12 @@ function MessageBubbleComponent({
           agent={attributionAgentName ? { name: attributionAgentName } : null}
           engine={engine}
           owner={owner}
+          permissionPosture={
+            answerSessionId &&
+            answerSessionId === activeSession.permissionPostureThreadId
+              ? activeSession.permissionPosture
+              : null
+          }
         />
       )}
 

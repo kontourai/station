@@ -1,0 +1,7 @@
+{
+  "revision": "c64f6143146a9621b434d122f7465676064ede6e",
+
+  "notes": [
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the complete receiver-claim guide against the current attempt lookup route, runtime caller-device keyed lookup/projection, middleware live delegation-device resolver, claim reserve/transition/capacity owner and station-control claim settlement path. Corrected different valid peer grant lookup to its own namespace (none without a matching claim), and qualified refusal/unresolved settlement when persistence fails; earlier durable claims remain held, never resend authority. Executed the two focused route/store files at87a5ed7:68/68 passed. Source review only for remaining forwarding/preparation integration claims; no live peer/SSH, provider, exactly-once effect or whole-epic acceptance. Sender-side lifecycle/retention remains unqualified.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

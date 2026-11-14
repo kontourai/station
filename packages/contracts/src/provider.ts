@@ -46,6 +46,8 @@ export interface DurabilityCapability {
 
 /** Every capability is explicit; an omitted cell is an invalid declaration. */
 export interface ProviderDurabilityProfile {
+  /** Submission denial only; absence retains existing Queue behavior, never server authority. */
+  queuedFollowUp?: { state: 'none'; detail: string };
   steerPlacement: DurabilityCapability & {
     boundary?: 'engine-defined' | 'station-observed';
   };
@@ -346,7 +348,11 @@ export type DelegationProvenance =
  */
 export const SKILL_EXPERIENCE_METADATA_KEY = 'stationSkillExperience' as const;
 
+/** Server-recorded bounded mode; information and restrictions, never a grant. */
+export const RESERVED_SOURCE_EXECUTION_METADATA_KEY = 'reservedSourceExecution';
+
 export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
+  RESERVED_SOURCE_EXECUTION_METADATA_KEY,
   'usageAccountKey',
   NATIVE_RESUME_IDENTITY_METADATA_KEY,
   NATIVE_RESUME_BINDING_METADATA_KEY,

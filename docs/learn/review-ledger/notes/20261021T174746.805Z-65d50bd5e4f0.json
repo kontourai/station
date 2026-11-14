@@ -1,0 +1,7 @@
+{
+  "revision": "e7e7e3f565243b3ea07fa9d33c560b2200b39d0b",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Updated Flow 9.3.0 status after authorized normal managed install and inspected 367-file artifact comparison; reviewed retained managed receipts for 76 selected metadata/observation cases across initial unaffected files and a two-file fixture rerun, 109 physical/provider/preparation cases, and passing server-test types at c5f062. Traced repaired observation retention capture and final publication/release guards at 5b652; fresh independent review remains pending. Routes, issuer, final transport, settlement and live/native/hosted acceptance remain open. This status review does not renew unrelated historical acceptance claims.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}

@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
+import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 
 const reads = vi.hoisted(() => ({ count: 0 }));
 vi.mock('../private-json-file.js', async (importOriginal) => {
@@ -26,11 +27,13 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true });
 });
 
-test('an unchanged file is not re-read: the publisher listener reads it on every lifecycle event', () => {
+test('an unchanged file is not re-read: the publisher listener reads it on every lifecycle event', async () => {
   const home = mkdtempSync(join(tmpdir(), 'station-native-push-cache-'));
   roots.push(home);
   mkdirSync(join(home, 'security'), { mode: 0o700 });
-  const store = new NativePushRegistrationStore(home);
+  const store = new NativePushRegistrationStore(
+    await HomeWriterOwner.forHome(home),
+  );
   store.upsert(
     'device-1',
     {

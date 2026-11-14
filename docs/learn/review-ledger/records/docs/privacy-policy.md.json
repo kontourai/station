@@ -46,7 +46,19 @@
 
     "packages/sdk/src/client/plugin-telemetry.ts",
 
-    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts"
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
+
+    "src-server/services/orchestration/delegation-group-sdk-source-wire-owner.ts",
+
+    "src-server/services/orchestration/delegation-group-persistence.ts",
+
+    "src-server/services/orchestration/report-input-ledger.ts",
+
+    "src-server/runtime/conversation/reserved-sdk-source-attempt.ts",
+
+    "src-server/providers/adapters/station-agent-adapter.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts"
   ],
 
   "checks": [

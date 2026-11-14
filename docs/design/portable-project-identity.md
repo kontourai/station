@@ -1354,9 +1354,12 @@ project does not acquire a contribution because it had a path.
 
 Project execution offers are stored only in
 `AppConfig.contribution["project:<portableProjectId>"]` and default off. The
-dedicated offer mutation requires Station's bound local-operator authority and
-an exact current local/portable Project association plus the expected current
-offer. A remote operate credential may round-trip an unchanged contribution map
+dedicated offer mutation requires Station's bound owner authority: host
+home-possession or an eligible paired device with server-recorded owner standing.
+It also requires an exact current local/portable Project association and the
+expected current offer. Owner standing does not supply local-grant consent
+custody or shared-human membership. An ordinary remote operate credential may
+round-trip an unchanged contribution map
 while saving another setting, but cannot add, remove, replace, enable, or disable
 consent. The comparison occurs inside ConfigLoader's serialized mutation owner,
 so a queued stale save cannot overwrite a newer local offer.
@@ -1436,8 +1439,11 @@ its successor; ordinary unmarked handoffs retain their existing behavior.
 Durable attempts, cancellation and reconnect reconciliation remain separate
 work. A resource binding can supply
 its checked directory without a legacy Project working directory. The receiver
-retains its Project and Station workspace-isolation policy: portable worktree
-execution currently refuses before provisioning or provider effects instead of
+uses the effective Project and Station workspace-isolation settings.
+[Managed policy locks](../guides/managed-policy.md) take precedence over stored
+Project overrides. Admission rechecks the effective settings after waits and
+refuses drift or an unreadable policy. Portable worktree execution currently
+refuses before provisioning or provider effects instead of
 silently selecting a shared checkout. Admission-backed worktree provisioning
 remains required work in #483/#484. Consult the live issues for
 qualification evidence; API and service tests do not prove two physical machines

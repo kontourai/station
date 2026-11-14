@@ -1,0 +1,7 @@
+{
+  "revision": "3a5ca9c8a5d01349f9f2f1dc8a94eda71c19db3c",
+
+  "notes": [
+    {"path":"packages/sdk/README.md","note":"Reviewed the only remaining stale input delta since42b6272: packages/sdk/tsconfig.json adds ES2022.Object to the declaration compiler lib while preserving ES2020 target and ESNext module. This allows Object.hasOwn typing used by the source but does not polyfill a runtime or change exports, host contexts, request authority or transport semantics. Re-read README source distribution and runtime/host prerequisites; no README behavior claim changes and no release/Node/browser support claim inferred. No prose edit needed.","inputs":["packages/sdk/README.md","packages/sdk/tsconfig.json","packages/sdk/src/index.ts"]}
+  ]
+}

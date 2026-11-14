@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import {
   mkdtempSync,
   readdirSync,
@@ -5,6 +6,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -28,6 +30,83 @@ function root(): string {
 }
 
 describe('publishJsonFileWithOwnedLock serialization', () => {
+  test('the synchronous commit span contains authority check and rename and cannot escape', async () => {
+    const path = join(root(), 'owned.json');
+    let inside = false;
+    let escaped: (() => void) | undefined;
+    await publishJsonFileWithOwnedLock(
+      path,
+      { revision: 1 },
+      {
+        finalizeCommit: () => {
+          expect(inside).toBe(true);
+          return undefined;
+        },
+        commitWithin: (commit) => {
+          inside = true;
+          escaped = commit;
+          commit();
+          expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+            revision: 1,
+          });
+          inside = false;
+        },
+      },
+    );
+    expect(() => escaped!()).toThrow('not current');
+    await expect(
+      publishJsonFileWithOwnedLock(
+        path,
+        { revision: 2 },
+        { commitWithin: () => {} },
+      ),
+    ).rejects.toThrow('must commit synchronously');
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ revision: 1 });
+  });
+  test('revoked effect authority after staging preserves the retained document and removes staging', async () => {
+    const directory = root();
+    const path = join(directory, 'state.json');
+    writeFileSync(path, '{"retained":true}');
+    let current = true;
+    await expect(
+      publishJsonFileWithOwnedLock(
+        path,
+        { replacement: true },
+        {
+          beforeCommit() {
+            queueMicrotask(() => {
+              current = false;
+            });
+          },
+          finalizeCommit() {
+            if (!current) throw new Error('authority revoked');
+          },
+        },
+      ),
+    ).rejects.toThrow('authority revoked');
+    expect(readFileSync(path, 'utf8')).toBe('{"retained":true}');
+    expect(readdirSync(directory)).toEqual(['state.json']);
+    current = true;
+    let observedAtRevocation: unknown;
+    await publishJsonFileWithOwnedLock(
+      path,
+      { replacement: true },
+      {
+        finalizeCommit() {
+          if (!current) throw new Error('authority revoked');
+          queueMicrotask(() => {
+            current = false;
+            observedAtRevocation = JSON.parse(readFileSync(path, 'utf8'));
+          });
+        },
+      },
+    );
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+      replacement: true,
+    });
+    expect(current).toBe(false);
+    expect(observedAtRevocation).toEqual({ replacement: true });
+  });
   // This seam's historical bytes differ from writeJsonDurably's: two-space
   // JSON with NO trailing newline. Pinned as exact text so a caller that
   // passes no options keeps what it had before options existed.
@@ -144,6 +223,71 @@ describe('json file storage reads and optimistic writes', () => {
   });
 });
 
+test.each([
+  'rejecting',
+  'resolving',
+  'scalar',
+  'then-getter',
+  'current',
+] as const)(
+  'synchronous finalizer containment survives a child process (%s)',
+  (variant) => {
+    const child = spawnSync(
+      process.execPath,
+      [
+        '--unhandled-rejections=strict',
+        '--import',
+        createRequire(import.meta.url).resolve('tsx'),
+        '--input-type=module',
+        '--eval',
+        `const variant = ${JSON.stringify(variant)};
+const directory = ${JSON.stringify(root())};
+const moduleUrl = ${JSON.stringify(new URL('../json-file-storage.ts', import.meta.url).href)};
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { join } from 'node:path';
+import { setImmediate as immediate } from 'node:timers/promises';
+const invalidResult = () => {
+  if (variant === 'rejecting') return (async () => {
+    await Promise.resolve();
+    throw new Error('async authority revoked');
+  })();
+  if (variant === 'resolving') return Promise.resolve();
+  if (variant === 'scalar') return 'invalid authority result';
+  if (variant === 'then-getter') return { get then() { throw new Error('then getter revoked'); } };
+  return undefined;
+};
+let refusal;
+const { publishJsonFileWithOwnedLock } = await import(moduleUrl);
+const target = join(directory, 'state.json');
+fs.writeFileSync(target, '{"retained":true}');
+const retained = fs.readFileSync(target, 'utf8');
+try {
+  await publishJsonFileWithOwnedLock(target, { replacement: true }, {
+    finalizeCommit: invalidResult,
+  });
+} catch (error) { refusal = error; }
+if (variant === 'current') {
+  assert.equal(refusal, undefined);
+  assert.deepEqual(JSON.parse(fs.readFileSync(target, 'utf8')), { replacement: true });
+} else {
+  assert.equal(refusal?.message, 'JSON publication finalizer must be synchronous.');
+  assert.equal(fs.readFileSync(target, 'utf8'), retained);
+}
+assert.deepEqual(fs.readdirSync(directory), ['state.json']);
+await immediate();
+await immediate();
+console.log('finalizer-check-survived');
+`,
+      ],
+      { encoding: 'utf8', windowsHide: true, timeout: 20_000 },
+    );
+    expect(child.error).toBeUndefined();
+    expect(child.status, child.stderr).toBe(0);
+    expect(child.stdout).toContain('finalizer-check-survived');
+  },
+  30_000,
+);
 test('final publication admission observes the fully staged file and refuses rename without changing prior bytes', async () => {
   const dir = root();
   const path = join(dir, 'state.json');

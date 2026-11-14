@@ -17,7 +17,10 @@ class FakeWritable extends Writable {
     callback: (error?: Error | null) => void,
   ): void {
     for (const line of chunk.toString().split('\n')) {
-      if (line.trim()) this.lines.push(line);
+      if (line.trim()) {
+        this.lines.push(line);
+        this.emit('line', line);
+      }
     }
     callback();
   }

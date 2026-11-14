@@ -2834,6 +2834,7 @@ export class EventStore {
   private appendEventInsert?: ReturnType<EventStore['db']['prepare']>;
   private appendEventInsertOrIgnore?: ReturnType<EventStore['db']['prepare']>;
   private appendEventHighWaterUpdate?: ReturnType<EventStore['db']['prepare']>;
+  private conversationHistoryUpsert?: ReturnType<EventStore['db']['prepare']>;
   /** Persisted with this store so issued cursors survive a Station restart. */
   private readonly declaredOutputCursorKey: Buffer;
   private readonly sessionInventoryCursorKey: Buffer;
@@ -5770,12 +5771,10 @@ export class EventStore {
   }
 
   private readPersistedEventObservedAt(eventId: string): string | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT observed_at, typeof(observed_at) AS observed_at_type
+    const row = this.readStatement(
+      `SELECT observed_at, typeof(observed_at) AS observed_at_type
            FROM orchestration_events WHERE id = ?`,
-      )
-      .get(eventId) as
+    ).get(eventId) as
       | { observed_at?: unknown; observed_at_type?: unknown }
       | undefined;
     if (!row) return undefined;
@@ -9848,6 +9847,8 @@ export class EventStore {
         bounded,
         hydrate,
       ),
+      // Initiation provenance belongs to the actual first turn, even without a prompt.
+      this.firstEventByMethod(threadId, 'turn.started', bounded, hydrate),
       this.firstTurnStartedWithPrompt(threadId, bounded, hydrate),
       // archive#3524: the CURRENT turn's own announcement. Neither existing
       // slot guarantees this fact stays visible — `firstTurnStartedWithPrompt`
@@ -10662,6 +10663,7 @@ export class EventStore {
         methodFacts?.get('session.started')?.latest,
         methodFacts?.get('session.configured')?.first,
         methodFacts?.get('session.configured')?.latest,
+        methodFacts?.get('turn.started')?.first,
         firstPromptedTurnByThread.get(threadId),
         currentTurnCompletion,
         latestObservedStart,
@@ -11884,6 +11886,7 @@ export class EventStore {
 
   listConversationHistoryPage(options: {
     ownerUserId: string;
+    ownerUserIds?: readonly string[];
     tenantId?: string;
     agentSlug?: string;
     requireBound?: boolean;
@@ -11903,13 +11906,12 @@ export class EventStore {
       created_at: string;
       updated_at: string;
     };
+    const owners = options.ownerUserIds ?? [options.ownerUserId];
+    if (owners.length === 0) return { records: [], hasMore: false };
     const readRows = (ownerPredicate: string): HistoryRow[] => {
       const memberPredicates = [ownerPredicate];
       const conversationPredicates = ['row_rank = 1'];
-      const values: unknown[] = [];
-      if (ownerPredicate === 'h.owner_user_id = ?') {
-        values.push(options.ownerUserId);
-      }
+      const values: unknown[] = [...owners];
       if (options.tenantId !== undefined) {
         memberPredicates.push('h.tenant_id = ?');
         values.push(options.tenantId);
@@ -12014,7 +12016,9 @@ export class EventStore {
         )
         .all(...values) as HistoryRow[];
     };
-    const rows = readRows('h.owner_user_id = ?');
+    const rows = readRows(
+      `h.owner_user_id IN (${owners.map(() => '?').join(', ')})`,
+    );
     const hasMore = rows.length > options.limit;
     const records = rows.slice(0, options.limit).map((row) => ({
       threadId: row.thread_id,
@@ -13676,6 +13680,82 @@ export class EventStore {
       )
       .get(threadId);
     return row ? mapPersistedSessionRow(row as any) : undefined;
+  }
+
+  /** One read snapshot of the original personal report's owner and exact terminal turn. */
+  readHistoricalReportTurn(input: {
+    conversationId: string;
+    sessionId: string;
+    clientTurnId: string;
+    turnId: string;
+    ownerId: string;
+  }) {
+    this.db.exec('SAVEPOINT historical_report_turn');
+    try {
+      const session = this.readSessionByThread(input.sessionId);
+      const personal = this.db
+        .prepare(
+          'SELECT tenant_execution_context IS NULL AS personal FROM provider_session_state WHERE thread_id = ?',
+        )
+        .get(input.sessionId) as { personal: number } | undefined;
+      const lineage = this.conversationForSession(input.sessionId);
+      const owner = this.findSessionOwnerAttribution(input.sessionId);
+      if (
+        !session ||
+        !input.ownerId.trim() ||
+        personal?.personal !== 1 ||
+        lineage?.conversationId !== input.conversationId ||
+        owner.unattributedAgent ||
+        owner.ownerUserId !== input.ownerId
+      )
+        return null;
+      const resolved = this.turnDedupKernel.executeSync(
+        {
+          type: 'turnDedup.read',
+          key: turnDedupKey(input.sessionId, input.clientTurnId),
+        },
+        { liveness: () => 'unknown' },
+        { withinHostTransaction: true },
+      );
+      if (
+        resolved.kind !== 'found' ||
+        resolved.record.settlement !== undefined ||
+        typeof resolved.record.value !== 'string' ||
+        resolved.record.value !== input.turnId
+      )
+        return null;
+      const events = this.listTurnEventsByMethods(
+        input.sessionId,
+        input.turnId,
+        ['turn.completed'],
+        2,
+      );
+      const terminal = events[0];
+      if (
+        events.length !== 1 ||
+        terminal?.method !== 'turn.completed' ||
+        terminal.payload.method !== terminal.method ||
+        terminal.payload.threadId !== input.sessionId ||
+        terminal.payload.turnId !== input.turnId ||
+        terminal.payload.provider !== session.provider ||
+        terminal.id !== terminal.payload.eventId ||
+        terminal.provider !== terminal.payload.provider ||
+        terminal.createdAt !== terminal.payload.createdAt
+      )
+        return null;
+      return Object.freeze({
+        conversationId: input.conversationId,
+        sessionId: input.sessionId,
+        clientTurnId: input.clientTurnId,
+        turnId: input.turnId,
+        ownerId: input.ownerId,
+        provider: session.provider,
+        terminalEventId: terminal.payload.eventId,
+        terminalCreatedAt: terminal.payload.createdAt,
+      });
+    } finally {
+      this.db.exec('RELEASE SAVEPOINT historical_report_turn');
+    }
   }
 
   /** Internal workspace-mutation barrier inventory; never exposed to callers. */
@@ -17977,12 +18057,10 @@ export class EventStore {
   }
 
   private projectConversationHistoryEvent(event: CanonicalRuntimeEvent): void {
-    const existing = this.db
-      .prepare(
-        `SELECT owner_user_id, tenant_id, agent_slug, project_slug, title, title_source, message_count, created_at
+    const existing = this.readStatement(
+      `SELECT owner_user_id, tenant_id, agent_slug, project_slug, title, title_source, message_count, created_at
          FROM orchestration_conversation_history WHERE thread_id = ?`,
-      )
-      .get(event.threadId) as
+    ).get(event.threadId) as
       | {
           owner_user_id: string | null;
           tenant_id: string | null;
@@ -17994,12 +18072,10 @@ export class EventStore {
           created_at: string;
         }
       | undefined;
-    const persisted = this.db
-      .prepare(
-        `SELECT tenant_execution_context, created_at
+    const persisted = this.readStatement(
+      `SELECT tenant_execution_context, created_at
          FROM provider_session_state WHERE thread_id = ?`,
-      )
-      .get(event.threadId) as
+    ).get(event.threadId) as
       | { tenant_execution_context: string | null; created_at: string }
       | undefined;
     const metadata =
@@ -18053,12 +18129,10 @@ export class EventStore {
       : undefined;
     const inheritedRow =
       lineage?.predecessorSessionId && lineage.conversationId !== event.threadId
-        ? (this.db
-            .prepare(
-              `SELECT title, title_source FROM orchestration_conversation_history
+        ? (this.readStatement(
+            `SELECT title, title_source FROM orchestration_conversation_history
                WHERE thread_id = ?`,
-            )
-            .get(lineage.conversationId) as
+          ).get(lineage.conversationId) as
             | { title?: string | null; title_source?: string | null }
             | undefined)
         : undefined;
@@ -18113,9 +18187,7 @@ export class EventStore {
       event.method === 'turn.completed'
         ? 1
         : 0);
-    this.db
-      .prepare(
-        `INSERT INTO orchestration_conversation_history
+    const upsertSql = `INSERT INTO orchestration_conversation_history
           (thread_id, owner_user_id, tenant_id, agent_slug, project_slug, title, title_source, message_count, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(thread_id) DO UPDATE SET
@@ -18133,22 +18205,26 @@ export class EventStore {
              ELSE COALESCE(orchestration_conversation_history.title, excluded.title)
            END,
            message_count = excluded.message_count,
-           updated_at = excluded.updated_at`,
-      )
-      .run(
-        event.threadId,
-        ownerUserId ?? null,
-        tenant?.tenantId ?? existing?.tenant_id ?? null,
-        agentSlug ?? null,
-        projectSlug ?? null,
-        candidate?.title ?? null,
-        candidate?.source ?? null,
-        messageCount,
-        existing?.created_at ?? persisted?.created_at ?? event.createdAt,
-        event.createdAt,
-        replaceLowContentTitle ? 1 : 0,
-        replaceLowContentTitle ? 1 : 0,
-      );
+           updated_at = excluded.updated_at`;
+    let upsert = this.conversationHistoryUpsert;
+    if (this.cachesDisabled || !upsert) {
+      upsert = this.db.prepare(upsertSql);
+      if (!this.cachesDisabled) this.conversationHistoryUpsert = upsert;
+    }
+    upsert.run(
+      event.threadId,
+      ownerUserId ?? null,
+      tenant?.tenantId ?? existing?.tenant_id ?? null,
+      agentSlug ?? null,
+      projectSlug ?? null,
+      candidate?.title ?? null,
+      candidate?.source ?? null,
+      messageCount,
+      existing?.created_at ?? persisted?.created_at ?? event.createdAt,
+      event.createdAt,
+      replaceLowContentTitle ? 1 : 0,
+      replaceLowContentTitle ? 1 : 0,
+    );
     this.refreshConversationHistoryQuarantine(event.threadId);
   }
 
@@ -18761,13 +18837,11 @@ export class EventStore {
   }
 
   private nextSequence(threadId: string): number {
-    const row = this.db
-      .prepare(
-        `SELECT COALESCE(MAX(sequence), 0) AS max_sequence
+    const row = this.readStatement(
+      `SELECT COALESCE(MAX(sequence), 0) AS max_sequence
          FROM orchestration_events
          WHERE thread_id = ?`,
-      )
-      .get(threadId) as { max_sequence: number };
+    ).get(threadId) as { max_sequence: number };
     return row.max_sequence + 1;
   }
 
@@ -18778,12 +18852,10 @@ export class EventStore {
    * insert or rollback leaves it unchanged.
    */
   private nextGlobalSequence(): number {
-    const row = this.db
-      .prepare(
-        `SELECT high_water AS max_sequence
+    const row = this.readStatement(
+      `SELECT high_water AS max_sequence
          FROM orchestration_stream_identity WHERE singleton = 1`,
-      )
-      .get() as { max_sequence: number };
+    ).get() as { max_sequence: number };
     return row.max_sequence + 1;
   }
 }

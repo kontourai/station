@@ -8,6 +8,7 @@ import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import { test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
+  emitMockOrchestrationEvent,
   installMockOrchestrationSse,
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
@@ -444,6 +445,169 @@ async function evidence(page: Page, testInfo: TestInfo, name: string) {
   if (directory) {
     await mkdir(directory, { recursive: true });
     await copyFile(testInfo.outputPath(name), join(directory, name));
+  }
+}
+
+const sealedSteeringReason =
+  "This session can't take Steer or Queue messages. To ask for another turn, use the report or group controls.";
+const steeringReasonCases: readonly {
+  name: string;
+  state: 'none' | 'native' | 'emulated';
+  queueBlocked: boolean;
+  detail: string | undefined;
+  expectedReason: string | undefined;
+}[] = [
+  {
+    name: 'sealed source',
+    state: 'none',
+    queueBlocked: true,
+    detail: `  ${sealedSteeringReason}  `,
+    expectedReason: sealedSteeringReason,
+  },
+  {
+    name: 'none with detail',
+    state: 'none',
+    queueBlocked: false,
+    detail: '  This engine does not support steering.  ',
+    expectedReason: 'This engine does not support steering.',
+  },
+  {
+    name: 'none without detail',
+    state: 'none',
+    queueBlocked: false,
+    detail: undefined,
+    expectedReason: 'Steering is unavailable for this session.',
+  },
+  {
+    name: 'none with empty detail',
+    state: 'none',
+    queueBlocked: false,
+    detail: '',
+    expectedReason: 'Steering is unavailable for this session.',
+  },
+  {
+    name: 'none with whitespace detail',
+    state: 'none',
+    queueBlocked: false,
+    detail: '   ',
+    expectedReason: 'Steering is unavailable for this session.',
+  },
+  {
+    name: 'native',
+    state: 'native',
+    queueBlocked: false,
+    detail: 'Native placement details are not an unavailable reason.',
+    expectedReason: undefined,
+  },
+  {
+    name: 'emulated',
+    state: 'emulated',
+    queueBlocked: false,
+    detail: 'Emulated placement details are not an unavailable reason.',
+    expectedReason: undefined,
+  },
+];
+
+for (const [label, width] of [
+  ['phone', 390],
+  ['desktop', 1440],
+] as const) {
+  for (const scenario of steeringReasonCases) {
+    test(`declared steering ${scenario.name} on ${label}`, async ({
+      page,
+    }, testInfo) => {
+      const profile = structuredClone(STEERING_ENGINE_DURABILITY);
+      profile.steerPlacement = {
+        state: scenario.state,
+        detail: scenario.detail ?? '',
+        ...(scenario.state === 'emulated'
+          ? { boundary: 'station-observed' as const }
+          : {}),
+      };
+      if (scenario.queueBlocked)
+        profile.queuedFollowUp = {
+          state: 'none',
+          detail: sealedSteeringReason,
+        };
+      // Exercise an older/malformed wire reason without erasing its declared state.
+      if (scenario.detail === undefined)
+        Reflect.deleteProperty(profile.steerPlacement, 'detail');
+      const executionRequests: Array<Record<string, unknown>> = [];
+      await page.setViewportSize({ width, height: 900 });
+      await installMockOrchestrationSse(page);
+      await seedRoutes(page, executionRequests, false, profile);
+      const { composer, started } = await openStartComposer(page, label);
+      await composer
+        .getByRole('textbox', { name: 'What would you like done?' })
+        .fill('start with a declared steering profile');
+      await composer
+        .getByRole('button', { name: 'Start', exact: true })
+        .click();
+      await started();
+      await waitForMockOrchestrationSse(page);
+      const projection = await page.evaluate(async () => {
+        const response = await fetch('/api/orchestration/sessions/read-model');
+        if (!response.ok) throw new Error('Session projection is unavailable');
+        return response.json();
+      });
+      expect(projection.data).toHaveLength(1);
+      await emitMockOrchestrationEvent(page, 'orchestration:snapshot', {
+        sessions: projection.data,
+      });
+      const input = page.getByRole('group', {
+        name: 'Message composer',
+        exact: true,
+      });
+      await input.getByRole('textbox').fill('keep this follow-up');
+      if (scenario.queueBlocked)
+        await expect(
+          page.getByRole('button', { name: 'Send', exact: true }),
+        ).toBeDisabled();
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(
+          (value) => document.documentElement.setAttribute('data-theme', value),
+          theme,
+        );
+        await page.getByRole('button', { name: /^Send mode:/ }).click();
+        const mode = page.getByRole('dialog', {
+          name: 'Send mode',
+          exact: true,
+        });
+        const steer = mode.getByRole('button', {
+          name: /Steer (this turn|when safe)/,
+        });
+        const queue = mode.getByRole('button', { name: 'Queue for next turn' });
+        if (scenario.queueBlocked) await expect(queue).toBeDisabled();
+        else await expect(queue).toBeEnabled();
+        if (scenario.expectedReason) {
+          await expect(steer).toBeDisabled();
+          await expect(mode.getByRole('status')).toHaveText(
+            scenario.expectedReason,
+          );
+          if (scenario.name === 'sealed source')
+            await evidence(
+              page,
+              testInfo,
+              `sealed-steering-unavailable-${width}-${theme}.png`,
+            );
+        } else {
+          await expect(steer).toBeEnabled();
+          await expect(mode.getByRole('status')).toHaveCount(0);
+        }
+        await page.keyboard.press('Escape');
+        await expect(mode).toBeHidden();
+        await expect(input.getByRole('textbox')).toHaveValue(
+          'keep this follow-up',
+        );
+      }
+      if (scenario.queueBlocked) {
+        await input.getByRole('textbox').press('Control+Enter');
+        await expect(input.getByRole('textbox')).toHaveValue(
+          'keep this follow-up',
+        );
+      }
+      expect(executionRequests).toHaveLength(1);
+    });
   }
 }
 

@@ -1,0 +1,7 @@
+{
+  "revision": "f0cf5edea392581a326bca3bce233fa05f53b241",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed the MCP adoption sequence against commits 256e0e6d18f, d4645fba674, ad76b4031d9 and b66daf94ba4, the 183-case combined test receipt, and private live attempt receipts. Corrected one-shot inventory wording and removed the already-executed future asking-mode plan. Controlled form integration passes; all four live attempts remain excluded from answered-elicitation acceptance. Full epic, second-device, lineage/context, readiness and publication remain open.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}

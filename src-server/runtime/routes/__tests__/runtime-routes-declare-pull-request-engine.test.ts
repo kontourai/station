@@ -310,7 +310,7 @@ describe('an external engine declares a pull request: the Task shows it, a merge
     // (local-grant, so it acts for the person; its scope is what is under test).
     const pairingHome = join(homeDir, 'pairing');
     mkdirSync(join(pairingHome, 'security'), { recursive: true, mode: 0o700 });
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir: pairingHome,
       environmentId: '22222222-2222-4222-8222-222222222222',
     });
@@ -367,6 +367,7 @@ describe('an external engine declares a pull request: the Task shows it, a merge
       taskGraphService: taskGraph,
       projectService,
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL ||
           pairing.verifyCredential(credential),

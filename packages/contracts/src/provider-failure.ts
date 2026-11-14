@@ -77,6 +77,7 @@ export const CONFINED_FULL_ACCESS_UNAVAILABLE_CODE =
  */
 export const CONFINED_NETWORK_DENIED_CODE = 'confined_network_denied';
 export const SESSION_START_IN_FLIGHT_CODE = 'session_start_in_flight';
+export const APPROVAL_POSTURE_CHANGED_CODE = 'approval-posture-changed';
 export const RESOURCE_ENGINE_START_CAPACITY_CODE =
   'resource_engine_start_capacity';
 export const ADOPTION_ENGINE_NOT_READY_CODE = 'continuation_engine_not_ready';
@@ -160,6 +161,13 @@ export const PROVIDER_FAILURE_KINDS = {
   stage_incomplete: 'input_unsupported',
   stage_invalid_upload: 'input_unsupported',
   stage_capacity: 'busy',
+  usage_unknown: 'indeterminate',
+  bounded_api_execution_unavailable: 'input_unsupported',
+  reserved_station_turn_unavailable: 'permission_denied',
+  receiver_execution_not_offered: 'permission_denied',
+  receiver_execution_unavailable: 'permission_denied',
+  receiver_execution_authority_changed: 'permission_denied',
+  receiver_execution_consent_stale: 'permission_denied',
   [PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE]: 'quota_exhausted',
   sandbox_unavailable: 'permission_denied',
   provider_model_unavailable: 'model_unavailable',
@@ -200,6 +208,7 @@ export const PROVIDER_FAILURE_KINDS = {
   [EXECUTION_ENGINE_CHANGED_CODE]: 'conflict',
   [AUTH_RATE_LIMITED_ERROR_CODE]: 'rate_limited',
   [APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE]: 'permission_denied',
+  [APPROVAL_POSTURE_CHANGED_CODE]: 'permission_denied',
   [FOREGROUND_MESSAGE_INDETERMINATE_CODE]: 'indeterminate',
   [CONVERSATION_CONTEXT_UNAVAILABLE_CODE]: 'conflict',
   [PRINCIPAL_UNRESOLVED_CODE]: 'auth',

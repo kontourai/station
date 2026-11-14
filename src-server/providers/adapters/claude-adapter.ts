@@ -120,7 +120,10 @@ import {
   managedEngineBinaryPath,
   managedEnginePrerequisites,
 } from '../../security/managed-engine-limits.js';
-import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
+import type {
+  EngineSessionLaunchContext,
+  engineProxyLaunch,
+} from '../../services/connections/engine-proxy-routing.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   commitEngineLaunch,
@@ -131,6 +134,10 @@ import {
   stampLaunchExit,
 } from '../../services/infra/session-tmpdir.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
+import {
+  type SessionToolRestriction,
+  sessionToolRestriction,
+} from '../../services/orchestration/session-tool-restriction.js';
 import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
 import {
   CLAUDE_NATIVE_WEB_READ_TOOLS,
@@ -161,6 +168,8 @@ import type {
   ProviderAdapterShape,
   ProviderAdoptionHooks,
   ProviderDiscardSessionRecovery,
+  ProviderExecutionAuthInput,
+  ProviderExecutionAuthObservation,
   ProviderInterruptTurnResult,
   ProviderNativeSessionIdentity,
   ProviderSendTurnInput,
@@ -192,6 +201,13 @@ import {
   findCliBinaryAsync,
   runCliCommand,
 } from '../auth/cli-auth.js';
+import { observeExecutableInvocation } from '../auth/executable-observation.js';
+import {
+  assertNativeAuthenticationProfile,
+  captureNativeAuthenticationLaunch,
+  observeNativeAuthenticationLaunch,
+  retainNativeAuthenticationContinuation,
+} from '../auth/native-authentication-context.js';
 import { effectiveModelMetadata } from '../llm/effective-model-metadata.js';
 import { providerFailure } from '../provider-failure.js';
 import {
@@ -335,6 +351,12 @@ type PendingRequest = {
 
 /** The command Station resolves on PATH for this engine. */
 const CLAUDE_CLI_COMMAND = 'claude';
+// Exact native runtimes qualified for retained-Session wildcard tool denial.
+const CONTEXT_SYNC_RUNTIME_VERSIONS = new Set([
+  '2.1.308',
+  '2.1.318',
+  '2.1.322',
+]);
 /** #2494: id of the confined-credential readiness entry (macOS only). */
 const CLAUDE_CONFINED_CREDENTIAL_PREREQUISITE_ID = 'claude-confined-credential';
 
@@ -763,6 +785,8 @@ function claudeModelCapabilities(
 
 type ClaudeSessionRecord = {
   session: ProviderSession;
+  toolRestriction?: SessionToolRestriction;
+  toolRestrictionPending?: true;
   deliveryProbeServerId?: string;
   /** #2932: the redacted end of the engine's stderr (claude-code-spawn.ts). */
   engineStderrTail?: () => string;
@@ -1119,7 +1143,9 @@ export interface ClaudeAdapterOptions {
    * {@link claudeArtifactsSpawnEnv} for what reaches the spawn.
    */
   getArtifactsEnabled?: () => Promise<boolean>;
-  getConnectionLaunch?: () => Promise<ReturnType<typeof engineProxyLaunch>>;
+  getConnectionLaunch?: (
+    session?: EngineSessionLaunchContext,
+  ) => Promise<ReturnType<typeof engineProxyLaunch>>;
   /**
    * Station#1157 review fix (MEDIUM): the running instance's own
    * station-control operational env (`stationControlSpawnEnv(port)`'s
@@ -1742,6 +1768,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
   private readonly events = new AsyncEventQueue();
   private readonly sessions = new Map<string, ClaudeSessionRecord>();
+  private readonly restrictedStartingProcesses = new Map<
+    string,
+    ClaudeEngineProcess
+  >();
   /** #1551: memoized `<claude> --version` probes, keyed by command + args. */
   private readonly versionProbes = new Map<
     string,
@@ -1767,10 +1797,33 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       this.continuity.nativeReturn = 'same-binding';
   }
 
+  async assertContextSyncRuntime(): Promise<void> {
+    const executable = await this.resolveClaudeExecutable();
+    const version =
+      executable.launch === 'installed'
+        ? executable.installedVersion
+        : executable.bundledVersion;
+    if (!CONTEXT_SYNC_RUNTIME_VERSIONS.has(version ?? ''))
+      throw new Error('group_sync_policy_unavailable');
+  }
+
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
     try {
+      const restriction = sessionToolRestriction(input.threadId);
+      if (restriction) {
+        if (
+          this.nativeSessionIdentity(input.resumeCursor)?.sessionId !==
+          restriction.nativeSessionId
+        )
+          throw new Error('group_sync_identity_changed');
+        input = {
+          ...input,
+          requireNativeResumeIdentity: true,
+          nativeResumeBindingKey: restriction.nativeBindingKey,
+        };
+      }
       input = withoutUnconfinedFullAccess(input);
       if (
         input.requireNativeResumeIdentity &&
@@ -1801,7 +1854,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // is deliberately absent (adoption and source-affinity resume —
       // archive#896 decision 2's config-root orphaning concern: running the
       // child under a different config home would strand it there).
-      const connectionLaunch = await this.options.getConnectionLaunch?.();
+      const connectionLaunch = await this.options.getConnectionLaunch?.(
+        Object.freeze({
+          threadId: input.threadId,
+          cwd: input.cwd,
+          modelId: input.modelId,
+        }),
+      );
       const connectionEnv = claudeConnectionEnvForSpawn(
         connectionLaunch
           ? connectionLaunch.env
@@ -1814,6 +1873,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       const oauthTokens = await this.options.resolveMcpOAuth?.(input);
       const claudeExecutable = launchedClaudeExecutable(
         await this.resolveClaudeExecutable(),
+      );
+      assertNativeAuthenticationProfile(
+        this,
+        input.threadId,
+        resolvedHome?.profileRef ?? null,
+        input.cwd,
       );
       const usageAccountKey = resolvedHome
         ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
@@ -2189,6 +2254,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     sdkQuery.close();
     await engineProcess.terminate();
     seatbelt.launch.cleanup();
+    removeLaunchedRoot(threadId, record.hostImageLaunch);
     this.options.revokeStationControlCallerToken?.(threadId);
     if (record.nativeOwnershipClaimed)
       this.options.nativeSessionOwnership?.retired(threadId);
@@ -2296,7 +2362,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // the same line for the connection env: its routing keys apply, its
       // config-home key does not (same orphaning concern as the app-home
       // env above).
-      const connectionLaunch = await this.options.getConnectionLaunch?.();
+      const connectionLaunch = await this.options.getConnectionLaunch?.(
+        Object.freeze({
+          threadId: input.threadId,
+          cwd: input.cwd,
+          modelId: input.modelId,
+        }),
+      );
       const connectionEnv = claudeConnectionEnvForSpawn(
         connectionLaunch
           ? connectionLaunch.env
@@ -2553,11 +2625,29 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const sessionTmpDir = seatbelt
       ? undefined
       : engineSessionTmpDir(input.threadId);
-    const engineProcess = createClaudeEngineProcess(
-      undefined,
-      seatbeltSpawn?.wrap,
+    const assertAuthenticatedLaunch = captureNativeAuthenticationLaunch(
+      this,
       input.threadId,
     );
+    const engineProcess = createClaudeEngineProcess(
+      undefined,
+      (launch) => {
+        const authenticatedLaunch =
+          assertAuthenticatedLaunch &&
+          claudeExecutable?.toLowerCase().endsWith('.js') &&
+          launch.command === 'node' &&
+          launch.args[0] === claudeExecutable
+            ? { ...launch, command: process.execPath }
+            : launch;
+        assertAuthenticatedLaunch?.(authenticatedLaunch);
+        return seatbeltSpawn
+          ? seatbeltSpawn.wrap(authenticatedLaunch)
+          : authenticatedLaunch;
+      },
+      input.threadId,
+    );
+    if (sessionToolRestriction(input.threadId))
+      this.restrictedStartingProcesses.set(input.threadId, engineProcess);
     let sdkQuery: ReturnType<typeof query>;
     // After station-control, so the browser server reuses its credential.
     let builtinServers: Record<string, McpServerConfig> | undefined;
@@ -2593,6 +2683,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     } catch (error) {
       this.options.revokeStationControlCallerToken?.(input.threadId);
       seatbelt?.launch.cleanup();
+      if (this.restrictedStartingProcesses.has(input.threadId))
+        return engineProcess.terminate().then(() => {
+          this.restrictedStartingProcesses.delete(input.threadId);
+          throw error;
+        });
       throw error;
     }
 
@@ -2616,6 +2711,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const probeServer = probeSuffix ? `probe${probeSuffix}` : undefined;
     const record: ClaudeSessionRecord = {
       session,
+      toolRestriction: sessionToolRestriction(input.threadId),
       deliveryProbeServerId:
         probeServer &&
         input.agent?.toolServers?.some((server) => server.id === probeServer)
@@ -2714,6 +2810,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       confinementRecord?: ReturnType<typeof observedConfinementRecord>,
     ): ProviderSession => {
       this.sessions.set(input.threadId, record);
+      this.restrictedStartingProcesses.delete(input.threadId);
       // Once per start: a confined start committed when it registered.
       commitHostImageLaunch();
       record.stopWatchingEngineExit = engineProcess.onExit((exit) =>
@@ -2856,6 +2953,45 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
       return session;
     };
+    const announceQualified = async (
+      confinementRecord?: ReturnType<typeof observedConfinementRecord>,
+    ): Promise<ProviderSession> => {
+      if (record.toolRestriction) {
+        record.toolRestrictionPending = true;
+        this.sessions.set(input.threadId, record);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const init = await Promise.race([
+            sdkQuery.initializationResult(),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(
+                () => reject(new Error('group_sync_policy_unavailable')),
+                10_000,
+              );
+            }),
+          ]);
+          record.toolRestriction.assertCurrent();
+          if (
+            !CONTEXT_SYNC_RUNTIME_VERSIONS.has(init.claude_code_version ?? '')
+          )
+            throw new Error('group_sync_policy_unavailable');
+          delete record.toolRestrictionPending;
+        } catch (error) {
+          promptQueue.close();
+          sdkQuery.close();
+          await engineProcess.terminate();
+          this.restrictedStartingProcesses.delete(input.threadId);
+          seatbelt?.launch.cleanup();
+          removeLaunchedRoot(input.threadId, record.hostImageLaunch);
+          this.sessions.delete(input.threadId);
+          this.options.revokeStationControlCallerToken?.(input.threadId);
+          throw error;
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
+      }
+      return announce(confinementRecord);
+    };
     if (seatbelt && seatbeltSpawn) {
       // #2494: nothing is consumed or announced until the provider has
       // observed the started engine. The SDK sends `initialize` as the query
@@ -2896,10 +3032,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         }
         record.allowsBypassPermissions = true;
         delete record.confinementPending;
-        return announce(confinementRecord);
+        return record.toolRestriction
+          ? announceQualified(confinementRecord)
+          : announce(confinementRecord);
       })();
     }
-    return announce();
+    return record.toolRestriction ? announceQualified() : announce();
   }
 
   /**
@@ -2928,6 +3066,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   ): Promise<ProviderTurnStartResult> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const record = this.requireSession(input.threadId);
+    if (record.toolRestrictionPending)
+      throw new Error('group_sync_policy_unavailable');
+    if (
+      record.toolRestriction !== sessionToolRestriction(input.threadId) ||
+      (record.toolRestriction &&
+        record.toolRestriction.clientTurnId !== input.clientTurnId)
+    )
+      throw new Error('group_sync_activation_changed');
     if (record.session.status === 'error' || record.session.status === 'dead') {
       throw new ProviderTurnEndedError();
     }
@@ -3310,6 +3456,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     }
 
     // #2324: synchronous from here to the push — nothing can interleave.
+    if (
+      record.toolRestriction !== sessionToolRestriction(input.threadId) ||
+      (record.toolRestriction &&
+        record.toolRestriction.clientTurnId !== input.clientTurnId)
+    )
+      throw new Error('group_sync_activation_changed');
     this.refuseSendWhileTurnOwed(record);
     const enqueued = record.promptQueue.push({
       type: 'user',
@@ -3808,7 +3960,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // minting, or a second stop). Revocation is id-tolerant.
     this.options.revokeStationControlCallerToken?.(threadId);
     const record = this.sessions.get(threadId);
-    if (!record) return;
+    if (!record) {
+      await this.restrictedStartingProcesses.get(threadId)?.terminate();
+      this.restrictedStartingProcesses.delete(threadId);
+      return;
+    }
     // Settle outstanding canUseTool promises before teardown so the SDK
     // callback never hangs on a stopped session (mirrors acp-adapter, archive#148).
     this.cancelPendingRequests(record, threadId);
@@ -3816,6 +3972,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     record.promptQueue.close();
     record.query.close();
     await record.engineProcess?.terminate();
+    this.restrictedStartingProcesses.delete(threadId);
     record.confinementCleanup?.();
     this.options.nativeSessionOwnership?.retired(threadId);
     if (this.sessions.get(threadId) === record) this.sessions.delete(threadId);
@@ -3969,7 +4126,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   async stopAll(): Promise<void> {
     try {
       await Promise.all(
-        [...this.sessions.keys()].map((threadId) => this.stopSession(threadId)),
+        [
+          ...new Set([
+            ...this.sessions.keys(),
+            ...this.restrictedStartingProcesses.keys(),
+          ]),
+        ].map((threadId) => this.stopSession(threadId)),
       );
     } finally {
       this.events.close();
@@ -3980,6 +4142,211 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     signal?: AbortSignal;
   }): AsyncIterable<CanonicalRuntimeEvent> {
     return this.events.iterable(options);
+  }
+
+  private freshSpawnEnv(
+    augmentedEnv: Record<string, string | undefined> | undefined,
+    connectionEnv: Record<string, string> | undefined,
+    appHomeEnv: Record<string, string> | undefined,
+    toolServerLoading?: 'always' | 'on-demand',
+    tmpDir?: string,
+    artifactsEnv: ClaudeArtifactsSpawnEnv = claudeArtifactsSpawnEnv(false),
+  ): NodeJS.ProcessEnv {
+    return scrubBootInternalSecrets({
+      ...(augmentedEnv ?? process.env),
+      ...connectionEnv,
+      ...appHomeEnv,
+      ...(toolServerLoading
+        ? {
+            ENABLE_TOOL_SEARCH:
+              toolServerLoading === 'always' ? 'false' : 'true',
+          }
+        : {}),
+      ...artifactsEnv,
+      TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
+    });
+  }
+
+  async observeExecutionAuthentication(
+    input: ProviderExecutionAuthInput,
+  ): Promise<ProviderExecutionAuthObservation> {
+    (await input.assertCurrent())();
+    let versionIdentity: string | undefined;
+    let versionResult: InstalledVersionObservation | undefined;
+    const context = async () => {
+      const home = await this.resolveAppHomeEnv(
+        input.credentialProfileRef ?? undefined,
+      );
+      const connection = claudeConnectionEnvForSpawn(
+        await this.resolveConnectionEnv(),
+        true,
+      );
+      const env = this.freshSpawnEnv(
+        await this.resolveAugmentedSpawnEnv(),
+        connection,
+        home?.env,
+        undefined,
+        undefined,
+        await this.resolveArtifactsEnv(),
+      );
+      const overlay = Object.fromEntries(
+        Object.entries(env).filter(
+          (entry): entry is [string, string] => entry[1] !== undefined,
+        ),
+      );
+      const executable = await this.resolveClaudeExecutable(async (binary) => {
+        const script = binary.toLowerCase().endsWith('.js')
+          ? binary
+          : undefined;
+        const command = script ? process.execPath : binary;
+        const identity = (await observeExecutableInvocation(command, script))
+          ?.fingerprint;
+        if (
+          !identity ||
+          (versionIdentity !== undefined && identity !== versionIdentity)
+        )
+          return { kind: 'unreadable' };
+        versionIdentity = identity;
+        if (versionResult) return versionResult;
+        versionResult = await this.installedClaudeVersion(
+          binary,
+          async (_binary, args) =>
+            runCliCommand(
+              command,
+              script ? [script, ...args] : args,
+              input.signal,
+              overlay,
+              {
+                cwd: input.cwd,
+                timeoutMs: 10_000,
+                maxBuffer: 16_384,
+                killSignal: 'SIGKILL',
+                assertCurrent: async () => {
+                  const observed = await observeExecutableInvocation(
+                    command,
+                    script,
+                  );
+                  if (!observed || observed.fingerprint !== versionIdentity)
+                    throw new Error(
+                      'Execution authentication executable changed',
+                    );
+                  const finalize = await input.assertCurrent();
+                  return () => {
+                    observed.assertCurrent();
+                    finalize();
+                  };
+                },
+              },
+            ),
+        );
+        return versionResult;
+      });
+      const binary = executable.spawnable;
+      const script = binary?.toLowerCase().endsWith('.js') ? binary : undefined;
+      const command = script ? process.execPath : binary;
+      const executableIdentity = command
+        ? (await observeExecutableInvocation(command, script))?.fingerprint
+        : undefined;
+      const hash = crypto
+        .createHash('sha256')
+        .update(
+          JSON.stringify({
+            input,
+            executable,
+            executableIdentity,
+            env: Object.entries(overlay).sort(),
+            profile: home?.profileRef,
+          }),
+        )
+        .digest('hex');
+      return {
+        executable,
+        executableIdentity,
+        profileRef: home?.profileRef ?? null,
+        env: overlay,
+        hash,
+        command,
+        script,
+      };
+    };
+    const before = await context();
+    const finalize = await input.assertCurrent();
+    const nativeContinuation = before.command
+      ? await observeNativeAuthenticationLaunch({
+          engine: 'claude',
+          profileRef: before.profileRef,
+          command: before.command,
+          script: before.script,
+          cwd: input.cwd,
+          env: before.env,
+          assertCurrent: () => {
+            input.signal?.throwIfAborted();
+            finalize();
+          },
+        })
+      : undefined;
+    const executable = before.executable;
+    const supported =
+      input.connectionId === this.metadata.connectionId &&
+      executable.launch === 'installed' &&
+      before.executableIdentity &&
+      before.executableIdentity === versionIdentity &&
+      executable.installedVersion &&
+      compareClaudeCodeVersions(
+        executable.installedVersion,
+        CLAUDE_AUTH_STATUS_MIN_VERSION,
+      ) >= 0;
+    const result =
+      supported && before.command
+        ? await runCliCommand(
+            before.command,
+            before.script
+              ? [before.script, ...CLAUDE_AUTH_STATUS_ARGS]
+              : CLAUDE_AUTH_STATUS_ARGS,
+            input.signal,
+            before.env,
+            {
+              cwd: input.cwd,
+              timeoutMs: CLAUDE_AUTH_STATUS_TIMEOUT_MS,
+              maxBuffer: CLAUDE_AUTH_STATUS_MAX_BUFFER,
+              killSignal: 'SIGKILL',
+              assertCurrent: async () => {
+                const observed = before.command
+                  ? await observeExecutableInvocation(
+                      before.command,
+                      before.script,
+                    )
+                  : undefined;
+                if (
+                  !observed ||
+                  observed.fingerprint !== before.executableIdentity
+                )
+                  throw new Error(
+                    'Execution authentication executable changed',
+                  );
+                const finalize = await input.assertCurrent();
+                return () => {
+                  observed.assertCurrent();
+                  finalize();
+                };
+              },
+            },
+          )
+        : null;
+    const after = await context();
+    return retainNativeAuthenticationContinuation(
+      {
+        state:
+          before.executableIdentity && before.hash === after.hash
+            ? parseClaudeAuthStatus(result)
+            : 'unknown',
+        contextHash: `sha256:${before.hash}`,
+        checkedAt: Date.now(),
+        modelEntitlement: 'not-checked',
+        outputTokenLimitFidelity: 'unavailable',
+      },
+      before.hash === after.hash ? nativeContinuation : undefined,
+    );
   }
 
   async getPrerequisites(options?: {
@@ -4584,7 +4951,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const resumeSessionId = claudeResumeSessionId(input.resumeCursor);
     return {
       cwd: input.cwd,
-      ...(disallowedTools.length ? { disallowedTools } : {}),
+      ...(sessionToolRestriction(input.threadId)
+        ? { tools: [], disallowedTools: ['*'] }
+        : disallowedTools.length
+          ? { disallowedTools }
+          : {}),
       model: input.modelId,
       // #1551: run the Claude Code the user installed. Omitted when none
       // resolved, which is the SDK's documented "use the built-in executable"
@@ -4709,21 +5080,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // configHome beats useAppHome because the runtime resolves only one
       // of the two into these layers. TMPDIR stays final even over this
       // layer; the sanitizer refuses a configured TMPDIR outright.
-      env: scrubBootInternalSecrets({
-        ...(augmentedEnv ?? process.env),
-        ...connectionEnv,
-        ...appHomeEnv,
-        ...(input.agent?.toolServerLoading
-          ? {
-              ENABLE_TOOL_SEARCH:
-                input.agent.toolServerLoading === 'always' ? 'false' : 'true',
-            }
-          : {}),
-        // After every caller/ambient layer: the Station setting owns this
-        // key (see `claudeArtifactsSpawnEnv`).
-        ...artifactsEnv,
-        TMPDIR: sessionTmpDir ?? ensureEngineSpawnTmpDir(),
-      }),
+      env: this.freshSpawnEnv(
+        augmentedEnv,
+        connectionEnv,
+        appHomeEnv,
+        input.agent?.toolServerLoading,
+        sessionTmpDir,
+        artifactsEnv,
+      ),
       // #2932: the SDK reads stdout from the process this returns, after
       // Station's tap has recorded each permission ask on it.
       spawnClaudeCodeProcess: engineProcess.spawn,
@@ -5659,7 +6023,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    * Degrades to `null` rather than throwing: a resolver failure must fall
    * back to the bundled CLI (today's behavior), never block session start.
    */
-  private async resolveClaudeExecutable(): Promise<ClaudeExecutableResolution> {
+  private async resolveClaudeExecutable(
+    freshVersion?: (executable: string) => Promise<InstalledVersionObservation>,
+  ): Promise<ClaudeExecutableResolution> {
     // Read before anything can fail, so every branch below — the catch
     // included — reports the bundled version it actually knows.
     let bundledVersion: string | null = null;
@@ -5731,7 +6097,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         };
       }
       const executable = spawnable.executable;
-      const observed = await this.installedClaudeVersion(executable);
+      const observed = await (freshVersion
+        ? freshVersion(executable)
+        : this.installedClaudeVersion(executable));
       const base = {
         resolved,
         spawnable: executable,
@@ -5776,6 +6144,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         reason: installedIsOlder ? 'installed-older' : 'installed-not-older',
       };
     } catch (error) {
+      if (freshVersion) throw error;
       (this.options.logger ?? console).warn?.(
         `Claude executable resolution failed; continuing with the Claude Code CLI bundled with the Agent SDK: ${errorMessage(error)}`,
       );
@@ -5808,11 +6177,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    */
   private async installedClaudeVersion(
     executable: string,
+    freshProbe?: (
+      executable: string,
+      args: string[],
+    ) => Promise<CliCommandResult | null>,
   ): Promise<InstalledVersionObservation> {
-    const result = await this.executableVersionProbe(
-      executable,
-      CLAUDE_VERSION_ARGS,
-    );
+    const result = await (freshProbe
+      ? freshProbe(executable, CLAUDE_VERSION_ARGS)
+      : this.executableVersionProbe(executable, CLAUDE_VERSION_ARGS));
     if (!result || result.code !== 0) return { kind: 'unreadable' };
     const version = parseClaudeCodeVersion(
       `${result.stdout}\n${result.stderr}`,

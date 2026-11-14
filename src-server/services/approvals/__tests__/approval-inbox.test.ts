@@ -493,53 +493,70 @@ describe('approval inbox notifications', () => {
     ]);
   });
 
-  test('#3390: a harness question offers no decision the orchestration route would refuse', async () => {
-    // The ACP adapter's shape for an engine's `cursor/ask_question`: a form,
-    // named so no session grant is derived for it.
-    await emit('orchestration:event', {
-      event: {
-        createdAt: new Date().toISOString(),
-        eventId: 'evt-question',
-        method: 'request.opened',
-        payload: {
-          toolCallId: 'call_123',
-          toolName: 'cursor/ask_question',
-          inputRequest: {
-            schema: 'station.input-request/v1',
-            source: 'harness:cursor',
-            requester: 'Lab Engine',
-            message: 'Need input',
-            body: {
-              kind: 'form',
-              fields: [
-                {
-                  name: 'q1',
-                  kind: 'choice',
-                  title: 'Which mode should I use?',
-                  required: true,
-                  options: [
-                    { value: '0', label: 'Agent' },
-                    { value: '1', label: 'Plan' },
-                  ],
-                },
-              ],
+  test.each([false, true])(
+    '#3390: a form offers no refused decision (canonical registry twin: %s)',
+    async (canonicalTwin) => {
+      const registration = canonicalTwin
+        ? approvalRegistry.registerCanonicalAnswer('req-question', {
+            sessionId: 'thread-question',
+          })
+        : undefined;
+      if (canonicalTwin) expect(registration).toBeDefined();
+      registration?.publishOpened();
+      // The ACP adapter's shape for an engine's `cursor/ask_question`: a form,
+      // named so no session grant is derived for it.
+      await emit('orchestration:event', {
+        event: {
+          createdAt: new Date().toISOString(),
+          eventId: 'evt-question',
+          method: 'request.opened',
+          payload: {
+            toolCallId: 'call_123',
+            toolName: 'cursor/ask_question',
+            inputRequest: {
+              schema: 'station.input-request/v1',
+              source: 'harness:cursor',
+              requester: 'Lab Engine',
+              message: 'Need input',
+              body: {
+                kind: 'form',
+                fields: [
+                  {
+                    name: 'q1',
+                    kind: 'choice',
+                    title: 'Which mode should I use?',
+                    required: true,
+                    options: [
+                      { value: '0', label: 'Agent' },
+                      { value: '1', label: 'Plan' },
+                    ],
+                  },
+                ],
+              },
             },
           },
+          provider: 'acp',
+          requestId: 'req-question',
+          requestType: 'approval',
+          threadId: 'thread-question',
+          title: 'Need input',
         },
-        provider: 'acp',
-        requestId: 'req-question',
-        requestType: 'approval',
-        threadId: 'thread-question',
-        title: 'Need input',
-      },
-    });
+      });
 
-    const notifications = await notificationService.list();
-    expect(notifications).toHaveLength(1);
-    expect(notifications[0].actions ?? []).toEqual([]);
-    // Named for who asked, never "acp wants approval to use cursor/…".
-    expect(notifications[0].body).toBe('Lab Engine asked a question.');
-  });
+      const notifications = await notificationService.list();
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0].actions ?? []).toEqual([]);
+      // Named for who asked, never "acp wants approval to use cursor/…".
+      expect(notifications[0].body).toBe('Lab Engine asked a question.');
+      if (registration) {
+        expect(approvalRegistry.resolve('req-question', true)).toBe(false);
+        registration.cancel();
+        await expect(registration.result).resolves.toEqual({
+          outcome: 'cancelled',
+        });
+      }
+    },
+  );
 
   test('an engine link offers no Allow, which would say a link nobody showed was opened', async () => {
     // The ACP adapter's shape for Kiro's `_kiro/openExternalUrl`.

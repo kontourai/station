@@ -1,0 +1,7 @@
+{
+  "revision": "dfb9506443f30e261d9d182d8084345772c121b8",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Updated only the execution-plan status after normal integration of actual main 1dd83e0 at 98d885a7ad5. Checked both parents, clean tree, exact installed root Flow5.2.1 and nested FlowAgents9.3 Flow5.2.0 manifests/resolution, retained dependency/PTy receipt, separate245 and225 focused results, and UI/server-test type exits. These are selected local checks; unpublished repairs, serving/native/provider/hosted and documentation freshness remain unqualified. Classification/status note only; no historical source-review claims or unrelated stale records renewed.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}

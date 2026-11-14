@@ -104,7 +104,7 @@ async function harness(
 ) {
   const homeDir = tempDir('station-apns-alert-');
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-  const pairing = new DevicePairingService({
+  const pairing = await DevicePairingService.create({
     homeDir,
     environmentId: ENVIRONMENT_ID,
   });

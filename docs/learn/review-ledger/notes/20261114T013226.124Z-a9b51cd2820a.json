@@ -1,0 +1,7 @@
+{
+  "revision": "be563a0ba03d3e5242320b0a53f5678bb26447af",
+
+  "notes": [
+    {"path":"docs/design/agent-engine-unification.md","note":"Full design document read at be563a0ba03d. Scoped review of the sole Agent contract delta against main: AgentDelegationContext adds bounded conjunctive toolAllowlistConstraints, not another AgentSpec, engine identity, delivery channel or runtime capability. Traced recorded-context parsing, child derivation, inherited policy capture/binding and peer capability refusal. Existing design history, matrix/resolver ownership and declared-versus-observed delivery limits remain accurate for this input; no prose change. This does not revalidate dated CLI probes, every adapter channel or slice completion, and does not establish native inherited enforcement, provider billing or cross-transport acceptance.","inputs":["docs/design/agent-engine-unification.md","packages/contracts/src/agent.ts"]}
+  ]
+}

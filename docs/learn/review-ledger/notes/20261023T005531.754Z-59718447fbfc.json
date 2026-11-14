@@ -1,0 +1,7 @@
+{
+  "revision": "26e94a23a9760e7239d097c5335a741c2550dcc2",
+
+  "notes": [
+    {"path":"docs/design/cli-triage.md","note":"Read full current triage design and reconciled baseline42b6272 source deltas: triage command/tests, shared redactor and checkout entry unchanged; cli.ts adds group/ensemble/telemetry and chat JSON errors but retains triage registration/dependency injection/timeout setup; station-cli-implementation error wrapper delegates to reportCliError whose default fallback preserves Error: describeCliError. Triage reference subsection remains consistent; remove whole CLI reference as a source dependency because the design claims derive from direct command/redactor/launcher owners already retained, not unrelated reference additions. No behavior or test change; no new agent/remote/provider execution or sandbox/redaction guarantee. Prior owner implementation review remains bounded to unchanged source.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "5158dc0ee356281fa4ea0a73b434060745ed9d2f",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed the local Ensemble inspection update against its committed CLI implementation and existing preset preparation boundary. Independent CLI review and published contracts/CLI remain open; launch, UI and full epic acceptance remain incomplete.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}

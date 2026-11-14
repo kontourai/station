@@ -1,0 +1,7 @@
+{
+  "revision": "523c574536105257fa516e7bba39adc5d9b4e6b4",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed the native acceptance and main integration checkpoint against f334f0b68fa4bfa1f9173edf53830692152d1f89, fresh managed install receipt, 60 focused cases, server-test typecheck and zero-new stored-path guard. Root recomputation and separate report-only verification join canonical/live SQLite/SSE hashes, one initial start/terminal each, prerequisite global-sequence ordering, controlled MCP form/token and durable accepted/rejected commands; zero starts at creation is explicitly response-and-source evidence, without a pre-run SQLite snapshot. Failed/stale/not-admitted harness artifacts remain separate. Installed native enforcement review keeps full #205, sync/topology/recovery, physical budget/containment/billing/hosted/full-epic gaps open and both guards false. Current changes after the accepted source are documentation only; earlier readiness is not silently transferred to the merge.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}

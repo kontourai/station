@@ -10,16 +10,18 @@ import {
   linkSync,
   lstatSync,
   mkdirSync,
+  opendirSync,
   openSync,
   readdirSync,
   readFileSync,
   readSync,
   renameSync,
   rmSync,
+  type Stats,
   writeFileSync,
   writeSync,
 } from 'node:fs';
-import { dirname, isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { setTimeout as sleepAsync } from 'node:timers/promises';
 import { fsyncDirectorySync } from './fs-windows-compat.js';
 import {
@@ -315,10 +317,30 @@ export type LockInspection = {
   dev: number;
 };
 
+const MAX_LOCK_METADATA_BYTES = 16 * 1024;
+
+function readLockMetadata(fd: number): string {
+  const buffer = Buffer.alloc(MAX_LOCK_METADATA_BYTES + 1);
+  let offset = 0;
+  while (offset < buffer.length) {
+    const count = readSync(fd, buffer, offset, buffer.length - offset, offset);
+    if (count === 0) break;
+    offset += count;
+  }
+  if (offset > MAX_LOCK_METADATA_BYTES)
+    throw new Error('lock metadata exceeds 16 KiB');
+  return buffer.subarray(0, offset).toString('utf8');
+}
+
 export function inspectLock(lock: string): LockInspection | null {
   let fd: number;
   try {
-    fd = openSync(lock, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    fd = openSync(
+      lock,
+      constants.O_RDONLY |
+        (constants.O_NOFOLLOW ?? 0) |
+        (constants.O_NONBLOCK ?? 0),
+    );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
@@ -326,7 +348,7 @@ export function inspectLock(lock: string): LockInspection | null {
   try {
     const info = fstatSync(fd);
     if (!info.isFile()) throw new Error('journal lock is not a regular file');
-    const owner = JSON.parse(readFileSync(fd, 'utf8'));
+    const owner = JSON.parse(readLockMetadata(fd));
     if (
       !owner.token ||
       !Number.isInteger(owner.pid) ||
@@ -413,6 +435,85 @@ type GuardInspection = LockInspection & {
   };
 };
 
+type LockDeletionProgress = {
+  guard?: GuardInspection;
+  lockRemoved?: boolean;
+  quarantine?: string;
+  guardQuarantine?: string;
+  guardTemporary?: {
+    path: string;
+    ino?: number;
+    dev?: number;
+    descriptor?: number;
+  };
+};
+
+function pathPresent(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+function hasReclamationEntries(lock: string): boolean {
+  const path = `${lock}.guard.claims`;
+  let before: Stats;
+  let directory: ReturnType<typeof opendirSync>;
+  try {
+    before = lstatSync(path);
+    if (!before.isDirectory() || before.isSymbolicLink())
+      throw new Error('lock reclamation directory is not a regular directory');
+    directory = opendirSync(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+  try {
+    const present = directory.readSync() !== null;
+    const after = lstatSync(path);
+    if (
+      !after.isDirectory() ||
+      after.isSymbolicLink() ||
+      before.ino !== after.ino ||
+      before.dev !== after.dev
+    )
+      throw new Error('lock reclamation directory changed during inspection');
+    return present;
+  } finally {
+    directory.closeSync();
+  }
+}
+
+function removeOwnedTemporary(
+  temporary: NonNullable<LockDeletionProgress['guardTemporary']>,
+): void {
+  if (temporary.descriptor !== undefined) {
+    const identity = fstatSync(temporary.descriptor);
+    if (
+      temporary.ino !== undefined &&
+      (temporary.ino !== identity.ino || temporary.dev !== identity.dev)
+    )
+      throw new Error('lock temporary descriptor ownership was lost');
+    temporary.ino = identity.ino;
+    temporary.dev = identity.dev;
+    closeSync(temporary.descriptor);
+    delete temporary.descriptor;
+  }
+  if (!pathPresent(temporary.path)) return;
+  const current = lstatSync(temporary.path);
+  if (
+    !current.isFile() ||
+    current.isSymbolicLink() ||
+    current.ino !== temporary.ino ||
+    current.dev !== temporary.dev
+  )
+    throw new Error('lock temporary cleanup ownership was lost');
+  rmSync(temporary.path, { force: true });
+}
+
 type ClaimInspection = {
   path: string;
   owner: {
@@ -464,16 +565,21 @@ function sameGuard(
 function inspectClaim(path: string): ClaimInspection | null {
   let fd: number;
   try {
-    fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    fd = openSync(
+      path,
+      constants.O_RDONLY |
+        (constants.O_NOFOLLOW ?? 0) |
+        (constants.O_NONBLOCK ?? 0),
+    );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
   }
   try {
     const info = fstatSync(fd);
-    const owner = JSON.parse(readFileSync(fd, 'utf8'));
+    if (!info.isFile()) throw new Error('journal claim is not a regular file');
+    const owner = JSON.parse(readLockMetadata(fd));
     if (
-      !info.isFile() ||
       !owner.token ||
       !owner.birth ||
       !Number.isInteger(owner.pid) ||
@@ -583,10 +689,30 @@ function publishGuard(
   lock: string,
   observed: LockInspection,
   birth: string,
+  progress?: LockDeletionProgress,
 ): GuardInspection | null {
   const guardPath = `${lock}.guard`;
   const token = randomUUID();
   const temporary = `${guardPath}.${token}.tmp`;
+  const metadataOwner: GuardInspection['owner'] = {
+    token,
+    pid: process.pid,
+    birth,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 5_000,
+    guarded: {
+      ino: observed.ino,
+      dev: observed.dev,
+      owner: {
+        pid: observed.owner.pid,
+        birth: observed.owner.birth,
+        token: observed.owner.token,
+      },
+    },
+  };
+  const metadata = JSON.stringify(metadataOwner);
+  if (Buffer.byteLength(metadata, 'utf8') > MAX_LOCK_METADATA_BYTES)
+    throw new Error('lock metadata exceeds 16 KiB');
   const fd = openSync(
     temporary,
     constants.O_WRONLY |
@@ -595,40 +721,69 @@ function publishGuard(
       (constants.O_NOFOLLOW ?? 0),
     0o600,
   );
-  writeFileSync(
-    fd,
-    JSON.stringify({
-      token,
-      pid: process.pid,
-      birth,
-      createdAt: Date.now(),
-      expiresAt: Date.now() + 5_000,
-      guarded: observed,
-    }),
-  );
-  fsyncSync(fd);
-  closeSync(fd);
+  const staged: NonNullable<LockDeletionProgress['guardTemporary']> = {
+    path: temporary,
+    descriptor: fd,
+  };
+  if (progress) progress.guardTemporary = staged;
   try {
-    linkSync(temporary, guardPath);
-    return inspectGuard(guardPath);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-    return null;
+    const info = fstatSync(fd);
+    staged.ino = info.ino;
+    staged.dev = info.dev;
+    writeFileSync(fd, metadata);
+    fsyncSync(fd);
+    closeSync(fd);
+    delete staged.descriptor;
+    const published = { owner: metadataOwner, ino: info.ino, dev: info.dev };
+    if (progress) progress.guard = published;
+    try {
+      linkSync(temporary, guardPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      return null;
+    }
+    if (!sameGuard(inspectGuard(guardPath), published))
+      throw new Error('published lock guard identity was lost');
+    return published;
   } finally {
-    rmSync(temporary, { force: true });
+    if (progress) {
+      removeOwnedTemporary(staged);
+      delete progress.guardTemporary;
+    } else {
+      try {
+        removeOwnedTemporary(staged);
+      } finally {
+        if (staged.descriptor !== undefined) closeSync(staged.descriptor);
+      }
+    }
   }
 }
 
-function deleteGuard(path: string, observed: GuardInspection): void {
+function deleteGuard(
+  path: string,
+  observed: GuardInspection,
+  progress?: LockDeletionProgress,
+): void {
+  if (progress?.guardQuarantine) {
+    if (!sameGuard(inspectGuard(progress.guardQuarantine), observed))
+      throw new Error('lock guard cleanup ownership was lost');
+    rmSync(progress.guardQuarantine, { force: true });
+    delete progress.guardQuarantine;
+    return;
+  }
   if (!sameGuard(inspectGuard(path), observed)) return;
   const quarantine = `${path}.stale-${randomUUID()}`;
   renameSync(path, quarantine);
+  if (progress) progress.guardQuarantine = quarantine;
   if (!sameGuard(inspectGuard(quarantine), observed)) {
-    if (!existsSync(path) && existsSync(quarantine))
+    if (!existsSync(path) && existsSync(quarantine)) {
       renameSync(quarantine, path);
+      if (progress) delete progress.guardQuarantine;
+    }
     throw new Error('lock guard changed during compare-delete');
   }
   rmSync(quarantine, { force: true });
+  if (progress) delete progress.guardQuarantine;
 }
 
 function* reclaimOrphanGuardGen(
@@ -784,31 +939,51 @@ function* guardedDeleteLockGen(
   lock: string,
   observed: LockInspection,
   options: FileMutationLockOptions,
+  progress?: LockDeletionProgress,
+  preparedBirth?: string,
 ): LockGen<boolean> {
-  if ((yield* activeClaimsGen(lock, undefined)).length > 0) return false;
+  if (
+    preparedBirth !== undefined
+      ? hasReclamationEntries(lock)
+      : (yield* activeClaimsGen(lock, undefined)).length > 0
+  )
+    return false;
+  if (preparedBirth !== undefined && pathPresent(`${lock}.guard`)) return false;
   // Own-pid, fail-closed: retry spurious lookup failures (#1057). Injected
   // fingerprints (tests) stay single-call.
-  const birth = yield* ownBirthGen(options);
+  const birth = preparedBirth ?? (yield* ownBirthGen(options));
   if (!birth) throw missingOwnBirthError('guard', options);
   const guardPath = `${lock}.guard`;
-  const guard = publishGuard(lock, observed, birth);
+  const guard = publishGuard(lock, observed, birth, progress);
   if (!guard) return false;
+  if (progress) progress.guard = guard;
   try {
     options.hooks?.afterGuardAcquired?.(lock, observed);
     if (!sameGuard(inspectGuard(guardPath), guard)) return false;
     if (!sameLock(inspectLock(lock), observed)) return false;
     const quarantine = `${lock}.stale-${randomUUID()}`;
     renameSync(lock, quarantine);
+    if (progress) {
+      progress.lockRemoved = true;
+      progress.quarantine = quarantine;
+    }
     const moved = inspectLock(quarantine);
     if (!sameLock(moved, observed)) {
-      if (!existsSync(lock) && existsSync(quarantine))
+      if (!existsSync(lock) && existsSync(quarantine)) {
         renameSync(quarantine, lock);
+        if (progress) {
+          delete progress.quarantine;
+          progress.lockRemoved = false;
+        }
+      }
       throw new Error('journal lock changed during compare-delete');
     }
     rmSync(quarantine, { force: true });
+    if (progress) delete progress.quarantine;
     return true;
   } finally {
-    deleteGuard(guardPath, guard);
+    deleteGuard(guardPath, guard, progress);
+    if (progress) delete progress.guard;
   }
 }
 
@@ -1042,15 +1217,359 @@ export async function acquireFileMutationLockAsync(
   lock: string,
   options: FileMutationLockOptions = {},
 ): Promise<() => Promise<void>> {
-  const owned = await runLockGenAsync(acquireGen(lock, options), options);
+  const lease = await acquireFileMutationLeaseAsync(lock, options);
   return async () => {
     try {
-      await runLockGenAsync(
-        guardedDeleteLockGen(lock, owned, options),
-        options,
-      );
+      await lease.release();
     } catch {}
   };
+}
+
+const fileMutationLeaseBrand = Symbol('FileMutationLease');
+
+export interface FileMutationLease {
+  readonly [fileMutationLeaseBrand]: true;
+  assertCurrent(): undefined;
+  release(): Promise<void>;
+}
+
+function* releaseFileMutationLeaseGen(
+  lock: string,
+  owned: LockInspection,
+  options: FileMutationLockOptions,
+  progress: LockDeletionProgress,
+  preparedBirth?: string,
+): LockGen<void> {
+  if (progress.guardTemporary) {
+    removeOwnedTemporary(progress.guardTemporary);
+    delete progress.guardTemporary;
+  }
+  if (progress.lockRemoved) {
+    if (progress.quarantine) {
+      if (!sameLock(inspectLock(progress.quarantine), owned))
+        throw new Error('file mutation lease cleanup ownership was lost');
+      rmSync(progress.quarantine, { force: true });
+      delete progress.quarantine;
+    }
+    if (progress.guard) {
+      deleteGuard(`${lock}.guard`, progress.guard, progress);
+      delete progress.guard;
+    }
+    return;
+  }
+  if (progress.guard) {
+    deleteGuard(`${lock}.guard`, progress.guard, progress);
+    delete progress.guard;
+  }
+  if (!sameLock(inspectLock(lock), owned))
+    throw new Error('file mutation lease ownership was lost');
+  if (
+    !(yield* guardedDeleteLockGen(
+      lock,
+      owned,
+      options,
+      progress,
+      preparedBirth,
+    ))
+  )
+    throw new Error('file mutation lease release was not confirmed');
+}
+
+/** Held ownership for callers that must fence publication and observe release failure. */
+export async function acquireFileMutationLeaseAsync(
+  lock: string,
+  options: FileMutationLockOptions = {},
+): Promise<PreparedFileMutationLease> {
+  const owned = await runLockGenAsync(acquireGen(lock, options), options);
+  return createFileMutationLease(lock, owned, options, owned.owner.birth);
+}
+
+export interface PreparedFileMutationLease extends FileMutationLease {
+  tryRelease(): 'released' | 'cleanup-required';
+}
+
+function createFileMutationLease(
+  lock: string,
+  owned: LockInspection,
+  options: FileMutationLockOptions,
+  preparedBirth?: string,
+  onReleased?: () => void,
+): PreparedFileMutationLease {
+  let active = true;
+  let released = false;
+  let releasing: Promise<void> | undefined;
+  const progress: LockDeletionProgress = {};
+  return Object.freeze({
+    [fileMutationLeaseBrand]: true as const,
+    assertCurrent(): undefined {
+      if (!active || !sameLock(inspectLock(lock), owned))
+        throw new Error('file mutation lease is not current');
+      return undefined;
+    },
+    tryRelease(): 'released' | 'cleanup-required' {
+      active = false;
+      if (released) return 'released';
+      if (releasing || preparedBirth === undefined) return 'cleanup-required';
+      try {
+        const operation = releaseFileMutationLeaseGen(
+          lock,
+          owned,
+          options,
+          progress,
+          preparedBirth,
+        );
+        const step = operation.next();
+        if (!step.done) {
+          operation.throw(
+            new Error('prepared release requested a slow effect'),
+          );
+          throw new Error('prepared release requested a slow effect');
+        }
+        released = true;
+        onReleased?.();
+        return 'released';
+      } catch {
+        return 'cleanup-required';
+      }
+    },
+    release(): Promise<void> {
+      active = false;
+      if (released) return Promise.resolve();
+      if (releasing) return releasing;
+      releasing = (async () => {
+        await runLockGenAsync(
+          releaseFileMutationLeaseGen(lock, owned, options, progress),
+          options,
+        );
+        released = true;
+        onReleased?.();
+      })().finally(() => {
+        releasing = undefined;
+      });
+      return releasing;
+    },
+  });
+}
+
+export type PreparedFileMutationAttempt =
+  | { kind: 'acquired'; lease: PreparedFileMutationLease }
+  | { kind: 'busy' }
+  | { kind: 'cleanup-required' };
+
+const preparedFileMutationOwnerBrand = Symbol('PreparedFileMutationOwner');
+
+export interface PreparedFileMutationOwner {
+  readonly [preparedFileMutationOwnerBrand]: true;
+  tryAcquire(): PreparedFileMutationAttempt;
+  settlePendingCleanup(): Promise<void>;
+  close(): Promise<void>;
+}
+
+type PreparedLockCandidate = {
+  path: string;
+  descriptor?: number;
+  identity?: { ino: number; dev: number };
+  owned: LockInspection['owner'];
+  possiblyPublished: boolean;
+};
+
+const retainedPreparedOwners = new Map<string, PreparedFileMutationOwner>();
+
+/** Prepared process custody; canonical-home binding and operation lifetime
+ * remain with the caller. */
+export async function prepareFileMutationOwner(
+  lockPath: string,
+  options: FileMutationLockOptions = {},
+): Promise<PreparedFileMutationOwner> {
+  const lock = resolve(lockPath);
+  const retained = retainedPreparedOwners.get(lock);
+  if (retained) return retained;
+  const pid = process.pid;
+  const birth = await runLockGenAsync(ownBirthGen(options), options);
+  if (!birth) throw missingOwnBirthError('lock', options);
+  let candidate: PreparedLockCandidate | undefined;
+  let held: PreparedFileMutationLease | undefined;
+  let heldIdentity: LockInspection | undefined;
+  let active = false;
+  let closed = false;
+  let settling: Promise<void> | undefined;
+  let owner: PreparedFileMutationOwner;
+
+  const forgetIfSettled = () => {
+    if (!candidate && !held && retainedPreparedOwners.get(lock) === owner)
+      retainedPreparedOwners.delete(lock);
+  };
+  const cleanupCandidate = () => {
+    if (!candidate) return;
+    if (candidate.descriptor !== undefined) {
+      const identity = fstatSync(candidate.descriptor);
+      if (
+        candidate.identity &&
+        (identity.ino !== candidate.identity.ino ||
+          identity.dev !== candidate.identity.dev)
+      )
+        throw new Error('prepared lock descriptor ownership was lost');
+      candidate.identity ??= identity;
+      closeSync(candidate.descriptor);
+      delete candidate.descriptor;
+    }
+    if (pathPresent(candidate.path)) {
+      const current = lstatSync(candidate.path);
+      if (
+        !candidate.identity ||
+        current.ino !== candidate.identity.ino ||
+        current.dev !== candidate.identity.dev ||
+        !current.isFile() ||
+        current.isSymbolicLink()
+      )
+        throw new Error('prepared lock candidate cleanup ownership was lost');
+      rmSync(candidate.path, { force: true });
+    }
+    candidate = undefined;
+    forgetIfSettled();
+  };
+  const retainLease = (identity: LockInspection) => {
+    heldIdentity = identity;
+    held = createFileMutationLease(lock, identity, options, birth, () => {
+      held = undefined;
+      heldIdentity = undefined;
+      active = false;
+      forgetIfSettled();
+    });
+    return held;
+  };
+  const recoverPublishedCandidate = () => {
+    if (!candidate?.possiblyPublished || held) return;
+    const current = inspectLock(lock);
+    if (
+      candidate.identity &&
+      sameLock(current, { ...candidate.identity, owner: candidate.owned })
+    )
+      retainLease({ ...candidate.identity, owner: candidate.owned });
+  };
+  owner = Object.freeze({
+    [preparedFileMutationOwnerBrand]: true as const,
+    tryAcquire(): PreparedFileMutationAttempt {
+      if (closed || process.pid !== pid)
+        throw new Error('prepared mutation owner is not current');
+      const retained = retainedPreparedOwners.get(lock);
+      if (retained && retained !== owner) return { kind: 'busy' };
+      if (active) return { kind: 'busy' };
+      if (candidate || held || settling) return { kind: 'cleanup-required' };
+      if (
+        pathPresent(lock) ||
+        pathPresent(`${lock}.guard`) ||
+        hasReclamationEntries(lock)
+      )
+        return { kind: 'busy' };
+      const token = randomUUID();
+      const path = `${lock}.${token}.tmp`;
+      const metadata = {
+        version: 1,
+        pid,
+        birth,
+        token,
+        acquiredAt: new Date().toISOString(),
+      };
+      const bytes = JSON.stringify(metadata);
+      if (Buffer.byteLength(bytes, 'utf8') > MAX_LOCK_METADATA_BYTES)
+        throw new Error('lock metadata exceeds 16 KiB');
+      const descriptor = openSync(
+        path,
+        constants.O_WRONLY |
+          constants.O_CREAT |
+          constants.O_EXCL |
+          (constants.O_NOFOLLOW ?? 0),
+        0o600,
+      );
+      candidate = {
+        path,
+        descriptor,
+        owned: metadata,
+        possiblyPublished: false,
+      };
+      retainedPreparedOwners.set(lock, owner);
+      try {
+        candidate.identity = fstatSync(descriptor);
+        writeFileSync(descriptor, bytes);
+        fsyncSync(descriptor);
+        closeSync(descriptor);
+        delete candidate.descriptor;
+        candidate.possiblyPublished = true;
+        try {
+          linkSync(path, lock);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+          candidate.possiblyPublished = false;
+          cleanupCandidate();
+          return { kind: 'busy' };
+        }
+        const identity = { ...candidate.identity, owner: metadata };
+        const lease = retainLease(identity);
+        if (
+          !sameLock(inspectLock(lock), identity) ||
+          pathPresent(`${lock}.guard`) ||
+          hasReclamationEntries(lock)
+        )
+          return { kind: 'cleanup-required' };
+        cleanupCandidate();
+        active = true;
+        return {
+          kind: 'acquired',
+          lease: Object.freeze({
+            ...lease,
+            assertCurrent(): undefined {
+              if (closed || !active || held !== lease)
+                throw new Error('file mutation lease is not current');
+              return lease.assertCurrent();
+            },
+            tryRelease() {
+              if (held === lease) active = false;
+              return lease.tryRelease();
+            },
+            release() {
+              if (held === lease) active = false;
+              return lease.release();
+            },
+          }),
+        };
+      } catch {
+        return { kind: 'cleanup-required' };
+      }
+    },
+    settlePendingCleanup(): Promise<void> {
+      if (active)
+        return Promise.reject(new Error('prepared mutation lease is active'));
+      if (settling) return settling;
+      if (!candidate && !held) {
+        forgetIfSettled();
+        return Promise.resolve();
+      }
+      settling = (async () => {
+        recoverPublishedCandidate();
+        cleanupCandidate();
+        if (held && heldIdentity && pathPresent(`${lock}.guard`)) {
+          const guard = inspectGuard(`${lock}.guard`);
+          if (guard && !sameLock(guard.owner.guarded, heldIdentity))
+            await runLockGenAsync(
+              reclaimOrphanGuardGen(lock, options, birth),
+              options,
+            );
+        }
+        await held?.release();
+        forgetIfSettled();
+      })().finally(() => {
+        settling = undefined;
+      });
+      return settling;
+    },
+    async close(): Promise<void> {
+      closed = true;
+      active = false;
+      await owner.settlePendingCleanup();
+    },
+  });
+  return owner;
 }
 
 function acquireJournalLock(

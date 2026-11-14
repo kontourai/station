@@ -55,6 +55,9 @@ export class ConversationHistoryReadService {
         threadId: string,
         authority: SessionReadAuthority,
       ) => boolean;
+      personalOwnerIds?: (
+        authority: SessionReadAuthority,
+      ) => readonly string[] | undefined;
       hydratePersistedSession: (
         threadId: string,
       ) => ProviderSession | undefined;
@@ -100,6 +103,9 @@ export class ConversationHistoryReadService {
     }
     const page = this.options.eventStore.listConversationHistoryPage({
       ownerUserId: input.authority.userId,
+      ...(input.authority.mode === 'personal'
+        ? { ownerUserIds: this.options.personalOwnerIds?.(input.authority) }
+        : {}),
       ...(tenantId ? { tenantId } : {}),
       ...(input.agentSlug ? { agentSlug: input.agentSlug } : {}),
       ...(input.authority.mode === 'hosted' ? { requireBound: true } : {}),

@@ -26,6 +26,8 @@
 
     "package.json#/dependencies/@kontourai~1flow-agents",
 
+    "examples/survey-review-workbench/server/plugin.mjs",
+
     "src-server/runtime/routes/runtime-routes.ts"
   ],
 

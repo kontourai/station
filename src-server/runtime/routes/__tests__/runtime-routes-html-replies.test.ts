@@ -112,6 +112,10 @@ test('runtime composition binds page reads to current session authority before r
     taskGraphService: { listTasks: () => [] },
     projectService: { listProjects: () => [] },
     environmentSecurityService: deepStub({
+      assessCredentialRoute: undefined,
+      devicePairing: deepStub({
+        withCurrentRegistry: <T>(read: () => T): T => read(),
+      }),
       verifyCredential: isOperator,
       authorizeCredential: isOperator,
       verifyOperatorCredential: isOperator,

@@ -147,7 +147,11 @@ import {
   type EffectiveModelSource,
   isSessionWorkActive,
 } from '../../utils/execution';
-import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
+import {
+  delegationOriginLabel,
+  displayProvider,
+  sessionTitle,
+} from '../../utils/sessionDisplay';
 import { withConversationInventory } from '../../views/home/conversation-inventory-facts';
 import {
   isCurrentInboxItem,
@@ -183,10 +187,7 @@ import {
   type ActiveWorkPanel,
 } from './ActiveWorkContextFrame';
 import { useChatAuthRecovery } from './ChatAuthRecoveryContext';
-import {
-  ChatDockActiveIdentity,
-  delegatedTaskLabel,
-} from './ChatDockActiveIdentity';
+import { ChatDockActiveIdentity } from './ChatDockActiveIdentity';
 import { ChatDockContentArea } from './ChatDockContentArea';
 import { ChatDockHeader } from './ChatDockHeader';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
@@ -1956,7 +1957,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ? [
           {
             key: 'input-origin',
-            label: delegatedTaskLabel(activeOrchestrationSession.inputOrigin),
+            label: delegationOriginLabel(
+              activeOrchestrationSession.inputOrigin,
+            ),
             disabled: true,
             onSelect: () => {},
           },
@@ -3764,7 +3767,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       ? (sessionProjectName ?? activeSession.projectSlug)
                       : null,
                     inputOriginLabel: activeOrchestrationSession?.inputOrigin
-                      ? delegatedTaskLabel(
+                      ? delegationOriginLabel(
                           activeOrchestrationSession.inputOrigin,
                         )
                       : undefined,

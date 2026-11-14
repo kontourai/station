@@ -1,0 +1,7 @@
+{
+  "revision": "761717c61ed972455f881122cacfa2591f8db2ed",
+
+  "notes": [
+    {"path":"packages/contracts/README.md","note":"Reviewed child-work source delta through a35e680: optional result.source describes provider-summary, child-message or provider-error, never verified artifacts. Checked normalizeResult source allowlist and length truncation, enrichResult conservative identity on truncated reports, Claude task_notification/patch.error, Codex own child-message versus provider status/error, Muse single-child workflow summary. UI/notice consumers retain labels and older unknown origin. Contract+adapter+mounted consumer suites passed at their recorded commits; current package publication, live-provider, native and hosted integration remain unverified. Existing latestTool prose remains accurate; Codex item-name mapping uses shared deriveToolName and current child turn, Muse stays absent.","inputs":["packages/contracts/README.md","packages/contracts/package.json#/exports","packages/contracts/src/child-work.ts","packages/contracts/src/index.ts"]}
+  ]
+}

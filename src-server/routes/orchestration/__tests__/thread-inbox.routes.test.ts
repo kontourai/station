@@ -26,6 +26,159 @@ import {
 describe('POST /chat whenBusy queue (#3568)', () => {
   const station = createInboxHarness();
 
+  test.each(['steer', 'follow-up', 'chat-queue'] as const)(
+    '%s maps a sealed-admission refusal before an Inbox row or engine send',
+    async (kind) => {
+      const world = station();
+      await world.busy();
+      const before = world.prompts();
+      const policy = vi
+        .spyOn(world.service, 'conversationInputAdmissionRefusal')
+        .mockReturnValue({
+          reasonCode: 'sealed_source_admission_required',
+          reason: 'This sealed source Session needs fresh bounded admission.',
+        });
+      const key = `sealed-${kind}`;
+      try {
+        const response =
+          kind === 'chat-queue'
+            ? await world.send(key, 'must not be held or sent', {
+                whenBusy: 'queue',
+              })
+            : await world.app.request(
+                `/api/orchestration/conversations/${CONVERSATION}/inbox`,
+                {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({
+                    kind,
+                    key,
+                    message: 'must not be held or sent',
+                    expectedHead: world.inbox.currentHead(CONVERSATION),
+                  }),
+                },
+              );
+        expect(response.status).toBe(409);
+        expect(await response.json()).toMatchObject({
+          success: false,
+          code: 'sealed_source_admission_required',
+          error: expect.stringContaining('fresh bounded admission'),
+        });
+        expect(
+          world.store.threadInboxStore().read(CONVERSATION, key),
+        ).toBeUndefined();
+        expect(world.prompts()).toEqual(before);
+        expect(policy).toHaveBeenCalledWith(CONVERSATION);
+      } finally {
+        policy.mockRestore();
+      }
+    },
+  );
+
+  test.each(['steer', 'follow-up', 'chat-queue'] as const)(
+    '%s preserves a typed refusal returned by the Inbox after the route precheck',
+    async (kind) => {
+      const world = station();
+      await world.busy();
+      const before = world.prompts();
+      const submit = vi
+        .spyOn(world.inbox, kind === 'steer' ? 'submitSteer' : 'submit')
+        .mockReturnValue({
+          outcome: 'not-permitted',
+          reasonCode: 'sealed_source_admission_required',
+          reason: 'Fresh bounded admission required.',
+        });
+      try {
+        const response =
+          kind === 'chat-queue'
+            ? await world.send('late-refusal', 'must not dispatch', {
+                whenBusy: 'queue',
+              })
+            : await world.app.request(
+                `/api/orchestration/conversations/${CONVERSATION}/inbox`,
+                {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({
+                    kind,
+                    key: 'late-refusal',
+                    message: 'must not dispatch',
+                    expectedHead: world.inbox.currentHead(CONVERSATION),
+                  }),
+                },
+              );
+        expect(submit).toHaveBeenCalledTimes(1);
+        expect(response.status).toBe(409);
+        expect(await response.json()).toMatchObject({
+          success: false,
+          code: 'sealed_source_admission_required',
+          error: 'Fresh bounded admission required.',
+        });
+        expect(
+          world.store.threadInboxStore().read(CONVERSATION, 'late-refusal'),
+        ).toBeUndefined();
+        expect(world.prompts()).toEqual(before);
+      } finally {
+        submit.mockRestore();
+      }
+    },
+  );
+
+  test('source admission leaves display notes available and does not disclose policy to another owner', async () => {
+    const world = station();
+    await world.busy();
+    const policy = vi
+      .spyOn(world.service, 'conversationInputAdmissionRefusal')
+      .mockReturnValue({
+        reasonCode: 'sealed_source_admission_required',
+        reason: 'Fresh bounded admission required.',
+      });
+    try {
+      const display = await world.app.request(
+        `/api/orchestration/conversations/${CONVERSATION}/inbox`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            kind: 'display',
+            key: 'sealed-note',
+            message: 'a display-only note',
+          }),
+        },
+      );
+      expect(display.status).toBe(202);
+      expect(
+        world.store.threadInboxStore().read(CONVERSATION, 'sealed-note'),
+      ).toBeDefined();
+      expect(policy).not.toHaveBeenCalled();
+      const denied = await world.as(STRANGER, () =>
+        world.app.request(
+          `/api/orchestration/conversations/${CONVERSATION}/inbox`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              kind: 'follow-up',
+              key: 'foreign-sealed',
+              message: 'not permitted',
+            }),
+          },
+        ),
+      );
+      expect(denied.status).toBe(404);
+      expect(await denied.json()).not.toHaveProperty(
+        'code',
+        'sealed_source_admission_required',
+      );
+      expect(policy).not.toHaveBeenCalled();
+      expect(
+        world.store.threadInboxStore().read(CONVERSATION, 'foreign-sealed'),
+      ).toBeUndefined();
+    } finally {
+      policy.mockRestore();
+    }
+  });
+
   test('the inbox read exposes the current session head for a steer submission', async () => {
     const world = station();
     await world.busy();

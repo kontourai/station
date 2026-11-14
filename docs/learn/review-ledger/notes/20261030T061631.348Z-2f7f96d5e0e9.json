@@ -1,0 +1,7 @@
+{
+  "revision": "272a147691de190cd7f385b8daa4a50566a2fb8b",
+
+  "notes": [
+    {"path":"packages/cli/README.md","note":"Scoped CLI package-entry review after portable split and merged dispatch at 272a147691d: read the complete package README, session-group CLI reference/help and current runGroupCommand/ensemble inspection owners. Group dispatch admits only session-* and report-* action families; the eight portable actions are absent, matching unavailable lineage/fiscal/physical bounds. README explicitly labels source commands and separates source presence from publication/old-host support and qualified serving. Session creation does not launch; follow is observation; run/sync cancellation and unknown outcomes remain qualified. The repaired doctor migrate-playbooks precedence does not change plain bundled target diagnostics or contributor checks. Corrected the canonical reference obsolete hard-cap-transport pointer separately. No package README prose change needed; unchanged pairing/install/distribution/keyring claims retain earlier reviews. Source inspection only, no npm publication/install, host service/provider action, keyring/device or live group acceptance executed.","inputs":["packages/cli/README.md","docs/reference/cli.md","packages/cli/src/cli.ts","packages/cli/src/help.ts"]}
+  ]
+}

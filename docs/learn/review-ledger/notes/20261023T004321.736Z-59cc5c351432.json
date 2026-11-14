@@ -1,0 +1,7 @@
+{
+  "revision": "e7c029fb4798b48f0689c7ec458edd0e03c5cf9e",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Reviewed e6be8cc1 health replay change against the root Strict Mode hook regression and complete coordinator trigger/stop/result/catch paths. Aborted results remain suppressed; queued resubscription probes run only after the old probe settles. Connection/reference polling and terminal auth claims remain accurate. 41 focused tests, connect typecheck and Biome pass; exact canonical desktop runtime/browser verifies no stuck Reconnecting and output/directory reload. This note does not qualify universal sharing: independent review found the later-consumer registry residual, repaired separately afterward.","inputs":["docs/reference/connect.md","packages/connect/src/core/ConnectionHealthCoordinator.ts","packages/connect/src/react/useConnectionStatus.ts","packages/contracts/src/environment-security.ts","packages/sdk/src/client/http.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/ssh/environment-security-service.ts"]}
+  ]
+}

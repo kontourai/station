@@ -6,6 +6,11 @@ as Codex or Claude Code that runs its own loop. They appear under **Connections*
 **Models** and **Engines** tabs, each with one clear readiness label and one next action.
 
 For the precise vocabulary used below, see [docs/glossary.md](../glossary.md).
+Connection readiness does not grant every Session the same continuation policy.
+Sealed report-member Sessions use their recorded source policy even when their
+engine also serves ordinary managed chats. See the
+[Session input restrictions](../reference/session-api.md#submit-steer-follow-up-or-display-input)
+before treating a queued message or interrupted turn as a new paid request.
 
 ---
 
@@ -2383,10 +2388,12 @@ person's Station group is Admin (#3557). A pairing notification opens the exact 
 **Notifications**; opening it does not approve it. Devices without approval
 authority see the trusted-Station remedy instead of decision controls.
 
-The current terminal and voice listeners retain a separate direct-loopback
-path without credential verification. Browser-shaped upgrades on that path
-must use an allowed Station Origin; this check is not a Device-scope check.
-A read-only pairing is therefore not a sandbox against a local process. See
+The voice listener retains a separate direct-loopback path without credential
+verification. Browser-shaped upgrades on that path must use an allowed Station
+Origin; this check is not a Device-scope check. Terminal uses the main API
+listener and requires a single-use ticket minted by an authenticated HTTP
+request before the socket upgrades. A read-only pairing is not a sandbox
+against a local process. See
 the [current transport matrix](../security/remote-access-threat-model.md#surface-matrix)
 and the HTTP-scope rationale in
 [the peer-pairing design decision](../design/station-peer-pairing.md#loopback-scopes-are-not-an-exception-station1198).

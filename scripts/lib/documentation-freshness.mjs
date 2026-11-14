@@ -480,18 +480,37 @@ export function resolveDocumentationFreshness({
     }
     return rangeTouches.get(file) ?? [];
   };
+  let branchParents;
   const commitsAfter = new Map();
   const reachableAfter = (from) => {
-    if (!commitsAfter.has(from))
+    if (!branchParents) {
+      branchParents = new Map(
+        git(root, ['rev-list', '--parents', 'HEAD', `^${base}`])
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => {
+            const [commit, ...parents] = line.split(' ');
+            return [commit, parents];
+          }),
+      );
+    }
+    if (!commitsAfter.has(from)) {
+      const ancestors = new Set();
+      const pending = [from];
+      while (pending.length) {
+        const commit = pending.pop();
+        if (ancestors.has(commit) || !branchParents.has(commit)) continue;
+        ancestors.add(commit);
+        pending.push(...branchParents.get(commit));
+      }
       commitsAfter.set(
         from,
         new Set(
-          git(root, ['rev-list', `${from}..HEAD`, `^${base}`])
-            .trim()
-            .split('\n')
-            .filter(Boolean),
+          [...branchParents.keys()].filter((commit) => !ancestors.has(commit)),
         ),
       );
+    }
     return commitsAfter.get(from);
   };
   const appendOnlyProblems = [];

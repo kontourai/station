@@ -33,6 +33,89 @@ describe('turn dedup over Station tables', () => {
     }
   };
 
+  test('historical report reads join the resolved claim and exact terminal in one read-only host snapshot', () => {
+    const { store, file } = open();
+    const peer = new EventStore(file);
+    const turn = {
+      conversationId: 'historical-thread',
+      sessionId: 'historical-thread',
+      clientTurnId: 'historical-client',
+      turnId: 'historical-provider-turn',
+      ownerId: 'historical-owner',
+    };
+    const createdAt = '2026-10-26T00:00:00.000Z';
+    try {
+      store.upsertSession({
+        provider: 'claude',
+        threadId: turn.sessionId,
+        status: 'closed',
+        createdAt,
+        updatedAt: createdAt,
+      });
+      store.appendEvent({
+        provider: 'claude',
+        threadId: turn.sessionId,
+        sessionId: turn.sessionId,
+        eventId: 'historical-session-start',
+        method: 'session.started',
+        createdAt,
+        metadata: { userId: turn.ownerId },
+      });
+      const claim = store.createTurnDeduplicator().claim({
+        threadId: turn.sessionId,
+        clientTurnId: turn.clientTurnId,
+      });
+      if (claim.kind !== 'owner')
+        throw new Error('Fixture must own its real turn');
+      claim.claim.beginInvocation();
+      claim.claim.resolve(turn.turnId);
+      store.appendEvent({
+        provider: 'claude',
+        threadId: turn.sessionId,
+        turnId: turn.turnId,
+        eventId: 'historical-terminal',
+        method: 'turn.completed',
+        createdAt,
+        finishReason: 'stop',
+      });
+      const expected = {
+        ...turn,
+        provider: 'claude',
+        terminalEventId: 'historical-terminal',
+        terminalCreatedAt: createdAt,
+      };
+      expect(store.readHistoricalReportTurn(turn)).toEqual(expected);
+      expect(
+        store.readHistoricalReportTurn({
+          ...turn,
+          clientTurnId: 'missing-client',
+        }),
+      ).toBeNull();
+      const originalRead = store.readSessionByThread.bind(store);
+      const read = vi
+        .spyOn(store, 'readSessionByThread')
+        .mockImplementationOnce((id) => {
+          const session = originalRead(id);
+          // A successful peer write distinguishes a read-only retained host
+          // snapshot from a separate/fresh kernel read or a writer upgrade.
+          peer.deleteThread(id);
+          return session;
+        });
+      try {
+        const observation = store.readHistoricalReportTurn(turn);
+        expect(observation).toEqual(expected);
+        expect(peer.readSessionByThread(turn.sessionId)).toBeUndefined();
+        expect(store.readHistoricalReportTurn(turn)).toBeNull();
+        expect(observation?.terminalEventId).toBe('historical-terminal');
+      } finally {
+        read.mockRestore();
+      }
+    } finally {
+      peer.close();
+      store.close();
+    }
+  });
+
   test('another thread cannot evict a resolved key during its seven-day retry window', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));

@@ -202,6 +202,34 @@
 
     "src-ui/src/components/chat-dock/MobileInboxPanel.tsx",
 
+    "packages/contracts/src/child-work.ts",
+
+    "src-ui/src/hooks/useBackgroundTasks.ts",
+
+    "src-ui/src/contexts/child-work-global-store.ts",
+
+    "src-ui/src/contexts/active-chats-store.ts",
+
+    "src-ui/src/hooks/orchestration/eventHandlers.ts",
+
+    "src-ui/src/hooks/orchestration/snapshotHandlers.ts",
+
+    "src-ui/src/workspace-panes/agents/childWorkSelectors.ts",
+
+    "src-ui/src/utils/sessionDisplay.ts",
+
+    "src-ui/src/components/chat/MessageBubble.tsx",
+
+    "src-server/providers/adapters/claude-adapter-events.ts",
+
+    "src-server/services/orchestration/ownership-tree.ts",
+
+    "src-server/services/orchestration/cancellation-fence.ts",
+
+    "src-server/services/orchestration/cooperative-stop.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts",
+
     "src-ui/src/platform/native/mainWindow.ts",
 
     "src-ui/src/components/chat-dock/useInboxGroups.ts"

@@ -393,6 +393,7 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       }),
       projectService: projects,
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL,
         authorizeCredential: (credential: string) =>
@@ -406,7 +407,9 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
         identifyDevice: () => undefined,
         canSharePersonalConversation: () => false,
         personalConversationOwnerIds: (id: string) => [id],
-        devicePairing: deepStub({}),
+        devicePairing: deepStub({
+          withCurrentRegistry: <T>(read: () => T): T => read(),
+        }),
       }),
     });
     Reflect.set(context as object, 'buildRuntimeContext', () => context);

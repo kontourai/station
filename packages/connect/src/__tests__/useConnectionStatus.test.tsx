@@ -47,6 +47,38 @@ function wrapper(store: ConnectionStore) {
 const POLL = 80;
 
 describe('useConnectionStatus', () => {
+  it.each(['connected', 'error'] as const)(
+    'publishes a prompt %s health result after Strict Mode resubscribes',
+    async (expectedStatus) => {
+      const store = storeWithUrl(`http://strict-${expectedStatus}.test:3141`);
+      const probeEndpoint = vi.fn(async () =>
+        expectedStatus === 'connected'
+          ? { ok: true as const, bootId: 'current-boot' }
+          : { ok: false as const, reason: 'authentication-failed' as const },
+      );
+      const { result } = renderHook(
+        () =>
+          useConnectionStatus({
+            checkHealth: async () => false,
+            probeEndpoint,
+            pollInterval: 60_000,
+          }),
+        { wrapper: wrapper(store), reactStrictMode: true },
+      );
+      await waitFor(() => expect(result.current.status).toBe(expectedStatus), {
+        timeout: 10_000,
+      });
+      expect(probeEndpoint).toHaveBeenCalled();
+      if (expectedStatus === 'connected') {
+        expect(result.current.reason).toBeNull();
+        expect(store.getActive()?.lastBootId).toBe('current-boot');
+      } else {
+        expect(result.current.reason).toBe('authentication-failed');
+        expect(result.current.blocked).toBe(true);
+      }
+    },
+  );
+
   it('uses one broker-route probe target and never records it as a direct endpoint', async () => {
     const store = new ConnectionStore({ storage: memoryAdapter() });
     const route = store.addBrokerRoute({
@@ -139,6 +171,28 @@ describe('useConnectionStatus', () => {
     await waitFor(() => expect(result.current.header.status).toBe('connected'));
     expect(result.current.banner.status).toBe('connected');
     expect(checkHealth).toHaveBeenCalledOnce();
+  });
+
+  it('shares the live health snapshot with a consumer mounted after Strict Mode replay', async () => {
+    const checkHealth = vi.fn().mockResolvedValue(true);
+    const store = storeWithUrl('http://late-shared-server:3141');
+    const options = { checkHealth, pollInterval: 60_000 };
+    const first = renderHook(() => useConnectionStatus(options), {
+      wrapper: wrapper(store),
+      reactStrictMode: true,
+    });
+    await waitFor(() => expect(first.result.current.status).toBe('connected'));
+    const checksBeforeMount = checkHealth.mock.calls.length;
+    const later = renderHook(() => useConnectionStatus(options), {
+      wrapper: wrapper(store),
+      reactStrictMode: true,
+    });
+    await waitFor(() => expect(later.result.current.status).toBe('connected'));
+    expect(checkHealth).toHaveBeenCalledTimes(checksBeforeMount);
+    first.unmount();
+    await act(async () => later.result.current.recheck());
+    await waitFor(() => expect(later.result.current.checking).toBe(false));
+    expect(checkHealth).toHaveBeenCalledTimes(checksBeforeMount + 1);
   });
 
   it('shares fresh outcomes with a later consumer after StrictMode subscription replay', async () => {

@@ -1,0 +1,7 @@
+{
+  "revision": "f3895b8132ae1e86b8461660a46695a04b2918de",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Scoped review of the confined native model-channel checkpoint at 1af6b32efb47 and its byte-disclosure controls through c8c54103be1e. Inspected real stdio protocol/worker/channel, retained container receipt and owner journal, independent source/evidence reports, baseline cancellation failure, six-case pass, escaped original delivery mutation, strengthened 23-byte catch and byte-exact restored pass. Current main merge changes no native-channel source. No native-engine, provider billing, portable authority, Windows, erasure, full-epic or current merged-head runtime qualification follows; merged-head checks remain pending. Historical sections retain their own recorded revisions and limits.","inputs":["docs/plans/child-work-epic.md","src-server/services/orchestration/__tests__/station-report-input.integration.test.ts","src-server/services/orchestration/delegation-group-persistence.ts","src-server/services/orchestration/station-report-group-custody.ts","src-server/services/orchestration/station-report-group-runtime.ts","src-server/services/connections/native-model-container.ts","src-server/services/connections/native-model-stdio-channel.ts","src-server/services/connections/native-model-stdio-protocol.ts","src-server/services/connections/native-model-stdio-worker.ts","src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts","scripts/child-work-native-model-channel-lab.ts"]}
+  ]
+}

@@ -126,7 +126,9 @@
 
     "packages/shared/package.json#/main",
 
-    "packages/shared/package.json#/types"
+    "packages/shared/package.json#/types",
+
+    "src-server/services/terminal/terminal-gateway.ts"
   ],
 
   "checks": [

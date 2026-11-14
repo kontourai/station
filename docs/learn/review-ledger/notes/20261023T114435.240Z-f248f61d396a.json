@@ -1,0 +1,7 @@
+{
+  "revision": "95d0a22e5d38f3a58bdd37a1156e1d47df98c39b",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed the authenticated report preparation section against committed 95d0a22e5d3 and the new admission/custody owners. Historical records are host-signed, dispatch requires exact live preparation and credential provenance, operation naming is host/principal/operation rather than credential, and retained rounds/v3 conflict checks reject resealing after metadata loss. Fresh GET authority is independent of expired provider/source preparation and cannot issue a launch lease. Owner tests 16/16 and persistence/local-grant siblings 17/17 executed; signature mutant compiled, produced the intended metadata-rejection failure with 15 controls, and byte-exact restoration passed 16/16. Public serving, cancellation, Flow frontier/join, recipient ACK, provider/device and full epic qualification remain explicitly open. This note covers the changed report-custody claims only.","inputs":["docs/plans/child-work-epic.md","src-server/runtime/conversation/bounded-api-provider-contract.ts","src-server/runtime/conversation/reserved-provider-fetch.ts","src-server/runtime/conversation/reserved-sdk-source-attempt.ts","src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts","src-server/services/orchestration/delegation-group-persistence.ts"]}
+  ]
+}

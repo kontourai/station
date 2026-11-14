@@ -31,6 +31,8 @@ import { runPolicyCommand } from './commands/policy.js';
 import { existsSync, statSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import {
+  StationHttpError,
+  StationRequestTimeoutError,
   TaskToolResultRequestError,
   TaskUserInputReferenceRequestError,
 } from '@kontourai/station-sdk/client';
@@ -52,6 +54,7 @@ import {
 } from './commands/core-api.js';
 import { runDevCommand } from './commands/dev-command.js';
 import { readStationConfinementPreflight } from './commands/doctor-confinement-reader.js';
+import { runEnsembleCommand } from './commands/ensemble.js';
 import {
   type EnvironmentSecurityServiceFactory,
   type PeerCredentialStoreFactory,
@@ -422,6 +425,7 @@ const CORE_COMMANDS = [
   'approvals',
   'operate',
   'delegate',
+  'group',
   'projects',
   'tasks',
   'skills',
@@ -466,6 +470,7 @@ const INDIVIDUAL_COMMANDS = [
   'fresh',
   'home',
   'cloud',
+  'ensemble',
   'upgrade',
   'doctor',
   'link',
@@ -807,6 +812,7 @@ function buildProgram(
   for (const name of SURFACE_COMMANDS) {
     register(name, (rawArgs) => runSurfaceCommand(name, rawArgs));
   }
+  register('ensemble', runEnsembleCommand);
 
   register('upgrade', async (rawArgs) => {
     const lifecycleArgs = parseLifecycleArgs(rawArgs);
@@ -848,12 +854,12 @@ function buildProgram(
   });
   register('dev', (rawArgs) => runDevCommand(rawArgs));
   register('doctor', async (rawArgs) => {
-    if (isBundledDistribution()) {
-      await runTargetCommand(rawArgs.filter((arg) => arg !== '--json'));
-      return;
-    }
     if (rawArgs.includes('--migrate-playbooks')) {
       await runPlaybookMigrationReport(rawArgs, dependencies);
+      return;
+    }
+    if (isBundledDistribution()) {
+      await runTargetCommand(rawArgs.filter((arg) => arg !== '--json'));
       return;
     }
     // #4774: the selected Station's confinement preflight, read with the
@@ -1511,6 +1517,28 @@ async function runCoreCliAction(
   try {
     await runCoreCommand(command, rawArgs);
   } catch (error) {
+    if (command === 'group' && rawArgs.includes('--json')) {
+      console.error(
+        JSON.stringify({
+          success: false,
+          error: describeCliError(error),
+          ...(error instanceof StationHttpError
+            ? { status: error.status, code: error.code }
+            : {}),
+          ...(error instanceof StationRequestTimeoutError
+            ? {
+                code: 'request_timeout',
+                timeoutMs: error.timeoutMs,
+                mutation: error.mutation,
+                retryable: error.mutation === false,
+                outcome: error.mutation === false ? 'failed' : 'unknown',
+              }
+            : {}),
+        }),
+      );
+      process.exitCode = 1;
+      return;
+    }
     const action = rawArgs[0] ?? '';
     const isTaskProtectedAction =
       command === 'tasks' && TASK_PROTECTED_REFERENCE_ACTIONS.has(action);
@@ -1553,7 +1581,9 @@ export async function runCli(
 ): Promise<void> {
   installNodeHttpCompatibility();
   const [command, ...args] = argv;
-  const recoveryObservation = command === 'home' && args[0] === 'recovery-plan';
+  const localObservation =
+    command === 'ensemble' ||
+    (command === 'home' && args[0] === 'recovery-plan');
   const interactive =
     dependencies.isInteractive ?? Boolean(process.stdin.isTTY);
 
@@ -1601,7 +1631,7 @@ export async function runCli(
 
   // Every Station request gets a deadline from here on, so a listening-but-
   // silent server fails loudly instead of hanging with no output.
-  if (!recoveryObservation) configureRequestTimeout();
+  if (!localObservation) configureRequestTimeout();
   configureClientOrigin();
 
   // Manual unknown-command arm: an unrecognized verb never reaches Commander,
@@ -1615,7 +1645,7 @@ export async function runCli(
   // Help, version, default/contributor/host refusals, and unknown input must
   // not construct or query the platform keyring. The executable provides this
   // adapter lazily only for a dispatchable client command.
-  if (!recoveryObservation) {
+  if (!localObservation) {
     await dependencies.configureProfileCredentialStore?.();
   }
 

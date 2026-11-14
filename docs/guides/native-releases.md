@@ -420,9 +420,12 @@ host target, launcher protocol, signed size/hash and release identity, stages
 the bundled runtime under `versions/<version>`, then promotes the active link.
 When a running Station service's fixed launcher runs that install, the installer only
 stages the version and the launcher trials the switch instead.
-It does not run dependencies or build that archive. The Windows zip is
-`install.ps1`'s, which installs it the same way without a service
-(#2675 slice W2; a Windows service is not switched yet). The default authenticated
+It does not run dependencies or build that archive. On Windows, `install.ps1`
+stages an update for a running fixed-launcher service, which owns the trial
+and switch. A registered but stopped service stays stopped after installation.
+Legacy services that run a version directly require the documented migration;
+see the [Windows archive lifecycle](release-channel-ports.md#windows-archive-installs).
+The default authenticated
 GitHub path and schema-v1 public source manifests still install and build a source
 release under `releases/`. See the [consumer formats](../../packaging/manifest/README.md#formats-and-consumers)
 and [installation lifecycle](release-channel-ports.md) for prerequisites,

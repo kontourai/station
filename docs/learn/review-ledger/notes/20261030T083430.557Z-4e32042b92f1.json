@@ -1,0 +1,7 @@
+{
+  "revision": "5cf8e56097934535006726059e0050977cbf829f",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Reconciled the settings page after5e9c0e59721 withdrew the unqualified report-continuation preview registration. Removed it from the offered table and retained explicit not-offered/unavailable prose: no provider work or retry grant. Executed feature-preview documentation check PASS9 bound previews and links PASS517. This supersedes the earlier10-binding table receipt for current catalog state; the earlier missing-row failure and source-only unavailable checkpoint remain history. No finalizer functionality or publication proof is claimed.","inputs":["docs/user/settings.md"]}
+  ]
+}

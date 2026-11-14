@@ -23,7 +23,7 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 vi.mock('../contexts/AgentsContext', () => ({
@@ -142,6 +142,79 @@ describe('station#3300 — settled turn stays settled on resume', () => {
     );
     expect(screen.getByText('Background task running')).toBeTruthy();
     expect(screen.queryByTestId('streaming-message')).toBeNull();
+  });
+  test('the clickable background banner retains one status announcement as tasks change', () => {
+    const onOpen = vi.fn();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const content = (
+      tasks: ChatSession['backgroundTasks'],
+      unavailable = false,
+    ) => (
+      <QueryClientProvider client={queryClient}>
+        <ChatMessageList
+          activeSession={managedSession({ backgroundTasks: tasks })}
+          fontSize={14}
+          showReasoning
+          showToolDetails
+          liveStatusUnavailable={unavailable}
+          onOpenBackgroundTasks={onOpen}
+        />
+      </QueryClientProvider>
+    );
+    const announcements = (label: string) =>
+      screen
+        .queryAllByRole('status')
+        .filter((node) => node.textContent === label);
+    const { rerender } = render(content([]));
+    expect(
+      screen.queryByRole('button', { name: /open background tasks/ }),
+    ).toBeNull();
+    const first = {
+      taskId: 'task-1',
+      backgrounded: true,
+      description: 'index repo',
+    };
+    rerender(content([first]));
+    const one = 'Background agent working — index repo';
+    expect(announcements(one)).toHaveLength(1);
+    fireEvent.click(
+      screen.getByRole('button', { name: `${one} — open background tasks` }),
+    );
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    rerender(
+      content([
+        first,
+        { taskId: 'task-2', backgrounded: true, description: 'check types' },
+      ]),
+    );
+    const two = '2 background agents working — index repo, …';
+    expect(announcements(two)).toHaveLength(1);
+    expect(announcements(one)).toHaveLength(0);
+    const unavailable =
+      'Last known: 2 background agents working — index repo, … (status unavailable)';
+    rerender(
+      content(
+        [
+          first,
+          { taskId: 'task-2', backgrounded: true, description: 'check types' },
+        ],
+        true,
+      ),
+    );
+    expect(announcements(unavailable)).toHaveLength(1);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `${unavailable} — open background tasks`,
+      }),
+    );
+    expect(onOpen).toHaveBeenCalledTimes(2);
+    rerender(content([]));
+    expect(announcements(unavailable)).toHaveLength(0);
+    expect(
+      screen.queryByRole('button', { name: /open background tasks/ }),
+    ).toBeNull();
   });
   test('when the conversation cannot be observed, server child work is a last-known line, not a live one', () => {
     renderList(

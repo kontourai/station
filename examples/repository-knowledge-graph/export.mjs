@@ -10,13 +10,18 @@ import {
 export function main(args = process.argv.slice(2)) {
   let root = process.cwd();
   let output;
+  const moduleNames = [];
   for (const arg of args) {
     if (arg.startsWith('--repo=')) root = resolve(arg.slice(7));
     else if (arg.startsWith('--output=')) output = resolve(arg.slice(9));
+    else if (arg.startsWith('--module=')) moduleNames.push(arg.slice(9));
     else throw new Error(`Unknown export option: ${arg}`);
   }
   const snapshot = validateKnowledgeSnapshot(
-    exportRepositoryKnowledge({ root }),
+    exportRepositoryKnowledge({
+      root,
+      ...(moduleNames.length ? { moduleNames } : {}),
+    }),
   );
   const serialized = `${JSON.stringify(snapshot, null, 2)}\n`;
   if (Buffer.byteLength(serialized) > GRAPH_LIMITS.outputBytes)

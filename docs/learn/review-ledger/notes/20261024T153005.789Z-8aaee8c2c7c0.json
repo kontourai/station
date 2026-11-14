@@ -1,0 +1,7 @@
+{
+  "revision": "3566c44911456af940561048ef8f94bbb09fc345",
+
+  "notes": [
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Child-work runtime-context review: read full context and relevant branch deltas through147908; traced session-group initial-turn completion, Claude2.1.308 runtime gate, restricted activation/native resume binding and launch/send fences, reserved Station Session capture, retained turn producer, root invocation accounting and exact cancellation custody. Added separate report-candidate paragraph with full returning-request/provider/native/device qualification explicitly open. Startup adoption, ordinary session/turn/lineage/command separation, optional metadata Flow attachment and experimental agent-runtime non-adoption remain unchanged by this branch; inspected canonical owners and no agent-runtime import in bootstrap/service/command. Prior controlled tests/types/source review are retained evidence only, not new live proof. No invented hard-cap guarantee for native CLI groups.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-command-module.ts","src-server/services/orchestration/station-report-group-runtime.ts","src-server/services/orchestration/station-report-retained-turn.ts","src-server/services/orchestration/station-report-group-custody.ts"]}
+  ]
+}

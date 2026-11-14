@@ -5,6 +5,7 @@ import {
   openSync,
   readFileSync,
   readSync,
+  renameSync,
 } from 'node:fs';
 import {
   mkdir as mkdirAsync,
@@ -123,8 +124,12 @@ interface JsonFileWriteOptions extends JsonSerializationOptions {
   expectedFingerprint?: string | null;
   maxBytes?: number;
   label?: string;
-  /** Revalidate an owning root/capability immediately before rename commit. */
+  /** Revalidate the directory before creating the staged file. */
   beforeCommit?: () => void | Promise<void>;
+  /** Check current effect authority after staging, without yielding before publication. */
+  finalizeCommit?: () => undefined;
+  /** Run the synchronous finalizer and rename within an owning exclusion span. */
+  commitWithin?: (commit: () => void) => void;
   /** Synchronous admission immediately before the atomic rename is invoked. */
   assertCurrent?: () => void;
 }
@@ -167,6 +172,8 @@ export async function publishJsonFileWithOwnedLock(
     | 'maxBytes'
     | 'label'
     | 'beforeCommit'
+    | 'finalizeCommit'
+    | 'commitWithin'
     | 'assertCurrent'
     | 'indent'
     | 'trailingNewline'
@@ -189,7 +196,38 @@ export async function publishJsonFileWithOwnedLock(
       await descriptor.close();
     }
     options?.assertCurrent?.();
-    await renameAsync(temporaryPath, path);
+    if (options?.finalizeCommit || options?.commitWithin) {
+      let called = false;
+      let active = true;
+      const commit = () => {
+        if (!active || called)
+          throw new Error('JSON publication commit is not current.');
+        called = true;
+        const result: unknown = options?.finalizeCommit?.();
+        if (result !== undefined) {
+          void Promise.resolve(result).catch(() => {});
+          throw new Error('JSON publication finalizer must be synchronous.');
+        }
+        renameSync(temporaryPath, path);
+        committed = true;
+      };
+      if (options?.commitWithin) {
+        let result: unknown;
+        try {
+          result = options.commitWithin(commit);
+        } finally {
+          active = false;
+        }
+        if (result !== undefined) void Promise.resolve(result).catch(() => {});
+        if (result !== undefined || !called)
+          throw new Error('JSON publication span must commit synchronously.');
+      } else {
+        commit();
+        active = false;
+      }
+    } else {
+      await renameAsync(temporaryPath, path);
+    }
     committed = true;
     // The rename is the commit point. POSIX directory fsync makes its entry
     // durable across a crash; Windows has no equivalent and the shared helper

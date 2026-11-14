@@ -682,6 +682,38 @@ describe('#2601 delegate_task stamps lineage from the verified caller', () => {
     expect(delegateTask).not.toHaveBeenCalled();
   });
 
+  test.each(
+    [
+      Array.from({ length: 65 }, () => ['github_*']),
+      [Array.from({ length: 257 }, () => 'github_*')],
+      [['x'.repeat(257)]],
+      [[42]],
+    ].map((clauses) => ({ clauses })),
+  )(
+    'malformed recorded inherited clauses refuse before fan-out (%#)',
+    async ({ clauses }) => {
+      const original = STARTED['session-child'];
+      STARTED['session-child'] = {
+        ...original,
+        delegation: { ...ROOT_CHILD, toolAllowlistConstraints: clauses },
+      };
+      try {
+        const result = await callTool(
+          'session-child',
+          'delegate_task',
+          DELEGATE_ARGS,
+        );
+        expect(result.isError).toBe(true);
+        expect(JSON.parse(result.text)).toMatchObject({
+          code: 'delegation_lineage_unavailable',
+        });
+        expect(delegateTask).not.toHaveBeenCalled();
+      } finally {
+        STARTED['session-child'] = original;
+      }
+    },
+  );
+
   test('a verified session with no recorded Agent is refused rather than starting a root', async () => {
     const result = await callTool(
       'session-agentless',
@@ -745,7 +777,9 @@ describe('#2601 a request with no verified caller claims no lineage', () => {
     const delegation = createChildDelegationContext({
       agentSlug: 'planner',
       conversationId: 'conversation-in-process',
+      sessionId: 'session-in-process',
       spec: SPECS.planner,
+      current: { ...ROOT_CHILD, allowedTools: ['station-control_list_agents'] },
     });
     const response = await fetch(
       `${baseUrl}/api/orchestration/chat/delegated`,
@@ -780,6 +814,17 @@ describe('#2601 a request with no verified caller claims no lineage', () => {
       // A genuine attestation replayed onto another tree's root.
       {
         delegation: { ...genuine, rootConversationId: 'conversation-victim' },
+        delegationAttestation: attestDelegationContext(genuine),
+      },
+      {
+        delegation: { ...genuine, parentSessionId: 'session-victim' },
+        delegationAttestation: attestDelegationContext(genuine),
+      },
+      {
+        delegation: {
+          ...genuine,
+          toolAllowlistConstraints: [['station-control_delete_agent']],
+        },
         delegationAttestation: attestDelegationContext(genuine),
       },
     ]) {

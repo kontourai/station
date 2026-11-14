@@ -85,6 +85,115 @@ test('closing the last chat retires its transcript and status while preserving l
   );
 });
 
+test('closing a chat releases settled background history and keeps only live work until it settles', () => {
+  open('last-chat');
+  for (const threadId of ['finished-delegate', 'live-delegate']) {
+    backgroundTasksStore.ingest({
+      provider: 'claude',
+      threadId,
+      method: 'session.started',
+      sessionId: threadId,
+      createdAt: '2026-10-21T00:00:00.000Z',
+      metadata: { taskId: threadId, parentTaskId: 'conv' },
+    });
+  }
+  backgroundTasksStore.ingest({
+    provider: 'claude',
+    threadId: 'finished-delegate',
+    method: 'turn.completed',
+    turnId: 'finished',
+    createdAt: '2026-10-21T00:00:01.000Z',
+  });
+  activeChatsStore.removeChat('last-chat');
+  expect(
+    backgroundTasksStore.getSnapshot().entries['finished-delegate'],
+  ).toBeUndefined();
+  expect(
+    backgroundTasksStore.getSnapshot().delegateParents['finished-delegate'],
+  ).toBeUndefined();
+  expect(
+    backgroundTasksStore.getSnapshot().entries['live-delegate'].state,
+  ).toBe('running');
+  backgroundTasksStore.ingest({
+    provider: 'claude',
+    threadId: 'live-delegate',
+    method: 'turn.completed',
+    turnId: 'live-finished',
+    createdAt: '2026-10-21T00:00:02.000Z',
+  });
+  expect(backgroundTasksStore.getSnapshot()).toMatchObject({
+    entries: {},
+    delegateParents: {},
+  });
+});
+
+test('replaced execution aliases retire their history and later live settlement', () => {
+  open('alias-chat');
+  activeChatsStore.updateChat('alias-chat', {
+    currentSessionId: 'old-execution',
+  });
+  for (const child of ['old-finished', 'old-live'])
+    backgroundTasksStore.ingest({
+      provider: 'claude',
+      threadId: child,
+      sessionId: child,
+      method: 'session.started',
+      createdAt: '2026-10-21T00:00:00.000Z',
+      metadata: { taskId: child, parentTaskId: 'old-execution' },
+    });
+  backgroundTasksStore.ingest({
+    provider: 'claude',
+    threadId: 'old-finished',
+    method: 'turn.completed',
+    turnId: 'done',
+    createdAt: '2026-10-21T00:00:01.000Z',
+  });
+  activeChatsStore.updateChat('alias-chat', {
+    currentSessionId: 'new-execution',
+  });
+  activeChatsStore.removeChat('alias-chat');
+  expect(
+    backgroundTasksStore.getSnapshot().entries['old-finished'],
+  ).toBeUndefined();
+  expect(backgroundTasksStore.getSnapshot().entries['old-live'].state).toBe(
+    'running',
+  );
+  backgroundTasksStore.ingest({
+    provider: 'claude',
+    threadId: 'old-live',
+    method: 'turn.completed',
+    turnId: 'done',
+    createdAt: '2026-10-21T00:00:01.000Z',
+  });
+  expect(
+    backgroundTasksStore.getSnapshot().entries['old-live'],
+  ).toBeUndefined();
+});
+
+test('reopening a chat before its delegate settles retains the newly visible result', () => {
+  open('closing');
+  backgroundTasksStore.ingest({
+    provider: 'claude',
+    threadId: 'reopened-delegate',
+    method: 'session.started',
+    sessionId: 'reopened-delegate',
+    createdAt: '2026-10-21T00:00:00.000Z',
+    metadata: { taskId: 'reopened-delegate', parentTaskId: 'conv' },
+  });
+  activeChatsStore.removeChat('closing');
+  open('reopened');
+  backgroundTasksStore.ingest({
+    provider: 'claude',
+    threadId: 'reopened-delegate',
+    method: 'turn.completed',
+    turnId: 'after-reopen',
+    createdAt: '2026-10-21T00:00:02.000Z',
+  });
+  expect(
+    backgroundTasksStore.getSnapshot().entries['reopened-delegate'].state,
+  ).toBe('completed');
+});
+
 test.each([false, true])(
   'a pending transcript read cannot repopulate a closed chat (guarded: %s)',
   async (guarded) => {

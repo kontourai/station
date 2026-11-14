@@ -600,7 +600,7 @@ export type AppConfig = Partial<
 
 export type NavigationView =
   | { type: 'home' }
-  | { type: 'agents' }
+  | { type: 'agents'; tab?: 'ensembles' }
   | { type: 'agent-new' }
   | {
       type: 'agent-edit';

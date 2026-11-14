@@ -1,12 +1,23 @@
-import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import childProcess, { spawn } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   acquireStationHomeMaintenanceLease,
   acquireStationHomeMaintenanceLeaseAsync,
   acquireStationHomeRuntimeLease,
+  assertStationHomeRuntimeProof,
+  captureStationHomeRuntimeProof,
   StationHomeActiveError,
 } from '../station-home-lifecycle.js';
 
@@ -34,6 +45,114 @@ afterEach(() => {
 });
 
 describe('Station home lifecycle authority', () => {
+  it.skipIf(process.platform !== 'darwin')(
+    'does not re-spawn an own-process birth probe for each runtime proof',
+    async () => {
+      const home = root();
+      const exec = vi.spyOn(childProcess, 'execFileSync');
+      syncBuiltinESMExports();
+      let lease: ReturnType<typeof acquireStationHomeRuntimeLease> | undefined;
+      const ownProbes = () =>
+        exec.mock.calls.filter(
+          ([file, args]) =>
+            file === 'ps' &&
+            Array.isArray(args) &&
+            args.includes(String(process.pid)),
+        );
+      try {
+        lease = acquireStationHomeRuntimeLease(home);
+        const proof = captureStationHomeRuntimeProof(home, lease);
+        expect(ownProbes().length).toBeGreaterThan(0);
+        exec.mockClear();
+        for (let i = 0; i < 3; i++) {
+          await Promise.resolve();
+          assertStationHomeRuntimeProof(proof);
+        }
+        expect(ownProbes()).toHaveLength(0);
+      } finally {
+        lease?.release();
+        exec.mockRestore();
+        syncBuiltinESMExports();
+      }
+    },
+  );
+
+  it('re-reads its runtime lease record before accepting a captured proof', () => {
+    const home = root();
+    const lease = acquireStationHomeRuntimeLease(home);
+    const proof = captureStationHomeRuntimeProof(home, lease);
+    const canonicalHome = realpathSync(home);
+    const identity =
+      process.platform === 'win32'
+        ? canonicalHome.toLowerCase()
+        : canonicalHome;
+    const path = join(
+      tmpdir(),
+      'kontourai-station-home-lifecycle',
+      createHash('sha256').update(identity).digest('hex'),
+      'runtime-leases',
+      `${lease.ownerId}.json`,
+    );
+    const original = readFileSync(path, 'utf8');
+    const record: unknown = JSON.parse(original);
+    expect(record).toBeTypeOf('object');
+    if (!record || typeof record !== 'object')
+      throw new Error('Lease record missing');
+    try {
+      for (const changed of [
+        { ownerId: randomUUID() },
+        { pid: process.pid + 1 },
+        { birth: 'foreign-process-birth' },
+      ]) {
+        writeFileSync(path, JSON.stringify({ ...record, ...changed }));
+        expect(() => assertStationHomeRuntimeProof(proof)).toThrow(
+          'Runtime lease ownership changed',
+        );
+        writeFileSync(path, original);
+        expect(() => assertStationHomeRuntimeProof(proof)).not.toThrow();
+      }
+    } finally {
+      writeFileSync(path, original);
+      lease.release();
+    }
+    expect(() => assertStationHomeRuntimeProof(proof)).toThrow(
+      'Runtime lease is released',
+    );
+  });
+
+  it('captures only an exact live runtime lease for the same home', () => {
+    const home = join(root(), 'home');
+    const other = join(root(), 'other');
+    const lease = acquireStationHomeRuntimeLease(home);
+    const proof = captureStationHomeRuntimeProof(home, lease);
+    expect(() => assertStationHomeRuntimeProof(proof)).not.toThrow();
+    expect(() => captureStationHomeRuntimeProof(other, lease)).toThrow();
+    expect(() =>
+      captureStationHomeRuntimeProof(home, {
+        ownerId: lease.ownerId,
+        release() {},
+      }),
+    ).toThrow();
+    expect(() =>
+      assertStationHomeRuntimeProof({ assertCurrent() {} }),
+    ).toThrow();
+    lease.release();
+    const replacement = acquireStationHomeRuntimeLease(home);
+    try {
+      expect(() => assertStationHomeRuntimeProof(proof)).toThrow();
+      expect(() => captureStationHomeRuntimeProof(home, lease)).toThrow();
+      const replacementProof = captureStationHomeRuntimeProof(
+        home,
+        replacement,
+      );
+      expect(() =>
+        assertStationHomeRuntimeProof(replacementProof),
+      ).not.toThrow();
+    } finally {
+      replacement.release();
+    }
+  });
+
   it('publishes its own exact lease after a transient Windows birth-probe miss', () => {
     const home = join(root(), 'home');
     let probes = 0;

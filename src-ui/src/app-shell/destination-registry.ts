@@ -319,6 +319,14 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     view: { type: 'agents' },
   },
   {
+    id: 'ensembles',
+    route: '/agents',
+    label: () => 'Inspect an Ensemble',
+    keywords: ['ensembles', 'topology', 'inspection'],
+    hiddenFromNav: true,
+    palette: { order: 11, params: { tab: 'ensembles' } },
+  },
+  {
     id: 'guidance',
     route: '/guidance',
     // #2144 slice 4: the surface is called Skills. The id, the route and the

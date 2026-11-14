@@ -2545,6 +2545,45 @@ fn write_profile_store_genesis_marker(root: &std::path::Path) -> Result<(), Stri
     }
 }
 
+#[cfg(target_os = "android")]
+fn publish_initial_station_profile_store(
+    temporary: &std::path::Path,
+    destination: &std::path::Path,
+) -> std::io::Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+
+    let temporary = std::ffi::CString::new(temporary.as_os_str().as_bytes())
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
+    let destination = std::ffi::CString::new(destination.as_os_str().as_bytes())
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
+    // Android app storage can deny hard links. The raw syscall retains atomic
+    // no-replace publication without depending on the API-30 bionic symbol.
+    // Both C strings remain alive throughout the call.
+    let result = unsafe {
+        libc::syscall(
+            libc::SYS_renameat2,
+            libc::AT_FDCWD,
+            temporary.as_ptr(),
+            libc::AT_FDCWD,
+            destination.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+fn publish_initial_station_profile_store(
+    temporary: &std::path::Path,
+    destination: &std::path::Path,
+) -> std::io::Result<()> {
+    std::fs::hard_link(temporary, destination)
+}
+
 fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), String> {
     #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
@@ -2580,7 +2619,7 @@ fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), Strin
             .map_err(|error| format!("sync initial saved Station metadata: {error}"))?;
         drop(file);
         // A completed inode is published without replacing an existing store.
-        match std::fs::hard_link(&temporary, path) {
+        match publish_initial_station_profile_store(&temporary, path) {
             Ok(()) => {
                 sync_profile_store_directory(parent)?;
                 Ok(())

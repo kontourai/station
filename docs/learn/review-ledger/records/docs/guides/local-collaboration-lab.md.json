@@ -198,7 +198,9 @@
 
     "tests/tauri-shell/native-project-runtime-fixture.ts",
 
-    "tests/tauri-shell/native-relay-diagnostic-echo-webview.ts"
+    "tests/tauri-shell/native-relay-diagnostic-echo-webview.ts",
+
+    "src-server/security/native-device-request-authority.ts"
   ],
 
   "checks": [

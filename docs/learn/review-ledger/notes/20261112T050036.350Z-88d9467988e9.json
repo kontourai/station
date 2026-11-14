@@ -1,0 +1,19 @@
+{
+  "revision": "78f2c0fa6391294549763b94a1fba239e32fa3e2",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Scoped merge review: ConversationBody remains the canonical body/controller composition. The delta carries orchestrationSession into transcript rendering and consumes host durability steer/queue refusal details; it creates no new execution authority. Reviewed the 11-line ConversationBody delta against the conversation-boundaries section. No fresh visual/native acceptance is claimed.","inputs":["docs/architecture/module-map.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed canonical ConversationBody merge delta: generic steering and queue affordances consume the session durability refusal and transcript receives the orchestration Session. Corrected the reading-status owner link from thin ChatDockBody to ConversationBody. Existing sealed-session refusal and uncertainty wording remains accurate. No new browser or provider acceptance.","inputs":["docs/design/chat-composer.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Scoped review of Activity ownership against the merged ConversationBody delta: shared chronological transcript, draft and connection ownership remain unchanged; durability refusal detail is consumed by existing controls and orchestrationSession reaches the shared transcript. Sidebar/Boards policy is unaffected. No all-surface visual qualification.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Reviewed SDK http.ts delta and canonical ConversationBody use: original captured authority is registered for response publication, body guard is cached, and SSE open/message/checkpoint callbacks recheck it. Byte-bounded frames, abort observation and reader retirement preserve scoped transport rules; no credential/route expansion. Host durability controls do not derive target authority. This is source review, not remote/native/live acceptance.","inputs":["docs/design/station-connection.md","src-ui/src/components/conversation/ConversationBody.tsx","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed unsaved-guard registry additions against actual EnsemblePresetUpload, ReportGroupCreateForm and ReportGroupSyncForm useUnsavedGuard calls. Local preset replacement uses explicit guard; route changes retain canonical registered navigation. Three editors are added to the existing scanner inventory, no bypass or duplicate route owner. Pattern prose remains accurate.","inputs":["docs/patterns/frontend.md","scripts/unsaved-guard-gate.mjs"]},
+
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed November 7 checkpoint against retained exact-head managed install, typecheck, SDK-version regression and finalizer receipts. Eighteen controlled SDK/finalizer cases pass at 14f3d9ca; older failure and expiry limits retained. Full inherited local/peer/SSH authority, native wrong-ACK/retry, final readiness/review and delivery remain incomplete; flags false. Not whole-epic qualification.","inputs":["docs/plans/child-work-epic.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Scoped normative-policy review against canonical ConversationBody delta: body owner, target/authority boundaries and explicit durability ports remain compliant by source inspection. No instruction changes and no universal compliance, render, native or performance certification. Existing UI verification requirements retained.","inputs":["src-ui/AGENTS.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

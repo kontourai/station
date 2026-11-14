@@ -20,6 +20,7 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/visual-viewport` — browser-safe visual viewport geometry (height, page offset and the inset above the keyboard or Android system bars, intersected with the Android shell's reported visible height) as one subscription per window; the app's surfaces and the SDK and Connect modals read the same snapshot through `useSyncExternalStore`
 - `@kontourai/station-shared/strict-indexeddb` — one transaction against a single-store IndexedDB database that refuses a `readwrite` the browser would not commit with strict durability, closes on a version change and rejects with the caller's own errors; the browser relay authority and TURN credential custody and Connect's broker routing grants use it
 - `@kontourai/station-shared/git`
+- `@kontourai/station-shared/lifecycle-events` — Node-only journal and cooperative cross-process file locks. `acquireFileMutationLeaseAsync` returns a nominal held capability with synchronous `assertCurrent` and checked asynchronous `release`; the existing lock helpers retain best-effort cleanup. The capability protects only participating writers to that lock, not all host authority or source mutations.
 - `@kontourai/station-shared/mcp` — also `setRemoteTransportFetchPolicy`, through which the server pins catalog-supplied remote servers to checked addresses
 - `@kontourai/station-shared/remote-address-guard` — Node-only private and loopback address rules and `createAddressPinnedFetch`, which resolves each hostname once per connection, refuses any private answer unless allowed, and connects only to the checked addresses
 - `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
@@ -33,6 +34,35 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/managed-policy` — Node-only reading of the machine's [managed policy](../guides/managed-policy.md): the fixed per-OS file path, the source interface, the macOS configuration-profile source (`/usr/bin/plutil`) and the Windows registry source (advapi32 through `koffi`) with its owner and access-list checks, the no-link, regular-file and (for system sources) root-ownership checks, the 1 MiB bound, the duplicate-key refusal, the bounded fatal message, the `sha256:` fingerprint, the `STATION_MANAGED_POLICY_TEST_FILE` override (refused while a system policy is installed) and `ManagedPolicyInvalidError`, whose message starts with `STATION_MANAGED_POLICY_INVALID`. The document parser and summary live in `@kontourai/station-contracts/managed-policy`
 - `@kontourai/station-shared/managed-policy-templates` — the Group Policy template (`station.admx`, `en-US/station.adml`) generated from the managed policy's control table, and the macOS `.mobileconfig` for a policy document; `station policy templates` writes them
 - `@kontourai/station-shared/usage-semantics` — provider usage scope, the declared-usage-provider and context-occupancy-only checks, context validation and cache-inclusive token helpers; `usage-fold` retains the same exports alongside event accounting
+
+Lock, guard and reclamation-claim metadata must be regular files within a 16 KiB
+envelope. Descriptor reads use nonblocking open flags where the platform supplies
+them, so a substituted FIFO is refused without waiting for a writer. Generated
+guards retain only the protected lock identity fields and must fit that same
+envelope before publication. This bounds
+inspection; ordinary acquisition can still wait and probe owner liveness under
+its existing timeout policy. No synchronous no-wait acquisition capability or
+complete recovery writer hold follows from bounded inspection alone.
+
+The staged `prepareFileMutationOwner` contract resolves this process's birth
+identity asynchronously, then offers synchronous `tryAcquire` and `tryRelease`
+using the same lock/guard/claim protocol. Contention refuses without liveness
+probes or retry sleeps. Guard or claim activity is never treated as stale by
+the synchronous path. An acquisition or release failure can instead retain
+cleanup-only custody; callers must await `settlePendingCleanup` or `close`.
+Cleanup retries operate on the retained identities and cannot be treated as
+permission to repeat the protected mutation. The existing async lease keeps
+ownership of waiting and reclamation.
+
+The server's [HomeWriterOwner](../../src-server/services/ssh/home-writer-owner.ts)
+adopts this contract for canonical-home identity, mandatory pairing construction
+and registry, token and native-push mutation spans. Async token operations acquire
+the same hold; their synchronous lookup touch leaves no deferred writer.
+[Report accounting recovery](api.md#report-groups) now holds runtime publication
+custody and an exact Home scope. Broader all-writer and live recovery
+qualification remain separate; this does not enable the continuation finalizer.
+File operations remain synchronous, with no latency guarantee on a stalled
+filesystem.
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
 `.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the
@@ -204,10 +234,12 @@ source is implemented.
 
 `@kontourai/station-shared/mcp-elicitation` holds only the MCP edge:
 `inputRequestFromMcpElicitation` maps a form-mode request into a form,
-refusing URL mode and anything outside the schema or over a bound.
+refusing URL mode and anything outside the schema or over a bound. Station MCP
+connections and supported Codex native data-form elicitation use this parser;
+Codex replies also require the exact opened event identity.
 
 `@kontourai/station-shared/harness-questions` is deprecated since 0.9.0 and
-remains exported in 0.10.0 for compatibility. Use the `input-request` helpers
+remains exported for compatibility. Use the `input-request` helpers
 for new callers. `readHarnessQuestionnaire`,
 `validateHarnessQuestionAnswers`, `harnessAnswerTexts` and
 `harnessQuestionnaireFromInputRequest` keep the pre-#3390 shape working by
@@ -1463,6 +1495,14 @@ headers only at the configured origin, lets SDK headers take precedence, and
 refuses redirects. The SSE constructor receives the OAuth provider but not
 `ToolDef.headers`; do not assume the transports have identical header behavior.
 These are low-level transport choices, not installation consent.
+
+Server-owned connection options may supply `transportFactory` to construct a
+transport instead of the default constructor. This callback is not a `ToolDef`
+field and cannot be selected through configuration JSON. The resulting
+transport still enters the connection's existing request, elicitation and
+cleanup custody. The reserved report-input candidate uses this seam for a
+private in-process HTTP handler, without opening a network listener; ordinary
+configured connections retain their default transport construction.
 
 Owners that need to retain cleanup through partial connection or OAuth failure
 use `prepareMCPConnection` and `MCPLocalConnectionCustody`. Retirement fences

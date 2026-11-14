@@ -8,8 +8,8 @@ The [glossary](../../glossary.md) owns product vocabulary; the
 
 An Agent is a working identity. Its engine executes it. Station's engine uses
 Model connections; external engines own their agent loop. The reserved Agent
-named Station can use a separately selected capable engine. An engine name,
-Agent name, and transport name are not interchangeable.
+named Station Assistant can use a separately selected capable engine. An engine
+name, Agent name, and transport name are not interchangeable.
 
 Default Agents are persisted by the [Agent registry](../../../src-server/domain/agent-registry.ts).
 Startup can adopt detected native CLIs; a deliberate removal is retained so
@@ -89,6 +89,67 @@ Workspace isolation chooses a shared directory or Git worktree; it is not a
 substitute for execution permissions. A Flow Agents sidecar records process
 state, not the Session transcript or an independent proof of completion.
 
+[Session groups](../../../src-server/services/orchestration/cli-session-group.ts)
+retain bounded member identities, logical start reservations and observations
+under the current Station credential. Published Flow owns readiness, claims and
+joins. A dependent requires provider-proven completion of the exact accepted
+initial turn; an absent or `other` finish reason cannot establish it. A later
+turn in the same conversation does not change that initial-turn identity.
+Dollar/token/physical-attempt guarantees remain unavailable and portable Flow
+lineage remains unbound on this path.
+
+Context sync reserves bounded logical attempts before resuming the retained
+conversation. Its server-owned activation capability reaches the qualified
+Claude launch and send boundaries; ordinary dispatch cannot join that restricted
+activation. Exact ACK receipts record received context, not accepted work.
+Unsupported engines refuse before a sync attempt, and uncertain effects retain
+their hold. This is model-tool restriction, not an OS sandbox or proof that
+startup hooks and autonomous effects are suppressed. The
+[API contract](../../reference/api.md#cli-session-groups) owns the current bounds
+and supported runtime.
+
+The separate [Station-owned report candidate](../../../src-server/services/orchestration/station-report-group-runtime.ts)
+uses published Flow rounds and V3 authority with sealed SDK requests, retained
+source identity and inference accounting. A returning context operation must
+attach to the original live Session; signed turn custody cannot recreate or
+rebind that activation. Unknown usage retains its allocation, and cancellation
+without exact delivery evidence stays pending. This is separate from the CLI
+session-group path above. Positive sync allowances adopt the published
+`initial-request` policy, and controlled tests exercise a fresh exact ACK on
+the same Session. Full returning-request serving, funded answer-informed
+follow-up and live qualification remain open. Source controls do not establish provider, native or
+device acceptance; the [report-group API](../../reference/api.md#report-groups)
+records the current candidate and its limits.
+Metadata-only continuation finalization is currently unavailable and its preview
+is not offered. The [publication owner](../../../src-server/services/orchestration/report-rounds-publication.ts)
+binds Flow's exact parent lease to operation-owned Home custody. Transaction
+facades borrow that lease; fresh Home scopes serve the preliminary and final
+metadata reads. Failed cleanup remains owned until a retry confirms release.
+The runtime qualification guard remains false. Installed Flow winner
+authentication does not establish Station serving readiness.
+
+### Sealed-source Sessions
+
+Fixed SDK report execution is distinct from the ordinary managed framework loop,
+even though both use `station-agent`. The summary reader selects the sealed
+policy from canonical `session.started` metadata with a known mode and source
+digest. A later unmarked reattach does not erase that recorded mode. A resume
+cursor is not mode authority; malformed declarations stay restrictive.
+
+The sealed profile declares no steering, crash continuation, native tool replay
+or restart recovery of live input registration. Steer and Queue are not another
+source-admission path. Fresh effectful Inbox submissions are refused with
+`sealed_source_admission_required` before a durable row; display notes remain
+separate. The central Inbox owner preserves accepted retries and rechecks entries
+that would become fresh work. Public sealed-Session replay remains subject to
+its producer checks and is not established by that central-owner guarantee.
+
+Boot excludes these Sessions from the managed durable recovery owner before it
+can claim them. Ordinary interrupted-turn projection can close their dead UI
+turn without proving a provider outcome or releasing unknown paid usage. Fresh
+bounded report/group admission is still required; an interrupted attempt is not
+authorization to resend it.
+
 ## Review a change
 
 Follow the caller into the owning module and its tests. Check response loss,
@@ -106,10 +167,12 @@ framework entry/request bytes, fence proven-dead recovery and withhold native
 success/tool-enabling output until completion commits. Its helpers construct
 real VoltAgent and Strands VercelModel consumers with scripted-transport
 conformance owners in the package. Actual tool bodies refuse and block the run. A drain applies its finite initial
-outbox window across pages. Full settled replay expires after seven days.
+outbox window across pages. Under the default policy, full settled replay expires
+seven days after settlement. Callers may configure shorter replay and tombstone
+windows, with replay retention no longer than tombstone retention.
 Eligible records compact only on an authorized write to that exact generation,
 after every required journal disposition is acknowledged and applied by the
-SQLite sink. Protection lasts thirty days from the same settlement time,
+SQLite sink. Default tombstone protection lasts thirty days from the same settlement time,
 followed by an irreversible expired-generation marker. Raw audit and BLOB rows remain retained; the replay
 windows do not establish bounded disk usage. Current host authorization and
 callback quiescence still govern effects and explicit cancellation.

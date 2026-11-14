@@ -94,7 +94,25 @@ interface HostedApprovalAuthorization {
  */
 export type ApprovalOutcome = ApprovalStatus | 'unbound';
 
+interface CanonicalApprovalState {
+  opened: boolean;
+  committed: boolean;
+}
+
+export interface CanonicalApprovalRegistration {
+  result: Promise<{ outcome: ApprovalOutcome; answer?: unknown }>;
+  publishOpened(): boolean;
+  markOpenCommitted(): boolean;
+  resolve(
+    approved: boolean,
+    clientOrigin?: ClientOrigin,
+    answer?: unknown,
+  ): boolean;
+  cancel(): boolean;
+}
+
 interface PendingApproval {
+  canonical?: CanonicalApprovalState;
   binding?: ApprovalBinding;
   metadata?: ApprovalLifecycleMetadata;
   resolve: (outcome: ApprovalOutcome, answer?: unknown) => void;
@@ -179,6 +197,64 @@ export class ApprovalRegistry {
     approvalId: string,
     options: ApprovalRegisterOptions | number = MS_PER_MINUTE,
   ): Promise<{ outcome: ApprovalOutcome; answer?: unknown }> {
+    return this.registerAnswer(approvalId, options);
+  }
+
+  /** Server-owned settlement handle; generic boolean approval routes cannot use it. */
+  registerCanonicalAnswer(
+    approvalId: string,
+    options: ApprovalRegisterOptions = {},
+  ): CanonicalApprovalRegistration | undefined {
+    const canonical: CanonicalApprovalState = {
+      opened: false,
+      committed: false,
+    };
+    const result = this.registerAnswer(approvalId, options, canonical);
+    const entry = this.pending.get(approvalId);
+    if (!entry || entry.canonical !== canonical) return undefined;
+    const current = () => this.pending.get(approvalId) === entry;
+    return Object.freeze({
+      result,
+      publishOpened: () => {
+        if (!current() || canonical.opened) return false;
+        canonical.opened = true;
+        this.eventBus?.emit(SERVER_EVENTS.APPROVAL_OPENED, {
+          approvalId,
+          ...serializeMetadata(entry.metadata),
+          settlement: 'canonical-request',
+        });
+        return current();
+      },
+      markOpenCommitted: () => {
+        if (!current() || !canonical.opened || canonical.committed)
+          return false;
+        canonical.committed = true;
+        return true;
+      },
+      resolve: (
+        approved: boolean,
+        clientOrigin?: ClientOrigin,
+        answer?: unknown,
+      ) => {
+        if (
+          !current() ||
+          !canonical.committed ||
+          !this.canSettleInternally(entry)
+        )
+          return false;
+        return this.settle(approvalId, entry, approved, clientOrigin, answer);
+      },
+      cancel: () => current() && this.cancel(approvalId),
+    });
+  }
+
+  private registerAnswer(
+    approvalId: string,
+    options: ApprovalRegisterOptions | number,
+    canonical?: CanonicalApprovalState,
+  ): Promise<{ outcome: ApprovalOutcome; answer?: unknown }> {
+    if (this.pending.has(approvalId))
+      throw new Error('Approval request is already pending');
     const timeoutMs =
       typeof options === 'number'
         ? options
@@ -232,16 +308,18 @@ export class ApprovalRegistry {
 
         this.pending.set(approvalId, {
           binding,
+          ...(canonical ? { canonical } : {}),
           metadata: eventMetadata,
           resolve: wrappedResolve,
           reject,
           createdAt: Date.now(),
         });
         approvalOps.add(1, { operation: 'request' });
-        this.eventBus?.emit(SERVER_EVENTS.APPROVAL_OPENED, {
-          approvalId,
-          ...serializeMetadata(eventMetadata),
-        });
+        if (!canonical)
+          this.eventBus?.emit(SERVER_EVENTS.APPROVAL_OPENED, {
+            approvalId,
+            ...serializeMetadata(eventMetadata),
+          });
       },
     );
   }
@@ -263,7 +341,8 @@ export class ApprovalRegistry {
     answer?: unknown,
   ): boolean {
     const entry = this.pending.get(approvalId);
-    if (!entry || !this.canSettleInternally(entry)) return false;
+    if (!entry || entry.canonical || !this.canSettleInternally(entry))
+      return false;
     return this.settle(approvalId, entry, approved, clientOrigin, answer);
   }
 
@@ -292,7 +371,8 @@ export class ApprovalRegistry {
     clientOrigin?: ClientOrigin,
   ): boolean {
     const entry = this.pending.get(approvalId);
-    if (!entry || !this.canRead(approvalId, authority)) return false;
+    if (!entry || entry.canonical || !this.canRead(approvalId, authority))
+      return false;
     return this.settle(approvalId, entry, approved, clientOrigin);
   }
 

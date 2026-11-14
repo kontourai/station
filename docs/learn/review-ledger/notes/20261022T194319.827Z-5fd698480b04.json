@@ -1,0 +1,7 @@
+{
+  "revision": "700daea4a3145ffe7e9247814149a34095686a18",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed the complete accumulated module-map delta and the Context Map five context links and eight relationship statements at 700daea4a31. Traced explicit eligible Flow binding and completion gating through flow-policy-sidecar and orchestration-flow-gate, plugin provider publication through current grant/artifact fences, scheduled work through BuiltinScheduler and its turn adapter, and trust/readiness/Flow projections through their UI owners. CLI group observations, task rooms, account/theme settings, personal boards and telemetry additions fit the existing responsibility boundaries; no Context Map prose change is needed. This note covers only the high-level Context Map claims and its recorded inputs, not semantic approval of every detailed module-map/context/glossary claim, independent runtime execution, native/provider behavior, release readiness or epic acceptance.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]}
+  ]
+}

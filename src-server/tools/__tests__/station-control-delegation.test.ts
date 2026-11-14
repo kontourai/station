@@ -1004,6 +1004,44 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(service.startSessionInternal).not.toHaveBeenCalled();
   });
 
+  test('a durable delegation key cannot replay under changed inherited policy', async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const input = {
+      prompt: 'Use this exact policy',
+      clientTurnId: 'inherited-policy-key',
+      createRequestIntent: { prompt: 'Use this exact policy' },
+      target: currentTarget(),
+      delegation: {
+        mode: 'isolated-child' as const,
+        depth: 1,
+        maxDepth: 2,
+        parentAgentSlug: agentId('parent'),
+        rootAgentSlug: agentId('root'),
+        toolAllowlistConstraints: [['repo_read']],
+      },
+    };
+    const original = await delegateTask(input, service as never);
+    await expect(delegateTask(input, service as never)).resolves.toEqual(
+      original,
+    );
+    await expect(
+      delegateTask(
+        {
+          ...input,
+          delegation: {
+            ...input.delegation,
+            toolAllowlistConstraints: [['repo_write']],
+          },
+        },
+        service as never,
+      ),
+    ).rejects.toMatchObject({ code: 'create_request_conflict' });
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+  });
+
   test('executes a local delegation through the injected canonical service', async () => {
     installCurrentStationFetch();
     const service = localService();
@@ -1276,6 +1314,77 @@ describe('Station Control canonical Environment + Agent execution', () => {
       ),
     ).toBe(false);
   });
+
+  describe.each(['task', 'message'] as const)(
+    'inherited allowlists on %s forwarding',
+    (kind) => {
+      test.each([
+        [undefined, 'environment-remote', false],
+        [false, 'environment-remote', false],
+        [true, 'environment-other', false],
+        [true, 'environment-remote', true],
+      ] as const)(
+        'requires receiver support %s and identity %s',
+        async (supported, responder, accepted) => {
+          const path =
+            kind === 'task'
+              ? '/api/orchestration/delegations'
+              : '/api/orchestration/chat/delegated';
+          const handle =
+            kind === 'task' ? delegationHandle() : foregroundHandle();
+          installRemoteStationFetch(path, handle);
+          const base = fetchMock.getMockImplementation()!;
+          fetchMock.mockImplementation(async (input, init) =>
+            String(input) === `${REMOTE_API}/.well-known/station/v1`
+              ? json({
+                  environmentId: responder,
+                  capabilities: { delegationToolConstraintsV1: supported },
+                })
+              : base(input, init),
+          );
+          const { delegateTask, executeExecutionTargetMessage } = await import(
+            '../station-control-delegation.js'
+          );
+          const delegation = {
+            mode: 'isolated-child' as const,
+            depth: 1,
+            maxDepth: 2,
+            parentAgentSlug: agentId('planner'),
+            rootAgentSlug: agentId('planner'),
+            toolAllowlistConstraints: [['github_*']],
+          };
+          const pending =
+            kind === 'task'
+              ? delegateTask({
+                  prompt: 'Stay scoped',
+                  target: savedTarget(),
+                  delegation,
+                })
+              : executeExecutionTargetMessage({
+                  message: 'Stay scoped',
+                  target: savedTarget(),
+                  delegation,
+                });
+          if (accepted) {
+            await expect(pending).resolves.toEqual(handle);
+            const call = fetchMock.mock.calls.find(
+              ([url]) => String(url) === `${REMOTE_API}${path}`,
+            );
+            expect(bodyOf(call!)).toMatchObject({ delegation });
+          } else {
+            await expect(pending).rejects.toThrow(
+              'cannot preserve inherited tool restrictions',
+            );
+            expect(
+              fetchMock.mock.calls.some(
+                ([url]) => String(url) === `${REMOTE_API}${path}`,
+              ),
+            ).toBe(false);
+          }
+        },
+      );
+    },
+  );
 
   test("answers a receiver's folder refusal with this Station's own sentence, never the receiver's text", async () => {
     installRemoteStationFetch('/api/orchestration/delegations', {});

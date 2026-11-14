@@ -2202,7 +2202,7 @@ export function useSendMessage(
  * engine state.
  */
 export type StopTurnOutcome =
-  /** The server reported what its cancel settled as. */
+  /** The server answered; provider termination may remain unconfirmed. */
   | { kind: 'settled'; result: InterruptTurnResult }
   /**
    * The request never answered inside the client budget, or failed in a way
@@ -2234,6 +2234,8 @@ export function describeStopTurnOutcome(outcome: StopTurnOutcome): string {
           // cancel went unacknowledged and Station tore the session down
           // itself, so that is what this says.
           return 'Stopped. The engine did not acknowledge in time, so Station forced the turn to stop and tore the session down.';
+        case 'termination-unconfirmed':
+          return 'Stop requested. Provider termination is not confirmed.';
         case 'turn-completed':
           return 'The turn finished before the stop took effect.';
         case 'pending-turn-start':
@@ -2374,7 +2376,8 @@ export function useCancelMessage(
         // has not yet interrupted a provider turn.
         const turnSettled =
           settledResult !== undefined &&
-          settledResult.outcome !== 'pending-turn-start';
+          settledResult.outcome !== 'pending-turn-start' &&
+          settledResult.outcome !== 'termination-unconfirmed';
         if (!stillOwnsTurn()) {
           // Only release the old button claim; the replacement execution owns all other state.
           if (

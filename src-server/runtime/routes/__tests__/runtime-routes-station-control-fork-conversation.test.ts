@@ -284,6 +284,7 @@ describe('station-control fork_conversation', () => {
       taskGraphService: taskGraph,
       projectService: projects,
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL,
         authorizeCredential: (credential: string) =>
@@ -297,7 +298,10 @@ describe('station-control fork_conversation', () => {
         identifyDevice: () => undefined,
         canSharePersonalConversation: () => false,
         personalConversationOwnerIds: (id: string) => [id],
-        devicePairing: deepStub({ listDevices: () => [] }),
+        devicePairing: deepStub({
+          withCurrentRegistry: <T>(read: () => T): T => read(),
+          listDevices: () => [],
+        }),
       }),
     });
     Reflect.set(context as object, 'buildRuntimeContext', () => context);

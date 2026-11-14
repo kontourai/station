@@ -910,9 +910,10 @@ export interface DelegationAttemptView {
  * `GET /api/orchestration/delegations/attempts/:attemptId` — the authorized
  * read-only lookup for one exact opt-in attempt. Served by the ACTUAL
  * executing receiver only; requires the CURRENT verified delegation peer
- * grant the claim is keyed by (the server refuses everyone else with no
- * data). Use this to settle a lost acknowledgement WITHOUT re-POSTing the
- * create request.
+ * grant the claim is keyed by. Unqualified callers are refused; another
+ * valid peer grant reads only its own namespace and sees `none` without a
+ * matching claim. Use this to settle a lost acknowledgement WITHOUT
+ * re-POSTing the create request. `none` never authorizes resend.
  */
 export async function lookupDelegationAttempt(
   apiBase: string,

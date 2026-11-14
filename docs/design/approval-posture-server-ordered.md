@@ -306,6 +306,33 @@ forced by the invariant. A continuation child is a new thread, and starting it
 at the defaults would be looser than a recorded Ask whenever a default is
 looser.
 
+#### Preparation currentness (2026-10-31)
+
+Resolving options is not the final permission check. Preparation can await
+Agent, credential, workspace or resource admission after reading a decision.
+Ordinary sends, fresh starts, dormant recovery, credential restarts and direct
+credential replay now capture the decision sequence, effective confinement and
+grantor before resolution and check them again before provider entry. The
+snapshot belongs to that invocation: fresh start associates it with the exact
+prepared input, while recovery and replay carry it with their prepared result.
+No home lease is held across those awaits.
+
+A changed snapshot refuses the pending operation instead of invoking the
+provider with old options. Start refusal uses `approval-posture-changed`, a
+nonretryable permission denial; dormant recovery preserves that code and
+refused phase in its durable error event. A known final refusal after invocation
+accounting uses definitive-refusal settlement. Storage failures and effects
+whose acceptance is uncertain retain their existing uncertainty. A new explicit
+request can use the current posture; none of these outcomes authorizes automatic
+replay.
+
+Controlled regressions exercise the named asynchronous paths and a synchronous
+admission callback between invocation accounting and adapter entry. They verify
+refusal, no stale provider effect and a successful new Ask request. This is not
+an all-writer, live-provider or cross-process atomicity claim. Prepared-intent
+resume retains its separate binding, options and currentness checks; the
+historical surface map above is not a complete audit of every caller.
+
 ### 4.3 The Default pick (#2409)
 
 A Default pick records `connection-default`. At a start or turn it resolves in
@@ -352,11 +379,14 @@ A session spawned before this change has nothing recorded.
 - **Codex** takes the knobs on every `turn/start`. The server resolves a
   concrete pair whenever anything is recorded, so a Default pick is no longer
   a no-op.
-- **ACP, Ollama, Bedrock, Muse and the Station agent** have no knob.
-  - The command is refused on them with "This engine has no approval control".
-  - A carried pick is not recorded for them.
-  - After a handoff to such an engine, a recorded posture is not sent to it.
-  - ACP's session `mode` is a separate control.
+- **Ollama, Bedrock, Muse and the Station agent** have no approval knob.
+  The command refuses, a carried pick is not recorded, and a recorded posture
+  is not sent after handoff to such an engine.
+- **ACP support depends on the connection.** Station applies posture when
+  `acpApprovalControl` is `station`; otherwise the command refuses and posture
+  is not applied. ACP session `mode` remains a separate control. OpenCode may
+  refuse a requested posture when its resolved governance rules prevent
+  Station from applying it; see the [Session API](../reference/session-api.md).
 
 ### 4.6 Offline and early picks, and compare-and-set (MEDIUM-1)
 
@@ -462,8 +492,9 @@ A session spawned before this change has nothing recorded.
     `engine:login` and #2412's `coding:exec`.
   - The operator grants it once per device: when approving a pairing
     request that asked for it (the Station app asks for it; only the operator
-    credential, the desktop's local grant, the host browser session or one of
-    the owner's own devices with owner-device standing may keep it, and **Limit access**
+    credential, the desktop's local grant, the host browser session, an
+    operator passkey session after exact per-action review, or one of the
+    owner's own devices with owner-device standing may keep it, and **Limit access**
     leaves it out), in the device access editor (**Paired devices** → the
     device → **Change access** → "Skip approval prompts"), or on the Station
     host with `station environment access scope <device> --add

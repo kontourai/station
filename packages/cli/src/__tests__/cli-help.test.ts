@@ -280,6 +280,7 @@ describe('per-command help', () => {
     ['runs', 'station runs read <run-id>'],
     ['config', 'station config get <key>'],
     ['delegate', 'station delegate status <task-id>'],
+    ['ensemble', 'station ensemble inspect <file> [--json]'],
   ])('station %s --help describes the command', async (command, expected) => {
     const { runCli, printed, stderr } = await loadCli();
 

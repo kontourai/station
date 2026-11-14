@@ -54,6 +54,11 @@ import { canonicalPath } from '../../utils/path-containment.js';
 import type { InitialConversationForkContext } from '../orchestration/conversation-fork-context.js';
 import type { ConversationContextSeedPin } from '../orchestration/conversation-handoff-module.js';
 import { markCreateRequestStarting } from '../orchestration/create-request-claims.js';
+import {
+  assertInheritedDelegationToolBinding,
+  assertInheritedDelegationToolPolicy,
+  captureInheritedDelegationToolContext,
+} from '../orchestration/delegation-tool-policy.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { ConversationTurnQueuedError } from '../orchestration/thread-inbox.js';
@@ -701,6 +706,10 @@ export async function executeForegroundMessage(
   context?: ForegroundMessageContext,
 ): Promise<ForegroundMessageHandle> {
   context = context ? { ...context } : undefined;
+  input = {
+    ...input,
+    delegation: captureInheritedDelegationToolContext(input.delegation),
+  };
   if (input.clientTurnId || input.handoffIntent) {
     input = snapshotTurnSubmissionFields(input, [
       'target',
@@ -719,6 +728,7 @@ export async function executeForegroundMessage(
   }
 
   const resolved = await resolveExecutionTarget(input.target, deps);
+  assertInheritedDelegationToolPolicy(resolved.provider, input.delegation);
   if (input.mcpPromptOrigin && resolved.access.kind !== 'current')
     throw new Error(
       'MCP prompt origin cannot be safely carried to another Station.',
@@ -1155,6 +1165,11 @@ export async function executeForegroundMessage(
           }
         : undefined;
   const sessionId = continuation?.sessionId ?? conversationId;
+  if (binding && !continuation?.startRequired)
+    assertInheritedDelegationToolBinding(
+      input.delegation,
+      deps.readSessionStartMetadata?.(resolved.access, sessionId)?.delegation,
+    );
   const transcriptSeed =
     readProviderDurabilityProfile(
       deps.getProviderAdapter(resolved.provider)?.metadata,

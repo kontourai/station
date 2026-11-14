@@ -36,10 +36,10 @@ const BINDINGS_FILE = 'native-device-proof-bindings.json';
 const APP_IDENTIFIER = 'station.desktop';
 const CHANNEL = 'dev' as const;
 
-function harness(environmentId = ENVIRONMENT_ID) {
+async function harness(environmentId = ENVIRONMENT_ID) {
   const homeDir = makeTempDir('station-proof-binding-');
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-  const pairing = new DevicePairingService({
+  const pairing = await DevicePairingService.create({
     homeDir,
     environmentId,
   });
@@ -206,8 +206,8 @@ function storedBindings(homeDir: string): unknown[] {
 }
 
 describe('native device proof binding service (station#2893)', () => {
-  test('minted approval cannot be rewritten to commit an unreviewed binding or key', () => {
-    const { pairing, bindingService } = harness();
+  test('minted approval cannot be rewritten to commit an unreviewed binding or key', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const bindingId = randomUUID();
     const approvedSurface = surface();
@@ -255,8 +255,8 @@ describe('native device proof binding service (station#2893)', () => {
     expect(bindingService.bindingById({ bindingId: changedId })).toBeNull();
   });
 
-  test('revocation approval refuses a wildcard ID or missing reviewed key', () => {
-    const { pairing, bindingService } = harness();
+  test('revocation approval refuses a wildcard ID or missing reviewed key', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const created = createApproved(bindingService, deviceId);
     for (const field of ['bindingId', 'jwk']) {
@@ -277,8 +277,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBe('active');
   });
 
-  test('approval minting refuses noncanonical surfaces and keys for either operation', () => {
-    const { pairing } = harness();
+  test('approval minting refuses noncanonical surfaces and keys for either operation', async () => {
+    const { pairing } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const tuple = {
       deviceId,
@@ -299,8 +299,8 @@ describe('native device proof binding service (station#2893)', () => {
     }
   });
 
-  test('create persists a full-surface binding tied to the approved device, station, and surface', () => {
-    const { homeDir, pairing, bindingService } = harness();
+  test('create persists a full-surface binding tied to the approved device, station, and surface', async () => {
+    const { homeDir, pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const jwk = p256PublicJwk();
     const approved = surface({ keyThumbprint: thumbprintOf(p256PublicJwk()) });
@@ -324,8 +324,8 @@ describe('native device proof binding service (station#2893)', () => {
     expect(JSON.stringify(stored)).not.toContain('peerNonce');
   });
 
-  test('returned binding ID equals the host-proposed candidate ID and survives reopen', () => {
-    const { homeDir, pairing, bindingService } = harness();
+  test('returned binding ID equals the host-proposed candidate ID and survives reopen', async () => {
+    const { homeDir, pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const proposed = randomUUID();
     const approved = surface();
@@ -348,8 +348,8 @@ describe('native device proof binding service (station#2893)', () => {
     expect(current.device.scope).toBe(DEFAULT_GRANT_PAIRING_SCOPE);
   });
 
-  test('noncanonical binding IDs are refused before any state changes', () => {
-    const { pairing, bindingService } = harness();
+  test('noncanonical binding IDs are refused before any state changes', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const badIds = [
       randomUUID().toUpperCase(),
@@ -403,8 +403,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toThrow('invalid_operator_approval');
   });
 
-  test('an altered tuple or operation presented against the original approval context refuses without changing state', () => {
-    const { homeDir, pairing, bindingService } = harness();
+  test('an altered tuple or operation presented against the original approval context refuses without changing state', async () => {
+    const { homeDir, pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const bindingId = randomUUID();
     const approved = surface();
@@ -511,8 +511,8 @@ describe('native device proof binding service (station#2893)', () => {
     expect(storedBindings(homeDir)).toHaveLength(1);
   });
 
-  test('binding ID reuse across active and revoked records is refused; exact active retry returns recorded state without re-approval', () => {
-    const { homeDir, pairing, bindingService } = harness();
+  test('binding ID reuse across active and revoked records is refused; exact active retry returns recorded state without re-approval', async () => {
+    const { homeDir, pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const revokedId = randomUUID();
     const historical = createApproved(bindingService, deviceId, {
@@ -564,8 +564,8 @@ describe('native device proof binding service (station#2893)', () => {
     expect(storedBindings(homeDir)).toHaveLength(2);
   });
 
-  test('wrong station refuses create and revocation without touching stored state', () => {
-    const { homeDir, pairing, bindingService } = harness();
+  test('wrong station refuses create and revocation without touching stored state', async () => {
+    const { homeDir, pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const created = createApproved(bindingService, deviceId);
     const otherStationBindings = new NativeDeviceProofBindingService({
@@ -591,8 +591,8 @@ describe('native device proof binding service (station#2893)', () => {
     expect(storedBindings(homeDir)).toHaveLength(1);
   });
 
-  test('exact readback by binding ID distinguishes active, revoked and absent without mutations', () => {
-    const { homeDir, pairing, bindingService } = harness();
+  test('exact readback by binding ID distinguishes active, revoked and absent without mutations', async () => {
+    const { homeDir, pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     expect(bindingService.bindingById({ bindingId: randomUUID() })).toBeNull();
     const bindingId = randomUUID();
@@ -617,8 +617,8 @@ describe('native device proof binding service (station#2893)', () => {
     );
   });
 
-  test('revocation against a non-current device refuses', () => {
-    const { pairing, bindingService } = harness();
+  test('revocation against a non-current device refuses', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const created = createApproved(bindingService, deviceId);
     pairing.revokeDevice(deviceId, 'operator-credential');
@@ -627,8 +627,8 @@ describe('native device proof binding service (station#2893)', () => {
     );
   });
 
-  test('any full-surface mismatch fails closed: wrong route-key thumbprint, appIdentifier, channel, client instance', () => {
-    const { pairing, bindingService } = harness();
+  test('any full-surface mismatch fails closed: wrong route-key thumbprint, appIdentifier, channel, client instance', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const approved = surface();
     createApproved(bindingService, deviceId, { surface: approved });
@@ -651,8 +651,8 @@ describe('native device proof binding service (station#2893)', () => {
     }
   });
 
-  test('wrong device proof key never matches the binding; surface alone is not a proof', () => {
-    const { pairing, bindingService } = harness();
+  test('wrong device proof key never matches the binding; surface alone is not a proof', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const approved = surface();
     createApproved(bindingService, deviceId, { surface: approved });
@@ -665,8 +665,8 @@ describe('native device proof binding service (station#2893)', () => {
     );
   });
 
-  test('route-key possession is not Device approval: the route key never satisfies the device-key check', () => {
-    const { pairing, bindingService } = harness();
+  test('route-key possession is not Device approval: the route key never satisfies the device-key check', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const routeKeyJwk = p256PublicJwk();
     const approved = surface({ keyThumbprint: thumbprintOf(routeKeyJwk) });
@@ -684,8 +684,8 @@ describe('native device proof binding service (station#2893)', () => {
     );
   });
 
-  test('a device proof key equal to the route key is refused', () => {
-    const { pairing, bindingService } = harness();
+  test('a device proof key equal to the route key is refused', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const routeKeyJwk = p256PublicJwk();
     expect(() =>
@@ -699,8 +699,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBeNull();
   });
 
-  test('noncanonical or extra-field surfaces are refused at the service seam', () => {
-    const { pairing, bindingService } = harness();
+  test('noncanonical or extra-field surfaces are refused at the service seam', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const badSurfaces: unknown[] = [
       { ...surface(), kind: 'browser-extension' },
@@ -738,8 +738,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBeNull();
   });
 
-  test('a failed replacement write leaves the last committed binding current', () => {
-    const { homeDir, pairing, bindingService } = harness();
+  test('a failed replacement write leaves the last committed binding current', async () => {
+    const { homeDir, pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const first = createApproved(bindingService, deviceId);
     const path = join(homeDir, 'security', BINDINGS_FILE);
@@ -758,8 +758,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBe(first.bindingId);
   });
 
-  test('reopen refuses a symlinked sidecar even when its target is valid', () => {
-    const { homeDir, pairing, bindingService } = harness();
+  test('reopen refuses a symlinked sidecar even when its target is valid', async () => {
+    const { homeDir, pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     createApproved(bindingService, deviceId);
     const path = join(homeDir, 'security', BINDINGS_FILE);
@@ -777,8 +777,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toThrow('store_unavailable');
   });
 
-  test('reopen refuses a substituted thumbprint or two active bindings for one Device and client', () => {
-    const { homeDir, pairing, bindingService } = harness();
+  test('reopen refuses a substituted thumbprint or two active bindings for one Device and client', async () => {
+    const { homeDir, pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     createApproved(bindingService, deviceId);
     const path = join(homeDir, 'security', BINDINGS_FILE);
@@ -812,8 +812,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toThrow('store_unavailable');
   });
 
-  test('an old client-only sidecar without the approved surface fails closed on reload', () => {
-    const { homeDir, pairing, bindingService } = harness();
+  test('an old client-only sidecar without the approved surface fails closed on reload', async () => {
+    const { homeDir, pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     createApproved(bindingService, deviceId);
     const path = join(homeDir, 'security', BINDINGS_FILE);
@@ -833,8 +833,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toThrow('store_unavailable');
   });
 
-  test('revoke fails closed on later queries and refuses double revoke', () => {
-    const { pairing, bindingService } = harness();
+  test('revoke fails closed on later queries and refuses double revoke', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const created = createApproved(bindingService, deviceId);
     const [revoked] = revokeApproved(bindingService, created);
@@ -854,8 +854,8 @@ describe('native device proof binding service (station#2893)', () => {
     );
   });
 
-  test('revocation bound to one full surface cannot target the binding through a different surface', () => {
-    const { pairing, bindingService } = harness();
+  test('revocation bound to one full surface cannot target the binding through a different surface', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const approved = surface();
     const binding = createApproved(bindingService, deviceId, {
@@ -872,8 +872,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBe(binding.bindingId);
   });
 
-  test('a revocation approval naming an exact binding ID only revokes that record', () => {
-    const { pairing, bindingService } = harness();
+  test('a revocation approval naming an exact binding ID only revokes that record', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const target = createApproved(bindingService, deviceId, {
       bindingId: randomUUID(),
@@ -903,8 +903,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBe('active');
   });
 
-  test('a delayed revocation of the reviewed binding cannot revoke its same-surface replacement', () => {
-    const { homeDir, pairing, bindingService } = harness();
+  test('a delayed revocation of the reviewed binding cannot revoke its same-surface replacement', async () => {
+    const { homeDir, pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const reviewed = createApproved(bindingService, deviceId);
     const approval = mintApproval({
@@ -944,8 +944,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBeNull();
   });
 
-  test('independent service handles observe revocation and cannot resurrect it on another write', () => {
-    const { homeDir, pairing, bindingService } = harness();
+  test('independent service handles observe revocation and cannot resurrect it on another write', async () => {
+    const { homeDir, pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const approved = surface();
     const created = createApproved(bindingService, deviceId, {
@@ -967,8 +967,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBeNull();
   });
 
-  test('key replacement revokes the prior binding and rebinds the new key under a new candidate ID', () => {
-    const { homeDir, pairing, bindingService } = harness();
+  test('key replacement revokes the prior binding and rebinds the new key under a new candidate ID', async () => {
+    const { homeDir, pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const first = createApproved(bindingService, deviceId);
     const secondJwk = p256PublicJwk();
@@ -1004,8 +1004,8 @@ describe('native device proof binding service (station#2893)', () => {
     expect(reloaded.binding.bindingId).toBe(second.bindingId);
   });
 
-  test('wrong device, revoked device, and legacy-unbound device all fail closed', () => {
-    const { pairing, bindingService } = harness();
+  test('wrong device, revoked device, and legacy-unbound device all fail closed', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     createApproved(bindingService, deviceId);
     pairing.revokeDevice(deviceId, 'operator-credential');
@@ -1020,8 +1020,8 @@ describe('native device proof binding service (station#2893)', () => {
     );
   });
 
-  test('changed device scope fails closed until the binding is re-approved', () => {
-    const { pairing, bindingService } = harness();
+  test('changed device scope fails closed until the binding is re-approved', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     createApproved(bindingService, deviceId);
     pairing.setDeviceScope(
@@ -1034,8 +1034,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBeNull();
   });
 
-  test('wrong or malformed proof keys are refused', () => {
-    const { pairing, bindingService } = harness();
+  test('wrong or malformed proof keys are refused', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const truncated = p256PublicJwk();
     const bad = {
@@ -1064,8 +1064,8 @@ describe('native device proof binding service (station#2893)', () => {
     }
   });
 
-  test('corrupt or wrong-version sidecar fails closed instead of reading empty', () => {
-    const { homeDir, pairing, bindingService } = harness();
+  test('corrupt or wrong-version sidecar fails closed instead of reading empty', async () => {
+    const { homeDir, pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     createApproved(bindingService, deviceId);
     const path = join(homeDir, 'security', BINDINGS_FILE);
@@ -1091,8 +1091,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toThrow('store_unavailable');
   });
 
-  test('a tampered stored surface fails closed on reload', () => {
-    const { homeDir, pairing, bindingService } = harness();
+  test('a tampered stored surface fails closed on reload', async () => {
+    const { homeDir, pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const approved = surface();
     createApproved(bindingService, deviceId, { surface: approved });
@@ -1125,8 +1125,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toThrow('store_unavailable');
   });
 
-  test('legacy paired device with no binding refuses current-binding lookups', () => {
-    const { pairing, bindingService } = harness();
+  test('legacy paired device with no binding refuses current-binding lookups', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     expect(() =>
       bindingService.requireCurrentBinding({
@@ -1139,8 +1139,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBeNull();
   });
 
-  test('raw request data cannot stand in for an operator approval context', () => {
-    const { pairing, bindingService } = harness();
+  test('raw request data cannot stand in for an operator approval context', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const forged = {
       operation: 'create',
@@ -1211,8 +1211,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBeNull();
   });
 
-  test('a completed revocation cannot mutate its historical record again', () => {
-    const { pairing, bindingService } = harness();
+  test('a completed revocation cannot mutate its historical record again', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     // Creation consumes its approval; an exact matching retry is an
     // idempotent readback, so the one-use rule is observable on revocation.
@@ -1243,8 +1243,8 @@ describe('native device proof binding service (station#2893)', () => {
     ).toThrow('binding_not_found');
   });
 
-  test('public projections omit key material and scope internals', () => {
-    const { pairing, bindingService } = harness();
+  test('public projections omit key material and scope internals', async () => {
+    const { pairing, bindingService } = await harness();
     const { deviceId } = pairForBindings(pairing);
     const approved = surface();
     const created = createApproved(bindingService, deviceId, {

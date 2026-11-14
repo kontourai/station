@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import { AUTHORITY_OBSERVATION_SCHEMA_VERSION } from '@kontourai/station-contracts/authority-observation';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import {
@@ -31,17 +32,21 @@ import { createSessionPersonActivityRoutes } from '../../routes/orchestration/se
 import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
+import { isDelegatedToolAllowed } from '../../runtime/agents/delegation.js';
+import { createRequestDelegationResolver } from '../../runtime/agents/request-delegation.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
 import {
   resolveRuntimeConnectionRoutesEnabled,
   resolveRuntimeWebPushEnabled,
 } from '../../runtime/routes/runtime-route-support.js';
 import { configureRuntimePublicRoutes } from '../../runtime/routes/runtime-routes.js';
+import { isStationInternalRequest } from '../../services/browser/browser-request-origin.js';
 import { TroubleshootService } from '../../services/infra/troubleshoot-service.js';
 import {
   conversationAcknowledgementKey,
   FileConversationAcknowledgementStore,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import { FileDelegationAttemptClaimStore } from '../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { ReadMarkerService } from '../../services/read-markers/read-marker-service.js';
 import { FileReadMarkerStore } from '../../services/read-markers/read-marker-store.js';
@@ -99,6 +104,95 @@ const CONSUMED_FLAGS: Record<
   string,
   (deployment: Deployment) => Promise<boolean>
 > = {
+  delegationToolConstraintsV1: async (deployment) => {
+    const execute = vi.fn(
+      async (input: {
+        conversationId?: string;
+        delegation?: AgentDelegationContext;
+      }) => ({
+        conversationId: input.conversationId,
+        sessionId: input.conversationId,
+        providerTurnId: 'probe-turn',
+        environment: { id: 'probe-host', name: 'Probe host', kind: 'current' },
+        target: { kind: 'agent', id: 'station' },
+        resolution: {
+          schemaVersion: 'station.execution-resolution/v1',
+          resolvedAt: new Date().toISOString(),
+          environmentId: 'probe-host',
+          agentId: 'station',
+          engine: { kind: 'station' },
+          provider: 'station-agent',
+          modelLaunchPlan: {
+            kind: 'engine-selected',
+            evidence: 'adapter-declared',
+          },
+        },
+      }),
+    );
+    const routes = orchestrationRoutes(
+      deployment,
+      { hasSessionStartRecord: async () => false },
+      {
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(
+          makeTempDir('tool-constraints-capability-'),
+        ),
+        executeForegroundMessage: execute,
+        resolveRequestDelegation: createRequestDelegationResolver({
+          isInternalRequest: isStationInternalRequest,
+          resolveCaller: () => null,
+          startedMetadata: () => undefined,
+          sessionEngine: () => undefined,
+          loadAgentSpec: async () => {
+            throw new Error('No verified caller');
+          },
+          isRegistryDefaultAgent: async () => false,
+        }),
+      },
+    );
+    const body = {
+      clientTurnId: 'tool-constraints-probe',
+      message: 'Read within scope',
+      target: { environment: { kind: 'current' }, agent: 'station' },
+      delegation: {
+        mode: 'isolated-child',
+        depth: 1,
+        maxDepth: 2,
+        parentAgentSlug: 'parent',
+        rootAgentSlug: 'root',
+        toolAllowlistConstraints: [['repo_read']],
+      },
+    };
+    const post = () =>
+      routes.request('/chat/delegated', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const response = await post();
+    expect(response.status, await response.clone().text()).toBe(200);
+    const replay = await post();
+    expect(replay.status, await replay.text()).toBe(200);
+    body.delegation.toolAllowlistConstraints = [['repo_write']];
+    const changed = await post();
+    expect(changed.status, await changed.text()).toBe(409);
+    expect(execute).toHaveBeenCalledTimes(1);
+    const delegation = execute.mock.calls[0]?.[0].delegation;
+    return (
+      response.status === 200 &&
+      JSON.stringify(delegation?.toolAllowlistConstraints) ===
+        JSON.stringify([['repo_read']]) &&
+      isDelegatedToolAllowed({
+        toolName: 'repo_read',
+        delegation,
+        toolNameMapping: new Map(),
+      }) &&
+      !isDelegatedToolAllowed({
+        toolName: 'repo_write',
+        delegation,
+        toolNameMapping: new Map(),
+      })
+    );
+  },
   peerChatTunnelV1: async ({ hosted }) => {
     const peer = {
       environmentId: 'receiver',
@@ -161,6 +255,8 @@ const CONSUMED_FLAGS: Record<
       deployment,
       {
         hasReadableSession: async () => true,
+        canUserReadSession: () => true,
+        conversationInputAdmissionRefusal: () => undefined,
         readCurrentConversationSession: async () => ({
           events: [
             {
@@ -181,11 +277,13 @@ const CONSUMED_FLAGS: Record<
         },
       },
     );
-    await app.request('/conversations/one/inbox', {
+    const response = await app.request('/conversations/one/inbox', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ kind: 'follow-up', key: 'one', message: 'Hello' }),
     });
+    if (!deployment.hosted)
+      expect(response.status, await response.text()).toBe(202);
     return submitted;
   },
   // GET /api/knowledge/memory/queue answers only where the Private memory
@@ -644,6 +742,7 @@ describe('consumed capability flags match what their routes serve', () => {
   // together (withdrawing a flag everywhere, or serving hosted reads without
   // a tenant reader) still reds.
   const EXPECTED: Record<string, Record<'personal' | 'hosted', boolean>> = {
+    delegationToolConstraintsV1: { personal: true, hosted: true },
     peerChatTunnelV1: { personal: true, hosted: false },
     delegationLocalConversationV1: { personal: true, hosted: false },
     childWorkSteering: { personal: true, hosted: true },

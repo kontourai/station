@@ -32,12 +32,12 @@ let peerCounter = 1;
 const loopback = () => `127.0.0.${(peerCounter++ % 250) + 2}`;
 const remote = () => `100.96.${(peerCounter++ % 250) + 1}.7`;
 
-function createHarness(options: { uiBootstrapToken?: string } = {}) {
+async function createHarness(options: { uiBootstrapToken?: string } = {}) {
   const homeDir = makeTempDir('station-ui-bootstrap-mint-');
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
   const secretPath = join(homeDir, 'runtime', 'local-grant.secret');
   const app = new Hono<{ Bindings: TestBindings }>();
-  const pairing = new DevicePairingService({
+  const pairing = await DevicePairingService.create({
     homeDir,
     environmentId: '11111111-1111-4111-8111-111111111111',
   });
@@ -60,7 +60,7 @@ function createHarness(options: { uiBootstrapToken?: string } = {}) {
 }
 
 async function mint(
-  harness: ReturnType<typeof createHarness>,
+  harness: Awaited<ReturnType<typeof createHarness>>,
   secret: string,
   peer = loopback(),
   headers: Record<string, string> = {},
@@ -75,7 +75,7 @@ async function mint(
 }
 
 async function mintedToken(
-  harness: ReturnType<typeof createHarness>,
+  harness: Awaited<ReturnType<typeof createHarness>>,
   purpose?: string,
 ) {
   const response = await mint(
@@ -90,7 +90,7 @@ async function mintedToken(
 }
 
 function redeem(
-  harness: ReturnType<typeof createHarness>,
+  harness: Awaited<ReturnType<typeof createHarness>>,
   token: string,
   headers: Record<string, string> = {},
 ) {
@@ -104,7 +104,7 @@ function redeem(
 
 /** Redeem once and hand back the HttpOnly session cookie the browser would keep. */
 async function sessionCookie(
-  harness: ReturnType<typeof createHarness>,
+  harness: Awaited<ReturnType<typeof createHarness>>,
 ): Promise<{ cookie: string; deviceId: string }> {
   const response = await redeem(harness, await mintedToken(harness));
   expect(response.status).toBe(200);
@@ -119,7 +119,7 @@ async function sessionCookie(
 
 describe('ui-bootstrap mint', () => {
   test('a direct-loopback caller holding the local grant mints a main exchange token', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const response = await mint(harness, harness.secret());
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -129,7 +129,7 @@ describe('ui-bootstrap mint', () => {
   });
 
   test('refuses proxied and non-loopback callers, even with the local grant', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const secret = harness.secret();
     const proxied = await mint(harness, secret, loopback(), {
       [INTERNAL_PROXY_CALLER_HEADER]: 'loopback',
@@ -147,7 +147,7 @@ describe('ui-bootstrap mint', () => {
   });
 
   test('refuses a wrong local-grant secret with the same code as bad position', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const response = await mint(harness, 'zzz-not-the-minted-value');
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
@@ -156,7 +156,7 @@ describe('ui-bootstrap mint', () => {
   });
 
   test('uses a rate-limit bucket distinct from local-grant', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const peer = loopback();
     for (let attempt = 0; attempt < 5; attempt += 1) {
       expect(
@@ -173,7 +173,7 @@ describe('ui-bootstrap mint', () => {
   });
 
   test('the main UI-bootstrap exchange accepts a minted token once and spends it', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const minted = await mint(harness, harness.secret());
     const { token } = (await minted.json()) as { token: string };
     const exchange = () =>
@@ -202,7 +202,7 @@ describe('ui-bootstrap mint', () => {
     // to `pairing.exchange(...)` is ignored (scope comes from the offer), and
     // one added inside the `isSameMachineBrowserCaller` branch is unreachable
     // for an off-box redemption. Only `createOffer` moves this assertion.
-    const harness = createHarness();
+    const harness = await createHarness();
     const { token } = (await (
       await mint(harness, harness.secret())
     ).json()) as { token: string };
@@ -222,7 +222,7 @@ describe('ui-bootstrap mint', () => {
     // the tray minting for the docs replaced an unspent `station start` link,
     // and the user's terminal URL then failed with nothing on screen
     // connecting it to the menu item they had clicked.
-    const harness = createHarness();
+    const harness = await createHarness();
     const launcher = await mintedToken(harness);
     await mintedToken(harness, 'api-docs');
 
@@ -232,7 +232,7 @@ describe('ui-bootstrap mint', () => {
   test('minting a start link leaves a pending API-docs capability usable', async () => {
     // The same collision in the other direction: opening the UI must not kill
     // a docs capability already in flight.
-    const harness = createHarness();
+    const harness = await createHarness();
     const docs = await mintedToken(harness, 'api-docs');
     await mintedToken(harness);
 
@@ -242,7 +242,7 @@ describe('ui-bootstrap mint', () => {
   test('replace-on-mint still holds WITHIN a purpose', async () => {
     // The rule the single slot was there to enforce is intact; it just applies
     // per purpose now rather than across unrelated ones.
-    const harness = createHarness();
+    const harness = await createHarness();
     const first = await mintedToken(harness, 'api-docs');
     const second = await mintedToken(harness, 'api-docs');
     expect(first).not.toBe(second);
@@ -252,7 +252,7 @@ describe('ui-bootstrap mint', () => {
   });
 
   test('spending one purpose does not spend the other', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const launcher = await mintedToken(harness);
     const docs = await mintedToken(harness, 'api-docs');
 
@@ -268,7 +268,7 @@ describe('ui-bootstrap mint', () => {
     // through the route, so this is the fixture that matches what the CLI
     // actually does — the #1259 report was this token dying.
     const inherited = 'inherited-launcher-token-from-station-start-0123456789';
-    const harness = createHarness({ uiBootstrapToken: inherited });
+    const harness = await createHarness({ uiBootstrapToken: inherited });
     await mintedToken(harness, 'api-docs');
 
     expect((await redeem(harness, inherited)).status).toBe(200);
@@ -295,7 +295,7 @@ describe('ui-bootstrap mint', () => {
       tray,
     )?.[1];
     expect(literal).toBeDefined();
-    const harness = createHarness();
+    const harness = await createHarness();
     expect(
       (await mint(harness, harness.secret(), loopback(), {}, literal)).status,
     ).toBe(200);
@@ -306,7 +306,7 @@ describe('ui-bootstrap mint', () => {
     // earlier start link, the tray mints for the docs, the launcher page
     // presents that capability. The browser gets its existing device back —
     // and the capability must not stay live in its slot afterwards.
-    const harness = createHarness();
+    const harness = await createHarness();
     const { cookie, deviceId } = await sessionCookie(harness);
     const docs = await mintedToken(harness, 'api-docs');
 
@@ -322,7 +322,7 @@ describe('ui-bootstrap mint', () => {
   test('re-presenting a spent capability with the session is still idempotent', async () => {
     // The property the old ordering existed for: a user re-pasting a start
     // link never sees a refusal while their session is valid.
-    const harness = createHarness();
+    const harness = await createHarness();
     const { cookie } = await sessionCookie(harness);
     const docs = await mintedToken(harness, 'api-docs');
     expect((await redeem(harness, docs, { Cookie: cookie })).status).toBe(200);
@@ -330,7 +330,7 @@ describe('ui-bootstrap mint', () => {
   });
 
   test('a wrong capability presented with a session touches no slot', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const { cookie } = await sessionCookie(harness);
     const docs = await mintedToken(harness, 'api-docs');
 
@@ -345,7 +345,7 @@ describe('ui-bootstrap mint', () => {
   test('an unknown purpose is refused rather than given a slot', async () => {
     // An open vocabulary would let a caller allocate unbounded slots and make
     // "which capabilities are live" unanswerable.
-    const harness = createHarness();
+    const harness = await createHarness();
     const response = await mint(
       harness,
       harness.secret(),
@@ -360,7 +360,7 @@ describe('ui-bootstrap mint', () => {
   });
 
   test('a later mint invalidates the prior unspent token', async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const first = (await (await mint(harness, harness.secret())).json()) as {
       token: string;
     };
@@ -380,7 +380,7 @@ describe('ui-bootstrap mint', () => {
 
 describe('same-user native access decisions', () => {
   test('requires both direct loopback and the exact boot secret', async () => {
-    const h = createHarness();
+    const h = await createHarness();
     for (const [peer, secret, headers] of [
       [remote(), h.secret(), {}],
       [loopback(), 'wrong-secret', {}],
@@ -399,7 +399,7 @@ describe('same-user native access decisions', () => {
     }
   });
   test('lists and approves the exact request without returning a reusable credential', async () => {
-    const h = createHarness();
+    const h = await createHarness();
     const offer = h.pairing.createOffer({ endpoint: 'http://localhost' });
     const pending = h.pairing.requestPairing({
       offerId: offer.offerId,

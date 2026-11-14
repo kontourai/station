@@ -1,0 +1,7 @@
+{
+  "revision": "954593ec2a061df5d57c1862ee3324f2a48a3fa4",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Reviewed the complete concept guide and the named child-work contract/display/home-lane input changes at 954593ec2a0. Canonical summary source labels distinguish tool-return, provider-summary, child-message and provider-error; missing source remains unrecorded. Snapshot omission settles a running child to unresolved without inventing cancellation or completion; engine-exit endedBy derives Interrupted separately. Added the observed-exit distinction to the guide. Home live lanes retain Needs you/Running/Idle and Just finished uses terminal observations with recency or later-than-view rules, not mere unfinished status. Existing bounded-history and reported-origin qualifications remain accurate for these inputs. No changes to unrelated model/device/gate/terminal journeys claimed; those retain prior reviews. Source inspection and whitespace check only, no browser/device/provider or end-to-end runtime acceptance executed.","inputs":["docs/user/concepts.md","packages/contracts/src/child-work.ts","src-ui/src/utils/child-work-display.ts","src-ui/src/views/home/home-lane-model.ts","docs/architecture/module-map.md"]}
+  ]
+}

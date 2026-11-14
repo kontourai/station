@@ -76,7 +76,9 @@
 
     "src-ui/src/lib/skill-experience-draft.ts",
 
-    "src-ui/src/lib/skill-experience-preview.ts"
+    "src-ui/src/lib/skill-experience-preview.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts"
   ],
 
   "checks": [

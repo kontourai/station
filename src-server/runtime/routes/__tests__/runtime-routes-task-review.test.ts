@@ -258,7 +258,9 @@ describe('Task review through configureRuntimeRoutes', () => {
       taskGraphService: taskGraph,
       projectService,
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         devicePairing: deepStub({
+          withCurrentRegistry: <T>(read: () => T): T => read(),
           listKnownPrincipals: () => [
             {
               id: LOCAL_OPERATOR_PRINCIPAL_ID,

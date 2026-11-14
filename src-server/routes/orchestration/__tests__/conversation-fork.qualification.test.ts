@@ -6,6 +6,7 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { credentialRecoveryOwner } from '../../../__test-utils__/credential-recovery-owner.js';
 import {
   continuityBinding,
   continuityRegistry,
@@ -421,6 +422,66 @@ describe('scripted fork delivery and canonical history qualification', () => {
       ).toBe(PARENT);
     },
   );
+
+  test('credential replay refuses a fork identity changed after its replacement process starts', async () => {
+    const f = await fixture('codex');
+    await f.execute('codex', FIRST_MESSAGE);
+    await vi.waitFor(async () =>
+      expect(
+        (
+          await f.service.readCurrentConversationSession(
+            f.conversationId,
+            authority,
+          )
+        )?.session.hasActiveTurn,
+      ).toBe(false),
+    );
+    const originalIdentity = f.store.nativeSessionBindingIdentity(
+      f.conversationId,
+    );
+    if (!originalIdentity) throw new Error('The seed has no native identity.');
+    const before = f.receiver.turns.length;
+    const startsBefore = f.receiver.starts.length;
+    const start = f.receiver.startSession.bind(f.receiver);
+    const rebind = vi
+      .spyOn(f.receiver, 'startSession')
+      .mockImplementationOnce(async (input) => {
+        const session = await start(input);
+        f.store.claimNativeSessionIdentity(
+          nativeSessionIdentityKey(
+            'codex',
+            'b'.repeat(64),
+            `codex:native:${input.threadId}`,
+          ),
+          input.threadId,
+          true,
+        );
+        return session;
+      });
+    const invoke = () =>
+      credentialRecoveryOwner(f.service).restartRecoverySession({
+        threadId: f.conversationId,
+        input: 'Retry the fork turn with the replacement credential.',
+        recoveryCorrelationId: 'fork-credential-replay',
+        signal: new AbortController().signal,
+        credentialProfileRef: 'backup',
+      });
+    try {
+      await expect(invoke()).rejects.toThrow(/context|delivery/i);
+      expect(f.receiver.starts).toHaveLength(startsBefore + 1);
+      expect(f.receiver.turns).toHaveLength(before);
+      rebind.mockRestore();
+      f.store.claimNativeSessionIdentity(
+        originalIdentity,
+        f.conversationId,
+        true,
+      );
+      await invoke();
+      await vi.waitFor(() => expect(f.receiver.turns).toHaveLength(before + 1));
+    } finally {
+      rebind.mockRestore();
+    }
+  });
 
   test('a fork continues after its native identity first arrives during the seed turn', async () => {
     const f = await fixture('claude');

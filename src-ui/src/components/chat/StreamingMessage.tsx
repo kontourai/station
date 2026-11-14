@@ -10,6 +10,8 @@ import { useStreamingHaptics } from '../../hooks/useStreamingHaptics';
 import { retryActivityLabel } from '../../utils/chat-activity';
 import { openTurnStartedAtMs } from '../../utils/conversation-activity';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
+import type { PermissionPosture } from '../../utils/sessionDisplay';
+import { PermissionPostureBadge } from '../badges/PermissionPostureBadge';
 import { ElapsedWait } from '../ElapsedWait';
 import { LoadingDots } from '../LoadingDots';
 import { useBrowserActivityScope } from './BrowserActivityContext';
@@ -94,6 +96,7 @@ export type StreamingMessageProps = {
    * is suppressed on this row too, not just the persisted one.
    */
   attributionAgent?: { name: string } | null;
+  permissionPosture?: PermissionPosture | null;
   owner?: OwnerAttribution | null;
   /** Lets the owning scroll surface follow streaming text-height growth. */
   onContentChange?: () => void;
@@ -138,6 +141,7 @@ function StreamingMessageWithApps({
   hideProgressSilence,
   statusLabel,
   attributionAgent,
+  permissionPosture,
   owner,
   onContentChange,
   streamingText,
@@ -259,8 +263,10 @@ function StreamingMessageWithApps({
             agent={attributionAgent ?? null}
             engine={null}
             owner={owner}
+            permissionPosture={permissionPosture}
           />
         )}
+        {isMobile && <PermissionPostureBadge posture={permissionPosture} />}
 
         {/* Render completed content parts in order */}
         {blocks.map((block) => {

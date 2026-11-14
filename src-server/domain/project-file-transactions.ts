@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { mkdir, rename, rm, unlink } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -113,6 +113,8 @@ export interface StoredFileRevision<T> {
 }
 
 export interface ProjectStoredFileRevision<T> extends StoredFileRevision<T> {
+  /** Final synchronous admission check; performs no mutation or lock acquisition. */
+  assertCurrent?(): void;
   createLayout(layoutSlug: string, value: unknown): Promise<void>;
   /** Server-only read admission under the existing Project mutation owner. */
   withCurrentRead?<R>(operation: (value: T) => Promise<R>): Promise<R>;
@@ -416,6 +418,13 @@ export class ProjectFileTransactions {
       );
     }
     const expected = snapshot.fingerprint;
+    const sourceIdentity = options.projectRevision
+      ? statSync(path, { bigint: true })
+      : undefined;
+    const sourceStamp = (entry: NonNullable<typeof sourceIdentity>) =>
+      [entry.dev, entry.ino, entry.size, entry.mtimeNs, entry.ctimeNs].join(
+        ':',
+      );
     const admissionValue = options.projectRevision
       ? structuredClone(value)
       : undefined;
@@ -449,6 +458,17 @@ export class ProjectFileTransactions {
       value,
       ...(options.projectRevision
         ? {
+            assertCurrent: () => {
+              if (
+                !sourceIdentity ||
+                readFingerprint(path) !== expected ||
+                sourceStamp(statSync(path, { bigint: true })) !==
+                  sourceStamp(sourceIdentity)
+              )
+                throw new FileStorageConflictError(
+                  'Project changed before preparation spawn',
+                );
+            },
             withCurrentRead: <R>(operation: (current: T) => Promise<R>) =>
               this.#withProjectLock(projectSlug, async () => {
                 if (readFingerprint(path) !== expected) {

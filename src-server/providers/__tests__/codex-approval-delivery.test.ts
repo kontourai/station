@@ -16,6 +16,7 @@ import {
   CODEX_APPROVAL_ACK_WINDOW_MS,
   CODEX_DECISION_REPLY_REFUSED_CODE,
   CODEX_DECISION_UNACKNOWLEDGED_CODE,
+  refuseCodexApprovalReply,
 } from '../adapters/codex-approval-delivery.js';
 import {
   commandApproval,
@@ -374,6 +375,80 @@ describe('#2880: Codex decision delivery', () => {
       ),
     ).toEqual([]);
     await adapter.stopAll();
+  });
+
+  test('an exact MCP form answer is written once and becomes acknowledged only on its own engine receipt', async () => {
+    const h = await startedAdapter();
+    try {
+      await emit(h.process, {
+        id: 42,
+        method: 'mcpServer/elicitation/request',
+        params: {
+          serverName: 'group-question',
+          message: 'Choose a token',
+          requestedSchema: {
+            type: 'object',
+            properties: { token: { type: 'string', enum: ['ELICIT_OK'] } },
+            required: ['token'],
+          },
+        },
+      });
+      const requestId = await openedRequestId(h.events);
+      const opened = h.events.find(
+        (event) =>
+          event.method === 'request.opened' && event.requestId === requestId,
+      )!;
+      await h.adapter.respondToRequest(THREAD, requestId, 'accept', {
+        expectedRequestEventId: opened.eventId,
+        inputContent: { token: 'ELICIT_OK' },
+      });
+      expect(repliesTo(h.process, 42)).toEqual([
+        {
+          jsonrpc: '2.0',
+          id: 42,
+          result: { action: 'accept', content: { token: 'ELICIT_OK' } },
+        },
+      ]);
+      await waitFor(
+        () => delegatedLastDecision(h.events),
+        'MCP reply recorded',
+      );
+      expect(delegatedLastDecision(h.events)?.delivery).toBe(
+        'awaiting-acknowledgement',
+      );
+      await emit(h.process, acknowledgement(42));
+      await waitFor(
+        () =>
+          delegatedLastDecision(h.events)?.delivery === 'acknowledged'
+            ? true
+            : undefined,
+        'MCP answer acknowledgement',
+      );
+      await expect(
+        h.adapter.respondToRequest(THREAD, requestId, 'accept', {
+          expectedRequestEventId: opened.eventId,
+          inputContent: { token: 'ELICIT_OK' },
+        }),
+      ).rejects.toThrow('not open');
+      expect(repliesTo(h.process, 42)).toHaveLength(1);
+    } finally {
+      await h.adapter.stopAll();
+    }
+  });
+
+  test.each([
+    null,
+    [],
+    { token: { arbitrary: true } },
+    { token: ['ok', 1] },
+    { token: Number.NaN },
+  ])('MCP form reply vocabulary refuses unsupported content %j', (content) => {
+    expect(
+      refuseCodexApprovalReply('mcpServer/elicitation/request', {
+        action: 'accept',
+        content,
+      }),
+    ).toBeDefined();
   });
 
   test('a reply outside the vocabulary is refused, never written, and never reads as delivered', async () => {

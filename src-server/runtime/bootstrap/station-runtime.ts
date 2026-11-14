@@ -147,10 +147,12 @@ import {
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import {
   acquireStationHomeRuntimeLease,
+  captureStationHomeRuntimeProof,
   type StationHomeRuntimeLease,
 } from '@kontourai/station-shared/station-home-lifecycle';
 import { Agent, AgentRegistry, type Tool, VoltAgent } from '@voltagent/core';
 import type { HonoServerConfig } from '@voltagent/server-hono';
+import type { WebSocketServer } from 'ws';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import type { UsageAggregator } from '../../analytics/usage-aggregator.js';
@@ -568,6 +570,7 @@ import {
 import { initializeRuntime } from './runtime-initialize.js';
 import { createRuntimeInitializationDeps } from './runtime-initialize-deps.js';
 import { rebuildOrClearRuntimeProjections } from './runtime-projection-recovery.js';
+import { RuntimePublicationParticipant } from './runtime-publication-participant.js';
 import { createRuntimeServiceBundle } from './runtime-service-bootstrap.js';
 import { shutdownRuntimeServices } from './runtime-shutdown.js';
 import {
@@ -585,6 +588,7 @@ import {
   stationKnowledgeRuntimeIdentity,
 } from './station-control-runtime-env.js';
 import { startStoreIntegrityVerification } from './store-integrity-verification.js';
+import { closeOwnedWebSocketListener } from './websocket-listener.js';
 
 interface PersistedAgentActivationTransaction {
   preparationState: RuntimeAgentPreparationState;
@@ -1220,6 +1224,7 @@ export class StationRuntime {
   private readonly operationalEventPublisher: OperationalEventPublisher;
   private readonly pluginOperationalEventSubscriptions: PluginOperationalEventSubscriptionService;
   private readonly stationHomeRuntimeLease: StationHomeRuntimeLease;
+  private runtimePublicationParticipant?: RuntimePublicationParticipant;
 
   // Services
   private agentService!: AgentService;
@@ -1262,7 +1267,8 @@ export class StationRuntime {
   private readonly scopedTerminals: { sessions?: TerminalSessions<Request> } =
     {};
   private voiceService!: VoiceSessionService;
-  private voiceWsAttached = false;
+  private voiceWsListener: WebSocketServer | null = null;
+  private voiceWsClosing: Promise<void> | null = null;
   private acpBridge: ACPManager;
   private feedbackService: FeedbackService;
   private environmentSecurityService: EnvironmentSecurityService;
@@ -1553,6 +1559,9 @@ export class StationRuntime {
     let openedEventStore: EventStore | undefined;
     let openedConfigLoader: ConfigLoader | undefined;
     try {
+      this.runtimePublicationParticipant = new RuntimePublicationParticipant(
+        captureStationHomeRuntimeProof(projectHomeDir, stationHomeRuntimeLease),
+      );
       // No EventStore/SQLite, watcher, or ConfigLoader application-data read is
       // allowed before the home marker has failed closed or been bootstrapped.
       assertHostedPersistenceBeforeSchemaSync(projectHomeDir);
@@ -2152,6 +2161,7 @@ export class StationRuntime {
         nodeVersion: process.version,
       });
     } catch (error) {
+      this.runtimePublicationParticipant?.stop();
       const failures: unknown[] = [error];
       let persistenceClosed = true;
       try {
@@ -4107,6 +4117,8 @@ export class StationRuntime {
           cleanupErrors.push(cause);
         }
       };
+      await retire(() => this.closeVoiceListener());
+      await retire(() => this.voiceService?.stop());
       await retire(async () => {
         await this.nativeRelayEnrollment?.close();
         this.nativeRelayEnrollment = undefined;
@@ -4868,6 +4880,9 @@ export class StationRuntime {
           onVoltAgentCreated: (voltAgent) => {
             this.voltAgent = voltAgent;
           },
+          onVoiceWebSocketAttached: (listener) => {
+            if (listener) this.voiceWsListener = listener;
+          },
         }),
       );
       await this.kitLifecycleReady;
@@ -4886,7 +4901,6 @@ export class StationRuntime {
     this.modelCatalog = initialized.modelCatalog;
     this.usageAggregator = initialized.usageAggregator;
     this.voltAgent = initialized.voltAgent;
-    this.voiceWsAttached = initialized.voiceWsAttached;
     this.rebuildGlobalToolRegistry();
 
     const pluginEventSubscriptions =
@@ -4975,8 +4989,11 @@ export class StationRuntime {
       }
     };
 
+    await attempt(() => this.closeVoiceListener());
+    await attempt(() => this.voiceService?.stop());
     this.failedInitializationOrchestration = this.orchestrationService;
     await attempt(() => this.orchestrationService?.shutdown());
+
     await attempt(() => this.retireFailedSearch());
     await attempt(() => this.sshEnvironmentService.shutdown());
     await attempt(() => this.discordGatewayService.stop());
@@ -5361,6 +5378,7 @@ export class StationRuntime {
       serverUpdate,
       analyticsMaintenance,
     } = configureRuntimeRoutes({
+      runtimePublicationParticipant: this.runtimePublicationParticipant,
       discordGateway: this.discordGatewayService,
       retainProjectRoomRuntime: (runtime) => {
         this.projectRoomRuntime = runtime;
@@ -6102,10 +6120,52 @@ export class StationRuntime {
    * Shutdown the runtime
    */
   async shutdown(): Promise<void> {
+    this.runtimePublicationParticipant?.stop();
     if (this.taskRecordings && !this.taskRecordingsShutdown) {
       this.taskRecordingsShutdown = this.taskRecordings.dispose();
       void this.taskRecordingsShutdown.catch(() => {});
     }
+    if (this.shutdownPromise) return this.shutdownPromise;
+    const closing = this.shutdownAfterPublicationDrain();
+    this.shutdownPromise = closing.catch((error) => {
+      this.shutdownPromise = null;
+      throw error;
+    });
+    return this.shutdownPromise;
+  }
+
+  private async closeVoiceListener(): Promise<void> {
+    const listener = this.voiceWsListener;
+    if (!listener) return;
+    if (!this.voiceWsClosing) {
+      const closing = closeOwnedWebSocketListener(listener);
+      this.voiceWsClosing = closing;
+      void closing.catch(() => {
+        if (this.voiceWsClosing === closing) this.voiceWsClosing = null;
+      });
+    }
+    const closing = this.voiceWsClosing;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        closing,
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Voice listener shutdown timed out')),
+            5_000,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (this.voiceWsListener === listener) this.voiceWsListener = null;
+    if (this.voiceWsClosing === closing) this.voiceWsClosing = null;
+  }
+
+  private async shutdownAfterPublicationDrain(): Promise<void> {
+    if (this.runtimePublicationParticipant)
+      await this.runtimePublicationParticipant.drain(5_000);
     this.uninstallCatalogAddressPolicy?.();
     this.uninstallCatalogAddressPolicy = undefined;
     sharedUntrustedContentLedger.attachDurableMarks(undefined);
@@ -6132,7 +6192,6 @@ export class StationRuntime {
     // `gracefulShutdown` ends in `process.exit`. Same optional-chaining
     // reason as the line above — prototype-built doubles have no fields.
     this.stopStoreIntegrityVerification?.();
-    if (this.shutdownPromise) return this.shutdownPromise;
     // Settle any in-flight initialize() before tearing down — its rejection
     // is expected here (we are shutting down under it) and must not escape
     // as an unhandled rejection attributed to someone else.
@@ -6141,13 +6200,7 @@ export class StationRuntime {
     }
     this.stopObservingRuntimeConfigurationSources();
     this.agentConfigurationMutationsClosed = true;
-    this.shutdownPromise = this.shutdownAfterConfigurationDrain().catch(
-      (error) => {
-        this.shutdownPromise = null;
-        throw error;
-      },
-    );
-    return this.shutdownPromise;
+    await this.shutdownAfterConfigurationDrain();
   }
 
   private retireSelfHostedBroker(): Promise<void> {
@@ -6173,6 +6226,11 @@ export class StationRuntime {
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
+    try {
+      await this.closeVoiceListener();
+    } catch (error) {
+      failures.push(error);
+    }
     try {
       await (this.taskRecordingsShutdown ?? this.taskRecordings?.dispose());
       this.taskRecordings = undefined;

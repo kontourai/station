@@ -67,7 +67,10 @@ describe('streamPrimaryAgentChat outward stream and completion', () => {
       ) => operation(),
     }) as any;
 
-  const run = async (streamText: ReturnType<typeof vi.fn>) => {
+  const run = async (
+    streamText: ReturnType<typeof vi.fn>,
+    restOptions: Record<string, unknown> = {},
+  ) => {
     const ctx = buildCtx();
     const app = new Hono();
     app.post('/chat', (c) =>
@@ -77,7 +80,7 @@ describe('streamPrimaryAgentChat outward stream and completion', () => {
         slug: 'assistant',
         plugin: '',
         input: 'hello',
-        restOptions: {},
+        restOptions,
         injectContext: null,
         ragContext: null,
         agent: {
@@ -123,6 +126,45 @@ describe('streamPrimaryAgentChat outward stream and completion', () => {
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
   });
+
+  test.each([undefined, [['repo_write']], [['repo_read']]])(
+    'persisted chat policy cannot discard inherited restrictions %j',
+    async (recorded) => {
+      const delegation = {
+        mode: 'isolated-child',
+        depth: 1,
+        maxDepth: 2,
+        parentAgentSlug: 'parent',
+        rootAgentSlug: 'root',
+        toolAllowlistConstraints: [['repo_read']],
+      };
+      memoryAdapter.getConversation = vi.fn(async () => ({
+        id: 'policy-chat',
+        metadata: recorded
+          ? {
+              delegation: { ...delegation, toolAllowlistConstraints: recorded },
+            }
+          : {},
+      }));
+      const streamText = vi.fn(async () => ({
+        fullStream: emptyStream(),
+        text: Promise.resolve(''),
+        usage: Promise.resolve(undefined),
+        finishReason: Promise.resolve('stop'),
+      }));
+      const { wire } = await run(streamText, {
+        conversationId: 'policy-chat',
+        userId: 'owner',
+        delegation,
+      });
+      if (recorded?.[0]?.[0] === 'repo_read')
+        expect(streamText).toHaveBeenCalledTimes(1);
+      else {
+        expect(streamText).not.toHaveBeenCalled();
+        expect(wire).toContain('"type":"error"');
+      }
+    },
+  );
 
   test('step frames exclude provider requests, responses and nested errors while text still streams', async () => {
     const canary = 'private-model-request-canary';

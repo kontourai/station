@@ -34,6 +34,14 @@ const APPROVAL_TTL_MS = 10 * 60_000;
 const APPROVAL_LIMIT = 1_000;
 
 const approvals = new Map<string, number[]>();
+interface ApprovedRequest {
+  readonly conversationId: string;
+  readonly requestId: string;
+  readonly requestEventId: string;
+}
+// A consumed or expired token cannot make an unresolved handoff approvable again.
+// Claims belong to the live store, so retiring one cannot exhaust other stores.
+let requestScopes = new WeakMap<object, Map<string, ApprovedRequest>>();
 const approvalKey = (conversationId: string, serverId: string, tool: string) =>
   JSON.stringify([conversationId, serverId, tool]);
 
@@ -74,11 +82,49 @@ export function recordPersonApprovedCall(
 export function recordPersonApprovedExternalTool(
   conversationId: string,
   externalToolName: unknown,
-): void {
-  if (typeof externalToolName !== 'string') return;
+  request?: {
+    scope: object | undefined;
+    requestId: string;
+    requestEventId: string;
+    isClosed(reference: ApprovedRequest): boolean;
+    assertCurrent(): void;
+  },
+): boolean {
+  if (typeof externalToolName !== 'string') return true;
   const parsed = parseExternalMcpToolName(externalToolName);
-  if (parsed)
-    recordPersonApprovedCall(conversationId, parsed.serverId, parsed.toolName);
+  if (!parsed) return true;
+  if (request) {
+    if (!request.scope) return false;
+    let scope = requestScopes.get(request.scope);
+    if (!scope) {
+      scope = new Map();
+      requestScopes.set(request.scope, scope);
+    }
+    for (const [key, reference] of scope) {
+      try {
+        if (request.isClosed(reference)) {
+          scope.delete(key);
+        }
+      } catch {
+        // An unavailable request lookup cannot retire an uncertain handoff.
+      }
+    }
+    const key = JSON.stringify([
+      conversationId,
+      request.requestId,
+      request.requestEventId,
+    ]);
+    if (scope.has(key) || scope.size >= APPROVAL_LIMIT) return false;
+    request.assertCurrent();
+    const reference = Object.freeze({
+      conversationId,
+      requestId: request.requestId,
+      requestEventId: request.requestEventId,
+    });
+    scope.set(key, reference);
+  }
+  recordPersonApprovedCall(conversationId, parsed.serverId, parsed.toolName);
+  return true;
 }
 
 function consumeApproval(key: string, now: number): boolean {
@@ -93,6 +139,7 @@ function consumeApproval(key: string, now: number): boolean {
 /** For tests: forget every recorded approval. */
 export function resetPersonApprovedCalls(): void {
   approvals.clear();
+  requestScopes = new WeakMap();
 }
 
 /**

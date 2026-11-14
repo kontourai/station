@@ -3,6 +3,7 @@ import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/pro
 import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
 import { isInputRequestEvent } from '@kontourai/station-shared/input-request';
+import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
 import { providerFailure } from '../../providers/provider-failure.js';
 
 export { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
@@ -45,6 +46,7 @@ import {
   isApprovalMode,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
+  RESERVED_SOURCE_EXECUTION_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-event-content';
 import {
@@ -540,9 +542,83 @@ export function deriveReadModelSession(options: {
   return nextSession;
 }
 
+/** Only canonical starts carry this declaration; resume cursors are not mode authority. */
+export function reservedSourceExecutionFromStart(
+  event: CanonicalRuntimeEvent | undefined,
+): unknown {
+  return event?.method === 'session.started' &&
+    event.provider === 'station-agent'
+    ? event.metadata?.[RESERVED_SOURCE_EXECUTION_METADATA_KEY]
+    : undefined;
+}
+
+export function reservedSourceDurabilityProfile(
+  declaration: unknown,
+): ProviderDurabilityProfile | undefined {
+  if (declaration === undefined) return undefined;
+  const valid =
+    declaration !== null &&
+    typeof declaration === 'object' &&
+    'mode' in declaration &&
+    (declaration.mode === 'sealed-source-no-tools' ||
+      declaration.mode === 'sealed-source-input') &&
+    'identity' in declaration &&
+    typeof declaration.identity === 'string' &&
+    /^sha256:[a-f0-9]{64}$/.test(declaration.identity);
+  const unavailable = valid
+    ? 'A sealed source Session needs fresh bounded admission; arbitrary continuation is unavailable.'
+    : 'The recorded sealed source declaration is unavailable.';
+  const inputUnavailable = valid
+    ? "This session can't take Steer or Queue messages. To ask for another turn, use the report or group controls."
+    : unavailable;
+  return {
+    queuedFollowUp: { state: 'none', detail: inputUnavailable },
+    steerPlacement: {
+      state: 'none',
+      detail: inputUnavailable,
+    },
+    crashContinuation: {
+      state: 'none',
+      detail:
+        'An interrupted external attempt remains unknown and is not automatically replayed.',
+    },
+    toolReplay: {
+      state: 'none',
+      detail: 'The sealed request does not use native tool replay.',
+    },
+    pendingApprovals: {
+      state: 'none',
+      detail: 'Live fixed-input registration does not survive runtime restart.',
+    },
+    contextCarriage: {
+      state: valid ? 'emulated' : 'none',
+      ...(valid ? { history: 'seed' as const } : {}),
+      detail: unavailable,
+    },
+    fork: { state: 'none', detail: unavailable },
+    compaction: {
+      state: 'none',
+      owner: 'unknown',
+      detail:
+        'The sealed request has no managed conversation-compaction owner.',
+    },
+    partialOutput: {
+      state: 'none',
+      detail:
+        'Interrupted partial output may be unavailable; retained evidence is separately scoped.',
+    },
+    usage: {
+      state: valid ? 'emulated' : 'none',
+      detail:
+        'Retained provider usage and reserved allocation remain distinct; missing usage is unknown.',
+    },
+  };
+}
+
 export function buildOrchestrationSessionSummary(options: {
   readDurabilityProfile?: (
     provider: string | undefined,
+    threadId?: string,
   ) => ProviderDurabilityProfile | undefined;
   persisted?: ProviderSession;
   loaded?: ProviderSession;
@@ -628,11 +704,24 @@ export function buildOrchestrationSessionSummary(options: {
     extractDelegationContext(events),
     events,
   );
+  const initialTurn = events.find((event) => event.method === 'turn.started');
+  const initiatingOrigin =
+    initialTurn && isClientOrigin(initialTurn.clientOrigin)
+      ? initialTurn.clientOrigin
+      : undefined;
   const inputOrigin = delegation
     ? {
         kind: 'delegation' as const,
         taskId: delegation.taskId,
         ...(delegation.title ? { title: delegation.title } : {}),
+        ...(initiatingOrigin
+          ? {
+              initiator: {
+                actor: initiatingOrigin.actor.kind,
+                reportedSurface: initiatingOrigin.reported.surface,
+              },
+            }
+          : {}),
       }
     : undefined;
   const configuredRouteEvent = [...events]
@@ -721,7 +810,7 @@ export function buildOrchestrationSessionSummary(options: {
       latestRequests.set(event.requestId, event);
   }
   const summary: OrchestrationSessionSummary = {
-    durability: options.readDurabilityProfile?.(base.provider),
+    durability: options.readDurabilityProfile?.(base.provider, base.threadId),
     provider: base.provider,
     threadId: base.threadId,
     status: base.status,
@@ -1742,6 +1831,10 @@ function recoveryFailureEventId(threadId: string, message: string): string {
 export interface RecoveredSessionStartOptions {
   /** Production composition reauthorizes the retained Project after preparation. */
   assertRetainedWorkspaceAuthorized?: (threadId: string) => Promise<void>;
+  /** Recheck receiver authority after preparation; verify the exact input at entry. */
+  prepareReceiverStart?: (
+    input: ProviderSessionStartInput,
+  ) => Promise<() => void>;
   /** Production composition joins the same durable start/turn authority. */
   invokeSessionStart?: (
     threadId: string,
@@ -1779,7 +1872,7 @@ export interface RecoveredSessionStartOptions {
   applyApprovalPosture?: (
     adapter: ProviderAdapterShape,
     input: ProviderSessionStartInput,
-  ) => Promise<ProviderSessionStartInput>;
+  ) => Promise<{ input: ProviderSessionStartInput; assertCurrent(): void }>;
   /**
    * archive#3549 review round 4 (independent, Codex), HIGH: recovery applied
    * `resolveSessionAgent` but NOT the agent's credential-profile pin, and
@@ -1897,9 +1990,11 @@ export async function startRecoveredOrchestrationSession(options: {
         ? recoveredMetadata.connectionId
         : undefined;
     await deps.assertAdapterReady(adapter, recoveredConnectionId);
-    if (deps.applyApprovalPosture) {
-      startInput = await deps.applyApprovalPosture(adapter, startInput);
-    }
+    const preparedPosture = await deps.applyApprovalPosture?.(
+      adapter,
+      startInput,
+    );
+    if (preparedPosture) startInput = preparedPosture.input;
     if (deps.resolveSessionAgent) {
       startInput = await deps.resolveSessionAgent(startInput);
     }
@@ -1922,14 +2017,19 @@ export async function startRecoveredOrchestrationSession(options: {
       // #2873: a respawn re-resolves the folder an agent's dispatch recorded
       // and refuses a different result, before any adapter call.
       assertDispatchCwdUnmoved(startInput, startInput.cwd);
+      const verifyReceiver = await deps.prepareReceiverStart?.(startInput);
+      preparedPosture?.assertCurrent();
+      const invoke = () => {
+        verifyReceiver?.();
+        preparedPosture?.assertCurrent();
+        return adapter.startSession(startInput);
+      };
       recovered = await withTenantExecutionContext(
         startInput.tenantExecutionContext,
         () =>
           deps.invokeSessionStart
-            ? deps.invokeSessionStart(startInput.threadId, () =>
-                adapter.startSession(startInput),
-              )
-            : adapter.startSession(startInput),
+            ? deps.invokeSessionStart(startInput.threadId, invoke)
+            : invoke(),
       );
     } finally {
       admissionLease?.release();
@@ -1956,12 +2056,13 @@ export async function startRecoveredOrchestrationSession(options: {
       threadId: session.threadId,
       error: message,
     });
-    // archive#1090's contract, preserved byte-for-byte now that the failure
-    // happens at first use instead of at boot: a `runtime.error` on the
-    // thread so the transcript says why, and `status: 'error'` (never
+    // archive#1090: first-use recovery records the reason in the transcript
+    // and keeps `status: 'error'` (never
     // `closed`, which NULLs `resume_cursor`) so the conversation stays
     // reopenable once the user undoes whatever broke it.
     const failedAt = new Date().toISOString();
+    const refused =
+      error instanceof SessionStartRefusedError ? error : undefined;
     // archive#1399 fix round 2, B3: this literal always constructs
     // `method: 'runtime.error'`, never `tool.completed` — routed through
     // the safe sanitizer anyway (a true no-op here) so the writer-inventory
@@ -1975,19 +2076,25 @@ export async function startRecoveredOrchestrationSession(options: {
           createdAt: failedAt,
           method: 'runtime.error',
           ...providerFailure(
-            error instanceof SessionStartIndeterminateError
-              ? 'indeterminate'
-              : 'unavailable',
-            error instanceof SessionStartIndeterminateError
-              ? 'indeterminate'
-              : 'failed',
+            refused?.kind ??
+              (error instanceof SessionStartIndeterminateError
+                ? 'indeterminate'
+                : 'unavailable'),
+            refused
+              ? 'refused'
+              : error instanceof SessionStartIndeterminateError
+                ? 'indeterminate'
+                : 'failed',
           ),
           severity: 'error',
           code:
-            error instanceof SessionStartIndeterminateError
+            refused?.code ??
+            (error instanceof SessionStartIndeterminateError
               ? SESSION_START_INDETERMINATE_CODE
-              : SESSION_RECOVERY_FAILED_CODE,
-          retriable: !(error instanceof SessionStartIndeterminateError),
+              : SESSION_RECOVERY_FAILED_CODE),
+          retriable:
+            refused?.retryable ??
+            !(error instanceof SessionStartIndeterminateError),
           message: `This conversation could not be reopened: ${message}`,
         } satisfies ProviderRuntimeErrorEvent,
         (warnMessage, meta) => deps.logger.warn(warnMessage, meta),

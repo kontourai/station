@@ -45,7 +45,7 @@ async function stations(storeOptions?: PeerCredentialStoreOptions) {
   mkdirSync(join(remoteHome, 'security'), { mode: 0o700 });
   const environmentId = randomUUID();
   let receiverNow = Date.now();
-  const pairing = new DevicePairingService({
+  const pairing = await DevicePairingService.create({
     homeDir: remoteHome,
     environmentId,
     now: () => receiverNow,

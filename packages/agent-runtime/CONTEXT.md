@@ -1,9 +1,11 @@
 # Model runtime context
 
-This experimental package owns pinned framework entry/request bytes,
-one-shot dispatch grants, completed normalized tapes, aborted partial audit,
-and output projection readiness. Station consumes the agent-turn protocol behind an off-by-default preview. It imports
-only public Monument contracts and pinned optional framework APIs.
+This experimental package has separate model-only and agent-turn protocols.
+The model-only protocol owns pinned framework entry/request bytes, one-shot
+dispatch grants, completed normalized tapes, aborted partial audit and output
+projection readiness. Station consumes the separately versioned agent-turn
+protocol behind an off-by-default preview. The package imports only public
+Monument contracts and pinned optional framework APIs.
 
 `types.ts` owns the model protocol. `decisions.ts` owns transitions, revision
 fences, receipts and stable projection identity. `receipts.ts` correlates
@@ -40,9 +42,10 @@ nonobserved read behavior. `KernelAtomicProtocol` changes type representation,
 not kernel decisions or transaction meaning.
 
 Tools, approval recovery, affinity creation/forking, host terminal integration,
-Station transcript/boot adoption, publication, and live provider fidelity remain
-outside this package cut. A completed model tape is never tool execution or
-whole-Conversation completion authority.
+Station transcript/boot adoption, publication and live provider fidelity remain
+outside the model-only protocol. The agent-turn protocol below has its own
+Station integration and evidence. A completed model tape is never tool execution
+or whole-Conversation completion authority.
 
 The `r2-*` owners cover private-entry admission after a held final request read,
 current authority/cancellation before held replay release, expired saved full
@@ -120,7 +123,7 @@ checks at their source pins; independent delta review and workload admission
 remain separate. Strict new admission parses all selected active payloads;
 these checks establish no active-set cost or physical table-page I/O proof.
 
-The agent-turn writer is `agent-steps/10`. It adds cancellation requests,
+The current agent-turn writer is `agent-steps/12`. It retains cancellation requests,
 terminal timestamps and journaled transport frames without replacing the older
 model journal. Station's off-by-default durable preview consumes the root contract and explicit `/internal` integration entry
 at its real framework/model/tool/approval boundaries. Its native adapter suite

@@ -896,12 +896,38 @@ catalog. That kept it out of the original
 dock catalog; the later registry-driven chooser (#2154) does list Agents and
 Activity.
 
+The [remaining child-work epic](../plans/child-work-epic.md) tracks acceptance
+and the Flow group dependency separately from this implemented presentation.
+
+Background-task presentation retains at most 50 settled cards and 100 unfinished
+raw tool rows per conversation. Omitted tool history is disclosed in the sheet
+and conversation Agents pane; entry-point counts say “shown” while limited.
+These are display bounds, not a claim that omitted work stopped. Up to 50
+additional delegate bindings without cards remain available for later resume.
+Closed conversations share a recovery cache of at most 150 rows, 50 bindings
+without rows, and 50 omitted-history flags. Cache eviction records no terminal
+outcome; an empty list does not prove that no work remains. Reopening can
+recover current delegate facts from the Station snapshot, without rebuilding
+all discarded history.
+Closing the last chat drops its settled history while retaining live or
+unresolved delegate routing; a later observed settlement retires that closed
+context unless the chat reopened. Open execution aliases own the cache;
+replaced aliases retire history without cancelling live work. Reconnects do
+not restore terminal history for closed scopes, and closing does not clear
+an omitted-tool disclosure while the turn may still be active. Snapshot absence means **No result**, never
+proof of a requested stop. Delegated-session assistant rows use the shared
+posture badge only when their execution matches the recorded session:
+“Delegated worker” for an isolated-child record, otherwise “Delegated task”.
+This is delegation metadata, not a read-only or sandbox guarantee; read-only
+attachments retain “Read only”. Older execution rows receive no inferred badge. A later terminal event can correct that uncertainty.
+
 **Amended by #2459 (epic #2455 slice 5), 2026-09-24.** The Agents pane now
-renders child work — engine subagents and Station delegates — from the
-provider-neutral child-work contract through its own row
-(`workspace-panes/agents/ChildWorkRow.tsx`), and gains an "All" scope beside
-"This conversation". Scope is display state (a per-device preference), not
-pane identity: the occurrence still binds nothing, so nothing above about
+renders engine subagents from the provider-neutral child-work contract through
+`workspace-panes/agents/ChildWorkRow.tsx`, and gains an "All" scope beside
+"This conversation". The conversation scope keeps tool and Station-delegate
+cards in `TaskRow`; the All scope renders Station delegates through
+`ChildWorkRow` from the session read model. Scope is display state (a per-device
+preference), not pane identity: the occurrence still binds nothing, so nothing above about
 Activity's precedent changes. "All" reads delegates from the session read
 model and engine subagents from a window-wide registry
 (`contexts/child-work-global-store.ts`) fed before the chat guard, so a
@@ -953,11 +979,18 @@ preserves it. Full-history accounting loads only on expansion. The background sh
 their own catalog Agent and keeps the task title stable. A native child's reporter
 window supplies engine identity only; its prompt, tools and accounting never
 become the child's data.
-Its expansion reveals model provenance and the full result without repeating that
-preview; usage and transcript access share a wrapping footer. The Agents pane keeps
+Its expansion reveals model provenance and the retained result report without repeating that
+preview. Reports are capped at 4,000 UTF-16 code units and marked when truncated;
+transcript recovery is offered only when a persisted supported reference exists.
+Current recovery supports Claude subagents and Codex child threads through those
+retained references. Report text and recovery do not establish artifact verification. Usage and available transcript access share a wrapping footer. The Agents pane keeps
 open/stop actions beside each row and reveals usage on expansion.
-The Agents pane remains the complete list and stop surface, including
-children with no loaded spawn anchor. The card and pane share status words
+The Agents pane lists retained reported children and available stop controls,
+including children with no loaded spawn anchor. It is not exhaustive history:
+the global registry retains 50 settled children per Station partition, the All
+view shows at most 50 finished candidates, and the shared reducer bounds running
+and settled children separately to 64 per reporter. Omitted work is not assumed
+stopped. The card and pane share status words
 and time formatting (`utils/child-work-display.ts`).
 
 **Child-work retention and result amendment (2026-11-05).** The pane and
@@ -2219,6 +2252,15 @@ server read beyond the pull request links Chat details already reads.
   renders against, across in-process and iframe transports.
 - station#928: the epic and its decision log. station#570: pane-native
   surfaces. station#265: the layout-tabs to panes migration.
+
+
+Projectless Home rows with a reported working directory show compact
+“Directory · …/path” context instead of using “No project” as their primary
+context. This is a directory hint, never Project membership. Delegation headers
+may also show the initial turn's reported client surface, such as “CLI
+(reported)”; their tooltip separates the server-resolved caller kind from that
+self-reported surface. A later follow-up does not rewrite initiation origin.
+Neither prompt text nor User-Agent identifies an external orchestrator.
 
 ### Desktop pane pop-outs
 

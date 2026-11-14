@@ -509,11 +509,12 @@ refusal still receives 400/426. Protocol refusals neither consult nor consume
 the authentication budget, so clients sharing a proxy or NAT can correct their
 header and authenticate without being locked out by protocol refusals.
 
-Terminal and voice WebSockets are not covered yet, deliberately. Their
-upgrades never pass the HTTP boundary that runs this check (each socket
-server listens on its own port with its own `verifyClient`), and a browser
-`WebSocket` cannot set a request header, so carriage would need a query
-parameter or subprotocol on both ends. A subprotocol is the wrong vehicle: a host that does not echo an offered subprotocol makes
+Terminal and voice WebSockets are not covered by this client-protocol check.
+The terminal gateway redeems a single-use ticket on the main API listener's
+upgrade path; voice uses its separate listener. Neither upgrade passes the
+HTTP middleware that checks this header. A browser `WebSocket` cannot set a
+request header, so client-protocol carriage would need a query parameter or
+subprotocol on both ends. A subprotocol is the wrong vehicle: a host that does not echo an offered subprotocol makes
 the browser fail the connection, so a newer client would lose every older
 host. A query parameter is harmless to older hosts and is the planned
 carriage, added together with the check on each socket's own upgrade path.
@@ -793,9 +794,10 @@ classified `'unbudgeted'` before the budget middleware runs.
 **Telemetry.** `station.request_budget.outcomes` counts decisions by bounded
 `outcome` (`allowed` / `oversized` / `rate_limited`) and `class`
 (`standard` / `streaming`). Attributes never carry a path, principal id, or
-method name. Like every OTel instrument in this repo the counter is a no-op
-unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set; the HTTP status (`413`/`429`) is
-the real signal.
+method name. The counter is a no-op unless a saved collector address or
+`OTEL_EXPORTER_OTLP_ENDPOINT` configures export when Station starts. Changing
+the saved collector requires a restart. The HTTP status (`413`/`429`) remains
+the direct request outcome.
 
 ## Scope model
 
@@ -907,13 +909,15 @@ process on the home. A token may expire (at most a year) and is refused once
 revoked or expired; dead records are dropped, and each person holds at most
 20 active tokens. A token outlives its person's devices, so the people list
 keeps showing its owner for the operator to revoke. An unsafe (not
-owner-only, or a link) or unreadable token file authenticates no one, and
+owner-only, or a symbolic link) or unreadable token file authenticates no one, and
 Station refuses to mint or revoke over it (`503 tokens_unavailable`). The
-20-token limit is decided under the lock, so it holds across processes. An
-environment reset revokes every token first, and fails without changing
-anything if it cannot; it revokes them again once done, which catches a
-token minted while it ran (a mint completing after that second pass is not
-caught, though the person's devices are gone by then).
+20-token limit is decided under the lock, so it holds across participating
+processes. Environment reset clears tokens before changing the environment
+identity and clears them again before releasing one shared home-writer lease.
+Token mints using that owner cannot interleave with the reset; queued HTTP
+mints recheck current caller and target authority after acquisition. This
+coordination does not make reset a rollback transaction or cover older binaries
+and direct same-user file edits that bypass the shared writer.
 
 Telemetry producer tokens (`sti_…`) are a separate, write-only credential for
 programs that report activity, such as Flow Agents' telemetry hooks. The auth
@@ -1025,10 +1029,13 @@ default to the historical four-token grant rather than Standard:
   four-token default including `access:manage`. The operator still sees the
   true requested scope and approves, trims or denies the named request on the
   host before any credential is issued. The approval surfaces name the grant
-  ("full device access") and keep the request as asked unless narrowed; only
-  the operator credential or the desktop's local grant may keep the two
-  elevated scopes, so a reflexive approval by an `access:approve` device or
-  the unauthenticated floor cannot grant them. The operator accepting a
+  ("full device access") and keep the request as asked unless narrowed. The
+  operator credential, a current local-grant credential, the host-issued
+  browser session or a Device with current owner-device standing may keep
+  the two Device-use scopes. An operator passkey session may also approve
+  them through its exact per-action review. An `access:approve` credential without that
+  standing cannot keep them merely through its approval grant; neither can
+  the unauthenticated floor. The operator accepting a
   reflexive approval of full device access is the accepted residual: the
   surfaces show where the request came from and what it grants.
 

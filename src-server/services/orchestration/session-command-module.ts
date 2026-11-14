@@ -17,6 +17,7 @@ import type { TenantExecutionContext } from '@kontourai/station-contracts/tenanc
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
 import { ProviderRefusalError } from '../../providers/provider-failure.js';
+import type { ReservedStationTurn } from '../../runtime/conversation/reserved-station-turn.js';
 import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
@@ -148,6 +149,7 @@ export interface ReceiverExecutionEffectAdmission {
 
 /** Service-only recovery choices. They cannot cross the public command seam. */
 export type SessionCommandInternalOptions = {
+  reservedStationTurn?: ReservedStationTurn;
   /** Derived from the saved fork owner; retains the actual requester for the spawn recheck. */
   forkContextRequester?: {
     userId?: string;
@@ -172,6 +174,14 @@ export type SessionCommandInternalOptions = {
   };
   /** Captured server-owned action admission; never accepted from public JSON. */
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
+  /** Server-owned initial group dispatch fence; never public command JSON. */
+  delegationGroupAdmission?: {
+    assertCurrent(): void;
+    signal: AbortSignal;
+    invokeCurrent?<Value>(
+      invoke: (check: <Result>(work: () => Result) => Result) => Promise<Value>,
+    ): Promise<Value>;
+  };
   /** Receiver-owned portable-execution recheck, run inside the effect path. */
   receiverExecutionAdmission?: ReceiverExecutionEffectAdmission;
   executionWorkspace?: ExecutionWorkspaceBinding;

@@ -70,7 +70,11 @@
 
     "packages/connect/package.json#/sideEffects",
 
-    "packages/connect/src/core/pendingPairingExchangeJournal.ts"
+    "packages/connect/src/core/pendingPairingExchangeJournal.ts",
+
+    "packages/connect/package.json",
+
+    "src-server/security/native-device-request-authority.ts"
   ],
 
   "checks": [

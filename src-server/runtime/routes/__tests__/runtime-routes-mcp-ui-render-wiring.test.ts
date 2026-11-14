@@ -92,6 +92,10 @@ describe('runtime routes: MCP-UI render permission wiring', () => {
       taskGraphService: { listTasks: () => [] },
       projectService: { listProjects: () => [] },
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
+        devicePairing: deepStub({
+          withCurrentRegistry: <T>(read: () => T): T => read(),
+        }),
         verifyCredential: isOperator,
         authorizeCredential: isOperator,
         verifyOperatorCredential: isOperator,

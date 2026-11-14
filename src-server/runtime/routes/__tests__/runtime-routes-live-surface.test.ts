@@ -121,7 +121,7 @@ describe('live surface routes in the runtime composition', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'station-live-surface-'));
     directories.push(homeDir);
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
-    const pairing = new DevicePairingService({
+    const pairing = await DevicePairingService.create({
       homeDir,
       environmentId: '33333333-3333-4333-8333-333333333333',
     });
@@ -178,6 +178,7 @@ describe('live surface routes in the runtime composition', () => {
         createLogger({ name: 'browser-device-wiring-test', level: 'error' }),
       ),
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           credential === OPERATOR_SECRET ||
           currentPairing.value.verifyCredential(credential),
@@ -374,6 +375,10 @@ describe('live surface routes in the runtime composition', () => {
           )
         ).status,
       ).toBe(401);
+      const reboundPairing = await DevicePairingService.create({
+        homeDir: h.homeDir,
+        environmentId: '33333333-3333-4333-8333-333333333333',
+      });
       const status = h.result.browserService!.acquisition.status();
       vi.spyOn(
         h.result.browserService!.acquisition,
@@ -388,10 +393,7 @@ describe('live surface routes in the runtime composition', () => {
         row.requester = bound.device.requester;
         row.principalBinding = bound.device.principalBinding;
         writeFileSync(file, JSON.stringify(data));
-        h.currentPairing.value = new DevicePairingService({
-          homeDir: h.homeDir,
-          environmentId: '33333333-3333-4333-8333-333333333333',
-        });
+        h.currentPairing.value = reboundPairing;
         return status;
       });
       const rebound = await h.app.request(

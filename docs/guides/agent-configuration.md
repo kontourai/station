@@ -207,6 +207,44 @@ discovery flow first and falls back to the legacy `initialize` flow when a
 deployed stdio server is older. Existing integration files do not need a
 protocol-version field, and there is no era selector to maintain.
 
+### Delegated child restrictions
+
+When Station derives another child from an existing delegated Session, the depth
+ceiling is the smaller of the inherited ceiling and the current Agent's policy.
+Inherited blocked-tool patterns and approval denial remain in force. A different
+Agent configuration cannot remove those restrictions from the derived context.
+The Station pre-tool policy checks that context before granting a tool call.
+
+The delegation attestation binds the exact parent Session identity as well as
+the parent conversation. Both tool and HTTP schemas retain that identity; changing
+it invalidates the attestation. A valid stamp authenticates the context, not a
+caller credential or remote execution grant. Ownership and cancellation still
+require their server-derived provenance checks.
+
+Inherited allowlists remain separate clauses in
+`AgentDelegationContext.toolAllowlistConstraints`. A tool must match every
+inherited clause and the current Agent's nonempty `allowedTools`, and must not
+match a blocked pattern. An empty inherited clause denies every tool; an empty
+legacy `allowedTools` retains its unrestricted meaning. Derivation retains at
+most 64 clauses, each with at most 256 patterns of at most 256 characters;
+exceeding a bound refuses the child rather than dropping a restriction.
+
+Station-agent execution enforces these clauses at its pre-tool policy boundary.
+Native engines currently refuse a request carrying inherited clauses before
+launch because their complete enforcement is not qualified. Reusing a Session
+also requires its persisted policy to retain the requested clauses; a new
+request cannot install them into an already running Session. Durable request
+keys include the required policy, so the same key with changed restrictions
+conflicts instead of replaying an earlier result.
+
+Forwarding to a local, peer or SSH-selected Station requires that exact
+Environment's handshake to advertise `delegationToolConstraintsV1`. This flag
+promises clause preservation and Station-owned enforcement or refusal. It does
+not authenticate portable authority or establish universal native interception.
+These lineage checks do not establish finite token, cost or attempt enforcement,
+mutable-resource confinement, or inherited credential authority. Those remain
+unfinished parts of the child-work epic.
+
 ### Guardrails
 
 For the Station engine, guardrails constrain model inference per Agent. External
@@ -256,7 +294,11 @@ its identity and absolute deadline and needs an explicit answer. New durable wai
 unsafe tools return an indeterminate result; only declared safe tools retry.
 A model request that might have been dispatched is never automatically resent.
 The preview refuses unsupported non-text inputs. External engines keep their
-existing lifecycle. See the [runtime contract](../../packages/agent-runtime/README.md).
+existing lifecycle. Sealed report-member Sessions are a separate recorded policy:
+they do not use this managed journal or admit generic Steer/Queue as another paid
+source turn. Use their bounded report controls and inspect retained outcomes;
+an interrupted UI turn is not confirmed provider termination or a refund.
+See the [runtime contract](../../packages/agent-runtime/README.md).
 
 Read health through the Agent health endpoint. This guide does not promise a
 periodic `agent-health` event. The model-resolution owner is
@@ -268,6 +310,105 @@ it does not forward or redispatch that request. Use the canonical Session API
 when a client must support either engine kind.
 
 ---
+
+## Run independent advisory reports
+
+On a personal Station, open **Agents → Inspect an Ensemble → Run an advisory
+report group**. These operations require current local-grant operator
+authority. An ordinary browser-bootstrap session alone is insufficient; the
+server refuses unavailable authority or provider qualification. Saved Agent
+configuration does not prove provider access. Flow-backed selectors and bounded
+continuation controls are mounted as candidate surfaces, described below; they
+do not establish full supported-group acceptance. Group capability advertisement
+and the continuation finalizer remain disabled pending the required combined
+qualification.
+
+For a CLI session-group draft, inspect the exact receiver configuration first.
+When **Check engine sign-in** is offered, choose it to check the selected native
+engine profiles and directories. This requires current local operator access;
+a browser-only configuration grant does not allow it. Signed-out and unverified
+checks remain visible. Editing a receiver clears the offer and its observations.
+Checking sign-in neither saves nor starts the group; Run checks the roster again.
+Model entitlement, execution limits and backing API access remain separate.
+
+To inspect a previously recorded CLI session group, load the same preset from a
+path or upload, then choose **Inspect a recorded group**. If this host offers it,
+enter the exact **Recorded group ID** and choose **Inspect recorded bindings**.
+This requires current in-person operator access on a personal Station and read
+access to the referenced Sessions. Station checks the preset hash and recorded member seats;
+a changed group or preset requires a fresh inspection. Changing the source or
+Station authority clears this form and its observations.
+
+The result shows recorded Session/output references, prerequisites, Flow
+references and context-sync metadata. A reserved Session ID is not a confirmed
+Session, and a recorded reference or context receipt proves neither output
+availability nor acceptance, native/shared memory, authentication or permission
+to execute. Inspect current receiver settings separately in a receiver draft.
+
+1. Enter the configured **Project ID** and optional **Resource ID** whose source
+   should be inspected.
+2. Set the deadline (1–5 minutes), concurrent report count, and explicit aggregate
+   input-token, output-token and inference-cost limits. Cost is entered in
+   microdollars: 1,000,000 microdollars is one dollar. These limits concern
+   provider inference before tax, not the final invoice.
+3. For each of up to 16 members, enter a seat ID, configured Agent ID, its own
+   brief and output-token limit. **Add report member** adds another seat. Each
+   member receives its own brief and the selected Project source. Station
+   resolves the configured runtime/model and validates source and authority.
+4. Keep the displayed operation ID, then choose **Start paid reports**. Submission
+   can start paid requests immediately. The form disables edits and repeat
+   submission. If the response is lost or refused, inspect retained groups
+   before starting new work; an unknown outcome is not permission to resend.
+   Closing the view stops waiting but does not prove provider termination.
+5. Choose **Show report groups**, then **Read report** for the member you want.
+   Returned text remains unassessed. Reserved usage, known accounting and
+   termination receipts are displayed separately; a returned report is not
+   acceptance or a refund.
+6. To stop further admission and request interruption, choose **Request
+   cancellation**. If cancellation remains pending, **Check cancellation
+   receipts** requires the original cancellation operation key. This checks
+   retained receipts without resending interrupts. Missing receipts remain
+   pending; requested cancellation does not confirm physical termination.
+
+To request Flow coordination at creation, select **Use an existing Flow run**,
+enter its run ID, and map every report seat to a **Flow step ID**. Flow owns the
+ready frontier, claims, joins and acceptance. To reserve future operations,
+select **Reserve continuation for this Flow group** and enter the immutable
+attempt/round/context/renewal/evaluation/recovery limits. Those declarations do
+not grant execution or reset the aggregate budget. The form checks the shared
+contract's capacity bounds before sending. Switching coordination off omits the
+Flow/continuation fields from the request while retaining the unsent draft.
+This Flow/continuation creation surface remains a candidate; the published
+contract and combined serving proof described in the API are still required.
+
+For retained Flow groups that declare remaining context-sync operations, the
+inspector offers **Send updated report context**. Choose the report seat, then
+**Read current Flow checkpoint**. This reads the currently authorized source
+and Flow state; it sends no model request and grants no future admission. Enter
+the private context, keep the operation key, and choose **Send paid context
+request** once. The displayed group revision and observed checkpoint are sent
+together. A stale source, checkpoint, receiver, authority or budget refuses at
+the server. An unknown response leaves the form disabled; inspect retained state
+rather than resending it. Current combined serving qualification remains open
+as described above; the form and declared allowance do not prove availability.
+
+Prepared sync receipts offer **Publish retained sync receipt**. This sends the
+original sync key and prepared digest to the receipt-only endpoint; it never
+resends the context request. Pending, prepared, acknowledged and incomplete
+states remain distinct. An exact ACK proves neither understanding nor acceptance.
+Root accounting includes context requests and unknown holds. It displays known
+terminal usage and unsettled allocations separately, without implying refunds
+or provider-invoice settlement.
+
+Unsent draft edits use the normal unsaved-changes guard. Paid-report operations
+have no automatic retries. Historical reports remain readable when a provider
+profile expires, subject to current read authority.
+
+See the [report-group API](../reference/api.md#report-groups) for source bounds,
+availability and exact recovery inputs, and the [SDK reference](../reference/sdk.md#qualified-report-groups)
+for client behavior. CLI session groups on the same inspection page have a
+separate logical seat-start allowance; their dollar, token and physical-attempt
+caps are unavailable.
 
 ## Tool Approval Flow
 

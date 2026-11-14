@@ -144,6 +144,8 @@
 
     "src-server/security/plugin-pane-context.ts",
 
+    "src-server/providers/adapters/station-agent-adapter.ts",
+
     "docs/decisions/telemetry-tiers.md",
 
     "src-server/domain/__tests__/telemetry-publisher-schema.test.ts"

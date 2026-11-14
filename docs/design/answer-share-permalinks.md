@@ -108,11 +108,11 @@ be true. The current button first admits only an HTTP(S) network origin through
 `deriveShareUiOrigin`; native-shell and opaque origins cannot mint from this UI.
 That check does not prove the chosen origin is reachable by a recipient.
 
-That route is `public` in the runtime's routing sense — registered before
-`configureRuntimeHttp`, listed by exact method+path in `PUBLIC_ROUTES` — and
-credentialed in the product sense. "Public" here means *carries no pairing
-credential*, never *anonymous*: without a token that hashes to a stored,
-unrevoked, unexpired record, the route serves nothing.
+That route is declared public by its exact POST method and path in the central
+external-surface capability table. Runtime ingress admits it without a pairing
+credential; the handler authenticates possession of the share token. Without a
+token that hashes to a stored, unrevoked, unexpired record, the route serves
+nothing.
 
 ## 3. Enumeration posture (the deliberate decision)
 

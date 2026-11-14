@@ -102,6 +102,7 @@ import {
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { RELAYED_RESPONSE_HEADER } from '../../services/remote-stations/remote-station-forwarder.js';
 import { HOST_STATION_COMPATIBILITY } from '../../services/ssh/environment-security-service.js';
+import { HomeWriterUnavailableError } from '../../services/ssh/home-writer-owner.js';
 import {
   bindAdmittedTelemetryProducer,
   isTelemetryProducerSecret,
@@ -338,6 +339,22 @@ export function configureRuntimeHttp({
     }
   });
   app.onError((err, c) => {
+    if (err instanceof HomeWriterUnavailableError) {
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: err.operationRan
+              ? 'home_writer_outcome_unconfirmed'
+              : 'home_writer_unavailable',
+            message: err.operationRan
+              ? 'Operation outcome is unconfirmed.'
+              : 'Station is busy. Try again.',
+          },
+        },
+        err.operationRan ? 409 : 503,
+      );
+    }
     if (err instanceof UploadBodyLimitError) {
       c.header('Connection', 'close');
       return c.json(
@@ -1216,6 +1233,7 @@ function configureRuntimeSecurity(
         (candidate) =>
           security.resolveCredentialAuthority?.(candidate) ===
           'device-credential',
+        security.withCurrentCredentialResolution,
       );
       // Session expiry withdraws the added read scope, not the independently
       // admitted Device. A 401 would make SDK clients discard its credential.
@@ -1329,6 +1347,7 @@ function configureRuntimeSecurity(
               ? (candidate) =>
                   security.resolveCredentialAuthority!(candidate) !== undefined
               : undefined,
+            security.withCurrentCredentialResolution,
           )
         : undefined;
     const credential = bearerCredential ?? cookieCredential;
@@ -1398,19 +1417,40 @@ function configureRuntimeSecurity(
     if (valid) {
       const aliasFailure = checkAliasAdmission(credential!);
       if (aliasFailure) return aliasFailure;
-      const authority = security.resolveCredentialAuthority?.(credential!);
-      const deviceId = security.resolveCredentialDeviceId?.(credential!);
-      const deviceKind = deviceId
-        ? security.resolveCredentialDeviceKind?.(credential!)
-        : undefined;
-      const pairingSource = security.resolvePairingSource?.(credential!);
-      const locality = security.resolveCredentialLocality?.(credential!);
-      const mintKind = security.resolveCredentialMintKind?.(credential!);
-      // The pairing store owns which devices qualify; see
-      // `DevicePairingService.credentialHasOwnerStanding`.
-      const ownerStanding =
-        authority === 'device-credential' &&
-        security.resolveCredentialOwnerStanding?.(credential!) === true;
+      const readIdentity = () => {
+        const authority = security.resolveCredentialAuthority?.(credential!);
+        const deviceId = security.resolveCredentialDeviceId?.(credential!);
+        const deviceKind = deviceId
+          ? security.resolveCredentialDeviceKind?.(credential!)
+          : undefined;
+        const pairingSource = security.resolvePairingSource?.(credential!);
+        const locality = security.resolveCredentialLocality?.(credential!);
+        const mintKind = security.resolveCredentialMintKind?.(credential!);
+        // The pairing store owns which devices qualify.
+        const ownerStanding =
+          authority === 'device-credential' &&
+          security.resolveCredentialOwnerStanding?.(credential!) === true;
+        return {
+          authority,
+          deviceId,
+          deviceKind,
+          pairingSource,
+          locality,
+          mintKind,
+          ownerStanding,
+        };
+      };
+      const {
+        authority,
+        deviceId,
+        deviceKind,
+        pairingSource,
+        locality,
+        mintKind,
+        ownerStanding,
+      } = security.withCurrentCredentialResolution
+        ? security.withCurrentCredentialResolution(readIdentity)
+        : readIdentity();
       setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
         kind: 'credential',
         credential: credential!,
@@ -1861,6 +1901,7 @@ export function deviceSessionCookieName(
 export function parseDeviceSessionCookie(
   value: string | undefined,
   recognizes?: (credential: string) => boolean,
+  withCurrentResolution?: <T>(select: () => T) => T,
 ): string | undefined {
   // Cookie jars are shared across ports. Other localhost applications can
   // legitimately contribute several KiB; bound the header at the Node HTTP
@@ -1885,9 +1926,14 @@ export function parseDeviceSessionCookie(
     names.add(name);
     matches.push(candidate);
   }
-  if (matches.length === 1) return matches[0];
-  const current = recognizes ? matches.filter(recognizes) : [];
-  return current.length === 1 ? current[0] : undefined;
+  if (matches.length <= 1) return matches[0];
+  const select = () => {
+    const current = recognizes ? matches.filter(recognizes) : [];
+    return current.length === 1 ? current[0] : undefined;
+  };
+  return recognizes && withCurrentResolution
+    ? withCurrentResolution(select)
+    : select();
 }
 
 /** Cookie-adoption is an HTTPS browser ceremony; reject loopback's cleartext cookie name. */
