@@ -253,6 +253,32 @@ describe('release-versioning output contract', () => {
       expect(result, label).toEqual(refused(reason));
   });
 
+  it('accepts the dependency list changesets writes when the dependency has no note', () => {
+    // Real `changeset version` bytes for a fixed group where only pkg has a note.
+    const config = json({
+      ...JSON.parse(CONFIG),
+      fixed: [['@x/pkg', '@x/dep']],
+    });
+    const pkgSection =
+      '## 1.1.0\n\n### Minor Changes\n\n- abc1234: Add a thing.\n\n  Its second paragraph.\n\n### Patch Changes\n\n- @x/dep@1.1.0\n\n';
+    const result = unit({
+      before: {
+        '.changeset/config.json': config,
+        '.changeset/two.md': undefined,
+      },
+      after: {
+        'packages/pkg/package.json': PKG_AFTER.replace('^1.0.1', '^1.1.0'),
+        'packages/dep/package.json': json({ ...DEP, version: '1.1.0' }),
+        'packages/pkg/CHANGELOG.md': prepend('@x/pkg', pkgSection),
+        'packages/dep/CHANGELOG.md': prepend(
+          '@x/dep',
+          '## 1.1.0\n\nNo changes in this release.\n\n',
+        ),
+      },
+    });
+    expect(result).toEqual({ ...ALL, refused: undefined });
+  });
+
   it('requires a note for a skipped private package to be kept, as changesets keeps it', () => {
     const before = {
       'pnpm-workspace.yaml': `${WORKSPACE}  - packages/private\n`,

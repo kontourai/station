@@ -367,8 +367,13 @@ function isGeneratedChangelog(before, after, { release, releases, notes }) {
         used.add(index);
         continue;
       }
-      if (type !== 'patch' || !DEPENDENCY_LINE.test(entry.first)) return false;
-      for (const item of entry.rest) {
+      if (type !== 'patch') return false;
+      // With no dependency notes upstream writes only the list, and the
+      // block's trim takes the first item's indent.
+      const items = DEPENDENCY_LINE.test(entry.first)
+        ? entry.rest
+        : [`- ${entry.first}`, ...entry.rest];
+      for (const item of items) {
         const dependency = DEPENDENCY_ITEM.exec(item);
         if (
           !dependency ||
