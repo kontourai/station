@@ -34,15 +34,23 @@ The next native admission work must introduce genuine single-Task source custody
 `LocalSourceAdmissionOwner` currently binds group/work-item subjects, and its
 generic private-v1 prototype wire explicitly grants no provider execution.
 Neither that port nor an SDK source lease may be relabeled for native use. Native
+Task/parent identities must come from actual server orchestration, and current
+Station permissions and ancestor source restrictions must be checked before
+protected source reads or disclosure. A sealed parent's source must remain bound
+to its authenticated receipt or a mechanically validated narrower successor,
+rather than reopening a broader checkout. Native
 source injection, execution-resolution binding, reservation and retained
 accounting, Codex pricing and full local/peer/SSH acceptance remain unfinished.
 Both production qualification flags stay false.
 
-Main through `c56bb322d4f0` is integrated at `c158b8fa009a`; the two-file
-session-state/channel selection passes all 126 cases. Native cleanup is
-independently submitted as [PR #4957](https://github.com/kontourai/station/pull/4957)
-at `63ae08509d1a`, with zero-failure/zero-warning exact-ref readiness, normal
-hooks and auto-merge armed. No merged receipt is claimed for that submission.
+Main through `e54d5784edda` is integrated at `0602ab4311d4`; that merge adds only
+review notes/source dependencies and preserves the newer guide bytes exactly.
+The earlier two-file session-state/channel receipt of 126 cases belongs to
+`c158b8fa009a`. GitHub confirms native cleanup [PR #4957](https://github.com/kontourai/station/pull/4957)
+merged on 2026-11-14 at 12:57:04 UTC as
+`e54d5784edda09dc704955455b4fe000547231ca`, from submitted head `63ae08509d1a`.
+Its readiness and normal-hook receipts qualify that bounded landing; they do
+not deliver the remaining epic.
 
 Actual native wire capture at `b3bd8d03f0d2` establishes a missing Codex output
 cap and nine advertised tools, including provider-side web search. At
