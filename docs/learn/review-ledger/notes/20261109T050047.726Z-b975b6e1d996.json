@@ -1,9 +1,0 @@
-{
-  "revision": "cf35d6d3965f64c547c006a45cc3ae71f380c07b",
-
-  "notes": [
-    {"path":"docs/learn/media/inspect-request.png","note":"orchestration-service.ts changed only inside resumesNativeTranscript (Array.findLast replaced with an equivalent reverse loop for the typecheck lib target). The inspect-request flow this capture shows does not read the session-start lookup, and the rendered request UI is unchanged, so the capture stays accurate.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
-
-    {"path":"docs/learn/media/inspect-request.webm","note":"orchestration-service.ts changed only inside resumesNativeTranscript (Array.findLast replaced with an equivalent reverse loop for the typecheck lib target). The inspect-request flow this capture shows does not read the session-start lookup, and the rendered request UI is unchanged, so the capture stays accurate.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

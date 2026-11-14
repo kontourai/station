@@ -22,8 +22,6 @@
 
     "src-server/security/outside-agent-release-guard.ts",
 
-    "src-server/security/pairing-route-scopes.ts",
-
     "packages/cli/src/commands/ui-proxy-prefixes.ts",
 
     "packages/cli/src/commands/lifecycle.ts",

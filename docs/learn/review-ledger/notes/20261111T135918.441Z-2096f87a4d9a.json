@@ -1,7 +1,0 @@
-{
-  "revision": "3793293fce1c765f522714dd9a70a22b260bc9e9",
-
-  "notes": [
-    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-checked against 3793293fce1c, which gives .github/workflows/seatbelt-kernel.yml a path-filtered push-to-main trigger, renames it Main: Seatbelt kernel legs, declares the push-only lane in ci-workflow-contract.test.ts, rewords the Seatbelt paragraph and inventory row in docs/guides/testing.md and one comment in scripts/vitest-resource-manifest.mjs. No heading in testing.md changed. Checked this document's links into testing.md (all anchors still resolve) and searched it for the Seatbelt workflow, its trigger and dispatch: its dispatch mentions are about turns, schedules and fixtures, not this workflow. No claim affected.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]}
-  ]
-}

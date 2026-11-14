@@ -1,9 +1,0 @@
-{
-  "revision": "79c4ace6ec58290088afc1257bc4c4986412f44a",
-
-  "notes": [
-    {"path":"docs/guides/agent-configuration.md","note":"Bind the new #4827 sources this guide's guardian section describes: the shared person-authorship predicate (turn-authorship.ts) and the composer-request classifier (person-authorship.ts). Prose re-read against both; unchanged since the fix-round-2 review.","inputs":["docs/guides/agent-configuration.md","src-server/services/orchestration/turn-authorship.ts","src-server/security/person-authorship.ts"]},
-
-    {"path":"docs/architecture/module-map.md","note":"Bind turn-authorship.ts, which the Turn dispatch origin paragraph links as the shared reading of the authoredBy mark. Paragraph re-read; unchanged since the fix-round-2 review.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/turn-authorship.ts"]}
-  ]
-}

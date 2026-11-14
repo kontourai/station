@@ -9,11 +9,12 @@
  * explicit elapsed reading, or an unanswered/no-progress state) justifies it.
  */
 import { render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { ChatContentPart } from '../../../contexts/active-chats-state';
 import { StreamingMessageView } from '../StreamingMessage';
 
 afterEach(() => {
+  vi.restoreAllMocks();
   document.body.innerHTML = '';
 });
 
@@ -70,6 +71,7 @@ describe('StreamingMessageView working clock', () => {
   });
 
   test('the clock is the turn\'s, so it says "Working", not the current phase', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
     render(
       <StreamingMessageView
         {...baseProps}
@@ -87,7 +89,7 @@ describe('StreamingMessageView working clock', () => {
       />,
     );
     const clock = screen.getByRole('status');
-    expect(clock.textContent).toMatch(/Working for 6:5\d/);
+    expect(clock.textContent).toContain('Working for 6m 59s');
     expect(clock.textContent).not.toContain('Thinking for');
   });
 });

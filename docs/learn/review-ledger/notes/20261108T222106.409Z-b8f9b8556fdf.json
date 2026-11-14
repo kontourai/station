@@ -1,7 +1,0 @@
-{
-  "revision": "01939369d6381976bea0f8926ee77000db266ad1",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Reviewed only the Windows floor evidence claims in docs/guides/testing.md against runFloorInvocations and its existing applicationCrashEvents callback/defaults. The three optional JSDoc fields now describe the existing crashEvents callback using typeof applicationCrashEvents, NodeJS.Platform platform, and string evidenceRoot. No runtime callback, spawn/continuation order, worker-stop classification, conditional fatal reports, Application event collection, failure verdict, evidence location or upload contract changed. Canonical npm run typecheck:scripts passed at this source checkpoint: 506 compiled and 56 declared deferred of 562 scripts TypeScript files; scoped installed Biome and diff checks passed. This is compiler/source evidence only: the accepted floor-owner eight-case evidence remains historical; no new floor test, native-crash acquisition, worker-cause conclusion or unrelated testing-guide review is claimed.","inputs":["docs/guides/testing.md","scripts/windows-portable-floor.mjs"]}
-  ]
-}

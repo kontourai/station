@@ -12,6 +12,7 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { formatDuration } from '../utils/relativeTime';
 
 /** Rows revealed per step when reading back through loaded history. */
 const HISTORY_WINDOW = 50;
@@ -608,7 +609,7 @@ export function ProjectTaskRoomConversation({
                       ? participant.work.workName
                       : '',
                     participant.work.startedAt
-                      ? `${Math.max(0, Math.floor((now - participant.work.startedAt) / 60000))}m`
+                      ? formatDuration(now - participant.work.startedAt)
                       : '',
                   ]
                     .filter(Boolean)

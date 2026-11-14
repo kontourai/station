@@ -59,7 +59,10 @@ function harness(overrides: Partial<AcpMapperContext> = {}) {
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   };
-  const state: AcpMapperState = {};
+  // A Kiro session: its handshake names both subagent wires.
+  const state: AcpMapperState = {
+    acpSubagentWires: new Set(['roster', 'agent-subtask']),
+  };
   const warn = vi.fn();
   const ctx: AcpMapperContext = {
     provider: 'acp',
@@ -383,8 +386,87 @@ describe('engine extension events: kirocrew golden frames', () => {
     ]);
   });
 
-  test('subagent frames publish no child work until the ACP subagent cell is declared', () => {
+  test('v3 agent-subtask tool calls publish the child running, then settled, and stay ordinary tool calls', () => {
+    const { feed, of, state } = harness();
+    for (const msg of pick(
+      (msg) => msg.params?.update?._meta?.kiro?.kind === 'agent-subtask',
+    ))
+      feed(msg);
+    expect(of('child-work.updated').map((event) => event.delta)).toEqual([
+      {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: 'thread-1',
+        running: [
+          expect.objectContaining({
+            childId: 'sa-1',
+            status: 'running',
+            title: 'Sub-agent: researcher',
+            kindLabel: 'researcher',
+            workKind: 'agent',
+            parent: {
+              threadId: 'thread-1',
+              turnId: 'turn-1',
+              toolCallId: 'tc1',
+            },
+          }),
+        ],
+      },
+      expect.objectContaining({
+        kind: 'settle',
+        childId: 'sa-1',
+        status: 'completed',
+      }),
+      {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: 'thread-1',
+        running: [],
+      },
+    ]);
+    expect(state.acpSubagents?.size).toBe(0);
+    // The subagent's tool call is still an ordinary tool call.
+    expect(of('tool.completed')).toEqual([
+      expect.objectContaining({ itemId: 'tc1' }),
+    ]);
+  });
+
+  test('a v2 subagent roster settles its terminal entries and lists the running ones', () => {
     const { feed, of } = harness();
+    const [roster] = pick(
+      (msg) => msg.method === '_kiro.dev/subagent/list_update',
+    );
+    feed(roster!);
+    expect(of('child-work.updated').map((event) => event.delta)).toEqual([
+      expect.objectContaining({
+        kind: 'settle',
+        childId: 'sub-2',
+        status: 'failed',
+        identity: expect.objectContaining({
+          title: 'write tests',
+          kindLabel: 'tester',
+        }),
+      }),
+      {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: 'thread-1',
+        running: [
+          expect.objectContaining({
+            childId: 'sub-1',
+            title: 'review the diff',
+            kindLabel: 'reviewer',
+          }),
+        ],
+      },
+    ]);
+    // The opaque envelope is still published beside it (host chrome).
+    expect(of('extension.notification')).toHaveLength(1);
+  });
+
+  test('a session whose handshake names no subagent wire maps none of the Kiro subagent frames', () => {
+    const { feed, of, state } = harness();
+    state.acpSubagentWires = new Set();
     for (const msg of pick(
       (msg) =>
         msg.method === '_kiro.dev/subagent/list_update' ||
@@ -392,9 +474,116 @@ describe('engine extension events: kirocrew golden frames', () => {
     ))
       feed(msg);
     expect(of('child-work.updated')).toEqual([]);
-    // The subagent's tool call is still an ordinary tool call.
-    expect(of('tool.completed')).toEqual([
-      expect.objectContaining({ itemId: 'tc1' }),
+    // Each wire is gated on its own: the roster alone does not admit the
+    // agent-service tool calls.
+    state.acpSubagentWires = new Set(['roster']);
+    for (const msg of pick(
+      (msg) => msg.params?.update?._meta?.kiro?.kind === 'agent-subtask',
+    ))
+      feed(msg);
+    expect(of('child-work.updated')).toEqual([]);
+  });
+
+  test('a repeated roster settles a finished child once', () => {
+    const { feed, of } = harness();
+    const [roster] = pick(
+      (msg) => msg.method === '_kiro.dev/subagent/list_update',
+    );
+    feed(roster!);
+    feed(structuredClone(roster!));
+    expect(
+      of('child-work.updated').filter((event) => event.delta.kind === 'settle'),
+    ).toHaveLength(1);
+  });
+
+  test('a roster past the child-work bound publishes no running set, and says so', () => {
+    const { feed, of, warn } = harness();
+    // CHILD_WORK_ITEMS_MAX_PER_REPORTER is 64: 64 running children are one
+    // snapshot, 65 are none.
+    const roster = (count: number) => ({
+      method: '_kiro.dev/subagent/list_update',
+      params: {
+        subagents: Array.from({ length: count }, (_, index) => ({
+          sessionId: `sub-${index}`,
+          status: { type: 'working' },
+        })),
+      },
+    });
+    feed(roster(64));
+    expect(of('child-work.updated')).toEqual([
+      expect.objectContaining({
+        delta: expect.objectContaining({
+          kind: 'snapshot',
+          running: expect.arrayContaining([
+            expect.objectContaining({ childId: 'sub-63' }),
+          ]),
+        }),
+      }),
+    ]);
+    feed(roster(65));
+    expect(of('child-work.updated')).toHaveLength(1);
+    expect(warn).toHaveBeenCalledWith(
+      'ACP subagent roster exceeds the child-work bound; its running set is not published',
+      { threadId: 'thread-1', running: 65, max: 64 },
+    );
+  });
+
+  test('an agent-subtask past the bound is logged once while over, and again after a child ends', () => {
+    const { feed, warn } = harness();
+    const subtask = (id: string, status: string) => ({
+      method: 'session/update',
+      params: {
+        update: {
+          sessionUpdate:
+            status === 'in_progress' ? 'tool_call' : 'tool_call_update',
+          toolCallId: `tc-${id}`,
+          title: `Sub-agent: ${id}`,
+          status,
+          _meta: { kiro: { kind: 'agent-subtask', agentSubtaskId: id } },
+        },
+      },
+    });
+    const overBound = () =>
+      warn.mock.calls.filter(
+        ([message]) =>
+          message ===
+          'ACP agent-subtask past the child-work bound is not tracked',
+      ).length;
+    // CHILD_WORK_ITEMS_MAX_PER_REPORTER is 64.
+    for (let index = 0; index < 64; index += 1)
+      feed(subtask(`sa-${index}`, 'in_progress'));
+    expect(overBound()).toBe(0);
+    feed(subtask('sa-64', 'in_progress'));
+    feed(subtask('sa-65', 'in_progress'));
+    expect(overBound()).toBe(1);
+    // One ends: back under, so the next refusal is logged again.
+    feed(subtask('sa-0', 'completed'));
+    feed(subtask('sa-66', 'in_progress'));
+    expect(overBound()).toBe(1);
+    feed(subtask('sa-67', 'in_progress'));
+    expect(overBound()).toBe(2);
+  });
+
+  test('a subagent frame with no usable id, or an unknown status word, maps fail-closed', () => {
+    const { feed, of } = harness();
+    feed({
+      method: '_kiro.dev/subagent/list_update',
+      params: {
+        subagents: [
+          { sessionId: '', status: { type: 'working' } },
+          { sessionId: 'x'.repeat(257), status: { type: 'working' } },
+          { sessionId: 'odd', status: { type: 'vanished' } },
+          { sessionId: 'no-status' },
+        ],
+      },
+    });
+    expect(of('child-work.updated').map((event) => event.delta)).toEqual([
+      expect.objectContaining({
+        kind: 'settle',
+        childId: 'odd',
+        status: 'unresolved',
+      }),
+      expect.objectContaining({ kind: 'snapshot', running: [] }),
     ]);
   });
 

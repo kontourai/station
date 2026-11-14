@@ -122,7 +122,7 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     },
     auth: {
       signInHint:
-        'Install it, then sign in to Kiro here with AWS Builder ID or IAM Identity Center. Station keeps the credential and gives the engine only a short-lived access token.',
+        'Install it, then sign in to Kiro here with AWS Builder ID, IAM Identity Center, or Google or GitHub. Station keeps the credential and gives the engine only a short-lived access token.',
     },
   },
   {
@@ -313,6 +313,14 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       },
     },
     auth: {
+      // `grok models` states the sign-in first, exit 0 either way (grok
+      // 1.0.77, live: "You are logged in with grok.com." / "You are not
+      // authenticated."). Other output stays unknown.
+      statusCommand: ['grok', 'models'],
+      statusRule: {
+        signedOutText: ['You are not authenticated'],
+        signedInText: ['You are logged in with'],
+      },
       signInHint:
         'Run grok login on the computer Station runs on, or provide an xAI API key.',
       credentialEnvVars: ['XAI_API_KEY'],

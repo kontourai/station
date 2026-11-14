@@ -915,3 +915,103 @@ describe('foldUsageEvents: engine-reported cost and context reading', () => {
     expect(usage.contextPercent).toBe(30.5);
   });
 });
+
+describe('foldUsageEvents — engine MCP status', () => {
+  const mcp = (
+    servers: unknown[],
+    complete: boolean,
+    reconnect?: true,
+  ): CanonicalRuntimeEvent => ({
+    eventId: `e${n++}`,
+    ...base,
+    provider: 'acp',
+    method: 'engine-mcp.status',
+    servers: servers as never,
+    complete,
+    ...(reconnect ? { reconnect } : {}),
+  });
+
+  it('folds complete and partial reports as the live chat does, keeping the latest reconnect bit', () => {
+    const usage = foldUsageEvents([
+      mcp(
+        [
+          { name: 'docs', state: 'starting', scope: 'engine-config' },
+          { name: 'old', state: 'ready', scope: 'session' },
+        ],
+        true,
+        true,
+      ),
+      // A later complete report drops `old`.
+      mcp(
+        [
+          { name: 'docs', state: 'starting', scope: 'engine-config' },
+          { name: 'tracker', state: 'starting', scope: 'session' },
+        ],
+        true,
+        true,
+      ),
+      // A partial report updates one server in place.
+      mcp(
+        [
+          {
+            name: 'docs',
+            state: 'needs-auth',
+            scope: 'engine-config',
+            authUrl: 'https://example.test/auth',
+          },
+        ],
+        false,
+        true,
+      ),
+    ]);
+    expect(usage.engineMcp).toEqual({
+      servers: [
+        { name: 'docs', state: 'needs-auth', scope: 'engine-config' },
+        { name: 'tracker', state: 'starting', scope: 'session' },
+      ],
+      reconnect: true,
+    });
+  });
+
+  it('the next Session in a lineage drops its predecessor engine’s servers, as a handoff does', () => {
+    const next = (event: CanonicalRuntimeEvent): CanonicalRuntimeEvent => ({
+      ...event,
+      threadId: 't2',
+    });
+    expect(
+      foldUsageEvents([
+        mcp([{ name: 'old', state: 'ready', scope: 'session' }], true, true),
+        next(ev({ method: 'turn.completed', provider: 'acp' })),
+      ]),
+    ).not.toHaveProperty('engineMcp');
+    expect(
+      foldUsageEvents([
+        mcp([{ name: 'old', state: 'ready', scope: 'session' }], true, true),
+        next(
+          mcp([{ name: 'new', state: 'starting', scope: 'session' }], false),
+        ),
+      ]).engineMcp,
+    ).toEqual({
+      servers: [{ name: 'new', state: 'starting', scope: 'session' }],
+    });
+    // The same Session's later events keep it.
+    expect(
+      foldUsageEvents([
+        mcp([{ name: 'kept', state: 'ready', scope: 'session' }], true),
+        ev({ method: 'turn.completed', provider: 'acp' }),
+      ]).engineMcp?.servers.map(({ name }) => name),
+    ).toEqual(['kept']);
+  });
+
+  it('a report without reconnect clears the bit, and no report leaves the field absent', () => {
+    expect(
+      foldUsageEvents([
+        mcp([{ name: 'a', state: 'ready', scope: 'session' }], true, true),
+        mcp([{ name: 'a', state: 'failed', scope: 'session' }], false),
+      ]).engineMcp,
+    ).toEqual({ servers: [{ name: 'a', state: 'failed', scope: 'session' }] });
+    expect(
+      foldUsageEvents([ev({ method: 'turn.completed', provider: 'acp' })]),
+    ).not.toHaveProperty('engineMcp');
+  });
+});

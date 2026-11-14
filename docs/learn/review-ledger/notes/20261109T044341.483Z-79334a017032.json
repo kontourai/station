@@ -1,7 +1,0 @@
-{
-  "revision": "016e75f460559337248bbecae6472c0f110f5c01",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Reviewed Windows orchestration fixture delta aed96ac2 against committed 016e75f: HOME and USERPROFILE now isolate owned profiles, canonical alias/junction controls verify target identity and unlink only the alias, scratch assertions follow platform-specific paths. The fixture-fidelity and temp-directory guidance remains accurate; no product behavior or test workload changes, no prose change. Runtime receipt is 632 passing cases on 29498464 with identical fixture, not a new merged-head run.","inputs":["docs/guides/testing.md"]}
-  ]
-}

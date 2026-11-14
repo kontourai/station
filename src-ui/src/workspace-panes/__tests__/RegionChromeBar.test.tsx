@@ -33,9 +33,9 @@ vi.mock('../../hooks/useKeyboardShortcut', () => ({
 const TABS: readonly RegionChromeTab[] = [
   { surfaceId: 'chat', instanceId: 'workspace-chat', title: 'Chat' },
   {
-    surfaceId: 'activity',
+    surfaceId: 'workspace-agents',
     instanceId: 'workspace-activity',
-    title: 'Activity',
+    title: 'Agents',
   },
 ];
 
@@ -159,8 +159,8 @@ describe('the region bar control set', () => {
       'Move the dock',
       'Chat',
       'Close Chat',
-      'Activity',
-      'Close Activity',
+      'Agents',
+      'Close Agents',
       'Move Chat',
       'Expand dock region to workspace',
       'Hide Chat',
@@ -218,8 +218,8 @@ describe('the region bar control set', () => {
     right.unmount();
 
     const coarse = renderBar({
-      chrome: chromeStub({ isMobile: true, surfaceTitle: 'Activity' }),
-      selected: 'activity',
+      chrome: chromeStub({ isMobile: true, surfaceTitle: 'Agents' }),
+      selected: 'workspace-agents',
       onAddPane,
     });
     expect(screen.queryByLabelText(/^Add pane to /)).toBeNull();
@@ -277,7 +277,7 @@ describe('the region bar control set', () => {
    * #2160: a LONE pane renders no strip, so it has no tab to right-click and
    * its only move was the ⋮⋮ grab — which moves the whole region and offers
    * dock edges only, never `main`. The bar's Move button opens the SAME
-   * `RegionTabMoveMenu` for the pane the region shows, so Activity alone in a
+   * `RegionTabMoveMenu` for the pane the region shows, so Agents alone in a
    * region reaches Main directly.
    *
    * Deleting the button fails the ordered control-set pins above and the open
@@ -297,40 +297,40 @@ describe('the region bar control set', () => {
    */
   test('the bar’s Move button opens the same menu for the selected pane, including for a lone pane; absent on a coarse device, without a move handler, and with nowhere to go', () => {
     const lone = renderBar({
-      chrome: chromeStub({ surfaceTitle: 'Activity' }),
+      chrome: chromeStub({ surfaceTitle: 'Agents' }),
       tabs: [TABS[1]!],
-      selected: 'activity',
+      selected: 'workspace-agents',
       closable: false,
     });
     expect(screen.queryByRole('tablist')).toBeNull();
-    const button = () => screen.getByRole('button', { name: 'Move Activity' });
+    const button = () => screen.getByRole('button', { name: 'Move Agents' });
     expect(button().getAttribute('aria-haspopup')).toBe('menu');
     expect(button().getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(button());
     expect(button().getAttribute('aria-expanded')).toBe('true');
-    const menu = screen.getByRole('menu', { name: 'Move Activity' });
-    // The same derivation the tab's menu uses: Activity declares every
+    const menu = screen.getByRole('menu', { name: 'Move Agents' });
+    // The same derivation the tab's menu uses: Agents declares every
     // region, so from `bottom` it is offered the other two edges and Main.
     expect(
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['Move to Left', 'Move to Right', 'Move to Main']);
+    ).toEqual(['Move to Left', 'Move to Right']);
     fireEvent.click(
-      within(menu).getByRole('menuitem', { name: 'Move to Main' }),
+      within(menu).getByRole('menuitem', { name: 'Move to Left' }),
     );
-    expect(handlers.onMoveTab).toHaveBeenCalledWith('activity', 'main');
+    expect(handlers.onMoveTab).toHaveBeenCalledWith('workspace-agents', 'left');
     expect(screen.queryByRole('menu')).toBeNull();
     expect(button().getAttribute('aria-expanded')).toBe('false');
     lone.unmount();
 
     const coarse = renderBar({
-      chrome: chromeStub({ isMobile: true, surfaceTitle: 'Activity' }),
+      chrome: chromeStub({ isMobile: true, surfaceTitle: 'Agents' }),
       tabs: [TABS[1]!],
-      selected: 'activity',
+      selected: 'workspace-agents',
       closable: false,
     });
-    expect(screen.queryByRole('button', { name: 'Move Activity' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Move Agents' })).toBeNull();
     coarse.unmount();
 
     const modelLess = renderBar({ movable: false });
@@ -353,8 +353,8 @@ describe('the region bar control set', () => {
     // One menu at a time: the bar owns the state, so opening from the button
     // replaces the menu a tab opened rather than adding a second.
     renderBar();
-    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Activity' }));
-    expect(screen.getByRole('menu', { name: 'Move Activity' })).toBeTruthy();
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Agents' }));
+    expect(screen.getByRole('menu', { name: 'Move Agents' })).toBeTruthy();
     // The tab opened it, so the button is not the expanded control.
     expect(
       screen
@@ -392,13 +392,13 @@ describe('the region bar control set', () => {
     fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chat' }));
     expect(screen.getByRole('menu', { name: 'Move Chat' })).toBeTruthy();
 
-    // Chat leaves; Activity stays alone (no strip).
+    // Chat leaves; Agents stays alone (no strip).
     rerender(
       <RegionChromeBar
-        chrome={chromeStub({ surfaceTitle: 'Activity' })}
+        chrome={chromeStub({ surfaceTitle: 'Agents' })}
         groupId="region:bottom"
         tabs={[TABS[1]!]}
-        selectedSurfaceId="activity"
+        selectedSurfaceId="workspace-agents"
         onSelectTab={handlers.onSelectTab}
         onCloseTab={undefined}
         onReorderTab={handlers.onReorderTab}
@@ -414,7 +414,7 @@ describe('the region bar control set', () => {
 
   /**
    * `aria-expanded` is THIS button's: the bar opened the menu for Chat, then
-   * the selection moved to Activity, so the button now names Activity and
+   * the selection moved to Agents, so the button now names Agents and
    * must not claim the open menu that moves Chat. Reverting the derivation to
    * `moving?.from === 'bar'` reds the second assertion.
    */
@@ -442,10 +442,10 @@ describe('the region bar control set', () => {
 
     rerender(
       <RegionChromeBar
-        chrome={chromeStub({ surfaceTitle: 'Activity' })}
+        chrome={chromeStub({ surfaceTitle: 'Agents' })}
         groupId="region:bottom"
         tabs={TABS}
-        selectedSurfaceId="activity"
+        selectedSurfaceId="workspace-agents"
         onSelectTab={handlers.onSelectTab}
         onCloseTab={handlers.onCloseTab}
         onReorderTab={handlers.onReorderTab}
@@ -456,10 +456,10 @@ describe('the region bar control set', () => {
     );
     // The menu still moves Chat (its pane is still in the region)…
     expect(screen.getByRole('menu', { name: 'Move Chat' })).toBeTruthy();
-    // …and the button, now Activity's, does not claim it.
+    // …and the button, now Agents's, does not claim it.
     expect(
       screen
-        .getByRole('button', { name: 'Move Activity' })
+        .getByRole('button', { name: 'Move Agents' })
         .getAttribute('aria-expanded'),
     ).toBe('false');
   });
@@ -473,13 +473,13 @@ describe('the region bar control set', () => {
     unmount();
 
     const coarse = renderBar({
-      chrome: chromeStub({ isMobile: true, surfaceTitle: 'Activity' }),
-      selected: 'activity',
+      chrome: chromeStub({ isMobile: true, surfaceTitle: 'Agents' }),
+      selected: 'workspace-agents',
     });
     expect(screen.queryByRole('tablist')).toBeNull();
     // The bar itself still renders for a non-Chat pane on a coarse device:
     // its maximize and visibility are the pane's only dock controls there.
-    expect(screen.getByLabelText('Hide Activity')).toBeTruthy();
+    expect(screen.getByLabelText('Hide Agents')).toBeTruthy();
     coarse.unmount();
 
     renderBar({ tabs: [TABS[0]!], closable: false });
@@ -505,7 +505,7 @@ describe('the region bar control set', () => {
 
 describe('the tab strip writes the model', () => {
   test('a tab click selects; the pressed tab is the selected pane', () => {
-    renderBar({ selected: 'activity' });
+    renderBar({ selected: 'workspace-agents' });
     const strip = screen.getByRole('tablist', { name: 'Region panes' });
     expect(
       within(strip)
@@ -526,16 +526,14 @@ describe('the tab strip writes the model', () => {
     // The dock host mounts one tabpanel — the selected pane's — so an
     // `aria-controls` on the other tab would point at nothing.
     expect(
-      screen
-        .getByRole('tab', { name: 'Activity' })
-        .getAttribute('aria-controls'),
+      screen.getByRole('tab', { name: 'Agents' }).getAttribute('aria-controls'),
     ).toBeNull();
   });
 
   test('close closes that tab and nothing else', () => {
     renderBar();
-    fireEvent.click(screen.getByLabelText('Close Activity'));
-    expect(handlers.onCloseTab).toHaveBeenCalledWith('activity');
+    fireEvent.click(screen.getByLabelText('Close Agents'));
+    expect(handlers.onCloseTab).toHaveBeenCalledWith('workspace-agents');
     expect(handlers.onSelectTab).not.toHaveBeenCalled();
   });
 
@@ -543,10 +541,10 @@ describe('the tab strip writes the model', () => {
     renderBar();
     const chat = screen.getByRole('tab', { name: 'Chat' });
     fireEvent.keyDown(chat, { key: 'ArrowRight' });
-    expect(handlers.onSelectTab).toHaveBeenLastCalledWith('activity');
+    expect(handlers.onSelectTab).toHaveBeenLastCalledWith('workspace-agents');
     fireEvent.keyDown(chat, { key: 'ArrowLeft' });
     // Wraps, the tablist contract (`nextTabIndex`).
-    expect(handlers.onSelectTab).toHaveBeenLastCalledWith('activity');
+    expect(handlers.onSelectTab).toHaveBeenLastCalledWith('workspace-agents');
     expect(handlers.onReorderTab).not.toHaveBeenCalled();
 
     fireEvent.keyDown(chat, { key: 'ArrowRight', altKey: true });
@@ -560,7 +558,7 @@ describe('the tab strip writes the model', () => {
    * A pane open over Chat (the phone layer, on a wide touch device) shows
    * "‹ Chat" as the way back. A Chat tab beside it was a second control for
    * the same move under the same name (Duo audit, Book posture: "‹ Chat",
-   * "Chat", "Activity"). The strip keeps every other pane, and a reorder
+   * "Chat", "Agents"). The strip keeps every other pane, and a reorder
    * among them still lands at the right place in the region's full order.
    */
   test('over Chat, the strip drops the Chat tab that "‹ Chat" duplicates, and reorders in the region’s full order', () => {
@@ -569,23 +567,27 @@ describe('the tab strip writes the model', () => {
       ...TABS,
       { surfaceId: 'files', instanceId: 'workspace-files', title: 'Files' },
     ];
-    renderBar({ tabs: three, selected: 'activity', onBackToChat: back });
+    renderBar({
+      tabs: three,
+      selected: 'workspace-agents',
+      onBackToChat: back,
+    });
     expect(screen.getByRole('button', { name: 'Back to Chat' })).toBeTruthy();
     expect(
       screen.getAllByRole('tab').map((tab) => tab.textContent?.trim()),
-    ).toEqual(['Activity', 'Files']);
+    ).toEqual(['Agents', 'Files']);
     expect(screen.queryByRole('tab', { name: 'Chat' })).toBeNull();
-    // Activity is strip position 0 and region position 1; moving it right
+    // Agents is strip position 0 and region position 1; moving it right
     // puts it where Files is in the full order (2), not at strip index 1.
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Activity' }), {
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Agents' }), {
       key: 'ArrowRight',
       altKey: true,
     });
-    expect(handlers.onReorderTab).toHaveBeenCalledWith('activity', 2);
+    expect(handlers.onReorderTab).toHaveBeenCalledWith('workspace-agents', 2);
   });
 
   test('over Chat with only Chat and one pane, no strip remains beside "‹ Chat"', () => {
-    renderBar({ selected: 'activity', onBackToChat: vi.fn() });
+    renderBar({ selected: 'workspace-agents', onBackToChat: vi.fn() });
     expect(screen.getByRole('button', { name: 'Back to Chat' })).toBeTruthy();
     expect(screen.queryAllByRole('tab')).toEqual([]);
   });
@@ -593,7 +595,7 @@ describe('the tab strip writes the model', () => {
   test('dragging a tab over another reorders it as it passes', () => {
     renderBar();
     const chat = screen.getByRole('tab', { name: 'Chat' });
-    const activity = screen.getByRole('tab', { name: 'Activity' });
+    const activity = screen.getByRole('tab', { name: 'Agents' });
     Object.defineProperty(document, 'elementFromPoint', {
       configurable: true,
       value: () => activity,
@@ -611,7 +613,7 @@ describe('the tab strip writes the model', () => {
    * #2143: a tab's placement is the tab's own menu. The rows are the regions
    * this device can use plus `main`, minus the one the tab is in, filtered by
    * the model's `surfaceMayOccupy`: Chat declares no `main`, so its menu has
-   * two rows; Activity declares every region, so its has three. Choosing a
+   * two rows; Agents declares every region, so its has three. Choosing a
    * row moves that ONE pane (the grab moves the region).
    */
   test('a tab’s context menu offers the regions the pane may move to, and a choice moves that pane', () => {
@@ -632,12 +634,12 @@ describe('the tab strip writes the model', () => {
     expect(handlers.onSelectTab).not.toHaveBeenCalled();
     expect(handlers.onReorderTab).not.toHaveBeenCalled();
 
-    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Activity' }));
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Agents' }));
     expect(
-      within(screen.getByRole('menu', { name: 'Move Activity' }))
+      within(screen.getByRole('menu', { name: 'Move Agents' }))
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['Move to Left', 'Move to Right', 'Move to Main']);
+    ).toEqual(['Move to Left', 'Move to Right']);
   });
 
   test('the move menu dismisses on Escape and on its backdrop, and a model-less mount has none', () => {
@@ -754,7 +756,7 @@ describe('the region controls (from ChatDockHeader, #795 / #1385)', () => {
    * "hidden from the chevron" cannot mean two different things. What that
    * derivation DOES with a snap — collapse clears `maximized`, and a reopen
    * follows the shell's own snap so a Full-height collapse comes back Full
-   * (archive#795) while Chat's persisted Full can never maximize Activity
+   * (archive#795) while Chat's persisted Full can never maximize Agents
    * (#1385) — is the chrome's, tested against the real hook through both
    * controls in `RegionShellParity.test.tsx`. What is this bar's to prove is
    * that its chevron asks for the opposite of the current state, in both
@@ -808,13 +810,13 @@ describe('the region controls (from ChatDockHeader, #795 / #1385)', () => {
     renderBar({
       chrome: chromeStub({
         ownsMaximizeShortcut: false,
-        surfaceTitle: 'Activity',
+        surfaceTitle: 'Agents',
         surfaceShortcutId: 'activity.toggle',
       }),
-      selected: 'activity',
+      selected: 'workspace-agents',
     });
-    expect(screen.getByLabelText('Hide Activity').title).toBe(
-      'Hide Activity (⌘⇧A)',
+    expect(screen.getByLabelText('Hide Agents').title).toBe(
+      'Hide Agents (⌘⇧A)',
     );
     expect(screen.getByLabelText('Expand dock region to workspace').title).toBe(
       'Expand dock region to workspace',
@@ -876,8 +878,8 @@ describe('the bar’s own click surface', () => {
     expect(chrome.applyDockSnap).toHaveBeenCalledTimes(1);
     expect(chrome.applyDockSnap).toHaveBeenCalledWith('collapsed');
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Activity' }));
-    fireEvent.click(screen.getByLabelText('Close Activity'));
+    fireEvent.click(screen.getByRole('tab', { name: 'Agents' }));
+    fireEvent.click(screen.getByLabelText('Close Agents'));
     const counter = document.createElement('span');
     counter.textContent = '2 sessions';
     bar.querySelector('.chat-dock__header-actions')?.append(counter);
@@ -918,7 +920,7 @@ describe('the bar is a header drag surface (the chrome pair)', () => {
     // Every control keeps its own gesture: tabs reorder, the grab moves the
     // region, the chevron and the action cluster click. The TOGGLE_EXEMPT set
     // is the bail, so a control added to the strip inherits the exemption.
-    fireEvent.pointerDown(screen.getByRole('tab', { name: 'Activity' }), {
+    fireEvent.pointerDown(screen.getByRole('tab', { name: 'Agents' }), {
       button: 0,
       pointerId: 2,
     });

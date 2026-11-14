@@ -339,11 +339,11 @@ describe('Open original chat from a knowledge document', () => {
     navigationStore.navigate('/projects/station', { dock: 'open' });
     mount();
     await waitFor(() => expect(model).not.toBeNull());
-    act(() => model?.placeSurface('activity', 'bottom'));
+    act(() => model?.placeSurface('device', 'bottom'));
     await waitFor(() =>
       expect(model?.regions.bottom).toMatchObject({
         visible: true,
-        occupant: 'activity',
+        occupant: 'device',
       }),
     );
     let answer: 'cancel' | 'continue' = 'cancel';
@@ -355,7 +355,7 @@ describe('Open original chat from a knowledge document', () => {
         if (answer === 'cancel') cancel?.();
         else continueNavigation();
       },
-      'activity',
+      'device',
     );
     try {
       const search = window.location.search;
@@ -363,7 +363,7 @@ describe('Open original chat from a knowledge document', () => {
       expect(asked).toHaveBeenCalledTimes(1);
       expect(window.location.search).toBe(search);
       expect(window.location.hash).toBe('');
-      expect(model?.regions.bottom.occupant).toBe('activity');
+      expect(model?.regions.bottom.occupant).toBe('device');
       expect(
         screen.getByRole('dialog', { name: 'Quoted answer source' }),
       ).toBeTruthy();
@@ -389,20 +389,20 @@ describe('Open original chat from a knowledge document', () => {
     navigationStore.navigate('/projects/station', { dock: 'open' });
     mount();
     await waitFor(() => expect(model).not.toBeNull());
-    act(() => model?.placeSurface('activity', 'bottom'));
+    act(() => model?.placeSurface('device', 'bottom'));
     const unregister = navigationStore.registerNavigationGuard(
       Symbol('activity draft'),
       (continueNavigation) => {
         scope.current = false;
         continueNavigation();
       },
-      'activity',
+      'device',
     );
     try {
       await inspectAndOpen();
       expect(params().get('chat')).toBeNull();
       expect(window.location.hash).toBe('');
-      expect(model?.regions.bottom.occupant).toBe('activity');
+      expect(model?.regions.bottom.occupant).toBe('device');
       expect(
         screen.getByRole('dialog', { name: 'Quoted answer source' }),
       ).toBeTruthy();
@@ -444,18 +444,18 @@ describe('Open original chat from a knowledge document', () => {
     mount();
     await waitFor(() => expect(model).not.toBeNull());
     act(() => {
-      model?.openSurfaceInRegion('activity');
+      model?.openSurfaceInRegion('device');
     });
     await waitFor(() =>
-      expect(model?.phoneLayer).toMatchObject({ surfaceId: 'activity' }),
+      expect(model?.phoneLayer).toMatchObject({ surfaceId: 'device' }),
     );
-    const guard = deferredGuard('activity');
+    const guard = deferredGuard('device');
     try {
       const search = window.location.search;
       await inspectAndOpen();
       expect(guard.asked).toHaveBeenCalledTimes(1);
       // Asked, not acted on: the layer and the URL wait for the answer.
-      expect(model?.phoneLayer).toMatchObject({ surfaceId: 'activity' });
+      expect(model?.phoneLayer).toMatchObject({ surfaceId: 'device' });
       expect(window.location.search).toBe(search);
       guard.answer('proceed');
       await waitFor(() => expect(model?.phoneLayer).toBeNull());
@@ -475,19 +475,19 @@ describe('Open original chat from a knowledge document', () => {
     mount();
     await waitFor(() => expect(model).not.toBeNull());
     act(() => {
-      model?.openSurfaceInRegion('activity');
+      model?.openSurfaceInRegion('device');
     });
     await waitFor(() =>
-      expect(model?.phoneLayer).toMatchObject({ surfaceId: 'activity' }),
+      expect(model?.phoneLayer).toMatchObject({ surfaceId: 'device' }),
     );
-    const guard = deferredGuard('activity');
+    const guard = deferredGuard('device');
     try {
       const search = window.location.search;
       const arrangement = structuredClone(model?.regions);
       await inspectAndOpen();
       scope.current = false;
       guard.answer('proceed');
-      expect(model?.phoneLayer).toMatchObject({ surfaceId: 'activity' });
+      expect(model?.phoneLayer).toMatchObject({ surfaceId: 'device' });
       expect(model?.regions).toEqual(arrangement);
       expect(window.location.search).toBe(search);
       expect(window.location.hash).toBe('');
@@ -506,18 +506,18 @@ describe('Open original chat from a knowledge document', () => {
     navigationStore.navigate('/projects/station', { dock: 'open' });
     mount();
     await waitFor(() => expect(model).not.toBeNull());
-    act(() => model?.placeSurface('activity', 'bottom'));
-    const first = deferredGuard('activity');
+    act(() => model?.placeSurface('device', 'bottom'));
+    const first = deferredGuard('device');
     let second: ReturnType<typeof deferredGuard> | null = null;
     try {
       const search = window.location.search;
       await inspectAndOpen();
       expect(first.asked).toHaveBeenCalledTimes(1);
-      // More unsaved work in Activity while the first question is open.
-      second = deferredGuard('activity');
+      // More unsaved work in Device while the first question is open.
+      second = deferredGuard('device');
       first.answer('proceed');
       expect(second.asked).not.toHaveBeenCalled();
-      expect(model?.regions.bottom.occupant).toBe('activity');
+      expect(model?.regions.bottom.occupant).toBe('device');
       expect(window.location.search).toBe(search);
       expect(window.location.hash).toBe('');
       expect(
@@ -536,7 +536,7 @@ describe('Open original chat from a knowledge document', () => {
     navigationStore.navigate('/projects/station', { dock: 'open' });
     mount();
     await waitFor(() => expect(model).not.toBeNull());
-    act(() => model?.placeSurface('activity', 'bottom'));
+    act(() => model?.placeSurface('device', 'bottom'));
     const agents = deferredGuard('workspace-agents');
     const unregister = navigationStore.registerNavigationGuard(
       Symbol('activity answers at once'),
@@ -544,7 +544,7 @@ describe('Open original chat from a knowledge document', () => {
         model?.placeSurface('workspace-agents', 'bottom');
         proceed();
       },
-      'activity',
+      'device',
     );
     try {
       const search = window.location.search;
@@ -563,8 +563,8 @@ describe('Open original chat from a knowledge document', () => {
     navigationStore.navigate('/projects/station', { dock: 'open' });
     mount();
     await waitFor(() => expect(model).not.toBeNull());
-    act(() => model?.placeSurface('activity', 'bottom'));
-    const guard = deferredGuard('activity');
+    act(() => model?.placeSurface('device', 'bottom'));
+    const guard = deferredGuard('device');
     try {
       const search = window.location.search;
       await inspectAndOpen();
@@ -573,7 +573,7 @@ describe('Open original chat from a knowledge document', () => {
         screen.queryByRole('dialog', { name: 'Quoted answer source' }),
       ).toBeNull();
       guard.answer('proceed');
-      expect(model?.regions.bottom.occupant).toBe('activity');
+      expect(model?.regions.bottom.occupant).toBe('device');
       expect(window.location.search).toBe(search);
       expect(window.location.hash).toBe('');
     } finally {
@@ -585,14 +585,14 @@ describe('Open original chat from a knowledge document', () => {
     navigationStore.navigate('/projects/station', { dock: 'open' });
     mount();
     await waitFor(() => expect(model).not.toBeNull());
-    act(() => model?.placeSurface('activity', 'bottom'));
-    const first = deferredGuard('activity');
+    act(() => model?.placeSurface('device', 'bottom'));
+    const first = deferredGuard('device');
     const second = deferredGuard('workspace-agents');
     try {
       await inspectAndOpen();
       expect(first.asked).toHaveBeenCalledTimes(1);
-      // While Activity's prompt is up, the reader puts Agents — with its own
-      // unsaved work — where Activity was.
+      // While Device's prompt is up, the reader puts Agents — with its own
+      // unsaved work — where Device was.
       act(() => model?.placeSurface('workspace-agents', 'bottom'));
       await waitFor(() =>
         expect(model?.regions.bottom.occupant).toBe('workspace-agents'),

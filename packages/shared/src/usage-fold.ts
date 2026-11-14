@@ -1,5 +1,7 @@
 import {
   CONVERSATION_REPORTED_COST_UNITS_MAX,
+  type ConversationEngineMcpStatus,
+  foldEngineMcpStatus,
   isReportedCostUnit,
 } from '@kontourai/station-contracts/runtime';
 import {
@@ -83,6 +85,11 @@ export interface SessionUsageAggregate {
   reportedCosts?: EngineReportedCostTotal[];
   /** The engine's latest own context reading, 0-100; never derived from tokens. */
   contextPercent?: number;
+  /**
+   * The engine's MCP servers as its `engine-mcp.status` events left them
+   * (`foldEngineMcpStatus`). Absent when no event reported any.
+   */
+  engineMcp?: ConversationEngineMcpStatus;
   /**
    * Provider id observed on the folded events (`event.provider`), or
    * `undefined` when the stream was empty. Lets a consumer say WHICH
@@ -747,9 +754,18 @@ function foldUsageEventsInner(
   let perTurnCostUsd: number | undefined;
   /** `reportedCost` in the engine's own units (never USD-converted). */
   const engineCosts = new EngineReportedCostTotals();
+  /** The Session whose engine reported `aggregate.engineMcp`. */
+  let engineMcpThread: string | undefined;
 
   for (const event of events) {
     if (event.provider) aggregate.provider = event.provider;
+    // A lineage folds its Sessions one after another. The next Session's
+    // engine is another process: its predecessor's MCP servers go, as a
+    // handoff drops them from the live chat.
+    if (engineMcpThread !== undefined && event.threadId !== engineMcpThread) {
+      delete aggregate.engineMcp;
+      engineMcpThread = undefined;
+    }
     observations?.observe(event);
     switch (event.method) {
       case 'token-usage.updated': {
@@ -930,6 +946,11 @@ function foldUsageEventsInner(
       case 'session.configured': {
         const model = readSessionConfiguredModel(event);
         if (model) aggregate.lastModelId = model;
+        break;
+      }
+      case 'engine-mcp.status': {
+        aggregate.engineMcp = foldEngineMcpStatus(aggregate.engineMcp, event);
+        engineMcpThread = event.threadId;
         break;
       }
       default:

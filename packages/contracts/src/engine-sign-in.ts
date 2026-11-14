@@ -142,8 +142,14 @@ export type ManagedInstallStateView =
 export interface EngineHostAuthView {
   /** Present when Station owns this engine's sign-in. */
   status?: EngineHostAuthStatus;
-  /** The identities Station can sign this engine in with. */
-  identities: Array<'builder-id' | 'identity-center'>;
+  /** The identities Station can sign this engine in with, for this caller. */
+  identities: Array<'builder-id' | 'identity-center' | 'social'>;
+  /**
+   * Google and GitHub sign-in exists for this engine but this caller's
+   * browser is not on the Station's computer, where the sign-in page
+   * returns. Absent when `identities` has `social`, or there is none.
+   */
+  socialSignIn?: 'needs-browser-on-host';
   /** Managed policy's `limits.engines.engineHostAuth`. */
   policy: EngineHostAuthPolicy;
   /** Present when Station installs this engine itself. */

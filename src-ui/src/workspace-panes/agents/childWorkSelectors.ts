@@ -156,6 +156,16 @@ function engineReportsNoSubagents(provider: string | undefined): boolean {
   return engineMatrix(provider)?.subagentObservability.state === 'none';
 }
 
+/** The matrix's reason when only some of this engine's connections report. */
+function engineReportsPerConnection(
+  provider: string | undefined,
+): string | undefined {
+  const cell = engineMatrix(provider)?.subagentObservability;
+  return cell?.state === 'declared'
+    ? cell.perConnection?.unobservedReason
+    : undefined;
+}
+
 /**
  * #2486: whether the engine's own wired stop cell says the action also ends
  * the reporting session's own active turn (Codex: no softer path exists). A
@@ -503,6 +513,14 @@ export function subagentNoticeFor(options: {
       label: 'This engine does not report subagents',
       description:
         'Delegated tasks and tool calls from this conversation still appear here.',
+    };
+  // Only some connections of this engine report (ACP): with nothing from
+  // the server yet, "No subagents running" would be a claim nothing made.
+  const unobserved = engineReportsPerConnection(options.provider);
+  if (unobserved)
+    return {
+      label: 'Subagents are not shown for this engine',
+      description: unobserved,
     };
   return undefined;
 }

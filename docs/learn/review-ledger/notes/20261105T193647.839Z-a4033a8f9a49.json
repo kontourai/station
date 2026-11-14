@@ -1,9 +1,0 @@
-{
-  "revision": "213120d4dfcce27dd26cb4229e14835ae0b91d8e",
-
-  "notes": [
-    {"path":"docs/user/personal-boards.md","note":"Reviewed the final integration capture-only change: the Board-host screenshot fast-forwards finite animations through Playwrights standard animations-disabled capture option. Interaction, select-theme/geometry assertions and all deadlines remain unchanged. Four journeys pass in 38.4s, and all twelve integrated PNGs have been inspected. Existing historical capture limits remain.","inputs":["docs/user/personal-boards.md"]},
-
-    {"path":"docs/reviews/personal-boards-20261016/README.md","note":"Reviewed the final integration capture-only change: the Board-host screenshot fast-forwards finite animations through Playwrights standard animations-disabled capture option. Interaction, select-theme/geometry assertions and all deadlines remain unchanged. Four journeys pass in 38.4s, and all twelve integrated PNGs have been inspected. Existing historical capture limits remain.","inputs":["docs/reviews/personal-boards-20261016/README.md"]}
-  ]
-}

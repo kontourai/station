@@ -1,0 +1,17 @@
+{
+  "revision": "08c4cef7738f4c3a8fe6880c391e7b54eea20ad7",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Shared Run setup still delegates picker ownership to ChatInputArea and StartComposer; only icon rendering and label spans changed. No ownership or authority change.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"Gallery full-access variants and mark count assertions change only closed composer captures. Reduced-motion fixtures and assertions are unchanged.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Gallery retains audited fixtures and partial baseline workflow; added real model geometry and attach, microphone, Start visibility at 390 and 412. No deadlines or gates changed.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Gallery changes are confined to Run setup marks and geometry. Telemetry scenes and request fixtures are unchanged; no delivery or telemetry evidence inferred.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Start and reply retain the documented setup choices and warning semantics. Matching marks now deduplicate, warning occupies icon corner and Agent text yields to model. Existing steps remain accurate.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed ledger as historical publishing records with explicit source SHA and workflow caveats. This composer change does not alter ledger records or prove a release.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

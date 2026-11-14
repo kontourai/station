@@ -1,7 +1,0 @@
-{
-  "revision": "3de23cd1ed4607411cecb311135664de0fed9fc4",
-
-  "notes": [
-    {"path":"docs/guides/connections.md","note":"#4515 fix round 1: engine-sign-in.ts and acp-adapter.ts pass the connection to ACPProcess, so sign-in and sessions for a disallowed ACP engine or a stopped registry agent are refused before spawning. Checked this guide's ACP sign-in, engine and managed-policy sentences (pinned launch fields, capability switches); none contradicts the refusal.","inputs":["docs/guides/connections.md","src-server/providers/adapters/acp-adapter.ts","src-server/services/acp/engine-sign-in.ts"]}
-  ]
-}

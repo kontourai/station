@@ -29,6 +29,7 @@ describe('conversation handoff UI state', () => {
       liveUsage: { contextPercent: 40 },
       engineMcpServers: [{ name: 'docs', state: 'ready', scope: 'session' }],
       engineMcpReconnect: true,
+      engineMcpComplete: true,
       orchestrationHistoryRevision: 4,
     } as unknown as ChatUIState;
     const begun = beginConversationHandoffUiState(predecessor, {
@@ -89,6 +90,7 @@ describe('conversation handoff UI state', () => {
     expect(merged.liveUsage).toBeUndefined();
     expect(merged.engineMcpServers).toBeUndefined();
     expect(merged.engineMcpReconnect).toBeUndefined();
+    expect(merged.engineMcpComplete).toBeUndefined();
     expect(accepted.orchestrationModel).toBeUndefined();
     expect(accepted.requestedProviderOptions).toEqual({});
     expect(accepted.approvalToasts).toEqual(new Map());

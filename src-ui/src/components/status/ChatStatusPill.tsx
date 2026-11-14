@@ -21,22 +21,16 @@ export const CHAT_STATUS_CELEBRATE_MS = 1_100;
 /** The float-out (`--motion-fast`); the pill unmounts after it. */
 const LEAVE_MS = 150;
 
-function clockText(ms: number): string {
-  const seconds = Math.max(0, Math.floor(ms / 1000));
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
-}
-
 /**
  * The turn clock, the pill's only ticking part: it re-renders this one text
  * node off the shared elapsed clock, which stops while the page is hidden.
- * The face is a stopwatch (`m:ss`), not the row's duration words.
+ * Uses the same duration words as rows and other live clocks.
  */
 const PillClock = memo(function PillClock({ from }: { from: number }) {
   const now = useElapsedClock();
   return (
     <span className="chat-status-pill__clock" aria-hidden="true">
-      {clockText(now - from)}
+      {formatDuration(now - from)}
     </span>
   );
 });
@@ -119,12 +113,16 @@ export function ChatStatusPill({
   useEffect(() => {
     const was = previousKind.current;
     previousKind.current = status?.kind;
-    if (status?.kind === 'approval' || status?.kind === 'blocked') {
+    if (
+      status?.kind === 'approval' ||
+      status?.kind === 'answer' ||
+      status?.kind === 'blocked'
+    ) {
       if (celebrationTimer.current) clearTimeout(celebrationTimer.current);
       setCelebrating(false);
       return;
     }
-    if (was !== 'approval') return;
+    if (was !== 'approval' && was !== 'answer') return;
     setCelebrating(true);
     if (celebrationTimer.current) clearTimeout(celebrationTimer.current);
     celebrationTimer.current = setTimeout(
@@ -175,8 +173,8 @@ export function ChatStatusPill({
 
   const current = shown ?? (leaving ? lastShown.current : undefined);
   const announcement =
-    shown?.kind === 'approval' && shown.count !== undefined
-      ? `Needs approval (${shown.count})`
+    shown?.action === 'reveal-approval' && shown.count !== undefined
+      ? `${shown.label} (${shown.count})`
       : (shown?.label ?? '');
   useEffect(() => {
     if (status?.action === 'resync') recoveryPending.current = true;
@@ -319,7 +317,7 @@ export function ChatStatusPill({
               aria-label={
                 current.action === 'reveal-approval'
                   ? current.count !== undefined
-                    ? `Needs approval (${current.count}) — show the requests`
+                    ? `${current.label} (${current.count}) — show the requests`
                     : `${current.label} — show the request`
                   : current.action === 'repair'
                     ? `${current.label} — repair the connection`

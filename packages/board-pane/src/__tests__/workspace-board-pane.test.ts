@@ -1,4 +1,4 @@
-import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_AGENTS_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-agents-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-browser-preview';
 import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
 import {
@@ -72,7 +72,7 @@ describe('the Board Workspace Pane declaration', () => {
     // Board ever gains a requirement-free mode, this list grows a
     // `pane:builtin:board` entry and the diff names the pane it admits.
     const descriptors = [
-      WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
+      WORKSPACE_AGENTS_PANE_DESCRIPTOR,
       WORKSPACE_BOARD_PANE_DESCRIPTOR,
       WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR,
       WORKSPACE_CHAT_PANE_DESCRIPTOR,
@@ -99,7 +99,7 @@ describe('the Board Workspace Pane declaration', () => {
         )
         .map((descriptor) => descriptor.id),
     ).toEqual([
-      WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id,
+      WORKSPACE_AGENTS_PANE_DESCRIPTOR.id,
       WORKSPACE_CHAT_PANE_DESCRIPTOR.id,
       WORKSPACE_HOME_PANE_DESCRIPTOR.id,
     ]);

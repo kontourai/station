@@ -1,7 +1,0 @@
-{
-  "revision": "28132d56c26b4e5ff9e62541be4472ef06e9e396",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Import-order-only change to ReviewThreadCard.tsx (RoomAvatar now imported from components/room). The module map's review, Task room and history claims are unaffected; the map is unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/views/task-workspace/review/ReviewThreadCard.tsx"]}
-  ]
-}

@@ -1,0 +1,7 @@
+{
+  "revision": "c4e24e6db63af9fcd66eae9d41ce7c43e447894c",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Rewrote two sentences of the capacity paragraph from an independent re-fetch of merge_group runs created 06:30-17:30Z on 2026-11-14: two concurrent builds peaked at eleven jobs with one macOS runner (the earlier text said ten and none), so the stated sum is 11 + 4 + 8 = 23. Added what the slot sizing leaves out (it models slot wait, not the runner pool; jobs once superseded while waiting can now start), the measured pool occupancy and merge-group runner wait for 00:00-03:00Z that day, and the rollback lever. Slot counts and routing are unchanged from the reviewed text.","inputs":["docs/guides/releasing.md"]}
+  ]
+}

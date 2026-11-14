@@ -439,7 +439,7 @@ describe.skipIf(process.platform === 'win32')(
       const engine = launch(
         { ...PROFILE, promptResponse: { usage: answer.usage } },
         [
-          { kind: 'update', update: contextUpdate },
+          { kind: 'session-update', update: contextUpdate },
           { kind: 'text', text: 'red, blue' },
         ],
       );

@@ -41,6 +41,7 @@ import {
   mayRunCommandsOnHost,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
+import { classifyOperatorCredentialPosition } from '../../security/host-operator-credential.js';
 import {
   assertEngineAllowedByManagedPolicy,
   engineHostAuthPolicy,
@@ -133,6 +134,17 @@ function installStateView(state: ManagedInstallState): ManagedInstallStateView {
     : state;
 }
 
+/**
+ * Whether this request's browser is on the Station's computer, the only place
+ * a social sign-in's loopback callback can reach. The same-machine reading
+ * `runtime-http.ts` uses; it can only narrow (a forwarded or tailnet request
+ * reads off-host), so a wrong answer costs a sign-in that times out, never
+ * access. See `classifyOperatorCredentialPosition` for what it does not prove.
+ */
+function browserOnHost(c: Context): boolean {
+  return classifyOperatorCredentialPosition(c) !== 'off-host';
+}
+
 /** The credential scope a connection's Station-run sign-in uses. */
 function hostAuthScope(config: ACPConnectionConfig) {
   return { connectionId: config.id, credentialProfileRef: 'default' };
@@ -154,7 +166,16 @@ function hostAuthView(
     ...(owned && service
       ? { status: service.status(hostAuthScope(config)) }
       : {}),
-    identities: owned ? ['builder-id', 'identity-center'] : [],
+    identities: owned
+      ? [
+          'builder-id',
+          'identity-center',
+          ...(browserOnHost(c) ? (['social'] as const) : []),
+        ]
+      : [],
+    ...(owned && !browserOnHost(c)
+      ? { socialSignIn: 'needs-browser-on-host' as const }
+      : {}),
     policy: engineHostAuthPolicy(),
     ...(managed && installer && definition
       ? {
@@ -182,6 +203,7 @@ async function readHostAuthLoginRequest(
       : undefined;
   if (value.identity === 'builder-id')
     return { identity: 'builder-id', ...(region ? { region } : {}) };
+  if (value.identity === 'social') return { identity: 'social' };
   if (
     value.identity === 'identity-center' &&
     typeof value.startUrl === 'string' &&
@@ -475,9 +497,20 @@ export function createACPSignInRoutes(input: {
         {
           success: false,
           error:
-            'Choose AWS Builder ID, or IAM Identity Center with a start URL and region.',
+            'Choose AWS Builder ID, IAM Identity Center with a start URL and region, or Google or GitHub.',
         },
         400,
+      );
+    // The sign-in page returns to a loopback port here: from a browser
+    // elsewhere it could only time out, holding a port meanwhile.
+    if (request.identity === 'social' && !browserOnHost(c))
+      return c.json(
+        {
+          success: false,
+          code: 'social-sign-in-needs-browser-on-host',
+          error: HOST_AUTH_LOGIN_REFUSAL_TEXT['browser-not-on-host'],
+        },
+        409,
       );
     try {
       return c.json({

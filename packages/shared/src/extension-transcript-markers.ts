@@ -16,6 +16,11 @@
  * payload is engine-defined and carries no display contract.
  */
 
+import {
+  ACP_SESSION_REWOUND_CODE,
+  ACP_SESSION_REWOUND_LATE_CODE,
+} from '@kontourai/station-contracts/provider';
+
 export type ExtensionTranscriptMarkerKind =
   | 'context-compacted'
   | 'conversation-rewound'
@@ -162,4 +167,64 @@ export function modelReroutedMarkerText(event: {
     return { betweenTurns: text, duringTurn: text };
   }
   return { betweenTurns: base, duringTurn: `${base} during this turn` };
+}
+
+/** Bound on the hidden turns one rewind marker names; more are not read. */
+const REWOUND_TURNS_MAX = 500;
+
+/**
+ * An in-place engine rewind (`ACP_SESSION_REWOUND_CODE` warning) as the
+ * transcript reads it: the turns it hid and how many files the engine said
+ * it restored. Undefined for any other warning, or a malformed one.
+ */
+export function sessionRewoundMarker(event: {
+  code?: string;
+  details?: Record<string, unknown>;
+}):
+  | {
+      hiddenTurnIds: string[];
+      affectedFileCount?: number;
+      text: { betweenTurns: string; duringTurn: string };
+    }
+  | undefined {
+  if (event.code !== ACP_SESSION_REWOUND_CODE) return undefined;
+  const hidden = event.details?.hiddenTurnIds;
+  if (!Array.isArray(hidden) || hidden.length > REWOUND_TURNS_MAX)
+    return undefined;
+  const hiddenTurnIds = hidden.filter(
+    (id): id is string => typeof id === 'string' && id.length > 0,
+  );
+  const count = event.details?.affectedFileCount;
+  const affectedFileCount =
+    typeof count === 'number' && Number.isInteger(count) && count >= 0
+      ? count
+      : undefined;
+  const turns =
+    hiddenTurnIds.length === 1 ? 'one turn' : `${hiddenTurnIds.length} turns`;
+  const files =
+    affectedFileCount === undefined
+      ? ''
+      : affectedFileCount === 1
+        ? '; the engine restored one file'
+        : `; the engine restored ${affectedFileCount} files`;
+  const text = `Rewound: the engine no longer sees ${turns}${files}`;
+  return {
+    hiddenTurnIds,
+    ...(affectedFileCount === undefined ? {} : { affectedFileCount }),
+    text: { betweenTurns: text, duringTurn: text },
+  };
+}
+
+/**
+ * A rewind the engine applied late, after a later turn started or once the
+ * session stopped waiting (`ACP_SESSION_REWOUND_LATE_CODE`): a marker row
+ * only. Which turns the engine now hides is not known, so none is marked.
+ */
+export function sessionRewoundLateMarker(event: {
+  code?: string;
+}): { betweenTurns: string; duringTurn: string } | undefined {
+  if (event.code !== ACP_SESSION_REWOUND_LATE_CODE) return undefined;
+  const text =
+    'Rewound late: the engine may no longer see turns from an earlier point on';
+  return { betweenTurns: text, duringTurn: text };
 }

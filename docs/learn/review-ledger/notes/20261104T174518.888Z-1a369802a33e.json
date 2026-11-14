@@ -1,7 +1,0 @@
-{
-  "revision": "9dea7500796916b8326bd7d1c5d21b25b1e0d61a",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Moved the #4512 Turn dispatch origin text to a SessionCommandModule subsection (sendTurn admission lives there) so it is not a separate learning-tree module; content unchanged from the reviewed note, still matches the code.","inputs":["docs/architecture/module-map.md"]}
-  ]
-}

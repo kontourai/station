@@ -7,6 +7,7 @@ import {
   installMockOrchestrationSse,
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 
 // Mirrors builtin-runtime-workflow.spec.ts's mock-SSE harness (orchestration
 // commands + events) rather than sharing its local helpers directly, since
@@ -181,17 +182,25 @@ async function openRuntimeSession(
   });
   await page.goto('/?dock=open');
   await dismissSetupLauncher(page);
-  const add = page.locator('.chat-dock__tab-actions .chat-dock__new').last();
+  const add = page
+    .locator('#chat-dock')
+    .getByRole('button', { name: 'New chat', exact: true })
+    .first();
   await expect(add).toBeVisible({ timeout: 15_000 });
   await add.click();
   const modal = page.getByRole('region', { name: 'New chat', exact: true });
   await expect(modal).toBeVisible({ timeout: 10_000 });
   const composer = modal.getByRole('form', { name: 'Start work' });
-  await composer.getByRole('button', { name: /^Agent:/ }).click();
+  await (
+    await runSetupControl(composer, (panel) =>
+      panel.getByRole('button', { name: /^Agent:/ }),
+    )
+  ).click();
   const agents = page.getByRole('dialog', { name: 'Choose agent' });
   const runtimeRow = agents.locator('[data-agent-slug="claude"]').first();
   await expect(runtimeRow).toBeVisible({ timeout: 10_000 });
   await runtimeRow.click();
+  await closeRunSetup(page);
   await composer
     .getByRole('textbox', { name: 'What would you like done?' })
     .fill(firstMessage);
@@ -237,7 +246,9 @@ test.describe('Pending message queue (#613)', () => {
 
     // Enqueue two follow-ups mid-stream. Each only adds to the pending
     // queue — neither should fire another foreground execution request.
+    await closeRunSetup(page);
     await textarea.fill('queued alpha');
+    await closeRunSetup(page);
     await textarea.press('Enter');
     // The queue says how many are pending, in its own words (#3362 updated
     // this from the retired "N message queued").
@@ -247,7 +258,9 @@ test.describe('Pending message queue (#613)', () => {
       }),
     ).toBeVisible();
 
+    await closeRunSetup(page);
     await textarea.fill('queued beta');
+    await closeRunSetup(page);
     await textarea.press('Enter');
     // The queue says how many are pending, in its own words (#3362 updated
     // this from the retired "N messages queued").
@@ -379,7 +392,9 @@ test.describe('Pending message queue (#613)', () => {
         );
       const token = 'x'.repeat(300);
       for (const message of [prose, token]) {
+        await closeRunSetup(page);
         await textarea.fill(message);
+        await closeRunSetup(page);
         await textarea.press('Enter');
       }
       const toggle = page

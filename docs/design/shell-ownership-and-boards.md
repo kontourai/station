@@ -1,5 +1,11 @@
 # Shell ownership scopes and Boards
 
+> **Activity retirement amendment:** Activity and its Quick review pane are
+> removed. Home and the inbox list work; Session links and child transcripts
+> open in Chat. The Activity-specific delivery notes below describe the earlier
+> design. See [placement](placement.md) for migration and URL compatibility.
+
+
 > **Reading status: accepted design; all nine delivery slices landed.** Epic
 > #2058's slices shipped in three pull requests: slices 1, 2 and 6 in #2080;
 > 3, 5 and 8 in #2084; 4, 7 and 9 in #2095. Personal Boards have an
@@ -379,3 +385,10 @@ the existing registry seams so the panel can move one section at a time.
 - Does an instance-shared Board need its own role, or is operator-only
   sufficient for the first cut?
 - Which Survey workbench states map to inbox items versus layout content?
+
+### New-chat project choice
+
+The start composer owns project choice. Neither phone nor desktop dock headers
+carry a project picker. New chat retains the current dock default: the project
+page context or the remembered choice, falling back to No project when absent.
+Clear project scope remains an Inbox filter action, separate from that default.

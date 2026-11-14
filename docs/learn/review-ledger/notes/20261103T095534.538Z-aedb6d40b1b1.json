@@ -1,7 +1,0 @@
-{
-  "revision": "d2687bae61891c5c60f491516a7e8243bf58ea3e",
-
-  "notes": [
-    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed the merged-main generated ledger against its JSON authority and renderLedgerMarkdown: bytes match exactly. The introductory qualifications distinguish recorded release/workflow receipts, recording timestamps and artifact build time from completeness, current artifact availability, installation or live runtime state. This lane adds no deployment entry and claims no release adoption. No prose change is needed; external deployment outcomes were not re-qualified.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
-  ]
-}

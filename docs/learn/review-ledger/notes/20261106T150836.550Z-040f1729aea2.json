@@ -1,7 +1,0 @@
-{
-  "revision": "ae6a84b37bba870246e54d44467338f417a4db5d",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Reviewed the bounded approval-owner guardrail update after main moved useToolApproval into a compatibility adapter. The proof now requires its shared useApprovalAnswering delegation, reads that owner fail-closed, requires both submitToolApproval and respondToRequest calls, and rejects raw fetch at both layers. The existing positive control failed before the repair (13 passed, 1 failed); the expanded child-process owner passed 19 cases after the repair, including five isolated source mutations for delegation, SDK calls, and raw requests. Empty baseline, missing-source aggregation, exact positive verdict, and test resource classification remain intact. This changes structural architecture verification only; no application approval behavior, permissions, native qualification, or runtime evidence is claimed.","inputs":["docs/guides/testing.md","scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts","scripts/proof-repo-guardrails.mjs"]}
-  ]
-}

@@ -8,7 +8,7 @@
  * `DockShell` + `RegionChromeBar` → `dock` `WorkspacePaneHost` — against the
  * real region model, navigation, device and shortcut stores, with only the
  * two pane renderers stubbed (Chat's would mount the whole chat stack;
- * Activity's the whole sessions surface). The Chat stub keeps the chrome it
+ * Agents's the whole sessions surface). The Chat stub keeps the chrome it
  * is handed, so what the chrome tells a renderer about its region
  * (`regionPanes`, the mobile sheet's rows) is asserted from the real
  * derivation.
@@ -42,8 +42,8 @@ import type { DockShellChrome } from '../../hooks/useDockShellChrome';
 import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 
-vi.mock('../../views/SessionsView', () => ({
-  SessionsView: () => <div data-testid="sessions-view" />,
+vi.mock('../../workspace-panes/AgentsWorkspacePane', () => ({
+  AgentsWorkspacePane: () => <div data-testid="sessions-view" />,
 }));
 /** The chrome Chat's pane was last handed: the region's panes as it sees them. */
 const chatProbe = vi.hoisted(() => ({
@@ -221,14 +221,14 @@ function recordedBottom(): unknown {
   ).regions?.bottom?.occupant;
 }
 
-/** Chat in `bottom`, Activity joined and selected: the two-pane region. */
+/** Chat in `bottom`, Agents joined and selected: the two-pane region. */
 async function renderJoined() {
   const rendered = await mountShells();
   await waitFor(() => expect(model).not.toBeNull());
   await waitFor(() =>
     expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
   );
-  act(() => currentModel().placeSurface('activity', 'bottom'));
+  act(() => currentModel().placeSurface('workspace-agents', 'bottom'));
   await act(async () => {
     await vi.dynamicImportSettled();
   });
@@ -240,19 +240,19 @@ async function renderJoined() {
  * Reverting the region bar (a chromeless host, no strip) fails the tablist
  * assertion; reverting the active-only panel fails the "Chat's occupant is
  * not mounted" one; reverting D3 (the shell labelled by the selected pane)
- * fails the `#chat-dock` and "Dock" assertions while Activity shows.
+ * fails the `#chat-dock` and "Dock" assertions while Agents shows.
  */
-test('a region holding Chat and Activity renders two tabs above the selected pane', async () => {
+test('a region holding Chat and Agents renders two tabs above the selected pane', async () => {
   await renderJoined();
 
   expect(document.querySelectorAll('.chat-dock')).toHaveLength(1);
   const strip = within(shell()).getByRole('tablist', { name: 'Region panes' });
   expect(tabs()).toEqual([
     ['Chat', 'false'],
-    ['Activity', 'true'],
+    ['Agents', 'true'],
   ]);
   // The selected pane is the strip's panel, labelled by its tab.
-  const activityTab = within(strip).getByRole('tab', { name: 'Activity' });
+  const activityTab = within(strip).getByRole('tab', { name: 'Agents' });
   const panel = document.getElementById(
     activityTab.getAttribute('aria-controls') ?? '',
   );
@@ -267,8 +267,8 @@ test('a region holding Chat and Activity renders two tabs above the selected pan
   // the region controls, and no second `.chat-dock__header` renders.
   expect(shell().querySelectorAll('.chat-dock__header')).toHaveLength(1);
   expect(within(shell()).getByLabelText('Move the dock')).toBeTruthy();
-  expect(within(shell()).getByLabelText('Hide Activity')).toBeTruthy();
-  // D3: the shell is Chat's while Chat is behind Activity's tab.
+  expect(within(shell()).getByLabelText('Hide Agents')).toBeTruthy();
+  // D3: the shell is Chat's while Chat is behind Agents's tab.
   expect(shell().id).toBe('chat-dock');
   expect(shell().getAttribute('aria-label')).toBe('Dock');
 });
@@ -292,7 +292,7 @@ test('a tab click writes the selection through the model and it persists across 
   expect(screen.queryByTestId('sessions-view')).toBeNull();
   expect(tabs()).toEqual([
     ['Chat', 'true'],
-    ['Activity', 'false'],
+    ['Agents', 'false'],
   ]);
   await waitFor(() =>
     expect(storedDocument(BOTTOM_KEY)?.activeInstanceId).toBe('workspace-chat'),
@@ -302,7 +302,7 @@ test('a tab click writes the selection through the model and it persists across 
       kind: 'pane-host',
       panes: [
         { kind: 'surface', id: 'chat' },
-        { kind: 'surface', id: 'activity' },
+        { kind: 'surface', id: 'workspace-agents' },
       ],
       selected: 'chat',
     }),
@@ -318,12 +318,12 @@ test('a tab click writes the selection through the model and it persists across 
   );
   expect(tabs()).toEqual([
     ['Chat', 'true'],
-    ['Activity', 'false'],
+    ['Agents', 'false'],
   ]);
 });
 
 /**
- * Close unplaces (`removePane`): Activity leaves `bottom` and is in NO
+ * Close unplaces (`removePane`): Agents leaves `bottom` and is in NO
  * region — not hidden in place — so the strip goes with the second tab, the
  * record writes the one-pane `surface` form, and the surface's chord shows
  * it afresh. Reverting close to a hide fails the `occupiedRegion` assertion;
@@ -332,7 +332,7 @@ test('a tab click writes the selection through the model and it persists across 
 test('closing a tab unplaces its surface; the region keeps its other pane', async () => {
   await renderJoined();
 
-  fireEvent.click(within(shell()).getByLabelText('Close Activity'));
+  fireEvent.click(within(shell()).getByLabelText('Close Agents'));
 
   await waitFor(() =>
     expect(currentModel().regions.bottom).toMatchObject({
@@ -359,11 +359,11 @@ test('closing a tab unplaces its surface; the region keeps its other pane', asyn
   );
 
   // The way back: the chord shows an unplaced surface where it belongs.
-  act(() => shortcut('activity.toggle').handler());
+  act(() => currentModel().toggleSurface('workspace-agents'));
   await waitFor(() =>
     expect(currentModel().regions.right).toMatchObject({
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
       visible: true,
     }),
   );
@@ -402,7 +402,7 @@ test('closing a tab asks that pane’s own guard; Cancel changes nothing', async
       if (answer === 'cancel') cancel?.();
       else continueNavigation();
     },
-    'activity',
+    'workspace-agents',
   );
   let unrelatedAsked = 0;
   const unregisterUnrelated = navigationStore.registerNavigationGuard(
@@ -411,10 +411,10 @@ test('closing a tab asks that pane’s own guard; Cancel changes nothing', async
       unrelatedAsked += 1;
       continueNavigation();
     },
-    'workspace-agents',
+    'device',
   );
   try {
-    const close = within(shell()).getByLabelText('Close Activity');
+    const close = within(shell()).getByLabelText('Close Agents');
     close.focus();
     const arrangement = structuredClone(currentModel().regions);
     fireEvent.click(close);
@@ -424,7 +424,7 @@ test('closing a tab asks that pane’s own guard; Cancel changes nothing', async
     expect(screen.queryByTestId('sessions-view')).not.toBeNull();
 
     answer = 'continue';
-    fireEvent.click(within(shell()).getByLabelText('Close Activity'));
+    fireEvent.click(within(shell()).getByLabelText('Close Agents'));
     await waitFor(() =>
       expect(currentModel().regions.bottom.panes).toEqual(['chat']),
     );
@@ -451,18 +451,18 @@ test('closing Chat’s tab closes the dock mirror, and an explicit open brings C
 
   await waitFor(() =>
     expect(currentModel().regions.bottom).toMatchObject({
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
       visible: true,
     }),
   );
   await waitFor(() =>
     expect(new URLSearchParams(window.location.search).get('dock')).toBeNull(),
   );
-  // Still one shell — Activity's region — and it is no longer Chat's.
+  // Still one shell — Agents's region — and it is no longer Chat's.
   expect(document.querySelectorAll('.chat-dock')).toHaveLength(1);
   expect(document.querySelector('#chat-dock')).toBeNull();
-  expect(shell().getAttribute('aria-label')).toBe('Activity');
+  expect(shell().getAttribute('aria-label')).toBe('Agents');
   // A navigation change that does not open the dock leaves Chat unplaced.
   act(() => navigationStore.navigate('/settings'));
   await act(async () => Promise.resolve());
@@ -503,23 +503,23 @@ test('reordering tabs writes the pane order and it persists across reload', asyn
 
   await waitFor(() =>
     expect(currentModel().regions.bottom).toMatchObject({
-      panes: ['activity', 'chat'],
-      occupant: 'activity',
+      panes: ['workspace-agents', 'chat'],
+      occupant: 'workspace-agents',
     }),
   );
   expect(tabs()).toEqual([
-    ['Activity', 'true'],
+    ['Agents', 'true'],
     ['Chat', 'false'],
   ]);
   await waitFor(() =>
     expect(
       storedDocument(BOTTOM_KEY)?.instances.map((i) => i.descriptorId),
-    ).toEqual(['pane:builtin:activity', 'pane:builtin:chat']),
+    ).toEqual(['pane:builtin:workspace-agents', 'pane:builtin:chat']),
   );
   await waitFor(() =>
     expect(recordedBottom()).toMatchObject({
       panes: [
-        { kind: 'surface', id: 'activity' },
+        { kind: 'surface', id: 'workspace-agents' },
         { kind: 'surface', id: 'chat' },
       ],
     }),
@@ -534,9 +534,12 @@ test('reordering tabs writes the pane order and it persists across reload', asyn
     await vi.dynamicImportSettled();
   });
   await screen.findByTestId('sessions-view');
-  expect(currentModel().regions.bottom.panes).toEqual(['activity', 'chat']);
+  expect(currentModel().regions.bottom.panes).toEqual([
+    'workspace-agents',
+    'chat',
+  ]);
   expect(tabs()).toEqual([
-    ['Activity', 'true'],
+    ['Agents', 'true'],
     ['Chat', 'false'],
   ]);
 });
@@ -567,7 +570,7 @@ test('selection writes no history: a mount, a join, a tab click and a ?pane= pop
   expect(pushes).not.toHaveBeenCalled();
   expect(paneParam()).toBeNull();
 
-  act(() => currentModel().placeSurface('activity', 'bottom'));
+  act(() => currentModel().placeSurface('workspace-agents', 'bottom'));
   await act(async () => {
     await vi.dynamicImportSettled();
   });
@@ -588,7 +591,7 @@ test('selection writes no history: a mount, a join, a tab click and a ?pane= pop
     window.history.replaceState(
       {},
       '',
-      `/?dock=open&pane=workspace-activity&paneScope=${encodeURIComponent(JSON.stringify(['ambient']))}`,
+      `/?dock=open&pane=workspace-agents&paneScope=${encodeURIComponent(JSON.stringify(['ambient']))}`,
     );
     window.dispatchEvent(new PopStateEvent('popstate'));
   });
@@ -597,15 +600,15 @@ test('selection writes no history: a mount, a join, a tab click and a ?pane= pop
   expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
   expect(screen.queryByTestId('sessions-view')).toBeNull();
   expect(pushes).not.toHaveBeenCalled();
-  expect(paneParam()).toBe('workspace-activity');
+  expect(paneParam()).toBe('workspace-agents');
 });
 
-/** ⌘D with Chat behind Activity's tab selects Chat's tab (2a's toggle, seen in the strip). */
-test('⌘D with Chat behind Activity’s tab selects Chat’s tab', async () => {
+/** ⌘D with Chat behind Agents's tab selects Chat's tab (2a's toggle, seen in the strip). */
+test('⌘D with Chat behind Agents’s tab selects Chat’s tab', async () => {
   await renderJoined();
   expect(tabs()).toEqual([
     ['Chat', 'false'],
-    ['Activity', 'true'],
+    ['Agents', 'true'],
   ]);
 
   act(() => shortcut('dock.toggle').handler());
@@ -613,7 +616,7 @@ test('⌘D with Chat behind Activity’s tab selects Chat’s tab', async () => 
   await waitFor(() =>
     expect(tabs()).toEqual([
       ['Chat', 'true'],
-      ['Activity', 'false'],
+      ['Agents', 'false'],
     ]),
   );
   expect(currentModel().regions.bottom.visible).toBe(true);
@@ -625,11 +628,11 @@ test('⌘D with Chat behind Activity’s tab selects Chat’s tab', async () => 
 /**
  * D3: `dock.maximize` belongs to the region that HOLDS Chat, whichever tab
  * shows. Reverting to "the shell showing Chat" leaves ⌘M unregistered while
- * Activity's tab is selected, and the handler lookup throws.
+ * Agents's tab is selected, and the handler lookup throws.
  */
 test('⌘M maximizes the region while Chat is not the selected tab (D3)', async () => {
   await renderJoined();
-  expect(currentModel().regions.bottom.occupant).toBe('activity');
+  expect(currentModel().regions.bottom.occupant).toBe('workspace-agents');
 
   const maximize = shortcut('dock.maximize');
   act(() => maximize.handler());
@@ -650,15 +653,15 @@ test('⌘M maximizes the region while Chat is not the selected tab (D3)', async 
   );
   // The persisted snap key is Chat's too (`useDockShellChrome`'s own
   // derivation, not `DockShell`'s): hiding this shell while Chat is behind
-  // Activity's tab writes it. Reverting `shellHoldsChat` to the selected
+  // Agents's tab writes it. Reverting `shellHoldsChat` to the selected
   // pane leaves the key unwritten.
-  fireEvent.click(within(shell()).getByLabelText('Hide Activity'));
+  fireEvent.click(within(shell()).getByLabelText('Hide Agents'));
   await waitFor(() =>
     expect(window.localStorage.getItem('station.chatDock.snap')).toBe(
       'collapsed',
     ),
   );
-  fireEvent.click(within(shell()).getByLabelText('Show Activity'));
+  fireEvent.click(within(shell()).getByLabelText('Show Agents'));
   await waitFor(() =>
     expect(shell().classList.contains('is-collapsed')).toBe(false),
   );
@@ -681,7 +684,7 @@ test('closing a tab while the region is maximized restores it, and the next Chat
   fireEvent.click(within(shell()).getByLabelText('Close Chat'));
   await waitFor(() =>
     expect(currentModel().regions.bottom).toMatchObject({
-      panes: ['activity'],
+      panes: ['workspace-agents'],
       maximized: false,
     }),
   );
@@ -705,7 +708,7 @@ test('closing a tab while the region is maximized restores it, and the next Chat
  */
 test('closing a tab keeps keyboard focus in the region bar', async () => {
   await renderJoined();
-  const close = within(shell()).getByLabelText('Close Activity');
+  const close = within(shell()).getByLabelText('Close Agents');
   close.focus();
   expect(document.activeElement).toBe(close);
   fireEvent.click(close);
@@ -728,7 +731,7 @@ test('closing a tab by pointer leaves focus where it was', async () => {
   document.body.append(outside);
   outside.focus();
   expect(document.activeElement).toBe(outside);
-  fireEvent.click(within(shell()).getByLabelText('Close Activity'));
+  fireEvent.click(within(shell()).getByLabelText('Close Agents'));
   await waitFor(() =>
     expect(currentModel().regions.bottom.panes).toEqual(['chat']),
   );
@@ -738,7 +741,7 @@ test('closing a tab by pointer leaves focus where it was', async () => {
 });
 
 /**
- * A shell that BECOMES Chat's adopts Chat's persisted snap: Activity's
+ * A shell that BECOMES Chat's adopts Chat's persisted snap: Agents's
  * region seeds from the default at mount, and when Chat joins it the snap
  * it reports is the key's, not the default it started from. Reverting the
  * re-seed leaves `dockSnap` at 'half'.
@@ -747,7 +750,7 @@ test('a region that gains Chat adopts Chat’s persisted snap', async () => {
   await renderJoined();
   fireEvent.click(within(shell()).getByLabelText('Close Chat'));
   await waitFor(() =>
-    expect(currentModel().regions.bottom.panes).toEqual(['activity']),
+    expect(currentModel().regions.bottom.panes).toEqual(['workspace-agents']),
   );
   expect(document.querySelector('#chat-dock')).toBeNull();
   window.localStorage.setItem('station.chatDock.snap', 'full');
@@ -755,7 +758,7 @@ test('a region that gains Chat adopts Chat’s persisted snap', async () => {
   act(() => currentModel().placeSurface('chat', 'bottom'));
   await waitFor(() =>
     expect(currentModel().regions.bottom).toMatchObject({
-      panes: ['activity', 'chat'],
+      panes: ['workspace-agents', 'chat'],
       occupant: 'chat',
     }),
   );
@@ -782,8 +785,8 @@ test('the region bar’s placement moves both panes to the chosen region', async
 
   await waitFor(() =>
     expect(currentModel().regions.right).toMatchObject({
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
+      panes: ['chat', 'workspace-agents'],
+      occupant: 'workspace-agents',
       visible: true,
     }),
   );
@@ -805,12 +808,12 @@ test('the region bar’s placement moves both panes to the chosen region', async
   expect(document.querySelector('.chat-dock[data-region="bottom"]')).toBeNull();
   expect(tabs()).toEqual([
     ['Chat', 'false'],
-    ['Activity', 'true'],
+    ['Agents', 'true'],
   ]);
   await waitFor(() =>
     expect(
       storedDocument(RIGHT_KEY)?.instances.map((i) => i.descriptorId),
-    ).toEqual(['pane:builtin:chat', 'pane:builtin:activity']),
+    ).toEqual(['pane:builtin:chat', 'pane:builtin:workspace-agents']),
   );
   // Chat's mirror followed the region.
   expect(navigationStore.getSnapshot().dockMode).toBe('right');
@@ -823,16 +826,16 @@ test('the region bar’s placement moves both panes to the chosen region', async
 test('a collapsed region shows no tab strip', async () => {
   await renderJoined();
 
-  fireEvent.click(within(shell()).getByLabelText('Hide Activity'));
+  fireEvent.click(within(shell()).getByLabelText('Hide Agents'));
 
   await waitFor(() =>
     expect(shell().classList.contains('is-collapsed')).toBe(true),
   );
   expect(within(shell()).queryByRole('tablist')).toBeNull();
-  expect(within(shell()).getByLabelText('Show Activity')).toBeTruthy();
+  expect(within(shell()).getByLabelText('Show Agents')).toBeTruthy();
   expect(within(shell()).getByLabelText('Move the dock')).toBeTruthy();
 
-  fireEvent.click(within(shell()).getByLabelText('Show Activity'));
+  fireEvent.click(within(shell()).getByLabelText('Show Agents'));
   await waitFor(() =>
     expect(shell().classList.contains('is-collapsed')).toBe(false),
   );
@@ -859,14 +862,14 @@ test('a coarse device renders no strip, and the chrome lists both panes for the 
   await waitFor(() =>
     expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
   );
-  act(() => currentModel().placeSurface('activity', 'bottom'));
+  act(() => currentModel().placeSurface('workspace-agents', 'bottom'));
   await act(async () => {
     await vi.dynamicImportSettled();
   });
   await screen.findByTestId('sessions-view');
   expect(within(shell()).queryByRole('tablist')).toBeNull();
   // The non-Chat pane's bar: the region controls, nothing else.
-  expect(within(shell()).getByLabelText('Hide Activity')).toBeTruthy();
+  expect(within(shell()).getByLabelText('Hide Agents')).toBeTruthy();
 
   act(() => currentModel().selectPane('bottom', 'chat'));
   await waitFor(() =>
@@ -877,10 +880,10 @@ test('a coarse device renders no strip, and the chrome lists both panes for the 
   expect(shell().querySelector('.chat-dock__header')).toBeNull();
   expect(chatProbe.chrome?.regionPanes).toEqual([
     { id: 'chat', title: 'Chat', selected: true },
-    { id: 'activity', title: 'Activity', selected: false },
+    { id: 'workspace-agents', title: 'Agents', selected: false },
   ]);
-  act(() => chatProbe.chrome?.selectRegionPane('activity'));
+  act(() => chatProbe.chrome?.selectRegionPane('workspace-agents'));
   await waitFor(() =>
-    expect(currentModel().regions.bottom.occupant).toBe('activity'),
+    expect(currentModel().regions.bottom.occupant).toBe('workspace-agents'),
   );
 });

@@ -1126,12 +1126,42 @@ A saved `kiro` connection keeps its own arguments.
    is installed, a chat and the engine's
    **Not connected yet** card say "Kiro (KAS, no CLI) isn't installed yet".
    Installing needs permission to operate Station on a paired device.
-2. **Sign in.** Choose **AWS Builder ID**, or **IAM Identity Center** with
+   Until you sign in, a chat on this engine is held with **Sign in to Kiro
+   (KAS, no CLI) from its sign-in panel in Connections**, and the engines
+   list shows it as **Sign in required** even though the engine answers its
+   handshake. If Station cannot read that readiness, the row says it could
+   not verify the engine; other engines still list. Station's readiness reads the installed
+   runtime, not `PATH`. Removing the connection during a sign-in cancels it,
+   and nothing it was finishing is kept.
+2. **Sign in.** Choose **AWS Builder ID**, **IAM Identity Center** with
    your company's start URL (`https://your-company.awsapps.com/start`) and
-   region. The panel shows a code and a link; open the link on any device,
-   enter the code and approve. Station registers its own AWS sign-in client;
-   Google and GitHub sign-in are not offered. For Identity Center, Station
-   looks up the Kiro profile the account may use.
+   region, or **Google or GitHub**.
+   - Builder ID and Identity Center show a code and a link; open the link on
+     any device, enter the code and approve. Station registers its own AWS
+     sign-in client. For Identity Center, Station looks up the Kiro profile
+     the account may use.
+   - **Google or GitHub** opens Kiro's sign-in page, where you pick the
+     provider. The page sends the browser back to `http://localhost:<port>`
+     on the computer Station runs on, so it is offered only when your browser
+     is on that computer. Station decides from the request, as it does for
+     the operator's own browser: a loopback request that addressed loopback,
+     directly or through Station's UI proxy, counts; a forwarded, tailnet or
+     off-machine request does not, and the panel then says so and offers the
+     other two. A tunnel that re-dials loopback without forwarding headers
+     (an SSH forward) looks local, and its sign-in times out. Station listens on
+     `127.0.0.1` and `::1` for one answer, on the first of the ten ports Kiro
+     accepts (3128, 4649, 6588, 8008, 9091, 49153, 50153, 51153, 52153,
+     53153) that no other program holds on either address, so the browser's
+     `localhost` cannot reach another program. Only a request carrying this
+     attempt's state can end it, and it must come to Kiro's callback path;
+     any other request gets a 404 and the wait goes on. Station stops
+     listening once it has an answer, after five minutes, when you cancel, or
+     if the listening socket fails. It then exchanges the code (PKCE) at
+     Kiro's sign-in service and refreshes there. Station sends its own
+     User-Agent and no client id; the `redirect_from=kirocli` it puts on the
+     sign-in link is the portal's own parameter for this loopback flow. When
+     every port is in use, nothing comes back in time, or Kiro turns the
+     sign-in down, the panel says which.
 3. **Use it.** When the engine asks for a token, Station gives it the access
    token and its expiry, never the refresh token, refreshing the token first
    when fewer than three minutes are left. Requests for one connection share
@@ -1159,8 +1189,12 @@ token request for a built-in engine launched with the arguments that make it
 ask; a custom command running the same program gets no token (see
 [the decision](../decisions/engine-credential-provider.md)).
 
-Not verified: a real Kiro sign-in and a real install. Both are tested against
-local stand-ins for AWS sign-in and the manifest host.
+A real install was run on 2026-11-13 (macOS, Apple silicon): about 55 MB
+downloaded (the engine and the Node runtime), both matching the pinned
+manifest, installed read-only, and the engine answered `initialize`. Not
+verified: a real Kiro sign-in with any identity, including whether Kiro's
+sign-in service accepts Station's User-Agent for Google or GitHub. Sign-in is
+tested against local stand-ins for AWS sign-in and Kiro's portal and service.
 
 ---
 

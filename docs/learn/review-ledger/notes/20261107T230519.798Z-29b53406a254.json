@@ -1,7 +1,0 @@
-{
-  "revision": "4fc42742e13cb7a2ac1da908560e1d186a5c9786",
-
-  "notes": [
-    {"path":"docs/design/connections-onboarding.md","note":"Change adds optional ProviderAdapterShape.turnNeedsEngineRelaunch (Claude) and a pre-turn park in OrchestrationService.sendTurn so mid-chat full access relaunches an idle engine in place. Grepped this document for full access, bypass, restart, escalation, park and relaunch claims; none describe when full access reaches a live engine, so its claims are unaffected.","inputs":["docs/design/connections-onboarding.md","src-server/providers/adapters/claude-adapter.ts","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

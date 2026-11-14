@@ -284,3 +284,86 @@ test('outside the inbox an approval card keeps Inspect request', async () => {
   expect(screen.getByRole('button', { name: 'Inspect request' })).toBeTruthy();
   expect(screen.queryByTestId('exact-request-inline')).toBeNull();
 });
+
+test('an AskUserQuestion form keeps an exact Attention inspection route and input pill', async () => {
+  const { mapServerRequestToEvent } = await import(
+    '../../../../../src-server/providers/adapters/codex-adapter-events'
+  );
+  const { attentionRequestReference } = await import(
+    '../../../../../src-server/services/orchestration/request-inspection'
+  );
+  const { unansweredApprovalRequests } = await import(
+    '../../../hooks/orchestration/pendingRequestRows'
+  );
+  const { deriveChatStatus } = await import('../../status/chatStatus');
+  const { ChatStatusPill } = await import('../../status/ChatStatusPill');
+  const event = mapServerRequestToEvent(
+    'session-a',
+    'request-a',
+    'item/tool/requestUserInput',
+    {
+      questions: [
+        {
+          id: 'q',
+          header: 'Choice',
+          question: 'Which option?',
+          options: [
+            { label: 'A', description: '' },
+            { label: 'B', description: '' },
+          ],
+        },
+      ],
+    },
+    '2026-11-01T00:00:00Z',
+  )!;
+  expect(event.requestType).toBe('approval');
+  const exact = attentionRequestReference(event, 'session-a');
+  expect(exact).toEqual({
+    threadId: 'session-a',
+    requestId: 'request-a',
+    requestEventId: event.eventId,
+  });
+  const [row] = unansweredApprovalRequests([], [event]);
+  expect(row.requestKind).toBe('input');
+  const fetch = vi.fn(async () =>
+    ok({ ...open, reference: exact, requiresAnswers: true }),
+  );
+  vi.stubGlobal('fetch', fetch);
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  });
+  wrap(
+    <>
+      <ChatStatusPill
+        status={deriveChatStatus({
+          approvalCount: row.requestKind === 'approval' ? 1 : 0,
+          inputCount: row.requestKind === 'input' ? 1 : 0,
+          turnLive: true,
+          waitingOnUser: true,
+        })}
+      />
+      <AttentionCard
+        item={{
+          id: 'review_pending:session-a',
+          kind: 'review_pending',
+          title: event.title,
+          createdAt: event.createdAt,
+          updatedAt: event.createdAt,
+          source: { threadId: 'session-a' },
+          sessionId: 'session-a',
+          openHref: '/?chat=session-a',
+          requestReference: exact!,
+        }}
+      />
+    </>,
+  );
+  expect(screen.getAllByText('Needs input').length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Inspect request' }));
+  expect(
+    await screen.findByText('Answer the agent’s questions in the chat.'),
+  ).toBeTruthy();
+  expect(fetch.mock.calls.length).toBeGreaterThan(0);
+  expect(screen.queryByRole('textbox')).toBeNull();
+});

@@ -88,7 +88,13 @@ export const PROVIDER_USAGE_SCOPE: ReadonlyMap<string, ProviderUsageScope> =
  * figures. They stay out of {@link PROVIDER_USAGE_SCOPE} on purpose: neither
  * scope describes an event with no totals, and declaring one would let a
  * consumer read their absent totals as zero. None today: ACP was, until its
- * adapter read the prompt answer's `usage` (see `PROVIDER_USAGE_SCOPE`).
+ * adapter read the prompt answer's `usage` for engines recorded reporting
+ * per-turn figures (see `PROVIDER_USAGE_SCOPE`). Any other ACP engine
+ * publishes only `usage_update`'s context window, so its turns carry no
+ * total. An engine's own cost (Kiro credits, Grok's per-turn USD) rides
+ * `reportedCost`, folded per unit apart from these totals. Grok also states
+ * token counts, but the scope is the provider's, not the engine's, so they
+ * are not published.
  */
 export const CONTEXT_OCCUPANCY_ONLY_PROVIDERS: ReadonlySet<string> =
   new Set<string>();

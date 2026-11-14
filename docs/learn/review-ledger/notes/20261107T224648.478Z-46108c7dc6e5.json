@@ -1,7 +1,0 @@
-{
-  "revision": "d5e3c3757b2dfb3fd2d38d801292f5c5a3bbfed6",
-
-  "notes": [
-    {"path":"docs/guides/connections.md","note":"Reviewed device-settings-store change (held appearance includes density and motion); connection claims unaffected.","inputs":["docs/guides/connections.md","src-ui/src/lib/device-settings-store.ts"]}
-  ]
-}

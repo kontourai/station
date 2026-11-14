@@ -91,7 +91,8 @@ const hostAuthSchema = z
       })
       .strict()
       .optional(),
-    identities: z.array(z.enum(['builder-id', 'identity-center'])),
+    identities: z.array(z.enum(['builder-id', 'identity-center', 'social'])),
+    socialSignIn: z.literal('needs-browser-on-host').optional(),
     policy: z.enum(['allowed', 'off']),
     install: z
       .object({
@@ -121,6 +122,7 @@ const hostAuthLoginSchema = z
     userCode: z.string().optional(),
     authorizationUrl: z.string().url().optional(),
     reason: z.string().optional(),
+    failure: z.enum(['refused', 'expired', 'unavailable']).optional(),
   })
   .strict();
 const signInViewSchema = z
