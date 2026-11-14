@@ -417,9 +417,9 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`interactive-workspace-performance.yml`](../../.github/workflows/interactive-workspace-performance.yml) | Interactive Workspace Performance | **Tool: Interactive workspace performance** | manual dispatch. |
 | [`internal-testflight.yml`](../../.github/workflows/internal-testflight.yml) | Internal iOS TestFlight cohort | **Release: Internal TestFlight cohort** | manual dispatch. |
 | [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
-| [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new issue comments. |
+| [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new comments on issues (pull-request comments skip at job level). |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
-| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`. |
+| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`, filtered to runs on `main`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | main pushes (source qualification only); UTC schedule: `17 */6 * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic (manual): Merge integration** | manual full-corpus diagnosis, never a required check; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
@@ -435,7 +435,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`pr-duplicate-sweep.yml`](../../.github/workflows/pr-duplicate-sweep.yml) | PR duplicate sweep | **Repo: Duplicate sweep** | UTC schedule: `27 */6 * * *`; manual dispatch. |
 | [`publish-packages.yml`](../../.github/workflows/publish-packages.yml) | Publish Packages | **Main: Publish packages** | main pushes; manual dispatch. |
 | [`publish-release.yml`](../../.github/workflows/publish-release.yml) | Publish Station release | **Release: Publish** | manual dispatch. |
-| [`qualification-after-repair.yml`](../../.github/workflows/qualification-after-repair.yml) | Qualify landed repair | **Main: Qualify landed repair** | after `PR: CI`. |
+| [`qualification-after-repair.yml`](../../.github/workflows/qualification-after-repair.yml) | Qualify landed repair | **Main: Qualify landed repair** | after `PR: CI` runs on `main`. |
 | [`qualification-repair.yml`](../../.github/workflows/qualification-repair.yml) | Qualification repair | **Main: Qualification repair** | after `Main: Qualification`; manual dispatch. |
 | [`recover-terminal-capacity-owner.yml`](../../.github/workflows/recover-terminal-capacity-owner.yml) | Recover terminal physical-host capacity owner | **Tool: Recover terminal capacity owner** | manual dispatch. |
 | [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Beta/Stable TestFlight. |

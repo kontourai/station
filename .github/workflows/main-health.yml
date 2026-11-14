@@ -23,6 +23,11 @@ on:
       # a push run that skipped its build never closes the tracker.
       - "PR: iOS build"
     types: [completed]
+    # Both jobs act only on runs whose head branch is main; this filter stops
+    # pull-request and merge-group runs from starting a run that only skips.
+    # A workflow_run branch filter matches the triggering run's head branch,
+    # the same field the job guards read.
+    branches: [main]
 
 permissions:
   # `actions: read` is what listJobsForWorkflowRun needs. Both jobs call it —
