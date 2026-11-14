@@ -4,7 +4,7 @@ import { networkInterfaces } from 'node:os';
 import { PassThrough } from 'node:stream';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
-import { createLogger, installLoggerLineSink } from '../../utils/logger.js';
+import * as loggerUtils from '../../utils/logger.js';
 import { CdpPipeTransport } from '../browser/cdp-pipe-transport.js';
 import { ChromiumServerHost } from '../browser/hosts/chromium-server-host.js';
 import { HtmlReplyPreview } from '../html-reply-preview.js';
@@ -13,7 +13,7 @@ const makeTempDir = trackTempDirs();
 
 /** Diagnostic-only observer: forwards real CDP calls and retains no page content. */
 function observePreviewPhases(caseOrdinal: number) {
-  const logger = createLogger({ name: 'preview-phase-diagnostic' });
+  const logger = loggerUtils.createLogger({ name: 'preview-phase-diagnostic' });
   const started = performance.now();
   const entries: Record<string, unknown>[] = [];
   const identities = new Map<string, string>();
@@ -193,7 +193,7 @@ function observePreviewPhases(caseOrdinal: number) {
         throw error;
       }
     });
-  installLoggerLineSink({
+  loggerUtils.installLoggerLineSink({
     writeLine(line) {
       const parsed: unknown = JSON.parse(line);
       if (!object(parsed) || !object(parsed.previewTerminalReceipt)) return;
@@ -203,7 +203,12 @@ function observePreviewPhases(caseOrdinal: number) {
         !/^[a-f0-9]{16}$/.test(terminal.attempt)
       )
         return;
-      if (!attemptBindings.has(terminal.attempt) && attemptBindings.size < 3)
+      if (
+        !attemptBindings.has(terminal.attempt) &&
+        terminal.late !== true &&
+        attemptBindings.size < 3 &&
+        attempts[renderCount - 1]?.state === 'STARTED'
+      )
         attemptBindings.set(terminal.attempt, renderCount - 1);
       const index = attemptBindings.get(terminal.attempt);
       if (index !== undefined && attempts[index])
@@ -267,7 +272,7 @@ function observePreviewPhases(caseOrdinal: number) {
       spy.mockRestore();
       renderSpy.mockRestore();
       for (const off of unsubscribe) off();
-      installLoggerLineSink(undefined);
+      loggerUtils.installLoggerLineSink(undefined);
       logger.info('HTML preview safe phase receipt', {
         previewPhaseReceipt: receipt(),
       });
@@ -283,6 +288,13 @@ function observePreviewPhases(caseOrdinal: number) {
 
 let caseOrdinal = 0;
 let activeObservation: ReturnType<typeof observePreviewPhases>;
+function observationReceipt() {
+  const error = new Error('diagnostic witness');
+  activeObservation.attachFailure(error);
+  return JSON.parse(
+    Object.getOwnPropertyDescriptor(error, 'previewPhaseReceipt')?.value,
+  );
+}
 beforeEach(() => {
   activeObservation = observePreviewPhases(++caseOrdinal);
 });
@@ -293,12 +305,57 @@ test('phase trace exhaustion retains real admission terminal facts and identity 
   const readable = new PassThrough();
   const transport = new CdpPipeTransport(writable, readable);
   try {
-    for (let i = 1; i <= 97; i++) {
+    const enable = transport.send('Page.enable');
+    readable.emit(
+      'data',
+      Buffer.from(JSON.stringify({ id: 1, result: {} }) + '\0'),
+    );
+    await enable;
+    const frame = (session: string, id: string, loaderId: string) =>
+      readable.emit(
+        'data',
+        Buffer.from(
+          JSON.stringify({
+            method: 'Page.frameNavigated',
+            sessionId: session,
+            params: { frame: { id, loaderId, url: 'about:blank' } },
+          }) + '\0',
+        ),
+      );
+    frame('s'.repeat(129), 'f'.repeat(129), 'l'.repeat(129));
+    expect(observationReceipt().entries.at(-1)).toMatchObject({
+      event: 'frame-navigated',
+      session: null,
+      frame: null,
+      loader: null,
+    });
+    for (let i = 0; i < 32; i++)
+      frame('secret-session-' + i, 'secret-frame-' + i, 'secret-loader-' + i);
+    expect(observationReceipt().entries[3]).toMatchObject({
+      session: expect.any(String),
+      frame: expect.any(String),
+      loader: expect.any(String),
+    });
+    frame(
+      'secret-session-overflow',
+      'secret-frame-overflow',
+      'secret-loader-overflow',
+    );
+    expect(observationReceipt().entries.at(-1)).toMatchObject({
+      event: 'frame-navigated',
+      session: null,
+      frame: null,
+      loader: null,
+    });
+    for (let i = 2; i <= 98; i++) {
       const pending = transport.send('Target.createTarget');
       readable.emit(
         'data',
         Buffer.from(
-          `${JSON.stringify({ id: i, result: { targetId: `secret-target-${i}` } })}\0`,
+          JSON.stringify({
+            id: i,
+            result: { targetId: 'secret-target-' + i },
+          }) + '\0',
         ),
       );
       await pending;
@@ -307,11 +364,7 @@ test('phase trace exhaustion retains real admission terminal facts and identity 
     await expect(
       service.render({ html: 'secret-authored', height: 400 }, 1, 'dark'),
     ).rejects.toThrow('width');
-    const error = new Error('diagnostic witness');
-    activeObservation.attachFailure(error);
-    const receipt = JSON.parse(
-      Object.getOwnPropertyDescriptor(error, 'previewPhaseReceipt')?.value,
-    );
+    const receipt = observationReceipt();
     expect(receipt.entries).toHaveLength(96);
     expect(
       receipt.entries.every(
@@ -325,12 +378,115 @@ test('phase trace exhaustion retains real admission terminal facts and identity 
     );
     expect(receipt.attempts[0].terminal.terminal.child).toBe('UNOBSERVED');
     expect(JSON.stringify(receipt)).not.toMatch(
-      /secret-target|secret-authored|"overflow"/,
+      /secret-(?:target|session|frame|loader|authored)|"overflow"/,
     );
   } finally {
     await transport.close();
   }
 });
+
+test.each([false, true])(
+  'keeper discards stale late receipts and requires an initial render receipt (omit=%s)',
+  async (omitInitial) => {
+    const service = new HtmlReplyPreview(
+      makeTempDir('html-preview-attribution-'),
+    );
+    for (let i = 0; i < 3; i++)
+      await expect(
+        service.render({ html: 'secret-authored', height: 400 }, 1, 'dark'),
+      ).rejects.toThrow('width');
+    const previous = observationReceipt().attempts.map(
+      (attempt: { terminal: unknown }) => attempt.terminal,
+    );
+    expect(previous).toHaveLength(3);
+    activeObservation.finish();
+
+    const productionRender = HtmlReplyPreview.prototype.render;
+    const originalInstall = loggerUtils.installLoggerLineSink;
+    const install = vi
+      .spyOn(loggerUtils, 'installLoggerLineSink')
+      .mockImplementation((sink) =>
+        originalInstall(
+          sink && {
+            writeLine(line) {
+              const parsed = JSON.parse(line);
+              if (
+                omitInitial &&
+                parsed.previewTerminalReceipt &&
+                parsed.previewTerminalReceipt.late !== true
+              )
+                return;
+              sink.writeLine(line);
+            },
+          },
+        ),
+      );
+    const logger = loggerUtils.createLogger({
+      name: 'preview-attribution-control',
+    });
+    const stale = previous.map((terminal: object) => ({
+      ...terminal,
+      late: true,
+    }));
+    let beforeInitial: unknown;
+    HtmlReplyPreview.prototype.render = function (
+      this: HtmlReplyPreview,
+      ...args: Parameters<HtmlReplyPreview['render']>
+    ) {
+      for (const terminal of stale)
+        logger.info('stale preview receipt control', {
+          previewTerminalReceipt: terminal,
+        });
+      beforeInitial = observationReceipt().attempts[0].terminal;
+      return productionRender.apply(this, args);
+    };
+    activeObservation = observePreviewPhases(++caseOrdinal);
+    try {
+      await expect(
+        service.render({ html: 'secret-authored', height: 400 }, 1, 'dark'),
+      ).rejects.toThrow('width');
+      expect(beforeInitial).toBeUndefined();
+      const current = observationReceipt().attempts[0].terminal;
+      if (omitInitial) {
+        expect(current).toBeUndefined();
+        expect(() => activeObservation.finish()).toThrow(
+          'every reached real render must emit a terminal receipt',
+        );
+      } else {
+        expect(current).toBeDefined();
+        expect(
+          previous.some(
+            (terminal: { attempt: string }) =>
+              terminal.attempt === current.attempt,
+          ),
+        ).toBe(false);
+        for (const terminal of stale)
+          logger.info('stale preview receipt control', {
+            previewTerminalReceipt: terminal,
+          });
+        expect(observationReceipt().attempts[0].terminal.attempt).toBe(
+          current.attempt,
+        );
+        logger.info('known late preview receipt control', {
+          previewTerminalReceipt: { ...current, late: true },
+        });
+        expect(observationReceipt().attempts[0].terminal).toMatchObject({
+          attempt: current.attempt,
+          late: true,
+        });
+        expect(() => activeObservation.finish()).not.toThrow();
+      }
+    } finally {
+      try {
+        activeObservation.finish();
+      } finally {
+        HtmlReplyPreview.prototype.render = productionRender;
+        install.mockRestore();
+        originalInstall(undefined);
+      }
+    }
+  },
+);
 
 test('Chromium preview returns PNG, measured height and console stacks inside the opaque page', async () => {
   const observation = activeObservation;

@@ -1202,7 +1202,22 @@ export class ChromiumServerHost implements BrowserHost {
         step: 'proxyClose',
         state: 'STARTED',
       });
-      void proxy.close();
+      void proxy.close().then(
+        () =>
+          this.reportDiagnostic({
+            type: 'step',
+            step: 'proxyClose',
+            state: 'RESOLVED',
+          }),
+        (error) => {
+          this.reportDiagnostic({
+            type: 'step',
+            step: 'proxyClose',
+            state: 'REJECTED',
+          });
+          throw error;
+        },
+      );
       this.markExited(reason);
     });
     try {

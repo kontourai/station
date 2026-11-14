@@ -2,6 +2,7 @@ import { rm } from 'node:fs/promises';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { installLoggerLineSink } from '../../utils/logger.js';
+import { BrowserEgressProxy } from '../browser/browser-egress-proxy.js';
 import type { CdpTransport } from '../browser/browser-host.js';
 import type { ChromiumServerHostOptions } from '../browser/hosts/chromium-server-host.js';
 
@@ -11,6 +12,7 @@ const probe = vi.hoisted(() => ({
   restrictive: false,
   cleanupFailure: false,
   flood: false,
+  exitDuringRender: false,
   late: undefined as (() => void) | undefined,
   cleanup: undefined as (() => Promise<void>) | undefined,
   removeProfile: undefined as (() => Promise<void>) | undefined,
@@ -21,6 +23,7 @@ beforeEach(() => {
   probe.restrictive = false;
   probe.cleanupFailure = false;
   probe.flood = false;
+  probe.exitDuringRender = false;
   probe.late = undefined;
 });
 vi.mock('../browser/chromium-acquisition.js', () => ({
@@ -125,6 +128,10 @@ vi.mock('../browser/hosts/chromium-server-host.js', async (importOriginal) => {
                 } as R;
               }
               probe.authored = true;
+              if (probe.exitDuringRender) {
+                resolveExit('fixture exited during render');
+                await exited;
+              }
               if (probe.flood) {
                 for (let i = 0; i < 65_600; i++)
                   for (const callback of listeners.get(
@@ -247,6 +254,72 @@ test('render keeps primary rejection separate from cleanup failure, late exit an
 import { HtmlReplyPreview } from '../html-reply-preview.js';
 
 const makeTempDir = trackTempDirs();
+test('render records exit-triggered proxy close settlement without waiting for it', async () => {
+  const lines: string[] = [];
+  installLoggerLineSink({ writeLine: (line) => lines.push(line) });
+  const originalClose = BrowserEgressProxy.prototype.close;
+  let releaseClose!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    releaseClose = resolve;
+  });
+  let closing: Promise<void> | undefined;
+  const close = vi
+    .spyOn(BrowserEgressProxy.prototype, 'close')
+    .mockImplementation(function (this: BrowserEgressProxy) {
+      closing = (async () => {
+        await gate;
+        await originalClose.call(this);
+      })();
+      return closing;
+    });
+  probe.restrictive = true;
+  probe.exitDuringRender = true;
+  const receipts = () =>
+    lines
+      .map((line) => JSON.parse(line))
+      .filter((line) => line.previewTerminalReceipt)
+      .map((line) => line.previewTerminalReceipt);
+  try {
+    const service = new HtmlReplyPreview(
+      makeTempDir('html-preview-exit-close-'),
+    );
+    await expect(
+      service.render(
+        { html: 'secret-authored-canary', height: 400 },
+        800,
+        'dark',
+      ),
+    ).rejects.toThrow('Authored content reached an unverified browser');
+    expect(probe.authored).toBe(true);
+    expect(close).toHaveBeenCalledTimes(1);
+    const initial = receipts()[0];
+    expect(initial.terminal.phases).toMatchObject({
+      proxyClose: 'STARTED',
+      browserClose: 'NOT_REACHED',
+      terminate: 'NOT_REACHED',
+      shutdown: 'RESOLVED',
+    });
+    releaseClose();
+    await closing;
+    const settled = receipts().at(-1);
+    expect(settled.attempt).toBe(initial.attempt);
+    expect(settled.late).toBe(true);
+    expect(settled.terminal.phases.proxyClose).toBe('RESOLVED');
+    expect(initial.terminal.phases.proxyClose).toBe('STARTED');
+  } finally {
+    releaseClose();
+    try {
+      await closing;
+    } finally {
+      close.mockRestore();
+      probe.exitDuringRender = false;
+      await probe.cleanup?.();
+      await probe.removeProfile?.();
+      installLoggerLineSink(undefined);
+    }
+  }
+});
+
 test('preview refuses a managed effective-policy override before author code and reports the fixed refusal', async () => {
   const lines: string[] = [];
   installLoggerLineSink({ writeLine: (line) => lines.push(line) });
