@@ -400,8 +400,11 @@ unit must be exactly `changeset version` on its starting tree:
   `.changeset/`, and does not edit the contract's owners
   (`release-versioning-review.mjs`, `scripts/changeset-changelog.mjs`,
   `.changeset/config.json`). Every note must parse and name only workspace
-  packages. Pre mode, a non-empty `ignore` list and workspace globs are not
-  reproduced and recognise nothing.
+  packages. Only the dependency-update rules of
+  `updateInternalDependencies: "patch"` with
+  `onlyUpdatePeerDependentsWhenOutOfRange` and
+  `bumpVersionsWithWorkspaceProtocolOnly` off are reproduced; any other value,
+  pre mode, a non-empty `ignore` list and workspace globs recognise nothing.
 - The expected versions come from changesets' own planner
   (`@changesets/assemble-release-plan`) fed the starting tree's workspace
   manifests, config and notes, read from Git.
@@ -414,17 +417,27 @@ line (old to planned version) and dependency lines of versioned packages
 (same `^`, `~` or exact operator, planned version) change, byte for byte. Any
 other byte, including reformatting, reordered keys or a duplicate key, is
 refused. A `historical` record's own `CHANGELOG.md` needs no note when the
-change adds exactly one `## <planned version>` section above the unchanged
-older entries, and that section holds exactly the planned notes for the
-package under their bump types, plus dependency-update lines naming planned
-packages at their planned versions (`No changes in this release.` only when
-the plan gives it no note). A value citation such as `package.json#/version`
+change adds, above the unchanged older entries, exactly the section the CLI
+writes for that release, rebuilt from the plan and the notes: `## <planned
+version>`, then `### Major`, `Minor` and `Patch Changes` blocks holding each
+planned note naming the package, in the CLI's sorted file order, as
+`- <first 7 characters of the commit that added the note>: <summary>` (no
+prefix when no commit added it; a shallow checkout that cannot resolve the
+commit recognises nothing) with its later lines indented two spaces; and,
+last in the patch block, one `- Updated dependencies [<commit>]` line per note
+of the dependencies the CLI updates, followed by `  - <name>@<planned version>`
+for exactly those dependencies (only the list, its first item unindented, when
+they have no notes). `No changes in this release.` stands alone when none of
+this applies. The only tolerance is trailing whitespace on each line, kept
+while version PRs generated before `scripts/changeset-changelog.mjs` remain
+open. A value citation such as `package.json#/version`
 or a dependency range, an uncommitted edit, and every other document still
 need a note. There is no actor check: a human PR that produces the same
 output is treated the same way. A landed release is recognised in history
-only when its landing commit is exactly that operation on its parent; a
-release that landed after newer notes reached `main` is reported as needing
-review. The contract proves where the changelog text came from, not that the
+only when its landing commit is exactly that operation on its parent. A
+release that landed after newer notes reached `main`, or that consumed notes
+changesets would have kept (such as notes naming a then-private package), is
+reported as needing review. The contract proves where the changelog text came from, not that the
 notes are accurate or that anything was published.
 New generated owners need their own reviewed contract and refusal tests;
 `kind: generated` alone never exempts a file.

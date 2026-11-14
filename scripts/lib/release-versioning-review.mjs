@@ -24,6 +24,8 @@ import assembleReleasePlan from '@changesets/assemble-release-plan';
 import { validateConfig } from '@changesets/config';
 import { parseChangesetFile } from '@changesets/parse';
 import { shouldSkipPackage } from '@changesets/should-skip-package';
+import semverSatisfies from 'semver/functions/satisfies.js';
+import validRange from 'semver/ranges/valid.js';
 import { parse as parseYaml } from 'yaml';
 import { execFileSyncBounded } from './bounded-capture.mjs';
 import { readGitObjects } from './review-git.mjs';
@@ -48,10 +50,6 @@ const VERSION_LINE = /^( {2})"version": "([^"\\]*)"(,?)$/;
 const DEPENDENCY_LINE_TEXT = /^( {4})"([^"\\]+)": "([^"\\]*)"(,?)$/;
 const RANGE = /^([\^~]?)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
 const RELEASE_TYPES = ['major', 'minor', 'patch'];
-const RELEASE_HEADER = /^### (Major|Minor|Patch) Changes$/;
-const DEPENDENCY_LINE = /^Updated dependencies(?: \[[0-9a-f]{7}\])?$/;
-const DEPENDENCY_ITEM = /^- (.+)@([^@\s]+)$/;
-const COMMIT_PREFIX = /^[0-9a-f]{7}: /;
 const EMPTY = Object.freeze({ manifests: new Set(), changelogs: new Set() });
 const NOTHING_CONSUMED = Object.freeze({
   ...EMPTY,
@@ -137,7 +135,7 @@ function readWorkspace(read) {
  * The release plan `changeset version` would apply at the unit's start, or
  * undefined when this unit is not exactly that operation.
  */
-function planRelease({ changes, read, listBefore }) {
+function planRelease({ changes, read, listBefore, addedBy }) {
   if (
     changes.some(({ file }) => RELEASE_VERSIONING_OWNERS.includes(file)) ||
     changes.some(
@@ -151,7 +149,11 @@ function planRelease({ changes, read, listBefore }) {
         'the change edits a contract owner or a non-note .changeset file',
     };
   const listed = listBefore(CHANGESET_DIR);
-  const pending = listed.filter(isPendingChangesetNote);
+  // @changesets/read lists the directory through libuv's sorted scandir;
+  // that order is the order of the plan and of every changelog block.
+  const pending = listed
+    .filter(isPendingChangesetNote)
+    .sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
   const deleted = new Set(
     changes.filter(({ status }) => status === 'D').map(({ file }) => file),
   );
@@ -171,7 +173,16 @@ function planRelease({ changes, read, listBefore }) {
   if (!workspace || !configJson)
     return { refused: 'unreadable workspace or config' };
   const { config, errors } = validateConfig(configJson, workspace);
-  if (!config || errors?.length || config.ignore.length)
+  // Only the dependency-update rules of this config are reproduced.
+  if (
+    !config ||
+    errors?.length ||
+    config.ignore.length ||
+    config.updateInternalDependencies !== 'patch' ||
+    config.bumpVersionsWithWorkspaceProtocolOnly ||
+    config.___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH
+      ?.onlyUpdatePeerDependentsWhenOutOfRange !== false
+  )
     return { refused: 'unsupported changesets config' };
   const byName = new Map(
     workspace.packages.map((pkg) => [pkg.packageJson.name, pkg]),
@@ -199,6 +210,15 @@ function planRelease({ changes, read, listBefore }) {
       };
     notes.set(posix.basename(file).replace(/\.md$/, ''), note);
   }
+  // The commit each consumed note's changelog line names
+  // (@changesets/git getCommitsThatAddFiles on the starting tree).
+  const commits = new Map();
+  for (const file of pending) {
+    const commit = addedBy(file);
+    if (commit === null)
+      return { refused: 'a note’s adding commit cannot be resolved' };
+    if (commit) commits.set(posix.basename(file).replace(/\.md$/, ''), commit);
+  }
   let plan;
   try {
     plan = assembleReleasePlan(
@@ -215,7 +235,7 @@ function planRelease({ changes, read, listBefore }) {
   );
   if (![...releases.values()].some(({ type }) => type !== 'none'))
     return { refused: 'the plan versions nothing' };
-  return { workspace, releases, notes };
+  return { workspace, releases, notes, commits };
 }
 
 /**
@@ -276,59 +296,120 @@ function isPlannedManifest(beforeText, afterText, { release, releases }) {
   return edits > 0 && JSON.stringify(expected) === JSON.stringify(after);
 }
 
-/** Parse a generated release section into its typed blocks of entries. */
-function parseReleaseSection(body, version) {
-  const lines = body.split('\n');
-  if (lines[0] !== `## ${version}` || lines[1] !== '') return undefined;
-  if (lines.length === 3 && lines[2] === 'No changes in this release.')
-    return new Map();
-  const blocks = new Map();
-  let rank = -1;
-  let entries;
-  let entry;
-  for (let index = 2; index < lines.length; index += 1) {
-    const line = lines[index];
-    const header = RELEASE_HEADER.exec(line);
-    if (header) {
-      const type = header[1].toLowerCase();
-      const next = RELEASE_TYPES.indexOf(type);
-      if (next <= rank || lines[index + 1] !== '') return undefined;
-      if (index > 2) {
-        // Blocks are separated by exactly one blank line.
-        if (entry?.rest.at(-1) !== '') return undefined;
-        entry.rest.pop();
-      }
-      rank = next;
-      entries = [];
-      blocks.set(type, entries);
-      entry = undefined;
-      index += 1;
-      continue;
-    }
-    if (!entries) return undefined;
-    if (line.startsWith('- ')) {
-      entry = { first: line.slice(2).trimEnd(), rest: [] };
-      entries.push(entry);
-    } else if (!entry) return undefined;
-    else if (!line.trim()) entry.rest.push('');
-    else if (line.startsWith('  ')) entry.rest.push(line.slice(2).trimEnd());
-    else return undefined;
-  }
-  for (const block of blocks.values()) if (!block.length) return undefined;
-  if (entry && entry.rest.at(-1) === '') return undefined;
-  return blocks;
-}
-
-const sameLines = (a, b) =>
-  a.length === b.length && a.every((line, index) => line === b[index]);
+const BUMP_TYPES = ['none', 'patch', 'minor', 'major'];
 
 /**
- * Whether `after` is `before` with one new section for the planned version
- * prepended above its first version heading, and every entry in it is either
- * a planned note's summary for this package at its bump type or a
- * dependency-update line naming planned packages at their new versions.
+ * `shouldUpdateDependencyBasedOnConfig` from @changesets/assemble-release-plan
+ * for the only supported config (`updateInternalDependencies: "patch"`,
+ * `onlyUpdatePeerDependentsWhenOutOfRange: false`). Undefined means a
+ * `workspace:` path range this port does not reproduce.
  */
-function isGeneratedChangelog(before, after, { release, releases, notes }) {
+function dependencyUpdates(release, range, depType) {
+  if (release.newVersion == null) return false;
+  let checked = range;
+  if (checked.startsWith('workspace:')) {
+    checked = checked.slice('workspace:'.length);
+    if (checked === '*') return true;
+    if (checked === '^' || checked === '~')
+      checked = `${checked}${release.oldVersion}`;
+    else if (!validRange(checked)) return undefined;
+  }
+  if (!semverSatisfies(release.newVersion, checked)) return true;
+  if (depType === 'peerDependencies') return true;
+  return BUMP_TYPES.indexOf(release.type) >= BUMP_TYPES.indexOf('patch');
+}
+
+/** `generateMarkdownForVersionType` from @changesets/apply-release-plan. */
+function versionTypeBlock(type, lines) {
+  const releaseLines = lines.filter((line) => line);
+  if (!releaseLines.length) return undefined;
+  let content = `### ${type[0].toUpperCase()}${type.slice(1)} Changes`;
+  let newLines = 2;
+  for (const line of releaseLines) {
+    newLines += line.match(/^\n*/)?.[0].length ?? 0;
+    content += '\n'.repeat(Math.min(Math.max(newLines, 1), 2)) + line.trim();
+    newLines = line.match(/\n*$/)?.[0].length ?? 0;
+  }
+  return content;
+}
+
+/**
+ * The section `changeset version` writes for one release (`getChangelogEntry`
+ * with scripts/changeset-changelog.mjs). Every word comes from the planned
+ * notes, the plan and the notes' adding commits, so a mismatch in this port
+ * can only refuse output, never admit text that is not there.
+ */
+function expectedSection(release, { releases, notes, commits, packageJson }) {
+  const lines = { major: [], minor: [], patch: [] };
+  const short = (id) => commits.get(id)?.slice(0, 7);
+  for (const [id, note] of notes) {
+    const own = note.releases.find(({ name }) => name === release.name);
+    if (!own || own.type === 'none') continue;
+    const [first, ...rest] = note.summary.split('\n').map((l) => l.trimEnd());
+    let line = `- ${short(id) ? `${short(id)}: ` : ''}${first}`;
+    if (rest.length)
+      line += `\n${rest.map((l) => `  ${l}`.trimEnd()).join('\n')}`;
+    lines[own.type].push(line);
+  }
+  const dependents = [];
+  for (const dependency of releases.values()) {
+    const range =
+      packageJson.dependencies?.[dependency.name] ||
+      packageJson.peerDependencies?.[dependency.name];
+    if (
+      !range ||
+      (!range.startsWith('workspace:') && validRange(range) == null)
+    )
+      continue;
+    const updates = dependencyUpdates(
+      dependency,
+      range,
+      packageJson.dependencies?.[dependency.name]
+        ? 'dependencies'
+        : 'peerDependencies',
+    );
+    if (updates === undefined) return undefined;
+    if (updates) dependents.push(dependency);
+  }
+  if (dependents.length) {
+    const relevant = new Set(
+      dependents.flatMap(({ changesets }) => changesets),
+    );
+    lines.patch.push(
+      [
+        ...[...notes.keys()]
+          .filter((id) => relevant.has(id))
+          .map(
+            (id) =>
+              `- Updated dependencies${short(id) ? ` [${short(id)}]` : ''}`,
+          ),
+        ...dependents.map(
+          ({ name, newVersion }) => `  - ${name}@${newVersion}`,
+        ),
+      ].join('\n'),
+    );
+  }
+  const rendered = [
+    `## ${release.newVersion}`,
+    ...RELEASE_TYPES.map((type) => versionTypeBlock(type, lines[type])),
+  ].filter((line) => line);
+  if (rendered.length === 1) rendered.push('No changes in this release.');
+  return rendered.join('\n\n');
+}
+
+// Trailing whitespace is tolerated only because version PRs generated before
+// scripts/changeset-changelog.mjs carry upstream's indented blank lines.
+const withoutTrailingWhitespace = (text) =>
+  text
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .join('\n');
+
+/**
+ * Whether `after` is `before` with exactly the expected section prepended
+ * above its first version heading, as `updateChangelog` writes it.
+ */
+function isGeneratedChangelog(before, after, expected) {
   if (before === undefined || after === undefined) return false;
   const start = before.search(/^#{1,6}\s+\d+\.\d+/m);
   if (start < 0) return false;
@@ -337,52 +418,11 @@ function isGeneratedChangelog(before, after, { release, releases, notes }) {
   if (
     after.length <= before.length ||
     !after.startsWith(prefix) ||
-    !after.endsWith(tail) ||
-    prefix.trim() !== `# ${release.name}`
+    !after.endsWith(tail)
   )
     return false;
   const section = after.slice(start, after.length - tail.length);
-  if (!section.endsWith('\n\n')) return false;
-  const blocks = parseReleaseSection(section.slice(0, -2), release.newVersion);
-  if (!blocks) return false;
-  const expected = release.changesets
-    .map((id) => notes.get(id))
-    .map((note) => ({
-      type: note?.releases.find(({ name }) => name === release.name)?.type,
-      summary: (note?.summary ?? '').split('\n').map((line) => line.trimEnd()),
-    }))
-    .filter(({ type }) => RELEASE_TYPES.includes(type));
-  const used = new Set();
-  for (const [type, entries] of blocks)
-    for (const entry of entries) {
-      const index = expected.findIndex(
-        (candidate, position) =>
-          !used.has(position) &&
-          candidate.type === type &&
-          [entry.first, entry.first.replace(COMMIT_PREFIX, '')].some((first) =>
-            sameLines(candidate.summary, [first, ...entry.rest]),
-          ),
-      );
-      if (index >= 0) {
-        used.add(index);
-        continue;
-      }
-      if (type !== 'patch') return false;
-      // With no dependency notes upstream writes only the list, and the
-      // block's trim takes the first item's indent.
-      const items = DEPENDENCY_LINE.test(entry.first)
-        ? entry.rest
-        : [`- ${entry.first}`, ...entry.rest];
-      for (const item of items) {
-        const dependency = DEPENDENCY_ITEM.exec(item);
-        if (
-          !dependency ||
-          releases.get(dependency[1])?.newVersion !== dependency[2]
-        )
-          return false;
-      }
-    }
-  return used.size === expected.length;
+  return withoutTrailingWhitespace(section) === `${expected}\n\n`;
 }
 
 /**
@@ -391,19 +431,27 @@ function isGeneratedChangelog(before, after, { release, releases, notes }) {
  *   changes: { status: string, file: string }[],
  *   read: (side: 'before' | 'after', file: string) => Buffer | string | undefined,
  *   listBefore: (dir: string) => string[],
- * }} unit `listBefore` lists tracked files under a directory at the start.
+ *   addedBy: (file: string) => string | undefined | null,
+ * }} unit `listBefore` lists tracked files under a directory at the start;
+ * `addedBy` gives the full hash of the commit that added a note (undefined
+ * when none, null when it cannot be resolved as the CLI would).
  * @returns {{ manifests: Set<string>, changelogs: Set<string>, refused?: string }}
  */
-export function releaseVersioningOutputs({ changes, read, listBefore }) {
+export function releaseVersioningOutputs({
+  changes,
+  read,
+  listBefore,
+  addedBy,
+}) {
   if (
     !changes.some(
       ({ status, file }) => status === 'D' && isPendingChangesetNote(file),
     )
   )
     return NOTHING_CONSUMED;
-  const planned = planRelease({ changes, read, listBefore });
+  const planned = planRelease({ changes, read, listBefore, addedBy });
   if (planned.refused) return { ...EMPTY, refused: planned.refused };
-  const { workspace, releases, notes } = planned;
+  const { workspace, releases, notes, commits } = planned;
   const byDir = new Map(
     workspace.packages.map((pkg) => [pkg.relativeDir, pkg.packageJson.name]),
   );
@@ -429,11 +477,20 @@ export function releaseVersioningOutputs({ changes, read, listBefore }) {
     } else if (base === 'CHANGELOG.md') {
       const release = releases.get(byDir.get(dir));
       if (!release || release.type === 'none') continue;
+      const expected = expectedSection(release, {
+        releases,
+        notes,
+        commits,
+        packageJson: workspace.packages.find(
+          (pkg) => pkg.packageJson.name === release.name,
+        ).packageJson,
+      });
       if (
+        expected !== undefined &&
         isGeneratedChangelog(
           decode(read('before', file)),
           decode(read('after', file)),
-          { release, releases, notes },
+          expected,
         )
       )
         changelogs.add(file);
@@ -477,5 +534,31 @@ export function releaseVersioningOutputsBetween(root, before, after, changes) {
     )
       .split('\0')
       .filter(Boolean);
-  return releaseVersioningOutputs({ changes, read, listBefore });
+  const git = (args) =>
+    execFileSyncBounded('git', args, {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  // The CLI deepens a shallow clone to find a root-less adding commit; a
+  // shallow checkout here cannot, so such a note is unresolvable.
+  const shallow =
+    git(['rev-parse', '--is-shallow-repository']).trim() === 'true';
+  const addedBy = (file) => {
+    const [commit, parent] = git([
+      'log',
+      '--diff-filter=AC',
+      '--follow',
+      '--max-count=1',
+      '--pretty=format:%H:%p',
+      before,
+      '--',
+      file,
+    ])
+      .trim()
+      .split(':');
+    if (!commit) return undefined;
+    return !parent && shallow ? null : commit;
+  };
+  return releaseVersioningOutputs({ changes, read, listBefore, addedBy });
 }

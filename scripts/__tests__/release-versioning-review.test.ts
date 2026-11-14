@@ -64,7 +64,20 @@ const PKG_AFTER = json({
 type Files = Record<string, string | undefined>;
 
 /** One `changeset version` unit over a two-package workspace. */
-function unit(overrides: { before?: Files; after?: Files } = {}) {
+// The commits that added each note, as `git log --diff-filter=AC` names them.
+const ADDED_BY: Record<string, string | undefined | null> = {
+  '.changeset/one.md': `abc1234${'0'.repeat(33)}`,
+  '.changeset/two.md': `def5678${'0'.repeat(33)}`,
+  '.changeset/three.md': `aaa1111${'0'.repeat(33)}`,
+};
+
+function unit(
+  overrides: {
+    before?: Files;
+    after?: Files;
+    addedBy?: Record<string, string | undefined | null>;
+  } = {},
+) {
   const before: Files = {
     'package.json': json({ name: 'root', private: true }),
     'pnpm-workspace.yaml': WORKSPACE,
@@ -107,6 +120,7 @@ function unit(overrides: { before?: Files; after?: Files } = {}) {
       Object.keys(before).filter(
         (file) => file.startsWith(dir) && before[file] !== undefined,
       ),
+    addedBy: (file: string) => ({ ...ADDED_BY, ...overrides.addedBy })[file],
   });
   return {
     manifests: [...result.manifests].sort(),
@@ -275,6 +289,132 @@ describe('release-versioning output contract', () => {
       },
     });
     expect(result).toEqual({ ...ALL, refused: undefined });
+  });
+
+  it('recognises nothing under a config whose range rules are not reproduced', () => {
+    const configs: [string, Record<string, unknown>][] = [
+      [
+        'updateInternalDependencies minor',
+        { updateInternalDependencies: 'minor' },
+      ],
+      [
+        'onlyUpdatePeerDependentsWhenOutOfRange',
+        {
+          ___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH: {
+            onlyUpdatePeerDependentsWhenOutOfRange: true,
+          },
+        },
+      ],
+      [
+        'bumpVersionsWithWorkspaceProtocolOnly',
+        { bumpVersionsWithWorkspaceProtocolOnly: true },
+      ],
+    ];
+    for (const [label, change] of configs)
+      expect(
+        unit({
+          before: {
+            '.changeset/config.json': json({
+              ...JSON.parse(CONFIG),
+              ...change,
+            }),
+          },
+        }),
+        label,
+      ).toEqual(refused(/unsupported changesets config/));
+  });
+
+  it('keeps a note’s own heading indented, as the CLI writes it', () => {
+    const note =
+      '---\n"@x/pkg": minor\n---\n\nAdd a thing.\n\n## 9.9.9\n\nMore.\n';
+    const section = (heading: string) =>
+      `## 1.1.0\n\n### Minor Changes\n\n- abc1234: Add a thing.\n\n${heading}\n\n  More.\n\n### Patch Changes\n\n- Updated dependencies [def5678]\n  - @x/dep@1.0.1\n\n`;
+    const attempt = (heading: string) =>
+      unit({
+        before: { '.changeset/one.md': note },
+        after: {
+          'packages/pkg/CHANGELOG.md': prepend('@x/pkg', section(heading)),
+        },
+      });
+    expect(attempt('  ## 9.9.9')).toEqual({ ...ALL, refused: undefined });
+    // Unindented, the note line would read as a second release section.
+    expect(attempt('## 9.9.9')).toEqual(
+      refused(/@x\/pkg is missing its exact planned/),
+    );
+  });
+
+  it('requires each entry’s commit prefix to name the commit that added its note', () => {
+    const PKG_CHANGELOG = prepend('@x/pkg', PKG_SECTION);
+    expect(
+      unit({
+        after: {
+          'packages/pkg/CHANGELOG.md': PKG_CHANGELOG.replace(
+            'abc1234',
+            '0000000',
+          ),
+        },
+      }),
+    ).toEqual(refused(/@x\/pkg is missing its exact planned/));
+    // A note no commit added gets no prefix, as the CLI writes it.
+    const unprefixed = {
+      'packages/pkg/CHANGELOG.md': PKG_CHANGELOG.replace('abc1234: ', ''),
+    };
+    expect(
+      unit({ after: unprefixed, addedBy: { '.changeset/one.md': undefined } }),
+    ).toEqual({
+      ...ALL,
+      refused: undefined,
+    });
+    expect(unit({ after: unprefixed })).toEqual(refused(/@x\/pkg is missing/));
+    expect(unit({ addedBy: { '.changeset/one.md': null } })).toEqual(
+      refused(/adding commit cannot be resolved/),
+    );
+  });
+
+  it('requires entries in the order the CLI emits them and only the dependents the plan gives', () => {
+    const three = '---\n"@x/dep": patch\n---\n\nSecond dep fix.\n';
+    const depSection = (entries: string) =>
+      `## 1.0.1\n\n### Patch Changes\n\n${entries}\n\n`;
+    const pkgSection = PKG_SECTION.replace(
+      '- Updated dependencies [def5678]',
+      '- Updated dependencies [def5678]\n- Updated dependencies [aaa1111]',
+    );
+    // Notes are read in sorted file order: one, three, two; this is the
+    // wrong (unsorted) dependency link order.
+    const ordered = '- aaa1111: Second dep fix.\n- def5678: Fix the dep.';
+    const pkgOrdered = PKG_SECTION.replace(
+      '- Updated dependencies [def5678]',
+      '- Updated dependencies [aaa1111]\n- Updated dependencies [def5678]',
+    );
+    const attempt = (depEntries: string, pkg = pkgOrdered) =>
+      unit({
+        before: { '.changeset/three.md': three },
+        after: {
+          '.changeset/three.md': undefined,
+          'packages/dep/CHANGELOG.md': prepend(
+            '@x/dep',
+            depSection(depEntries),
+          ),
+          'packages/pkg/CHANGELOG.md': prepend('@x/pkg', pkg),
+        },
+      });
+    expect(attempt(ordered)).toEqual({ ...ALL, refused: undefined });
+    expect(
+      attempt('- def5678: Fix the dep.\n- aaa1111: Second dep fix.'),
+    ).toEqual(refused(/@x\/dep is missing/));
+    expect(attempt(ordered, pkgSection)).toEqual(refused(/@x\/pkg is missing/));
+    expect(attempt(`${ordered}\n- @x/pkg@1.1.0`)).toEqual(
+      refused(/@x\/dep is missing/),
+    );
+    expect(
+      attempt(
+        ordered,
+        pkgOrdered.replace(
+          '  - @x/dep@1.0.1',
+          '  - @x/dep@1.0.1\n  - @x/pkg@1.1.0',
+        ),
+      ),
+    ).toEqual(refused(/@x\/pkg is missing/));
   });
 
   it('requires a note for a skipped private package to be kept, as changesets keeps it', () => {
