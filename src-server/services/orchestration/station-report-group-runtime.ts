@@ -245,6 +245,8 @@ export class StationReportGroupRuntime {
       home,
       owners.runtime.environmentSecurityService,
       sourcesRoot,
+      undefined,
+      owners.runtime.canonicalLocalGrantOrigin,
     );
     this.#sources = sources;
     const wireIntents = new FileFinalWireIntentStore(root);

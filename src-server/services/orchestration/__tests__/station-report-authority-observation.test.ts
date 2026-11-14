@@ -9,14 +9,21 @@ import {
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { ProviderCredentialObservationStore } from '../../../runtime/conversation/provider-credential-observation.js';
 import {
+  bindRuntimeLocalOperator,
+  getRuntimeAuthenticatedRequestPrincipal,
+  setRuntimeAuthenticatedRequestPrincipal,
+} from '../../../security/runtime-request-security.js';
+import {
   ProjectBindingsStore,
   projectBindingStorePath,
 } from '../../projects/project-binding-store.js';
 import { projectManifestPath } from '../../projects/project-manifest-store.js';
+import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
 import {
   type HomeWriterLease,
   HomeWriterOwner,
 } from '../../ssh/home-writer-owner.js';
+import { LocalSourceAdmissionOwner } from '../delegation-group-source-admission.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -78,6 +85,13 @@ test('a prepared report remains readable before its deadline and refuses at the 
 
 test('the Flow source admission guard uses one home hold and refuses authority changed before the next check', async () => {
   const f = await fixture();
+  f.owner = new LocalSourceAdmissionOwner(
+    f.home,
+    f.environment,
+    f.store,
+    undefined,
+    f.environment.canonicalLocalGrantOrigin(),
+  );
   const run = await createReportFlow(f, 'coherent-flow-check', [
     { id: 'left' },
   ]);
@@ -92,6 +106,14 @@ test('the Flow source admission guard uses one home hold and refuses authority c
     captured.capability,
     run.runId,
   );
+  const open = fs.openSync;
+  let tokenOpens = 0;
+  const openObserver = vi
+    .spyOn(fs, 'openSync')
+    .mockImplementation((...args) => {
+      if (String(args[0]).includes('.home-writer.mutation')) tokenOpens++;
+      return open(...args);
+    });
   const link = fs.linkSync;
   let holds = 0;
   const observe = vi.spyOn(fs, 'linkSync').mockImplementation((from, to) => {
@@ -102,6 +124,11 @@ test('the Flow source admission guard uses one home hold and refuses authority c
   syncBuiltinESMExports();
   try {
     flow.assertCurrent();
+    assert.ok(tokenOpens > 0, 'observe the real Home inspection path');
+    assert.ok(
+      tokenOpens <= 46,
+      `source Flow guard inspected Home ${tokenOpens} times; fallback baseline was 47`,
+    );
     assert.equal(holds, 1);
     f.environment.devicePairing.revokeDevice(
       f.paired.device.id,
@@ -111,11 +138,51 @@ test('the Flow source admission guard uses one home hold and refuses authority c
       code: 'authorization_unavailable',
     });
   } finally {
+    openObserver.mockRestore();
     observe.mockRestore();
     syncBuiltinESMExports();
     f.owner.releaseSnapshot(captured.capability);
   }
 });
+
+test.each(['GET', 'POST'] as const)(
+  'source request authority rejects a foreign canonical owner for %s',
+  async (method) => {
+    const f = await fixture();
+    const principal = getRuntimeAuthenticatedRequestPrincipal(f.req);
+    assert.ok(principal?.kind === 'credential');
+    const request = new Request(
+      `http://127.0.0.1:43979/api/orchestration/${method === 'GET' ? 'sessions' : 'chat'}`,
+      { method },
+    );
+    setRuntimeAuthenticatedRequestPrincipal(request, principal);
+    bindRuntimeLocalOperator(request);
+    const owner = new LocalSourceAdmissionOwner(
+      f.home,
+      f.environment,
+      f.store,
+      undefined,
+      f.environment.canonicalLocalGrantOrigin(),
+    );
+    const authority = await owner.captureRequestAuthority(f.context(request));
+    const otherEnvironment = new EnvironmentSecurityService({
+      homeDir: f.home,
+    });
+    await otherEnvironment.initialize();
+    const foreign = new LocalSourceAdmissionOwner(
+      f.home,
+      f.environment,
+      f.store,
+      undefined,
+      otherEnvironment.canonicalLocalGrantOrigin(),
+    );
+    assert.doesNotThrow(authority.assertCurrent);
+    await assert.rejects(foreign.captureRequestAuthority(f.context(request)), {
+      code: 'authorization_unavailable',
+    });
+    assert.doesNotThrow(authority.assertCurrent);
+  },
+);
 
 test('the response authorizer shares one home hold and refuses revocation on the next call', async () => {
   const h = await setup();

@@ -96,6 +96,7 @@ export class DelegationGroupRuntime {
         owners.runtime.environmentSecurityService,
         sources,
         owners.stationControl,
+        owners.runtime.canonicalLocalGrantOrigin,
       ),
       qualification: createSealedProviderPreparation,
       rawFetch: owners.rawFetch,

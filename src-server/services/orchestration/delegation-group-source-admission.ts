@@ -67,7 +67,10 @@ import { ProjectManifestStore } from '../projects/project-manifest-store.js';
 import { ProjectMembershipService } from '../projects/project-membership-service.js';
 import { ProjectResourceResolver } from '../projects/project-resource-resolver.js';
 import { ProjectService } from '../projects/project-service.js';
-import { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
+import {
+  type CanonicalLocalGrantOrigin,
+  EnvironmentSecurityService,
+} from '../ssh/environment-security-service.js';
 import type {
   HomeWriterLease,
   HomeWriterOwner,
@@ -647,6 +650,7 @@ export class LocalSourceAdmissionOwner {
   readonly #prepared = new Map<object, PreparedState>();
   #pendingSeals = 0;
   readonly #environment: EnvironmentSecurityService;
+  readonly #canonicalLocalGrantOrigin?: CanonicalLocalGrantOrigin;
   readonly #personal = createPersonalRuntimeRequestGuard();
   readonly #home: string;
   readonly #store: string;
@@ -670,8 +674,10 @@ export class LocalSourceAdmissionOwner {
       membership: ProjectMembershipService;
       coordinatorEnabled(): boolean;
     },
+    canonicalLocalGrantOrigin?: CanonicalLocalGrantOrigin,
   ) {
     this.#environment = environment;
+    this.#canonicalLocalGrantOrigin = canonicalLocalGrantOrigin;
     this.#stationControl = stationControl;
     this.#home = realpathSync(home);
     this.#store = realpathSync(store);
@@ -910,12 +916,16 @@ export class LocalSourceAdmissionOwner {
               request,
               this.#environment,
               this.#environment,
+              undefined,
+              this.#canonicalLocalGrantOrigin,
             )
           ).requireCurrentLocalGrant(request)
         : await captureEnvironmentLocalGrantReadOwner(
             request,
             this.#environment,
             this.#environment,
+            undefined,
+            this.#canonicalLocalGrantOrigin,
           ).then((read) => ({
             ...read,
             privateHostContextWitness:

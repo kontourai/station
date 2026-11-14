@@ -173,6 +173,8 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
     h.f.home,
     h.f.environment,
     sourcesRoot,
+    undefined,
+    h.preparationOwners.runtime.canonicalLocalGrantOrigin,
   );
   h.preparationOwners.sources = h.f.owner;
   h.owner = new StationReportGroupPreparation(h.preparationOwners);
