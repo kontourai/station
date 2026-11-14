@@ -10,7 +10,7 @@ import {
   partialHistoryReplayTape,
 } from './fixtures/chat-replay-scenarios';
 import { seedMobileTaskSwitcher } from './helpers/chat-shell-fixture';
-import { test } from './helpers/fixture-audit';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { dismissSetupLauncher } from './helpers/orchestration';
 import { inspectReplayStep } from './helpers/replay-inspector';
 
@@ -19,12 +19,58 @@ const json = (body: unknown) => ({
   contentType: 'application/json',
   body: JSON.stringify(body),
 });
+// Replay needs the account-scoped developer opt-in and declares its idle shell reads.
+async function seedReplayShell(page: Page) {
+  await seedMobileTaskSwitcher(page);
+  await page.route('**/api/me/preferences*', async (route) => {
+    if (route.request().method() !== 'GET')
+      return rejectUnexpectedFixtureRequest(route);
+    await route.fulfill(
+      json({
+        success: true,
+        data: {
+          schemaVersion: 1,
+          revision: 'replay-fixture',
+          values: { developerToolsEnabled: true },
+        },
+      }),
+    );
+  });
+  await page.route(
+    /\/api\/(?:orchestration\/agent-schedule\/conv-running|orchestration\/sessions\/(?:conv-running|conv-review|delegated-review)\/event-window|projects\/default\/chat-defaults|terminal\/runs)(?:\?.*)?$/,
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/chat-defaults'))
+        return route.fulfill({
+          status: 404,
+          json: {
+            success: false,
+            error: 'No Project defaults in replay fixture',
+          },
+        });
+      const data = path.endsWith('/event-window')
+        ? {
+            protocolVersion: 1,
+            session: { model: 'model-selected' },
+            events: [],
+            nextSequence: 0,
+            hasMore: false,
+          }
+        : path.endsWith('/terminal/runs')
+          ? { runs: [] }
+          : { wakeUps: [], jobProposals: [], jobs: [] };
+      await route.fulfill(json({ success: true, data }));
+    },
+  );
+}
 test.use({ video: 'on' });
 test('replay correlates each event with the real mobile transcript and a screenshot', async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await seedMobileTaskSwitcher(page);
+  await seedReplayShell(page);
   await page.addInitScript(() => {
     localStorage.setItem(
       'station-device-settings-v1',
@@ -132,7 +178,7 @@ test('replay correlates each event with the real mobile transcript and a screens
 
 async function openReplayScenario(page: Page, tape: SessionTape) {
   await page.setViewportSize({ width: 390, height: 844 });
-  await seedMobileTaskSwitcher(page);
+  await seedReplayShell(page);
   await page.addInitScript(() =>
     localStorage.setItem(
       'station-device-settings-v1',
@@ -174,20 +220,26 @@ test.describe('replay state coverage', () => {
         );
       if ('tools' in scenario) {
         expect(observation?.streaming.toolCallCount).toBe(scenario.tools);
-        // The summary stays an inventory; each running call (up to two,
-        // then "+N more") has its own highlighted row under it.
+        // The summary names the active inventory; up to two calls have rows.
         await expect(transcript.locator('.tool-call-batch__label')).toHaveText(
-          `${scenario.tools} file reads`,
+          `${scenario.tools} file reads · ${scenario.tools} running`,
         );
         await expect(
           transcript.locator(
             '.tool-call-batch__slot[data-open="true"] .tool-call__label--active',
           ),
         ).toHaveCount(Math.min(scenario.tools!, 2));
-        await expect(transcript.locator('.streaming-activity')).toHaveCount(0);
+        await expect(transcript.locator('.streaming-activity')).toHaveCount(1);
+        await expect(transcript.locator('.streaming-activity')).toContainText(
+          'Working for 1m 5s',
+        );
       }
-      if (scenario.name === 'partial answer still running')
-        await expect(transcript.locator('.streaming-activity')).toHaveCount(0);
+      if (scenario.name === 'partial answer still running') {
+        await expect(transcript.locator('.streaming-activity')).toHaveCount(1);
+        await expect(transcript.locator('.streaming-activity')).toContainText(
+          'Working for 42s',
+        );
+      }
       expect(
         await transcript.evaluate(
           (element) => element.scrollWidth <= element.clientWidth + 1,
@@ -398,7 +450,7 @@ test.describe('replay state coverage', () => {
         );
       expect(durations.length).toBe(3);
       expect(durations.every((duration) => duration <= 0.01)).toBe(true);
-      await expect(page.locator('.elapsed-wait')).toContainText('0:28');
+      await expect(page.locator('.elapsed-wait')).toContainText('28s');
     });
   }
 });

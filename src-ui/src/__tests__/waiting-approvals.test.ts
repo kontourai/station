@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   chatWaitsOnUser,
+  requestAttentionKind,
   requestsWaitingOnUser,
 } from '../utils/waiting-approvals';
 
@@ -58,4 +59,21 @@ describe('chatWaitsOnUser', () => {
   test('is false for an idle chat', () => {
     expect(chatWaitsOnUser({ orchestrationStatus: 'idle' })).toBe(false);
   });
+});
+
+test('request attention distinguishes input, gives permissions priority, and subtracts answered requests', () => {
+  const chat = {
+    pendingApprovals: ['q', 'p'],
+    pendingRequestKinds: { q: 'input' as const, p: 'approval' as const },
+  };
+  expect(requestAttentionKind(chat)).toBe('approval');
+  expect(requestAttentionKind({ ...chat, answeredApprovals: ['p'] })).toBe(
+    'answer',
+  );
+  expect(
+    requestAttentionKind({ ...chat, answeredApprovals: ['p', 'q'] }),
+  ).toBeUndefined();
+  expect(requestAttentionKind({ pendingApprovals: ['legacy'] })).toBe(
+    'approval',
+  );
 });

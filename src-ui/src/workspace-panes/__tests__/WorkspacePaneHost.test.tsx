@@ -831,7 +831,8 @@ test('resizing keeps ratios live but defers storage and parent publication until
       frames.push(callback);
       return frames.length;
     });
-  vi.useFakeTimers();
+  // Only the persistence debounce is virtual; leave DOM focus fixup live.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   try {
     const separator = screen.getByRole('separator', {
       name: 'Resize workspace pane groups',
@@ -1067,9 +1068,13 @@ test('pop-out retains a bounded failure and returns focus to the invoking comman
   });
   const command = screen.getByRole('menuitem', { name: 'Pop out pane' });
   command.focus();
+  expect(globalThis.document.activeElement).toBe(command);
   await act(async () => {
     fireEvent.click(command);
     await Promise.resolve();
+  });
+  // Commit the pending-state unlock before the browser's return-focus frame.
+  await act(async () => {
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => resolve()),
     );

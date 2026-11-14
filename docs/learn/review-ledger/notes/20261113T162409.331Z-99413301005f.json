@@ -1,0 +1,19 @@
+{
+  "revision": "c82ba3d49675194bce69cc87521f180a38d759ca",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed Station Control project-activity status ownership against sessionAttentionKind, SESSION_STATUS_WORDS and work facts. Needs input refines known remaining blocking input requests, mixed or unknown requests remain approvals; terminal/attention precedence and scope authorization unchanged. No prose change required. Source review only; no hosted/provider claim.","inputs":["docs/architecture/module-map.md","packages/contracts/src/session-attention.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed live-lane and status-word claims against session-attention and relativeTime plus mounted Activity/streaming/child-work consumers. Corrected duration examples to seconds under an hour; Needs input names questions and Needs approval permissions. Per-request input refinement changes presentation only; no authorization change. Local test results recorded in PR.","inputs":["docs/glossary.md","packages/contracts/src/session-attention.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed contract module ownership and attention request references against sessionAttentionKind and SESSION_STATUS_WORDS. Input-only refinement is per remaining blocking request after local answered IDs; mixed/unknown kinds remain approval. No public command, authorization or runtime lifecycle change. Existing reference remains accurate; source review only.","inputs":["docs/reference/contracts.md","packages/contracts/src/session-attention.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed bound tool delivery, list_project_activity/status word ownership and guardian approval claims against the attention contract delta. Needs input/per-request presentation refinement does not alter tool admission or approval authorization; no prose change required. No live engine evidence claimed.","inputs":["docs/guides/self-configuring-agent.md","packages/contracts/src/session-attention.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed inline child-card placement and shared child-work-display formatting claims against ChatMessageList.subagentCards and ChildWorkRow consumers. Assertions now use 5s, 17m 4s and identical usage-footer durations. Placement, identity and expansion behavior unchanged; shared-format claim remains accurate.","inputs":["docs/design/placement.md","src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed elapsed word-format and live-pill/replay distinction against replay scenarios, chat-replay.spec and shared formatDuration. Updated scenario assertions to 28s/20s; docs already specify 2m 1s and permission priority over input, so no prose change required. Browser execution tracked separately in PR.","inputs":["docs/design/session-tape-replay.md","tests/chat-replay.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed Activity/status and child-work journey against ActivityList consumer and per-request attention contract. Needs input for questions, approval priority and elapsed 2m 1s wording remain accurate; cross-surface live durations retain seconds, including 4m 25s. No integrated Station/provider qualification inferred.","inputs":["docs/user/getting-started.md","src-ui/src/views/activity/__tests__/ActivityList.test.tsx"]}
+  ]
+}

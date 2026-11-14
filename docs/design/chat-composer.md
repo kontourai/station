@@ -460,8 +460,10 @@ bottom is not shown and a row left with no status takes no height. Scroll-button
 without enlarging its target. The desktop header exposes Hide inbox /
 Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 
-Pending tool requests from the loaded event window also feed Needs approval,
-whose action opens the conversation's approval sheet. Failed history or
+Pending tool permissions feed Needs approval; questions and forms feed Needs
+answer. Permission takes priority when both wait. The action opens the
+conversation's request sheet. Background work keeps the pill visible after the
+main turn ends, using the server count and oldest reported start. Failed history or
 continuation observation shows Status unavailable and withholds the cached
 working clock; the remote turn may still be running. Already loaded transcript
 content stays visible through a failed refresh. A failed continuation check owns
@@ -1236,7 +1238,7 @@ the conversation (up to three, overlapping, then "+N"; the Agent's own mark
 when no engine with a mark is recorded) beside the Agent's name, then the
 conversation title, the Project with its icon (or a folder when it has none),
 a pencil when this device holds an unsent draft for it, and a right-aligned
-status/time. Unresolved Agents retain their name. The status line is the ladder's own words (`Needs answer`, `Needs
+status/time. Unresolved Agents retain their name. The status line is the ladder's own words (`Needs input`, `Needs
 approval`, …, the same words the dock row prints), prefixed with "Last known:"
 when its latest observation failed. Verified running time uses the
 recorded open-turn start; without one, the row's compact time trails the status
@@ -1345,3 +1347,5 @@ answer-scoped. Chat inventory and Browse turns are conversation overflow actions
 The dev UI proxy uses the production unavailable envelope during API restarts.
 The access screen retries temporary unavailability while visible, preserving
 the existing session; an authentication refusal still requires sign-in.
+
+When permissions and input requests both wait, the status pill says **Needs approval**. Its badge counts permissions only; opening the requests shows both kinds. Home, Inbox and Sessions refine a `review_pending` summary to **Needs input** only when every remaining blocking request is known to be input. Home and Inbox exclude requests already answered on this device; mixed or unknown request kinds remain approvals. The replay transcript keeps **Waiting for approval** for permissions and uses **Needs input** for known questions. This is display wording; it does not change the runtime lifecycle.

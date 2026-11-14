@@ -16,6 +16,7 @@ import {
   inputRequestSummary,
   inputRequestUrlFromRequestEvent,
   isCardAnsweredRequestEvent,
+  isInputRequestEvent,
   readInputRequestForm,
   readInputRequestLink,
   readInputRequestResponse,
@@ -751,6 +752,44 @@ describe('inputRequestSummary', () => {
   test('a short single line is returned whole', () => {
     expect(inputRequestSummary('  Which mode?  ')).toBe('Which mode?');
   });
+});
+
+test('shared request classification preserves plan decisions and legacy input type', () => {
+  for (const toolName of ['ExitPlanMode', 'cursor/create_plan']) {
+    expect(
+      isInputRequestEvent({ payload: { toolName, inputRequest: FORM } }),
+    ).toBe(false);
+    expect(
+      isInputRequestEvent({
+        requestType: 'input',
+        payload: { toolName, inputRequest: FORM },
+      }),
+    ).toBe(true);
+  }
+  expect(
+    isInputRequestEvent({
+      payload: { toolName: 'AskUserQuestion', inputRequest: FORM },
+    }),
+  ).toBe(true);
+  expect(isInputRequestEvent({ requestType: 'input' })).toBe(true);
+  expect(isInputRequestEvent({ requestType: 'permission' })).toBe(false);
+  expect(
+    isInputRequestEvent({
+      payload: {
+        inputRequest: {
+          schema: 'station.input-request/v1',
+          source: 'mcp:github',
+          requester: 'github',
+          message: 'Sign in to github',
+          body: {
+            kind: 'url',
+            url: 'https://example.com/oauth/authorize',
+            purpose: 'mcp-sign-in',
+          },
+        },
+      },
+    }),
+  ).toBe(true);
 });
 
 describe('URL requests', () => {

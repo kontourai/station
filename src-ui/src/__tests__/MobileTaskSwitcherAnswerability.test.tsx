@@ -80,7 +80,7 @@ describe('MobileInboxPanel answerability basis', () => {
   // The ladder's own words, unshortened: the picker row says what the dock
   // row says for the same chat (one vocabulary, design round 2026-10).
   test.each([
-    { attention: 'answer' as const, label: 'Needs answer' },
+    { attention: 'answer' as const, label: 'Needs input' },
     { attention: 'approval' as const, label: 'Needs approval' },
   ])(
     'shows $label only for its recorded attention kind',

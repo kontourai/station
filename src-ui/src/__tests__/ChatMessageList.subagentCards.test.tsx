@@ -720,9 +720,7 @@ describe('subagent transcript cards', () => {
       expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
       expect(within(card).getByText('Run finished')).toBeTruthy();
       expect(within(card).getByText('done')).toBeTruthy();
-      expect(
-        within(card).getByText(index === 0 ? '0:05' : '0:04'),
-      ).toBeTruthy();
+      expect(within(card).getByText(index === 0 ? '5s' : '4s')).toBeTruthy();
       const spawnAt = events.findIndex(
         (event) => event.method === 'child-work.updated',
       );
@@ -1250,7 +1248,7 @@ describe('subagent transcript cards', () => {
     expect(card.querySelector('.child-work-activity')).toBeNull();
     expect(within(card).queryByText('Running')).toBeNull();
     // The first settle's reported end (17m 04s after the reported start).
-    expect(within(card).getByText('17:04')).toBeTruthy();
+    expect(within(card).getByText('17m 4s')).toBeTruthy();
     expect(
       within(card).getByText('Verdict: merge as-is. I found no blockers.'),
     ).toBeTruthy();
@@ -1260,7 +1258,7 @@ describe('subagent transcript cards', () => {
       await within(card).findByText('Every required check passed.'),
     ).toBeTruthy();
     expect(
-      within(card).getByText('48,210 tokens · 37 tool uses · ran 17:04'),
+      within(card).getByText('48,210 tokens · 37 tool uses · ran 17m 4s'),
     ).toBeTruthy();
     fireEvent.click(within(card).getByRole('button', { name: 'Open chat' }));
     expect(openChild).toHaveBeenCalledWith(
