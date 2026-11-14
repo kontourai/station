@@ -3637,13 +3637,18 @@ export class ConnectionService {
       (candidate) => candidate.id === connection.id,
     );
     if (acpConnection) {
+      // Which adapter runs it changes what the connection projects. The key
+      // is added only while an ACP-backed adapter claims the connection
+      // (OpenCode, preview on), so every other connection keeps the
+      // fingerprint its saved smoke results were recorded under.
+      const runtime = acpConnectionRuntimeAdapter(
+        adapters,
+        acpConnection,
+      )?.provider;
       return valueFingerprint({
         type: 'acp',
         connection: acpConnection,
-        // Which adapter runs it changes what the connection projects.
-        runtime:
-          acpConnectionRuntimeAdapter(adapters, acpConnection)?.provider ??
-          null,
+        ...(runtime ? { runtime } : {}),
       });
     }
     const rawEngineIdentity = connection.config?.engineId;
