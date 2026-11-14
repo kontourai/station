@@ -14,10 +14,31 @@ import { type ReactNode, StrictMode } from 'react';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // Updates reads the connected server's status only when a server is ready.
+  useCoreUpdateStatusQuery: () => ({ data: undefined }),
   useOrchestrationSessionsQuery: () => ({
     data: [],
     isLoading: false,
     isError: false,
+  }),
+}));
+// No Station is ready here, so Updates renders its icon-only app control.
+vi.mock('../hooks/useConnectedServerUpdateContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../hooks/useConnectedServerUpdateContext')
+  >()),
+  useConnectedServerUpdateContext: () => ({
+    apiBase: '',
+    scopeKey: 'sidebar-footer-test',
+    connectionName: 'Test Station',
+    kind: 'remote-server',
+    reachability: 'unknown',
+    identity: null,
+    identityReady: false,
+    identitySettled: false,
+    nativeObservationPending: false,
+    claimedOwnerUnresolved: false,
+    isCurrent: () => false,
   }),
 }));
 vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({

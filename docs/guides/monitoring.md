@@ -1699,11 +1699,25 @@ only for a provider declared `per-turn` in
 the turn's frames. A session-cumulative provider (Codex) or an undeclared one
 leaves the span's usage absent, because its frames are session totals, not that
 turn's usage. Spans written before this change can carry a Codex session total.
+The bridge writes one `execute_tool` start per open tool call id: an engine
+that re-publishes `tool.started` as a call's title, kind or input changes (ACP)
+does not add start rows. The start row records the input known at first sight.
+When a later `tool.started` reports a different input (OpenCode first reports
+`{}`; Grok backfills fields into a partial input), the end row carries the
+latest in `gen_ai.tool.call.arguments`. Claude is the exception: its
+`task_started` re-publishes a started Agent call with a task descriptor, which
+is not the tool's input, so a known Claude input is kept. Both rows use the
+name the call started under, so Insights counts a call and its outcome under
+one tool; a later retitle (OpenCode's description, such as "List files") is not
+a tool name. A call first reported with no name keeps its id on the start row.
 
 The emitter redacts content, emits the live event, and tracks an asynchronous
 persistence promise. Persistence rejection is contained; `flush()` waits for
-pending attempts but does not turn a failed write into durable evidence. This
-is operational history, not an execution receipt or the canonical EventStore.
+pending attempts but does not turn a failed write into durable evidence. The
+event log serializes appends and writes each line with one append call; a line
+torn by a writer that died mid-write is left as one malformed line, which reads
+skip with one warning per file per query. This is operational history, not an
+execution receipt or the canonical EventStore.
 
 ### Event Schema
 
@@ -1756,7 +1770,7 @@ Station extensions:
 | `emitAgentStart` | Chat request begins | slug, model, input |
 | `emitAgentComplete` | Chat request ends | tokens, steps, finish reason |
 | `emitToolCall` | Tool execution starts | tool name, arguments |
-| `emitToolResult` | Tool execution ends | tool name, result |
+| `emitToolResult` | Tool execution ends | tool name, result; input that changed after the start row |
 | `emitReasoning` | Extended thinking | reasoning text |
 | `emitHealth` | Health check | healthy, checks, integrations |
 | `emitRaw` | Custom events | any MonitoringEvent |

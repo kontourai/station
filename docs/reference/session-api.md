@@ -64,6 +64,15 @@ Delivery and current native identity are checked again synchronously at provider
 dispatch, including resumption of a prepared turn. An identity replacement after
 continuation resolution cannot borrow the earlier identity's completion.
 
+A handoff that is not a native return, or a plain continuation with no
+deliberate context boundary, is not stranded by a failed or stopped seed-bearing
+turn: the next ordinary follow-up starts a successor Session with a freshly
+pinned bounded seed of the whole conversation, never the failed Session's native
+cursor. That holds again if the redelivery's own turn is stopped. A seed turn
+that is still open or uncertain is refused, as is a failed native return,
+context-boundary seed or fork seed. These refusals carry the code
+`conversation-context-unavailable`.
+
 New native-return reservations pin the exact catch-up text and its SHA-256 digest
 alongside ordered source Session cutoffs and omission facts in the existing event
 store. Each cutoff is an exclusive `afterSequence` and inclusive `throughSequence`
@@ -2050,6 +2059,9 @@ Query: `offset` (message index, default `0`) and `limit` (messages per page,
 `1`–`50`, default `30`). The response's `data` is a `ChildWorkTranscriptPage`:
 `entries` (prompt and reply text, tool calls, tool results; inline image data
 replaced by a placeholder, then each text cut at 4,000 characters and flagged) and `nextOffset` when another page follows.
+Tool calls and results carry an optional engine-issued `toolCallId`. Readers join
+only matching IDs; legacy entries without IDs remain readable without assuming
+that adjacent records belong to the same call.
 `404` means no transcript for a session you can read; `503` means the engine
 no longer has it.
 

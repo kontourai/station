@@ -19,7 +19,6 @@ import {
   type RegionId,
 } from '../regions/region-model';
 import { forgetRegionPaneState } from '../regions/region-surface-panes';
-import { readActivityReviewPane } from '../workspace-panes/activityReviewPane';
 import { readFilePreviewPaneState } from '../workspace-panes/filePreviewPaneStateStorage';
 import { readPluginPaneState } from '../workspace-panes/pluginPaneOccurrence';
 import { readTerminalPaneState } from '../workspace-panes/terminalPaneOccurrence';
@@ -147,8 +146,6 @@ export function relatedOccurrenceExists(instanceId: string): boolean {
     return readFilePreviewPaneState(storage, instanceId) !== null;
   if (instanceId.startsWith('plugin-pane:'))
     return readPluginPaneState(storage, instanceId) !== null;
-  if (instanceId.startsWith('activity-review:'))
-    return readActivityReviewPane(storage, instanceId) !== null;
   if (instanceId.startsWith('terminal-pane:'))
     return readTerminalPaneState(storage, instanceId) !== null;
   return true;
