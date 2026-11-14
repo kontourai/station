@@ -408,8 +408,9 @@ function registryDigest(
 }
 function officialEndpoint(
   binding: BoundedApiProviderBinding,
-  native: boolean,
+  profile: Facts['profile'],
 ): void {
+  const native = profile === 'native-text-single-request-v1';
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(binding.modelId))
     fail('invalid_contract');
   if (binding.provider === 'anthropic') {
@@ -448,9 +449,9 @@ export function resolveBoundedApiProviderContract(
   return resolveContract(id, expected, owner, nowMs);
 }
 
+// UNWIRED #91: production native source admission and reservation must use this distinct profile.
 /** Native approval additionally binds the actual executable, image and preparer.
  * This validates a supplied approval; it cannot issue one or mint source authority. */
-// UNWIRED #91: production native source admission and reservation must use this distinct profile.
 export function resolveBoundedNativeApiProviderContract(
   id: string,
   expected: Readonly<BoundedApiProviderBinding>,
@@ -545,6 +546,38 @@ function readNativeProducer(
   });
 }
 
+function contractProfile(value: unknown): Facts['profile'] {
+  switch (value) {
+    case 'direct-text-single-request-v1':
+    case 'report-input-single-request-v1':
+    case 'native-text-single-request-v1':
+      return value;
+    default:
+      return fail('invalid_contract');
+  }
+}
+
+function nativeProducerForRecord(
+  profile: Facts['profile'],
+  value: unknown,
+  sources: readonly string[],
+) {
+  if (profile !== 'native-text-single-request-v1') {
+    if (value !== undefined) fail('invalid_contract');
+    return undefined;
+  }
+  const producer = readNativeProducer(value);
+  if (
+    [
+      producer.executableSha256,
+      producer.imageId.slice(7),
+      producer.preparationSha256,
+    ].some((source) => !sources.includes(source))
+  )
+    fail('untrusted_contract');
+  return producer;
+}
+
 function readQualifiedFacts(
   id: string,
   expected: Readonly<BoundedApiProviderBinding>,
@@ -581,13 +614,8 @@ function readQualifiedFacts(
     ['nativeProducer'],
     'invalid_contract',
   );
-  if (
-    (raw.schema !== 'direct-text-single-request-v1' &&
-      raw.schema !== 'report-input-single-request-v1' &&
-      raw.schema !== 'native-text-single-request-v1') ||
-    raw.id !== id
-  )
-    fail('invalid_contract');
+  const profile = contractProfile(raw.schema);
+  if (raw.id !== id) fail('invalid_contract');
   const revision = str(raw.revision, 'invalid_contract');
   const bindingObject = closed(
     raw.binding,
@@ -625,22 +653,12 @@ function readQualifiedFacts(
     sdkPackage: fields.sdkPackage,
     sdkVersion: fields.sdkVersion,
   };
-  const nativeProducer =
-    raw.schema === 'native-text-single-request-v1'
-      ? readNativeProducer(raw.nativeProducer)
-      : undefined;
-  if (!nativeProducer && raw.nativeProducer !== undefined)
-    fail('invalid_contract');
-  if (
-    nativeProducer &&
-    [
-      nativeProducer.executableSha256,
-      nativeProducer.imageId.slice(7),
-      nativeProducer.preparationSha256,
-    ].some((source) => !record.sourceSha256s.includes(source))
-  )
-    fail('untrusted_contract');
-  officialEndpoint(binding, nativeProducer !== undefined);
+  const nativeProducer = nativeProducerForRecord(
+    profile,
+    raw.nativeProducer,
+    record.sourceSha256s,
+  );
+  officialEndpoint(binding, profile);
   digest(binding.optionsSha256, 'invalid_contract');
   const evidence = closed(
     raw.evidence,
@@ -762,14 +780,14 @@ function readQualifiedFacts(
   }
   if (next !== BigInt(maxInput) + 1n) fail('invalid_contract');
   if (
-    raw.schema === 'report-input-single-request-v1' &&
+    profile === 'report-input-single-request-v1' &&
     (binding.provider !== 'anthropic' ||
       thinkingModes.length !== 1 ||
       thinkingModes[0] !== 'omitted')
   )
     fail('invalid_contract');
   const facts: Facts = {
-    profile: raw.schema,
+    profile,
     nativeProducer,
     binding: Object.freeze(binding),
     maxInput,

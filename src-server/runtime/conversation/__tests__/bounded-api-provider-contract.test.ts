@@ -272,6 +272,13 @@ test('SDK and native approvals cannot be resolved as each other', () => {
   );
 });
 
+test('native producer metadata cannot be smuggled into an SDK approval schema', () => {
+  const f = nativeFixture();
+  f.binding.sdkPackage = '@ai-sdk/anthropic';
+  f.publishFixture(JSON.stringify({ ...f.raw, nativeProducer: f.producer }));
+  refused(() => f.resolve(), 'invalid_contract');
+});
+
 for (const field of [
   'cliVersion',
   'executableSha256',
