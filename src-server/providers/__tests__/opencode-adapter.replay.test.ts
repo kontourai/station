@@ -4,6 +4,7 @@
  * (`opencode-serve-replay.ts`).
  */
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
+import { ACP_APPROVAL_TAKEOVER_FAILED_CODE } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test } from 'vitest';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
@@ -838,6 +839,21 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     expect(h.leaser.released).toBe(0);
   });
 
+  test('a server that exits under a session revokes its Station tool-server credentials', async () => {
+    const tools = stationTools({ 'thread-1': 'tok-session-one' });
+    const h = await setup(
+      { scenario: 'mcp-add', rewrite: asStationControl },
+      tools.options,
+    );
+    await h.start();
+    expect(tools.revoked).toEqual([]);
+    h.leaser.exit();
+    expect(
+      await h.waitFor((event) => event.method === 'session.exited'),
+    ).toMatchObject({ reason: 'OpenCode server exited' });
+    expect(tools.revoked).toEqual(['thread-1']);
+  });
+
   test('a session without Station tool servers gives its shareable server back to idle at stop', async () => {
     const h = await setup({ scenario: 'basic' });
     await h.start();
@@ -1668,6 +1684,46 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     await h.waitFor(completedFor(turnId));
     await h.waitFor(() => repliesTo(h, CHILD).length === 1);
     expect(repliesTo(h, CHILD)).toEqual([{ decision: 'once' }]);
+    expect(opened(h.events)).toEqual([]);
+  });
+
+  test("a failed move to full access after an agent switch keeps the new agent's denies under the rules that still govern", async () => {
+    const h = await setup({
+      scenario: 'plan-deny',
+      respond: (request) => {
+        if (request.method === 'POST' && request.path.endsWith('/agent'))
+          return { status: 204 };
+        if (
+          request.method === 'PATCH' &&
+          /^\/api\/session\/[^/]+$/.test(request.path)
+        )
+          return { status: 500, body: { error: 'patch broke' } };
+        return undefined;
+      },
+    });
+    // Auto on the build agent, which denies nothing here.
+    await h.start({ approvalMode: 'auto' });
+    const { turnId } = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'DO_EDIT plan',
+      modelOptions: { approvalMode: 'never', mode: 'plan' },
+      confinement: 'host',
+    });
+    // The switch to plan happened; the rules did not change, so Auto's
+    // still govern, and the warning says so.
+    expect(
+      await h.waitFor(
+        (event) => event.code === ACP_APPROVAL_TAKEOVER_FAILED_CODE,
+      ),
+    ).toMatchObject({ details: { appliedApprovalMode: 'auto' } });
+    await h.waitFor(completedFor(turnId));
+    // Auto answers edits, but plan denies them: Station rejects on plan's
+    // rules, not build's.
+    expect(
+      h.replay
+        .made('POST', '/api/session/:id/permission/:id/reply')
+        .map((reply) => reply.body),
+    ).toEqual([{ decision: 'reject' }]);
     expect(opened(h.events)).toEqual([]);
   });
 

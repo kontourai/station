@@ -188,9 +188,39 @@ describe('OpenCodeServeClient requests', () => {
       ['DELETE', '/api/session/ses_1/revert'],
       ['GET', '/api/model'],
       ['GET', '/api/mcp'],
+      ['POST', '/api/experimental/mcp/echo/disconnect'],
+      ['POST', '/api/experimental/mcp/echo/connect'],
     ] as const)
       await client.request(method, path);
-    expect(fetch).toHaveBeenCalledTimes(14);
+    expect(fetch).toHaveBeenCalledTimes(16);
+  });
+
+  test("an agent's configuration secrets are redacted before the answer leaves the client; its rules are kept", async () => {
+    const permissions = [{ action: 'edit', resource: '*', effect: 'deny' }];
+    const client = new OpenCodeServeClient({
+      baseUrl: BASE,
+      password: 'p',
+      fetch: fetchSpy(() =>
+        Response.json({
+          data: {
+            name: 'build',
+            options: {
+              apiKey: 'sk-agent-secret',
+              headers: { 'x-team-token': 'hdr-secret' },
+            },
+            permissions,
+          },
+        }),
+      ) as never,
+    });
+    const answer = await client.request<{ data: Record<string, unknown> }>(
+      'GET',
+      '/api/agent/build',
+    );
+    const text = JSON.stringify(answer);
+    expect(text).not.toContain('sk-agent-secret');
+    expect(text).not.toContain('hdr-secret');
+    expect(answer.data.permissions).toEqual(permissions);
   });
 
   test('model settings secrets are redacted before the answer leaves the client', async () => {
