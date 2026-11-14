@@ -1,0 +1,11 @@
+{
+  "revision": "be2fa829544999ddf85caf1b5953cfe05e22327c",
+
+  "notes": [
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Reviewed the discoverable npm lab entry and driver-owned heavy-check acquisition at be2fa8295449. Guide command now maps to the package script and guard occurs before artifacts/downloads/container effects; worker build has a literal entry and explicit repository working directory. All original transport, authority and qualification limits remain. Independent authentication mutation caught HTTP200/401 and byte-exact restoration passed all six cases at be2fa; native npm-entry execution still pending.","inputs":["docs/guides/native-model-channel-lab.md","package.json#/scripts/lab:native-model-channel","scripts/lib/heavy-check-slots.mjs"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Scoped delta review: linked contributor guide now uses the named npm entry; driver acquires the existing host guard and compiles the same worker from an explicit repository root. Module boundary, required host authority/accounting callback, unwired status and no-runtime-qualification claims remain accurate. No other module text changed.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Scoped delta review of linked lab guide: the command is now discoverable through npm with the same opt-in and host admission. Documentation-map description still correctly limits this to a contributor kernel/channel prerequisite. No public product, ordinary Session or publication claim changes.","inputs":["docs/README.md"]}
+  ]
+}

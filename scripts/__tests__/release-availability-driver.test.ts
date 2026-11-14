@@ -91,6 +91,40 @@ const options = (api: any, overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+/** The same release published as a final Stable tag. */
+const stableTag = 'v1.2.3';
+const stableEvent = { ...event, tag: stableTag, channel: 'stable' };
+const stableInventory = () => ({
+  ...inventory(),
+  tag: stableTag,
+  version: '1.2.3',
+  channel: 'stable',
+  container: { tag: stableTag, sha: sourceSha },
+});
+function stableFixture(overrides: Record<string, unknown> = {}) {
+  return fixture({
+    releaseForTag: vi
+      .fn()
+      .mockResolvedValue(release(stableTag, '2026-08-24T12:00:00.000Z')),
+    listReleases: vi
+      .fn()
+      .mockResolvedValue([
+        release(stableTag, '2026-08-24T12:00:00.000Z'),
+        release('v1.2.2', '2026-08-23T12:00:00.000Z'),
+      ]),
+    tagSha: vi
+      .fn()
+      .mockImplementation((value) =>
+        Promise.resolve(value === stableTag ? sourceSha : previousSha),
+      ),
+    getIssue: vi
+      .fn()
+      .mockResolvedValueOnce({ labels: ['stage:source'] })
+      .mockResolvedValueOnce({ labels: ['stage:stable'] }),
+    ...overrides,
+  });
+}
+
 describe('release availability driver', () => {
   test('follows exactly one GitHub release-asset 302 without forwarding authorization', async () => {
     const fetch = vi
@@ -119,29 +153,34 @@ describe('release availability driver', () => {
 
   test('verifies the signed host manifest through the inventory, not a release.yml attestation (#2959)', async () => {
     const withManifest = (name: string) => ({
-      ...release(tag, '2026-08-24T12:00:00.000Z'),
+      ...release(stableTag, '2026-08-24T12:00:00.000Z'),
       assets: [
-        ...release(tag, '2026-08-24T12:00:00.000Z').assets,
+        ...release(stableTag, '2026-08-24T12:00:00.000Z').assets,
         { id: 3, name },
       ],
     });
-    const api = fixture({
+    const stableOptions = (api: any, overrides: Record<string, unknown> = {}) =>
+      options(api, {
+        readInventoryFile: vi.fn().mockReturnValue(stableInventory()),
+        ...overrides,
+      });
+    const api = stableFixture({
       releaseForTag: vi
         .fn()
         .mockResolvedValue(
-          withManifest('station-portable-preview-manifest.json'),
+          withManifest('station-portable-stable-manifest.json'),
         ),
     });
     const validateInventory = vi.fn();
     const assertAssets = vi.fn();
     await expect(
       runReleaseAvailability(
-        event,
-        options(api, { validateInventory, assertAssets }),
+        stableEvent,
+        stableOptions(api, { validateInventory, assertAssets }),
       ),
     ).resolves.toMatchObject({ kind: 'projected' });
     expect(validateInventory).toHaveBeenCalledTimes(1);
-    expect(assertAssets).toHaveBeenCalledWith(expect.any(String), tag, {
+    expect(assertAssets).toHaveBeenCalledWith(expect.any(String), stableTag, {
       allowSignedHostManifest: true,
     });
     expect(
@@ -154,45 +193,35 @@ describe('release availability driver', () => {
     ]);
     // Another ring's manifest name is not exempt: it must carry a
     // release.yml attestation like any other asset (and then fails here).
-    const other = fixture({
+    const other = stableFixture({
       releaseForTag: vi
         .fn()
         .mockResolvedValue(
-          withManifest('station-portable-stable-manifest.json'),
+          withManifest('station-portable-nightly-manifest.json'),
         ),
       verifyAttestation: vi
         .fn()
         .mockImplementation((path: string) =>
-          path.endsWith('station-portable-stable-manifest.json')
+          path.endsWith('station-portable-nightly-manifest.json')
             ? Promise.reject(new Error('no attestation'))
             : Promise.resolve(undefined),
         ),
     });
     await expect(
-      runReleaseAvailability(event, options(other)),
+      runReleaseAvailability(stableEvent, stableOptions(other)),
     ).resolves.toEqual({ kind: 'unavailable' });
   });
 
-  test('advances a public preview release only after every provider receipt, and is idempotent', async () => {
+  test('projects no availability for a retired preview release (#4929)', async () => {
+    // No -preview.N tag can be staged any more, so no preview release has
+    // an inventory the release-tag parser recognizes; even with every
+    // provider receipt present, the driver writes no label.
     const api = fixture();
-    await expect(
-      runReleaseAvailability(event, options(api)),
-    ).resolves.toMatchObject({
-      kind: 'projected',
-      outcomes: [[9, { kind: 'preview' }]],
+    await expect(runReleaseAvailability(event, options(api))).resolves.toEqual({
+      kind: 'unavailable',
     });
-    expect(api.verifyAttestation).toHaveBeenCalledTimes(2);
-    expect(api.addLabel).toHaveBeenCalledWith(9, 'stage:preview');
-    expect(api.removeLabel).toHaveBeenCalledWith(9, 'stage:source');
-
-    const idempotent = fixture({
-      getIssue: vi.fn().mockResolvedValue({ labels: ['stage:preview'] }),
-    });
-    await expect(
-      runReleaseAvailability(event, options(idempotent)),
-    ).resolves.toMatchObject({ kind: 'projected' });
-    expect(idempotent.addLabel).not.toHaveBeenCalled();
-    expect(idempotent.removeLabel).not.toHaveBeenCalled();
+    expect(api.addLabel).not.toHaveBeenCalled();
+    expect(api.removeLabel).not.toHaveBeenCalled();
   });
 
   test('supports stable releases and derives the stable stage from the matching channel', async () => {

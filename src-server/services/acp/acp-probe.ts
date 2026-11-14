@@ -6,12 +6,17 @@ import {
 } from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
+import { acpTerminalFactsHandler } from '../../providers/adapters/acp-terminal-facts.js';
 import { acpProbeCleanupRetention } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
+import { installEngineHostAuthResponders } from '../engine-host-auth/responder.js';
 import type { ACPClientCallbacks } from './acp-bridge-types.js';
-import { registryLaunchEnvFor } from './acp-engine-descriptors.js';
+import {
+  ManagedRuntimeNotInstalledError,
+  registryLaunchEnvFor,
+} from './acp-engine-descriptors.js';
 import {
   type AcpDeclaredHandshake,
   parseAcpSessionModelState,
@@ -19,7 +24,9 @@ import {
 } from './acp-handshake-facts.js';
 import {
   type AcpInboundExtensionHandler,
+  AcpInboundExtensionRegistry,
   createAcpInboundExtensionRequestHandler,
+  REVIEWED_INBOUND_EXTENSION_REQUESTS,
 } from './acp-inbound-extension-policy.js';
 import {
   acquireProbeSession,
@@ -28,17 +35,24 @@ import {
 import {
   ACPCommandNotFoundError,
   ACPProcess,
+  type ACPSpawnedLaunch,
   type AcpSessionModelState,
   assertACPProviderRouteSupported,
   type InitializeResult,
 } from './acp-process.js';
 import {
+  invalidateEngineStatus,
   isAcpAuthRequired,
   recordEngineSignInRefused,
+  stderrSaysSignedOut,
 } from './engine-auth-status.js';
 import { engineCredentialEnvFor } from './engine-credentials.js';
 import { prepareManagedAcpWorkspace } from './managed-acp-workspace.js';
-import { engineFacingProbeMessage } from './probe-messages.js';
+import {
+  createStderrTail,
+  engineFacingProbeMessage,
+  STDERR_SETTLE_MS,
+} from './probe-messages.js';
 
 /**
  * The minimum shape needed to destroy a process with escalation. `ACPProcess`
@@ -417,6 +431,20 @@ export const MAX_CLEANUP_RETRY_ATTEMPTS = 5;
  */
 export const MAX_PENDING_CLEANUP_SIZE = MAX_CLEANUP_RETRY_ATTEMPTS - 1;
 
+/** Probe failures a surface may name in its own words. */
+export type AcpProbeFailureCode = 'managed-runtime-not-installed';
+
+/**
+ * The typed code for a probe failure Station can name: a managed engine that
+ * is not installed yet. Surfaces translate the code; they do not render the
+ * probe's free text.
+ */
+function probeFailureCode(err: unknown): { code?: AcpProbeFailureCode } {
+  return err instanceof ManagedRuntimeNotInstalledError
+    ? { code: 'managed-runtime-not-installed' }
+    : {};
+}
+
 /**
  * A probe failure reduced to text that may cross an API boundary.
  *
@@ -436,9 +464,12 @@ export const MAX_PENDING_CLEANUP_SIZE = MAX_CLEANUP_RETRY_ATTEMPTS - 1;
 function probeErrorMessage(
   err: unknown,
   engine?: { name: string; command: string },
+  lastStderrLine?: string,
 ): string {
   return redactSecrets(
-    engine ? engineFacingProbeMessage(err, engine) : errorMessage(err),
+    engine
+      ? engineFacingProbeMessage(err, engine, lastStderrLine)
+      : errorMessage(err),
   );
 }
 
@@ -569,7 +600,12 @@ export class ACPProbe {
    * caused it. The message is redacted at capture (see `probeErrorMessage`),
    * which is what makes it projectable — not the absence of a stack.
    */
-  lastError: { message: string; phase: string } | null = null;
+  lastError: {
+    message: string;
+    phase: string;
+    /** A failure Station can name: see {@link probeFailureCode}. */
+    code?: AcpProbeFailureCode;
+  } | null = null;
   /** Whether the most recent failed run ran out of its handshake budget. */
   private lastFailureWasDeadline = false;
   /**
@@ -582,6 +618,7 @@ export class ACPProbe {
    * referenced by nothing else.
    */
   private readonly inboundExtensionPolicy: AcpInboundExtensionHandler;
+  private readonly inboundExtensionPolicyWithoutHostAuth: AcpInboundExtensionHandler;
   /** Survivor → destroy attempts already spent on it. See {@link MAX_CLEANUP_RETRY_ATTEMPTS}. */
   private readonly pendingCleanup = new Map<ACPProcess, number>();
   /**
@@ -689,10 +726,41 @@ export class ACPProbe {
       config: ACPConnectionConfig,
     ) => void,
   ) {
-    this.inboundExtensionPolicy = createAcpInboundExtensionRequestHandler({
-      logger: this.logger,
-      connectionId: `probe:${this.config.id}`,
-    });
+    // This probe's own registries, shared with nobody. A built-in launch that
+    // delegates its sign-in to the host (the Kiro bundle) asks for a token
+    // before `initialize` answers, so the probe must answer it too, unless a
+    // managed policy pin replaced what that launch runs (then the responders'
+    // launch facts no longer describe the process, and it gets none).
+    // Kiro's agent service asks `_kiro/terminal/shell_type` during the
+    // probe's own session/new, and a -32601 there fails it. The
+    // probe answers it as the chat client does; it is the only reviewed
+    // request that needs no person or session.
+    const terminalFacts = acpTerminalFactsHandler();
+    const policyFor = (withHostAuth: boolean) => {
+      const registry = new AcpInboundExtensionRegistry();
+      if (withHostAuth)
+        installEngineHostAuthResponders(registry, { connection: this.config });
+      if (terminalFacts)
+        for (const entry of REVIEWED_INBOUND_EXTENSION_REQUESTS)
+          if (entry.handler === 'client.terminal-facts')
+            registry.register(entry.method, terminalFacts);
+      return createAcpInboundExtensionRequestHandler({
+        registry,
+        logger: this.logger,
+        connectionId: `probe:${this.config.id}`,
+      });
+    };
+    this.inboundExtensionPolicy = policyFor(true);
+    this.inboundExtensionPolicyWithoutHostAuth = policyFor(false);
+  }
+
+  /** The client for one launch: no host-auth responders for a replaced one. */
+  private clientFor(launch: ACPSpawnedLaunch) {
+    return createProbeClient(
+      launch.launchReplacedByPolicy
+        ? this.inboundExtensionPolicyWithoutHostAuth
+        : this.inboundExtensionPolicy,
+    );
   }
 
   /**
@@ -859,6 +927,7 @@ export class ACPProbe {
       this.lastError = {
         message: probeErrorMessage(error, this.config),
         phase: 'workspace preparation',
+        ...probeFailureCode(error),
       };
       this.lastFailureWasDeadline = false;
       this.logger.warn(
@@ -875,6 +944,7 @@ export class ACPProbe {
     // before either deadline-labelled phase.
     let probePhase = 'spawn';
     let process: ACPProcess;
+    const stderrTail = createStderrTail();
     try {
       process = this.processFactory({
         command: this.config.command,
@@ -883,9 +953,16 @@ export class ACPProbe {
         launchEnv: registryLaunchEnvFor(this.config),
         connection: this.config,
         credentialEnv: () => engineCredentialEnvFor(this.config),
-        createClient: () => createProbeClient(this.inboundExtensionPolicy),
+        createClient: (launch) => this.clientFor(launch),
         clientCapabilities: {},
         logger: this.logger,
+        // Piped rather than inherited so a startup failure can quote the
+        // engine; still passed through to Station's own stderr as before.
+        onStderr: (chunk) => {
+          stderrTail.push(chunk);
+          globalThis.process.stderr.write(chunk);
+        },
+        onStderrEnd: stderrTail.end,
       });
     } catch (err) {
       // Mark the probe failed, not merely annotated. Recording a reason while
@@ -898,6 +975,7 @@ export class ACPProbe {
       this.lastError = {
         message: probeErrorMessage(err, this.config),
         phase: probePhase,
+        ...probeFailureCode(err),
       };
       this.lastFailureWasDeadline = false;
       throw err;
@@ -1033,13 +1111,33 @@ export class ACPProbe {
         this.lastSuccess = false;
         return false;
       }
-      // The engine's own "sign in first" answer is sign-in evidence.
-      if (isAcpAuthRequired(err)) recordEngineSignInRefused(this.config);
+      const closedBeforeAnswering =
+        errorMessage(err) === 'ACP connection closed';
+      if (closedBeforeAnswering) {
+        await stderrTail.settled(STDERR_SETTLE_MS);
+        if (this.disposed) {
+          this.lastSuccess = false;
+          return false;
+        }
+      }
+      const lastStderrLine = stderrTail.lastLine();
+      // The engine's own "sign in first" answer is sign-in evidence, whether
+      // an ACP `auth_required` or its vendor's signed-out text on stderr.
+      if (
+        isAcpAuthRequired(err) ||
+        (closedBeforeAnswering &&
+          stderrSaysSignedOut(this.config, lastStderrLine))
+      )
+        recordEngineSignInRefused(this.config);
+      // An engine that stopped during startup may have been signed out since
+      // the last status read; let the next sign-in read run its command again.
+      else invalidateEngineStatus(this.config.id);
       this.lastError = {
-        message: probeErrorMessage(err, this.config),
+        message: probeErrorMessage(err, this.config, lastStderrLine),
         // `process.start()` both launches and initializes; a command that
         // never launched failed at spawn, not while initializing.
         phase: isLaunchFailure(err) ? 'spawn' : probePhase,
+        ...probeFailureCode(err),
       };
       this.lastFailureWasDeadline = err instanceof ACPProbeDeadlineError;
       // archive#3404: "has this connection ever handshaked" is
@@ -1271,7 +1369,7 @@ export class ACPProbe {
       launchEnv: registryLaunchEnvFor(this.config),
       connection: this.config,
       credentialEnv: () => engineCredentialEnvFor(this.config),
-      createClient: () => createProbeClient(this.inboundExtensionPolicy),
+      createClient: (launch) => this.clientFor(launch),
       clientCapabilities: {},
       logger: this.logger,
     });

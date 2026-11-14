@@ -66,8 +66,6 @@
 
     "src-server/routes/plugins/registry.ts",
 
-    "src-server/runtime/bootstrap/station-runtime.ts",
-
     "src-server/runtime/mcp/mcp-apps-metadata.ts",
 
     "src-server/runtime/mcp/mcp-ui-frame-server.ts",
@@ -190,7 +188,11 @@
 
     "src-server/providers/registries/registry-source-detection.ts",
 
-    "src-server/providers/registries/agent-registry-provider.ts"
+    "src-server/providers/registries/agent-registry-provider.ts",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "src-server/routes/system/configuration-activation.ts"
   ],
 
   "checks": [

@@ -503,6 +503,13 @@ export type SubagentObservabilityCell =
       evidence: string;
       /** Adapter module that maps them, used by the conformance tripwire. */
       adapterModule: string;
+      /**
+       * Set when only some connections of this engine report (the adapter
+       * decides per connection, at session start). A session this process
+       * has not seen report then reads `not-reported` with this reason,
+       * never "nothing running".
+       */
+      perConnection?: { unobservedReason: string };
     };
 
 /**
@@ -1272,20 +1279,32 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     midTurnSteer: true,
     // A custom engine's toolbox is whatever the connected CLI brings; ACP
     // advertises protocol capabilities at initialize, not a tool inventory.
+    // ACP 1.1.1 has no subagent concept, so this is a per-connection
+    // observation, like `muse`'s serve/exec split: an engine whose handshake
+    // identifies a reporter (`acp-child-work.ts`: kiro-cli's
+    // `_kiro.dev/subagent/list_update` roster, Kiro's agent service's
+    // `agent-subtask` tool calls, Grok Build's `_x.ai/*` background-task and
+    // subagent notifications) has its children mapped; every other ACP
+    // engine's session publishes `not-reported` at start, so its silence never
+    // reads as nothing running. Signals are the union over reporters: Kiro's
+    // wires carry lifecycle only, Grok's also progress, usage and result.
     subagentObservability: {
-      state: 'none',
-      // ACP 1.1.1 has no subagent concept. `session/update` carries
-      // `agent_message_chunk`, `agent_thought_chunk`, `tool_call`,
-      // `tool_call_update`, `plan`, `usage_update` and mode/command/config
-      // updates only, so a subagent invocation is indistinguishable from an
-      // ordinary tool call — it arrives without a child id or model.
-      reason: 'ACP 1.1.1 has no subagent concept.',
+      state: 'declared',
+      // No `nesting`: a Grok subagent's own subagents stream on the child's
+      // session, which is not this session's, so depth is unobserved.
+      signals: ['lifecycle', 'progress', 'usage', 'result'],
+      evidence:
+        'kiro-cli `_kiro.dev/subagent/list_update` subagents[{sessionId, status.type}] and Kiro agent service tool_call `_meta.kiro.kind: agent-subtask` with `agentSubtaskId` (kirocrew session_handle_native_children.py, test_kas_subagent_progress.py); grok 1.0.77 live capture (src-server/services/acp/__tests__/fixtures/grok-1.0.77-session-frames.jsonl): subagent_spawned / subagent_progress / subagent_finished, _x.ai/task_backgrounded, background_tasks, _x.ai/task_completed, _x.ai/monitor_event',
+      adapterModule: 'acp-child-work.ts',
+      perConnection: {
+        unobservedReason:
+          'Only some ACP engines report subagents, and this session has not reported since Station started.',
+      },
     },
     subagentControl: {
       state: 'none',
-      // Nothing to control: a subagent is not addressable, having no identity
-      // separate from the tool call that invoked it.
-      reason: 'A subagent is not addressable.',
+      // No client request stops or resumes one engine subagent on ACP.
+      reason: 'No ACP engine offers a per-subagent stop Station has wired.',
     },
     builtInTools: { state: 'unenumerated' },
     builtInToolControl: { state: 'none' },

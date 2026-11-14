@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/user/settings.md","note":"#4517 managed settings. Changed: station-runtime.ts: StationRuntime installs the loaded managed policy settings before config loads. Cited docs edited: docs/user/settings.md. Added Settings your organization manages: the Managed by badge, disabled control, Get help link, organization default and restored values. Verified against the rendered Settings screen.","inputs":["docs/user/settings.md","src-server/runtime/bootstrap/station-runtime.ts"]}
-  ]
-}

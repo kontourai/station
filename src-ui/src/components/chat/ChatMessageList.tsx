@@ -30,8 +30,10 @@ import { isShallowEqual } from '../../utils/isShallowEqual';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import {
   chatWaitsOnUser,
+  requestAttentionKind,
   requestsWaitingOnUser,
 } from '../../utils/waiting-approvals';
+import { attentionWord } from '../../views/home/work-status';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -397,7 +399,9 @@ function ChatMessageListComponent({
             (approvalEvents ?? [])
               .map((item) => item.event)
               .filter((event) => Boolean(event.eventId)),
-          ).filter((request) => !request.inputRequest),
+          ).filter(
+            (request) => !request.inputRequest && !request.inputRequestUrl,
+          ),
     [activeSession.replay, approvalEvents, target?.record?.readOnly],
   );
   // The store is already live at the shell; reading its scalar snapshot here
@@ -2181,21 +2185,15 @@ function ChatMessageListComponent({
                         suppressActivity={suppressActivity}
                         hideProgressSilence={progressSilenceShownElsewhere}
                         statusLabel={
-                          activeSession.orchestrationStatus ===
-                            'awaiting-approval' &&
-                          chatWaitsOnUser(activeSession)
-                            ? // station#2235: the status alone asserts nothing about
-                              // an approval — a crashed turn's needs_input folds to
-                              // this status with no request behind it. Name the
-                              // approval only when a request is still waiting on
-                              // the user; without one the session is waiting on the
-                              // user, not on a decision. A session whose requests
-                              // are all answered is waiting on the engine, and says
-                              // nothing here.
-                              waitingApprovalCount > 0
-                              ? 'Waiting for approval'
-                              : 'Waiting on you'
-                            : undefined
+                          waitingApprovalCount > 0
+                            ? requestAttentionKind(activeSession) === 'answer'
+                              ? attentionWord('answer')
+                              : 'Waiting for approval'
+                            : activeSession.orchestrationStatus ===
+                                  'awaiting-approval' &&
+                                chatWaitsOnUser(activeSession)
+                              ? attentionWord('waiting')
+                              : undefined
                         }
                         attributionAgent={streamingAttributionAgent}
                         owner={owner}

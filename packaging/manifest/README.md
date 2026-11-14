@@ -52,7 +52,11 @@ identity, a common Node version equal to the pin in
 [`config/portable-server-node-runtime.json`](../../config/portable-server-node-runtime.json),
 and required target coverage; when an archive sits
 beside its descriptor, it also checks those bytes. A descriptor without that
-archive is not a download/readback receipt.
+archive is not a download/readback receipt. For a Stable release candidate,
+`assemble --location-tag vX.Y.Z-rc.N` keeps the payload's `version` and
+`releaseTag` at the base `X.Y.Z` and lets the artifact URLs name the
+candidate's own release, where its archives are staged
+([#4929](https://github.com/kontourai/station/issues/4929)).
 
 The [archive workflow](../../.github/workflows/portable-server-archives.yml)
 builds, smokes and uploads CI artifacts. The separate

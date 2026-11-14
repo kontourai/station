@@ -1,7 +1,0 @@
-{
-  "revision": "a5a69b55d48dc4a8662ff137d7922d0ba49751e1",
-
-  "notes": [
-    {"path":"scripts/AGENTS.md","note":"#4515 integration: scripts/vitest-resource-manifest.mjs adds plugin-update-check-git-provenance.test.ts to PROCESS_HEAVY_VITEST_FILES (it runs real git against throwaway origins), as the rule that new child-process tests are classified there requires. Checked this doc's claims about resource groups and worker limits; none changes.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
-  ]
-}

@@ -11,14 +11,19 @@ name: "PR: Docs kit"
 # isExactDocsGateCall admits: it checks out the pull request's head
 # repository and SHA, persists no credentials, reads only contents, gets no
 # secrets, and runs setup-node with package-manager-cache: false. On merge
-# queue and main pushes both inputs resolve to this repository and github.sha.
+# queue and dispatch runs both inputs resolve to this repository and github.sha.
+#
+# No push trigger: the merge queue fast-forwards main to the exact candidate
+# its merge-group run already checked, and that run is a superset of a push
+# run (it adds freshness). Nothing consumes a main-push run of this advisory
+# gate. A commit that reaches main outside the queue is checked by the next
+# merge-group run, whose candidate contains it and whose corpus checks are
+# not diff-scoped; dispatch remains for an on-demand main check.
 on:
   pull_request_target:
     branches: [main]
   merge_group:
     types: [checks_requested]
-    branches: [main]
-  push:
     branches: [main]
   workflow_dispatch:
 

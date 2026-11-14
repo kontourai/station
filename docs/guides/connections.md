@@ -1092,6 +1092,110 @@ an engine's own credentials (see
 Live sign-in against real vendor accounts has not been verified; the flows are
 tested against a stand-in engine that speaks the same protocol.
 
+### Sign in to Kiro without kiro-cli
+
+Station lists three Kiro engines:
+
+| Engine | Runs | Who keeps the sign-in |
+|---|---|---|
+| **Kiro CLI** | `kiro-cli acp --agent-engine v2` | kiro-cli (`kiro-cli login`) |
+| **Kiro (KAS)** | `kiro-cli acp --agent-engine v3 --auth-method cli` | kiro-cli (`kiro-cli login`) |
+| **Kiro (KAS, no CLI)** | Kiro's agent service, installed by Station | Station |
+
+Both kiro-cli engines read their status from `kiro-cli whoami`, since it is
+the one login they share, and run with `KIRO_CLI_CLIENT_APPLICATION=station`.
+A saved `kiro` connection keeps its own arguments.
+
+**Kiro (KAS, no CLI)** needs neither kiro-cli nor a login on the computer:
+
+1. **Install.** Its Sign-in panel has **Install**, which says what is
+   downloaded. Station fetches the pinned manifest for Kiro's agent service
+   (`@kiro/agent` 0.66.104) and refuses it unless its sha256 matches the pin
+   recorded in Station, before fetching anything else. It then downloads the
+   engine and the Node runtime the manifest names for this computer, checks
+   each one's size and sha256, refuses any archive entry with an absolute
+   path, a `..` segment, a link out of the archive, or a path or link target
+   that passes through another link in the archive (a link target may still
+   use `..` inside the archive, as the Node runtime's `bin/npm` does), checks
+   the unpacked files again, and installs them read-only under
+   `<Station home>/engines/kiro-kas/0.66.104/`. A download that cannot be
+   written (a full disk, an unwritable directory) fails the install and
+   leaves nothing staged. Nothing updates on its own: a new version arrives
+   with a Station release. `station home backup` and update rollback skip
+   `engines/`, because each pinned version can be downloaded again. Until it
+   is installed, a chat and the engine's
+   **Not connected yet** card say "Kiro (KAS, no CLI) isn't installed yet".
+   Installing needs permission to operate Station on a paired device.
+   Until you sign in, a chat on this engine is held with **Sign in to Kiro
+   (KAS, no CLI) from its sign-in panel in Connections**, and the engines
+   list shows it as **Sign in required** even though the engine answers its
+   handshake. If Station cannot read that readiness, the row says it could
+   not verify the engine; other engines still list. Station's readiness reads the installed
+   runtime, not `PATH`. Removing the connection during a sign-in cancels it,
+   and nothing it was finishing is kept.
+2. **Sign in.** Choose **AWS Builder ID**, **IAM Identity Center** with
+   your company's start URL (`https://your-company.awsapps.com/start`) and
+   region, or **Google or GitHub**.
+   - Builder ID and Identity Center show a code and a link; open the link on
+     any device, enter the code and approve. Station registers its own AWS
+     sign-in client. For Identity Center, Station looks up the Kiro profile
+     the account may use.
+   - **Google or GitHub** opens Kiro's sign-in page, where you pick the
+     provider. The page sends the browser back to `http://localhost:<port>`
+     on the computer Station runs on, so it is offered only when your browser
+     is on that computer. Station decides from the request, as it does for
+     the operator's own browser: a loopback request that addressed loopback,
+     directly or through Station's UI proxy, counts; a forwarded, tailnet or
+     off-machine request does not, and the panel then says so and offers the
+     other two. A tunnel that re-dials loopback without forwarding headers
+     (an SSH forward) looks local, and its sign-in times out. Station listens on
+     `127.0.0.1` and `::1` for one answer, on the first of the ten ports Kiro
+     accepts (3128, 4649, 6588, 8008, 9091, 49153, 50153, 51153, 52153,
+     53153) that no other program holds on either address, so the browser's
+     `localhost` cannot reach another program. Only a request carrying this
+     attempt's state can end it, and it must come to Kiro's callback path;
+     any other request gets a 404 and the wait goes on. Station stops
+     listening once it has an answer, after five minutes, when you cancel, or
+     if the listening socket fails. It then exchanges the code (PKCE) at
+     Kiro's sign-in service and refreshes there. Station sends its own
+     User-Agent and no client id; the `redirect_from=kirocli` it puts on the
+     sign-in link is the portal's own parameter for this loopback flow. When
+     every port is in use, nothing comes back in time, or Kiro turns the
+     sign-in down, the panel says which.
+3. **Use it.** When the engine asks for a token, Station gives it the access
+   token and its expiry, never the refresh token, refreshing the token first
+   when fewer than three minutes are left. Requests for one connection share
+   one refresh, even across Station processes, and each request to AWS gives
+   up after 15 seconds. At most 30 issues an hour per connection may refresh
+   or hand out a new token; handing the engine the token it already has again
+   (every availability check and restart asks once) is not counted.
+   The sign-in is kept per connection, not per credential profile: a chat
+   started with another credential profile on this engine is refused.
+
+Station keeps this sign-in in `security/engine-host-auth.json` under the
+Station home (readable only by its owner), separate from engine keys, and
+records each sign-in, sign-out, issue and refusal without any value in
+`security/engine-host-auth-audit.jsonl`. The panel reads **Signed in**
+from that store without starting the engine, and does not repeat that the
+engine keeps its own sign-in on the computer. If Kiro stops accepting the
+saved sign-in, the panel says to sign in again. **Sign out** removes it.
+Removing the connection removes its sign-in and the MCP sign-ins the engine
+asked Station to keep (`_kiro/secret/*`). A [managed policy](managed-policy.md#engines)
+can turn this off with `limits.engines.engineHostAuth: "off"`.
+
+Starting, reading or cancelling the sign-in and signing out need
+`engine:login`, like any engine sign-in. Station only answers an engine's
+token request for a built-in engine launched with the arguments that make it
+ask; a custom command running the same program gets no token (see
+[the decision](../decisions/engine-credential-provider.md)).
+
+A real install was run on 2026-11-13 (macOS, Apple silicon): about 55 MB
+downloaded (the engine and the Node runtime), both matching the pinned
+manifest, installed read-only, and the engine answered `initialize`. Not
+verified: a real Kiro sign-in with any identity, including whether Kiro's
+sign-in service accepts Station's User-Agent for Google or GitHub. Sign-in is
+tested against local stand-ins for AWS sign-in and Kiro's portal and service.
+
 ---
 
 ## Route an engine through a model proxy

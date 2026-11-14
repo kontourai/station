@@ -1,7 +1,0 @@
-{
-  "revision": "6bda393c1922213f8da143e38850b322dc59c106",
-
-  "notes": [
-    {"path":"examples/meeting-notes/README.md","note":"Reviewed owning Capture upload step against current guarded File.text success and existing info/status Notice: filename plus review-before-save instruction, no autosave or Save-availability promise. Mounted owner RED missing status then GREEN 8/8 including deferred stale text/notice protection at prod6885/testC567. Prior installed direct-input upload and sentinel same-file reselection proved old caller behavior/root/focus only; repaired installed bundle remains pending. Existing compile/provider/native/Cancel/read-rejection limits unchanged; no new claim from those paths. Test-only assertions route to Capture README and add no public API. Diff-scoped deslop reviewed source/test/prose with no cleanup needed.","inputs":["examples/meeting-notes/README.md","examples/meeting-notes/src/CaptureModal.tsx"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "643c674436b0486c3e599b2f178549915ab0b280",
-
-  "notes": [
-    {"path":"docs/testing/browser-smoke.md","note":"Rechecked the smoke-live list and PR smoke journeys against e2e-manifest.test.ts: terminal-mobile-keyboard spec and its journey row match.","inputs":["docs/testing/browser-smoke.md","scripts/__tests__/e2e-manifest.test.ts"]}
-  ]
-}

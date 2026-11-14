@@ -182,17 +182,20 @@ function ProjectAccentSwatch({
   icon,
   name,
   size = 12,
+  fallback = 'dot',
 }: {
   accent: string | undefined;
   icon: string | undefined;
   name: string;
   size?: number;
+  fallback?: 'dot' | 'initials';
 }) {
   return (
     <ProjectIcon
       project={{ name, icon }}
       accent={accent}
       size={size}
+      fallback={fallback}
       className="inbox-row__project-accent"
     />
   );
@@ -573,8 +576,8 @@ export function InboxRow({
   onDraftDiscarded,
   agents,
   gitLocation,
-  projectAccent,
-  projectIcon,
+  projectAccent: suppliedProjectAccent,
+  projectIcon: suppliedProjectIcon,
   size = 'card',
   chrome = 'hover',
   actionsInDetails = false,
@@ -585,6 +588,9 @@ export function InboxRow({
   detailsOpen: controlledDetailsOpen,
   onDetailsOpenChange,
 }: InboxRowProps) {
+  // The slug maps belong to the host; peer facts must not borrow its artwork.
+  const projectIcon = facts?.station ? undefined : suppliedProjectIcon;
+  const projectAccent = facts?.station ? undefined : suppliedProjectAccent;
   const identity = workIdentityMarks(item, agents);
   // #3159: a row whose conversation a message may reference is a drag source.
   const referenceable = useReferenceableConversations();
@@ -613,7 +619,9 @@ export function InboxRow({
   // filed under come from the same function.
   const status = useObservedWorkStatus(item, now, facts);
   const claims = useSessionWorkClaims(facts?.hostDetails === false ? {} : item);
-  const chips = inboxRowChips(item, { isWoken, claims });
+  const remoteProject = Boolean(item.environmentId || facts?.station);
+  const stationLabel = facts?.station?.label ?? item.environmentLabel;
+  const chips = inboxRowChips(item, { isWoken, claims, stationLabel });
   // Provider identity does not establish which app originated a transcript.
   const agentText = item.agentLabel;
   const directoryContext =
@@ -894,7 +902,7 @@ export function InboxRow({
       <button
         type="button"
         className="chat-dock-inbox__item inbox-row__open"
-        aria-label={`${item.title}${unread ? ', unread' : readUnknown ? ', read status unknown' : ''}, ${contextLabel}${item.controlMode === 'read-only-attached' ? `, ${item.agentLabel}, third-party session` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
+        aria-label={`${item.title}${unread ? ', unread' : readUnknown ? ', read status unknown' : ''}, ${contextLabel}${stationLabel ? `, Station: ${stationLabel}` : ''}${item.controlMode === 'read-only-attached' ? `, ${item.agentLabel}, third-party session` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
         // The accessible name is the explicit label above, so the status
         // (word, and any reason, in full) is offered as the description;
         // otherwise a screen reader would never hear what state the row is
@@ -920,13 +928,19 @@ export function InboxRow({
             <span className="inbox-row__slim-status" data-tone={status.tone}>
               <InboxRowStatusGlyph rung={status.rung} />
             </span>
+            <ProjectAccentSwatch
+              accent={projectAccent}
+              icon={projectIcon}
+              fallback={remoteProject ? 'initials' : 'dot'}
+              name={contextLabel}
+            />
             <InboxRowTitle title={item.title} />
             {hasUnsentDraft && <DraftMarker />}
             {/* Provenance survives the one-line size: a remote row must
                 never read as local work. */}
-            {item.environmentLabel && (
+            {stationLabel && (
               <span className="inbox-row__slim-remote">
-                <bdi>{item.environmentLabel}</bdi>
+                <bdi>{stationLabel}</bdi>
               </span>
             )}
             <span
@@ -976,6 +990,7 @@ export function InboxRow({
                     <ProjectAccentSwatch
                       accent={projectAccent}
                       icon={projectIcon}
+                      fallback={remoteProject ? 'initials' : 'dot'}
                       name={contextLabel}
                     />
                     <span className="inbox-row__project">{contextLabel}</span>
@@ -998,12 +1013,13 @@ export function InboxRow({
                 {/* One project mark: its own icon when it has one, else the
                     folder. The colour dot beside the folder read as a stray
                     separator ("[folder] • name"). */}
-                {displayableProjectIcon(projectIcon) ? (
+                {displayableProjectIcon(projectIcon) || remoteProject ? (
                   <ProjectAccentSwatch
                     size={24}
                     accent={projectAccent}
                     icon={projectIcon}
                     name={contextLabel}
+                    fallback={remoteProject ? 'initials' : 'dot'}
                   />
                 ) : (
                   <FolderGlyph />

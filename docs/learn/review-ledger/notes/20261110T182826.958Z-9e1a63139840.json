@@ -1,7 +1,0 @@
-{
-  "revision": "443525c6391299e53e8c8c63d12af330b36d51b9",
-
-  "notes": [
-    {"path":"docs/architecture/abstraction-review.md","note":"#4688 keyboard-shortcuts.md gained an Undo last action section; it still names the hint-versus-dispatch distinction and local settings store this review cites.","inputs":["docs/architecture/abstraction-review.md","docs/guides/keyboard-shortcuts.md"]}
-  ]
-}

@@ -71,7 +71,7 @@ async function setConnectionsEnabled(
  * panel-level test reaches.
  */
 async function dockInboxRow(page: Page, projectSlug: string) {
-  const hide = page.getByRole('button', { name: 'Hide inbox', exact: true });
+  const hide = page.getByRole('button', { name: /^Hide inbox(?:,|$)/ });
   const show = page.getByRole('button', { name: /^Show inbox/ });
   await expect(hide.or(show)).toBeVisible({ timeout: 20_000 });
   if (await show.isVisible()) await show.click();
@@ -125,7 +125,7 @@ test.describe('project icons', () => {
   test('an icon set in settings appears in the sidebar, a Home row and the project switcher', async ({
     page,
     authenticatedRequest,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(150_000);
     // The settings page's People and access section answers a Station without
     // project sharing with a 501, which browser health counts (a gap that
@@ -185,6 +185,7 @@ test.describe('project icons', () => {
           workspace: { kind: 'project', projectSlug },
         },
         message: 'Say hello for the project icon journey.',
+        clientTurnId: `project-icons-${stamp}`,
       },
     });
     expect(sent.ok(), await sent.text()).toBe(true);
@@ -222,6 +223,7 @@ test.describe('project icons', () => {
     const png = genericIconPng();
     const expectedIcon = `data:image/png;base64,${png.toString('base64')}`;
     await page.goto(`/projects/${projectSlug}/edit`);
+    await page.getByRole('link', { name: 'Basic info', exact: true }).click();
     await page.getByRole('button', { name: 'Choose project icon' }).click();
     await page
       .getByTestId('project-settings-icon-upload')
@@ -229,6 +231,25 @@ test.describe('project icons', () => {
     await expect(
       page.getByRole('img', { name: 'Current image' }),
     ).toBeVisible();
+    for (const theme of ['dark', 'light']) {
+      for (const width of [390, 412, 1440]) {
+        await page.setViewportSize({
+          width,
+          height: width === 1440 ? 900 : 915,
+        });
+        await page.evaluate(
+          (value) => document.documentElement.setAttribute('data-theme', value),
+          theme,
+        );
+        await expect(
+          page.getByRole('button', { name: 'No icon', exact: true }),
+        ).toBeVisible();
+        await page.screenshot({
+          path: testInfo.outputPath(`settings-icon-${theme}-${width}.png`),
+          fullPage: true,
+        });
+      }
+    }
     const saved = page.waitForResponse(
       (response) =>
         response.url().endsWith(`/api/projects/${projectSlug}`) &&
@@ -277,15 +298,26 @@ test.describe('project icons', () => {
 
     // --- The dock's project switcher --------------------------------------
     await page.goto(`/projects/${projectSlug}?dock=open`);
-    await page.locator('.chat-dock__project-badge').first().click();
-    const switcher = page.getByRole('dialog', { name: 'Projects' });
+    await page
+      .locator('#chat-dock')
+      .getByRole('button', { name: 'New chat', exact: true })
+      .first()
+      .click();
+    const draft = page.getByRole('region', { name: 'New chat', exact: true });
+    await expect(draft).toBeVisible();
+    await draft.getByRole('button', { name: /^Project: / }).click();
+    const switcher = page.getByRole('dialog', {
+      name: 'Choose project',
+      exact: true,
+    });
     await expect(switcher).toBeVisible();
-    const switcherRow = switcher
-      .locator('.chat-dock__project-switcher-row')
-      .filter({ hasText: projectName });
-    await expect(
-      switcherRow.locator('.chat-dock__project-switcher-icon img'),
-    ).toHaveAttribute('src', expectedIcon);
+    const switcherRow = switcher.locator(
+      `[data-context-value="${projectSlug}"]`,
+    );
+    await expect(switcherRow.locator('img')).toHaveAttribute(
+      'src',
+      expectedIcon,
+    );
     await page.keyboard.press('Escape');
     await expect(switcher).toBeHidden();
 

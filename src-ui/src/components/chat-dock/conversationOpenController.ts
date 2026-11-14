@@ -236,6 +236,9 @@ export function conversationOpenPatch(
               activityHint: undefined,
               backgroundTasks: [],
               liveUsage: undefined,
+              engineMcpServers: undefined,
+              engineMcpReconnect: undefined,
+              engineMcpComplete: undefined,
               toolCalls: [],
               ephemeralMessages: [],
               // A boundary read may arrive after the new child's live turn.

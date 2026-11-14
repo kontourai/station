@@ -77,6 +77,7 @@ clearly mark the stale document.
 
 - **[Walkthroughs](guides/walkthroughs.md)** — Project imports, Task Browser and Device clips, authorized reads, limits and media dependencies.
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
+- **[Confined native model-channel lab](guides/native-model-channel-lab.md)** — opt-in kernel/channel prerequisite, owned cleanup and explicit authority limits.
 - **[Feature previews](guides/feature-previews.md)** — ship unfinished capabilities off by default, gate every entry point, and keep the offered-preview user table in sync.
 - **[Starter Work](guides/starter-work.md)** — how first-use actions bind to real Tasks, Sessions, approvals, and Scheduler receipts, including recovery.
 - **[Local speech and media tools](guides/local-speech.md)** — consented tool downloads, local transcription, limits and platform evidence.
@@ -89,6 +90,7 @@ clearly mark the stale document.
 - **[Canonical usage export](guides/monitoring.md#canonical-usage-export-source)** — verified-person source consent, committed-order receipts and invalidations, bounded durable sync/indexing, saved Personal views and restore activation; deployed, clone/mirror and native acceptance remain separate.
 - **[Product telemetry](reference/usage-telemetry.md)** — disclosed observations, saved destinations, exact instance key grants, current-process health and connection checks; the [standalone receiver](../packages/telemetry-broker/README.md) owns durable product ingestion. Collector delivery and personal receipt analytics retain separate contracts.
 - **[Cedar policy foundation](reference/cedar-policy.md)** — server-local evaluator contract, bounds and packaged probe.
+- **[Idle weight and request overhead](reference/station-weight.md)** — the per-PR check of Station's memory, CPU and launch time at rest, what it adds to an engine's first model request, its baseline and budgets.
 - **[Backlog disposition policy](reference/backlog-disposition-policy.md)** — how every open issue is classified and which labels the backlog audit accepts.
 - **[Settings deep links](reference/settings-deep-links.md)** — the `?view=&highlight=` URL shape, the registry endpoint that enumerates every control, and the rule for answering with one.
 - **[Architecture](architecture/)** — current module boundaries and ownership.

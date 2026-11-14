@@ -1,7 +1,0 @@
-{
-  "revision": "5faacc14875ef8b87fc7c4779c308b3972b1bd39",
-
-  "notes": [
-    {"path":"docs/design/strands-migration.md","note":"Added the first-start caveat to How to Test: checked loadAppConfigFileInternal in config-loader-app.ts (seeds firstRun and attachedSessionsOutsideProjects only when config/app.json is absent) and executed STATION_HOME=<fresh dir> ./station config set runtime strands --offline, which wrote a file holding only runtime.","inputs":["docs/design/strands-migration.md"]}
-  ]
-}

@@ -5,6 +5,9 @@ import {
   inputRequestFromRequestEvent,
   inputRequestOutcome,
   inputRequestSummary,
+  inputRequestUrlFromRequestEvent,
+  isCardAnsweredRequestEvent,
+  isInputRequestEvent,
 } from '@kontourai/station-shared/input-request';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import {
@@ -59,6 +62,10 @@ export function handleRequestOpenedEvent(
     chat.pendingApprovalTurnIds ?? {};
   chatStore.updateChat(event.threadId, {
     pendingApprovals,
+    pendingRequestKinds: {
+      ...chat.pendingRequestKinds,
+      [event.requestId]: isInputRequestEvent(event) ? 'input' : 'approval',
+    },
     pendingApprovalTurnIds:
       typeof event.turnId === 'string'
         ? { ...otherTurnIds, [event.requestId]: event.turnId }
@@ -111,6 +118,21 @@ function openLiveInputRequestRecord(
     );
     return;
   }
+  const link = inputRequestUrlFromRequestEvent(event);
+  if (link) {
+    openInputRequestRecordPart(
+      event,
+      {
+        ...base,
+        kind: 'url',
+        requester: link.requester,
+        message: inputRequestSummary(link.message),
+      },
+      undefined,
+      station,
+    );
+    return;
+  }
   if (event.requestType !== 'approval' && event.requestType !== 'permission')
     return;
   const toolCallId = event.payload?.toolCallId;
@@ -145,8 +167,9 @@ export function raiseRequestOpenedToast(
   const chatStore = activeChatsStore.forStation(station);
   const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat || event.blocking === false) return;
-  // A form has no one-click answer; the pending-requests card collects it.
-  if (inputRequestFromRequestEvent(event)) return;
+  // A form or a link has no one-click answer; the pending-requests card
+  // collects it (a link's Allow would claim it was opened).
+  if (isCardAnsweredRequestEvent(event)) return;
 
   const agentName = chat.agentName || chat.agentSlug || event.provider;
   // #1545: the tool name alone ("Codex wants to use Bash") is not a decision an
@@ -521,6 +544,11 @@ export function handleRequestResolvedEvent(
   approvalToasts.delete(event.requestId);
   chatStore.updateChat(event.threadId, {
     pendingApprovals,
+    pendingRequestKinds: Object.fromEntries(
+      Object.entries(chat.pendingRequestKinds ?? {}).filter(
+        ([id]) => id !== event.requestId,
+      ),
+    ),
     pendingApprovalTurnIds,
     answeredApprovals: (chat.answeredApprovals ?? []).filter(
       (id) => id !== event.requestId,
@@ -538,6 +566,7 @@ export function handleRequestResolvedEvent(
 type PendingApprovalState = Pick<
   ChatUIState,
   | 'pendingApprovals'
+  | 'pendingRequestKinds'
   | 'answeredApprovals'
   | 'pendingApprovalTurnIds'
   | 'approvalToasts'
@@ -590,6 +619,11 @@ export function settlePendingApprovalsOnTurnEnd(
   }
   return {
     pendingApprovals: pending.filter((requestId) => !settled.has(requestId)),
+    pendingRequestKinds: Object.fromEntries(
+      Object.entries(chat?.pendingRequestKinds ?? {}).filter(
+        ([id]) => !settled.has(id),
+      ),
+    ),
     // A settled request is gone; its "answered here" mark goes with it.
     answeredApprovals: (chat?.answeredApprovals ?? []).filter(
       (requestId) => !settled.has(requestId),

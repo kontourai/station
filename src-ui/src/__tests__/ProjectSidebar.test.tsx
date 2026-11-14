@@ -183,8 +183,28 @@ vi.mock('../hooks/useIsMobile', async (importActual) => ({
   ...(await importActual<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => presentation.isMobile,
 }));
+// No Station is ready here, so the footer's Updates control stays icon-only.
+vi.mock('../hooks/useConnectedServerUpdateContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../hooks/useConnectedServerUpdateContext')
+  >()),
+  useConnectedServerUpdateContext: () => ({
+    apiBase: '',
+    scopeKey: 'sidebar-test',
+    connectionName: 'Test Station',
+    kind: 'remote-server',
+    reachability: 'unknown',
+    identity: null,
+    identityReady: false,
+    identitySettled: false,
+    nativeObservationPending: false,
+    claimedOwnerUnresolved: false,
+    isCurrent: () => false,
+  }),
+}));
 vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionsQuery: () => ({ data: sessions }),
+  useCoreUpdateStatusQuery: () => ({ data: undefined }),
   useProjectLayoutsQuery: () => ({ data: [] }),
   useReorderProjectsMutation: () => ({ mutate: vi.fn() }),
   // archive#3313 routed the sidebar's visibility flags through
@@ -219,7 +239,6 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
-import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockProjectSwitcherSheet';
 import { HomeRecentWorkSection } from '../components/home/HomeRecentWorkSection';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
@@ -817,7 +836,7 @@ describe('a project wears the same colour everywhere', () => {
     );
   }
 
-  test('the sidebar, the switcher, the dock inbox and Home agree on beta', async () => {
+  test('the sidebar, the dock inbox and Home agree on beta', async () => {
     resetState();
     projects.push(
       { id: 'p-gamma', slug: 'gamma', name: 'Gamma' },
@@ -847,22 +866,6 @@ describe('a project wears the same colour everywhere', () => {
     // which no allocation over beta alone would give it.
     expect(sidebarColour).toBe('var(--event-agent-complete)');
 
-    const switcher = renderSidebar(
-      <ChatDockProjectSwitcherSheet
-        anchorRef={{ current: null }}
-        boundProjectSlug="beta"
-        projects={[{ id: 'p-beta', slug: 'beta', name: 'Beta' }]}
-        onOpenProject={vi.fn()}
-        onSwitchProject={vi.fn()}
-        onNewProject={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    );
-    const switcherColour = switcher.baseElement.querySelector<HTMLElement>(
-      '.chat-dock__project-switcher-accent',
-    )?.style.backgroundColor;
-    switcher.unmount();
-
     const rowColour = (ui: ReactElement) => {
       const view = renderSidebar(ui);
       const colour = view.container.querySelector<HTMLElement>(
@@ -875,11 +878,9 @@ describe('a project wears the same colour everywhere', () => {
     const homeColour = rowColour(<Home items={[betaWork]} />);
 
     expect({
-      switcher: switcherColour,
       dock: dockColour,
       home: homeColour,
     }).toEqual({
-      switcher: sidebarColour,
       dock: sidebarColour,
       home: sidebarColour,
     });

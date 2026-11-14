@@ -1,9 +1,0 @@
-{
-  "revision": "6a28fe273107ef9c3132ddb215998d47104cbfb8",
-
-  "notes": [
-    {"path":"docs/learn/media/inspect-request.png","note":"Opened this capture: the Notifications page with an 'Inspect request' dialog for a pending fixture_read tool call (Deny, Approve once, Open session, Close). The source change behind it in this change is one doc comment in orchestration-service.ts (the confinementProviders option); a comment changes nothing this capture renders.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
-
-    {"path":"docs/learn/media/inspect-request.webm","note":"Not played: this host has no video decoder (no ffmpeg). The source change behind it in this change is one doc comment in orchestration-service.ts (the confinementProviders option), which changes nothing the recorded flow renders; its still, inspect-request.png, was opened and matches the documented dialog.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

@@ -1,4 +1,7 @@
-import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  PROVIDER_TURN_TRIGGER,
+  type ProviderRuntimeErrorEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   assertEngineAllowedByManagedPolicy,
   managedEnginePrerequisites,
@@ -31,9 +34,11 @@ import {
   type McpServer,
   type PermissionOption,
   type PromptResponse,
+  RequestError,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionNotification,
+  type StopReason,
 } from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
@@ -44,8 +49,14 @@ import {
   acpApprovalControl,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
+  EngineCommandOutcome,
+  EngineCommandRoute,
+} from '@kontourai/station-contracts/engine-commands';
+import { ENGINE_CREDENTIAL_DEFAULT_PROFILE } from '@kontourai/station-contracts/engine-credential-provider';
+import type {
   InputRequestContent,
   InputRequestForm,
+  InputRequestUrl,
 } from '@kontourai/station-contracts/input-request';
 import type {
   CapabilityUndelivered,
@@ -53,7 +64,11 @@ import type {
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
+  ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
+  ACP_SESSION_REWOUND_CODE,
+  ACP_SESSION_REWOUND_LATE_CODE,
+  ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_NOT_ADVERTISED_CODE,
@@ -61,12 +76,16 @@ import {
   modelSelectionReceipt,
   readApprovalMode,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
+  SESSION_REWIND_AFFECTED_PATHS_MAX,
   type SessionCapabilityDeliveryMetadata,
+  type SessionLiveContinuity,
+  type SessionRewindOutcome,
 } from '@kontourai/station-contracts/provider';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { Prerequisite, ToolDef } from '@kontourai/station-contracts/tool';
 import { TURN_ENGINE_DISPLAY_NAME_METADATA_KEY } from '@kontourai/station-contracts/turn-provenance';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
+import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { toolRequestNeedsPerson } from '@kontourai/station-shared/tool-request-preview';
 import {
   delegatedApprovalDenial,
@@ -80,7 +99,11 @@ import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js
 import type { InvocationContext } from '../../runtime/types.js';
 import { createACPBridgeClient } from '../../services/acp/acp-bridge-client.js';
 import type { ManagedTerminal } from '../../services/acp/acp-bridge-types.js';
-import { registryLaunchEnvFor } from '../../services/acp/acp-engine-descriptors.js';
+import {
+  registryLaunchEnvFor,
+  resolveManagedRuntimeLaunch,
+  stationOwnsEngineSignIn,
+} from '../../services/acp/acp-engine-descriptors.js';
 import {
   acpAdvertisedModelCatalog,
   findAcpModelConfigOption,
@@ -98,6 +121,7 @@ import { COLD_START_OPERATION_TIMEOUT_MS } from '../../services/acp/acp-probe.js
 import {
   ACPProcess,
   type ACPProcessOptions,
+  type ACPSpawnedLaunch,
 } from '../../services/acp/acp-process.js';
 import type { AcpSessionTerminals } from '../../services/acp/acp-session-terminals.js';
 import {
@@ -106,6 +130,7 @@ import {
   engineStatusCheckable,
   isAcpAuthRequired,
   recordEngineSignInRefused,
+  stderrSaysSignedOut,
 } from '../../services/acp/engine-auth-status.js';
 import { engineCredentialEnvFor } from '../../services/acp/engine-credentials.js';
 import { prepareManagedAcpWorkspace } from '../../services/acp/managed-acp-workspace.js';
@@ -124,7 +149,13 @@ import {
   openCodeEditNeedsPerson,
   openCodeProjectCodeRefusal,
 } from '../../services/acp/opencode-project-config.js';
+import {
+  createStderrTail,
+  engineFacingProbeMessage,
+  STDERR_SETTLE_MS,
+} from '../../services/acp/probe-messages.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import { installEngineHostAuthResponders } from '../../services/engine-host-auth/responder.js';
 import {
   commitEngineLaunch,
   engineSessionTmpDir,
@@ -147,6 +178,7 @@ import {
 } from '../../telemetry/metrics.js';
 import { raceWithSignal } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { isRecord } from '../../utils/is-record.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
   ApprovalGovernanceRefusedError,
@@ -161,6 +193,7 @@ import {
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
   SendTurnRefusedError,
+  SessionRewindingError,
   SessionStartRefusedError,
 } from '../adapter-shape.js';
 import {
@@ -193,6 +226,10 @@ import {
   mapAcpStopReasonToTurnCompletion,
 } from './acp-adapter-events.js';
 import {
+  kiroCustomAgentsMeta,
+  kiroProjectedModeApplied,
+} from './acp-agent-projection.js';
+import {
   ACP_ENGINE_DECIDES_APPROVAL_MESSAGE,
   type AcpAppliedApprovalMode,
   acpAppliedApprovalMode,
@@ -201,6 +238,19 @@ import {
   governedModeRefusal,
   isOpenCodeGovernedMode,
 } from './acp-approval-mode.js';
+import {
+  type AcpSubagentWire,
+  acpChildWorkNotReportedEvent,
+  acpSubagentWires,
+} from './acp-child-work.js';
+import {
+  acpCommandAnswer,
+  acpCommandFailure,
+  acpCommandUnsupported,
+  acpDeclaredCommands,
+  readAcpSlashCommand,
+  resolveAcpCommandRoute,
+} from './acp-command-routes.js';
 import {
   type CursorRequestDecision,
   type CursorTodo,
@@ -213,15 +263,39 @@ import {
   readCursorCreatePlan,
 } from './acp-cursor-extensions.js';
 import {
+  type AcpInputDecision,
+  type AcpInputRequestRead,
+  CORE_ELICITATION_METHOD,
+  elicitationReply,
+  kiroUserInputReply,
+  readCoreElicitation,
+  readKiroMcpElicitation,
+  readKiroOpenExternalUrl,
+  readKiroUserInput,
+} from './acp-input-requests.js';
+import {
   type AcpToolServerSkip,
   type AcpToolServerSkipReason,
   resolveAcpPassthroughMcpServers,
 } from './acp-mcp-passthrough.js';
 import {
+  acpRewindPointMatches,
+  acpSessionContinuity,
+  readAcpRewindAnswer,
+  readAcpRewindConflicts,
+  readAcpRewindPoints,
+  readAcpUserMessageId,
+  resolveAcpFork,
+  resolveAcpMcpReconnect,
+  resolveAcpRewind,
+} from './acp-session-actions.js';
+import {
   type AdvertisedAcpModeCatalog,
   advertisedAcpSessionModes,
+  applyAcpEffort,
   applyAdvertisedAcpSessionMode,
   permittedAcpSessionMode,
+  requestedAcpEffort,
   requestedAcpSessionMode,
 } from './acp-session-mode.js';
 import {
@@ -229,6 +303,7 @@ import {
   isAcpMethodNotFound,
   resolveAcpSteerChannel,
 } from './acp-steer.js';
+import { acpTerminalFactsHandler } from './acp-terminal-facts.js';
 import {
   AcpToolUpdateGlobalBudget,
   AcpToolUpdateSupervisor,
@@ -240,6 +315,11 @@ import {
   mergeCapabilityDeliveryMetadata,
 } from './capability-delivery-metadata.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
+import {
+  grokInputRequest,
+  grokQuestionCancelled,
+  grokQuestionResponse,
+} from './harness-questions.js';
 
 /** Matches the `any`-typed logger threaded through the existing ACP substrate (acp-manager.ts, acp-connection.ts, ACPProcessOptions.logger). */
 type AcpLogger = any;
@@ -316,6 +396,89 @@ export interface AcpResumeCursor {
    * `startReservedSession` rejects any resume cursor missing this field.
    */
   connectionFingerprint: string;
+}
+
+/**
+ * A session-scoped frame that names another engine session than this one.
+ * One process serves one Station session, but an engine may run a subagent
+ * as a session of its own on the same connection and stream that child's
+ * updates there too (Grok 1.0.77: the child's prompt arrives as a
+ * `user_message_chunk` under the child's `sessionId`). The child's turn, text
+ * and usage are not this session's; its lineage reaches Station through the
+ * parent's child-work frames instead. Until the process has a session
+ * (during `session/new`, or a `session/load` replaying history) nothing is
+ * foreign: no child exists yet.
+ */
+function isForeignAcpSessionFrame(
+  record: { process?: Pick<ACPProcess, 'sessionId'> },
+  frameSessionId: unknown,
+): boolean {
+  if (typeof frameSessionId !== 'string') return false;
+  // The record exists before its process does.
+  const own = record.process?.sessionId ?? null;
+  return own !== null && frameSessionId !== own;
+}
+
+/** Bound on the engine prompt ids a session remembers as already turned. */
+const ACP_KNOWN_ENGINE_PROMPTS_MAX = 64;
+
+function rememberEnginePrompt(
+  record: Pick<AcpSessionRecord, 'knownEnginePromptIds'>,
+  enginePromptId: string,
+): void {
+  const known = (record.knownEnginePromptIds ??= []);
+  if (known.includes(enginePromptId)) return;
+  known.push(enginePromptId);
+  if (known.length > ACP_KNOWN_ENGINE_PROMPTS_MAX) known.shift();
+}
+
+/** `metadata.trigger` for a terminal that ends the open provider turn `turnId`. */
+function providerTurnMetadata(
+  record: Pick<AcpSessionRecord, 'providerTurn'>,
+  turnId: string,
+): { metadata?: { trigger: typeof PROVIDER_TURN_TRIGGER } } {
+  return record.providerTurn?.turnId === turnId
+    ? { metadata: { trigger: PROVIDER_TURN_TRIGGER } }
+    : {};
+}
+
+/** Clears the open provider turn `turnId`, remembering its engine prompt. */
+function forgetProviderTurn(
+  record: Pick<AcpSessionRecord, 'providerTurn' | 'knownEnginePromptIds'>,
+  turnId: string,
+): void {
+  if (record.providerTurn?.turnId !== turnId) return;
+  rememberEnginePrompt(record, record.providerTurn.enginePromptId);
+  record.providerTurn = undefined;
+}
+
+/** Bound on the engine's own failure detail quoted into a turn failure. */
+const ACP_FAILURE_DETAIL_MAX_CHARS = 1000;
+
+/**
+ * A failed ACP request's text, with the engine's own detail when it put one
+ * in the JSON-RPC error's `data.message`. Grok answers a failed prompt
+ * `-32603 Internal error` and says why only there (`data.message` "API
+ * error (status 400 Bad Request): ..."). The detail is one line, redacted and bounded.
+ */
+function acpFailureMessage(error: unknown): string {
+  const base = errorMessage(error);
+  const data =
+    error !== null && typeof error === 'object'
+      ? (error as { data?: unknown }).data
+      : undefined;
+  const raw =
+    data !== null && typeof data === 'object'
+      ? (data as { message?: unknown }).message
+      : undefined;
+  if (typeof raw !== 'string') return base;
+  const detail = redactSecrets(raw.replace(/\s+/g, ' ').trim());
+  if (!detail || base.includes(detail)) return base;
+  const bounded =
+    detail.length > ACP_FAILURE_DETAIL_MAX_CHARS
+      ? `${detail.slice(0, ACP_FAILURE_DETAIL_MAX_CHARS - 1)}…`
+      : detail;
+  return `${base}: ${bounded}`;
 }
 
 export function isAcpResumeCursor(value: unknown): value is AcpResumeCursor {
@@ -419,6 +582,11 @@ export interface AcpAdapterOptions {
   untrustedContentLedger?: UntrustedContentLedger;
   getConnections: () => Promise<ACPConnectionConfig[]>;
   /**
+   * How long a start waits for a model option sent after `session/new`.
+   * Defaults to {@link ACP_MODEL_ADVERTISEMENT_WAIT_MS}.
+   */
+  modelAdvertisementWaitMs?: number;
+  /**
    * #3290: how long a new engine process may take to start and resume the
    * session when the approval floor changes. Defaults to the cold-start
    * bound an engine probe allows (`COLD_START_OPERATION_TIMEOUT_MS`).
@@ -439,6 +607,10 @@ export interface AcpAdapterOptions {
   }) => OpenCodeAgentReader;
   /** Overrides {@link DEFAULT_SEND_TURN_START_WAIT_MS} (tests). */
   sendTurnStartWaitMs?: number;
+  /** Bound on a rewind's engine answer (default 30 s); a test seam. */
+  rewindAnswerTimeoutMs?: number;
+  /** Bound on a timed-out rewind's late answer (default 5 min); a test seam. */
+  rewindLateAnswerTimeoutMs?: number;
   logger?: AcpLogger;
   processFactory?: (opts: ACPProcessOptions) => ACPProcess;
   /** Injectable Station home for private unbound-session workspaces. */
@@ -543,11 +715,17 @@ interface AcpPendingRequest {
   resolve: (decision: AcpDecision, content?: InputRequestContent) => void;
   options: PermissionOption[];
   /**
+   * The Station turn running when the engine opened it, or absent when none
+   * was (an MCP sign-in link from a reconnect, an engine's own request
+   * between turns). Prompt end settles only its own turn's requests.
+   */
+  openedInTurnId?: string;
+  /**
    * #3390: the form a harness question opened (Cursor's
    * `cursor/ask_question`), answered with content, and the id of the
    * `request.opened` event an answer must name.
    */
-  inputRequest?: InputRequestForm;
+  inputRequest?: InputRequestForm | InputRequestUrl;
   eventId?: string;
   /**
    * Tool-level session-grant identity (`params.toolCall.name`), stored so
@@ -689,6 +867,34 @@ export interface AcpSessionRecord {
   hostImageLaunch?: LaunchedRoot;
   /** The MCP servers the session was established with, for a relaunch. */
   mcpServers?: McpServer[];
+  /**
+   * A turn the engine opened on its own (`PROVIDER_TURN_TRIGGER`), while it
+   * runs: Station's turn id for it and the engine prompt it is.
+   */
+  providerTurn?: { turnId: string; enginePromptId: string };
+  /**
+   * Engine prompt ids that already had a turn: ones seen running while
+   * Station's own send was the active turn, and provider turns that ended or
+   * were stopped. Most recent last, bounded. Grok restates a running prompt,
+   * so a late repeat of one never opens a provider turn.
+   */
+  knownEnginePromptIds?: string[];
+  /**
+   * The engine prompts Station last saw reported running (a Station turn's
+   * or the engine's own), most recent last and bounded: a notice naming one
+   * of them restates it and is not a prompt starting.
+   */
+  seenEnginePromptIds?: string[];
+  /**
+   * Recent readings of the engine's clock less Station's, from frames
+   * stamped with the engine's own time (`_meta.agentTimestampMs`, Grok):
+   * each is the stamp less when Station read the frame, so transit and
+   * Station's own lag only ever lower it, and a replayed old frame lowers it
+   * a lot. The largest is the best estimate. Most recent last, bounded.
+   */
+  engineClockSamples?: number[];
+  /** Whether a frame naming another session was dropped (logged once). */
+  droppedForeignFrame?: boolean;
   /** Drops `session/update` while a relaunch replays history (`session/load`). */
   suppressSessionUpdates?: boolean;
   configOptions?: unknown[];
@@ -713,6 +919,51 @@ export interface AcpSessionRecord {
    * useful amount.
    */
   credentialRefusalsSurfaced?: Set<string>;
+  /**
+   * The engine's ids for each turn's prompts (`user_message_id_assigned`),
+   * oldest first, at most {@link ACP_TURN_MESSAGES_MAX} turns: the points a
+   * rewind or a native fork names. A steer that cancels and re-prompts gets a
+   * second id in the same turn: `firstMessageId` is the turn's own prompt (a
+   * rewind reverts from it), `lastMessageId` the latest (a fork keeps the
+   * whole turn). Kept for this engine process only; a turn whose id was not
+   * seen cannot be a target. The single ledger for these ids.
+   */
+  /**
+   * Woken by every `config_option_update`: a start waiting for a model
+   * option the engine sends after answering `session/new`.
+   */
+  configOptionWaiters?: Set<() => void>;
+  /** The subagent wires the handshake identified (`acp-child-work.ts`). */
+  acpSubagentWires?: ReadonlySet<AcpSubagentWire>;
+  /** An in-place rewind is waiting on the engine; no turn may start. */
+  rewinding?: boolean;
+  /** A rewind past its deadline is still with the engine; no rewind may start. */
+  rewindPendingLate?: boolean;
+  /** Sends still preparing their turn (mode, effort, a relaunch); no rewind may start. */
+  sendsPreparing?: number;
+  /** Turns this record has started, so a late rewind can tell one began since. */
+  turnsStarted?: number;
+  turnMessages?: Array<{
+    turnId: string;
+    firstMessageId: string;
+    lastMessageId: string;
+    /**
+     * The start of the turn's prompt text, kept where the engine names its
+     * rewind points by index (`prompt-index`), to check a point is this
+     * turn before anything is rewound.
+     */
+    promptText?: string;
+    /** When the engine reported starting the turn's prompt, in epoch ms. */
+    startedAt?: number;
+    /**
+     * When the engine reported starting the next prompt it ran after this
+     * one (a turn's or its own), in epoch ms. The engine runs one prompt at
+     * a time, so this turn's rewind point was made before it.
+     */
+    nextStartedAt?: number;
+  }>;
+  /** The start of the running Station turn's prompt text (see `turnMessages`). */
+  activePromptText?: string;
   /** Cursor's todo list as `cursor/create_plan`/`cursor/update_todos` left it. */
   cursorTodos?: CursorTodo[];
   /**
@@ -851,6 +1102,123 @@ export const ACP_ADAPTER_CAPABILITIES = [
  * `turn.started`, both stamped by ORCHESTRATION before this adapter ever
  * sees the turn — this file needs no change to participate correctly.
  */
+/**
+ * How long a start waits for a model option the engine sends after answering
+ * `session/new` (kiro-cli 3.3 loads its model list asynchronously), before
+ * refusing a requested model as not advertised.
+ */
+const ACP_MODEL_ADVERTISEMENT_WAIT_MS = 5_000;
+
+/** `options` with `option` in place of the entry of the same id, or added. */
+function mergeAcpConfigOption(
+  options: unknown,
+  option: { id: string },
+): unknown[] {
+  const list = Array.isArray(options) ? options : [];
+  const at = list.findIndex(
+    (entry) =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      (entry as { id?: unknown }).id === option.id,
+  );
+  return at < 0
+    ? [...list, option]
+    : list.map((entry, index) => (index === at ? option : entry));
+}
+
+/** Turns whose engine prompt ids one ACP session keeps for rewind and fork. */
+export const ACP_TURN_MESSAGES_MAX = 500;
+/** How much of a turn's prompt text the ledger keeps to check a rewind point. */
+const ACP_TURN_PROMPT_TEXT_MAX = 1024;
+/**
+ * How late Station may read an engine prompt's first notice. A prompt's
+ * window starts and ends this much before the notices that bound it, so the
+ * windows of consecutive prompts still tile time and a point lands in only
+ * one (live, on one host, a point came 10-22 ms after its notice).
+ */
+const ACP_REWIND_NOTICE_LAG_MS = 250;
+/**
+ * How far the engine's clock may be from Station's before its rewind points'
+ * times cannot be read against Station's notices.
+ */
+const ACP_ENGINE_CLOCK_MAX_OFFSET_MS = 500;
+
+/** Recent engine prompt ids remembered to tell a restated notice from a new one. */
+const ACP_SEEN_ENGINE_PROMPTS_MAX = 64;
+
+/** Clock readings a session keeps; the largest of them is the estimate. */
+const ACP_ENGINE_CLOCK_SAMPLES_MAX = 32;
+
+/** Remember how far the engine's clock is from Station's, when a frame says. */
+function noteEngineClock(
+  record: Pick<AcpSessionRecord, 'engineClockSamples'>,
+  params: unknown,
+): void {
+  const meta = isRecord(params) ? params._meta : undefined;
+  const stamped = isRecord(meta) ? meta.agentTimestampMs : undefined;
+  if (typeof stamped !== 'number' || !Number.isFinite(stamped)) return;
+  const samples = (record.engineClockSamples ??= []);
+  samples.push(stamped - Date.now());
+  if (samples.length > ACP_ENGINE_CLOCK_SAMPLES_MAX) samples.shift();
+}
+
+/** The engine's clock less Station's, as best the stamped frames say. */
+function engineClockOffset(
+  record: Pick<AcpSessionRecord, 'engineClockSamples'>,
+): number | undefined {
+  const samples = record.engineClockSamples;
+  return samples?.length ? Math.max(...samples) : undefined;
+}
+
+/**
+ * For a managed-runtime connection, the installed runtime readiness should
+ * run (`null` when it is not installed or cannot launch); undefined for any
+ * other connection.
+ */
+function managedRuntimeReadiness(config: {
+  command: string;
+  args?: readonly string[];
+}): { runtime: string | null } | undefined {
+  try {
+    const launch = resolveManagedRuntimeLaunch(config);
+    return launch ? { runtime: launch.command } : undefined;
+  } catch {
+    return { runtime: null };
+  }
+}
+
+/**
+ * How long a rewind waits for the engine's answer before it is reported
+ * failed and the session takes turns again (the live revert answered in well
+ * under a second; this is the bound, not the expectation).
+ */
+const ACP_REWIND_ANSWER_TIMEOUT_MS = 30_000;
+/** How long a rejected request waits to learn whether its process ended. */
+const ACP_PROCESS_EXIT_GRACE_MS = 2_000;
+
+/** Whether `process` has ended, or ends within `graceMs`. */
+function acpProcessEndsSoon(
+  process: ACPProcess,
+  graceMs: number,
+): Promise<boolean> {
+  if (!process.isAlive) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const onExit = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    const timer = setTimeout(() => {
+      process.off('exit', onExit);
+      resolve(!process.isAlive);
+    }, graceMs);
+    process.once('exit', onExit);
+  });
+}
+
+/** How long a timed-out rewind's answer is still waited for (5 min). */
+const ACP_REWIND_LATE_ANSWER_TIMEOUT_MS = 5 * 60_000;
+const ACP_REWIND_TIMED_OUT = Symbol('acp-rewind-timed-out');
+
 export class AcpAdapter implements ProviderAdapterShape {
   readonly provider = 'acp' as const;
   readonly metadata = {
@@ -1063,6 +1431,20 @@ export class AcpAdapter implements ProviderAdapterShape {
     // #4520: a connection added from the public ACP registry does not run
     // when the managed policy sets `limits.engines.acpRegistryAgents: false`.
     assertEngineAllowedByManagedPolicy('acp', config);
+    // Station keeps one engine sign-in per connection it signs in itself,
+    // under the default profile: sign-in, status and the probe all use it.
+    // Another profile is refused here, before anything is launched, rather
+    // than answered with the default profile's token.
+    if (
+      input.credentialProfileRef &&
+      input.credentialProfileRef !== ENGINE_CREDENTIAL_DEFAULT_PROFILE &&
+      stationOwnsEngineSignIn(config)
+    ) {
+      throw new SessionStartRefusedError(
+        `${config.name.trim() || config.id} signs in through Station with one sign-in per connection, so it cannot use credential profile '${input.credentialProfileRef}'. Start it without a credential profile, or add another connection for a second sign-in.`,
+        ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE,
+      );
+    }
     // #3290: an engine that decides which of its actions ask is not started
     // with an approval mode it would never apply. The server sends a mode
     // only to a `station` connection, so this refuses a caller-carried one.
@@ -1313,6 +1695,8 @@ export class AcpAdapter implements ProviderAdapterShape {
     // Resolved once: a relaunch onto another approval floor keeps the same
     // session directory.
     const tmpDir = engineSessionTmpDir(input.threadId);
+    // Shared by relaunches: the start's failure quotes whichever launch spoke last.
+    const stderrTail = createStderrTail();
     const launchProcess = (floor: OpenCodeApprovalFloor | undefined) =>
       processFactory({
         command: config.command,
@@ -1339,8 +1723,10 @@ export class AcpAdapter implements ProviderAdapterShape {
                 withStationOpenCodeApprovalConfig(env, floor),
             }
           : {}),
-        createClient: () =>
+        createClient: (spawned) =>
           this.buildClient(record, {
+            spawned,
+            connection: config,
             cwd,
             terminals,
             ...(sessionTerminals && { sessionTerminals }),
@@ -1348,6 +1734,13 @@ export class AcpAdapter implements ProviderAdapterShape {
             logger,
           }),
         logger,
+        // Piped rather than inherited so a start that dies can quote the
+        // engine; still passed through to Station's own stderr as before.
+        onStderr: (chunk: string) => {
+          stderrTail.push(chunk);
+          globalThis.process.stderr.write(chunk);
+        },
+        onStderrEnd: stderrTail.end,
       });
     // chat-host-images: an engine that exits on its own publishes no
     // session.exited, so the launch's temp root is released when that
@@ -1365,6 +1758,14 @@ export class AcpAdapter implements ProviderAdapterShape {
           record.process === engine
         )
           record.exitedDuringRelaunch = true;
+        // A turn the engine opened itself has no prompt to fail with it.
+        if (
+          !record.relaunching &&
+          !record.stopping &&
+          this.sessions.get(input.threadId) === record &&
+          record.process === engine
+        )
+          this.endProviderTurnWithProcess(record, 'exited');
         if (
           acpEngineExitEndsLaunch({
             current: this.sessions.get(input.threadId) === record,
@@ -1390,6 +1791,9 @@ export class AcpAdapter implements ProviderAdapterShape {
 
     try {
       await acpProcess.start();
+      // Known from `initialize` on, so a subagent frame during session start
+      // is read under the same identity.
+      record.acpSubagentWires = acpSubagentWires(acpProcess.initResult);
       this.requireCurrentGeneration(input.threadId, record.generation);
       record.startedPublished = true;
       this.publish({
@@ -1811,6 +2215,18 @@ export class AcpAdapter implements ProviderAdapterShape {
       // for recovery (session closed) with a truthful reason.
       this.requireCurrentGeneration(input.threadId, record.generation);
       record.mcpServers = passthroughMcpServers;
+      // The session's agent, on an engine that takes client agents in
+      // `session/new` and `session/load` `_meta` (acp-agent-projection.ts).
+      const agentProjection = kiroCustomAgentsMeta(
+        acpProcess.initResult,
+        input.agent ? [input.agent] : [],
+      );
+      if (agentProjection && 'refused' in agentProjection)
+        this.publishAgentProjectionWarning(record, agentProjection.refused);
+      const sessionMeta =
+        agentProjection && 'meta' in agentProjection
+          ? agentProjection.meta
+          : undefined;
       if (isAcpResumeCursor(input.resumeCursor)) {
         const reattach = acpReattachMethod(acpProcess.initResult);
         if (!reattach) {
@@ -1856,14 +2272,18 @@ export class AcpAdapter implements ProviderAdapterShape {
                 acpSessionId,
                 cwd,
                 passthroughMcpServers,
+                sessionMeta,
               );
               outcome = 'loaded';
             }
           } else {
+            // Sent again on load: the engine registers client agents per
+            // session process and has none after a restart.
             await acpProcess.loadSession(
               acpSessionId,
               cwd,
               passthroughMcpServers,
+              sessionMeta,
             );
             outcome = 'loaded';
           }
@@ -1880,7 +2300,28 @@ export class AcpAdapter implements ProviderAdapterShape {
         const sessionResult = await acpProcess.newSession(
           cwd,
           passthroughMcpServers,
+          sessionMeta,
         );
+        if (sessionMeta) {
+          const applied = kiroProjectedModeApplied(
+            sessionMeta.kiro.modeId,
+            sessionResult,
+          );
+          if (!applied.applied) {
+            // Running an agent the engine supplied (with its own
+            // permissions) under Station's agent is refused outright; an
+            // agent the engine merely did not take leaves its default mode,
+            // which is said.
+            if (
+              (sessionResult.modes as { currentModeId?: unknown } | undefined)
+                ?.currentModeId === sessionMeta.kiro.modeId
+            )
+              throw new Error(
+                `ACP agent projection refused: ${applied.reason}.`,
+              );
+            this.publishAgentProjectionWarning(record, applied.reason);
+          }
+        }
         session.resumeCursor = {
           acpSessionId: sessionResult.sessionId,
           connectionId: config.id,
@@ -1892,6 +2333,9 @@ export class AcpAdapter implements ProviderAdapterShape {
             }),
           ),
         } satisfies AcpResumeCursor;
+        // A `config_option_update` that arrived before this answer may hold
+        // a model option the answer itself left out.
+        const updatedBeforeAnswer = record.configOptions;
         record.configOptions = sessionResult.configOptions;
         const modeCatalog = advertisedAcpSessionModes({
           configOptions: sessionResult.configOptions,
@@ -1960,9 +2404,42 @@ export class AcpAdapter implements ProviderAdapterShape {
           sessionModels,
         ).currentModelId;
         const requestedModel = input.modelId?.trim();
-        const modelOption = requestedModel
+        let modelOption = requestedModel
           ? findAcpModelConfigOption(sessionResult.configOptions)
           : undefined;
+        // kiro-cli 3.3 can answer session/new before its model list has
+        // loaded and send the `model` option in a config_option_update
+        // afterwards: use one that already came, or wait a bounded time for
+        // it, before refusing a requested model as not advertised. Only an
+        // engine that speaks config options at all is waited on; one with no
+        // options and no model list is refused at once, as before.
+        const speaksConfigOptions =
+          (sessionResult.configOptions?.length ?? 0) > 0 ||
+          (updatedBeforeAnswer?.length ?? 0) > 0;
+        if (
+          requestedModel &&
+          !modelOption &&
+          sessionModelsObservation.kind === 'absent' &&
+          speaksConfigOptions
+        ) {
+          modelOption =
+            findAcpModelConfigOption(updatedBeforeAnswer) ??
+            (await this.awaitAdvertisedModelOption(
+              record,
+              this.options.modelAdvertisementWaitMs ??
+                ACP_MODEL_ADVERTISEMENT_WAIT_MS,
+            ));
+          this.requireCurrentGeneration(input.threadId, record.generation);
+          if (modelOption) {
+            record.configOptions = mergeAcpConfigOption(
+              record.configOptions,
+              modelOption,
+            );
+            reportedModel =
+              acpAdvertisedModelCatalog(record.configOptions, undefined)
+                .currentModelId ?? reportedModel;
+          }
+        }
         if (
           requestedModel &&
           !modelOption &&
@@ -2033,6 +2510,19 @@ export class AcpAdapter implements ProviderAdapterShape {
             requestedModel,
             appliedOption.currentValue,
           );
+        }
+        // Effort, only through an option the session advertised; a session
+        // with none refuses it rather than dropping it (acp-session-mode.ts).
+        const requestedEffort = requestedAcpEffort(input.modelOptions);
+        if (requestedEffort) {
+          const applied = await applyAcpEffort(
+            acpProcess,
+            record.configOptions ?? sessionResult.configOptions,
+            requestedEffort,
+            config.id,
+          );
+          if (applied.configOptions)
+            record.configOptions = applied.configOptions;
         }
       }
 
@@ -2111,18 +2601,43 @@ export class AcpAdapter implements ProviderAdapterShape {
           };
         })(),
       });
+      // ACP has no subagent concept: an engine whose handshake names no
+      // subagent reporter cannot say what runs under it, which is not the
+      // same as nothing running.
+      if (!record.acpSubagentWires?.size)
+        this.publish(acpChildWorkNotReportedEvent(input.threadId));
 
       return session;
     } catch (caught) {
       // The engine's own "not signed in" answer is a refusal with a typed
       // code, so a surface can say "sign in" instead of showing raw text.
-      if (isAcpAuthRequired(caught)) recordEngineSignInRefused(config);
-      const error = isAcpAuthRequired(caught)
+      const closedBeforeStart =
+        errorMessage(caught) === 'ACP connection closed';
+      if (closedBeforeStart) await stderrTail.settled(STDERR_SETTLE_MS);
+      const lastStderrLine = stderrTail.lastLine();
+      // Kiro CLI signed out never sends `auth_required`: it prints its
+      // vendor's signed-out text and exits before answering `initialize`.
+      const signedOutOnStderr =
+        closedBeforeStart && stderrSaysSignedOut(config, lastStderrLine);
+      const signInRequired = isAcpAuthRequired(caught) || signedOutOnStderr;
+      if (signInRequired) recordEngineSignInRefused(config);
+      const error = signInRequired
         ? new SessionStartRefusedError(
-            `${config.name} needs you to sign in before it can start a chat. ${errorMessage(caught)}`,
+            `${config.name} needs you to sign in before it can start a chat. ${
+              signedOutOnStderr
+                ? redactSecrets(lastStderrLine ?? '')
+                : errorMessage(caught)
+            }`,
             ENGINE_SIGN_IN_REQUIRED_CODE,
           )
-        : caught;
+        : closedBeforeStart && lastStderrLine
+          ? new Error(
+              redactSecrets(
+                engineFacingProbeMessage(caught, config, lastStderrLine),
+              ),
+              { cause: caught },
+            )
+          : caught;
       record.startFailure = error;
       // A Stop that landed while `session/new` was in flight ends the start
       // as a stop whatever the engine then said: the user asked for it, so a
@@ -2278,6 +2793,21 @@ export class AcpAdapter implements ProviderAdapterShape {
   async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
+    // Counted from entry until the turn is active or refused: its
+    // preparation (mode, effort, an approval relaunch of the engine process)
+    // must not overlap a rewind, which refuses while this is above zero.
+    const record = this.sessions.get(input.threadId);
+    if (record) record.sendsPreparing = (record.sendsPreparing ?? 0) + 1;
+    try {
+      return await this.startPreparedTurn(input);
+    } finally {
+      if (record) record.sendsPreparing = (record.sendsPreparing ?? 1) - 1;
+    }
+  }
+
+  private async startPreparedTurn(
+    input: ProviderSendTurnInput,
+  ): Promise<ProviderTurnStartResult> {
     const record = this.requireSession(input.threadId);
     // Orchestration waits in `whenSessionReady` before claiming the turn; a
     // caller that did not (or a start that began since) is refused
@@ -2295,6 +2825,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     // send that provably never started. The turn-start coordinator does not
     // refuse this case first: it serializes turn STARTS, and an accepted
     // turn that is still running does not block its claim.
+    if (record.rewinding) throw new SessionRewindingError();
     if (record.activeTurnId) {
       throw new SendTurnRefusedError(
         `ACP session '${input.threadId}' already has an active turn.`,
@@ -2439,7 +2970,33 @@ export class AcpAdapter implements ProviderAdapterShape {
         record.configOptions = appliedMode.configOptions;
       }
     }
+    const turnEffort = requestedAcpEffort(input.modelOptions);
+    if (turnEffort) {
+      let applied: { configOptions?: unknown[] };
+      try {
+        applied = await applyAcpEffort(
+          record.process,
+          record.configOptions,
+          turnEffort,
+          record.connectionId,
+        );
+      } catch (error) {
+        throw new SendTurnRefusedError(
+          errorMessage(error),
+          'input_unsupported',
+        );
+      }
+      if (applied.configOptions) record.configOptions = applied.configOptions;
+    }
+    // No rewind can have begun meanwhile: it refuses while a send prepares.
+    if (record.activeTurnId)
+      throw new SendTurnRefusedError(
+        `ACP session '${input.threadId}' already has an active turn.`,
+        'busy',
+      );
     record.activeTurnId = turnId;
+    record.activePromptText = input.input?.slice(0, ACP_TURN_PROMPT_TEXT_MAX);
+    record.turnsStarted = (record.turnsStarted ?? 0) + 1;
     record.activeTurnOrigin =
       input.invocationId === undefined
         ? undefined
@@ -2514,12 +3071,34 @@ export class AcpAdapter implements ProviderAdapterShape {
       })),
     ];
     record.promptEpoch += 1;
+    // A slash command the live session routes as its own request runs as
+    // that request; anything else, and a command the engine turns out not
+    // to have, is prompt text (acp-command-routes.ts).
+    const invocation =
+      decodedAttachments.length === 0
+        ? readAcpSlashCommand(input.input)
+        : undefined;
+    const routed = invocation
+      ? resolveAcpCommandRoute(record.process.initResult, invocation)
+      : undefined;
+    const sessionId = record.process.sessionId;
     this.bindPromptSettlement(
       record,
       input.threadId,
       turnId,
       record.promptEpoch,
-      record.process.prompt(content),
+      invocation && routed?.refusal
+        ? this.refuseEngineCommand(record, turnId, routed.refusal)
+        : invocation && routed?.params && sessionId
+          ? this.runEngineCommand(
+              record,
+              turnId,
+              invocation.name,
+              routed.route,
+              routed.params(sessionId),
+              () => record.process.prompt(content),
+            )
+          : record.process.prompt(content),
     );
 
     return {
@@ -2527,6 +3106,73 @@ export class AcpAdapter implements ProviderAdapterShape {
       turnId,
       resumeCursor: record.session.resumeCursor,
     };
+  }
+
+  /**
+   * A slash command whose subcommand Station does not run: nothing reaches
+   * the engine, and the turn shows why (acp-command-routes.ts `refusal`).
+   */
+  private async refuseEngineCommand(
+    record: AcpSessionRecord,
+    turnId: string,
+    text: string,
+  ): Promise<PromptResponse> {
+    this.publishForTurn(record, {
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.session.threadId,
+      createdAt: new Date().toISOString(),
+      turnId,
+      itemId: `${turnId}:command`,
+      method: 'content.text-delta',
+      delta: text,
+    });
+    return { stopReason: 'end_turn' };
+  }
+
+  /**
+   * Run a routed slash command as its request and show what came back as the
+   * engine's output on this turn. A refusal that means "no such command"
+   * runs the command as prompt text instead.
+   */
+  private async runEngineCommand(
+    record: AcpSessionRecord,
+    turnId: string,
+    name: string,
+    route: EngineCommandRoute,
+    params: Record<string, unknown>,
+    asPromptText: () => Promise<PromptResponse>,
+  ): Promise<PromptResponse> {
+    if (route.kind !== 'engine-request') return asPromptText();
+    let outcome: EngineCommandOutcome;
+    try {
+      outcome = acpCommandAnswer(
+        await record.process.extMethod(route.method, params),
+      );
+    } catch (error) {
+      if (acpCommandUnsupported(error)) return asPromptText();
+      outcome = acpCommandFailure(error);
+    }
+    const engine = record.engineName;
+    const text =
+      outcome.kind === 'answered'
+        ? outcome.success === false
+          ? `${engine} could not run /${name}${outcome.text ? `: ${outcome.text}` : '.'}`
+          : outcome.text || `${engine} ran /${name}.`
+        : outcome.kind === 'failed'
+          ? `${engine} refused /${name}: ${outcome.message}`
+          : `${engine} did not run /${name}.`;
+    this.publishForTurn(record, {
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.session.threadId,
+      createdAt: new Date().toISOString(),
+      turnId,
+      itemId: `${turnId}:command`,
+      method: 'content.text-delta',
+      delta: text,
+    });
+    return { stopReason: 'end_turn' };
   }
 
   async interruptTurn(threadId: string, turnId?: string) {
@@ -2551,8 +3197,18 @@ export class AcpAdapter implements ProviderAdapterShape {
     // bounded redraw and close every live tool row before awaiting the child;
     // this makes an interrupt truthful even when the process never settles.
     record.toolUpdateSupervisor.cancelAll();
-    this.cancelPendingRequests(record, threadId);
-    await record.process.cancel();
+    this.settleRequestsAtPromptEnd(record, threadId, targetTurnId);
+    // A provider turn has no prompt whose settlement lifts its quarantine,
+    // so it is lifted here once the cancel is sent, on every path: kept, it
+    // would suppress every later turn. Accepted trade-off: a cause the
+    // cancelled wake reports later than this can enrich the next turn's
+    // failure; waiting for the wake's own end instead could wait forever.
+    const wake = record.providerTurn?.turnId === targetTurnId;
+    try {
+      await record.process.cancel();
+    } finally {
+      if (wake) record.quarantinedTurnIds.delete(targetTurnId);
+    }
     if (!this.ownsActiveTurn(threadId, record, targetTurnId)) {
       return {
         outcome: 'target-mismatch',
@@ -2568,7 +3224,9 @@ export class AcpAdapter implements ProviderAdapterShape {
       ...this.turnOrigin(record, targetTurnId),
       method: 'turn.aborted',
       reason: 'interrupted',
+      ...providerTurnMetadata(record, targetTurnId),
     });
+    forgetProviderTurn(record, targetTurnId);
     record.activeTurnId = undefined;
     record.session.status = 'ready';
     record.session.updatedAt = new Date().toISOString();
@@ -2618,7 +3276,12 @@ export class AcpAdapter implements ProviderAdapterShape {
     }
 
     let content: InputRequestContent | undefined;
-    if (pending.inputRequest) {
+    if (pending.inputRequest?.body.kind === 'url') {
+      // A link carries nothing back: the answer says only whether the
+      // person opened it, which grants nothing.
+      if (context?.inputContent !== undefined)
+        throw new Error('A link request does not accept answers.');
+    } else if (pending.inputRequest) {
       if (
         context?.expectedRequestEventId !== pending.eventId ||
         decision === 'acceptForSession'
@@ -2628,7 +3291,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       // copy that reaches the engine.
       if (decision === 'accept')
         content = validateInputRequestContent(
-          pending.inputRequest,
+          pending.inputRequest as InputRequestForm,
           context?.inputContent,
         );
       else if (context?.inputContent !== undefined)
@@ -2783,16 +3446,29 @@ export class AcpAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * #2316: a cancelled prompt's open permission requests can never run their
-   * call (ACP answers an outstanding `session/request_permission` with
-   * `cancelled` after `session/cancel`). Settle them, so no later answer lands
-   * on a dead request and no session grant is minted for it.
+   * An ACP permission request belongs to the prompt that raised it: once
+   * `session/prompt` settles, the engine has stopped waiting and will never
+   * read the answer. Left open, it stayed open everywhere that folds
+   * `request.opened`/`request.resolved` — the approval inbox and its header
+   * count, the approval toast queue, the chat's pending-approval banner —
+   * while the transcript had already retired the card at `turn.completed`
+   * (`approvalRetiredBy`). Settling it here as `cancelled` is the same
+   * terminal the interrupt path publishes, and it is what every one of those
+   * consumers already clears on.
+   *
+   * Only the ending turn's own requests: one opened outside any turn (an MCP
+   * sign-in link a reconnect asked for) or in another turn is still awaited
+   * by the engine, and stays open. Interrupt and steer settle the cancelled
+   * turn the same way: `session/cancel` ends that prompt, not the others.
    */
-  private cancelPendingRequests(
+  private settleRequestsAtPromptEnd(
     record: AcpSessionRecord,
     threadId: string,
+    turnId: string,
   ): void {
     for (const [requestId, pending] of record.pendingRequests) {
+      if (pending.openedInTurnId !== turnId) continue;
+      record.pendingRequests.delete(requestId);
       pending.resolve('cancel');
       this.publish({
         eventId: crypto.randomUUID(),
@@ -2805,26 +3481,6 @@ export class AcpAdapter implements ProviderAdapterShape {
         status: mapAcpDecisionToApprovalStatus('cancel'),
       });
     }
-    record.pendingRequests.clear();
-  }
-
-  /**
-   * An ACP permission request belongs to the prompt that raised it: once
-   * `session/prompt` settles, the engine has stopped waiting and will never
-   * read the answer. Left open, it stayed open everywhere that folds
-   * `request.opened`/`request.resolved` — the approval inbox and its header
-   * count, the approval toast queue, the chat's pending-approval banner —
-   * while the transcript had already retired the card at `turn.completed`
-   * (`approvalRetiredBy`). Settling it here as `cancelled` is the same
-   * terminal the interrupt path publishes, and it is what every one of those
-   * consumers already clears on.
-   */
-  private settleRequestsAtPromptEnd(
-    record: AcpSessionRecord,
-    threadId: string,
-  ): void {
-    if (record.pendingRequests.size === 0) return;
-    this.cancelPendingRequests(record, threadId);
   }
 
   private prepareRecordForStop(record: AcpSessionRecord): void {
@@ -2833,6 +3489,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     for (const wake of record.startWaiters ?? []) wake();
     if (!record.stopping) {
       record.stopping = true;
+      for (const wake of [...(record.configOptionWaiters ?? [])]) wake();
       record.activeTurnId = undefined;
       for (const [requestId, pending] of record.pendingRequests) {
         pending.resolve('cancel');
@@ -2885,11 +3542,20 @@ export class AcpAdapter implements ProviderAdapterShape {
     }
 
     const results = await Promise.all(
-      scoped.map((config) =>
-        buildCliRuntimePrerequisites({
+      scoped.map((config) => {
+        // A managed engine is not a program on PATH: its runtime is the
+        // install's, or there is none until it is installed.
+        const managed = managedRuntimeReadiness(config);
+        const ownsSignIn = stationOwnsEngineSignIn(config);
+        return buildCliRuntimePrerequisites({
           command: config.command,
           displayName: config.name,
           versionArgs: ['--version'],
+          ...(managed
+            ? { findBinary: () => managed.runtime, runtime: 'managed' as const }
+            : {}),
+          ...(ownsSignIn ? { signIn: 'station' as const } : {}),
+          ...(options?.signal ? { signal: options.signal } : {}),
           // #1940: no generic engine command proves sign-in (a `--version`
           // exit 0 used to read as signed in), and a handshake does not
           // either: some engines refuse only at the first prompt. Only the
@@ -2900,27 +3566,52 @@ export class AcpAdapter implements ProviderAdapterShape {
           unverifiedAuthDescription: engineStatusCheckable(config)
             ? `Station could not tell whether ${config.name} is signed in.`
             : `Station has no way to check whether ${config.name} is signed in. If a chat reports that it needs a sign-in, sign in from this engine's page.`,
-          installStep: `Install ${config.name} and ensure \`${config.command}\` is on PATH.`,
-          authStep: `Sign in with ${config.name} itself if it asks you to.`,
-        }),
-      ),
+          installStep: managed
+            ? `Install ${config.name} from its sign-in panel in Connections.`
+            : `Install ${config.name} and ensure \`${config.command}\` is on PATH.`,
+          authStep: ownsSignIn
+            ? `Sign in to ${config.name} from its sign-in panel in Connections.`
+            : `Sign in with ${config.name} itself if it asks you to.`,
+        });
+      }),
     );
 
     return results.flat();
   }
 
+  /**
+   * Each command a live session listed or its declared methods route, with
+   * how it runs on that session (`EngineCommandRoute`). Every one reaches
+   * the engine (`passthrough`); the route says whether as prompt text or as
+   * the engine's own request. Aggregated across sessions by name, as before:
+   * `sendTurn` resolves the route again on the session a command is sent to.
+   */
   async getCommands(): Promise<
     Array<{
       name: string;
       description: string;
       argumentHint?: string;
       passthrough: boolean;
+      route: EngineCommandRoute;
     }>
   > {
-    const commands = new Map<string, AcpSlashCommand>();
+    const commands = new Map<
+      string,
+      AcpSlashCommand & { route: EngineCommandRoute }
+    >();
     for (const record of this.sessions.values()) {
+      const handshake = record.process.initResult;
       for (const command of record.slashCommands ?? []) {
-        commands.set(command.name, command);
+        commands.set(command.name, {
+          ...command,
+          route: resolveAcpCommandRoute(handshake, {
+            name: command.name,
+            args: '',
+          }).route,
+        });
+      }
+      for (const command of acpDeclaredCommands(handshake)) {
+        if (!commands.has(command.name)) commands.set(command.name, command);
       }
     }
     return [...commands.values()].map((command) => ({
@@ -2928,12 +3619,695 @@ export class AcpAdapter implements ProviderAdapterShape {
       description: command.description,
       argumentHint: command.argumentHint,
       passthrough: true,
+      route: command.route,
     }));
+  }
+
+  /**
+   * This session's continuity as its own engine declared it at `initialize`
+   * (`acp-session-actions.ts`). The adapter's `metadata.continuity` stays
+   * `none`: it speaks for every ACP engine, and most declare neither.
+   */
+  sessionContinuity(threadId: string): SessionLiveContinuity {
+    const record = this.sessions.get(threadId);
+    if (!record || record.stopping || !record.process.sessionId)
+      return { live: false, fork: 'none', rewind: 'none' };
+    return { live: true, ...acpSessionContinuity(record.process.initResult) };
+  }
+
+  /**
+   * The model config option the engine advertises on this session, waiting
+   * up to `waitMs` for a `config_option_update` to bring one. Undefined when
+   * none arrives, or the session is stopped meanwhile.
+   */
+  private async awaitAdvertisedModelOption(
+    record: AcpSessionRecord,
+    waitMs: number,
+  ): Promise<ReturnType<typeof findAcpModelConfigOption>> {
+    // Real time, not the injectable clock: a frozen test clock must not
+    // turn this bound into an endless wait.
+    const deadline = Date.now() + waitMs;
+    let found = findAcpModelConfigOption(record.configOptions);
+    while (!found && !record.stopping && Date.now() < deadline) {
+      record.configOptionWaiters ??= new Set();
+      const waiters = record.configOptionWaiters;
+      await new Promise<void>((resolve) => {
+        const wake = () => {
+          clearTimeout(timer);
+          waiters.delete(wake);
+          resolve();
+        };
+        const timer = setTimeout(wake, Math.max(0, deadline - Date.now()));
+        waiters.add(wake);
+      });
+      found = findAcpModelConfigOption(record.configOptions);
+    }
+    return found;
+  }
+
+  /** Remember the engine's id for the running turn's prompt. */
+  private recordTurnMessage(record: AcpSessionRecord, update: unknown): void {
+    const messageId = readAcpUserMessageId(update);
+    if (messageId) this.recordTurnPrompt(record, messageId);
+  }
+
+  /**
+   * Remember `messageId` as the engine's id for the running Station turn's
+   * prompt, in the ledger rewind and fork resolve a turn through. `startedAt`
+   * is given where the engine reports the prompt starting (Grok's queue
+   * notice), whose rewind points are matched by time and preview; only then
+   * are the start and the prompt text kept.
+   */
+  private recordTurnPrompt(
+    record: AcpSessionRecord,
+    messageId: string,
+    startedAt?: number,
+  ): void {
+    const turnId = record.activeTurnId;
+    if (!turnId) return;
+    record.turnMessages ??= [];
+    const known = record.turnMessages.find((entry) => entry.turnId === turnId);
+    // The first id stays: it is the turn's own prompt, and a later one is a
+    // steer's re-prompt inside the same turn.
+    if (known) known.lastMessageId = messageId;
+    else {
+      record.turnMessages.push({
+        turnId,
+        firstMessageId: messageId,
+        lastMessageId: messageId,
+        ...(startedAt !== undefined
+          ? {
+              startedAt,
+              ...(record.activePromptText !== undefined
+                ? { promptText: record.activePromptText }
+                : {}),
+            }
+          : {}),
+      });
+      if (record.turnMessages.length > ACP_TURN_MESSAGES_MAX)
+        record.turnMessages.splice(
+          0,
+          record.turnMessages.length - ACP_TURN_MESSAGES_MAX,
+        );
+    }
+  }
+
+  /**
+   * Reconnect one of the engine's MCP servers, optionally starting its OAuth
+   * sign-in (the consent link then arrives as a URL request). Only an engine
+   * a reviewed table names (`resolveAcpMcpReconnect`); any other answers
+   * `not-declared`.
+   */
+  async reconnectMcpServer(
+    threadId: string,
+    name: string,
+    options: { startOAuth: boolean },
+  ): Promise<EngineCommandOutcome> {
+    const record = this.requireSession(threadId);
+    const binding = resolveAcpMcpReconnect(record.process.initResult);
+    const sessionId = record.process.sessionId;
+    if (!binding || !sessionId) return { kind: 'not-declared' };
+    if (binding.kind === 'replace-list')
+      return this.reconnectByReplacingList(
+        record,
+        sessionId,
+        binding,
+        name,
+        options,
+      );
+    try {
+      return acpCommandAnswer(
+        await record.process.extMethod(binding.method, {
+          sessionId,
+          serverName: name,
+          startOAuth: options.startOAuth,
+        }),
+      );
+    } catch (error) {
+      return acpCommandFailure(error);
+    }
+  }
+
+  /**
+   * Reconnect a server on an engine whose only MCP call replaces the list
+   * the client passed (`replace-list`): send the list without the server,
+   * then the session's list again, and the engine stops and restarts that
+   * one. Only a server Station passed can be reconnected so, and there is
+   * no OAuth step to start. When the second send fails the first is undone
+   * as best it can be, and the failure is reported either way.
+   */
+  private async reconnectByReplacingList(
+    record: AcpSessionRecord,
+    sessionId: string,
+    binding: { method: string; vendor: string },
+    name: string,
+    options: { startOAuth: boolean },
+  ): Promise<EngineCommandOutcome> {
+    const servers = record.mcpServers ?? [];
+    if (!servers.some((server) => server.name === name))
+      return {
+        kind: 'failed',
+        message: `${binding.vendor} can restart only an MCP server Station passed to this session; '${name}' comes from its own configuration.`,
+      };
+    if (options.startOAuth)
+      return {
+        kind: 'failed',
+        message: `${binding.vendor} has no MCP sign-in Station can start; reconnect without it.`,
+      };
+    const send = (mcpServers: McpServer[]) =>
+      record.process.extMethod(binding.method, { sessionId, mcpServers });
+    try {
+      await send(servers.filter((server) => server.name !== name));
+    } catch (error) {
+      return acpCommandFailure(error);
+    }
+    try {
+      await send(servers);
+    } catch (error) {
+      const restored = await send(servers).then(
+        () => true,
+        () => false,
+      );
+      const failure = acpCommandFailure(error);
+      if (restored || failure.kind !== 'failed') return failure;
+      return {
+        kind: 'failed',
+        message: `${failure.message} ${binding.vendor} may now be running this conversation without '${name}' until it restarts.`,
+      };
+    }
+    return {
+      kind: 'answered',
+      success: true,
+      text: `${binding.vendor} restarted the MCP server '${name}'.`,
+    };
+  }
+
+  /**
+   * Resolve a Station turn to the engine's prompt index, on an engine that
+   * names rewind and fork points by index. Counting points is no anchor: a
+   * wake takes an index without a point, and a prompt the engine handles
+   * itself (a built-in slash command) takes neither. Each point says when it
+   * was created (`created_at`; live, 10-22 ms after the engine's first notice
+   * of its prompt, and later when a prompt hook runs first), and the engine
+   * runs one prompt at a time, so a turn's point is the one point created in
+   * its window: from its prompt's first notice to the next prompt's, both
+   * moved `ACP_REWIND_NOTICE_LAG_MS` earlier for Station reading a notice
+   * late, so consecutive windows tile time. A point's time is read on
+   * Station's clock, less the engine's measured offset, and only while that
+   * offset is within `ACP_ENGINE_CLOCK_MAX_OFFSET_MS`. The point's preview
+   * must also be the turn's, and every turn the ledger holds must resolve
+   * so, each to its own point at a rising index; otherwise nothing
+   * resolves. The one exception is a turn other than the chosen one whose
+   * text is a slash command: the engine may have run it itself, without a
+   * point.
+   */
+  private async promptIndexForTurn(
+    record: AcpSessionRecord,
+    process: ACPProcess,
+    sessionId: string,
+    pointsMethod: string,
+    turns: NonNullable<AcpSessionRecord['turnMessages']>,
+    position: number,
+    read: <T>(answer: Promise<T>) => Promise<T | typeof ACP_REWIND_TIMED_OUT>,
+  ): Promise<{ index: number } | { failed: string }> {
+    const offset = engineClockOffset(record);
+    if (
+      offset === undefined ||
+      Math.abs(offset) > ACP_ENGINE_CLOCK_MAX_OFFSET_MS
+    )
+      return {
+        failed: `${record.engineName}'s clock is not known to agree with Station's, so its rewind points cannot be matched to this conversation's turns. Nothing was changed.`,
+      };
+    const listed = await read(process.extMethod(pointsMethod, { sessionId }));
+    if (listed === ACP_REWIND_TIMED_OUT)
+      return {
+        failed: `${record.engineName} did not list its rewind points in time. Nothing was changed.`,
+      };
+    const points = readAcpRewindPoints(listed);
+    if (!points)
+      return {
+        failed: `${record.engineName} listed its rewind points in a shape Station cannot read. Nothing was changed.`,
+      };
+    const resolved: number[] = [];
+    // Every turn the ledger holds is resolved, not only the chosen one and
+    // those after it: a turn shorter than the lag allowance can lose its
+    // point to the next window, and following that chain back always ends
+    // at a turn left with none, wherever in the conversation it starts.
+    let chosen: number | undefined;
+    for (const [k, turn] of turns.entries()) {
+      const isChosen = k === position;
+      const startedAt = turn.startedAt;
+      const next = turn.nextStartedAt;
+      const inWindow =
+        startedAt === undefined
+          ? []
+          : points.filter((point) => {
+              if (point.createdAt === undefined) return false;
+              // The point's time on Station's clock.
+              const made = point.createdAt - offset;
+              return (
+                made >= startedAt - ACP_REWIND_NOTICE_LAG_MS &&
+                (next === undefined || made < next - ACP_REWIND_NOTICE_LAG_MS)
+              );
+            });
+      const [point] = inWindow;
+      // A turn that was a slash command the engine ran itself has no point,
+      // and that does not move the others; the chosen turn must still have
+      // one (`chosen` stays unset otherwise, and nothing resolves).
+      if (inWindow.length === 0 && turn.promptText?.trimStart().startsWith('/'))
+        continue;
+      if (
+        inWindow.length !== 1 ||
+        !point ||
+        !acpRewindPointMatches(point, turn.promptText) ||
+        point.index <= (resolved.at(-1) ?? -1)
+      )
+        return {
+          failed: `${record.engineName}'s rewind points do not line up with this conversation's turns, so Station cannot tell which one is this turn. Nothing was changed.`,
+        };
+      resolved.push(point.index);
+      if (isChosen) chosen = point.index;
+    }
+    const index = chosen;
+    return index === undefined
+      ? {
+          failed: `${record.engineName}'s rewind points do not line up with this conversation's turns, so Station cannot tell which one is this turn. Nothing was changed.`,
+        }
+      : { index };
+  }
+
+  /** Race `answer` against the rewind deadline; read-only steps only. */
+  private rewindRead<T>(
+    answer: Promise<T>,
+  ): Promise<T | typeof ACP_REWIND_TIMED_OUT> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    return Promise.race([
+      answer,
+      new Promise<typeof ACP_REWIND_TIMED_OUT>((resolve) => {
+        timer = setTimeout(
+          () => resolve(ACP_REWIND_TIMED_OUT),
+          this.options.rewindAnswerTimeoutMs ?? ACP_REWIND_ANSWER_TIMEOUT_MS,
+        );
+      }),
+    ]).finally(() => clearTimeout(timer));
+  }
+
+  /**
+   * Rewind the engine's context to before `turnId`: that turn and every
+   * later one are hidden from the model, and the engine restores files its
+   * write tools changed in them. Refused, before anything reaches the
+   * engine, on an engine without a declared rewind, while a turn runs, and
+   * for a turn whose prompt id this process did not see. The transcript keeps
+   * every turn; an append-only `runtime.warning` marker records the rewind.
+   */
+  async rewindSession(
+    threadId: string,
+    turnId: string,
+  ): Promise<SessionRewindOutcome> {
+    const record = this.sessions.get(threadId);
+    const sessionId = record?.process.sessionId;
+    if (!record || record.stopping || !sessionId)
+      return { kind: 'refused', reason: 'not-live' };
+    const binding = resolveAcpRewind(record.process.initResult);
+    if (!binding) return { kind: 'refused', reason: 'unsupported' };
+    // Busy: a turn runs, a send is still preparing it (it may relaunch the
+    // engine process), or an earlier rewind is still with the engine.
+    if (record.activeTurnId) return { kind: 'refused', reason: 'turn-running' };
+    if ((record.sendsPreparing ?? 0) > 0)
+      return { kind: 'refused', reason: 'send-preparing' };
+    if (record.rewinding || record.rewindPendingLate)
+      return { kind: 'refused', reason: 'rewind-pending' };
+    // A snapshot: the ledger the engine is rewound against, whatever the
+    // live record holds when its answer arrives.
+    const turns = [...(record.turnMessages ?? [])];
+    const index = turns.findIndex((entry) => entry.turnId === turnId);
+    const point = turns[index];
+    if (!point) return { kind: 'refused', reason: 'unknown-turn' };
+    // `sendTurn` refuses to start a turn while this is set, so no turn can
+    // reach the engine (or this ledger) between the request and its answer.
+    record.rewinding = true;
+    let answer: ReturnType<typeof readAcpRewindAnswer>;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const sentTo = record.process;
+      let params: Record<string, unknown> = {
+        sessionId,
+        messageId: point.firstMessageId,
+      };
+      if (binding.target === 'prompt-index') {
+        // Read-only steps first: which index this turn is, and whether
+        // applying the rewind would overwrite files changed outside the
+        // engine since. Either failing changes nothing.
+        const read = <T>(answer: Promise<T>) => this.rewindRead(answer);
+        const located = await this.promptIndexForTurn(
+          record,
+          sentTo,
+          sessionId,
+          binding.pointsMethod,
+          turns,
+          index,
+          read,
+        );
+        if ('failed' in located)
+          return { kind: 'failed', message: located.failed };
+        const target = {
+          sessionId,
+          targetPromptIndex: located.index,
+          mode: 'all',
+        };
+        const preview = await read(
+          sentTo.extMethod(binding.method, { ...target, force: false }),
+        );
+        if (preview === ACP_REWIND_TIMED_OUT)
+          return {
+            kind: 'failed',
+            message: `${record.engineName} did not answer the rewind preview in time. Nothing was changed.`,
+          };
+        const conflicts = readAcpRewindConflicts(preview);
+        if (!conflicts)
+          return {
+            kind: 'failed',
+            message: `${record.engineName} answered the rewind preview in a shape Station cannot read. Nothing was changed.`,
+          };
+        if (conflicts.length > 0)
+          return {
+            kind: 'failed',
+            message: `Files changed outside ${record.engineName} since that turn, and rewinding would overwrite them: ${conflicts.slice(0, 10).join(', ')}${conflicts.length > 10 ? `, and ${conflicts.length - 10} more` : ''}. Nothing was changed.`,
+          };
+        params = { ...target, force: true };
+      }
+      const answered = sentTo.extMethod(binding.method, params);
+      // The request has no timeout of its own, and every send waits on this
+      // one: an engine that never answers must not hold the session busy.
+      const timedOut = new Promise<typeof ACP_REWIND_TIMED_OUT>((resolve) => {
+        deadline = setTimeout(
+          () => resolve(ACP_REWIND_TIMED_OUT),
+          this.options.rewindAnswerTimeoutMs ?? ACP_REWIND_ANSWER_TIMEOUT_MS,
+        );
+      });
+      const result = await Promise.race([answered, timedOut]);
+      if (result === ACP_REWIND_TIMED_OUT) {
+        this.followLateRewind(
+          record,
+          threadId,
+          turnId,
+          turns,
+          answered,
+          sentTo,
+        );
+        return {
+          kind: 'failed',
+          message: `${record.engineName} did not answer the rewind in time. Nothing is marked rewound yet; if the engine applies it later, the conversation says so.`,
+        };
+      }
+      answer = readAcpRewindAnswer(result, SESSION_REWIND_AFFECTED_PATHS_MAX);
+    } catch (error) {
+      const failure = acpCommandFailure(error);
+      return {
+        kind: 'failed',
+        message:
+          failure.kind === 'failed'
+            ? failure.message
+            : `${record.engineName} has no rewind on this session.`,
+      };
+    } finally {
+      if (deadline) clearTimeout(deadline);
+      record.rewinding = false;
+    }
+    if (!answer.success)
+      return {
+        kind: 'failed',
+        message:
+          answer.message ?? `${record.engineName} did not rewind the session.`,
+      };
+    return this.applyRewind(record, threadId, turnId, turns, answer);
+  }
+
+  /** Cut the ledger to before `turnId` and publish the rewind marker. */
+  private applyRewind(
+    record: AcpSessionRecord,
+    threadId: string,
+    turnId: string,
+    turns: NonNullable<AcpSessionRecord['turnMessages']>,
+    answer: { affectedFiles?: { count: number; paths: string[] } },
+  ): Extract<SessionRewindOutcome, { kind: 'rewound' }> {
+    const index = turns.findIndex((entry) => entry.turnId === turnId);
+    const hiddenTurnIds = turns.slice(index).map((entry) => entry.turnId);
+    record.turnMessages = turns.slice(0, index);
+    const files = answer.affectedFiles;
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: ACP_SESSION_REWOUND_CODE,
+      message: `${record.engineName} rewound this conversation; ${hiddenTurnIds.length === 1 ? 'one turn is' : `${hiddenTurnIds.length} turns are`} hidden from it${files ? ` and it restored ${files.count === 1 ? 'one file' : `${files.count} files`}` : ''}.`,
+      details: {
+        beforeTurnId: turnId,
+        hiddenTurnIds,
+        ...(files ? { affectedFileCount: files.count } : {}),
+      },
+    });
+    return {
+      kind: 'rewound',
+      beforeTurnId: turnId,
+      hiddenTurnIds,
+      ...(files ? { affectedFiles: files } : {}),
+    };
+  }
+
+  /**
+   * A rewind whose answer outlived its deadline is still with the engine,
+   * which may yet apply it. Until it settles no other rewind starts. A late
+   * success with no turn started since is applied as if on time (ledger cut,
+   * marker published); one after a turn started cannot say which turns the
+   * engine now hides, so it is published as a warning and the ledger is
+   * left as it is. A late refusal or error is logged.
+   */
+  private followLateRewind(
+    record: AcpSessionRecord,
+    threadId: string,
+    turnId: string,
+    turns: NonNullable<AcpSessionRecord['turnMessages']>,
+    answered: Promise<unknown>,
+    sentTo: ACPProcess,
+  ): void {
+    const turnsStartedAtDeadline = record.turnsStarted ?? 0;
+    record.rewindPendingLate = true;
+    const logger = this.options.logger ?? console;
+    const current = () =>
+      !record.stopping && this.sessions.get(threadId) === record;
+    // A second, longer bound: past it the session stops waiting for this
+    // answer and takes rewinds again. An answer after that is treated as
+    // one after a later turn: the transcript can no longer say what it hid.
+    let abandoned = false;
+    const giveUp = setTimeout(() => {
+      abandoned = true;
+      record.rewindPendingLate = false;
+      logger.warn?.(
+        { threadId, beforeTurnId: turnId },
+        'ACP rewind still unanswered at its late deadline; rewinds are taken again',
+      );
+    }, this.options.rewindLateAnswerTimeoutMs ??
+      ACP_REWIND_LATE_ANSWER_TIMEOUT_MS);
+    giveUp.unref?.();
+    const settle = () => {
+      clearTimeout(giveUp);
+      // Only this rewind's hold: after the late deadline it is no longer
+      // the one pending.
+      if (!abandoned) record.rewindPendingLate = false;
+    };
+    const publishLate = (message: string) =>
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: new Date().toISOString(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: ACP_SESSION_REWOUND_LATE_CODE,
+        message,
+        details: { beforeTurnId: turnId },
+      });
+    void answered.then(
+      (late) => {
+        settle();
+        if (!current()) return;
+        const answer = readAcpRewindAnswer(
+          late,
+          SESSION_REWIND_AFFECTED_PATHS_MAX,
+        );
+        if (!answer.success) {
+          logger.warn?.(
+            { threadId, message: answer.message },
+            'ACP rewind refused by the engine after its deadline',
+          );
+          return;
+        }
+        if (
+          !abandoned &&
+          (record.turnsStarted ?? 0) === turnsStartedAtDeadline
+        ) {
+          this.applyRewind(record, threadId, turnId, turns, answer);
+          return;
+        }
+        logger.warn?.(
+          { threadId, beforeTurnId: turnId },
+          'ACP rewind applied by the engine after its deadline and after a later turn',
+        );
+        publishLate(
+          `${record.engineName} applied an earlier rewind late, after a later turn started. That turn and everything after it may now be hidden from the engine.`,
+        );
+      },
+      async (error: unknown) => {
+        settle();
+        // A stop someone asked for ends the process on purpose: the session
+        // is going away, so there is no later conversation to warn.
+        if (record.stopping) {
+          logger.warn?.(
+            { threadId, beforeTurnId: turnId, error: errorMessage(error) },
+            'ACP rewind unanswered when its session stopped',
+          );
+          return;
+        }
+        // The connection closed under the request (the engine exited or
+        // was relaunched): the old process may have applied it first, and
+        // nothing can confirm either way. The request is rejected as its
+        // output closes, a moment before the process reports its exit.
+        if (
+          record.process !== sentTo ||
+          (await acpProcessEndsSoon(sentTo, ACP_PROCESS_EXIT_GRACE_MS))
+        ) {
+          logger.warn?.(
+            { threadId, beforeTurnId: turnId, error: errorMessage(error) },
+            'ACP rewind unanswered when its engine process ended',
+          );
+          publishLate(
+            `${record.engineName} may have applied a rewind before it restarted. Turns from the chosen one on may be hidden from the engine.`,
+          );
+          return;
+        }
+        if (!current()) return;
+        logger.warn?.(
+          { threadId, error: errorMessage(error) },
+          'ACP rewind failed after its deadline',
+        );
+      },
+    );
+  }
+
+  /**
+   * Fork the engine's session after `atTurnId`, natively: core
+   * `session/fork` with the fork point in the engine's `_meta`, declared as
+   * `sessionCapabilities.fork._meta.<ns>.messageId`. Returns the new session
+   * as a resume cursor a new conversation starts from; this session is
+   * unchanged.
+   */
+  async forkSession(
+    threadId: string,
+    atTurnId: string,
+  ): Promise<{ resumeCursor: AcpResumeCursor } | { refused: string }> {
+    const record = this.requireSession(threadId);
+    const binding = resolveAcpFork(record.process.initResult);
+    const sessionId = record.process.sessionId;
+    const cursor = record.session.resumeCursor;
+    if (!binding || !sessionId || !isAcpResumeCursor(cursor))
+      return { refused: 'This engine declared no fork at a turn.' };
+    const turns = [...(record.turnMessages ?? [])];
+    const position = turns.findIndex((entry) => entry.turnId === atTurnId);
+    const point = turns[position];
+    if (!point)
+      return {
+        refused:
+          'That turn has no engine message id on this session, so it cannot be a fork point.',
+      };
+    if (binding.kind === 'core-meta') {
+      const forked = await record.process.forkSession(
+        sessionId,
+        record.session.cwd ?? '',
+        record.mcpServers ?? [],
+        { [binding.namespace]: { messageId: point.lastMessageId } },
+      );
+      return {
+        resumeCursor: { ...cursor, acpSessionId: forked.sessionId },
+      };
+    }
+    // The engine copies the conversation through the named prompt,
+    // inclusive, into a new session a resume then loads.
+    const located = await this.promptIndexForTurn(
+      record,
+      record.process,
+      sessionId,
+      binding.pointsMethod,
+      turns,
+      position,
+      (answer) => this.rewindRead(answer),
+    );
+    if ('failed' in located) return { refused: located.failed };
+    const cwd = record.session.cwd ?? '';
+    const forked = await record.process.extMethod(binding.method, {
+      sourceSessionId: sessionId,
+      sourceCwd: cwd,
+      newCwd: cwd,
+      targetPromptIndex: located.index,
+    });
+    const newSessionId = isRecord(forked) ? forked.newSessionId : undefined;
+    if (
+      typeof newSessionId !== 'string' ||
+      newSessionId.length === 0 ||
+      newSessionId.length > 256
+    )
+      return {
+        refused: `${record.engineName} answered the fork without a new session id.`,
+      };
+    return { resumeCursor: { ...cursor, acpSessionId: newSessionId } };
+  }
+
+  /**
+   * Take back the steers a running turn has not read yet, on an engine whose
+   * steer table names a retract method. The engine answers alike whether or
+   * not anything was pending; only its own report of the drop says one was.
+   */
+  async retractPendingSteers(threadId: string): Promise<EngineCommandOutcome> {
+    const record = this.requireSession(threadId);
+    const method = resolveAcpSteerChannel(
+      record.process.initResult,
+    ).retractMethod;
+    const sessionId = record.process.sessionId;
+    if (!method || !sessionId) return { kind: 'not-declared' };
+    try {
+      return acpCommandAnswer(
+        await record.process.extMethod(method, { sessionId }),
+      );
+    } catch (error) {
+      return acpCommandFailure(error);
+    }
+  }
+
+  private publishAgentProjectionWarning(
+    record: AcpSessionRecord,
+    reason: string,
+  ): void {
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.session.threadId,
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
+      message: `${record.engineName} is running its own default agent, not this Station agent: ${reason}.`,
+      details: { connectionId: record.connectionId },
+    });
   }
 
   private buildClient(
     record: AcpSessionRecord,
     context: {
+      spawned: ACPSpawnedLaunch;
+      connection: ACPConnectionConfig;
       cwd: string;
       terminals: Map<string, ManagedTerminal>;
       sessionTerminals?: AcpSessionTerminals;
@@ -2941,6 +4315,21 @@ export class AcpAdapter implements ProviderAdapterShape {
       logger: AcpLogger;
     },
   ): ACPClientCallbacks {
+    // This client's own registry: the reviewed requests, plus whatever
+    // credential and secret responders host auth installs for this exact
+    // launch. Host auth derives the launch facts (built-in descriptor,
+    // delegation argv) from the connection itself; nothing here asserts
+    // them. Built before the process speaks, because an engine may ask for
+    // its token before `initialize` returns. None for a launch a managed
+    // policy pin replaced: the connection no longer describes that process.
+    // The scope is the connection's default profile, as for sign-in, status
+    // and the probe; a start asking for another profile on such a connection
+    // was refused before launch, in startReservedSession.
+    const registry = this.reviewedInboundRequests(record, context.logger);
+    if (!context.spawned.launchReplacedByPolicy)
+      installEngineHostAuthResponders(registry, {
+        connection: context.connection,
+      });
     const client = createACPBridgeClient({
       cwd: context.cwd,
       terminals: context.terminals,
@@ -2955,9 +4344,18 @@ export class AcpAdapter implements ProviderAdapterShape {
       getActiveWriter: () => null,
       nextTerminalId: context.nextTerminalId,
       onSessionUpdate: async (params: SessionNotification) => {
+        if (this.dropForeignFrame(record, params.sessionId, context.logger))
+          return;
+        noteEngineClock(record, params);
+        this.recordTurnMessage(record, params.update);
         this.handleSessionUpdate(record, params.update);
+        if (params.update.sessionUpdate === 'config_option_update')
+          for (const wake of [...(record.configOptionWaiters ?? [])]) wake();
       },
       onExtNotification: (method, params) => {
+        if (this.dropForeignFrame(record, params?.sessionId, context.logger))
+          return;
+        noteEngineClock(record, params);
         this.handleExtensionNotification(record, method, params);
       },
       // Unrecognized inbound extension REQUESTS get a spec-conformant
@@ -2971,13 +4369,28 @@ export class AcpAdapter implements ProviderAdapterShape {
       // #3957: not offered to OpenCode (see the launch), so not served.
       fileMethodsOffered: record.approvalControl !== 'station',
       onExtMethod: createAcpInboundExtensionRequestHandler({
-        registry: this.reviewedInboundRequests(record, context.logger),
+        registry,
         logger: context.logger,
         connectionId: record.connectionId,
         onRefused: (method, reason) =>
           this.handleCredentialRefusal(record, method, reason),
       }),
     });
+    // What `initialize` announces follows what this registry answers
+    // (`ACP_ANNOUNCED_CLIENT_META_FLAGS`): a flag whose handler is not
+    // registered is never announced.
+    client.answersExtensionMethod = (method) => registry.answers(method);
+    client.createElicitation = {
+      modes: { form: true, url: true },
+      handle: (params) =>
+        this.answerElicitation(
+          record,
+          CORE_ELICITATION_METHOD,
+          readCoreElicitation(params, { engineName: record.engineName }),
+          params,
+          context.logger,
+        ),
+    };
 
     client.requestPermission = async (
       params: RequestPermissionRequest,
@@ -3184,6 +4597,9 @@ export class AcpAdapter implements ProviderAdapterShape {
         record.pendingRequests.set(requestId, {
           resolve,
           options: params.options,
+          ...(record.activeTurnId
+            ? { openedInTurnId: record.activeTurnId }
+            : {}),
           ...(toolName ? { toolName } : {}),
           ...(needsPerson ? { needsPerson: true as const } : {}),
           ...(governedEdit ? { governedEdit: true as const } : {}),
@@ -3338,6 +4754,8 @@ export class AcpAdapter implements ProviderAdapterShape {
 
     record.process = next;
     record.approvalFloor = floor;
+    // The replaced process ran the open wake; the new one never ends it.
+    this.endProviderTurnWithProcess(record, 'engine-restarted');
     await previous.destroy().catch((error: unknown) => {
       logger.warn?.(
         { threadId: record.session.threadId },
@@ -3465,6 +4883,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       publish: (event) => this.publishForTurn(record, event),
       state: record,
       toolUpdateSupervisor: record.toolUpdateSupervisor,
+      ...this.mapperLogger(),
     };
     mapAcpSessionUpdate(update, ctx);
   }
@@ -3726,7 +5145,9 @@ export class AcpAdapter implements ProviderAdapterShape {
           reason: this.isCurrentGeneration(threadId, record.generation)
             ? 'engine-restarted'
             : 'stopped',
+          ...providerTurnMetadata(record, turnId),
         });
+        forgetProviderTurn(record, turnId);
         record.activeTurnId = undefined;
       }
     }
@@ -3787,19 +5208,158 @@ export class AcpAdapter implements ProviderAdapterShape {
     record: AcpSessionRecord,
     logger: AcpLogger,
   ): AcpInboundExtensionRegistry {
+    const requester = { engineName: record.engineName };
+    // A handler left out (undefined) is not registered, so the method is
+    // refused and any client flag that promises it is not announced.
     const handlers: Record<
       AcpInboundExtensionRequestHandlerId,
-      AcpInboundExtensionHandler
+      AcpInboundExtensionHandler | undefined
     > = {
       'cursor.ask-question': (method, params) =>
         this.answerCursorQuestion(record, method, params, logger),
       'cursor.create-plan': (method, params) =>
         this.answerCursorPlan(record, method, params, logger),
+      'kiro.user-input': (method, params) =>
+        this.answerKiroUserInput(
+          record,
+          method,
+          readKiroUserInput(params, requester),
+          params,
+          logger,
+        ),
+      'kiro.mcp-elicitation': (method, params) =>
+        this.answerElicitation(
+          record,
+          method,
+          readKiroMcpElicitation(params, requester),
+          params,
+          logger,
+        ),
+      'kiro.open-external-url': (method, params) =>
+        this.answerOpenExternalUrl(
+          record,
+          method,
+          readKiroOpenExternalUrl(params, requester),
+          logger,
+        ),
+      'grok.ask-user-question': (method, params) =>
+        this.answerGrokQuestion(record, method, params, logger),
+      'client.terminal-facts': acpTerminalFactsHandler(),
     };
     const registry = new AcpInboundExtensionRegistry();
-    for (const entry of REVIEWED_INBOUND_EXTENSION_REQUESTS)
-      registry.register(entry.method, handlers[entry.handler]);
+    for (const entry of REVIEWED_INBOUND_EXTENSION_REQUESTS) {
+      const handler = handlers[entry.handler];
+      if (handler) registry.register(entry.method, handler);
+    }
     return registry;
+  }
+
+  /**
+   * Put one engine request to the person and wait. Fail-closed: a request
+   * Station could not read, or one no person may be asked
+   * (`delegation.denyApprovals`), is answered `decline` without asking, and
+   * `person` says nobody saw it.
+   */
+  private async askPersonFor(
+    record: AcpSessionRecord,
+    method: string,
+    read: AcpInputRequestRead,
+    params: Record<string, unknown>,
+    logger: AcpLogger,
+  ): Promise<{
+    decision: AcpInputDecision;
+    content?: InputRequestContent;
+    person: boolean;
+  }> {
+    if (read.kind === 'unreadable') {
+      this.reportUnreadableEngineRequest(
+        record,
+        method,
+        logger,
+        `${record.engineName} asked something Station could not show (${read.reason}), so Station answered that nobody accepted it.`,
+      );
+      return { decision: 'decline', person: false };
+    }
+    if (record.delegation?.denyApprovals)
+      return { decision: 'decline', person: false };
+    const inputRequest = read.kind === 'form' ? read.form : read.request;
+    const toolCallId =
+      typeof params.toolCallId === 'string' ? params.toolCallId : undefined;
+    const answer = await this.awaitPersonRequest(record, {
+      title: inputRequest.message,
+      inputRequest,
+      // Named so no session grant is derived for it (`toolRequestNeedsPerson`).
+      payload: { ...(toolCallId ? { toolCallId } : {}), toolName: method },
+    });
+    return {
+      decision: answer.decision,
+      ...(answer.content ? { content: answer.content } : {}),
+      person: answer.decision !== 'cancel',
+    };
+  }
+
+  /** `elicitation/create` and `_kiro/mcp/elicitation`: MCP's answer shape. */
+  private async answerElicitation(
+    record: AcpSessionRecord,
+    method: string,
+    read: AcpInputRequestRead,
+    params: Record<string, unknown>,
+    logger: AcpLogger,
+  ): Promise<Record<string, unknown>> {
+    const answer = await this.askPersonFor(
+      record,
+      method,
+      read,
+      params,
+      logger,
+    );
+    return elicitationReply(
+      answer.decision,
+      read.kind === 'form' ? answer.content : undefined,
+    );
+  }
+
+  /** `_kiro/userInput`: always `answered`, never a decline the engine reads as yes. */
+  private async answerKiroUserInput(
+    record: AcpSessionRecord,
+    method: string,
+    read: AcpInputRequestRead,
+    params: Record<string, unknown>,
+    logger: AcpLogger,
+  ): Promise<Record<string, unknown>> {
+    const answer = await this.askPersonFor(
+      record,
+      method,
+      read,
+      params,
+      logger,
+    );
+    return kiroUserInputReply(answer.decision, answer.content, answer.person);
+  }
+
+  /**
+   * `_kiro/openExternalUrl`: shown as a link for the person to open; Station
+   * never opens it. Answered `{success: true}` once the person opened it.
+   * Otherwise the engine is told it was not opened with a `-32000` error, so
+   * its sign-in attempt ends at once instead of waiting on a callback nobody
+   * will reach (kirocrew acp/runtime_host_requests.py).
+   */
+  private async answerOpenExternalUrl(
+    record: AcpSessionRecord,
+    method: string,
+    read: AcpInputRequestRead,
+    logger: AcpLogger,
+  ): Promise<Record<string, unknown>> {
+    const answer = await this.askPersonFor(record, method, read, {}, logger);
+    if (answer.decision === 'accept') return { success: true };
+    throw new RequestError(
+      -32000,
+      read.kind === 'unreadable'
+        ? 'The link was not opened: it is not an https URL Station shows.'
+        : answer.person
+          ? 'The person did not open the link.'
+          : 'No person could open the link.',
+    );
   }
 
   /** `cursor/ask_question`, through the harness-question form (#3390). */
@@ -3827,7 +5387,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       );
     const answer = await this.awaitPersonRequest(record, {
       title: question.form.message,
-      form: question.form,
+      inputRequest: question.form,
       // Named so no session grant is derived for it (`toolRequestNeedsPerson`).
       payload: { toolCallId: question.toolCallId, toolName: method },
     });
@@ -3837,6 +5397,39 @@ export class AcpAdapter implements ProviderAdapterShape {
       params,
       answer.content,
     );
+  }
+
+  /**
+   * `_x.ai/ask_user_question`: the model's questions, shown as one form. A
+   * question Station cannot show, or one nobody may answer, goes back as
+   * `cancelled`, which Grok tells its model is a decline.
+   */
+  private async answerGrokQuestion(
+    record: AcpSessionRecord,
+    method: string,
+    params: Record<string, unknown>,
+    logger: AcpLogger,
+  ): Promise<Record<string, unknown>> {
+    const form = grokInputRequest(params, record.engineName);
+    if (!form) {
+      this.reportUnreadableEngineRequest(
+        record,
+        method,
+        logger,
+        `${record.engineName} asked a question Station could not show, so Station told it the question was declined.`,
+      );
+      return grokQuestionCancelled();
+    }
+    if (record.delegation?.denyApprovals) return grokQuestionCancelled();
+    const toolCallId =
+      typeof params.toolCallId === 'string' ? params.toolCallId : undefined;
+    const answer = await this.awaitPersonRequest(record, {
+      title: form.message,
+      inputRequest: form,
+      // Named so no session grant is derived for it (`toolRequestNeedsPerson`).
+      payload: { ...(toolCallId ? { toolCallId } : {}), toolName: method },
+    });
+    return grokQuestionResponse(answer.decision, form, answer.content);
   }
 
   /**
@@ -3866,7 +5459,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       title: plan.name
         ? `${record.engineName} wants you to review a plan: ${plan.name}`
         : `${record.engineName} wants you to review a plan`,
-      form: plan.form,
+      inputRequest: plan.form,
       payload: { toolCallId: plan.toolCallId, toolName: method },
     });
     const response = cursorPlanResponse(answer.decision, answer.content);
@@ -3901,7 +5494,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     record: AcpSessionRecord,
     request: {
       title: string;
-      form: InputRequestForm;
+      inputRequest: InputRequestForm | InputRequestUrl;
       payload: Record<string, unknown>;
     },
   ): Promise<{
@@ -3922,7 +5515,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       method: 'request.opened',
       requestType: 'approval',
       title: request.title,
-      payload: { ...request.payload, inputRequest: request.form },
+      payload: { ...request.payload, inputRequest: request.inputRequest },
     });
     return new Promise((resolve) => {
       record.pendingRequests.set(requestId, {
@@ -3935,7 +5528,8 @@ export class AcpAdapter implements ProviderAdapterShape {
         options: [],
         needsPerson: true,
         eventId,
-        inputRequest: request.form,
+        inputRequest: request.inputRequest,
+        ...(record.activeTurnId ? { openedInTurnId: record.activeTurnId } : {}),
         ...(origin ? { origin } : {}),
       });
     });
@@ -3947,7 +5541,16 @@ export class AcpAdapter implements ProviderAdapterShape {
     logger: AcpLogger,
     message: string,
   ): void {
-    logger.warn?.('refused unreadable Cursor extension request', {
+    this.reportUnreadableEngineRequest(record, method, logger, message);
+  }
+
+  private reportUnreadableEngineRequest(
+    record: AcpSessionRecord,
+    method: string,
+    logger: AcpLogger,
+    message: string,
+  ): void {
+    logger.warn?.('refused unreadable engine extension request', {
       method,
       connectionId: record.connectionId,
     });
@@ -3964,6 +5567,30 @@ export class AcpAdapter implements ProviderAdapterShape {
     });
   }
 
+  /**
+   * Whether a frame names another session than this one, and is dropped
+   * (`isForeignAcpSessionFrame`). The first drop per session is logged, so
+   * an engine that renamed its own session would not go silently dark.
+   */
+  private dropForeignFrame(
+    record: AcpSessionRecord,
+    frameSessionId: unknown,
+    logger: AcpLogger,
+  ): boolean {
+    if (!isForeignAcpSessionFrame(record, frameSessionId)) return false;
+    if (!record.droppedForeignFrame) {
+      record.droppedForeignFrame = true;
+      logger.warn?.(
+        'Dropped ACP frames naming another engine session (a subagent of its own, or a renamed session)',
+        {
+          threadId: record.session.threadId,
+          connectionId: record.connectionId,
+        },
+      );
+    }
+    return true;
+  }
+
   private handleExtensionNotification(
     record: AcpSessionRecord,
     method: string,
@@ -3976,8 +5603,177 @@ export class AcpAdapter implements ProviderAdapterShape {
       publish: (event) => this.publishForTurn(record, event),
       state: record,
       toolUpdateSupervisor: record.toolUpdateSupervisor,
+      engineTurns: {
+        started: (enginePromptId) =>
+          this.engineTurnStarted(record, enginePromptId),
+        ended: (enginePromptId, stopReason, failure) =>
+          this.engineTurnEnded(record, enginePromptId, stopReason, failure),
+      },
+      ...this.mapperLogger(),
     };
     mapAcpExtensionNotification(method, params, ctx);
+  }
+
+  /**
+   * The process that ran an open provider turn is gone (it exited, or a
+   * relaunch replaced it), so that turn's own end will never arrive. A
+   * Station turn ends through its prompt; this one is ended here.
+   */
+  private endProviderTurnWithProcess(
+    record: AcpSessionRecord,
+    why: 'exited' | 'engine-restarted',
+  ): void {
+    const turn = record.providerTurn;
+    if (!turn) return;
+    record.providerTurn = undefined;
+    rememberEnginePrompt(record, turn.enginePromptId);
+    if (record.activeTurnId !== turn.turnId) return;
+    const threadId = record.session.threadId;
+    record.turnErrorNotifications = undefined;
+    this.settleRequestsAtPromptEnd(record, threadId, turn.turnId);
+    const base = {
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      turnId: turn.turnId,
+      metadata: { trigger: PROVIDER_TURN_TRIGGER },
+    } as const;
+    if (why === 'exited') {
+      this.publish({
+        ...base,
+        method: 'runtime.error',
+        ...providerFailure('provider_error'),
+        severity: 'error',
+        message: `${record.engineName} exited during a turn it started itself.`,
+      } satisfies ProviderRuntimeErrorEvent);
+      record.session.status = 'error';
+    } else {
+      this.publish({ ...base, method: 'turn.aborted', reason: why });
+      record.session.status = 'ready';
+    }
+    record.session.updatedAt = new Date().toISOString();
+    record.activeTurnId = undefined;
+  }
+
+  /**
+   * The engine is running prompt `enginePromptId`. While Station's own send
+   * is the active turn, that is the send's prompt and is remembered. With no
+   * turn open, a prompt Station never sent is one the engine opened itself
+   * (a wake after background work), and becomes a provider turn so its reply
+   * has a turn to land in.
+   */
+  private engineTurnStarted(
+    record: AcpSessionRecord,
+    enginePromptId: string,
+  ): void {
+    if (record.stopping) return;
+    const seen = (record.seenEnginePromptIds ??= []);
+    // Only a prompt's first notice says it started: the engine restates the
+    // running prompt, and while a cancel finishes it still names the old one.
+    const first = !seen.includes(enginePromptId);
+    if (first) {
+      seen.push(enginePromptId);
+      if (seen.length > ACP_SEEN_ENGINE_PROMPTS_MAX) seen.shift();
+      // A new prompt closes the last remembered turn's window.
+      const last = record.turnMessages?.at(-1);
+      if (last && last.nextStartedAt === undefined)
+        last.nextStartedAt = Date.now();
+    }
+    if (record.activeTurnId) {
+      if (!record.providerTurn) {
+        rememberEnginePrompt(record, enginePromptId);
+        // The engine started this turn's prompt: it is a rewind and fork
+        // point, in the order the engine ran it.
+        // On the prompt's first notice, so now is when it started.
+        if (first) this.recordTurnPrompt(record, enginePromptId, Date.now());
+      }
+      return;
+    }
+    if (record.knownEnginePromptIds?.includes(enginePromptId)) return;
+    const turnId = `provider:${crypto.randomUUID()}`;
+    record.providerTurn = { turnId, enginePromptId };
+    record.activeTurnId = turnId;
+    record.activeTurnOrigin = undefined;
+    record.session.status = 'running';
+    record.session.updatedAt = new Date().toISOString();
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.session.threadId,
+      createdAt: new Date().toISOString(),
+      turnId,
+      method: 'turn.started',
+      metadata: { trigger: PROVIDER_TURN_TRIGGER },
+    });
+  }
+
+  /** An engine prompt ended; it closes the provider turn it opened. */
+  private engineTurnEnded(
+    record: AcpSessionRecord,
+    enginePromptId: string,
+    stopReason: string | undefined,
+    failure: string | undefined,
+  ): void {
+    const turn = record.providerTurn;
+    if (!turn || turn.enginePromptId !== enginePromptId) return;
+    record.providerTurn = undefined;
+    rememberEnginePrompt(record, enginePromptId);
+    if (record.activeTurnId !== turn.turnId) return;
+    record.turnErrorNotifications = undefined;
+    // A request the wake opened (a permission, a question) ends with it.
+    this.settleRequestsAtPromptEnd(
+      record,
+      record.session.threadId,
+      turn.turnId,
+    );
+    const base = {
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.session.threadId,
+      createdAt: new Date().toISOString(),
+      turnId: turn.turnId,
+      metadata: { trigger: PROVIDER_TURN_TRIGGER },
+    } as const;
+    if (stopReason === 'error') {
+      this.publish({
+        ...base,
+        method: 'runtime.error',
+        ...providerFailure('provider_error'),
+        severity: 'error',
+        message: failure ?? `${record.engineName} reported an error.`,
+      } satisfies ProviderRuntimeErrorEvent);
+      record.session.status = 'error';
+    } else if (stopReason === 'cancelled') {
+      this.publish({ ...base, method: 'turn.aborted', reason: 'interrupted' });
+      record.session.status = 'ready';
+    } else {
+      this.publish({
+        ...base,
+        method: 'turn.completed',
+        ...mapAcpStopReasonToTurnCompletion(
+          (stopReason ?? 'end_turn') as StopReason,
+        ),
+      });
+      record.session.status = 'ready';
+    }
+    record.session.updatedAt = new Date().toISOString();
+    record.activeTurnId = undefined;
+  }
+
+  /**
+   * The adapter's logger in the mapper's `warn(message, fields)` shape, when
+   * one was given; otherwise the mapper keeps its own module logger.
+   */
+  private mapperLogger(): Pick<AcpMapperContext, 'logger'> {
+    const logger = this.options.logger;
+    if (!logger?.warn) return {};
+    return {
+      logger: {
+        warn: (message: string, fields?: Record<string, unknown>) =>
+          logger.warn(fields ?? {}, message),
+      },
+    };
   }
 
   private publish(event: CanonicalRuntimeEvent): void {
@@ -3997,8 +5793,15 @@ export class AcpAdapter implements ProviderAdapterShape {
    */
   private publishForTurn(
     record: AcpSessionRecord,
-    event: CanonicalRuntimeEvent,
+    incoming: CanonicalRuntimeEvent,
   ): void {
+    // An MCP report says whether this session can reconnect a server
+    // (`reconnectMcpServer`), so a surface offers the action only then.
+    const event =
+      incoming.method === 'engine-mcp.status' &&
+      resolveAcpMcpReconnect(record.process.initResult)
+        ? { ...incoming, reconnect: true as const }
+        : incoming;
     if (event.invocationId !== undefined) {
       this.publish(event);
       return;
@@ -4105,7 +5908,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
         record.turnErrorNotifications = undefined;
-        this.settleRequestsAtPromptEnd(record, threadId);
+        this.settleRequestsAtPromptEnd(record, threadId, turnId);
         this.publish({
           eventId: crypto.randomUUID(),
           provider: this.provider,
@@ -4131,7 +5934,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         const quota = classifyProviderQuotaFailure(error);
         const coReportedCause = record.turnErrorNotifications?.at(-1)?.message;
         record.turnErrorNotifications = undefined;
-        this.settleRequestsAtPromptEnd(record, threadId);
+        this.settleRequestsAtPromptEnd(record, threadId, turnId);
         if (quota) {
           this.publish({
             eventId: crypto.randomUUID(),
@@ -4166,7 +5969,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             message: `${record.engineName} needs you to sign in before it can answer. ${errorMessage(error)}`,
           } satisfies ProviderRuntimeErrorEvent);
         } else {
-          const baseMessage = errorMessage(error);
+          const baseMessage = acpFailureMessage(error);
           this.publish({
             eventId: crypto.randomUUID(),
             provider: this.provider,
@@ -4218,7 +6021,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     record.promptEpoch += 1;
     const promptEpoch = record.promptEpoch;
     record.toolUpdateSupervisor.cancelAll();
-    this.cancelPendingRequests(record, threadId);
+    this.settleRequestsAtPromptEnd(record, threadId, turnId);
     await record.process.cancel();
     if (record.activeTurnId !== turnId) {
       throw new ProviderTurnEndedError();

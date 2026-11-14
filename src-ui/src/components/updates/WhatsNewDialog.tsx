@@ -6,15 +6,17 @@ import { ReleaseHistory, ReleaseNotes } from './ReleaseNotes';
 export function WhatsNewDialog({
   version,
   nativeApp,
+  serverKey,
   onClose,
 }: {
   version: string;
   nativeApp: boolean;
+  serverKey?: string;
   onClose: () => void;
 }) {
   return (
     <Dialog
-      title={`Updated to Station ${version}`}
+      title={`Updated ${serverKey ? 'server' : 'to Station'} ${version}`}
       closeLabel="Close what’s new"
       onClose={onClose}
       footer={
