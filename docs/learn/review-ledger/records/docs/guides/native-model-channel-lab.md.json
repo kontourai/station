@@ -42,7 +42,15 @@
 
     "src-server/services/orchestration/delegation-group-source-admission.ts",
 
-    "scripts/child-work-native-container-lifecycle-lab.ts"
+    "scripts/child-work-native-container-lifecycle-lab.ts",
+
+    "src-server/services/orchestration/create-request-claims.ts",
+
+    "src-server/services/orchestration/delegated-task-identity.ts",
+
+    "src-server/services/orchestration/__tests__/native-task-source-admission.test.ts",
+
+    "src-server/routes/orchestration/orchestration.ts"
   ],
 
   "checks": []

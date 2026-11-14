@@ -80,7 +80,13 @@
 
     "scripts/child-work-native-model-channel-lab.ts",
 
-    "src-server/services/orchestration/delegation-group-source-admission.ts"
+    "src-server/services/orchestration/delegation-group-source-admission.ts",
+
+    "src-server/services/orchestration/create-request-claims.ts",
+
+    "src-server/services/orchestration/delegated-task-identity.ts",
+
+    "src-server/services/orchestration/__tests__/native-task-source-admission.test.ts"
   ],
 
   "checks": [
