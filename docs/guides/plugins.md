@@ -58,6 +58,10 @@ bundle's download together, a stylesheet fetch and a same-origin script
 `preload` for each, then still applies and executes them one at a time in
 registry order, so each registration is read at its own script's load event.
 Each stylesheet's deadline starts at its plugin's turn, not at its download.
+Before any of that, the UI reads `GET /api/plugins` up to three times, with
+8, 16 and 24 second deadlines, when a read times out, fails in transit or
+gets a 5xx; plugin layout tabs show a loading state until the inventory answers or
+the last read fails.
 See the [registry](../../src-ui/src/core/PluginRegistry.ts).
 
 The capability is a per-launch 256-bit secret checked in constant time. It
