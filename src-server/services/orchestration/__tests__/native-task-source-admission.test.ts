@@ -7,7 +7,10 @@ import { canonicalJson } from '@kontourai/relay';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { onTestFinished, test, vi } from 'vitest';
 import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
-import { CreateRequestClaims } from '../create-request-claims.js';
+import {
+  CreateRequestClaims,
+  markCreateRequestStarting,
+} from '../create-request-claims.js';
 import { SourceRefusal } from '../delegation-group-source-admission.js';
 import {
   fixture,
@@ -274,6 +277,42 @@ test('native root capture refuses outside a live create allocation before source
     code('native_task_custody_unavailable'),
   );
   assert.equal(reads(), 0);
+});
+
+test('a legacy unmarked allocation remains usable ordinarily but cannot infer native server-mint evidence', async () => {
+  const f = await fixture();
+  const request = f.request('/api/orchestration/delegations');
+  await allocation(f, request, async (taskId) => {
+    await markCreateRequestStarting(taskId);
+  });
+  const file = join(f.home, 'create-request-claims.json');
+  const ledger = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const [key] = Object.keys(ledger.claims);
+  assert.ok(key);
+  const legacy = ledger.claims[key];
+  const taskId = legacy.sessionId;
+  delete legacy.sessionIdentityOrigin;
+  delete legacy.starting;
+  delete legacy.startedAt;
+  delete legacy.retention;
+  fs.writeFileSync(file, JSON.stringify(ledger));
+  const reads = sourceOpens(f);
+  await allocation(f, request, async () => {
+    await assert.rejects(
+      f.owner.captureRootNativeTaskSnapshot(f.context(request), selection),
+      code('native_task_custody_unavailable'),
+    );
+    assert.equal(reads(), 0);
+  });
+  // Restore the old unmarked format as fixture input, without manufacturing a
+  // completed Session/provider receipt. Ordinary callback entry still works.
+  fs.writeFileSync(file, JSON.stringify(ledger));
+  let ordinary = false;
+  await allocation(f, request, async (id) => {
+    assert.equal(id, taskId);
+    ordinary = true;
+  });
+  assert.equal(ordinary, true);
 });
 
 test('native root capture cannot borrow another Request from the same operator allocation', async () => {
