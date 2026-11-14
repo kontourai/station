@@ -30,6 +30,7 @@ import {
   TroubleshootService,
 } from '../../../services/infra/troubleshoot-service.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
 import { createDiagnosticsRoutes } from '../diagnostics.js';
 
 const makeTempDir = trackTempDirs();
@@ -50,9 +51,13 @@ const logger = {
   },
 };
 
-function service(stationRoot: string) {
+function service(
+  stationRoot: string,
+  conversations?: Pick<EventStore, 'conversationSessions'>,
+) {
   return new TroubleshootService(stationRoot, {
     stationRoot,
+    ...(conversations ? { conversations } : {}),
     stationName: () => 'test-station',
     environmentId: async () => 'env-test',
     collectDoctor: async () =>
@@ -69,16 +74,22 @@ function service(stationRoot: string) {
   });
 }
 
-function diagnostics(stationRoot: string) {
+function diagnostics(
+  stationRoot: string,
+  conversations?: Pick<EventStore, 'conversationSessions'>,
+) {
   return createDiagnosticsRoutes({} as never, logger as never, {} as never, {
-    troubleshoot: service(stationRoot),
+    troubleshoot: service(stationRoot, conversations),
   });
 }
 
 type Caller = 'operator' | 'device' | 'owner-device' | 'internal' | 'none';
 
 /** The diagnostics routes behind a stand-in for the auth boundary's principal write. */
-function unitApp(stationRoot: string) {
+function unitApp(
+  stationRoot: string,
+  conversations?: Pick<EventStore, 'conversationSessions'>,
+) {
   const app = new Hono();
   app.use('*', async (c, next) => {
     const caller = (c.req.header('x-test-caller') ?? 'none') as Caller;
@@ -116,7 +127,7 @@ function unitApp(stationRoot: string) {
     bindRuntimeLocalOperator(c.req.raw);
     return next();
   });
-  app.route('/api/diagnostics', diagnostics(stationRoot));
+  app.route('/api/diagnostics', diagnostics(stationRoot, conversations));
   return app;
 }
 
@@ -304,6 +315,59 @@ describe('POST /api/diagnostics/troubleshoot/prepare', () => {
       ),
     );
     expect(context.seed).toMatchObject({ conversationId, turnId });
+  });
+
+  test('says when the seeded conversation is not stored on this Station', async () => {
+    const storeHome = makeTempDir('troubleshoot-conversation-store-');
+    // A real event store: a conversation that ran here has lineage; one
+    // opened from a paired Station has none on this Station.
+    const store = new EventStore(join(storeHome, 'events.sqlite'));
+    const seedLine = '- Conversation location: not on this Station.';
+    const ambient = async (
+      conversationId: string,
+      conversations?: Pick<EventStore, 'conversationSessions'>,
+    ) => {
+      const stationRoot = makeTempDir('troubleshoot-conversation-location-');
+      const response = await prepare(
+        unitApp(stationRoot, conversations),
+        'operator',
+        { seed: { conversationId, errorSummary: 'engine-turn-failed: Boom' } },
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as Record<string, any>;
+      expect(
+        readFileSync(
+          join(stationRoot, 'cache', 'triage', body.runId, 'seed.md'),
+          'utf8',
+        ),
+      ).toBe(`${body.ambientContext}\n`);
+      return body.ambientContext as string;
+    };
+    try {
+      const now = new Date().toISOString();
+      store.upsertSession({
+        provider: 'claude',
+        threadId: 'claude:local-1',
+        status: 'ready',
+        createdAt: now,
+        updatedAt: now,
+      });
+      const local = await ambient('claude:local-1', store);
+      expect(local).toContain('- Conversation: claude:local-1');
+      expect(local).not.toContain(seedLine);
+      const peer = await ambient('claude:1794521333066', store);
+      expect(peer).toContain(seedLine);
+      expect(peer).toContain('paired Station');
+      expect(peer.length).toBeLessThanOrEqual(
+        MAX_TROUBLESHOOT_AMBIENT_CONTEXT_LENGTH,
+      );
+    } finally {
+      store.close();
+    }
+    // Without an event store, nothing is claimed either way.
+    expect(await ambient('claude:1794521333066')).not.toContain(
+      'Conversation location',
+    );
   });
 
   test('rejects fields outside the request schema', async () => {

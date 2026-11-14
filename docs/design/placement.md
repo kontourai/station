@@ -882,7 +882,8 @@ background work of the conversation on screen — tool calls, delegated
 sessions, provider subagents — as a dock tab (`workspace-agents`,
 `exposure: 'catalog'`, no chord, dock regions only). It is the SAME list as
 `BackgroundTasksSheet`: `TaskRow` and its labels moved to
-`backgroundTaskRows.tsx` and both render it. The occurrence binds nothing,
+`backgroundTaskRows.tsx` and both render it. Its activity line
+(`BackgroundTaskActivity`) is also what the chat's background banner lists. The occurrence binds nothing,
 like Activity's — which conversation's work it shows is what the pane READS
 (`activeChat`), not what it IS — and it reads no region state, so
 "View transcript" reveals the delegate through `useShowSurface`. Fields the

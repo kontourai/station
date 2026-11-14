@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { describe, expect, test, vi } from 'vitest';
 import { K, OP, SPAN } from '../../../../src-shared/monitoring-keys.js';
 import { MonitoringEmitter } from '../../../monitoring/emitter.js';
+import { AcpToolUpdateSupervisor } from '../../../providers/adapters/acp-tool-update-supervisor.js';
 import { OrchestrationMonitoringBridge } from '../orchestration-monitoring-bridge.js';
 
 const context = () => ({
@@ -455,5 +456,330 @@ describe('OrchestrationMonitoringBridge', () => {
     );
     await emitter.flush();
     expect(persist).not.toHaveBeenCalled();
+  });
+
+  test('records one start span per ACP tool call although the supervisor re-publishes tool.started on metadata updates', async () => {
+    const persisted: Record<string, unknown>[] = [];
+    const emitter = new MonitoringEmitter(new EventEmitter(), async (event) => {
+      persisted.push(event);
+    });
+    const bridge = new OrchestrationMonitoringBridge(emitter, () => ({
+      slug: 'opencode',
+      conversationId: 'conversation-1',
+      userId: 'u1',
+    }));
+    bridge.onTurnDispatched({
+      provider: 'acp',
+      threadId: 'conversation-1',
+      turnId: 'turn-1',
+      prompt: 'hello',
+    });
+    // The real supervisor, wired the way the ACP adapter stamps a call's turn.
+    const published: string[] = [];
+    const supervisor = new AcpToolUpdateSupervisor(
+      {
+        provider: 'acp',
+        threadId: 'conversation-1',
+        status: 'running',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      (event) => {
+        published.push(event.method);
+        bridge.onRuntimeEvent({ ...event, turnId: 'turn-1' });
+      },
+    );
+    // OpenCode's shape: a pending call, then updates that fill in its title,
+    // kind and input before the terminal update.
+    supervisor.acceptStarted({
+      toolCallId: 'call-1',
+      title: 'bash',
+      hasTitle: true,
+      rawInput: {},
+      hasRawInput: true,
+      status: 'pending',
+      hasStatus: true,
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-1',
+      kind: 'execute',
+      hasKind: true,
+      rawInput: { command: 'ls' },
+      hasRawInput: true,
+      status: 'in_progress',
+      hasStatus: true,
+    });
+    // OpenCode retitles the call with its description.
+    supervisor.acceptUpdate({
+      toolCallId: 'call-1',
+      title: 'List files',
+      hasTitle: true,
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-1',
+      rawOutput: { output: 'a b' },
+      hasRawOutput: true,
+      status: 'completed',
+      hasStatus: true,
+    });
+    supervisor.dispose();
+    await emitter.flush();
+
+    // Precondition: the supervisor really did re-publish the start.
+    expect(
+      published.filter((m) => m === 'tool.started').length,
+    ).toBeGreaterThan(1);
+    const toolRows = persisted.filter(
+      (event) => event[K.OP_NAME] === OP.EXECUTE_TOOL,
+    );
+    expect(
+      toolRows.map((event) => [event[K.SPAN_KIND], event[K.TOOL_CALL_ID]]),
+    ).toEqual([
+      [SPAN.START, 'call-1'],
+      [SPAN.END, 'call-1'],
+    ]);
+    // The start row is what was known at first sight; the settled input is
+    // on the result row, and both rows file the call under one tool name.
+    expect(toolRows[0]?.[K.TOOL_NAME]).toBe('bash');
+    expect(toolRows[0]?.[K.TOOL_CALL_ARGS]).toEqual({});
+    expect(toolRows[1]?.[K.TOOL_NAME]).toBe('bash');
+    expect(toolRows[1]?.[K.TOOL_CALL_ARGS]).toEqual({ command: 'ls' });
+    expect(toolRows[1]?.[K.TOOL_CALL_RESULT]).toEqual({ output: 'a b' });
+    expect(typeof toolRows[1]?.[K.TOOL_DURATION_MS]).toBe('number');
+  });
+
+  test('an ACP call first reported without a name or with settled input', async () => {
+    const persisted: Record<string, unknown>[] = [];
+    const emitter = new MonitoringEmitter(new EventEmitter(), async (event) => {
+      persisted.push(event);
+    });
+    const bridge = new OrchestrationMonitoringBridge(emitter, () => ({
+      slug: 'opencode',
+      conversationId: 'conversation-1',
+      userId: 'u1',
+    }));
+    bridge.onTurnDispatched({
+      provider: 'acp',
+      threadId: 'conversation-1',
+      turnId: 'turn-1',
+      prompt: 'hello',
+    });
+    const supervisor = new AcpToolUpdateSupervisor(
+      {
+        provider: 'acp',
+        threadId: 'conversation-1',
+        status: 'running',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      (event) => bridge.onRuntimeEvent({ ...event, turnId: 'turn-1' }),
+    );
+    // No name at first sight: the supervisor labels the call with its id.
+    supervisor.acceptStarted({ toolCallId: 'call-2' });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-2',
+      title: 'read',
+      hasTitle: true,
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-2',
+      status: 'completed',
+      hasStatus: true,
+    });
+    // Input known from the start and re-sent unchanged on a retitle.
+    supervisor.acceptStarted({
+      toolCallId: 'call-3',
+      title: 'grep',
+      hasTitle: true,
+      rawInput: { pattern: 'x' },
+      hasRawInput: true,
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-3',
+      title: 'Search for x',
+      hasTitle: true,
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-3',
+      status: 'completed',
+      hasStatus: true,
+    });
+    supervisor.dispose();
+    await emitter.flush();
+
+    const rows = persisted
+      .filter((event) => event[K.OP_NAME] === OP.EXECUTE_TOOL)
+      .map((event) => ({
+        kind: event[K.SPAN_KIND],
+        id: event[K.TOOL_CALL_ID],
+        name: event[K.TOOL_NAME],
+        hasArgs: K.TOOL_CALL_ARGS in event,
+      }));
+    expect(rows).toEqual([
+      { kind: SPAN.START, id: 'call-2', name: 'call-2', hasArgs: true },
+      { kind: SPAN.END, id: 'call-2', name: 'read', hasArgs: false },
+      { kind: SPAN.START, id: 'call-3', name: 'grep', hasArgs: true },
+      { kind: SPAN.END, id: 'call-3', name: 'grep', hasArgs: false },
+    ]);
+  });
+
+  test('a completed call id that is reused starts a new span', async () => {
+    const persisted: Record<string, unknown>[] = [];
+    const emitter = new MonitoringEmitter(new EventEmitter(), async (event) => {
+      persisted.push(event);
+    });
+    const bridge = new OrchestrationMonitoringBridge(emitter, context);
+    bridge.onTurnDispatched({
+      provider: 'codex',
+      threadId: 'conversation-1',
+      turnId: 'turn-1',
+      prompt: 'hello',
+    });
+    for (let round = 0; round < 2; round++) {
+      bridge.onRuntimeEvent(
+        runtimeEvent({
+          method: 'tool.started',
+          itemId: 'tool-1',
+          toolCallId: 'tool-1',
+          toolName: 'shell',
+        }),
+      );
+      bridge.onRuntimeEvent(
+        runtimeEvent({
+          method: 'tool.completed',
+          itemId: 'tool-1',
+          toolCallId: 'tool-1',
+          toolName: 'shell',
+          status: 'success',
+        }),
+      );
+    }
+    await emitter.flush();
+    expect(
+      persisted
+        .filter((event) => event[K.OP_NAME] === OP.EXECUTE_TOOL)
+        .map((event) => event[K.SPAN_KIND]),
+    ).toEqual([SPAN.START, SPAN.END, SPAN.START, SPAN.END]);
+  });
+
+  test('a re-published start with a task descriptor keeps the call input', async () => {
+    const persisted: Record<string, unknown>[] = [];
+    const emitter = new MonitoringEmitter(new EventEmitter(), async (event) => {
+      persisted.push(event);
+    });
+    const bridge = new OrchestrationMonitoringBridge(emitter, context);
+    bridge.onTurnDispatched({
+      provider: 'claude',
+      threadId: 'conversation-1',
+      turnId: 'turn-1',
+      prompt: 'hello',
+    });
+    // Claude's tool_use carries the Agent call's real input; its later
+    // task_started re-publishes the same call id with a task descriptor.
+    const input = { subagent_type: 'general-purpose', prompt: 'do it' };
+    bridge.onRuntimeEvent(
+      runtimeEvent({
+        provider: 'claude',
+        method: 'tool.started',
+        itemId: 'task-1',
+        toolCallId: 'task-1',
+        toolName: 'Agent',
+        arguments: input,
+      }),
+    );
+    bridge.onRuntimeEvent(
+      runtimeEvent({
+        provider: 'claude',
+        method: 'tool.started',
+        itemId: 'task-1',
+        toolCallId: 'task-1',
+        toolName: 'Task (general-purpose)',
+        arguments: {
+          description: 'd',
+          task_type: 'local_agent',
+          prompt: 'do it',
+        },
+      }),
+    );
+    bridge.onRuntimeEvent(
+      runtimeEvent({
+        provider: 'claude',
+        method: 'tool.completed',
+        itemId: 'task-1',
+        toolCallId: 'task-1',
+        toolName: 'Agent',
+        status: 'success',
+      }),
+    );
+    await emitter.flush();
+    const rows = persisted.filter(
+      (event) => event[K.OP_NAME] === OP.EXECUTE_TOOL,
+    );
+    expect(rows.map((event) => event[K.SPAN_KIND])).toEqual([
+      SPAN.START,
+      SPAN.END,
+    ]);
+    expect(rows[0]![K.TOOL_CALL_ARGS]).toEqual(input);
+    expect(K.TOOL_CALL_ARGS in rows[1]!).toBe(false);
+  });
+
+  test('an ACP input backfilled after a partial start reaches the result span', async () => {
+    const persisted: Record<string, unknown>[] = [];
+    const emitter = new MonitoringEmitter(new EventEmitter(), async (event) => {
+      persisted.push(event);
+    });
+    const bridge = new OrchestrationMonitoringBridge(emitter, () => ({
+      slug: 'grok',
+      conversationId: 'conversation-1',
+      userId: 'u1',
+    }));
+    bridge.onTurnDispatched({
+      provider: 'acp',
+      threadId: 'conversation-1',
+      turnId: 'turn-1',
+      prompt: 'hello',
+    });
+    const supervisor = new AcpToolUpdateSupervisor(
+      {
+        provider: 'acp',
+        threadId: 'conversation-1',
+        status: 'running',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      (event) => bridge.onRuntimeEvent({ ...event, turnId: 'turn-1' }),
+    );
+    // Grok's tool_call carries a partial input; an update backfills fields.
+    supervisor.acceptStarted({
+      toolCallId: 'call-4',
+      title: 'bash',
+      hasTitle: true,
+      rawInput: { command: 'ls' },
+      hasRawInput: true,
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-4',
+      rawInput: { command: 'ls', description: 'list' },
+      hasRawInput: true,
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'call-4',
+      status: 'completed',
+      hasStatus: true,
+    });
+    supervisor.dispose();
+    await emitter.flush();
+    const rows = persisted.filter(
+      (event) => event[K.OP_NAME] === OP.EXECUTE_TOOL,
+    );
+    expect(rows.map((event) => event[K.SPAN_KIND])).toEqual([
+      SPAN.START,
+      SPAN.END,
+    ]);
+    expect(rows[0]![K.TOOL_CALL_ARGS]).toEqual({ command: 'ls' });
+    expect(rows[1]![K.TOOL_CALL_ARGS]).toEqual({
+      command: 'ls',
+      description: 'list',
+    });
   });
 });

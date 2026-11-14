@@ -253,11 +253,7 @@ import { composeTaskDispatcher } from '../../services/projects/task-dispatch-com
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import { WorktreeOutputSettlementService } from '../../services/projects/worktree-output-settlement-service.js';
-import {
-  sessionExitWorktreeMetadata,
-  terminalWorktreeStateForExit,
-  WorktreeProvisioningService,
-} from '../../services/projects/worktree-provisioning-service.js';
+import { WorktreeProvisioningService } from '../../services/projects/worktree-provisioning-service.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import type {
@@ -579,6 +575,7 @@ import {
   getActiveRuntimeProjectSlug,
 } from './runtime-startup.js';
 import { readVerifiedPionApplicationRequest } from './self-hosted-broker-pion-runtime.js';
+import { finalizeSessionExit } from './session-exit-finalization.js';
 import {
   BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
   BUILTIN_STATION_KNOWLEDGE_TOOL_SERVER_ID,
@@ -2038,34 +2035,44 @@ export class StationRuntime {
               },
             );
           });
-        void this.orchestrationService
-          .readSession(sessionId, INTERNAL_SESSION_READ_SCOPE, {
-            eventMethods: [
-              'session.started',
-              'session.configured',
-              'session.exited',
-              'session.state-changed',
-              'turn.started',
-              'turn.completed',
-              'turn.aborted',
-              'runtime.error',
-              'request.opened',
-              'request.resolved',
-              'session.stop-settled',
-            ],
-          })
-          .then(async (detail) => {
-            if (!detail) return;
-            const binding =
-              this.orchestrationEventStore?.readProjectTaskRoomExecutionBinding(
-                sessionId,
-              );
-            const task = binding
-              ? this.taskGraphService.readTaskView(binding.taskId)
-              : this.taskGraphService
-                  .listTasks()
-                  .find((candidate) => candidate.sessionId === sessionId);
-            if (task && event.provider) {
+        void finalizeSessionExit(
+          { ...event, sessionId },
+          {
+            readExitDetail: (id) =>
+              this.orchestrationService.readSession(
+                id,
+                INTERNAL_SESSION_READ_SCOPE,
+                {
+                  eventMethods: [
+                    'session.started',
+                    'session.configured',
+                    'session.exited',
+                    'session.state-changed',
+                    'turn.started',
+                    'turn.completed',
+                    'turn.aborted',
+                    'runtime.error',
+                    'request.opened',
+                    'request.resolved',
+                    'session.stop-settled',
+                  ],
+                },
+              ),
+            publishAgentFinished: async ({
+              sessionId: id,
+              provider,
+              detail,
+            }) => {
+              const binding =
+                this.orchestrationEventStore?.readProjectTaskRoomExecutionBinding(
+                  id,
+                );
+              const task = binding
+                ? this.taskGraphService.readTaskView(binding.taskId)
+                : this.taskGraphService
+                    .listTasks()
+                    .find((candidate) => candidate.sessionId === id);
+              if (!task) return;
               // Fold the persisted canonical stream through the one lifecycle
               // classifier used by every other Station projection. Exit
               // `reason` is adapter text, not a room-outcome authority.
@@ -2079,33 +2086,19 @@ export class StationRuntime {
                 'cancelled';
               await this.projectTaskRoomRuntime?.publishAgentFinished({
                 taskId: task.id,
-                sessionId,
-                provider: event.provider,
+                sessionId: id,
+                provider,
                 outcome,
                 occurredAt: detail.session.updatedAt,
               });
-            }
-            const metadata = sessionExitWorktreeMetadata(
-              detail.events,
-              sessionId,
-            );
-            if (!metadata) return;
-            const terminalState = terminalWorktreeStateForExit({
-              lifecycleState: detail.session.lifecycleState,
-              exitCode: event.exitCode,
-              events: detail.events,
-            });
-            const exit = { metadata, terminalState, sessionId };
-            await (this.worktreeOutputSettlements
-              ? this.worktreeOutputSettlements.finalizeSessionExit(exit)
-              : worktreeProvisioningService.finalize(exit));
-          })
-          .catch((error) => {
-            this.logger.warn('Failed to finalize worktree on session exit', {
-              sessionId,
-              error: errorMessage(error),
-            });
-          });
+            },
+            finalizeWorktree: (exit) =>
+              this.worktreeOutputSettlements
+                ? this.worktreeOutputSettlements.finalizeSessionExit(exit)
+                : worktreeProvisioningService.finalize(exit),
+            warn: (message, fields) => this.logger.warn(message, fields),
+          },
+        );
       });
       // Startup reconciliation sweep (review finding #5): a prior Station
       // process (or dispatch attempt) may have crashed between an
