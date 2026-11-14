@@ -350,8 +350,9 @@ describe('engine extension bindings (Kiro parity)', () => {
         (unimplemented as string[]).includes(consumer),
       ),
     ).toEqual([]);
-    // `child-work` is a placeholder: its v2 tuple keeps the host-chrome row.
-    expect(ENGINE_EXTENSION_CONSUMERS['child-work'].implemented).toBe(false);
+    // `child-work` is implemented through the engine row
+    // (`acp-child-work.ts`), and the v2 tuple keeps its host-chrome row.
+    expect(ENGINE_EXTENSION_CONSUMERS['child-work'].implemented).toBe(true);
     expect(
       extensionNotificationBinding('_kiro.dev', 'subagent/list_update')
         ?.consumer,
