@@ -1,5 +1,4 @@
 import { WORKSPACE_BASIS_PANE_DESCRIPTOR } from '@kontourai/station-basis-pane/workspace-basis-pane';
-import { WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-review-pane';
 import {
   BROWSER_PANE_DEPLOYMENT_CAPABILITY,
   workspaceBrowserPaneCatalogInstance,
@@ -82,10 +81,6 @@ function declaration(
  * configuration, health, or execution readiness.
  */
 export const KNOWN_WORKSPACE_PANE_DECLARATIONS = Object.freeze([
-  declaration(WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR, {
-    rollout: 'available',
-    distribution: 'enabled',
-  }),
   declaration(WORKSPACE_BASIS_PANE_DESCRIPTOR, {
     rollout: 'available',
     distribution: 'enabled',

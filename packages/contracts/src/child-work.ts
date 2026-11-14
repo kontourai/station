@@ -371,8 +371,8 @@ export type ChildWorkTranscriptEntry = {
   truncated?: true;
 } & (
   | { kind: 'text'; role: 'user' | 'assistant'; text: string }
-  | { kind: 'tool-call'; name: string; input?: string }
-  | { kind: 'tool-result'; text?: string; isError?: true }
+  | { kind: 'tool-call'; name: string; input?: string; toolCallId?: string }
+  | { kind: 'tool-result'; text?: string; isError?: true; toolCallId?: string }
   /** Blocks of one message past the per-message bound. */
   | { kind: 'omitted'; count: number }
   /** A transcript record too large to read; it is skipped, not cut. */

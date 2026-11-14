@@ -1,0 +1,46 @@
+/* A background task's activity line: the sheet, the Agents pane and the
+   chat's background banner all render it (BackgroundTaskActivity.tsx). */
+.background-tasks-sheet__meta {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.background-tasks-sheet__meta > .child-work-activity {
+  flex: 1;
+}
+
+.background-tasks-banner__tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: -4px 0 8px;
+  padding: 0 12px;
+  list-style: none;
+}
+
+.background-tasks-banner__task {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.background-tasks-banner__task-title {
+  overflow: hidden;
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* In the chat, the time follows the activity rather than the row's edge. */
+.background-tasks-banner__task
+  .background-tasks-sheet__meta
+  > .child-work-activity {
+  flex: 0 1 auto;
+  min-width: 0;
+}

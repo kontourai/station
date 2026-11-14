@@ -320,8 +320,11 @@ describe('BackgroundTasksSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
     expect(interruptTask).toHaveBeenCalledWith({ taskId: 'task:delegate-1' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
-    expect(onOpenTranscript).toHaveBeenCalledWith('task:delegate-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+    expect(onOpenTranscript).toHaveBeenCalledWith(
+      'task:delegate-1',
+      'Run tests',
+    );
   });
 
   test.each(['running', 'completed'] as const)(
@@ -627,9 +630,7 @@ test('a peer background sheet selects its Station partition and never invokes ho
   fireEvent.click(stop);
   expect(interruptTask).not.toHaveBeenCalled();
   expect(
-    screen
-      .getByRole('button', { name: 'View transcript' })
-      .hasAttribute('disabled'),
+    screen.getByRole('button', { name: 'Open chat' }).hasAttribute('disabled'),
   ).toBe(true);
   expect(useOrchestrationSessionActivityQuery).toHaveBeenCalledWith(
     'peer-child',

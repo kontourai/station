@@ -62,6 +62,7 @@ import {
   withSuspendedSurfaces,
 } from '../regions/region-model';
 import { normalizeDockMode } from '../types';
+import { purgeRetiredActivityStorage } from '../utils/retired-activity-storage';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
@@ -78,6 +79,9 @@ export interface SurfaceIntent {
   session?: string;
   focus?: 'evidence';
   messageAnchor?: SessionMessageAnchor;
+  childId?: string;
+  childSessionId?: string;
+  childTitle?: string;
 }
 
 export interface SurfaceIntentRecord extends SurfaceIntent {
@@ -226,7 +230,7 @@ export interface RegionModelValue {
    *
    * `options.region` names the region instead of the surface's rule. Its one
    * caller is `useShowSurfacePage`, which asks for `main`: a place row (the
-   * sidebar's Activity, the palette's Activity, Home's "View Activity") goes
+   * palette's Home entry) goes
    * to the surface's page rather than revealing it where it last was. The
    * outbox is handled the same either way, so a page open with no intent
    * clears an undelivered record exactly as a plain reveal does.
@@ -655,6 +659,7 @@ function recordOf(value: unknown): RegionArrangementRecord | null {
 
 export function RegionModelProvider({ children }: { children: ReactNode }) {
   const settings = useDeviceSettings();
+  useEffect(purgeRetiredActivityStorage, []);
   const {
     isDockOpen,
     isDockMaximized,
@@ -1831,6 +1836,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
         surfaceIntent.surfaceId,
         surfaceIntent.sessionId,
         surfaceIntent.focus,
+        surfaceIntent.childId,
+        surfaceIntent.childSessionId,
+        surfaceIntent.childTitle,
         surfaceIntent.messageAnchor?.direction,
         surfaceIntent.messageAnchor?.requestKey,
       ])
@@ -1857,6 +1865,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
               session: surfaceIntent.sessionId,
               focus: surfaceIntent.focus,
               messageAnchor: surfaceIntent.messageAnchor,
+              childId: surfaceIntent.childId,
+              childSessionId: surfaceIntent.childSessionId,
+              childTitle: surfaceIntent.childTitle,
             }
           : undefined,
       );

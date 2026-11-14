@@ -75,18 +75,45 @@ export function StationConnectionsProvider({
   useEffect(() => {
     if (!remoteEnabled) registry.retireRemote();
   }, [registry, remoteEnabled]);
+  // Saved profiles are re-created by every health tick (`lastSuccessAt`,
+  // `lastBootId`), so their object identity is not a route change. Keying the
+  // value on them made every tick re-resolve each remote chat: a new peer
+  // descriptor, a restarted event stream and every conversation read refetched
+  // (the "reloading" relay chat). The value follows only the facts `resolve`
+  // routes on; `resolve` itself reads the latest profiles.
+  const profilesRef = useRef({ activeConnection, connections });
+  profilesRef.current = { activeConnection, connections };
+  const routeKey = JSON.stringify([
+    activeConnection
+      ? [
+          activeConnection.id,
+          activeConnection.name,
+          Boolean(activeConnection.brokerRoute),
+          Boolean(activeConnection.nativeBrokerRoute),
+        ]
+      : null,
+    connections.map((profile) => [
+      profile.id,
+      profile.name,
+      profile.environmentId,
+      profile.credentialState,
+    ]),
+  ]);
+  const hasActiveConnection = Boolean(activeConnection);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: routeKey stands for the profiles read through profilesRef.
   const value = useMemo<StationConnections>(
     () => ({
       ready: Boolean(
         namespace &&
           observation &&
           scope?.isCurrent() &&
-          activeConnection &&
+          hasActiveConnection &&
           !previews.isPending,
       ),
       remoteEnabled,
       resolve: async (options = {}) => {
         const remoteEpoch = remotePreviewRef.current.epoch;
+        const { activeConnection, connections } = profilesRef.current;
         // First paint only needs registry retirement. Route negotiation and
         // its wire parsers load when a conversation requests a connection.
         const { resolveStationConnection, StationConnectionUnavailableError } =
@@ -120,9 +147,9 @@ export function StationConnectionsProvider({
       namespace,
       observation,
       scope,
-      activeConnection,
+      hasActiveConnection,
+      routeKey,
       activeStationName,
-      connections,
       remoteEnabled,
       previews.isPending,
     ],
