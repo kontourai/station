@@ -1159,7 +1159,7 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     ).toHaveLength(0);
   });
 
-  test('stopping a session with an ask pending rejects the ask and interrupts OpenCode before letting go', async () => {
+  test('stopping a session with an ask pending interrupts OpenCode, then rejects the ask, before letting go', async () => {
     const h = await setup({ scenario: 'stop-pending' });
     await h.start({ approvalMode: 'ask' });
     const { turnId } = await h.turn('DO_BASH stop');
@@ -1176,8 +1176,8 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     const methods = h.replay.requests.map(
       (request) => `${request.method} ${request.path.split('/').at(-1)}`,
     );
-    expect(methods.indexOf('POST reply')).toBeLessThan(
-      methods.indexOf('POST interrupt'),
+    expect(methods.indexOf('POST interrupt')).toBeLessThan(
+      methods.indexOf('POST reply'),
     );
     expect(h.leaser.released).toBe(1);
     expect(
@@ -1192,6 +1192,78 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
           event.requestId === ask.requestId,
       ),
     ).toMatchObject({ status: 'cancelled' });
+  });
+
+  test('a reply OpenCode never answers does not hold back the interrupt when a session stops', async () => {
+    const h = await setup({
+      scenario: 'stop-pending',
+      // The ask's reply hangs until the replay closes.
+      holdUntil: (request) =>
+        request.path.endsWith('/reply') ? () => false : undefined,
+    });
+    await h.start({ approvalMode: 'ask' });
+    await h.turn('DO_BASH stop');
+    await h.waitFor((event) => event.method === 'request.opened');
+    const started = Date.now();
+    await h.adapter.stopSession('thread-1');
+    expect(Date.now() - started).toBeLessThan(4_500);
+    expect(h.replay.made('POST', '/api/session/:id/interrupt')).toHaveLength(1);
+    expect(
+      h.replay.made('POST', '/api/session/:id/permission/:id/reply'),
+    ).toHaveLength(1);
+    expect(h.leaser.released).toBe(1);
+  });
+
+  test('stopping a session withdraws its queued steer from the inbox', async () => {
+    const steerId = 'msg_1d71b024d001crEY1solwrshJq';
+    const h = await setup({ scenario: 'steer', omit: withdrawnSteer });
+    await h.start();
+    const { turnId } = await h.turn('DO_BASH steer');
+    await h.waitFor((event) => event.method === 'request.opened');
+    const steer = h.adapter.steerTurn('thread-1', 'STEER-delivered', turnId);
+    await h.waitFor(
+      () => h.replay.made('POST', '/api/session/:id/prompt').length === 2,
+    );
+    // Let its prompt's answer reach the session before it stops.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await h.adapter.stopSession('thread-1');
+    await expect(steer).rejects.toBeInstanceOf(ProviderTurnEndedError);
+    expect(
+      h.replay
+        .made('DELETE', '/api/session/:id/inbox/:id')
+        .map((request) => request.path.split('/').at(-1)),
+    ).toEqual([steerId]);
+  });
+
+  test('a steer still in flight when the session stops is withdrawn once its prompt lands', async () => {
+    const steerId = 'msg_1d71b024d001crEY1solwrshJq';
+    let released = false;
+    const h = await setup({
+      scenario: 'steer',
+      omit: withdrawnSteer,
+      holdUntil: (request) =>
+        JSON.stringify(request.body ?? null).includes('STEER-delivered')
+          ? () => released
+          : undefined,
+    });
+    await h.start();
+    const { turnId } = await h.turn('DO_BASH steer');
+    await h.waitFor((event) => event.method === 'request.opened');
+    const steer = h.adapter.steerTurn('thread-1', 'STEER-delivered', turnId);
+    await h.waitFor(
+      () => h.replay.made('POST', '/api/session/:id/prompt').length === 2,
+    );
+    released = true;
+    await h.adapter.stopSession('thread-1');
+    await expect(steer).rejects.toBeInstanceOf(ProviderTurnEndedError);
+    await h.waitFor(
+      () => h.replay.made('DELETE', '/api/session/:id/inbox/:id').length > 0,
+    );
+    expect(
+      h.replay
+        .made('DELETE', '/api/session/:id/inbox/:id')
+        .map((request) => request.path.split('/').at(-1)),
+    ).toEqual([steerId]);
   });
 
   test("the plan agent's deny survives Station's rules under Auto: OpenCode asks and Station rejects", async () => {

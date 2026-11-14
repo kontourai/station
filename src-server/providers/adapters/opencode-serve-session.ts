@@ -93,8 +93,8 @@ const RECONNECT_MAX_MS = 5_000;
 const FEED_READY_TIMEOUT_MS = 10_000;
 /** Settled turns kept as rewind points. */
 const TURN_MESSAGES_MAX = 500;
-/** How long stopping a session waits on the engine to drop its work. */
-const STOP_ENGINE_WORK_MS = 3_000;
+/** How long stopping a session waits on each request that drops engine work. */
+const STOP_REQUEST_MS = 2_000;
 /** Request ids closed without an answer, remembered to refuse a late one. */
 const CLOSED_REQUESTS_MAX = 200;
 /** Messages per page of a reconnect's history read (OpenCode takes 1-200). */
@@ -680,8 +680,11 @@ export class OpenCodeNativeSession {
       pending.decided = undefined;
       throw error;
     }
-    // Scoped to what was asked: OpenCode's `save` patterns for the ask, else
-    // its exact resources; never the whole action.
+    // Scoped as OpenCode would save it: the ask's `save` patterns, else its
+    // exact resources. Most tools ask with `save: ["*"]` (2.3.0 governed
+    // capture: edit), so for them a grant covers the whole action, as
+    // OpenCode's own "always" would; shell saves a command prefix
+    // (`echo *`).
     if (decision === 'acceptForSession' && pending.action && pending.patterns)
       this.grants.push({ action: pending.action, patterns: pending.patterns });
   }
@@ -692,6 +695,9 @@ export class OpenCodeNativeSession {
   async stop(reason: 'stopped' | 'exited'): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
+    // Withdrawn from here: a steer whose prompt lands while the engine's
+    // work is dropped takes its item back out itself (`steer`).
+    for (const steer of this.steers.values()) steer.withdrawn = true;
     if (reason === 'stopped') await this.dropEngineWork();
     this.controller.abort();
     for (const [inboxId, steer] of this.steers) {
@@ -716,46 +722,42 @@ export class OpenCodeNativeSession {
   }
 
   /**
-   * Stopping a live session stops what OpenCode runs for it: its pending
-   * asks are rejected and its questions cancelled (so nothing they hold
-   * proceeds), then its execution is interrupted. Bounded and best effort:
-   * the session is released whatever the engine answers.
+   * Stopping a live session stops what OpenCode runs for it: its execution
+   * is interrupted first, then its pending asks are rejected, its questions
+   * cancelled and its queued steers withdrawn (so nothing they hold
+   * proceeds, or waits for a later execution). Each request is bounded on
+   * its own, so one the engine never answers cannot hold back the
+   * interrupt; best effort, the session is released whatever the engine
+   * answers. A steer whose prompt is still in flight is withdrawn when it
+   * lands (`steer`).
    */
   private async dropEngineWork(): Promise<void> {
     const client = this.deps.client;
     const live = this.turn ?? this.pendingStart;
     const running = (live !== undefined && !live.settled) || this.hasOpenWork();
-    const work = (async () => {
-      await Promise.all(
-        [...this.requests.values()]
-          .filter((pending) => !pending.decided)
-          .map((pending) => {
-            pending.decided = 'cancel';
-            const base = `/api/session/${pending.sessionId}`;
-            return (
-              pending.kind === 'permission'
-                ? client.request(
-                    'POST',
-                    `${base}/permission/${pending.nativeId}/reply`,
-                    { decision: 'reject' },
-                  )
-                : client.request('DELETE', `${base}/form/${pending.nativeId}`)
-            ).catch(() => undefined);
-          }),
-      );
-      if (running)
-        await client
-          .request('POST', `/api/session/${this.sessionId}/interrupt`)
-          .catch(() => undefined);
-    })();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([
-      work,
-      new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, STOP_ENGINE_WORK_MS);
-      }),
+    const send = (method: 'POST' | 'DELETE', path: string, body?: unknown) =>
+      client
+        .request(method, path, body, { timeoutMs: STOP_REQUEST_MS })
+        .catch(() => undefined);
+    if (running) await send('POST', `/api/session/${this.sessionId}/interrupt`);
+    await Promise.all([
+      ...[...this.requests.values()]
+        .filter((pending) => !pending.decided)
+        .map((pending) => {
+          pending.decided = 'cancel';
+          const base = `/api/session/${pending.sessionId}`;
+          return pending.kind === 'permission'
+            ? send('POST', `${base}/permission/${pending.nativeId}/reply`, {
+                decision: 'reject',
+              })
+            : send('DELETE', `${base}/form/${pending.nativeId}`);
+        }),
+      ...[...this.steers.entries()]
+        .filter(([, steer]) => !steer.posting)
+        .map(([inboxId]) =>
+          send('DELETE', `/api/session/${this.sessionId}/inbox/${inboxId}`),
+        ),
     ]);
-    clearTimeout(timer);
   }
 
   private async run(): Promise<void> {
