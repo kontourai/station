@@ -817,6 +817,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Runs the PR workflow's allowlist-ceiling step under bash against
   // disposable Git repositories (fetch, judge child).
   'scripts/__tests__/gallery-allowlist-ceiling.test.ts',
+  // Runs the PR workflow's composition, attribution and verdict steps under
+  // bash against disposable Git repositories (merge, worktree, judge child,
+  // a fake npm standing in for the capture).
+  'scripts/__tests__/gallery-pr-composition.test.ts',
   // Launches one headless Chromium for the gallery audit's fixture pages.
   'scripts/__tests__/gallery-ui-audit.browser.test.ts',
   'scripts/__tests__/code-hygiene.test.ts',

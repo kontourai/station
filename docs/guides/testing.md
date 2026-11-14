@@ -423,7 +423,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`ecosystem-packaging.yml`](../../.github/workflows/ecosystem-packaging.yml) | Ecosystem packaging dry-run | **PR: Ecosystem packaging** | reused by `Delivery validation`; manual dispatch. |
 | [`fresh-home-walkthrough.yml`](../../.github/workflows/fresh-home-walkthrough.yml) | Fresh-home walkthrough | **Nightly: Fresh-home walkthrough** | UTC schedule: `0 10 * * *`; manual dispatch. |
 | [`full-regression.yml`](../../.github/workflows/full-regression.yml) | Hosted full regression | **Main: Full qualification** | reused by `Main: Publish packages`, `Main: Qualification`, `PR: CI`, `Release: Publish`, `Release: Stage`. |
-| [`gallery-pr-check.yml`](../../.github/workflows/gallery-pr-check.yml) | Gallery PR check | **PR: Gallery** | PR events (capture skipped for drafts and the release PR); merge queue (capture skipped). |
+| [`gallery-pr-check.yml`](../../.github/workflows/gallery-pr-check.yml) | Gallery PR check | **PR: Gallery** | PR events, capturing the head merged into the current base (capture skipped for drafts and the release PR); merge queue (capture skipped). |
 | [`install-smoke.yml`](../../.github/workflows/install-smoke.yml) | Portable Install Smoke | **PR: Install smoke** | reused by `Delivery validation`; manual dispatch. |
 | [`interactive-workspace-performance.yml`](../../.github/workflows/interactive-workspace-performance.yml) | Interactive Workspace Performance | **Tool: Interactive workspace performance** | manual dispatch. |
 | [`internal-testflight.yml`](../../.github/workflows/internal-testflight.yml) | Internal iOS TestFlight cohort | **Release: Internal TestFlight cohort** | manual dispatch. |
@@ -1510,13 +1510,30 @@ resolve at the caller's workflow commit, while `inputs.source_sha` continues to
 select only the application source being qualified.
 
 `.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
-on ready (non-draft) pull requests, in the same container (#2428, #3342). PRs
-compare their exact head. Merge-queue candidates still report the workflow's
-contexts, but the capture job skips there: Gallery is not a required context,
-so a candidate's capture could not stop a landing. Combined changes are
-captured after landing by `Nightly: Gallery` once a day, which checks capture
-integrity and reports pixel differences but does not run the product
-assertions below. Pixel differences are advisory in both workflows: `--report-only` retains the
+on ready (non-draft) pull requests, in the same container (#2428, #3342). It
+captures the pinned PR head merged into the base tip the event fired against
+(`github.sha` under `pull_request_target`; the event's `base.sha` is the head's
+stale merge base, and `refs/pull/N/merge` moves after the event), so a PR that
+breaks a screen only in combination with `main` learns it before landing; a
+merge conflict fails the job and asks for `main` to be merged. Composition
+reflects `main` as of the PR's last event only: in the week to 2026-11-14, 94 of
+127 landed, captured PRs had gallery-relevant commits land after their last
+capture (median 1.2 hours, p90 8.2 hours), and nothing re-captures them; a push
+or a merge of `main` does. When the composed capture fails, the job captures
+the failing screens again on the bare base, from a worktree of it, and judges
+both with the base's `scripts/gallery-main-attribution.mjs` and findings judge.
+If every failure (screen and finding identity) also fails on `main`, the job
+passes with a warning naming that `main` commit, so a break already on `main`
+does not turn unrelated PRs red. A crash or test-level assertion with no
+failing screen, a failing screen `main` lacks, more than 40 failing screens, or
+an attribution that cannot run stays red. A PR failure hidden behind an earlier
+failing assertion in the same test is not seen until `main` is fixed, and an
+excused run has no pixel report. Merge-queue candidates still report the
+workflow's contexts, but the capture job skips there: Gallery is not a required
+context, so a candidate's capture could not stop a landing. Combined changes
+are otherwise captured after landing by `Nightly: Gallery` once a day, which
+checks capture integrity and reports pixel differences but does not run the
+product assertions below. Pixel differences are advisory in both workflows: `--report-only` retains the
 exact changed rows and diff PNGs, but exits successfully for visual changes.
 The job summary includes the comparison table and the PR artifact link. An
 unchanged capture has no `REVIEW` advisory. Capture failures, missing screens,
@@ -1537,8 +1554,9 @@ The baseline writer refuses a capture whose screen name is
 not a slug or whose file resolves outside the gallery directory, because for a
 fork PR the artifact is produced by the fork's code. A capture that did not
 complete is reported separately and must not be re-baselined. The check compares
-each PR head against its own baseline; combinations are first captured by the
-next day's `Nightly: Gallery` on `main`. Exact pixels are advisory visual evidence, not a required exact-pixel merge gate;
+each composed PR against the composed baseline; landings that compose after a
+PR's last event are first captured by the next day's `Nightly: Gallery` on
+`main`. Exact pixels are advisory visual evidence, not a required exact-pixel merge gate;
 the product assertions below fail the job. Read the live `main` ruleset: when Gallery is absent from required contexts,
 a red Gallery job does not hold a PR on its own.
 `Main: Health` tracks failed `Nightly: Gallery` capture/comparison integrity;
