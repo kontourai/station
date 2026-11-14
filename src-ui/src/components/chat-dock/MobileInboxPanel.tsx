@@ -228,12 +228,12 @@ export function MobileInboxPanel({
           <Empty
             variant="compact"
             label={
-              scope.value === 'all'
+              scope.effectiveValue === 'all'
                 ? 'No chats yet.'
                 : 'No work in this filter.'
             }
             description={
-              scope.value === 'all'
+              scope.effectiveValue === 'all'
                 ? 'Start a chat with an agent.'
                 : 'Choose All work to see other projects and Stations.'
             }

@@ -1,7 +1,0 @@
-{
-  "revision": "aef9ae03457e2ce46a29bc0d388d1821cd6ca165",
-
-  "notes": [
-    {"path":"docs/guides/starter-work.md","note":"Checked the Connections references (line ~115 keeps the relevant Connections action when workspace not ready; readiness/retry text is about the Starter launch API). No claim about Connections rows, resolver, or engine-page status; unaffected by routing.ts engine tab segment.","inputs":["docs/guides/starter-work.md","src-ui/src/app-shell/routing.ts"]}
-  ]
-}

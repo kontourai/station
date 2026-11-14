@@ -1,0 +1,7 @@
+{
+  "revision": "fc6c5a2e2eafdd868477bc3d192a58656f0c7f3d",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the final legacy lifecycle correction: only an input-bearing request carrying the old review_pending stamp is reclassified; explicit blocked and terminal stamps retain authority. The lifecycle suite passes 69 tests. A clean committed mutation removing this restriction fails the explicit blocked-state assertion (1 failed, 68 passed); restoring exact source returns 69/69 green under the normal focused runner. The request-kind wire map, validated-form fallback, reply authorization and documented API shapes are unchanged. No new runtime/provider/device/release qualification.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/session-lifecycle-service.ts"]}
+  ]
+}

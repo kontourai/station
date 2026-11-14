@@ -1,0 +1,41 @@
+{
+  "revision": "612898ff71ab3c4c61f079e787d50dd14047a9b7",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Source policy publication section re-read against the publisher workflow: added that the per-head concurrency group is on the reconcile job, so a run whose job is skipped never enters the group or cancels a pending publishing run. Permissions, checkout ref, admission events and title-publisher claims unchanged and still match source-verification-policy.yml and ci.yml.","inputs":["docs/guides/dependency-security.md",".github/workflows/ci.yml",".github/workflows/source-verification-policy.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Re-read the push merge-queue-verdict paragraph against scripts/ci-merge-group-verdict.mjs and the classify job: added the warning annotation on a failed, refused or malformed lookup and the declared actions: read. Checked 'Publishers serialize by SHA' still holds with job-level publisher concurrency, the diff-whitespace-gate paragraph (three-dot range, base-only whitespace cannot fail) against the script and its new fixture tests, and the workflow table row for ci.yml.","inputs":["docs/guides/testing.md",".github/workflows/ci.yml","scripts/__tests__/changed-verification.test.ts","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/__tests__/run-ci-fast.test.ts","scripts/__tests__/source-verification-policy.test.ts","scripts/actionlint-gate.mjs","scripts/test-impact-manifest.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Re-read the source-admission rollout and capacity passages against the publisher change: they describe events, short jobs and per-family concurrency without naming where the publisher's group sits, so moving it from workflow to job level leaves them accurate. No classify-permission or whitespace-gate claims here.","inputs":["docs/guides/releasing.md",".github/workflows/ci.yml",".github/workflows/source-verification-policy.yml","scripts/__tests__/actionlint-gate.test.ts","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked the Repository source scans sentence (non-required, reports freshness only) against the repo-scans job and its reworded comment; consistent. No publisher-concurrency, classify-permission or whitespace-gate claims.","inputs":["docs/guides/code-quality.md",".github/workflows/ci.yml","docs/guides/testing.md","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/__tests__/run-ci-fast.test.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Searched for claims about the publisher concurrency group, classify permissions or merge-queue verdict lookup, repo-scans blocking, and the whitespace gate range; none present, so the job-level concurrency, actions: read grant, comment rewording and new tests leave it accurate.","inputs":["docs/guides/development.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/__tests__/run-ci-fast.test.ts"]},
+
+    {"path":".veritas/README.md","note":"Searched for claims about publisher concurrency, classify permissions, repo-scans gating or the whitespace gate; none present. Change is CI wiring and tests only; content unaffected.","inputs":[".veritas/README.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/__tests__/run-ci-fast.test.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Searched for claims touching the publisher concurrency, classify job permissions or the actionlint gate's permission exemptions; none present. Unaffected.","inputs":["docs/guides/delegation-attempt-claims.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Searched for claims touching ci.yml permissions, the publisher concurrency or the actionlint gate's permission rules; its permission mentions are product admission semantics, not CI. Unaffected.","inputs":["docs/guides/home-transfer-controller.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Checked its heavy-lane and runner-capacity claims against the change: no claim about the publisher's concurrency placement or classify's token scope. Unaffected.","inputs":["docs/guides/private-runner-partition.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Searched for claims about CI job permissions, the source publisher or repo-scans; none present. Unaffected.","inputs":["docs/guides/product-law-authoring.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Its token mentions concern release verifier tokens, not the classify job's GITHUB_TOKEN scope or the publisher's concurrency. Unaffected by the actionlint gate exemption or digest re-pin.","inputs":["docs/guides/release-rings.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Searched for claims about ci.yml job permissions, the publisher or the actionlint gate rules changed here; none present. Unaffected.","inputs":["docs/guides/repository-layout.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Searched for claims about CI token scopes, the source publisher or the actionlint gate's permission rules; none present. Unaffected.","inputs":["docs/guides/work-board-security.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Its permission mentions are key-file permissions, not CI token scopes; no claim about the publisher, classify or repo-scans. Unaffected.","inputs":["docs/guides/workspace-packages.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Searched for claims about the ci.yml jobs changed here (classify permissions, repo-scans comment); none present. Unaffected.","inputs":["docs/reference/interactive-workspace-performance.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Checked for claims about the classify job, repo-scans, the merge-queue verdict or the whitespace gate; none present. Browser smoke routing is unchanged by these edits.","inputs":["docs/testing/browser-smoke.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/__tests__/run-ci-fast.test.ts"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"The only manifest change is a supplemental edge from scripts/diff-whitespace-gate.mjs to run-ci-fast.test.ts and a reworded REPO_SCAN_SUITES comment; no agent-runtime path, edge or suite changed. Unaffected.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/test-impact-manifest.mjs"]},
+
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"changed-verification.test.ts now pins 17 unmodelled-input edges (one added for the whitespace gate). The README states no edge count and describes fixtures, not that list. Unaffected.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/__tests__/changed-verification.test.ts"]}
+  ]
+}

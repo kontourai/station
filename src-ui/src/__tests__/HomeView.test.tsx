@@ -712,7 +712,7 @@ describe('HomeView', () => {
     ).toBeNull();
   });
 
-  test('keeps inspection and Scheduler self-test cards off default Home and admits them only in developer mode', () => {
+  test('keeps retired starter cards off Home, including developer mode', () => {
     const defaultHome = renderHomeView({
       continuation: null,
       onNavigate: vi.fn(),
@@ -724,9 +724,10 @@ describe('HomeView', () => {
 
     fixtures.developerToolsEnabled = true;
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
-    expect(screen.getByText('Inspect an approval')).toBeTruthy();
-    expect(screen.getByText('Inspect review evidence')).toBeTruthy();
-    expect(screen.getByText('Run a scheduled readiness check')).toBeTruthy();
+    expect(screen.queryByText('Inspect an approval')).toBeNull();
+    expect(screen.queryByText('Inspect review evidence')).toBeNull();
+    expect(screen.queryByText('Run a scheduled readiness check')).toBeNull();
+    expect(screen.queryByText('Start your first task')).toBeNull();
   });
 
   test('degrades a still-pending recent-work lane to an actionable host-slow state', () => {
@@ -1977,7 +1978,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     renderHomeView({ continuation: null, onNavigate });
     const recent = screen.getByRole('region', { name: 'Recent work' });
 
-    expect(within(recent).getByText('Home media')).toBeTruthy();
+    expect(within(recent).getByText('Station: Home media')).toBeTruthy();
     expect(within(recent).getByText('Office box')).toBeTruthy();
     // The local session's own row must still render, unmarked by any
     // machine: exactly two rows carry one.

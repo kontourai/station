@@ -1,9 +1,0 @@
-{
-  "revision": "9f7a30b563879c7a10a312fb43ca2a3db3199d33",
-
-  "notes": [
-    {"path":"docs/guides/desktop-build.md","note":"Reviewed the gallery-regression fix at 9f7a30b56387: ChangelogPreference now uses the existing SettingsToggle, and the whole switch row owns the 44px minimum and keyboard focus. The hosted baseline reported a 13x13 native checkbox. Controlled real-component Chromium renders measured 254x44 at 320px, 324x44 at 390px and 510x44 at 1440px in both themes, with unobscured center hits. All 19 update-control tests passed in 13.19s and UI typechecking passed. Existing download, signature and confirmed-restart claims remain unchanged; hosted gallery requalification is pending.","inputs":["docs/guides/desktop-build.md","src-ui/src/components/updates/Updates.css","src-ui/src/components/updates/__tests__/UpdatesControl.test.tsx"]},
-
-    {"path":"docs/user/settings.md","note":"Traced the opt-out through the shared SettingsToggle and device-setting writer after the hosted touch-target finding. The visible label, default-on behavior, immediate persistence, ability to turn it off and future-upgrade suppression are unchanged, so the user instructions remain accurate. The actual interactive switch row measures at least 44px in the inspected 320/390/1440px light/dark fixtures; this does not claim a physical-device or hosted gallery pass.","inputs":["docs/user/settings.md","src-ui/src/components/updates/ChangelogPreference.tsx"]}
-  ]
-}

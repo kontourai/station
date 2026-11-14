@@ -1,7 +1,0 @@
-{
-  "revision": "0b93fffbca9c3aceb63bdb7e741a7c2fdbcb32fa",
-
-  "notes": [
-    {"path":"docs/guides/monitoring.md","note":"Added one sentence on the Worker receiver. Checked deploy/telemetry-worker/README.md, worker.ts (rate-limit bindings, routes) and insights-page.ts (owner dashboard). The Node receiver claims in this section match the refactored lite-store.ts, whose behavior the unchanged broker suites cover.","inputs":["docs/guides/monitoring.md","packages/telemetry-broker/README.md","packages/telemetry-broker/src/app.ts","packages/telemetry-broker/src/lite-store.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "744db210a71fad425c522ed476d7862c1803e3c1",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"After merging main: deployment-authentication changes are main's owner-device/Pair phone work plus this branch's per-link sign-in note; the Pair phone step (phones read Connect another device) and sign-in link steps here match both.","inputs":["docs/user/getting-started.md","docs/guides/deployment-authentication.md"]}
-  ]
-}

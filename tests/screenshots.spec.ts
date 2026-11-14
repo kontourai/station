@@ -1438,6 +1438,8 @@ type GalleryProjectFixture = {
   slug: string;
   name: string;
   workingDirectory?: string;
+  repositoryDisplay?: string;
+  derivedIcon?: string;
 };
 
 /** `GET /api/projects` fixture — the list shape `ProjectMetadata[]` (station-contracts). */
@@ -1452,6 +1454,9 @@ function projectsListFixture(
           id: `p-${project.slug}`,
           slug: project.slug,
           name: project.name,
+          workingDirectory: project.workingDirectory,
+          repositoryDisplay: project.repositoryDisplay,
+          derivedIcon: project.derivedIcon,
           hasWorkingDirectory: Boolean(project.workingDirectory),
           layoutCount: 0,
           hasKnowledge: false,
@@ -1472,8 +1477,10 @@ function projectDetailFixture(
           id: `p-${project.slug}`,
           slug: project.slug,
           name: project.name,
-          hasWorkingDirectory: Boolean(project.workingDirectory),
           workingDirectory: project.workingDirectory,
+          repositoryDisplay: project.repositoryDisplay,
+          derivedIcon: project.derivedIcon,
+          hasWorkingDirectory: Boolean(project.workingDirectory),
           layoutCount: 0,
           hasKnowledge: false,
           agents: [],
@@ -5501,21 +5508,16 @@ const SCREENS: Screen[] = [
   })(),
   {
     name: 'overlay-mobile-sheet',
-    title: 'Overlay — Mobile project-switcher sheet',
+    title: 'New chat — Mobile composer Project picker',
     path: '/?dock=open',
     viewport: MOBILE,
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
-      // archive#793: always rendered (bound project or not — unbound is a
-      // valid, always-reachable switcher state), so this needs no
-      // project/session seeding to be deterministic. This screen is the MOBILE
-      // header's own trigger, which #1552 D3 did not touch.
-      const trigger = page.getByRole('button', { name: /^Switch project/ });
-      await trigger.waitFor({ timeout: 10_000 });
-      await trigger.click();
+      const draft = await openGalleryNewChatDraft(page);
+      await draft.getByRole('button', { name: /^Project: / }).click();
       await expect(
-        page.locator('.chat-dock__project-switcher-panel'),
-      ).toBeVisible({ timeout: 10_000 });
+        page.getByRole('dialog', { name: 'Choose project', exact: true }),
+      ).toBeVisible();
     },
   },
   // archive#4525: no screen in the gallery otherwise stages a BOUND
@@ -5524,14 +5526,23 @@ const SCREENS: Screen[] = [
   // those states would be invisible in the build gallery. These
   // three make them visible.
   ...(['dark', 'light'] as const).flatMap((theme) =>
-    [DESKTOP, MOBILE].map(
+    [DESKTOP, MOBILE, { width: 412, height: 915 }].map(
       (viewport): Screen => ({
-        name: `new-chat-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
+        name: `new-chat-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : viewport.width === 412 ? 'phone' : 'mobile'}`,
         title: `New chat — ${theme}, ${viewport.width}px`,
         path: '/?dock=open',
         viewport,
         ...withGalleryProjectsList(
-          [{ slug: 'demo-project', name: 'Demo Project' }],
+          [
+            {
+              slug: 'demo-project',
+              name: 'Demo Project',
+              workingDirectory: '/work/station',
+              repositoryDisplay: 'github.com/kontourai/station',
+              derivedIcon:
+                'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAm0lEQVR4nO3U0QmAMAwE0E7iJM7pOA7hQvVLEEmay6VaxQTyVbh7P00p5NRtrtdlsxIAz7Ss9VgJcH6/rRgFdINIoR5ACKEFegEUohXGAFwIK4gFQAgkJAIwEUMBaEAUoCL+CZCCntwEJGD8L0gAi4gA1PJXAFAECzDLUQQDgMsRhBfgLrcQHgBd3kKggHC5BrEAXYulMe/6VwA7qPD726l6fusAAAAASUVORK5CYII=',
+            },
+          ],
           async (page) => {
             const draft = await openGalleryNewChatDraft(page);
             await chooseGalleryNewChatProject(page, draft, 'Demo Project');
@@ -5593,6 +5604,41 @@ const SCREENS: Screen[] = [
     viewport,
     ...overlayDockProjectMismatchHooks(true),
   })),
+  ...[DESKTOP, { width: 412, height: 915 }].map(
+    (viewport): Screen => ({
+      name: `detected-project-${viewport.width === 412 ? 'phone' : 'desktop'}`,
+      title: 'Project picker — detected artwork and repository identity',
+      path: '/?dock=open',
+      viewport,
+      ...withGalleryProjectsList(
+        [
+          {
+            slug: 'demo-project',
+            name: 'Demo Project',
+            workingDirectory: '/work/station',
+            repositoryDisplay: 'github.com/kontourai/station',
+            derivedIcon:
+              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAm0lEQVR4nO3U0QmAMAwE0E7iJM7pOA7hQvVLEEmay6VaxQTyVbh7P00p5NRtrtdlsxIAz7Ss9VgJcH6/rRgFdINIoR5ACKEFegEUohXGAFwIK4gFQAgkJAIwEUMBaEAUoCL+CZCCntwEJGD8L0gAi4gA1PJXAFAECzDLUQQDgMsRhBfgLrcQHgBd3kKggHC5BrEAXYulMe/6VwA7qPD726l6fusAAAAASUVORK5CYII=',
+          },
+        ],
+        async (page) => {
+          const draft = await openGalleryNewChatDraft(page);
+          await chooseGalleryNewChatProject(page, draft, 'Demo Project');
+          await draft.getByRole('button', { name: /^Project: / }).click();
+          await expect(
+            page.getByRole('dialog', { name: 'Choose project' }),
+          ).toBeVisible();
+        },
+      ),
+    }),
+  ),
+  {
+    name: 'active-chat-phone',
+    title: 'Active chat header — actions and Station identity',
+    path: '/?dock=open&chat=gallery-mismatch-conversation',
+    viewport: { width: 412, height: 915 },
+    ...overlayDockProjectMismatchHooks(true),
+  },
   {
     name: 'overlay-project-switcher-populated',
     title: 'New chat — Populated Project picker',

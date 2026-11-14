@@ -1,7 +1,0 @@
-{
-  "revision": "81e894766486a9b6236464c8c7185ad28f90a81d",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Regenerated shipped MCP topics after the foldable-device docs change (module-map shared live surface and mobile device workspace foldables section); station-docs-content.ts now carries those reviewed texts. The station-docs reference itself makes no fold, hub or live-surface input claims.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

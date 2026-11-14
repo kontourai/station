@@ -1,7 +1,0 @@
-{
-  "revision": "abd9494ef793245ce398b9eea83d720f16c96e56",
-
-  "notes": [
-    {"path":"docs/design/chat-composer.md","note":"Reviewed Send-mode Queue/Steer labels, unavailable-steering disclosure and the existing role=status paragraph against 405eaf34d44. The class only applies zero margin, space-2/space-3 inset, text-muted and text-sm. Mode state, disabled rules, text-only sending, copy and breakpoints are unchanged; no composer prose change needed.","inputs":["docs/design/chat-composer.md"]}
-  ]
-}

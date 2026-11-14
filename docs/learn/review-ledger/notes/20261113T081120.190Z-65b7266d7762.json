@@ -1,7 +1,0 @@
-{
-  "revision": "0f5882949fcf96e48041a2fa362a27f2b194754c",
-
-  "notes": [
-    {"path":"docs/contexts/operations/CONTEXT.md","note":"Testing guide gained a short Idle weight and request overhead subsection pointing to its reference; no claim this context relies on changed.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]}
-  ]
-}

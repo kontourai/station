@@ -1,7 +1,0 @@
-{
-  "revision": "523494108c03f57e072ff23a8afd04562ee4e12c",
-
-  "notes": [
-    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the added child-chat screen entries. Existing telemetry gallery fixtures, consent/outbox/feedback cases and local-only evidence limits are unchanged; no telemetry behavior changes.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
-  ]
-}

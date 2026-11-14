@@ -1,7 +1,0 @@
-{
-  "revision": "ea7a72218027623efdabb2eb2375379d1d9e77fd",
-
-  "notes": [
-    {"path":"docs/guides/mobile-release.md","note":"No claim affected: useConversationInbox gained bounded retries (2 x 400ms, not for 401/403/404); constrained-network inbox polling cadence via networkCost (10s active) is unchanged, as the doc states.","inputs":["docs/guides/mobile-release.md","src-ui/src/__tests__/useConversationInbox.test.tsx","src-ui/src/hooks/useConversationInbox.ts"]}
-  ]
-}

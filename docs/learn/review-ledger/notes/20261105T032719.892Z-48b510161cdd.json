@@ -1,7 +1,0 @@
-{
-  "revision": "3d6325c2787fcbbc582caeaba3ce0c1b18955bfe",
-
-  "notes": [
-    {"path":"docs/reference/contracts.md","note":"#4515 integration: checked the managed-policy row (settings, capability switches, clients, updates, MANAGED_POLICY_LIMIT_SLICES), the new managed-policy-status row (MANAGED_POLICY_SUMMARY_LIMIT_READERS, the refusal codes, no settings registry) against the source, and that the failure-code table lists managed-policy-capability-disabled, -remote-clients, -updates-refused and managed_setting_locked as permission_denied, matching provider-failure.ts.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports","packages/contracts/src/contract-validation.ts","packages/contracts/src/provider-failure.ts"]}
-  ]
-}

@@ -38,6 +38,7 @@ export function useNewProjectFormSubmit(state: NewProjectModalState) {
       name: resolvedName,
       slug: draft.derivedSlug,
       icon: draft.icon.trim() || undefined,
+      ...(draft.iconDisabled ? { iconDisabled: true } : {}),
       description: draft.description.trim() || undefined,
       workingDirectory: draft.normalizedDirectory || undefined,
       ...(draft.repositoryAcquisition &&

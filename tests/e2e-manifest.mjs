@@ -282,7 +282,7 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
   requiredObservations: [
     ...[320, 390, 412].map((width) => ({
       path: 'tests/cross-runtime-chat-switching.spec.ts',
-      title: `mobile primary project switcher opens an edge sheet at ${width}x844 with touch-safe actions`,
+      title: `mobile start composer owns project choice at ${width}x844 with touch-safe actions`,
     })),
     {
       path: 'tests/chat-inventory-drilldown-mobile.spec.ts',
@@ -345,6 +345,8 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
 export const PRODUCT_E2E_EXECUTION_PROFILE = {
   parallelWorkers: 2,
   parallelSafetyExceptions: {
+    'tests/new-project-choices.spec.ts':
+      'Read-only live shell and new-project form; writes only this browser context’s device-local inbox scope and theme.',
     'tests/chat-history-reopen.spec.ts':
       'Owns a unique temporary SQLite directory; shell requests are page-scoped fixtures and the store is closed and removed in finally.',
     'tests/sidebar-geometry.spec.ts':
@@ -369,6 +371,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'browser-local orchestration SSE and API fixtures installed before navigation; the only write is this browser context’s device-local Answer delivery preference',
   },
   parallelSafe: [
+    'tests/new-project-choices.spec.ts',
     'tests/branding-theme-boot.spec.ts',
     'tests/buffered-answer-delivery.spec.ts',
     'tests/agents-pane.spec.ts',
@@ -954,6 +957,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted project lifecycle lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/new-project-choices.spec.ts',
+    bucket: 'product',
+    surface: 'Projects',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      'Render new-project icon choices and save the Home inbox scope on an isolated browser device.',
     exceptions: [],
   },
   {
@@ -2253,7 +2266,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'station#3805: one unmocked browser journey from a newly created, runner-owned home through explicit model setup, first-run completion, real direct-chat Work, explicit opt-in to developer tools for the scheduled-check Starter, reload, and exact Scheduler receipt/output inspection. It proves no Project or Task is silently seeded, inherits no telemetry configuration, and uses an explicit healthy resource observation so unrelated host load cannot substitute an honest deferral for this product-path proof.',
+      'station#3805: one unmocked browser journey from a newly created, runner-owned home through explicit model setup, first-run completion, real direct-chat Work. The retired Home scheduled-check card is no longer part of this journey. It proves no Project or Task is silently seeded, inherits no telemetry configuration, and uses an explicit healthy resource observation so unrelated host load cannot substitute an honest deferral for this product-path proof.',
     exceptions: [],
   },
   {

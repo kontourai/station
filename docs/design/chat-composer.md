@@ -133,8 +133,8 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   model. Setup, repair and read errors scroll above the composer.
 - **Header.** The dock's title slot (and the phone header) reads **New chat**,
   **New Task** or **Fork from here** (**Regenerate** or **Edit and resend**
-  for a fork a message action started), and the header's project controls
-  stand down so the draft's Project chip is the one destination.
+  for a fork a message action started). The start composer's Project chip
+  is the single owner of destination choice; dock headers have no project picker.
 - **Leaving.** Escape, Back, **Cancel return** or Cancel fork dismisses the
   draft and hands back its text; on a phone this restores the dock size the
   draft replaced. Start (and a fork's open) closes it as started before
@@ -421,8 +421,8 @@ Recent work and the inbox provide the work list.
 Home's Recent work rows use a recorded Directory label when no Project label
 is available and a working folder is known. For a Project, the decorative mark
 before its name is its chosen icon, or, without one, a dot in its sidebar colour
-(the name stays plain text); a row read from another Station draws no mark,
-since its slug names that Station's Project. The hover card's Project row
+(the name stays plain text). A row read from another Station uses neutral
+initials, never this Station's icon or colour, since the Project belongs there. The hover card's Project row
 repeats that mark, and its Git section reads the row's local session folder, as
 in the dock.
 The shared New chat action remains directly reachable in mobile chrome and
@@ -460,8 +460,10 @@ bottom is not shown and a row left with no status takes no height. Scroll-button
 without enlarging its target. The desktop header exposes Hide inbox /
 Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 
-Pending tool requests from the loaded event window also feed Needs approval,
-whose action opens the conversation's approval sheet. Failed history or
+Pending tool permissions feed Needs approval; questions and forms feed Needs
+answer. Permission takes priority when both wait. The action opens the
+conversation's request sheet. Background work keeps the pill visible after the
+main turn ends, using the server count and oldest reported start. Failed history or
 continuation observation shows Status unavailable and withholds the cached
 working clock; the remote turn may still be running. Already loaded transcript
 content stays visible through a failed refresh. A failed continuation check owns
@@ -1224,7 +1226,7 @@ screenshots.
 Conversation switching stays a direct phone-header action with a 44px target.
 Project selection belongs to the New chat composer's Project chip; it does not
 change an existing conversation's binding. The future-project switcher is absent
-from an active conversation's header. This reflects the October 30 product
+from every dock header, including empty and Inbox states. This reflects the October 30 product
 decision to remove a competing project hierarchy, while retaining project
 context in the conversation's session details.
 The **Chats and tasks** picker keeps the shared **New chat** action at the lower
@@ -1236,26 +1238,20 @@ the conversation (up to three, overlapping, then "+N"; the Agent's own mark
 when no engine with a mark is recorded) beside the Agent's name, then the
 conversation title, the Project with its icon (or a folder when it has none),
 a pencil when this device holds an unsent draft for it, and a right-aligned
-status/time. Unresolved Agents retain their name. The status line is the ladder's own words (`Needs answer`, `Needs
+status/time. Unresolved Agents retain their name. The status line is the ladder's own words (`Needs input`, `Needs
 approval`, …, the same words the dock row prints), prefixed with "Last known:"
 when its latest observation failed. Verified running time uses the
 recorded open-turn start; without one, the row's compact time trails the status
 line (`· 2m`). One ellipsis opens the
 existing details/actions sheet, including Git and PR reads on demand.
 
-The **Projects** picker uses the same **+** component, named **New project**,
-and opens the canonical `/projects/new` flow. Its empty state explains the
-next action. Chosen Project icons and the accent palette match the sidebar;
-the workspace map uses initials tiles while picker fallbacks use accent marks. A checkmark
-identifies the selected project. Other rows show stacked switch arrows; the
-separate home icon opens the Project workspace. Hover, keyboard focus or a hold
-explains each action; the hold does not also perform it. Selecting an existing row changes the dock's
-binding, and its separate Open action shows the workspace.
+The start composer's **Project** chip opens **Choose project**. Choosing a
+Project changes the new-chat default without starting a chat or navigating.
 
 Selecting a workspace through the sidebar also sets the default project for
 new chats after navigation guards admit the route. It preserves the active
 chat and its original project. Opening an existing conversation also preserves
-this default. Project choice belongs to the start composer. Active conversation
+this default. Project choice belongs to the start composer. All dock
 headers omit the future-chat Project control; the conversation's own project
 remains in its session context card's Workspace row.
 
@@ -1351,3 +1347,5 @@ answer-scoped. Chat inventory and Browse turns are conversation overflow actions
 The dev UI proxy uses the production unavailable envelope during API restarts.
 The access screen retries temporary unavailability while visible, preserving
 the existing session; an authentication refusal still requires sign-in.
+
+When permissions and input requests both wait, the status pill says **Needs approval**. Its badge counts permissions only; opening the requests shows both kinds. Home, Inbox and Sessions refine a `review_pending` summary to **Needs input** only when every remaining blocking request is known to be input. Home and Inbox exclude requests already answered on this device; mixed or unknown request kinds remain approvals. The replay transcript keeps **Waiting for approval** for permissions and uses **Needs input** for known questions. This is display wording; it does not change the runtime lifecycle.

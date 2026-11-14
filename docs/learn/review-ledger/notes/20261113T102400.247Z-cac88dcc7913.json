@@ -1,7 +1,0 @@
-{
-  "revision": "eab9a8e7671ee14bb8dfa60a87201115f2553d08",
-
-  "notes": [
-    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked against the docs/guides/testing.md change: only the 'Idle weight and request overhead' subsection changed (station-weight now fails on uncompared budgets and runs on Linux in full regression). This document links testing.md anchors that are unchanged and makes no station-weight claim.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]}
-  ]
-}

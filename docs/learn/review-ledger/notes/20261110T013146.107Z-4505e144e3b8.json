@@ -1,7 +1,0 @@
-{
-  "revision": "aff6cc6b203d6d3882dec946f1fc8a7b0c03fd9b",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Reviewed the integrated #4748 CI-owner state (merge of cached origin/main d318c4d7f802789b018288bebc2a87e840734f10 into 7b3799247e1b10ccf4ac9344ec462a871437c5fd) against this guide's current claims. The guide now carries three independent additions in disjoint regions: the #4748 CI-tool explanation (trusted pinned actionlint producer, validated artifact id and checksum before extraction, GNU OS-tool prerequisite, seven-day retention, legacy inline installs), main's Gallery overlap-diagnostics paragraph, and main's server-scenario sampler paragraph (reset priming, newer-observation sampling, parent deadline, startup limit). The merge combined them without conflict and none changes a lane, schedule, reuse, fixture-route or timeout claim of another. Main's own note reviewed the sampler and Gallery changes and carries their evidence limits; this review does not repeat or extend them. Main's resource-manifest line and the guide's added review dependency on the probe IPC test do not alter the CI owners reviewed here, none of which reference the guide, the manifest or the sampler files. No prose change is needed. Source review only: no ratchet, gate, test, hosted, Windows or native run was performed for this review, and the earlier 121, 899, code-health and typing results remain historical rather than combined proof. Existing classifications and historical limits are retained.","inputs":["docs/guides/testing.md"]}
-  ]
-}

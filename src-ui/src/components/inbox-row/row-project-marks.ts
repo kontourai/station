@@ -14,11 +14,17 @@ export interface RowProjectMarks {
  * neither mark.
  */
 export function rowProjectMarks(
-  item: Pick<HomeWorkItem, 'projectSlug' | 'environmentId'>,
+  item: Pick<
+    HomeWorkItem,
+    'projectSlug' | 'environmentId' | 'delegationEnvironmentKind'
+  >,
   accentBySlug: ReadonlyMap<string, string> | undefined,
   iconBySlug: ReadonlyMap<string, string> | undefined,
 ): RowProjectMarks {
-  const slug = item.environmentId ? undefined : item.projectSlug;
+  const slug =
+    item.environmentId || item.delegationEnvironmentKind === 'peer'
+      ? undefined
+      : item.projectSlug;
   if (!slug) return {};
   return {
     projectAccent: accentBySlug?.get(slug),

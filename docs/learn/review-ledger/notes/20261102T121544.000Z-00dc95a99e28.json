@@ -1,7 +1,0 @@
-{
-  "revision": "d24844d419aa26b318dfac5b0eb9b75ba3f24c38",
-
-  "notes": [
-    {"path":"docs/design/project-task-room-history.md","note":"Reviewed the yielding EventStore and observed-provider publication claims against unchanged production owners and the strengthened contention tests at d24844d419a. The real continuation-route overlap now holds its room transaction for 300 ms, beyond both short retry delays; deleting the availability wait changes posted to unpublished. Foreground timeout restoration covers successful, contended and rejected writes; leaking zero fails all three assertions. No persistence, authority, public API or prose behavior changed. Local evidence does not establish the hosted title-timeout cause or provider/platform qualification.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/__tests__/attached-session-write-contention.test.ts"]}
-  ]
-}

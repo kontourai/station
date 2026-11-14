@@ -1,9 +1,0 @@
-{
-  "revision": "6075e1f6b2432a5789214553f1742b9e36955e10",
-
-  "notes": [
-    {"path":"README.md","note":"Reviewed the desktop-release-notes GitHub request boundary, its generation/publication CLI callers, nightly-native-cohort ordering and regression tests. This checkpoint only adds bounded allowlisted validation messages, request IDs and permission headers with token and notes redaction. Exact-source/tag guards, publication effects, failure status and single-attempt behavior are unchanged, so the guide and entry-point claims remain accurate without prose changes. Regressions failed on the old owner (3 failures) and all 11 owner tests passed after repair; lint exited zero with inherited advisory diagnostics. No archive retry or provider mutation was performed, and the original 422 cause remains unconfirmed.","inputs":["README.md"]},
-
-    {"path":"docs/guides/nightly.md","note":"Reviewed the desktop-release-notes GitHub request boundary, its generation/publication CLI callers, nightly-native-cohort ordering and regression tests. This checkpoint only adds bounded allowlisted validation messages, request IDs and permission headers with token and notes redaction. Exact-source/tag guards, publication effects, failure status and single-attempt behavior are unchanged, so the guide and entry-point claims remain accurate without prose changes. Regressions failed on the old owner (3 failures) and all 11 owner tests passed after repair; lint exited zero with inherited advisory diagnostics. No archive retry or provider mutation was performed, and the original 422 cause remains unconfirmed.","inputs":["docs/guides/nightly.md","scripts/lib/desktop-release-notes.mjs"]}
-  ]
-}

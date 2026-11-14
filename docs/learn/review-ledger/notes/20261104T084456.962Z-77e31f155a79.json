@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"examples/enterprise-layout/README.md","note":"#4517 managed settings. Changed: projects.ts: project mutations map ManagedSettingLockedError to 403; workspace-pane-host-admission.ts: the isolation read hides a locked project override. Searched it for claims about app config loading and writes, settings provenance, the managed policy, project overrides and workspace isolation; none describes the changed behavior, so it remains accurate.","inputs":["examples/enterprise-layout/README.md","src-server/routes/projects/projects.ts","src-server/services/plugins/workspace-pane-host-admission.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "1dbe54f77a577f6b67c526bb0ce84a6a1fb4e8dd",
-
-  "notes": [
-    {"path":"docs/reference/contracts.md","note":"Re-checked against 1dbe54f77a57: the provisioning change narrows which non-ref base names count as detached; the workspace-isolation contract row describes the settlement types and outcomes, and the base-detached/base-unresolvable reason names it lists are unchanged. No claim affected.","inputs":["docs/reference/contracts.md","src-server/services/projects/worktree-provisioning-service.ts"]}
-  ]
-}

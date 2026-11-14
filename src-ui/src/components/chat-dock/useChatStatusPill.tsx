@@ -62,7 +62,9 @@ export function useChatStatusPill({
   streamStatus: ChatStreamStatus | undefined;
   turnLive: boolean;
   enabled: boolean;
-  windowRequests?: readonly RevealApprovalDetail[];
+  windowRequests?: readonly (RevealApprovalDetail & {
+    requestKind?: 'input' | 'approval';
+  })[];
   observationUnavailable?: boolean;
   resyncPending?: boolean;
   /** Re-reads this conversation when its status could not be observed. */
@@ -77,6 +79,20 @@ export function useChatStatusPill({
   const onUnavailable = useCallback(() => setView('unavailable'), []);
   // Requests still waiting on the user: open on the server and not yet
   // answered here (an answered one stays open until `request.resolved`).
+  const pendingRequestKinds = useMemo(() => {
+    const kinds = new Map(
+      Object.entries(activeSession.pendingRequestKinds ?? {}),
+    );
+    // Known input outranks a conservative approval hint from a partial read.
+    for (const request of windowRequests ?? []) {
+      if (
+        request.requestKind &&
+        (request.requestKind === 'input' || !kinds.has(request.requestId))
+      )
+        kinds.set(request.requestId, request.requestKind);
+    }
+    return Object.fromEntries(kinds);
+  }, [windowRequests, activeSession.pendingRequestKinds]);
   const pendingApprovals = useMemo(
     () =>
       requestsWaitingOnUser({
@@ -87,19 +103,28 @@ export function useChatStatusPill({
           ]),
         ],
         answeredApprovals: activeSession.answeredApprovals,
-      }),
+      }).sort(
+        (left, right) =>
+          Number(pendingRequestKinds[left] === 'input') -
+          Number(pendingRequestKinds[right] === 'input'),
+      ),
     [
       activeSession.pendingApprovals,
+      pendingRequestKinds,
       activeSession.answeredApprovals,
       windowRequests,
     ],
   );
-  const approvalCount = pendingApprovals.length;
+  const inputCount = pendingApprovals.filter(
+    (id) => pendingRequestKinds[id] === 'input',
+  ).length;
+  const approvalCount = pendingApprovals.length - inputCount;
   const stationOutlivesApp = useStationOutlivesApp();
   const input: ChatStatusInput = {
     observationUnavailable,
     resyncPending,
     approvalCount,
+    inputCount,
     stream: streamStatus,
     turnLive,
     // Not while a request is merely answered and unresolved: that waits on
@@ -136,7 +161,7 @@ export function useChatStatusPill({
   const presentingApproval =
     enabled &&
     view === 'mounted' &&
-    approvalCount > 0 &&
+    pendingApprovals.length > 0 &&
     !observationUnavailable &&
     streamStatus?.kind !== 'blocked' &&
     streamStatus?.kind !== 'reconnecting' &&

@@ -1,0 +1,7 @@
+{
+  "revision": "5b57b65f848252bf5ad4e198a2a3ac2feaa82467",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed gallery baseline and finding contracts against scripts/screenshot-diff.mjs and scripts/gallery-ui-findings.mjs. Full 183-screen capture completed; classified active-chat-phone findings as inherited using exact origin/main identities, preserved existing-screen shrink-only enforcement, pruned only two removed starter-card overlaps, and refreshed six inspected references for the intended All work label and removed mobile Home Project picker. The guide's targeted diff, new-screen adoption and full-capture prune instructions remain accurate. Scoped assertions and pixels pass 16/16; full assertions separately retain an unallowlisted Personal board dock-occlusion finding. Diagnostic retention remains incomplete. No runtime or whole-gallery green claim.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json","tests/screenshots.baseline/overlay-dock-project-bound.png","tests/screenshots.baseline/overlay-dock-project-mismatch.png"]}
+  ]
+}

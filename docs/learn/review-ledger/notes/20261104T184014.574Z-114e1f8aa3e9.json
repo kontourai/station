@@ -1,7 +1,0 @@
-{
-  "revision": "9f35905992951f9e944fd7812fa132111d5aaf44",
-
-  "notes": [
-    {"path":"docs/reference/deploy-ledger.md","note":"Correction to the previous note on this path: its inputs changed only through main commit 8f2f682 (merged into this branch), which appends the nightly-npm 0.11.0-nightly.2499.41868844308 row; checked the appended table row and section match the added deploy-ledger.json entry (run 41868844308, ship SHA e0b0cec). Unrelated to #4521. No edit.","inputs":["docs/reference/deploy-ledger.md"]}
-  ]
-}

@@ -82,14 +82,34 @@ export function validateInstalledRemediationGraph(root) {
         );
       }
       const child = manifests.get(childRoot);
-      // The reviewed major-version override is intentional. Every other edge
-      // must retain its upstream semver contract, including older minimatches.
+      // The reviewed major-version overrides are intentional. Every other edge
+      // must retain its upstream semver contract, including older minimatches
+      // and cacache majors without their own glob override. Cacache 20 takes
+      // glob 14, which cacache 21.0.2 itself adopted with unchanged code.
+      const cacacheGlob =
+        parent.name === 'cacache' && name === 'glob'
+          ? `cacache@${semver.major(parent.version)}>glob`
+          : '';
       const range =
         parent.name === 'minimatch' &&
         semver.satisfies(parent.version, '^10.0.0') &&
         name === 'brace-expansion'
           ? workspace.overrides['minimatch@^10.0.0>brace-expansion']
-          : declared;
+          : cacacheGlob && Object.hasOwn(workspace.overrides, cacacheGlob)
+            ? workspace.overrides[cacacheGlob]
+            : declared;
+      // An override may move a child forward, never back or to "any": its
+      // lowest admitted version must be at or above the declared range's major.
+      if (
+        range !== declared &&
+        semver.validRange(range) &&
+        semver.validRange(declared) &&
+        semver.minVersion(range).major < semver.minVersion(declared).major
+      ) {
+        throw new Error(
+          `Invalid installed dependency: ${parent.name}@${parent.version} -> ${name}@${child.version}; override ${range} is below declared ${declared}`,
+        );
+      }
       if (
         child.name !== name ||
         !semver.validRange(range) ||

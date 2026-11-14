@@ -1,9 +1,0 @@
-{
-  "revision": "a0939565a81652fc89f68d0edce43e0b8209ff72",
-
-  "notes": [
-    {"path":"docs/learn/media/inspect-request.png","note":"Scoped source-delta review of the existing Inspect request capture: read its manifest qualifications and walkthrough, inspected the screenshot, and compared the observed-event publication change with the unchanged request routes/decision path. Immediate SQLite attempts and yielding retry availability do not change request identity, inspect/open/close, permission shape or explicit Approve once/Deny controls. No UI, capture or evidence bytes changed. Retain historical navigation/bulk-dismiss caveats and controlled-provider/no-decision qualification; this is not a new capture or new live approval qualification.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
-
-    {"path":"docs/learn/media/inspect-request.webm","note":"Scoped source-delta review of the existing Inspect request capture: read its manifest qualifications and walkthrough, inspected the screenshot, and compared the observed-event publication change with the unchanged request routes/decision path. Immediate SQLite attempts and yielding retry availability do not change request identity, inspect/open/close, permission shape or explicit Approve once/Deny controls. No UI, capture or evidence bytes changed. Retain historical navigation/bulk-dismiss caveats and controlled-provider/no-decision qualification; this is not a new capture or new live approval qualification.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

@@ -10,6 +10,7 @@ import {
   absoluteTime,
   clockTime,
   formatDateTime,
+  formatDuration,
   messageTime,
   relativeTime,
   relativeTimeAgo,
@@ -129,4 +130,14 @@ describe('messageTime', () => {
     expect(messageTime(0, now)).toBe('');
     expect(messageTime(Number.NaN, now)).toBe('');
   });
+});
+
+it.each([
+  [45000, '45s'],
+  [121000, '2m 1s'],
+  [3840000, '1h 4m'],
+  [-1, '0s'],
+  [Number.NaN, '0s'],
+])('elapsed formatter pins %s as %s', (ms, text) => {
+  expect(formatDuration(ms)).toBe(text);
 });

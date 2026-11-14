@@ -1,7 +1,0 @@
-{
-  "revision": "d24844d419aa26b318dfac5b0eb9b75ba3f24c38",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the human reply delivery, image binding and confirmed history-write boundary against the unchanged continuation route and task-room conversation module. The overlap fixture holds authorization beyond the short observed-event retry budget and still requires posted delivery and durable human history. Removing the publication availability wait produces unpublished delivery; restoration passes. Existing title, authority and uncertainty claims remain accurate; this is test-strengthening only, with no hosted-timeout causal or live-provider claim.","inputs":["docs/design/task-room-agent-requests.md","src-server/services/projects/__tests__/task-room-conversation-module.test.ts"]}
-  ]
-}

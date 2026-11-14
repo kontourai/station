@@ -1,7 +1,0 @@
-{
-  "revision": "d5e3c3757b2dfb3fd2d38d801292f5c5a3bbfed6",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Reviewed the gallery screen additions (appearance, mobile-appearance) against the screenshot workflow description; no procedure changes.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
-  ]
-}

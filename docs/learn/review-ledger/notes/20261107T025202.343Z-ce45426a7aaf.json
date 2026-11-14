@@ -1,7 +1,0 @@
-{
-  "revision": "bc8c3028abe8ffe2b450abfdb2a9596c40011a3e",
-
-  "notes": [
-    {"path":"docs/guides/development.md","note":"Reviewed the main integration at bc8c3028a: scratch recognition canonicalizes each Windows workspace or legacy Station-home base before appending scratch. This preserves #4478 home aliases and rejects redirected scratch roots without following their target as a managed root. New Windows placement, POSIX placement, recorded conversations, sandbox permissions and backup/retention explanation remain unchanged. Redirected-root regression failed against the first merge resolution and all168 focused tests passed after correction; independent delta review found no remaining issue.","inputs":["docs/guides/development.md"]}
-  ]
-}

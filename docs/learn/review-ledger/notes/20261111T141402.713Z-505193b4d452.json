@@ -1,9 +1,0 @@
-{
-  "revision": "0c9c1ecd0f6b4e2418ddde779cb058a9b9ae8db0",
-
-  "notes": [
-    {"path":"docs/design/connections-onboarding.md","note":"FirstRunHomeChapter now renders its steps through the shared Dialog instead of its own ResponsiveDialogSurface panel and header; title, step counter, close label, focus handling and every step's content and actions are unchanged. Updated §4.1 Placement, which said it used ResponsiveDialogSurface directly 'with that surface's scrim' and no placement CSS: it now says it renders through the shared Dialog (same title, spacing and scrim as other dialogs) with ResponsiveDialogSurface's focus trap and Escape handling. The rest of §4.1 (gate states, Home-only mounting, Not now writing skipped, shared Checkbox and editor-btn controls) and the §8 status row ('shared dialog/Button/Checkbox') still hold.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/first-run/FirstRunHomeChapter.tsx"]},
-
-    {"path":"docs/user/getting-started.md","note":"FirstRunHomeChapter now renders its steps through the shared Dialog; the steps, their wording, order and actions are unchanged. Read lines 289, 430 and 649-680 (Personalize Station, Start your first chat, Take the tour, Connect another device): they describe the flow's steps and outcomes, which this change does not touch.","inputs":["docs/user/getting-started.md","src-ui/src/components/first-run/FirstRunHomeChapter.tsx","src-ui/src/index.css"]}
-  ]
-}

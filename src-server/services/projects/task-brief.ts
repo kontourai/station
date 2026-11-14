@@ -150,7 +150,7 @@ export type TaskBriefObservation =
 export interface TaskBriefSessionFacts {
   sessionId: string;
   provider?: string;
-  /** The ladder word (`Running`, `Needs answer`, `Done`, …). */
+  /** The ladder word (`Running`, `Needs input`, `Done`, …). */
   status?: string;
   /** Turns the Session's digest counts. */
   turnCount?: number;

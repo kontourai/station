@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"examples/registry/README.md","note":"#4517 managed settings. Changed: install-registry.ts: station registry <url> refuses a locked registryUrl. station registry usage is unchanged on an unmanaged machine; a locked registryUrl is refused, documented in the managed policy guide.","inputs":["examples/registry/README.md","packages/cli/src/commands/install-registry.ts"]}
-  ]
-}

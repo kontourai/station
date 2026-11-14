@@ -4,10 +4,13 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
+import { builtinModules } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
+import { transformSync } from 'esbuild';
 import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 import {
@@ -23,8 +26,11 @@ import {
   classifyGitRange,
   classifyIosChangedPaths,
   classifyIosGitRange,
+  classifyIosPostMergeChangedPaths,
+  classifyIosPostMergeGitRange,
   renderGithubOutputs,
 } from '../classify-ci-change.mjs';
+import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import { runWorkflowShell } from './fixtures/workflow-shell.js';
 
 function withFixtureCleanup(root: string, run: () => void): void {
@@ -137,7 +143,7 @@ describe('exact CI change classification', () => {
       git(root, ['init', '--initial-branch=main']);
       git(root, ['config', 'user.email', 'fixture@example.test']);
       git(root, ['config', 'user.name', 'Fixture']);
-      commitFile(
+      const legacyBase = commitFile(
         root,
         'scripts/classify-ci-change.mjs',
         `console.log(['heavy=true', 'container=true', 'dependencies=false', 'classification=runtime-or-workflow', 'changed-files=1'].join('\\n'));\n`,
@@ -145,9 +151,9 @@ describe('exact CI change classification', () => {
       );
       const divergenceBase = commitFile(
         root,
-        'src-ui/inherited.ts',
+        'src-ui/src/platform/inherited.ts',
         'export {};\n',
-        'inherited UI',
+        'inherited native shell',
       );
 
       git(root, ['checkout', '-b', 'candidate']);
@@ -203,8 +209,12 @@ describe('exact CI change classification', () => {
 
       git(root, ['checkout', '-b', 'rename-candidate', divergenceBase]);
       mkdirSync(join(root, 'docs'), { recursive: true });
-      git(root, ['mv', 'src-ui/inherited.ts', 'docs/inherited.ts']);
-      git(root, ['commit', '-m', 'move UI source into docs']);
+      git(root, [
+        'mv',
+        'src-ui/src/platform/inherited.ts',
+        'docs/inherited.ts',
+      ]);
+      git(root, ['commit', '-m', 'move native shell source into docs']);
       const renamedHead = git(root, ['rev-parse', 'HEAD']);
       expect(
         classifyIosGitRange({
@@ -223,9 +233,10 @@ describe('exact CI change classification', () => {
       ).toMatchObject({ heavy: true, classification: 'runtime-or-workflow' });
 
       git(root, ['checkout', 'candidate']);
+      // A UI-only candidate no longer builds before landing, on either event.
       const candidateUiHead = commitFile(
         root,
-        'src-ui/candidate-only.ts',
+        'src-ui/src/components/candidate-only.tsx',
         'export {};\n',
         'candidate UI',
       );
@@ -236,10 +247,29 @@ describe('exact CI change classification', () => {
           mode: 'candidate',
           cwd: root,
         }),
-      ).toMatchObject({ relevant: true, changedFiles: 2 });
+      ).toMatchObject({ relevant: false, changedFiles: 2 });
+      for (const event of ['pull_request_target', 'merge_group'])
+        expect(
+          runIosRelevanceShell(root, event, currentBase, candidateUiHead),
+        ).toBe('relevant=false');
+      const candidateNativeHead = commitFile(
+        root,
+        'src-desktop/src/candidate-only.rs',
+        'fn main() {}\n',
+        'candidate native',
+      );
       expect(
-        runIosRelevanceShell(root, 'merge_group', currentBase, candidateUiHead),
-      ).toBe('relevant=true');
+        classifyIosGitRange({
+          before: currentBase,
+          after: candidateNativeHead,
+          mode: 'candidate',
+          cwd: root,
+        }),
+      ).toMatchObject({ relevant: true, changedFiles: 3 });
+      for (const event of ['pull_request_target', 'merge_group'])
+        expect(
+          runIosRelevanceShell(root, event, currentBase, candidateNativeHead),
+        ).toBe('relevant=true');
 
       git(root, ['checkout', 'main']);
       const pushScript = commitFile(
@@ -256,12 +286,23 @@ describe('exact CI change classification', () => {
           cwd: root,
         }),
       ).toMatchObject({ relevant: false, changedFiles: 1 });
+      // A main push answers the post-merge question over exactly what it
+      // added: a script-only push builds nothing.
       expect(runIosRelevanceShell(root, 'push', currentBase, pushScript)).toBe(
-        'relevant=true',
+        'relevant=false',
       );
+      // Dispatch always builds.
+      expect(
+        runIosRelevanceShell(
+          root,
+          'workflow_dispatch',
+          currentBase,
+          pushScript,
+        ),
+      ).toBe('relevant=true');
       const pushUi = commitFile(
         root,
-        'src-ui/push-only.ts',
+        'src-ui/src/components/push-only.tsx',
         'export {};\n',
         'push UI',
       );
@@ -272,7 +313,52 @@ describe('exact CI change classification', () => {
           mode: 'direct',
           cwd: root,
         }),
+      ).toMatchObject({ relevant: false, changedFiles: 1 });
+      // The merge group skipped this UI-only tree, so main builds it.
+      expect(
+        classifyIosPostMergeGitRange({
+          before: pushScript,
+          after: pushUi,
+          mode: 'direct',
+          cwd: root,
+        }),
       ).toMatchObject({ relevant: true, changedFiles: 1 });
+      expect(runIosRelevanceShell(root, 'push', pushScript, pushUi)).toBe(
+        'relevant=true',
+      );
+      // One push can carry several squashed PRs. If any of them is native,
+      // the merge group already built this exact tree, so main does not.
+      const pushNative = commitFile(
+        root,
+        'src-desktop/src/push-only.rs',
+        'fn main() {}\n',
+        'push native',
+      );
+      expect(runIosRelevanceShell(root, 'push', pushScript, pushNative)).toBe(
+        'relevant=false',
+      );
+      expect(runIosRelevanceShell(root, 'push', pushUi, pushNative)).toBe(
+        'relevant=false',
+      );
+      // Fail closed on push too: a previous main without the post-merge
+      // scope (this change's own first push) and an unknown `before` build.
+      expect(runIosRelevanceShell(root, 'push', legacyBase, pushScript)).toBe(
+        'relevant=true',
+      );
+      expect(
+        runIosRelevanceShell(root, 'push', 'a'.repeat(40), pushScript),
+      ).toBe('relevant=true');
+      expect(
+        classifyIosPostMergeGitRange({
+          before: 'a'.repeat(40),
+          after: pushScript,
+          mode: 'direct',
+          cwd: root,
+        }),
+      ).toMatchObject({
+        relevant: true,
+        classification: 'classifier-error-fail-closed',
+      });
 
       expect(
         classifyIosGitRange({
@@ -618,20 +704,127 @@ describe('desktop Rust relevance for the Windows PR floor', () => {
   });
 });
 
-describe('iOS relevance ignores test-only JavaScript sources', () => {
+/**
+ * Where a change gets its iOS build: `before` (the PR and merge-group build,
+ * `--scope ios`), `after` (only the coalesced main push build,
+ * `--scope ios-post-merge`), or `never`. The two scopes are disjoint by
+ * construction, and asserting both answers catches a revert of either.
+ */
+function iosBuildPoint(paths: string[]) {
+  const before = classifyIosChangedPaths(paths).relevant;
+  const after = classifyIosPostMergeChangedPaths(paths).relevant;
+  if (before && after) throw new Error(`both scopes claim ${paths.join(', ')}`);
+  return before ? 'before' : after ? 'after' : 'never';
+}
+
+describe('iOS builds native inputs before landing and the rest of the UI after', () => {
   test.each([
+    // The workflow, its router, the smoke and its fixtures.
+    '.github/workflows/build-ios.yml',
+    'scripts/classify-ci-change.mjs',
+    'scripts/ios-simulator-runtime-smoke.mjs',
+    'scripts/__tests__/ios-simulator-runtime-smoke.test.ts',
+    'tests/ios-runtime-smoke/StationRuntimeSmokeTests.swift',
+    'tests/ios-runtime-smoke/project.yml',
+    // The native crate, iOS project/config, Rust and Cargo anywhere.
+    'src-desktop/src/lib.rs',
+    'src-desktop/tauri.ios.conf.json',
+    'src-desktop/gen/apple/project.yml',
+    'src-desktop/Info.ios.plist',
+    'src-desktop/Cargo.lock',
+    'src-desktop/src/__tests__/lib.test.ts',
+    'rust-toolchain.toml',
+    'experiments/mobile-device/tauri-host/Cargo.toml',
+    '.cargo/config.toml',
+    'patches/android-native-keyring-store/src/lib.rs',
+    'patches/some-npm-package.patch',
+    // Dependency/toolchain manifests and native-client build inputs.
+    'package.json',
+    'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
+    '.npmrc',
+    '.nvmrc',
+    'vite.config.ts',
+    'scripts/write-native-client-build-manifest.mjs',
+    'scripts/write-ios-build-manifest.mjs',
+    'scripts/lib/ios-launch-screen.mjs',
+    'scripts/ios-channel-icons.mjs',
+    // The src-ui slice that is the native shell and its boot path.
+    'src-ui/src/platform/native/tauri.ts',
+    'src-ui/src/platform/native/pluginBundleCapability.js',
+    'src-ui/src/platform/PlatformSessionGate.tsx',
+    'src-ui/public/favicon.png',
+    'src-ui/public/startup-theme.js',
+    'src-ui/index.html',
+    'src-ui/src/main.tsx',
+    'src-ui/src/boot.ts',
+    'src-ui/src/build-info.ts',
+    'src-ui/tsconfig.json',
+  ])('builds %s before landing', (changedPath) => {
+    expect(iosBuildPoint([changedPath])).toBe('before');
+  });
+
+  test.each([
+    // Ordinary product UI, including the pairing screens the smoke drives:
+    // every Linux lane builds and renders them, so iOS builds them on main.
+    'src-ui/src/App.tsx',
+    'src-ui/src/components/MobileWelcomeBoundary.tsx',
+    'src-ui/src/views/connections-hub/ConnectStationDialog.tsx',
+    'src-ui/src/index.css',
+    'src-ui/src/i18n/en.ts',
+    // Production sources whose names merely resemble tests.
+    'src-ui/src/lib/test-utils.ts',
+    'src-ui/src/testing/harness.tsx',
+    'src-ui/src/contest.ts',
+    'packages/sdk/src/attest.ts',
+    // The packages the bundle compiles. Package builds (`tsc` in
+    // build:sdk/build:connect) exclude only the top-level src/__tests__, so
+    // these test-named files are compiled and still count.
+    'packages/connect/src/pairing.ts',
+    'packages/contracts/src/plugin.ts',
+    'packages/sdk/src/client/index.ts',
+    'packages/connect/src/pairing.test.ts',
+    'packages/sdk/src/client/__tests__/client.test.ts',
+    'packages/contracts/src/schema.spec.tsx',
+    // Other roots the bundle imports.
+    'packages/shared/src/agent-message-frame.ts',
+    'packages/basis-pane/src/index.ts',
+    'packages/board-pane/src/index.ts',
+    'src-shared/monitoring-keys.ts',
+    // Generic tooling the job executes, which Linux lanes run on every PR.
+    'scripts/lib/desktop-build-manifest.mjs',
+    'scripts/lib/bounded-capture.mjs',
+    'scripts/lib/module-entry.mjs',
+    'scripts/dependency-lifecycle.mjs',
+    'scripts/ui-bundle-budget.mjs',
+    'scripts/vite-ui-assets.ts',
+    'packages/cli/src/commands/ui-proxy-prefixes.ts',
+  ])('builds %s only after landing', (changedPath) => {
+    expect(iosBuildPoint([changedPath])).toBe('after');
+  });
+
+  test.each([
+    // Test-only sources no build compiles.
     'src-ui/src/components/__tests__/Button.test.tsx',
     'src-ui/src/components/Button.test.tsx',
     'src-ui/src/lib/format.spec.ts',
     'src-ui/src/__tests__/fixtures/session.json',
+    'src-ui/src/platform/__tests__/installedAppZoom.test.ts',
     'packages/sdk/src/__tests__/client.test.ts',
     'packages/connect/src/__tests__/pairing.test.ts',
     'packages/contracts/src/__tests__/fixtures/schema.json',
-  ])('skips the macOS build for %s', (changedPath) => {
-    expect(classifyIosChangedPaths([changedPath]).relevant).toBe(false);
+    'src-shared/__tests__/monitoring-keys.test.ts',
+    // Outside both scopes.
+    'docs/guides/testing.md',
+    'src-server/routes/foo.ts',
+    'packages/cli/src/commands/other.ts',
+    'scripts/run-ci-fast.mjs',
+    '.github/workflows/windows-pr-verification.yml',
+  ])('never builds iOS for %s', (changedPath) => {
+    expect(iosBuildPoint([changedPath])).toBe('never');
   });
 
-  test('a test-only change across several packages stays irrelevant', () => {
+  test('a test-only change across several packages builds nothing', () => {
     expect(
       classifyIosChangedPaths([
         'src-ui/src/components/__tests__/Button.test.tsx',
@@ -639,34 +832,40 @@ describe('iOS relevance ignores test-only JavaScript sources', () => {
         'docs/guides/testing.md',
       ]),
     ).toMatchObject({ relevant: false, changedFiles: 3 });
+    expect(
+      classifyIosPostMergeChangedPaths([
+        'src-ui/src/components/__tests__/Button.test.tsx',
+        'packages/sdk/src/__tests__/client.test.ts',
+        'docs/guides/testing.md',
+      ]),
+    ).toMatchObject({ relevant: false, changedFiles: 3 });
   });
 
-  test('a test change beside a source change is still relevant', () => {
+  test('a test change beside a UI source change builds after landing', () => {
     expect(
-      classifyIosChangedPaths([
+      iosBuildPoint([
         'src-ui/src/components/__tests__/Button.test.tsx',
         'src-ui/src/components/Button.tsx',
-      ]).relevant,
-    ).toBe(true);
+      ]),
+    ).toBe('after');
   });
 
-  test.each([
-    // Production sources whose names merely resemble tests.
-    'src-ui/src/lib/test-utils.ts',
-    'src-ui/src/testing/harness.tsx',
-    'src-ui/src/contest.ts',
-    'packages/sdk/src/attest.ts',
-    // Native and smoke inputs are never exempt, whatever they are called.
-    'src-desktop/src/__tests__/lib.test.ts',
-    'tests/ios-runtime-smoke/StationRuntimeSmokeTests.swift',
-    'scripts/__tests__/ios-simulator-runtime-smoke.test.ts',
-    // Package builds (`tsc` in build:sdk/build:connect) exclude only the
-    // top-level src/__tests__, so these are compiled into the iOS build.
-    'packages/connect/src/pairing.test.ts',
-    'packages/sdk/src/client/__tests__/client.test.ts',
-    'packages/contracts/src/schema.spec.tsx',
-  ])('keeps %s relevant', (changedPath) => {
-    expect(classifyIosChangedPaths([changedPath]).relevant).toBe(true);
+  // The rule that keeps main from rebuilding a merge-group tree: one native
+  // path anywhere in the range means the candidate was built before landing.
+  test('one native input moves a whole UI range to the merge-group build', () => {
+    expect(
+      iosBuildPoint([
+        'src-ui/src/App.tsx',
+        'packages/sdk/src/client/index.ts',
+        'src-desktop/src/lib.rs',
+      ]),
+    ).toBe('before');
+    expect(
+      iosBuildPoint([
+        'src-ui/src/App.tsx',
+        'src-ui/src/platform/native/tauri.ts',
+      ]),
+    ).toBe('before');
   });
 
   test('changes only the iOS answer, not the shared heavy/container classification', () => {
@@ -678,7 +877,393 @@ describe('iOS relevance ignores test-only JavaScript sources', () => {
     });
     expect(classifyIosChangedPaths(testOnly).relevant).toBe(false);
   });
+
+  // The post-merge classifier must see every main push: GitHub's path
+  // filters consider at most 300 changed files and then skip the run, which
+  // would silently drop a large landing's only iOS build.
+  test('every main push reaches the post-merge classifier', () => {
+    const workflow = parse(
+      readFileSync(join(repoRoot, '.github/workflows/build-ios.yml'), 'utf8'),
+    ) as { on: { push?: Record<string, unknown> } };
+    expect(workflow.on.push).toEqual({ branches: ['main'] });
+  });
+
+  // NATIVE must be closed under what the job executes, and every executed
+  // file must be built somewhere. Derive the set rather than list it: follow
+  // the job's run steps through npm scripts (workspace scripts included) and
+  // Tauri's beforeBuildCommand, then the static import graph. A newly
+  // reached file fails here until it is classified. The rule this applies:
+  // vite.config.ts, src-desktop/, and any file named for iOS or the native
+  // client build before landing; every other executed file is generic
+  // tooling that Linux lanes run on each PR, so it builds after landing.
+  test('every file the iOS build job executes is classified by the native-name rule', () => {
+    const { files, packageDirs, unresolved } = iosJobExecutionClosure();
+    // A relative import the walk cannot resolve would hide everything behind
+    // it; refuse it rather than drop the edge.
+    expect(unresolved).toEqual([]);
+    // Reachability: the walk really crossed npm-script indirection, a
+    // workspace script and the import graph.
+    for (const reached of [
+      'scripts/dependency-lifecycle.mjs',
+      'scripts/ui-bundle-budget.mjs',
+      'scripts/lib/bounded-capture.mjs',
+      'scripts/write-dist-stamp.mjs',
+      'scripts/vite-ui-assets.ts',
+      'packages/cli/src/commands/ui-proxy-prefixes.ts',
+      'src-desktop/tauri.conf.json',
+    ])
+      expect(files, reached).toContain(reached);
+    expect(packageDirs).toEqual(
+      expect.arrayContaining(['packages/connect', 'packages/sdk']),
+    );
+    for (const file of files) {
+      const nativeByRule =
+        file === 'vite.config.ts' ||
+        file.startsWith('src-desktop/') ||
+        /ios|native/i.test(file.slice(file.lastIndexOf('/') + 1));
+      expect(iosBuildPoint([file]), file).toBe(
+        nativeByRule ? 'before' : 'after',
+      );
+    }
+    for (const dir of packageDirs)
+      expect(iosBuildPoint([`${dir}/src/probe.ts`]), dir).not.toBe('never');
+  });
+
+  // Everything the UI bundle can import must build on main at least: walk
+  // the imports of every non-test src-ui source, following workspace
+  // packages (all of their non-test sources) and relative paths that leave
+  // src-ui, transitively.
+  test('every root the UI bundle can import builds after landing at least', () => {
+    const { files, packageDirs, unresolved, aliasTargets } =
+      uiBundleImportClosure();
+    // The aliases come from evaluating vite.config.ts; prove they were read.
+    expect(aliasTargets).toEqual(
+      expect.arrayContaining([
+        'src-ui/src',
+        'src-shared',
+        'packages/connect/src/index.ts',
+        'packages/sdk/src/index.ts',
+      ]),
+    );
+    // Every relative or aliased import resolves (`./x.js` to `x.ts` as the
+    // bundler does, `@shared/...` to src-shared); a dropped edge fails here.
+    // The one listed match is not an import: it is text inside the template
+    // literal plugin-scaffold.ts writes into a NEW plugin's source file.
+    expect(unresolved).toEqual([
+      'packages/shared/src/plugin-scaffold.ts -> ./pane.css',
+    ]);
+    expect(packageDirs).toEqual(
+      expect.arrayContaining([
+        'packages/basis-pane',
+        'packages/board-pane',
+        'packages/connect',
+        'packages/contracts',
+        'packages/sdk',
+        'packages/shared',
+      ]),
+    );
+    expect(files).toContain('src-shared/monitoring-keys.ts');
+    for (const file of files)
+      expect(iosBuildPoint([file]), file).not.toBe('never');
+    for (const dir of packageDirs)
+      expect(iosBuildPoint([`${dir}/src/probe.ts`]), dir).not.toBe('never');
+  });
 });
+
+const WORKSPACE_PACKAGES = new Map(
+  trackedFiles(['packages'])
+    .filter((path) => /^packages\/[^/]+\/package\.json$/.test(path))
+    .map((path) => [
+      (
+        JSON.parse(readFileSync(join(repoRoot, path), 'utf8')) as {
+          name: string;
+        }
+      ).name,
+      dirname(path),
+    ]),
+);
+const NON_TEST_SOURCE = /\.(?:mjs|cjs|js|jsx|ts|tsx|mts)$/;
+const TEST_SOURCE = /(?:^|\/)__tests__\/|\.(?:test|spec)\.[cm]?[jt]sx?$/;
+
+function trackedFiles(paths: string[]) {
+  return String(
+    execFileSyncBounded('git', ['ls-files', '-z', '--', ...paths], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      windowsHide: true,
+    }),
+  )
+    .split('\0')
+    .filter(Boolean);
+}
+
+/**
+ * Vite's own `resolve.alias` for the native build, read by evaluating
+ * vite.config.ts rather than by pattern-matching its text. Each entry is a
+ * prefix (string `find`, matched exactly or as `find/...`) or an exact
+ * RegExp, applied in order, first match wins, as Vite applies them.
+ */
+const VITE_ALIASES = await (async () => {
+  const module = (await import('../../vite.config')) as {
+    default: (env: { command: string; mode: string }) => {
+      resolve?: {
+        alias?: Array<{ find: string | RegExp; replacement: string }>;
+      };
+    };
+  };
+  return (
+    module.default({ command: 'build', mode: 'native' }).resolve?.alias ?? []
+  );
+})();
+
+function applyViteAlias(specifier: string) {
+  for (const { find, replacement } of VITE_ALIASES) {
+    if (typeof find === 'string') {
+      if (specifier === find) return replacement;
+      if (specifier.startsWith(`${find}/`))
+        return join(replacement, specifier.slice(find.length + 1));
+    } else if (find.test(specifier))
+      return specifier.replace(find, replacement);
+  }
+  return null;
+}
+
+/**
+ * How the bundler and tsc find a module from a resolved base path: the exact
+ * file, the file with a source extension, an index file, and the TypeScript
+ * convention of writing `./x.js` for the source `./x.ts`.
+ */
+function resolveModulePath(base: string) {
+  const candidates = [
+    base,
+    ...['.ts', '.tsx', '.mts', '.mjs', '.js', '.jsx', '.json'].map(
+      (extension) => `${base}${extension}`,
+    ),
+    ...['index.ts', 'index.tsx', 'index.mjs', 'index.js'].map((index) =>
+      join(base, index),
+    ),
+  ];
+  const typeScriptSource = base.match(/^(.*)\.(js|jsx|mjs|cjs)$/);
+  if (typeScriptSource) {
+    const [, stem, extension] = typeScriptSource;
+    candidates.push(
+      ...(
+        { js: ['.ts', '.tsx'], jsx: ['.tsx'], mjs: ['.mts'], cjs: ['.cts'] }[
+          extension
+        ] ?? []
+      ).map((source) => `${stem}${source}`),
+    );
+  }
+  return candidates.find(
+    (candidate) => existsSync(candidate) && statSync(candidate).isFile(),
+  );
+}
+
+/**
+ * Static import edges of one source file: repository files it reaches by a
+ * relative specifier (or, inside the UI bundle, a Vite alias), and workspace
+ * packages it imports by name. A relative or aliased specifier that resolves
+ * to nothing is returned in `unresolved`, so callers can refuse it instead
+ * of silently dropping the edge. Dynamic specifiers built at run time, child
+ * processes and readFileSync reads are not import edges and are not seen.
+ */
+function importEdges(file: string, viteAliases: boolean) {
+  // Comments are prose, and prose says "from 'somewhere'" too. Compile the
+  // file first, as the bundler does: esbuild drops comments and type-only
+  // imports, so what is left is what a build actually loads.
+  // A declaration file is types only; no build loads its imports.
+  if (/\.d\.[cm]?ts$/.test(file))
+    return { files: [], packages: [], unresolved: [] };
+  const extension = file.slice(file.lastIndexOf('.') + 1);
+  const text = transformSync(readFileSync(join(repoRoot, file), 'utf8'), {
+    loader:
+      extension === 'tsx' || extension === 'jsx'
+        ? extension
+        : extension === 'ts' || extension === 'mts'
+          ? 'ts'
+          : 'js',
+    legalComments: 'none',
+    // Whitespace minification is what removes every comment.
+    minifyWhitespace: true,
+  }).code;
+  const files: string[] = [];
+  const packages: string[] = [];
+  const unresolved: string[] = [];
+  for (const match of text.matchAll(
+    // Import shapes in esbuild's minified output: `}from"x"`, `x from"x"`,
+    // `*from"x"`, `import"x"`, `import("x")`, `require("x")`. A specifier
+    // never contains a comma, paren or space, which keeps string data out.
+    /(?:(?<=[}\s*])from|\bimport\s*\(|\bimport|\brequire\()\s*["'`]([\w@./~$][^"'`\s,;()]*)["'`]/g,
+  )) {
+    // A specifier interpolated into generated code is not an import here.
+    if (match[1].includes('${')) continue;
+    const specifier = match[1].replace(/\?.*$/, '');
+    const aliased = viteAliases ? applyViteAlias(specifier) : null;
+    const base = aliased
+      ? aliased
+      : specifier.startsWith('.')
+        ? join(dirname(join(repoRoot, file)), specifier)
+        : null;
+    const name = specifier.split('/').slice(0, 2).join('/');
+    const dir = WORKSPACE_PACKAGES.get(name);
+    if (dir) packages.push(dir);
+    if (base === null) {
+      // A bare specifier must be a workspace package, a Node built-in, or an
+      // installed dependency. Anything else is an alias this walk did not
+      // apply (e.g. `@shared/...` without Vite's aliases), so it is refused
+      // like an unresolved path rather than skipped.
+      const bare = specifier.startsWith('@') ? name : specifier.split('/')[0];
+      if (
+        !dir &&
+        !specifier.startsWith('node:') &&
+        !builtinModules.includes(bare) &&
+        !existsSync(join(repoRoot, 'node_modules', bare))
+      )
+        unresolved.push(`${file} -> ${match[1]}`);
+      continue;
+    }
+    const target = resolveModulePath(base);
+    if (target) files.push(relative(repoRoot, target).split('\\').join('/'));
+    else unresolved.push(`${file} -> ${match[1]}`);
+  }
+  return { files, packages, unresolved };
+}
+
+/**
+ * `bundle` walks as Vite bundles the UI: Vite aliases apply, and reaching a
+ * workspace package walks every non-test source in it. Otherwise (the iOS
+ * job's Node scripts) aliases do not apply and packages are only recorded.
+ */
+function walkImports(
+  seedFiles: string[],
+  seedPackages: string[],
+  bundle: boolean,
+) {
+  const followPackages = bundle;
+  const unresolved: string[] = [];
+  const files = new Set<string>();
+  const packageDirs = new Set<string>();
+  const pending = [...seedFiles];
+  const addPackage = (dir: string) => {
+    if (packageDirs.has(dir)) return;
+    packageDirs.add(dir);
+    if (followPackages)
+      pending.push(
+        ...trackedFiles([dir]).filter(
+          (path) => NON_TEST_SOURCE.test(path) && !TEST_SOURCE.test(path),
+        ),
+      );
+  };
+  for (const dir of seedPackages) addPackage(dir);
+  while (pending.length) {
+    const file = pending.pop() as string;
+    if (files.has(file)) continue;
+    files.add(file);
+    if (!NON_TEST_SOURCE.test(file)) continue;
+    const edges = importEdges(file, bundle);
+    pending.push(...edges.files);
+    unresolved.push(...edges.unresolved);
+    for (const dir of edges.packages) addPackage(dir);
+  }
+  return {
+    files: [...files].sort(),
+    packageDirs: [...packageDirs].sort(),
+    unresolved: unresolved.sort(),
+  };
+}
+
+function uiBundleImportClosure() {
+  const seeds = trackedFiles(['src-ui']).filter(
+    (path) => NON_TEST_SOURCE.test(path) && !TEST_SOURCE.test(path),
+  );
+  // Alias targets are reached even when no UI file imports them today.
+  const aliasTargets = VITE_ALIASES.map(({ replacement }) =>
+    relative(repoRoot, replacement).split('\\').join('/'),
+  );
+  const aliasedPackages = [
+    ...new Set(
+      aliasTargets
+        .map((target) => target.match(/^packages\/[^/]+/)?.[0])
+        .filter((dir): dir is string => Boolean(dir)),
+    ),
+  ];
+  const result = walkImports(seeds, aliasedPackages, true);
+  return {
+    files: result.files.filter((file) => !file.startsWith('src-ui/')),
+    packageDirs: result.packageDirs,
+    unresolved: result.unresolved,
+    aliasTargets,
+  };
+}
+
+function iosJobExecutionClosure() {
+  const workflow = parse(
+    readFileSync(join(repoRoot, '.github/workflows/build-ios.yml'), 'utf8'),
+  ) as {
+    jobs: Record<
+      string,
+      {
+        steps: Array<{
+          if?: string;
+          run?: string;
+          'working-directory'?: string;
+        }>;
+      }
+    >;
+  };
+  const entries = new Set<string>();
+  const packageDirs = new Set<string>();
+  const expanded = new Set<string>();
+  const expand = (command: string, cwd: string) => {
+    for (const match of command.matchAll(
+      /\bnpm run (?:--workspace=(\S+) )?([\w:.-]+)/g,
+    )) {
+      const dir = match[1] ? join(repoRoot, match[1]) : cwd;
+      const key = `${dir}#${match[2]}`;
+      if (expanded.has(key)) continue;
+      expanded.add(key);
+      const script = (
+        JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
+          scripts?: Record<string, string>;
+        }
+      ).scripts?.[match[2]];
+      if (!script) throw new Error(`npm script ${match[2]} missing in ${dir}`);
+      if (dir !== repoRoot) packageDirs.add(relative(repoRoot, dir));
+      expand(script, dir);
+    }
+    for (const match of command.matchAll(/\bnode (\S+\.(?:mjs|js|ts))\b/g))
+      entries.add(
+        relative(repoRoot, join(cwd, match[1])).split('\\').join('/'),
+      );
+    if (/\bvite build\b/.test(command)) entries.add('vite.config.ts');
+    if (/\bnpx tauri\b/.test(command)) {
+      entries.add('src-desktop/tauri.conf.json');
+      const tauri = JSON.parse(
+        readFileSync(join(repoRoot, 'src-desktop/tauri.conf.json'), 'utf8'),
+      ) as { build: { beforeBuildCommand: string } };
+      expand(tauri.build.beforeBuildCommand, repoRoot);
+    }
+  };
+  for (const step of workflow.jobs['build-ios-verification'].steps) {
+    if (
+      !step.run ||
+      String(step.if ?? '').startsWith(
+        "github.event_name == 'workflow_dispatch'",
+      )
+    )
+      continue;
+    expand(
+      step.run,
+      step['working-directory']
+        ? join(repoRoot, step['working-directory'])
+        : repoRoot,
+    );
+  }
+  // Package imports are recorded, not followed: a workspace package's own
+  // sources are the UI-import closure's business.
+  const result = walkImports([...entries], [...packageDirs], false);
+  return result;
+}
 
 describe('package test exemptions match what the package builds exclude', () => {
   // S5's packages/ exemption is only safe for paths the tsc builds in
@@ -699,13 +1284,10 @@ describe('package test exemptions match what the package builds exclude', () => 
           ['src/__tests__', 'src/__tests__/**'].includes(pattern),
         ),
       ).toBe(true);
-      expect(
-        classifyIosChangedPaths([`packages/${name}/src/__tests__/x.test.ts`])
-          .relevant,
-      ).toBe(false);
-      expect(
-        classifyIosChangedPaths([`packages/${name}/src/x.test.ts`]).relevant,
-      ).toBe(true);
+      expect(iosBuildPoint([`packages/${name}/src/__tests__/x.test.ts`])).toBe(
+        'never',
+      );
+      expect(iosBuildPoint([`packages/${name}/src/x.test.ts`])).toBe('after');
     },
   );
 });

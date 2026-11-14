@@ -3779,3 +3779,48 @@ describe('versioned attention snooze', () => {
     expect((await service.list()).pendingCount).toBe(0);
   });
 });
+
+test('structured questions keep exact request inspection despite input display metadata', async () => {
+  const { mapServerRequestToEvent } = await import(
+    '../../../providers/adapters/codex-adapter-events.js'
+  );
+  const event = mapServerRequestToEvent(
+    'question-thread',
+    'question-id',
+    'item/tool/requestUserInput',
+    {
+      questions: [
+        { id: 'goal', header: 'Goal', question: 'Which goal?', options: null },
+      ],
+    },
+    now,
+  )!;
+  const summary = buildOrchestrationSessionSummary({
+    loaded: baseSession({
+      threadId: event.threadId,
+      provider: 'codex',
+      status: 'running',
+    }) as ProviderSession,
+    events: [event],
+    openRequestIds: [event.requestId],
+    answerability: SETTLEMENT_OBSERVATION,
+  });
+  expect(summary.openRequestKinds).toEqual({ 'question-id': 'input' });
+  const projection = await makeService({
+    sessions: [summary],
+    sessionEvents: { [event.threadId]: [event] },
+  }).list();
+  expect(projection.items).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'review_pending',
+        requestReference: {
+          threadId: event.threadId,
+          requestId: event.requestId,
+          requestEventId: event.eventId,
+        },
+      }),
+    ]),
+  );
+  expect(projection.items.some((item) => 'inputReference' in item)).toBe(false);
+});

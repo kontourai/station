@@ -60,18 +60,12 @@
 }
 
 .subagent-card__text > .subagent-card__headline {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.subagent-card__headline {
-  display: grid;
-  min-width: 0;
-  align-items: center;
-  row-gap: var(--k-space-1);
+  display: contents;
 }
 
 .subagent-card__title {
+  grid-column: 2;
+  grid-row: 1;
   max-width: 100%;
   flex: 1;
   min-width: 0;
@@ -86,6 +80,8 @@
 }
 
 .subagent-card__status {
+  grid-column: 2;
+  grid-row: 2;
   display: inline-flex;
   flex-shrink: 0;
   max-width: 100%;

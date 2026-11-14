@@ -1,6 +1,7 @@
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
 import type {
   MemberProjectView,
+  ProjectRepositorySource,
   ProjectRunLocations,
   ProjectRunsAt,
   ProjectToolDefaults,
@@ -601,12 +602,18 @@ export function useScopedMemberProjectSharedTaskDetails(
 }
 
 export interface ProjectMetadata {
+  repositorySource?: ProjectRepositorySource;
   version?: 'station.member-project/v1';
   kind?: 'member-project';
   id: string;
   slug: string;
   name: string;
   icon?: string;
+  /** Read-only, detected artwork; never a saved icon. */
+  derivedIcon?: string;
+  iconDisabled?: boolean;
+  /** Full canonical remote of the manifest primary git resource. */
+  repositoryDisplay?: string;
   description?: string;
   hasWorkingDirectory?: boolean;
   workingDirectory?: string;

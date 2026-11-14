@@ -551,7 +551,7 @@ describe('ChatDockBody turn-stall notice (#765)', () => {
     // main's "No response from X … Still waiting." was a second way of
     // saying it.
     expect(
-      screen.getByText('No progress from Claude Code for 4m'),
+      screen.getByText('No progress from Claude Code for 4m 0s'),
     ).toBeTruthy();
     now.mockRestore();
     expect(screen.queryByText(/retrying/i)).toBeNull();

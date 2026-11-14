@@ -1,9 +1,0 @@
-{
-  "revision": "1bcfd5964c57a4f2a2c9eaa0cc0352c9b4092cee",
-
-  "notes": [
-    {"path":"docs/guides/integrating-station.md","note":"Scanned for live-surface, epochCause and release-pressed claims: none. Changed source: docs/reference/contracts.md, whose live-surface row now names requestId, epochCause and release-pressed; this guide routes to that reference and restates none of it, so the change cannot alter it.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
-
-    {"path":"packages/contracts/AGENTS.md","note":"Scanned for live-surface, epochCause and release-pressed claims: none. Changed source: docs/reference/contracts.md (the live-surface row). Its rules (pure helpers in the owning module, explicit compatibility changes) still hold: the new parsers are pure and all new fields are optional.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
-  ]
-}

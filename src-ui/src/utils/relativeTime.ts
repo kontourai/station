@@ -146,22 +146,31 @@ export function relativeTimeAgoFromIso(
 }
 
 /**
- * THE one elapsed-duration format, the coarse sibling of `relativeTime`:
- * `12s` under a minute, then `4m`, then `1h 4m` (`2h` on the hour). How long
+ * The one elapsed-duration format, distinct from relative timestamps:
+ * `12s` under a minute, then `4m 10s`, then `1h 4m` (`2h` on the hour). How long
  * a turn has run, how long a run has been quiet — every row, card, strip and
  * sentence that says how long something has lasted reads it here, so the
  * same item never reads "4m 10s" on one surface and "4m" on another.
- * Seconds stop at the first minute: past it, a number that changes every
- * second is noise, not news. A stopwatch (`m:ss`, a clock face) is a
- * different thing and keeps its own format.
+ * Live clocks retain seconds under an hour.
  */
-export function formatDuration(elapsedMs: number): string {
+export function formatDuration(
+  elapsedMs: number,
+  mode: 'live' | 'coarse' = 'live',
+): string {
   const seconds = Number.isFinite(elapsedMs)
     ? Math.max(0, Math.floor(elapsedMs / 1000))
     : 0;
+  if (mode === 'coarse') {
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 1) return 'under a minute';
+    if (minutes < 60)
+      return `about ${minutes} minute${minutes === 1 ? '' : 's'}`;
+    const hours = Math.round(minutes / 60);
+    return `about ${hours} hour${hours === 1 ? '' : 's'}`;
+  }
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;

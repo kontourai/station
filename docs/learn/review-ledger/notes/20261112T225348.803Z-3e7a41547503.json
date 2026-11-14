@@ -1,7 +1,0 @@
-{
-  "revision": "a6da24b4dccb500df46623400a48fa55ea8935ac",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Regenerated station-docs-content.ts after the module map and plugins guide changed in the registry fix round (folder confinement, unreadable-catalog refusal). station-docs.md describes the tool and its topic routing, which are unchanged. No prose change.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

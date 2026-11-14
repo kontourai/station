@@ -1,7 +1,0 @@
-{
-  "revision": "91d0e31a303b7dc769be87d587552a0eb07a461f",
-
-  "notes": [
-    {"path":"docs/reference/usage-telemetry.md","note":"#4517 follow-up: config.ts now composes the managed-setting refusal sentence from the loaded policy summary (managedPolicyDenial) instead of rendering error.message; the 403 body (code, key, error text) is byte-identical. Checked this document's PUT /config/app and refusal claims; none depends on how the sentence is built, so it remains accurate.","inputs":["docs/reference/usage-telemetry.md","src-server/routes/system/config.ts"]}
-  ]
-}

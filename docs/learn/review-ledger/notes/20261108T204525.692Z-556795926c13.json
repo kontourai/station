@@ -1,7 +1,0 @@
-{
-  "revision": "0cdc9a288d6c057b09439af3707c7ba8c2115a64",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Reviewed fixture-only delta 0cdc9a288d: the provider-opened-turn history fixture now persists its typed Session through upsertSession before appending runtime events, establishing canonical lineage as production does. History listing still requires canonical membership; no metadata or standalone fallback restored. Existing module-map ownership, scoped reader, canonical lineage and message-count claims are unchanged. The original exact named test failed at the three-message history assertion before repair; complete EventStore suite and server test typecheck are being executed. No new runtime or deployment claim.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/__tests__/event-store.test.ts"]}
-  ]
-}

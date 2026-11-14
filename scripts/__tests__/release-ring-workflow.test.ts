@@ -64,13 +64,9 @@ describe('portable release-ring workflow', () => {
         step.env?.RELEASE_CHANNEL,
         step.env?.RUNTIME_CHANNEL,
       ]),
-    ).toEqual([
-      ['stable', 'stable'],
-      ['preview', 'beta'],
-    ]);
-    for (const key of ['SMOKE_HOME', 'RELEASE_DIR', 'SERVER_PORT', 'UI_PORT']) {
-      expect(new Set(installs.map((step) => step.env?.[key])).size).toBe(2);
-    }
+    ).toEqual([['stable', 'stable']]);
+    // The Beta source-release leg is gone with the preview ring: the portable
+    // packager refuses -preview.N tags (#4929).
     const sourceSmoke = readFileSync(
       resolve(repoRoot, 'scripts/smoke-install-source.sh'),
       'utf8',

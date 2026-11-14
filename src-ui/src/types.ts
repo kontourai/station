@@ -284,6 +284,8 @@ export interface ChatMessage {
      * #3390: an open form request (a harness question or a tool server's
      * elicitation), answered on the pending-requests card.
      */
+    /** Semantic kind retained even before a form body is loaded. */
+    requestKind?: 'input' | 'approval';
     inputRequest?: InputRequestForm;
     /**
      * An open link request (an MCP server's sign-in page, a URL-mode
@@ -523,6 +525,7 @@ export interface ChatSession {
   currentModeId?: string | null;
   planArtifact?: PlanArtifact | null;
   pendingApprovals?: string[];
+  pendingRequestKinds?: Record<string, 'input' | 'approval'>;
   /** See ChatUIState.answeredApprovals. */
   answeredApprovals?: string[];
   /** See ChatUIState.unacknowledgedDecisions (#2880). */

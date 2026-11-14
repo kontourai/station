@@ -1,7 +1,0 @@
-{
-  "revision": "59760f9431f8205329d262cd5a3054c80e6c12cb",
-
-  "notes": [
-    {"path":"docs/reference/connect.md","note":"Reviewed ConnectionManagerModal integration, host callbacks and selection claims against the modal and its list owner. Initial focus ordering changes no public props or connection authority; focused jsdom tests passed, with real browser behavior unqualified.","inputs":["docs/reference/connect.md","packages/connect/src/react/ConnectionManagerModalContent.tsx"]}
-  ]
-}

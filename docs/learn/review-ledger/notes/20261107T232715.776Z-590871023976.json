@@ -1,7 +1,0 @@
-{
-  "revision": "aef9ae03457e2ce46a29bc0d388d1821cd6ca165",
-
-  "notes": [
-    {"path":"docs/design/shell-skeletons.md","note":"Checked 1.1 SplitPaneLayout claims against the diff: the only change is exporting the SplitPaneItem type, so shape, slots and breadcrumb rules are unchanged. ProviderSettingsView and AgentConnectionView still render SplitPaneLayout directly. The 's /connections is a redirect-only resolver' claim stays true (ConnectionsHub now shows a skeleton up to 1.5 s, then navigates; it still has no landing surface). Section 3 note that Connections resolves into a section still matches ConnectionsHub.tsx.","inputs":["docs/design/shell-skeletons.md","src-ui/src/components/SplitPaneLayout.tsx","src-ui/src/views/ConnectionsHub.tsx"]}
-  ]
-}

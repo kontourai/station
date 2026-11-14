@@ -1,7 +1,0 @@
-{
-  "revision": "0b93fffbca9c3aceb63bdb7e741a7c2fdbcb32fa",
-
-  "notes": [
-    {"path":"docs/README.md","note":"Checked the Product telemetry bullet: the standalone receiver still owns durable product (Full-tier) ingestion; the new Worker serves only Lite and public routes, so the bullet stays accurate.","inputs":["docs/README.md","docs/architecture/module-map.md"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "49b7a0b49e3662339725ec3026f03d7b30adc2ec",
-
-  "notes": [
-    {"path":"docs/guides/machine-relationships.md","note":"connections.md changed only its Station chooser paragraph (phone chip name, active-row name, Connect another device wording); this guide links connections.md for relationships and makes no claim about the chooser, the chip or that wording.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
-  ]
-}

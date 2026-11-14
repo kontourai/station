@@ -1538,6 +1538,113 @@ describe('persistent runner policy', () => {
     },
   );
 
+  describe('the classify job reads the token only in its push-only verdict step', () => {
+    const CREDENTIAL =
+      'ci.yml jobs must not reference secrets, the GitHub token, or the whole github context';
+    type Step = Record<string, unknown> & { env?: Record<string, string> };
+    const verdictStep = (job: Record<string, unknown>) => {
+      const step = (job.steps as Step[]).find(
+        (candidate) => candidate.id === 'merge-group-verdict',
+      );
+      if (!step) throw new Error('Expected the merge-group-verdict step.');
+      return step;
+    };
+    const classifyFindings = (mutate: (job: Record<string, unknown>) => void) =>
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('classify', mutate),
+      ).filter((finding: { jobId: string }) => finding.jobId === 'classify');
+
+    test('admits the exact checked-in step', () => {
+      expect(classifyFindings(() => {})).toEqual([]);
+    });
+
+    test.each([
+      [
+        'the step also runs on merge_group',
+        (job: Record<string, unknown>) => {
+          delete verdictStep(job).if;
+        },
+      ],
+      [
+        'the step stops failing open',
+        (job: Record<string, unknown>) => {
+          delete verdictStep(job)['continue-on-error'];
+        },
+      ],
+      [
+        'the step runs another command',
+        (job: Record<string, unknown>) => {
+          verdictStep(job).run = 'node scripts/classify-ci-change.mjs';
+        },
+      ],
+      [
+        'another classify step reads the token',
+        (job: Record<string, unknown>) => {
+          const classify = (job.steps as Step[]).find(
+            (candidate) => candidate.id === 'classify',
+          );
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          if (classify)
+            classify.env = { ...classify.env, GH_TOKEN: '${{ github.token }}' };
+        },
+      ],
+      [
+        'classify also runs on pull_request_target',
+        (job: Record<string, unknown>) => {
+          job.if = '${{ always() }}';
+        },
+      ],
+    ])('rejects the token when %s', (_name, mutate) => {
+      expect(classifyFindings(mutate)).toContainEqual({
+        file: '.github/workflows/ci.yml',
+        jobId: 'classify',
+        message: CREDENTIAL,
+      });
+    });
+
+    const OVERRIDE =
+      'base-controlled PR job permission overrides must declare only permissions: { contents: read }';
+
+    test('declares exactly contents: read and actions: read on the push-only job', () => {
+      const [{ document }] = primaryCiJobFixture('classify', () => {});
+      expect(document.jobs.classify.permissions).toEqual({
+        contents: 'read',
+        actions: 'read',
+      });
+    });
+
+    test.each([
+      [
+        'actions is writable',
+        (job: Record<string, unknown>) => {
+          job.permissions = { contents: 'read', actions: 'write' };
+        },
+      ],
+      [
+        'another scope is added',
+        (job: Record<string, unknown>) => {
+          job.permissions = {
+            contents: 'read',
+            actions: 'read',
+            statuses: 'write',
+          };
+        },
+      ],
+      [
+        'the job also runs on pull_request_target',
+        (job: Record<string, unknown>) => {
+          job.if = "${{ github.event_name != 'merge_group' }}";
+        },
+      ],
+    ])('rejects the actions grant when %s', (_name, mutate) => {
+      expect(classifyFindings(mutate)).toContainEqual({
+        file: '.github/workflows/ci.yml',
+        jobId: 'classify',
+        message: OVERRIDE,
+      });
+    });
+  });
+
   test('classifies credential expressions without flagging ordinary github reads', () => {
     for (const expression of [
       ' secrets.NPM_TOKEN ',
@@ -2057,6 +2164,26 @@ describe('persistent runner policy', () => {
       document.jobs.reconcile.steps[0].with!.ref =
         '${{ github.event.merge_group.head_sha }}';
     },
+    // Workflow-level concurrency lets a run whose job is skipped replace a
+    // pending publishing run for the same head.
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      const shape = document as unknown as {
+        concurrency?: unknown;
+        jobs: { reconcile: { concurrency?: unknown } };
+      };
+      shape.concurrency = shape.jobs.reconcile.concurrency;
+      delete shape.jobs.reconcile.concurrency;
+    },
   ])('rejects widened source verification publication authority', (mutate) => {
     const workflow = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/source-verification-policy.yml',
@@ -2290,6 +2417,187 @@ describe('persistent runner policy', () => {
       });
     },
   );
+
+  // CodeQL analyses each landing once, in its merge group (the PR-event run
+  // repeated it on every push), plus on the PR when gate-change finds a
+  // .github/ change. Pinned literals, independent of the gate.
+  const SECURITY_FILE = '.github/workflows/security-analysis.yml';
+  const CODEQL_GUARD_MESSAGE =
+    'security-analysis CodeQL must keep its exact job guard: run in the merge group, on schedule and on dispatch, and on pull_request_target unless gate-change succeeded with analyse=false';
+  const GATE_CHANGE_MESSAGE =
+    'security-analysis gate-change must keep its exact base-controlled, git-only, fail-closed classification';
+  const CODEQL_GUARD =
+    "!cancelled() && (github.event_name != 'pull_request_target' || needs.gate-change.result != 'success' || needs.gate-change.outputs.analyse != 'false')";
+  const SECURITY_WORKFLOW_MESSAGE =
+    'security-analysis must retain the exact base-controlled workflow shape, triggers, permissions, and concurrency';
+  const ghExpr = (inner: string) => `\${{ ${inner} }}`;
+  const securityMessages = (
+    document: ReturnType<typeof securityAnalysisWorkflowDocument>,
+  ) =>
+    persistentRunnerPolicyFindings([{ file: SECURITY_FILE, document }])
+      .filter(({ file }: { file: string }) => file === SECURITY_FILE)
+      .map(({ message }: { message: string }) => message);
+
+  test('the checked-in security workflow gates PR-level CodeQL on gate-change and runs it daily on main (false-positive control)', () => {
+    const document = securityAnalysisWorkflowDocument();
+    expect(document.jobs.codeql.if).toBe(ghExpr(CODEQL_GUARD));
+    expect(document.jobs.codeql.needs).toBe('gate-change');
+    expect((document.on as Record<string, unknown>).schedule).toEqual([
+      { cron: '11 9 * * *' },
+    ]);
+    expect(securityMessages(document)).toEqual([]);
+  });
+
+  test.each([
+    ['dropped', undefined],
+    ['always()', ghExpr('always()')],
+    [
+      'the pre-gate-change PR skip',
+      ghExpr("github.event_name != 'pull_request_target'"),
+    ],
+    [
+      'blind to .github/ changes',
+      ghExpr(
+        "!cancelled() && (github.event_name != 'pull_request_target' || needs.gate-change.result != 'success')",
+      ),
+    ],
+    [
+      'skipping on a failed classifier',
+      ghExpr(
+        "!cancelled() && (github.event_name != 'pull_request_target' || needs.gate-change.outputs.analyse == 'true')",
+      ),
+    ],
+    [
+      'without a status function',
+      ghExpr(
+        "github.event_name != 'pull_request_target' || needs.gate-change.result != 'success' || needs.gate-change.outputs.analyse != 'false'",
+      ),
+    ],
+  ])('rejects a CodeQL job guard that is %s', (_name, guard) => {
+    const document = securityAnalysisWorkflowDocument();
+    if (guard === undefined) delete document.jobs.codeql.if;
+    else document.jobs.codeql.if = guard;
+    expect(securityMessages(document)).toContain(CODEQL_GUARD_MESSAGE);
+  });
+
+  test('rejects CodeQL without its gate-change dependency', () => {
+    const document = securityAnalysisWorkflowDocument();
+    delete document.jobs.codeql.needs;
+    expect(securityMessages(document)).toContain(
+      'security-analysis must retain the exact base-policy and candidate checkouts, pinned CodeQL actions, and sole base-policy shell',
+    );
+  });
+
+  test.each([
+    [
+      'a candidate checkout',
+      (job: Record<string, unknown>) => {
+        (job.steps as Array<Record<string, unknown>>).unshift({
+          uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+        });
+      },
+    ],
+    [
+      'a classification that answers false on error',
+      (job: Record<string, unknown>) => {
+        const [step] = job.steps as Array<Record<string, string>>;
+        step.run = step.run.replace('analyse=true\n', 'analyse=false\n');
+      },
+    ],
+    [
+      'a narrowed path set',
+      (job: Record<string, unknown>) => {
+        const [step] = job.steps as Array<Record<string, string>>;
+        step.run = step.run.replace(
+          '-- .github/\n',
+          '-- .github/workflows/security-analysis.yml\n',
+        );
+      },
+    ],
+    [
+      'a two-dot diff against the moving base',
+      (job: Record<string, unknown>) => {
+        const [step] = job.steps as Array<Record<string, string>>;
+        step.run = step.run.replace(
+          '"$merge_base" "$HEAD_SHA" -- .github/',
+          '"$BASE_SHA" "$HEAD_SHA" -- .github/',
+        );
+      },
+    ],
+    [
+      'a candidate-controlled head repository',
+      (job: Record<string, unknown>) => {
+        const [step] = job.steps as Array<
+          Record<string, Record<string, string>>
+        >;
+        step.env.REPOSITORY_URL = ghExpr(
+          'github.event.pull_request.head.repo.html_url',
+        );
+      },
+    ],
+    [
+      'a secret',
+      (job: Record<string, unknown>) => {
+        const [step] = job.steps as Array<
+          Record<string, Record<string, string>>
+        >;
+        step.env.TOKEN = ghExpr('secrets.GITHUB_TOKEN');
+      },
+    ],
+  ])('rejects a gate-change job with %s', (_name, mutate) => {
+    const document = securityAnalysisWorkflowDocument();
+    const job = document.jobs['gate-change'] as Record<string, unknown>;
+    // Non-vacuity: each mutation must actually change the job.
+    const before = JSON.stringify(job);
+    mutate(job);
+    expect(JSON.stringify(job)).not.toBe(before);
+    expect(securityMessages(document)).toContain(GATE_CHANGE_MESSAGE);
+  });
+
+  test('rejects security-analysis without its gate-change job', () => {
+    const document = securityAnalysisWorkflowDocument();
+    delete document.jobs['gate-change'];
+    expect(securityMessages(document)).toContain(
+      'security-analysis is missing a reviewed job',
+    );
+  });
+
+  test.each([
+    [
+      'the per-push main trigger restored',
+      (on: Record<string, unknown>) => {
+        on.push = { branches: ['main'] };
+      },
+    ],
+    [
+      'the daily schedule dropped',
+      (on: Record<string, unknown>) => {
+        delete on.schedule;
+      },
+    ],
+    [
+      'the schedule moved to every hour',
+      (on: Record<string, unknown>) => {
+        on.schedule = [{ cron: '11 * * * *' }];
+      },
+    ],
+    [
+      'a second schedule added',
+      (on: Record<string, unknown>) => {
+        on.schedule = [{ cron: '11 9 * * *' }, { cron: '11 21 * * *' }];
+      },
+    ],
+    [
+      'manual dispatch dropped',
+      (on: Record<string, unknown>) => {
+        delete on.workflow_dispatch;
+      },
+    ],
+  ])('rejects security-analysis triggers with %s', (_name, mutate) => {
+    const document = securityAnalysisWorkflowDocument();
+    mutate(document.on as Record<string, unknown>);
+    expect(securityMessages(document)).toContain(SECURITY_WORKFLOW_MESSAGE);
+  });
 
   test.each([
     [
@@ -5561,9 +5869,11 @@ describe('the org docs gate runs on pull requests through one exact reviewed cal
     const document = realDocsKitWorkflow();
     expect(DOCS_GATE_REUSABLE_WORKFLOW).toBe(REVIEWED_CALLEE);
     expect(Object.keys(document.on)).toEqual(
-      expect.arrayContaining(['pull_request_target', 'merge_group', 'push']),
+      expect.arrayContaining(['pull_request_target', 'merge_group']),
     );
     expect(document.on).not.toHaveProperty('pull_request');
+    // The queue's merge_group run already checked the SHA a push would.
+    expect(document.on).not.toHaveProperty('push');
     expect(document.jobs.gate.uses).toBe(REVIEWED_CALLEE);
     expect(document.jobs.gate.with.repository).toBe(HEAD_REPOSITORY);
     expect(document.jobs.gate.with.ref).toBe(HEAD_REF);

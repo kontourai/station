@@ -1,7 +1,0 @@
-{
-  "revision": "2892b1517e4f87ae22e41a405a6edda3b804f4e8",
-
-  "notes": [
-    {"path":"docs/guides/knowledge.md","note":"Reviewed personal-mode agent reads and durable session-owner admission against the station-control route fixture. A pending start owner is refused; the durable owner reads their private root, and the injected fallback exposed it.","inputs":["docs/guides/knowledge.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]}
-  ]
-}

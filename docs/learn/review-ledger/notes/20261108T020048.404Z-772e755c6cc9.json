@@ -1,9 +1,0 @@
-{
-  "revision": "bd57f5b14e44defa7c7e2f676d536d988cad818c",
-
-  "notes": [
-    {"path":"docs/reference/contracts.md","note":"Only change: provider-failure-inventory.test.ts lists delegated_tool_blocked as an exclusion (delegation admission refusal, like delegation_depth_exceeded), not a PROVIDER_FAILURE_KINDS mapping. Checked the diagnostic-code/kind table and surrounding prose; the code is intentionally absent from it, so the doc stays accurate.","inputs":["docs/reference/contracts.md","scripts/__tests__/provider-failure-inventory.test.ts"]},
-
-    {"path":"docs/reference/sdk.md","note":"Only change: provider-failure-inventory.test.ts lists delegated_tool_blocked as an exclusion (delegation admission refusal, like delegation_depth_exceeded), not a PROVIDER_FAILURE_KINDS mapping. Checked the diagnostic-code/kind table and surrounding prose; the code is intentionally absent from it, so the doc stays accurate.","inputs":["docs/reference/sdk.md","scripts/__tests__/provider-failure-inventory.test.ts"]}
-  ]
-}

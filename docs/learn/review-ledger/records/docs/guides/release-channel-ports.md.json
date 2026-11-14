@@ -138,11 +138,7 @@
 
     "src-ui/src/views/settings/SystemSection.tsx",
 
-    "vite.config.ts",
-
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots"
+    "vite.config.ts"
   ],
 
   "checks": [

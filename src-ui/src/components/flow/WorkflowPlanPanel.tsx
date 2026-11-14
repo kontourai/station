@@ -1,3 +1,4 @@
+import { SESSION_STATUS_WORDS } from '@kontourai/station-contracts/session-attention';
 import type { ReactNode } from 'react';
 import { Fragment, useEffect, useId, useMemo, useState } from 'react';
 import { copyToClipboard } from '../../lib/clipboard';
@@ -291,6 +292,8 @@ function StepStatusBadge({ status }: { status: WorkflowPlanStepStatus }) {
 type WorkflowPlanRuntimeState = {
   status?: string | null;
   pendingApprovals?: number;
+  pendingInputs?: number;
+  waitingOnUser?: boolean;
   isProcessingStep?: boolean;
 };
 
@@ -302,7 +305,7 @@ type WorkflowPlanRuntimeStrip = {
 
 /**
  * Pure {label,tone,live} derivation for the runtime-state strip. Richest
- * signal first: pending approvals outrank in-flight tool activity, which
+ * signal first: permissions, then input requests, outrank tool activity, which
  * outranks the coarser session `status`, mirroring
  * `deriveActivityLabel`'s richest-signal-first convention
  * (StreamingMessage.tsx) for the analogous per-message activity hint.
@@ -312,7 +315,14 @@ export function deriveWorkflowRuntimeStrip(
 ): WorkflowPlanRuntimeStrip | null {
   if ((runtimeState?.pendingApprovals || 0) > 0) {
     return {
-      label: `Needs approval (${runtimeState?.pendingApprovals})`,
+      label: `${SESSION_STATUS_WORDS.approval} (${runtimeState?.pendingApprovals})`,
+      tone: 'attention',
+      live: true,
+    };
+  }
+  if ((runtimeState?.pendingInputs ?? 0) > 0) {
+    return {
+      label: `${SESSION_STATUS_WORDS.answer} (${runtimeState?.pendingInputs})`,
       tone: 'attention',
       live: true,
     };
@@ -321,7 +331,12 @@ export function deriveWorkflowRuntimeStrip(
     return { label: 'Running · tool', tone: 'live', live: true };
   }
   if (runtimeState?.status === 'awaiting-approval') {
-    return { label: 'Needs approval', tone: 'attention', live: true };
+    if (runtimeState.waitingOnUser === false) return null;
+    return {
+      label: SESSION_STATUS_WORDS.waiting,
+      tone: 'attention',
+      live: true,
+    };
   }
   if (
     runtimeState?.status === 'running' ||

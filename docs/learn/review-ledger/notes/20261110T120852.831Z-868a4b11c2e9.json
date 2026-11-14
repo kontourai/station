@@ -1,7 +1,0 @@
-{
-  "revision": "2c87fcbf757c5fcac8f9cd3b99593d1c659985cd",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Reviewed the Real-server performance scenario and fixture lifecycle guidance against committed sampler fixture repair 2c87fcbf757c5fcac8f9cd3b99593d1c659985cd and the unchanged production probe. The observer now settles diagnostic IPC send callbacks before child-owned disconnect, invalid-budget callers await the actual production reply and diagnostic boundary, and send errors or premature disconnect still fail. All nine controls, budget limits, native histogram/reset/stall assertions and clean child lifecycle requirements remain intact. Root669 ran the whole owner on Windows: 9/9 PASS, zero skips reported, empty stderr; scoped read-only Biome passed. The guide remains accurate: reset/sample observation boundaries and parent deadlines are unchanged, and cancellation/rejection do not prove child settlement. No prose, source-list or classification change is needed. This review covers the changed probe-test input and its affected guide claims only; it does not qualify the Linux/macOS performance scenario, the hosted POSIX race, provider/native/release behavior, or unrelated cited sources. Hosted42794916974 remains historical failed evidence.","inputs":["docs/guides/testing.md","scripts/__tests__/server-scenario-probe.test.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "eef2034bec07987e12b073cfe3403f185a48cc8d",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Inspected PluginTelemetryPublisher ownership and declaration admission against the comment-only eef2034b delta. The regex bytes, exports and runtime policy are unchanged; module routing remains accurate. JavaScript x$ rejects x plus a final newline (executed Node check).","inputs":["docs/architecture/module-map.md","packages/contracts/src/plugin-telemetry.ts"]}
-  ]
-}

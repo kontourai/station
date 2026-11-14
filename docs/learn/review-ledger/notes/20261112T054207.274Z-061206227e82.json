@@ -1,7 +1,0 @@
-{
-  "revision": "48fcca265ee6ec04eea76419f518c3f08c211ea5",
-
-  "notes": [
-    {"path":"docs/design/offline-outbound-queue.md","note":"AuthorityQueryContext changed only its pending-branch presentation (StationConnectingScreen) and added a Try again that resets the observation query; the queue's authority-partition and cancel-on-authority-change claims are unaffected since no verified namespace, client retirement or outbox binding changed.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/contexts/AuthorityQueryContext.tsx"]}
-  ]
-}

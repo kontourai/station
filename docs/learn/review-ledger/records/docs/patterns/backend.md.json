@@ -82,9 +82,7 @@
 
     "packages/shared/package.json#/exports",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots"
+    "package.json#/dependencies/@kontourai~1ephemeris"
   ],
 
   "checks": [

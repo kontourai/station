@@ -1,7 +1,0 @@
-{
-  "revision": "88eadafee710bd8c7c6b29b400286fdc24b24ab7",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Gallery startup repair: reviewed the two generated lines removed at 88eadafee7 against the generator changed by main c14e930bdf (#4456) and its runtime digest caller. The generated digest export was no longer emitted, while all 131 topic bodies and their content digest remain unchanged. Reproduced docs:mcp:check failure before regeneration; after regeneration docs:mcp:check, build:server and the focused station-docs MCP server suite pass. The manual's static-content, version/digest and credential-free retrieval claims remain accurate. The old gallery failed before capture, so no pixel baseline was changed; fresh hosted capture remains pending. This is a generated-format delta review, not renewed live-provider, native or broader documentation qualification.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

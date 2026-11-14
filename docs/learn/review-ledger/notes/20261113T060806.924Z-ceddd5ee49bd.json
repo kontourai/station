@@ -1,0 +1,7 @@
+{
+  "revision": "70f82df4e67650612627a86dcfa2042953324d95",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed touched ProjectService and icon discovery callers: display projection adds no execution authority; StarterWorkRegistry ownership and removed Home entry points remain accurately described.","inputs":["docs/architecture/module-map.md","src-server/domain/file-storage-adapter.ts","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

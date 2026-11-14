@@ -1,7 +1,0 @@
-{
-  "revision": "70988cf3df6022402dfa483320c57ecd0600e01b",
-
-  "notes": [
-    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Fix round kiro/fix-1: session-api.md gained one sentence that engine-mcp.status carries reconnect: true only when the Session engine declares a reconnect. ADR 0010 links the session API for managed chat routing through orchestration; that decision and its links are unaffected. No prose change.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
-  ]
-}

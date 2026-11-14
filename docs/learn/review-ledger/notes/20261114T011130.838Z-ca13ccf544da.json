@@ -1,0 +1,7 @@
+{
+  "revision": "aac3c60768bd001e27b57bf3d9b1e304ca2bb5b8",
+
+  "notes": [
+    {"path":"docs/guides/feature-previews.md","note":"Checked: docs:feature-previews:check remains in ci:fast's fixed statics; the only change adds a diff-whitespace static. No prose change.","inputs":["docs/guides/feature-previews.md","scripts/run-ci-fast.mjs"]}
+  ]
+}

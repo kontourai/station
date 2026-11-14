@@ -1,7 +1,0 @@
-{
-  "revision": "3114c734e52526593611b43ac13482e7fbb9d455",
-
-  "notes": [
-    {"path":"docs/guides/monitoring.md","note":"Source IDs now map to a publisher and the channels it admits; checked against lite-core.ts admitLiteObservation and lite-store.ts migration 10. Worker sentence unchanged and still matches deploy/telemetry-worker.","inputs":["docs/guides/monitoring.md","packages/telemetry-broker/README.md","packages/telemetry-broker/qualify-resilience.mjs","packages/telemetry-broker/src/lite-store.ts","packages/telemetry-broker/src/store.ts"]}
-  ]
-}

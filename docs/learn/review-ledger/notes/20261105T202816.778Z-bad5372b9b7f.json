@@ -1,7 +1,0 @@
-{
-  "revision": "7d593e0b6ea57c67db71c16d4f3595a25c3a02ee",
-
-  "notes": [
-    {"path":"docs/design/operator-device-access.md","note":"Only the pairing wiring test's assertion changed (every Serve lookup is for this port, instead of exactly two factory calls); this document makes no claim about lookup counts.","inputs":["docs/design/operator-device-access.md","src-server/runtime/routes/__tests__/runtime-routes-device-pairing-wiring.test.ts"]}
-  ]
-}

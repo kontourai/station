@@ -410,7 +410,7 @@ describe('subagent card streaming parity', () => {
       ).toBeTruthy();
       expect(within(card).getByText('Failed')).toBeTruthy();
       expect(within(card).queryByText('claude-haiku-5')).toBeNull();
-      expect(within(card).getByText('0:30')).toBeTruthy();
+      expect(within(card).getByText('30s')).toBeTruthy();
       expect(
         within(card).getByText(
           'Could not read docs/decisions: permission denied',

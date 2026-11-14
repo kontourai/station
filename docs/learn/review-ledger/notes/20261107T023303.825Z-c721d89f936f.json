@@ -1,7 +1,0 @@
-{
-  "revision": "c2ea5be84b19ffb68017390ab4b8a7a947a2f180",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the proposed explicit modelConnectionId and default-local private Ollama restrictions against runtime-initialize private registry and Ollama adapter prompt handling, and the shared publication boundary. MP-A/X must implement and test confinement, prompt delivery and published-only history; no runtime or provider qualification is claimed.","inputs":["docs/design/task-room-agent-requests.md"]}
-  ]
-}

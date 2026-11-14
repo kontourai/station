@@ -178,12 +178,12 @@ describe('the chat banner names what its background work is doing', () => {
     expect(line).toBeTruthy();
     expect(line.textContent).toContain('Bash');
     expect(line.textContent).toContain('Waiting on dependencies:ci');
-    expect(line.textContent).toContain('27:07');
+    expect(line.textContent).toContain('27m 7s');
 
     act(() => {
       vi.advanceTimersByTime(3_000);
     });
-    expect(line.textContent).toContain('27:10');
+    expect(line.textContent).toContain('27m 10s');
   });
 
   test('a new progress report replaces the activity line live', () => {

@@ -9,6 +9,11 @@ on:
         type: string
   workflow_run:
     workflows: ["PR: CI"]
+    # A first attempt publishes pending on `requested` and its verdict on
+    # `completed`. GitHub does not send `requested` for a re-run, so a
+    # re-run attempt publishes pending on `in_progress` (replacing the prior
+    # attempt's verdict); the job skips `in_progress` for a first attempt,
+    # which `requested` already covered, so that event takes no runner.
     types: [requested, in_progress, completed]
   workflow_dispatch:
     inputs:
@@ -22,13 +27,17 @@ permissions:
   actions: read
   statuses: write
 
-concurrency:
-  group: source-verification-policy-${{ github.repository }}-${{ github.event.workflow_run.head_sha || inputs.source_sha }}
-  cancel-in-progress: false
-
 jobs:
   reconcile:
-    if: ${{ (github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run' && (github.event.workflow_run.display_title != 'PR metadata' || github.event.action == 'completed') && (github.event.workflow_run.event == 'pull_request_target' || github.event.workflow_run.event == 'merge_group'))) || github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}
+    if: ${{ (github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run' && (github.event.workflow_run.display_title != 'PR metadata' || github.event.action == 'completed') && (github.event.action != 'in_progress' || github.event.workflow_run.run_attempt > 1) && (github.event.workflow_run.event == 'pull_request_target' || github.event.workflow_run.event == 'merge_group'))) || github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}
+    # On the job, not the workflow: a run whose `if` skips this job (a
+    # metadata run, a first attempt's `in_progress`) then never enters the
+    # group. GitHub keeps one pending run per group, so a skipped run waiting
+    # at workflow level replaced, and so cancelled, a pending run that would
+    # have published.
+    concurrency:
+      group: source-verification-policy-${{ github.repository }}-${{ github.event.workflow_run.head_sha || inputs.source_sha }}
+      cancel-in-progress: false
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:

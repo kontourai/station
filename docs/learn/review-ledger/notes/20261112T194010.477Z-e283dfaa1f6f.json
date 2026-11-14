@@ -1,7 +1,0 @@
-{
-  "revision": "38fc9ec80dd877cfb6638a832702551f7fc65542",
-
-  "notes": [
-    {"path":"docs/guides/responsive-ui.md","note":"chat.css, TranscriptTurnRail.css and ProjectSettingsView.css changed: flat tonal layers replace gradients, the turn-rail preview is solid with the overlay shadow, and a settings card drops its radial wash. Checked backdrop mentions (dismissal behavior, not blur), the animation notes (resting-style checks and celebration cleanup, unrelated), and layout and breakpoint claims: no geometry, breakpoint or behavior changed, so nothing stale.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/TranscriptTurnRail.css","src-ui/src/components/chat/chat.css","src-ui/src/index.css","src-ui/src/views/ProjectSettingsView.css"]}
-  ]
-}

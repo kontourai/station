@@ -1,7 +1,0 @@
-{
-  "revision": "72e3970655be00ab2bafc9d575b8ba721e9d4065",
-
-  "notes": [
-    {"path":"docs/reference/contracts.md","note":"Reviewed the four app lifecycle tool additions to the existing Device agent policy and their route and bound-tool coverage; the contracts reference describes public declarations and remains accurate without a prose change. Runtime Android and SSH journeys remain unverified.","inputs":["docs/reference/contracts.md","src-server/tools/station-control-policy.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "b7c093ed1c099e348b2cb7d23ae41b38780eed50",
-
-  "notes": [
-    {"path":"docs/design/chat-composer.md","note":"Reviewed the peer-chat route test after simplifying its synthetic bearer fixture. The saved-credential forwarding and response-withholding assertions remain intact; all 10 route tests pass. No product behavior or documentation claim changed.","inputs":["docs/design/chat-composer.md","src-server/routes/environments/__tests__/peer-chat-routes.test.ts"]}
-  ]
-}

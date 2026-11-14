@@ -1,7 +1,0 @@
-{
-  "revision": "c3010499fd31dc567f88dbb10581520eaf4982ee",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"station-docs-content.ts was regenerated from canonical docs; the only change is the glossary Project Room entry now naming channels. The station-docs reference's claims about the shipped topic set and generation are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

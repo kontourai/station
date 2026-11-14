@@ -25,16 +25,23 @@ function render(ui: Parameters<typeof renderView>[0]) {
   });
 }
 
-function moveFocusToBody() {
+function moveFocusToBody(expected: HTMLElement) {
+  expect(expected).toBeInstanceOf(HTMLTextAreaElement);
+  expect(expected.isConnected).toBe(true);
+  expect(expected.matches(':disabled')).toBe(true);
   const focused = document.activeElement;
-  if (!(focused instanceof HTMLTextAreaElement))
-    throw new Error('Expected the pending message input to hold focus');
-  // jsdom refuses blur on a disabled textarea; do not simulate an outside claim.
-  const disabled = focused.disabled;
-  focused.disabled = false;
-  focused.blur();
-  focused.disabled = disabled;
+  // JSDOM can apply the browser's disable-driven blur on a later task.
+  // The caller proves focus before sending; accept that blur if it landed.
+  if (focused === document.body) return;
+  expect(focused).toBe(expected);
+  // If native blur has not landed yet, model it on this exact input.
+  const input = expected as HTMLTextAreaElement;
+  const disabled = input.disabled;
+  input.disabled = false;
+  input.blur();
+  input.disabled = disabled;
 }
+
 const mocks = vi.hoisted(() => ({
   brief: {
     version: 'station.task-room-context/v1' as const,
@@ -391,13 +398,13 @@ test.each(['committed', 'duplicate'] as const)(
     render(<TaskRoomComposer {...props} />);
     const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
     textbox.focus();
+    expect(document.activeElement).toBe(textbox);
     fireEvent.change(textbox, { target: { value: 'Hello team' } });
     fireEvent.keyDown(textbox, { key: 'Enter' });
     await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
     expect(textbox.matches(':disabled')).toBe(true);
-    // Model focus falling to body while the disabled input is pending; jsdom
-    // does not reproduce the browser's disable-driven focus loss.
-    act(() => moveFocusToBody());
+    // Observe or model focus falling to body while the input is pending.
+    act(() => moveFocusToBody(textbox));
     expect(document.activeElement).toBe(document.body);
     await act(async () => acknowledge({ kind }));
     expect(textbox.matches(':disabled')).toBe(false);
@@ -417,10 +424,11 @@ test('waits until the human mutation releases its pending lock before restoring 
   const view = render(<TaskRoomComposer {...props} />);
   const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
   textbox.focus();
+  expect(document.activeElement).toBe(textbox);
   fireEvent.change(textbox, { target: { value: 'Hello team' } });
   fireEvent.keyDown(textbox, { key: 'Enter' });
   await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
-  act(() => moveFocusToBody());
+  act(() => moveFocusToBody(textbox));
   mocks.messagePending = true;
   view.rerender(<TaskRoomComposer {...props} />);
   await act(async () => acknowledge({ kind: 'committed' }));
@@ -448,10 +456,11 @@ test.each(['rejected', 'unknown'] as const)(
     render(<TaskRoomComposer {...props} />);
     const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
     textbox.focus();
+    expect(document.activeElement).toBe(textbox);
     fireEvent.change(textbox, { target: { value: 'Keep this draft' } });
     fireEvent.keyDown(textbox, { key: 'Enter' });
     await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
-    act(() => moveFocusToBody());
+    act(() => moveFocusToBody(textbox));
     await act(async () => finish());
     expect(document.activeElement).toBe(document.body);
     expect((textbox as HTMLTextAreaElement).value).toBe('Keep this draft');
@@ -471,6 +480,7 @@ test('a confirmed send preserves focus deliberately moved outside the composer',
   document.body.append(outside);
   const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
   textbox.focus();
+  expect(document.activeElement).toBe(textbox);
   fireEvent.change(textbox, { target: { value: 'Hello team' } });
   fireEvent.keyDown(textbox, { key: 'Enter' });
   await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
@@ -493,10 +503,11 @@ test.each(['task', 'authority', 'authority-roundtrip', 'unmount'] as const)(
     const view = render(<TaskRoomComposer {...props} />);
     const original = screen.getByRole('textbox', { name: 'Message the Task' });
     original.focus();
+    expect(document.activeElement).toBe(original);
     fireEvent.change(original, { target: { value: 'Hello team' } });
     fireEvent.keyDown(original, { key: 'Enter' });
     await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
-    act(() => moveFocusToBody());
+    act(() => moveFocusToBody(original));
     if (change === 'unmount') {
       view.unmount();
       render(<TaskRoomComposer {...props} taskId="task-2" />);
@@ -546,10 +557,11 @@ test('an abandoned speculative Task render does not strand the committed owner s
   render(<Caller />);
   const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
   textbox.focus();
+  expect(document.activeElement).toBe(textbox);
   fireEvent.change(textbox, { target: { value: 'Committed owner message' } });
   fireEvent.keyDown(textbox, { key: 'Enter' });
   await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
-  act(() => moveFocusToBody());
+  act(() => moveFocusToBody(textbox));
   await act(async () => {
     startTransition(() => selectTask('speculative-task'));
   });
@@ -589,10 +601,11 @@ test.each([
     document.body.append(outside);
     try {
       textbox.focus();
+      expect(document.activeElement).toBe(textbox);
       fireEvent.change(textbox, { target: { value: 'Keep the chosen focus' } });
       fireEvent.keyDown(textbox, { key: 'Enter' });
       await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
-      act(() => moveFocusToBody());
+      act(() => moveFocusToBody(textbox));
       mocks.messagePending = true;
       view.rerender(<TaskRoomComposer {...props} />);
       if (timing !== 'during unlock wait') {
@@ -630,10 +643,11 @@ test('a new incarnation of the same Task cannot receive focus from an earlier se
   const view = render(<TaskRoomComposer {...props} />);
   const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
   textbox.focus();
+  expect(document.activeElement).toBe(textbox);
   fireEvent.change(textbox, { target: { value: 'Original incarnation' } });
   fireEvent.keyDown(textbox, { key: 'Enter' });
   await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
-  act(() => moveFocusToBody());
+  act(() => moveFocusToBody(textbox));
   view.rerender(
     <TaskRoomComposer {...props} taskCreatedAt="2026-10-01T00:00:00.000Z" />,
   );
@@ -658,10 +672,11 @@ test('a revoked captured authority cannot restore focus after acknowledgement', 
     render(<TaskRoomComposer {...props} />);
     const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
     textbox.focus();
+    expect(document.activeElement).toBe(textbox);
     fireEvent.change(textbox, { target: { value: 'Original authority' } });
     fireEvent.keyDown(textbox, { key: 'Enter' });
     await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
-    act(() => moveFocusToBody());
+    act(() => moveFocusToBody(textbox));
     current = false;
     await act(async () => acknowledge({ kind: 'committed' }));
     expect(document.activeElement).toBe(document.body);
@@ -682,10 +697,11 @@ test('a pending restoration is canceled after an authority round trip before unl
   const view = render(<TaskRoomComposer {...props} />);
   const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
   textbox.focus();
+  expect(document.activeElement).toBe(textbox);
   fireEvent.change(textbox, { target: { value: 'Original authority' } });
   fireEvent.keyDown(textbox, { key: 'Enter' });
   await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
-  act(() => moveFocusToBody());
+  act(() => moveFocusToBody(textbox));
   mocks.messagePending = true;
   view.rerender(<TaskRoomComposer {...props} />);
   await act(async () => acknowledge({ kind: 'committed' }));
@@ -709,6 +725,7 @@ test('repeated Enter while a human send is pending invokes one mutation', async 
   render(<TaskRoomComposer {...props} />);
   const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
   textbox.focus();
+  expect(document.activeElement).toBe(textbox);
   fireEvent.change(textbox, { target: { value: 'Only once' } });
   fireEvent.keyDown(textbox, { key: 'Enter' });
   fireEvent.keyDown(textbox, { key: 'Enter' });

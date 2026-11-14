@@ -453,7 +453,7 @@ describe('NewProjectModal starter layout picker', () => {
     expect(screen.queryByText(/^leaf\b/i)).toBeNull();
   });
 
-  test('keeps local artwork opt-in and lets the user return to initials', async () => {
+  test('defaults to detected artwork and submits an explicit No icon choice', async () => {
     iconCandidatesState.data = [
       {
         relativePath: 'public/favicon.png',
@@ -469,16 +469,65 @@ describe('NewProjectModal starter layout picker', () => {
       target: { value: '/tmp/station/' },
     });
     fireEvent.click(screen.getByLabelText('Choose project icon'));
+    expect(
+      screen
+        .getByRole('button', { name: 'No icon' })
+        .getAttribute('aria-pressed'),
+    ).toBe('false');
     fireEvent.click(screen.getByLabelText('Use public/favicon.png'));
     fireEvent.click(screen.getByRole('button', { name: 'No icon' }));
+    expect(
+      screen
+        .getByRole('button', { name: 'No icon' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     await waitFor(() =>
       expect(createProjectMock).toHaveBeenCalledWith(
-        expect.objectContaining({ icon: undefined }),
+        expect.objectContaining({ icon: undefined, iconDisabled: true }),
       ),
     );
   });
+
+  test.each(['detected', 'custom'] as const)(
+    'clears No icon when choosing %s',
+    async (choice) => {
+      iconCandidatesState.data = [
+        {
+          relativePath: 'favicon.png',
+          dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+          mediaType: 'image/png',
+          source: 'favicon',
+        },
+      ];
+      createProjectMock.mockResolvedValue({ slug: 'example' });
+      render(<NewProjectModal isOpen onClose={onCloseMock} />);
+      fireEvent.change(screen.getByLabelText('Project name'), {
+        target: { value: 'Example' },
+      });
+      fireEvent.click(screen.getByLabelText('Choose project icon'));
+      fireEvent.click(screen.getByRole('button', { name: 'No icon' }));
+      if (choice === 'detected')
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Use detected icon' }),
+        );
+      else
+        fireEvent.change(screen.getByLabelText(/Emoji or symbol/), {
+          target: { value: '🚀' },
+        });
+      expect(
+        screen
+          .getByRole('button', { name: 'No icon' })
+          .getAttribute('aria-pressed'),
+      ).toBe('false');
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+      await waitFor(() => expect(createProjectMock).toHaveBeenCalled());
+      expect(createProjectMock.mock.calls[0][0]).not.toHaveProperty(
+        'iconDisabled',
+      );
+    },
+  );
 
   test('does not discover artwork while typing a partial path', async () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
@@ -1002,6 +1051,7 @@ describe('NewProjectModal starter layout picker', () => {
           name: 'Saved project',
           slug: 'saved-project',
           description: 'Retained description',
+          iconDisabled: true,
           workingDirectory: '/saved/repository',
         },
         starterLayoutId: 'plugin:review',
@@ -1019,6 +1069,12 @@ describe('NewProjectModal starter layout picker', () => {
     expect(
       (screen.getByLabelText(/Project folder/) as HTMLInputElement).value,
     ).toBe('/saved/repository');
+    fireEvent.click(screen.getByLabelText('Choose project icon'));
+    expect(
+      screen
+        .getByRole('button', { name: 'No icon' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
     expect(screen.getByText('Starter: Review')).toBeTruthy();
     expect(screen.queryByText(/may already exist/)).toBeNull();
     await screen.findByText(

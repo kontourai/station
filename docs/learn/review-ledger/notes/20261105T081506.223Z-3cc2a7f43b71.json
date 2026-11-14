@@ -1,7 +1,0 @@
-{
-  "revision": "2bdd08446f7daf52bdcad97320e5b92623db90ea",
-
-  "notes": [
-    {"path":"docs/design/placement.md","note":"Scoped follow-up on the two-word ChildWorkRow copy change: Summary not reported replaces No summary reported in the same completed-child/no-summary condition. It aligns missing-fact metadata with model not reported, without changing retention, provenance, Station identity, controls or layout. Read the exact source/test delta; all 26 ChildWorkRow tests passed in 3.25s wall and the unchanged state-primitives ratchet passed. The current placement amendment remains accurate; prior provider/device/runtime limits remain.","inputs":["docs/design/placement.md","src-ui/src/workspace-panes/agents/ChildWorkRow.tsx"]}
-  ]
-}

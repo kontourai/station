@@ -1,7 +1,0 @@
-{
-  "revision": "2c612ef739516e513dae622eb39a28c7815e34ee",
-
-  "notes": [
-    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed formatting-only modal source delta; prior device revocation claims and evidence limits remain unchanged.","inputs":["docs/guides/web-push-notifications.md","packages/connect/src/react/ConnectionManagerModalContent.tsx"]}
-  ]
-}

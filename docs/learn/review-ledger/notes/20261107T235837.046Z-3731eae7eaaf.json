@@ -1,7 +1,0 @@
-{
-  "revision": "375e48f43a8f2df0d4f7864a790c89e017e6b5b9",
-
-  "notes": [
-    {"path":"docs/design/agent-engine-unification.md","note":"System-prompt row (Claude, flag channel) now states the Station orchestration instructions append: only after an authored prompt, only when station-control is in the delivered mcpServers (claudeStationInstructionsAppended in claude-adapter.ts), never creating the append alone, with stationInstructions.delivered set by confirmStationInstructionsDelivery. Other rows unaffected.","inputs":["docs/design/agent-engine-unification.md"]}
-  ]
-}
