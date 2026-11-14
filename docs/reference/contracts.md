@@ -787,6 +787,12 @@ response identity. A match emits server-owned `nativeResumeIdentity: matched`
 metadata. A queued prompt, requested cursor, or process start does not establish
 a match. An exact-resume identity mismatch stops that activation; it does not
 silently claim a fresh thread has continued the original one.
+Restart recovery (`startRecoveredOrchestrationSession`) and a credential retry
+that keeps its credential profile pass the binding the session's start
+recorded on `session.started` as `ProviderSessionStartInput.nativeResumeBindingKey`,
+so an adapter can refuse to resume under a different engine home or profile.
+A retry that moves to another profile passes none, since the profile is part
+of the binding.
 `nativeReturn: 'same-binding'` additionally permits an explicit Agent handoff
 back to an earlier native thread in this Conversation. Station requires the
 same Agent, Environment, connection, working directory and opaque configuration
