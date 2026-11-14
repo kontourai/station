@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { createProject } from '@kontourai/station-sdk/client';
 import { changeProjectAccess } from '@kontourai/station-sdk/project-access-client';
 import {
@@ -190,6 +191,13 @@ test.describe
       await clientB?.context.close();
       if (!live) return;
       await stopStation(live);
+      // `station start` builds into instance-named directories here; they are
+      // build output, never evidence, and nothing else reclaims them.
+      for (const output of ['dist-server', 'dist-ui'])
+        rmSync(join(process.cwd(), `${output}-${live.instance}`), {
+          recursive: true,
+          force: true,
+        });
       if (testInfo.status === testInfo.expectedStatus)
         rmSync(stationRootForLiveHome(live.home), {
           recursive: true,
