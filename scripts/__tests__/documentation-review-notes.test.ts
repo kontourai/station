@@ -1120,15 +1120,12 @@ describe('input review notes', () => {
 
   it('serializes document notes exactly as before input notes existed', () => {
     const revision = 'a'.repeat(40);
-    expect(
-      serializeNotesFile({
-        revision,
-        notes: [
-          { path: 'docs/a.md', note: 'Old form.' },
-          { path: 'docs/c.md', note: 'With inputs.', inputs: ['src/c.ts'] },
-        ],
-      }),
-    ).toBe(
+    // The serializer's JSDoc names only path and note, though it writes inputs.
+    const notes = [
+      { path: 'docs/a.md', note: 'Old form.' },
+      { path: 'docs/c.md', note: 'With inputs.', inputs: ['src/c.ts'] },
+    ];
+    expect(serializeNotesFile({ revision, notes })).toBe(
       `{\n  "revision": "${revision}",\n\n  "notes": [\n    {"path":"docs/a.md","note":"Old form."},\n\n    {"path":"docs/c.md","note":"With inputs.","inputs":["src/c.ts"]}\n  ]\n}\n`,
     );
   });
