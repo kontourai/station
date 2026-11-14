@@ -59,6 +59,7 @@ import {
   openCodeGrantCovers,
   openCodeNativeAskAnswer,
 } from '../../services/acp/opencode-approval-native.js';
+import { openCodeNativeAskNeedsPerson } from '../../services/acp/opencode-project-config.js';
 import { errorMessage } from '../../utils/error-message.js';
 import {
   type ProviderInterruptTurnResult,
@@ -174,6 +175,24 @@ export interface OpenCodeNativeSessionDeps {
    * (Ask, Auto); undefined otherwise. An ask they deny is rejected.
    */
   agentRules?: readonly OpenCodeNativeRule[];
+  /**
+   * The directory the session was created at (OpenCode names a write
+   * inside it relative to it), for the configuration-edit guard
+   * (`openCodeNativeAskNeedsPerson`).
+   */
+  readonly cwd: string;
+  /** The environment the server was launched with: where its global configuration lives. */
+  readonly configEnv?: NodeJS.ProcessEnv;
+  /**
+   * A child session's agent's own rules (`GET /api/agent/{name}`). A child
+   * inherits this session's rules (`core/src/session.ts` create:
+   * `permissions: input.permissions ?? parent?.permissions`) but runs its
+   * own agent, whose denies Station keeps. Absent or failing: a governed
+   * child's ask goes to a person.
+   */
+  readonly agentRulesFor?: (
+    agent: string,
+  ) => Promise<readonly OpenCodeNativeRule[]>;
   readonly now?: () => Date;
   readonly reconnectFirstMs?: number;
   readonly heartbeatTimeoutMs?: number;
@@ -236,6 +255,17 @@ interface PendingSteer {
   withdrawn: boolean;
   resolve(): void;
   reject(error: Error): void;
+}
+
+/** A `permission.asked` request, as read from its event. */
+interface NativeAsk {
+  readonly nativeId: string;
+  /** The OpenCode session that asked (this one, or a child). */
+  readonly sessionId: string;
+  readonly action: string;
+  readonly resources: readonly string[];
+  readonly save: readonly string[];
+  readonly toolCallId: string | undefined;
 }
 
 interface SessionGrant {
@@ -311,6 +341,13 @@ export class OpenCodeNativeSession {
    * answered `once` each time; cleared when the approval mode changes.
    */
   private readonly grants: SessionGrant[] = [];
+  /** Asks Station is answering itself (or deciding), by native id. */
+  private readonly autoAnswering = new Set<string>();
+  /** Child agents' rules, by agent name (`agentRulesFor`). */
+  private readonly childRules = new Map<
+    string,
+    Promise<readonly OpenCodeNativeRule[] | undefined>
+  >();
   /** Requests closed unanswered (their execution ended), oldest first. */
   private readonly closedRequests = new Set<string>();
   private readonly steers = new Map<string, PendingSteer>();
@@ -1662,39 +1699,130 @@ export class OpenCodeNativeSession {
     const nativeId = readString(data.id);
     const sessionId = readString(data.sessionID);
     const action = readString(data.action);
-    if (!nativeId || !sessionId || !action || this.requests.has(nativeId))
+    if (
+      !nativeId ||
+      !sessionId ||
+      !action ||
+      this.requests.has(nativeId) ||
+      this.autoAnswering.has(nativeId)
+    )
       return;
     const resources = (ownArray(data.resources) ?? []).filter(
       (item): item is string => typeof item === 'string',
     );
-    const own = sessionId === this.sessionId;
-    const save = (ownArray(data.save) ?? []).filter(
-      (item): item is string => typeof item === 'string',
-    );
-    // Under Station's confined rules every governed action asks, also one
-    // the agent's own rules deny: Station keeps that deny (and refuses a
-    // child session) before any grant or mode answers it. A child's ask
-    // comes from its own agent's rules alone, so a person answers it.
-    const answer = own
-      ? openCodeNativeAskAnswer({
-          mode: this.deps.approvalMode,
-          agentRules: this.deps.agentRules,
-          request: { action, resources },
-          granted: this.grants.some((grant) =>
-            openCodeGrantCovers(grant, { action, resources }),
-          ),
-        })
-      : 'person';
-    if (answer !== 'person') {
-      void this.deps.client
-        .request(
-          'POST',
-          `/api/session/${sessionId}/permission/${nativeId}/reply`,
-          { decision: answer },
-        )
-        .catch(() => undefined);
+    const ask: NativeAsk = {
+      nativeId,
+      sessionId,
+      action,
+      resources,
+      save: (ownArray(data.save) ?? []).filter(
+        (item): item is string => typeof item === 'string',
+      ),
+      toolCallId: readString(ownRecord(data.source)?.id),
+    };
+    if (sessionId === this.sessionId) {
+      this.decideAsk(ask, this.deps.agentRules);
       return;
     }
+    // A child session inherits this one's rules (and so its asks) but runs
+    // its own agent: Station keeps that agent's denies, read before the
+    // ask is decided. Without them a governed child's ask is a person's.
+    if (!this.deps.agentRules) {
+      this.decideAsk(ask, undefined);
+      return;
+    }
+    const agent = this.children.get(sessionId)?.agent;
+    const lookup =
+      agent && this.deps.agentRulesFor
+        ? this.childAgentRules(agent)
+        : Promise.resolve(undefined);
+    this.autoAnswering.add(nativeId);
+    void lookup.then((rules) => {
+      this.autoAnswering.delete(nativeId);
+      if (this.stopped || this.requests.has(nativeId)) return;
+      if (rules) this.decideAsk(ask, rules);
+      else this.openPermission(ask);
+    });
+  }
+
+  /** A child agent's rules, read once per agent name; undefined if unreadable. */
+  private childAgentRules(
+    agent: string,
+  ): Promise<readonly OpenCodeNativeRule[] | undefined> {
+    let found = this.childRules.get(agent);
+    if (!found) {
+      found = (
+        this.deps.agentRulesFor?.(agent) ?? Promise.resolve(undefined)
+      ).catch(() => undefined);
+      this.childRules.set(agent, found);
+      // A failed read is asked again for the next ask.
+      void found.then((rules) => {
+        if (!rules) this.childRules.delete(agent);
+      });
+    }
+    return found;
+  }
+
+  /**
+   * Answer an ask without a person where Station may (a kept deny, a
+   * session grant, the mode), else open it for the person. An OpenCode
+   * configuration edit is never answered by a grant or a mode below full
+   * access (`openCodeNativeAskNeedsPerson`).
+   */
+  private decideAsk(
+    ask: NativeAsk,
+    agentRules: readonly OpenCodeNativeRule[] | undefined,
+  ): void {
+    const request = { action: ask.action, resources: ask.resources };
+    const answer = openCodeNativeAskAnswer({
+      mode: this.deps.approvalMode,
+      agentRules,
+      request,
+      granted: this.grants.some((grant) => openCodeGrantCovers(grant, request)),
+      configNeedsPerson: () =>
+        openCodeNativeAskNeedsPerson(
+          request,
+          this.deps.cwd,
+          this.deps.configEnv,
+        ),
+    });
+    if (answer === 'person') {
+      this.openPermission(ask);
+      return;
+    }
+    this.autoAnswering.add(ask.nativeId);
+    void this.deps.client
+      .request(
+        'POST',
+        `/api/session/${ask.sessionId}/permission/${ask.nativeId}/reply`,
+        { decision: answer },
+      )
+      .then(
+        () => {
+          this.autoAnswering.delete(ask.nativeId);
+        },
+        (error: unknown) => {
+          this.autoAnswering.delete(ask.nativeId);
+          // Gone already (its execution ended): nothing waits on it.
+          if (error instanceof OpenCodeServeHttpError && error.status === 404)
+            return;
+          if (this.stopped || this.requests.has(ask.nativeId)) return;
+          // Still pending in OpenCode, and nobody would see it: the person
+          // answers it instead.
+          this.openPermission(ask, {
+            autoAnswerFailed: `Station could not ${answer === 'reject' ? 'reject' : 'allow'} this automatically: ${errorMessage(error)}`,
+          });
+        },
+      );
+  }
+
+  /** Show an ask to the person as an approval request. */
+  private openPermission(
+    ask: NativeAsk,
+    note: { autoAnswerFailed?: string } = {},
+  ): void {
+    const { nativeId, sessionId, action, resources, save } = ask;
+    const own = sessionId === this.sessionId;
     const turnId = own ? this.activeTurnId : undefined;
     const pending: PendingRequest = {
       kind: 'permission',
@@ -1708,8 +1836,14 @@ export class OpenCodeNativeSession {
       ...(turnId ? { turnId } : {}),
     };
     this.requests.set(nativeId, pending);
-    const source = ownRecord(data.source);
-    const toolCallId = readString(source?.id);
+    const toolCallId = ask.toolCallId;
+    const asked =
+      resources.length > 0
+        ? `${own ? this.deps.engineName : `A ${this.deps.engineName} subagent`} asks to ${action}: ${resources.join(', ').slice(0, 500)}`
+        : undefined;
+    const description = [asked, note.autoAnswerFailed]
+      .filter((part): part is string => part !== undefined)
+      .join(' ');
     const show = () =>
       this.emit({
         eventId: pending.eventId,
@@ -1718,11 +1852,7 @@ export class OpenCodeNativeSession {
         method: 'request.opened',
         requestType: 'approval',
         title: `Allow ${action}`,
-        ...(resources.length > 0
-          ? {
-              description: `${own ? this.deps.engineName : `A ${this.deps.engineName} subagent`} asks to ${action}: ${resources.join(', ').slice(0, 500)}`,
-            }
-          : {}),
+        ...(description ? { description } : {}),
         payload: {
           toolName: action,
           ...(toolCallId ? { toolCallId } : {}),

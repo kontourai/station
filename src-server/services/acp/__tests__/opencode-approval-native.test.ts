@@ -10,6 +10,7 @@ import {
   openCodeNativeModeAllows,
   openCodeSavedApprovalOverrides,
 } from '../opencode-approval-native.js';
+import { openCodeNativeAskNeedsPerson } from '../opencode-project-config.js';
 
 /** What 2.3.0 answered for the saved approvals and `build`'s rules, after an `always`. */
 function captured(): {
@@ -121,8 +122,8 @@ describe('evaluateOpenCodeRules (OpenCode 2.3.0 evaluateInput)', () => {
           [],
         ),
       ).toBe('ask');
-    // A child session asks too, and Station rejects it (it would run its own
-    // agent's rules, not these).
+    // Starting a subagent asks too, and Station rejects it: delegated child
+    // work stays out of a governed session.
     expect(
       evaluateOpenCodeRules(
         { action: 'subagent', resources: ['general'] },
@@ -136,6 +137,7 @@ describe('evaluateOpenCodeRules (OpenCode 2.3.0 evaluateInput)', () => {
         agentRules,
         request: { action: 'subagent', resources: ['general'] },
         granted: true,
+        configNeedsPerson: () => false,
       }),
     ).toBe('reject');
   });
@@ -200,6 +202,13 @@ describe('evaluateOpenCodeRules (OpenCode 2.3.0 evaluateInput)', () => {
       agentRules: floor === 'confined' ? agentRules : undefined,
       request,
       granted: false,
+      configNeedsPerson: () =>
+        openCodeNativeAskNeedsPerson(
+          request,
+          '/replay/proj',
+          {},
+          '/replay/home',
+        ),
     });
     return answer === 'once' ? 'runs' : answer === 'reject' ? 'denied' : 'asks';
   }
@@ -231,14 +240,15 @@ describe('evaluateOpenCodeRules (OpenCode 2.3.0 evaluateInput)', () => {
     for (const mode of ['never', 'ask', 'auto'] as const)
       expect(outcome(plan, mode, edit), mode).toBe('denied');
     // Its plan-file exception is the agent's: full access runs it, Ask asks,
-    // Auto answers edits.
+    // and Auto asks too: the plan file is under `.opencode/`, OpenCode
+    // configuration no mode below full access answers (as on ACP).
     const planFile = {
       action: 'edit',
       resources: ['{HOME}/.opencode/plan/next.md'],
     };
     expect(outcome(plan, 'never', planFile)).toBe('runs');
     expect(outcome(plan, 'ask', planFile)).toBe('asks');
-    expect(outcome(plan, 'auto', planFile)).toBe('runs');
+    expect(outcome(plan, 'auto', planFile)).toBe('asks');
   });
 
   test('a narrower allow after a deny (`edit * deny, edit ? allow`) never widens the deny', () => {
@@ -269,6 +279,7 @@ describe('evaluateOpenCodeRules (OpenCode 2.3.0 evaluateInput)', () => {
         agentRules: [{ action: 'edit', resource: '*', effect: 'deny' }],
         request: edit,
         granted: true,
+        configNeedsPerson: () => false,
       }),
     ).toBe('reject');
     // Without the confined rules governing, Station keeps no deny of its own.
@@ -278,6 +289,7 @@ describe('evaluateOpenCodeRules (OpenCode 2.3.0 evaluateInput)', () => {
         agentRules: undefined,
         request: edit,
         granted: false,
+        configNeedsPerson: () => true,
       }),
     ).toBe('once');
   });
@@ -305,5 +317,92 @@ describe('evaluateOpenCodeRules (OpenCode 2.3.0 evaluateInput)', () => {
     expect(openCodeGrantCovers(grant, { action: 'shell', resources: [] })).toBe(
       false,
     );
+  });
+
+  test('an OpenCode configuration edit goes to the person whatever grant or mode below full access would answer it', () => {
+    const configEdit = { action: 'edit', resources: ['opencode.json'] };
+    for (const mode of ['auto', 'ask', undefined] as const)
+      for (const granted of [true, false])
+        expect(
+          openCodeNativeAskAnswer({
+            mode,
+            agentRules: [],
+            request: configEdit,
+            granted,
+            configNeedsPerson: () => true,
+          }),
+          `${mode} ${granted}`,
+        ).toBe('person');
+    // Host full access is full: the guard is not consulted.
+    expect(
+      openCodeNativeAskAnswer({
+        mode: 'never',
+        agentRules: undefined,
+        request: configEdit,
+        granted: false,
+        configNeedsPerson: () => true,
+      }),
+    ).toBe('once');
+    // A kept deny still comes first.
+    expect(
+      openCodeNativeAskAnswer({
+        mode: 'auto',
+        agentRules: [{ action: 'edit', resource: '*', effect: 'deny' }],
+        request: configEdit,
+        granted: true,
+        configNeedsPerson: () => true,
+      }),
+    ).toBe('reject');
+  });
+
+  describe('openCodeNativeAskNeedsPerson', () => {
+    const cwd = '/replay/proj';
+    const env = { XDG_CONFIG_HOME: '/replay/home/.config' };
+    const home = '/replay/home';
+    const needs = (action: string, resources: string[]) =>
+      openCodeNativeAskNeedsPerson({ action, resources }, cwd, env, home);
+
+    test('edits of OpenCode configuration, in the project or global, or outside the project', () => {
+      expect(needs('edit', ['opencode.json'])).toBe(true);
+      expect(needs('edit', ['opencode.jsonc'])).toBe(true);
+      expect(needs('edit', ['.opencode/plugin/x.ts'])).toBe(true);
+      expect(needs('edit', ['sub/.opencode/tool/t.ts'])).toBe(true);
+      expect(needs('edit', ['/replay/proj/opencode.json'])).toBe(true);
+      expect(
+        needs('edit', ['/replay/home/.config/opencode/opencode.json']),
+      ).toBe(true);
+      expect(needs('edit', ['/elsewhere/file.txt'])).toBe(true);
+      // One config target among ordinary ones is enough.
+      expect(needs('edit', ['src/a.ts', 'opencode.json'])).toBe(true);
+    });
+
+    test('a target Station cannot place goes to the person', () => {
+      expect(needs('edit', [])).toBe(true);
+      expect(needs('edit', ['../opencode.json'])).toBe(true);
+      expect(needs('edit', ['./opencode.json'])).toBe(true);
+      expect(needs('edit', ['.'])).toBe(true);
+    });
+
+    test("ordinary project edits are not the guard's", () => {
+      expect(needs('edit', ['src/app.ts'])).toBe(false);
+      expect(needs('edit', ['edit-me.txt', '/replay/proj/docs/x.md'])).toBe(
+        false,
+      );
+    });
+
+    test('an outside directory that is or holds OpenCode configuration goes to the person', () => {
+      expect(
+        needs('external_directory', ['/replay/home/.config/opencode/*']),
+      ).toBe(true);
+      expect(needs('external_directory', ['/replay/home/*'])).toBe(true);
+      expect(needs('external_directory', ['/other/.opencode/*'])).toBe(true);
+      expect(needs('external_directory', ['relative/*'])).toBe(true);
+      expect(needs('external_directory', ['/data/shared/*'])).toBe(false);
+    });
+
+    test("other actions are not the guard's", () => {
+      expect(needs('shell', ['echo opencode.json'])).toBe(false);
+      expect(needs('read', ['opencode.json'])).toBe(false);
+    });
   });
 });

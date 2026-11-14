@@ -120,8 +120,12 @@ export type OpenCodeNativeFloor = 'confined' | 'full';
  * appended after them would change what they decide for other resources.
  *
  * - `confined` (Ask, Auto, and full access confined to Auto): each governed
- *   action asks, and `subagent` asks (a child session runs its own agent's
- *   rules, not these, so Station rejects it; {@link openCodeNativeStationRejects}).
+ *   action asks, and `subagent` asks and Station rejects it
+ *   ({@link openCodeNativeStationRejects}): delegated child work stays out of
+ *   a governed session (child-work authority is not Station's yet). A child
+ *   OpenCode starts anyway (a `subtask: true` command needs no `subagent`
+ *   permission) inherits these rules (`core/src/session.ts` create), so its
+ *   asks reach Station too, decided with its own agent's rules.
  *   Because OpenCode lets the last matching rule decide, these asks also
  *   reach Station for actions the agent's own rules deny; Station rejects
  *   those itself ({@link openCodeNativeStationRejects}).
@@ -141,9 +145,10 @@ export function openCodeNativeApprovalRules(
 
 /**
  * Whether Station rejects an ask, without a person, in a session governed
- * by the confined rules: a child session would run outside them, and an
- * action the agent's own rules deny (evaluated alone, as OpenCode would
- * without Station's asks after them) stays denied.
+ * by the confined rules: a request to start a subagent (see
+ * {@link openCodeNativeApprovalRules}), and an action the asking agent's own
+ * rules deny (evaluated alone, as OpenCode would without Station's asks
+ * after them), which stays denied.
  */
 export function openCodeNativeStationRejects(
   agentRules: readonly OpenCodeNativeRule[],
@@ -233,31 +238,40 @@ export function openCodeNativeModeAllows(
 }
 
 /**
- * How Station answers an ask from the session it runs (not a child's):
- * `reject` without a person when the confined rules govern it and Station
- * keeps a deny ({@link openCodeNativeStationRejects}; checked first, so no
- * grant or mode outranks it), `once` when a session grant or the mode covers
- * it, else the person decides.
+ * How Station answers an ask, from the session it runs or a child of it (a
+ * child inherits that session's rules; `agentRules` are then the child's
+ * own agent's):
+ * 1. `reject` without a person when the confined rules govern it and
+ *    Station keeps a deny ({@link openCodeNativeStationRejects}; first, so
+ *    nothing outranks it);
+ * 2. the person, below host full access, for an ask `configNeedsPerson`
+ *    says touches OpenCode's own configuration (`opencode.json`,
+ *    `.opencode/`, global configuration, anything outside the project):
+ *    OpenCode loads it and runs what it declares (MCP servers, plugins)
+ *    without asking, so neither a session grant nor a mode answers it;
+ * 3. `once` when a session grant or the mode covers it;
+ * 4. else the person.
  */
 export function openCodeNativeAskAnswer(input: {
   readonly mode: AcpAppliedApprovalMode | undefined;
-  /** The agent's own rules while the confined rules govern; else undefined. */
+  /** The asking agent's own rules while the confined rules govern; else undefined. */
   readonly agentRules: readonly OpenCodeNativeRule[] | undefined;
   readonly request: {
     readonly action: string;
     readonly resources: readonly string[];
   };
   readonly granted: boolean;
+  /** Read only when a grant or a mode below full access would answer. */
+  readonly configNeedsPerson: () => boolean;
 }): 'reject' | 'once' | 'person' {
   if (
     input.agentRules &&
     openCodeNativeStationRejects(input.agentRules, input.request)
   )
     return 'reject';
-  if (
-    input.granted ||
-    openCodeNativeModeAllows(input.mode, input.request.action)
-  )
-    return 'once';
-  return 'person';
+  const covered =
+    input.granted || openCodeNativeModeAllows(input.mode, input.request.action);
+  if (!covered) return 'person';
+  if (input.mode !== 'never' && input.configNeedsPerson()) return 'person';
+  return 'once';
 }

@@ -1380,6 +1380,257 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     ]);
   });
 
+  /** The governed capture with one ask's action and resources replaced. */
+  const askRewrite =
+    (
+      matches: (data: Record<string, unknown>) => boolean,
+      replace: { action: string; resources: string[]; save: string[] },
+    ) =>
+    (record: OpenCodeReplayRecord): OpenCodeReplayRecord =>
+      record.kind === 'sse' &&
+      record.event?.type === 'permission.asked' &&
+      record.event.data &&
+      matches(record.event.data)
+        ? {
+            ...record,
+            event: {
+              ...record.event,
+              data: { ...record.event.data, ...replace, metadata: undefined },
+            },
+          }
+        : record;
+
+  test('Auto does not answer an edit of OpenCode configuration: the person is asked, nothing is answered for them', async () => {
+    const h = await setup({
+      scenario: 'governed',
+      rewrite: askRewrite((data) => data.action === 'edit', {
+        action: 'edit',
+        resources: ['opencode.json'],
+        save: ['*'],
+      }),
+    });
+    await h.start({ approvalMode: 'auto' });
+    const edit = await h.turn('DO_EDIT one');
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.opened' && event.turnId === edit.turnId,
+      ),
+    ).toMatchObject({
+      payload: {
+        toolName: 'edit',
+        rawInput: { action: 'edit', resources: ['opencode.json'] },
+      },
+    });
+    expect(
+      h.replay.made('POST', '/api/session/:id/permission/:id/reply'),
+    ).toEqual([]);
+  });
+
+  test('a session grant for edit does not answer a later edit of `.opencode/`', async () => {
+    const h = await setup({
+      scenario: 'governed',
+      // The first shell ask, made an edit of a plugin file.
+      rewrite: askRewrite(
+        (data) => data.id === 'per_1d83ac1d0001O6wuCIGs0aAEtz',
+        {
+          action: 'edit',
+          resources: ['.opencode/plugin/pwn.ts'],
+          save: ['*'],
+        },
+      ),
+    });
+    await h.start({ approvalMode: 'ask' });
+    const edit = await h.turn('DO_EDIT one');
+    const editAsk = await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === edit.turnId,
+    );
+    // Its save pattern is `*`: the grant covers every edit.
+    await h.adapter.respondToRequest(
+      'thread-1',
+      editAsk.requestId as string,
+      'acceptForSession',
+    );
+    await h.waitFor(completedFor(edit.turnId));
+    const plugin = await h.turn('DO_BASH two');
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.opened' && event.turnId === plugin.turnId,
+      ),
+    ).toMatchObject({
+      requestId: 'per_1d83ac1d0001O6wuCIGs0aAEtz',
+      payload: { rawInput: { resources: ['.opencode/plugin/pwn.ts'] } },
+    });
+    expect(
+      h.replay
+        .made('POST', '/api/session/:id/permission/:id/reply')
+        .map((reply) => reply.body),
+    ).toEqual([{ decision: 'once' }]);
+  });
+
+  test('an automatic answer OpenCode refuses is put to the person instead of leaving the ask hidden', async () => {
+    const h = await setup({
+      scenario: 'governed',
+      respond: (request) =>
+        request.method === 'POST' && request.path.endsWith('/reply')
+          ? { status: 500, body: { error: 'reply broke' } }
+          : undefined,
+    });
+    await h.start({ approvalMode: 'auto' });
+    const edit = await h.turn('DO_EDIT one');
+    const ask = await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === edit.turnId,
+    );
+    expect(ask).toMatchObject({
+      requestId: 'per_1d83abafd001dDBOpF7qGF2ora',
+      payload: { toolName: 'edit' },
+    });
+    expect(ask.description).toMatch(
+      /Station could not allow this automatically/,
+    );
+    // Station tried once itself.
+    expect(
+      h.replay.made('POST', '/api/session/:id/permission/:id/reply'),
+    ).toHaveLength(1);
+  });
+
+  test('an automatic answer to an ask OpenCode already dropped (404) opens nothing', async () => {
+    const h = await setup({
+      scenario: 'governed',
+      respond: (request) =>
+        request.method === 'POST' && request.path.endsWith('/reply')
+          ? { status: 404, body: { error: 'gone' } }
+          : undefined,
+    });
+    await h.start({ approvalMode: 'auto' });
+    await h.turn('DO_EDIT one');
+    await h.waitFor(
+      () =>
+        h.replay.made('POST', '/api/session/:id/permission/:id/reply')
+          .length === 1,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(opened(h.events)).toEqual([]);
+  });
+
+  const CHILD = 'ses_e28e4e140ffemsWOeVxszItzHu';
+  /**
+   * The subagent capture with an ask from its child (agent `general`) in
+   * place of the child's first text frame. A child inherits its parent's
+   * session rules (`core/src/session.ts` create), so it asks what they ask.
+   */
+  const childAsk =
+    (action: string, resources: string[]) =>
+    (record: OpenCodeReplayRecord): OpenCodeReplayRecord =>
+      record.kind === 'sse' &&
+      record.event?.type === 'session.text.started' &&
+      record.event.data?.sessionID === CHILD
+        ? {
+            ...record,
+            event: {
+              ...record.event,
+              type: 'permission.asked',
+              data: {
+                id: 'per_child',
+                sessionID: CHILD,
+                action,
+                resources,
+                save: ['*'],
+              },
+            },
+          }
+        : record;
+  /** Agent rules by name, an empty saved list, and 204 for every reply. */
+  const childGovernance =
+    (rules: Record<string, OpenCodeNativeRule[] | 'fail'>) =>
+    (request: { method: string; path: string }) => {
+      if (request.method === 'POST' && request.path.endsWith('/reply'))
+        return { status: 204 };
+      if (request.method === 'GET' && request.path === '/api/permission/saved')
+        return { status: 200, body: { data: [] } };
+      const agent = /^\/api\/agent\/([^/]+)$/.exec(request.path)?.[1];
+      if (request.method !== 'GET' || !agent) return undefined;
+      const found = rules[agent];
+      if (found === 'fail') return { status: 500, body: { error: 'no' } };
+      return {
+        status: 200,
+        body: { data: { name: agent, permissions: found ?? [] } },
+      };
+    };
+  const repliesTo = (h: { replay: OpenCodeServeReplay }, session: string) =>
+    h.replay.requests
+      .filter(
+        (request) =>
+          request.method === 'POST' &&
+          request.path.startsWith(`/api/session/${session}/permission/`),
+      )
+      .map((request) => request.body);
+
+  test("a governed child's ask is decided on the child's own agent's rules: its deny is kept though Auto answers edits", async () => {
+    const h = await setup({
+      scenario: 'subagent',
+      rewrite: childAsk('edit', ['notes.txt']),
+      respond: childGovernance({
+        build: [],
+        general: [{ action: 'edit', resource: '*', effect: 'deny' }],
+      }),
+    });
+    await h.start({ approvalMode: 'auto' });
+    await h.turn('DO_TASK now');
+    await h.waitFor(() => repliesTo(h, CHILD).length === 1);
+    expect(repliesTo(h, CHILD)).toEqual([{ decision: 'reject' }]);
+    expect(
+      h.replay.requests.map((request) => `${request.method} ${request.path}`),
+    ).toContain('GET /api/agent/general');
+    expect(opened(h.events)).toEqual([]);
+  });
+
+  test("a governed child whose agent denies nothing gets the session's answer: Auto answers its edit `once`", async () => {
+    const h = await setup({
+      scenario: 'subagent',
+      rewrite: childAsk('edit', ['notes.txt']),
+      respond: childGovernance({ build: [], general: [] }),
+    });
+    await h.start({ approvalMode: 'auto' });
+    await h.turn('DO_TASK now');
+    await h.waitFor(() => repliesTo(h, CHILD).length === 1);
+    expect(repliesTo(h, CHILD)).toEqual([{ decision: 'once' }]);
+  });
+
+  test("a governed child's ask goes to the person when its agent's rules cannot be read", async () => {
+    const h = await setup({
+      scenario: 'subagent',
+      rewrite: childAsk('edit', ['notes.txt']),
+      respond: childGovernance({ build: [], general: 'fail' }),
+    });
+    await h.start({ approvalMode: 'auto' });
+    await h.turn('DO_TASK now');
+    expect(
+      await h.waitFor((event) => event.method === 'request.opened'),
+    ).toMatchObject({
+      requestId: 'per_child',
+      payload: { childWork: { childId: CHILD } },
+    });
+    expect(repliesTo(h, CHILD)).toEqual([]);
+  });
+
+  test("under full access a child's ask is answered `once`, as the session's own", async () => {
+    const h = await setup({
+      scenario: 'subagent',
+      rewrite: childAsk('shell', ['echo child']),
+      respond: childGovernance({}),
+    });
+    await h.start({ approvalMode: 'never' }, { confinement: 'host' });
+    const { turnId } = await h.turn('DO_TASK now');
+    await h.waitFor(completedFor(turnId));
+    await h.waitFor(() => repliesTo(h, CHILD).length === 1);
+    expect(repliesTo(h, CHILD)).toEqual([{ decision: 'once' }]);
+    expect(opened(h.events)).toEqual([]);
+  });
+
   test('a session grant ends when the approval mode changes', async () => {
     const h = await setup({ scenario: 'governed' });
     await h.start({ approvalMode: 'ask' });

@@ -919,6 +919,9 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       publish: (event) => this.publish(event),
       ...(mode ? { approvalMode: mode } : {}),
       ...(agentRules ? { agentRules } : {}),
+      cwd: lease.cwd,
+      configEnv: plan.env,
+      agentRulesFor: (name) => this.agentRules(lease.client, name),
       ...(this.options.reconnectFirstMs
         ? { reconnectFirstMs: this.options.reconnectFirstMs }
         : {}),
