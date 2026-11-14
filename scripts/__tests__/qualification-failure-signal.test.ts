@@ -715,7 +715,7 @@ describe('review round: hooks, duplicates, steps, bounds', () => {
       reasons(JOBS(exclusive), {
         a: { ...big, phases: [{ ...big.phases[0], groups: [group(many)] }] },
       })[0],
-    ).toMatch(/holds 501 entries; at most 500$/);
+    ).toMatch(/holds 501 entries; at most 500\)$/);
     const directory = makeTempDir('station-many-manifests-');
     for (let index = 0; index < 70; index++) {
       mkdirSync(join(directory, `m${index}`));
