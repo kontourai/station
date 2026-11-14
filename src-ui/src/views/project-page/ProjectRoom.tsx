@@ -11,6 +11,7 @@ import {
   fetchProjectRoomAttachment,
   isProjectRoomAccessError,
   PROJECT_ROOM_HISTORY_MAX_PAGES,
+  PROJECT_ROOM_RETAINED_REREAD_MESSAGES,
   type ProjectRoomAgentHandle,
   type ProjectRoomAgentIntent,
   type ProjectRoomBrowserView,
@@ -316,7 +317,9 @@ type RoomMessage = NonNullable<
  *
  * Rows kept from a window the room has moved past are owned by no history
  * query, so `reread` brings them up to date (#4797): each new read of that
- * span is applied once, and the live windows always win over it.
+ * span is applied once, and the live windows always win over it. A kept row
+ * older than the re-read span is retired rather than shown stale; an open
+ * thread whose root is retired seeks it again from the live history.
  */
 function useRoomMessages(
   roomId: string | undefined,
@@ -337,6 +340,14 @@ function useRoomMessages(
   }
   for (const message of fetched)
     retained.current.byId.set(message.messageId, message);
+  if (fetched.length) {
+    const refreshable =
+      Math.min(...fetched.map((message) => message.seq)) -
+      1 -
+      PROJECT_ROOM_RETAINED_REREAD_MESSAGES;
+    for (const [id, message] of retained.current.byId)
+      if (message.seq <= refreshable) retained.current.byId.delete(id);
+  }
   return [...retained.current.byId.values()].sort((a, b) => a.seq - b.seq);
 }
 /**

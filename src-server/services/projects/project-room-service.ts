@@ -77,7 +77,7 @@ export interface ProjectRoomAttachmentPort {
     binding: readonly string[],
     attachments: ProjectRoomAttachment[],
   ): unknown;
-  /** Gives up these files; a blob goes once no binding names it. */
+  /** Gives up these files' bindings (and quota); never deletes bytes. */
   release(binding: readonly string[], ids: readonly string[]): void;
   /** Releases files no standing message needs (see `RoomAttachments.sweep`). */
   sweep(
@@ -426,9 +426,9 @@ export class ProjectRoomService {
           assertCurrent,
           channelId,
         );
-        // The tombstone already withholds the files; their bytes and their
-        // place in the uploader's quota go with them. A failure here is
-        // logged, and the next upload's sweep releases them instead.
+        // The tombstone already withholds the files; their place in the
+        // uploader's quota goes with them. A failure here is logged, and the
+        // next upload's sweep releases them instead.
         if (this.attachments) {
           const files = this.store.messageFiles(scope, messageId, channelId);
           if (files.ids.length)

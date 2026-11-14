@@ -89,6 +89,13 @@ export function projectRoomChannelsKey(
  */
 export const PROJECT_ROOM_HISTORY_MAX_PAGES = 20;
 /**
+ * Most messages `useProjectRoomRetainedHistory` re-reads below the live
+ * windows (the same 500 the windows hold). A caller must not show a kept row
+ * older than this span: nothing would refresh it.
+ */
+export const PROJECT_ROOM_RETAINED_REREAD_MESSAGES =
+  PROJECT_ROOM_HISTORY_MAX_PAGES * 25;
+/**
  * The room route said the Project itself is not on this Station (#4855):
  * show "no such Project", never "unavailable" with a retry.
  */
@@ -164,8 +171,8 @@ export interface ProjectRoomHistorySpan {
  * This query lives under the room's key, so every live `changed` event and
  * every mutation that invalidates the room re-reads the span; it reads nothing
  * until then. `span` is asked at read time, for the rows shown at that moment.
- * At most {@link PROJECT_ROOM_HISTORY_MAX_PAGES} windows are read, newest
- * first.
+ * At most {@link PROJECT_ROOM_RETAINED_REREAD_MESSAGES} messages are read,
+ * newest first; the caller retires kept rows older than that.
  */
 export function useProjectRoomRetainedHistory(
   incomingScope: ApiRequestScope,
@@ -207,7 +214,7 @@ export function useProjectRoomRetainedHistory(
       if (!roomId || !wanted || wanted.end <= wanted.after) return { messages };
       const floor = Math.max(
         wanted.after,
-        wanted.end - PROJECT_ROOM_HISTORY_MAX_PAGES * 25,
+        wanted.end - PROJECT_ROOM_RETAINED_REREAD_MESSAGES,
       );
       for (let end = wanted.end; end > floor; end -= 25) {
         const window = await readProjectRoomWindow(

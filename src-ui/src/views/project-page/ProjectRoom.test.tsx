@@ -1910,3 +1910,68 @@ test('a live delete reaches a row kept from a history window the room has moved 
   await waitFor(() => expect(screen.queryByText('Original 1')).toBeNull());
   expect(screen.getByText('Message deleted')).toBeTruthy();
 });
+
+/**
+ * #4852 review: a thread root kept from a window `newer` messages back, then
+ * deleted. The retained re-read covers 500 messages below the live windows.
+ */
+async function deleteKeptThreadRoot(newer: number) {
+  messages = Array.from({ length: 25 }, (_, i) =>
+    storedMessage(i + 1, `Original ${i + 1}`),
+  );
+  const first = messages[0]!;
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <ProjectRoom
+        slug="team"
+        projectId="project"
+        requestScope={requestScope}
+        routeChannel={{ id: undefined }}
+        thread={{ rootId: first.messageId as string, open: () => {} }}
+      />
+    </QueryClientProvider>,
+  );
+  await screen.findByText('Original 1');
+  messages.push(
+    ...Array.from({ length: newer }, (_, i) =>
+      storedMessage(i + 26, `New ${i + 26}`),
+    ),
+  );
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['project-room'] });
+  });
+  await waitFor(() =>
+    expect(
+      client
+        .getQueryCache()
+        .getAll()
+        .some(
+          (query) =>
+            query.queryKey.at(-1) === newer && query.state.status === 'success',
+        ),
+    ).toBe(true),
+  );
+  messages[0] = { ...first, text: '', deletedAt: at };
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['project-room'] });
+  });
+  return client;
+}
+
+test('a kept row the re-read can still reach shows a live delete: 500 newer messages (#4852)', async () => {
+  await deleteKeptThreadRoot(500);
+  await screen.findByText('Message deleted');
+  expect(screen.queryByText('Original 1')).toBeNull();
+});
+
+test('a kept row past the re-read span is never left showing deleted text: 501 newer messages (#4852)', async () => {
+  await deleteKeptThreadRoot(501);
+  // Either the thread sought its root again from live history (a tombstone),
+  // or the stale row was retired; the deleted text is never on screen.
+  await waitFor(() => expect(screen.queryByText('Original 1')).toBeNull());
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(screen.queryByText('Original 1')).toBeNull();
+});

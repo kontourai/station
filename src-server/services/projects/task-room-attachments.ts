@@ -111,32 +111,20 @@ export class RoomAttachments {
     };
   }
   /**
-   * Gives up files of this binding: their bindings go, and each blob goes
-   * once no binding in this store still names it (the byte store is
-   * deduplicated, so the same bytes may back another file). Synchronous, so
-   * no store or release in this process interleaves with the reference scan.
+   * Gives up files of this binding: their bindings go, which frees their
+   * place in the binding's quota. Bytes are never deleted here. The byte store
+   * is deduplicated and shared by every binding and process, and nothing here
+   * coordinates a reference scan with another process publishing the same
+   * bytes, so a blob this path deleted could already back a new message
+   * elsewhere. Unreferenced bytes are left to the store's own age and size
+   * retention until a coordinated sweep exists (#4942).
    */
   release(binding: readonly string[], ids: readonly string[]) {
     const directory = this.directory(binding);
-    const refs = new Set<string>();
     for (const id of ids) {
       if (!/^[0-9a-f-]{36}$/.test(id)) continue;
-      const path = join(directory, `${id}.json`);
-      const ref = this.blobRef(path);
-      rmSync(path, { force: true });
-      if (ref) refs.add(ref);
+      rmSync(join(directory, `${id}.json`), { force: true });
     }
-    if (!refs.size) return;
-    const bindings = join(this.root, 'bindings');
-    for (const key of existsSync(bindings) ? readdirSync(bindings) : [])
-      for (const name of readdirSync(join(bindings, key))) {
-        const ref = this.blobRef(join(bindings, key, name));
-        // A binding that cannot be read might name any blob: keep them all.
-        if (!ref) return;
-        refs.delete(ref);
-        if (!refs.size) return;
-      }
-    for (const ref of refs) this.blobs.removeByRef(ref);
   }
   /**
    * Releases this binding's files that no standing message needs: any whose
@@ -168,19 +156,6 @@ export class RoomAttachments {
         }
       }),
     );
-  }
-  private blobRef(path: string): string | undefined {
-    try {
-      const stored: unknown = JSON.parse(readFileSync(path, 'utf8'));
-      return stored &&
-        typeof stored === 'object' &&
-        'blobRef' in stored &&
-        typeof stored.blobRef === 'string'
-        ? stored.blobRef
-        : undefined;
-    } catch {
-      return undefined;
-    }
   }
   /** Each descriptor must name a stored file of this binding, field for field. */
   resolve(

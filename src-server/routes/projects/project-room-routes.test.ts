@@ -1376,7 +1376,7 @@ async function aliceFiles(h: Awaited<ReturnType<typeof harness>>) {
   return { a, root, binding, directory, blobOf, upload, send, remove };
 }
 
-test('message files: deleting a message removes its files from disk, and shared bytes stay while another file names them (#4812)', async () => {
+test('message files: deleting a message releases its files, and never deletes bytes the shared store may still hold for another file (#4812)', async () => {
   const { existsSync } = await import('node:fs');
   const h = await harness();
   const f = await aliceFiles(h);
@@ -1390,14 +1390,16 @@ test('message files: deleting a message removes its files from disk, and shared 
   const two = await f.send([second]);
   expect(await f.remove(one.messageId)).toBe(200);
   expect(existsSync(join(f.directory()!, `${first!.id}.json`))).toBe(false);
-  // The other message still names the bytes, so they stay readable.
+  // The other message's file is untouched and still reads.
   expect(existsSync(blob)).toBe(true);
   expect((await h.request('bob', `/attachments/${second!.id}`)).status).toBe(
     200,
   );
   expect(await f.remove(two.messageId)).toBe(200);
   expect(existsSync(join(f.directory()!, `${second!.id}.json`))).toBe(false);
-  expect(existsSync(blob)).toBe(false);
+  // Releasing frees bindings, never bytes: the deduplicated store is shared
+  // across processes, so its own retention reclaims unreferenced bytes.
+  expect(existsSync(blob)).toBe(true);
   // A repeated delete (the same message again) changes nothing and still answers.
   expect(await f.remove(two.messageId)).toBe(200);
 });

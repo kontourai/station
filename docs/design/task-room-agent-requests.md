@@ -111,8 +111,8 @@ The [Task asset store](../../src-server/services/projects/task-room-attachments.
 saves bytes separately from room history. Upload and reference resolution require
 current message-write authority; byte reads require current history-read authority.
 Bindings include the canonical Project, Task ID and Task creation time. Knowing an
-attachment ID grants no access. An image's bytes must carry its declared image
-type's signature. Room history and durable agent requests store only
+attachment ID grants no access. An image's bytes must start with its declared image
+type's signature (a prefix check, not a full decode). Room history and durable agent requests store only
 `TaskRoomAttachment` descriptors. Bytes use the existing content-addressed store's
 retention settings (90 days and 512 MiB by default); a retained history entry may
 therefore outlive its bytes and show an unavailable attachment.

@@ -3682,7 +3682,8 @@ message's person author may edit or delete it, and Agent messages are never
 edited. Message files are stored by `RoomAttachments`, which also stores Task room files, under a
 binding of Station, Project incarnation, room and uploader. Deleting a message
 releases its files, an upload first releases its uploader's day-old unsent
-files, and a shared blob goes only when no binding names it. Persisted records are validated
+files; releasing never deletes bytes, which the shared store's own retention
+reclaims (#4942). Persisted records are validated
 against their row identities before use. History reads use a deferred transaction;
 discovery is lookup-only. Explicit opening requires current discussion authority.
 

@@ -912,8 +912,8 @@ Personal Task rooms expose these authenticated routes:
 - `POST /api/tasks/:taskId/room/attachments` takes `{taskCreatedAt, attachments}`,
   where each input has `kind`, `name`, `mimeType`, `size` and an inline `dataUrl`.
   It returns `{success: true, data: TaskRoomAttachment[]}`. Limits are five files,
-  5 MiB each and 15 MiB decoded total. An image's bytes must carry the declared
-  image type's signature. This exact POST has a 22 MiB JSON body
+  5 MiB each and 15 MiB decoded total. An image's bytes must start with the
+  declared image type's signature (a prefix check, not a full decode). This exact POST has a 22 MiB JSON body
   ceiling; it retains the standard mutation rate budget.
 - `GET /api/tasks/:taskId/room/attachments/:attachmentId?taskCreatedAt=...`
   returns authenticated bytes as `application/octet-stream`, with `nosniff`,
@@ -1103,10 +1103,13 @@ reacted. The stored message row is never rewritten.
   as images, PDF, text, Markdown, CSV or JSON (`400 project_room_invalid`). An
   uploaded file can be sent only by the person who uploaded it, in one
   message, in the room it was uploaded to. Its bytes can be read only while
-  that message stands. An image's bytes must carry the declared image type's
-  signature. Each uploader may hold 1280 files in a room. Deleting a message
+  that message stands. An image's bytes must start with the declared image
+  type's signature (a prefix check, not a full image decode). Each uploader may hold 1280 files in a room. Deleting a message
   releases its files, and each upload first releases that uploader's unsent
-  files older than a day; shared bytes are removed once no file names them.
+  files older than a day. Releasing frees files and quota, never bytes: the
+  deduplicated byte store is shared across processes, so released bytes stay
+  until its own age and size retention (90 days, 512 MiB by default) reclaims
+  them (#4942).
   Account-bound devices may read room files, and send messages, reactions,
   edits and files once the operator grants the device operate scope (account
   binding starts read-only); unlike Task-room files, these never reach an
