@@ -737,22 +737,26 @@ session's own continuity, which
   quarter second earlier for Station reading a notice late, so consecutive
   windows tile time and a point belongs to one turn at most. Only a prompt's
   first notice counts: Grok restates the running prompt, and while a cancel
-  finishes it still names the old one. The times are compared only while
-  Grok's clock is within half a second of Station's, measured from the
-  `_meta.agentTimestampMs` Grok stamps on its frames; an engine whose clock
-  is further off, or that stamped none, fails the rewind before anything is
-  sent. That point's preview must also be the one Grok lists for the turn's
-  text (its first non-empty line, cut to 57 characters plus `...` when
-  longer than 60); Station puts the same ambient line (the timezone) first
-  in every prompt, so the preview alone rarely tells turns apart. Every turn
-  from the chosen one to the last must resolve this way, each to its own
-  point, except that a later turn that is a slash command may have none
+  finishes it still names the old one. A point's time is read on Station's
+  clock, less how far Grok's clock is from it, measured from the
+  `_meta.agentTimestampMs` Grok stamps on its frames (the largest recent
+  reading, since transit, Station's own lag and a load's replayed frames
+  only lower it); a reading more than half a second off, or none at all,
+  fails the rewind before anything is sent. That point's preview must also
+  be the one Grok lists for the turn's text (its first non-empty line, cut
+  to 57 characters plus `...` when longer than 60); Station puts the same
+  ambient line (the timezone) first in every prompt, so the preview alone
+  rarely tells turns apart. The turn before the chosen one and every turn
+  after it must resolve the same way, each to its own point, except that a
+  turn other than the chosen one that is a slash command may have none
   (Grok can run one itself). Otherwise the rewind fails with nothing
   changed: no point in a window, two, or a preview that differs. So a turn
-  Grok never made a point for (a prompt hook blocked it) cannot be rewound
-  to, nor can any turn before it while it stays in the conversation. A point
-  copied into a fork carries no time and never matches, and a prompt that
-  opens with a tag block Grok strips from its preview never matches either.
+  Grok made no point for (a prompt hook blocked it) cannot be rewound to,
+  and while it stays in the conversation neither can the turn before it or
+  any turn earlier; a notice Station reads more than about a quarter second
+  late also fails the rewind. A point copied into a fork carries no time and
+  never matches, and a prompt that opens with a tag block Grok strips from
+  its preview never matches either.
   The chosen point's `prompt_index` is the one sent. It then sends `_x.ai/rewind/execute { sessionId,
   targetPromptIndex, force: false, mode: 'all' }`, Grok's dry run. When that
   names `conflicts` (files changed outside Grok since the turn, which

@@ -137,10 +137,11 @@ frames, scrubbed of host paths, ids and private names, are
   point, so points cannot be counted. Grok runs one prompt at a time, so a
   Station turn's point is the one made in its window, from its prompt's
   first notice to the next prompt's (both moved a quarter second earlier,
-  so windows tile), read only while Grok's stamped clock is within half a
-  second of Station's; its `prompt_preview` must also match, and every later
-  turn must resolve the same way (a later slash command may have no point),
-  or nothing is sent. Previews alone do not tell turns apart: Station's
+  so windows tile), with the point's time read on Station's clock less
+  Grok's stamped clock offset, and only while that offset is within half a
+  second; its `prompt_preview` must also match, and the turn before it and
+  every later turn must resolve the same way (another turn that is a slash
+  command may have no point), or nothing is sent. Previews alone do not tell turns apart: Station's
   ambient timezone line opens every prompt. A rewind is a dry run
   (`force: false`) first; files changed outside the engine since then fail
   it rather than being overwritten. A fork copies through the named prompt,
