@@ -521,6 +521,60 @@
       "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
       "src-ui/src/views/ProjectPage.tsx",
       "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "child-chat-dark-1440": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
+    ],
+    "child-chat-light-1440": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
+    ],
+    "child-chat-dark-412": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
+    ],
+    "child-chat-light-412": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
+    ],
+    "child-chat-dark-390": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
+    ],
+    "child-chat-light-390": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
     ]
   }
 }

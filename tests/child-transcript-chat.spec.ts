@@ -3,12 +3,19 @@ import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { expect } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
-import { seedMobileTaskSwitcher } from './helpers/chat-shell-fixture';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
-import { installMockOrchestrationSse } from './helpers/orchestration';
+import {
+  dismissSetupLauncher,
+  installMockOrchestrationEventWindow,
+  installMockOrchestrationSse,
+  seedActiveChats,
+  seedOrchestrationRoutes,
+} from './helpers/orchestration';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 
 const parent = 'conv-running';
+const parentTitle =
+  'Parent chat with a long title that must truncate without clipping navigation';
 const child: ChildWorkItem = {
   producer: 'engine-subagent',
   reporterThreadId: parent,
@@ -19,7 +26,20 @@ const child: ChildWorkItem = {
   result: { summary: 'Files reviewed', source: 'child-message' },
 };
 async function seed(page: import('@playwright/test').Page) {
-  await seedMobileTaskSwitcher(page);
+  await seedOrchestrationRoutes(page);
+  await seedActiveChats(page, [
+    {
+      sessionId: parent,
+      conversationId: parent,
+      title: parentTitle,
+      agentSlug: 'dev-agent',
+      provider: 'codex',
+      model: 'model-selected',
+      orchestrationSessionStarted: true,
+      ephemeralMessages: [],
+      inputHistory: [],
+    },
+  ]);
   await installMockOrchestrationSse(page);
   const turns = buildLongSessionTurns({
     threadId: parent,
@@ -36,10 +56,13 @@ async function seed(page: import('@playwright/test').Page) {
     method: 'child-work.updated',
     delta: { kind: 'upsert', item: child },
   });
+  await installMockOrchestrationEventWindow(page, 'codex', {
+    [parent]: turns.flat(),
+  });
   await mockRuntimeConversation(page, {
     id: parent,
-    title: 'Parent chat',
-    agentSlug: 'station',
+    title: parentTitle,
+    agentSlug: 'dev-agent',
     provider: 'codex',
     model: 'model-selected',
     canContinue: true,
@@ -49,8 +72,8 @@ async function seed(page: import('@playwright/test').Page) {
     threadId: parent,
     conversationId: parent,
     provider: engineId('codex'),
-    assignedAgentSlug: agentId('station'),
-    displayTitle: 'Parent chat',
+    assignedAgentSlug: agentId('dev-agent'),
+    displayTitle: parentTitle,
     controlMode: 'station-owned',
     answerability: { answerable: true },
     status: 'ready',
@@ -61,6 +84,9 @@ async function seed(page: import('@playwright/test').Page) {
     isPersisted: true,
     eventCount: 3,
   };
+  await page.route('**/api/orchestration/sessions/read-model', (route) =>
+    route.fulfill({ json: { success: true, data: [session] } }),
+  );
   await page.route(`**/api/orchestration/sessions/${parent}`, (route) =>
     route.request().method() === 'GET'
       ? route.fulfill({
@@ -115,14 +141,17 @@ for (const viewport of [
       await page.setViewportSize(viewport);
       await seed(page);
       await page.addInitScript(
-        (value) => localStorage.setItem('theme', value),
+        (value) =>
+          localStorage.setItem(
+            'station-device-settings-v1',
+            JSON.stringify({ version: 2, values: { theme: value } }),
+          ),
         theme,
       );
-      await page.goto(`/?dock=bottom&maximize=true&chat=${parent}`);
+      const childUrl = `/?dock=open&chat=${parent}&surface=chat&session=${parent}&child=child-review&childTitle=Review+files`;
+      await page.goto(childUrl);
+      await dismissSetupLauncher(page);
       const log = page.getByRole('log', { name: 'Conversation transcript' });
-      await expect(log).toContainText('Parent answer with a child review.');
-      await log.getByRole('button', { name: /Review files/ }).click();
-      await log.getByRole('button', { name: 'Open chat', exact: true }).click();
       const trail = page.getByRole('navigation', { name: 'Chat breadcrumb' });
       await expect(trail).toContainText('Review files');
       const childLog = page.getByRole('log', {
@@ -135,13 +164,30 @@ for (const viewport of [
       await page.screenshot({
         path: testInfo.outputPath(`child-chat-${viewport.width}-${theme}.png`),
       });
-      await trail.getByRole('button', { name: /Parent chat|New chat/ }).click();
-      await expect(
-        page.getByRole('navigation', { name: 'Chat breadcrumb' }),
-      ).toHaveCount(0);
-      await expect(
-        page.getByRole('log', { name: 'Conversation transcript' }),
-      ).toContainText('Parent answer with a child review.');
+      for (const name of ['Back to parent chat', parentTitle]) {
+        const control = trail.getByRole('button', { name, exact: true });
+        const box = (await control.boundingBox())!;
+        expect(box.width).toBeGreaterThanOrEqual(44);
+        expect(box.height).toBeGreaterThanOrEqual(44);
+        expect(
+          await control.evaluate((button) => {
+            const box = button.getBoundingClientRect();
+            return button.contains(
+              document.elementFromPoint(
+                box.x + box.width / 2,
+                box.y + box.height / 2,
+              ),
+            );
+          }),
+        ).toBe(true);
+        await control.click();
+        await expect(trail).toHaveCount(0);
+        await expect(log).toContainText('Parent answer with a child review.');
+        if (name === 'Back to parent chat') {
+          await page.goto(childUrl);
+          await expect(trail).toBeVisible();
+        }
+      }
     });
   }
 }
