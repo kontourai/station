@@ -15,6 +15,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+// @ts-expect-error no type declarations for 'jsdom' in the UI typecheck lane
 import { JSDOM } from 'jsdom';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
