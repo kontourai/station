@@ -318,6 +318,7 @@ export function upsertBacklogIssue({
   reportPath,
   head = execFileSync('git', ['rev-parse', 'HEAD'], {
     encoding: 'utf8',
+    windowsHide: true,
   }).trim(),
   gh = runGh,
 }) {
@@ -387,6 +388,7 @@ function main() {
       buildBacklogReport(result, {
         revision: execFileSync('git', ['rev-parse', 'HEAD'], {
           encoding: 'utf8',
+          windowsHide: true,
         }).trim(),
       }),
     );

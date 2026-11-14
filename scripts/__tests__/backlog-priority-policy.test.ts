@@ -1,15 +1,9 @@
 import { spawnSync } from 'node:child_process';
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
-import { afterAll, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   BACKLOG_ISSUE_OFFENDERS,
   BACKLOG_ISSUE_TITLE,
@@ -21,6 +15,7 @@ import {
   upsertBacklogIssue,
 } from '../backlog-priority-policy.mjs';
 
+const makeTempDir = trackTempDirs();
 const [p1, p2, p3] = BACKLOG_POLICY.priorities;
 const [blocked, epic, decisionNeeded, acceptanceNeeded] =
   BACKLOG_POLICY.nonActionableDispositions;
@@ -151,7 +146,7 @@ describe('backlog priority policy', () => {
     const result = spawnSync(
       process.execPath,
       ['scripts/backlog-priority-policy.mjs'],
-      { encoding: 'utf8', env },
+      { encoding: 'utf8', env, windowsHide: true },
     );
     expect(result.status).not.toBe(0);
     // The remedy, not just the mechanism: a reader who has only ever run this
@@ -172,12 +167,6 @@ describe('backlog priority policy', () => {
   });
 
   describe('completeness of the live read', () => {
-    const directories: string[] = [];
-    afterAll(() => {
-      for (const directory of directories)
-        rmSync(directory, { recursive: true, force: true });
-    });
-
     function connection(nodes: object[], totalCount: number) {
       return JSON.stringify({
         data: {
@@ -206,8 +195,7 @@ describe('backlog priority policy', () => {
       response: string,
       { failure = false, summary = '', args = [] as string[] } = {},
     ) {
-      const directory = mkdtempSync(join(tmpdir(), 'backlog-gate-'));
-      directories.push(directory);
+      const directory = makeTempDir('backlog-gate-');
       writeFileSync(
         join(directory, 'gh'),
         failure
@@ -222,6 +210,7 @@ describe('backlog priority policy', () => {
         ['scripts/backlog-priority-policy.mjs', ...args],
         {
           encoding: 'utf8',
+          windowsHide: true,
           env: {
             ...env,
             ...(summary ? { GITHUB_STEP_SUMMARY: summary } : {}),
@@ -258,8 +247,7 @@ describe('backlog priority policy', () => {
     // refuses everything; an unclassified issue also has to still be
     // REPORTED, so the completeness check cannot swallow the findings.
     test('a complete read reports its findings and exits 0', () => {
-      const directory = mkdtempSync(join(tmpdir(), 'backlog-summary-'));
-      directories.push(directory);
+      const directory = makeTempDir('backlog-summary-');
       const summary = join(directory, 'summary.md');
       const report = join(directory, 'report.md');
       const result = runWithStubbedGh(
@@ -268,6 +256,7 @@ describe('backlog priority policy', () => {
       );
       const head = spawnSync('git', ['rev-parse', 'HEAD'], {
         encoding: 'utf8',
+        windowsHide: true,
       }).stdout.trim();
       expect(readFileSync(report, 'utf8')).toContain(
         `<!-- backlog-policy findings=1 revision=${head} -->`,
@@ -295,8 +284,7 @@ describe('backlog priority policy', () => {
     // live-label drift and a malformed manifest exit non-zero there, before
     // the report-only policy runs.
     test('label drift and a malformed manifest still fail the label check', () => {
-      const directory = mkdtempSync(join(tmpdir(), 'backlog-labels-'));
-      directories.push(directory);
+      const directory = makeTempDir('backlog-labels-');
       const manifest = JSON.parse(
         readFileSync('.github/labels.json', 'utf8'),
       ) as { labels: { name: string; color: string; description: string }[] };
@@ -314,7 +302,7 @@ describe('backlog priority policy', () => {
         return spawnSync(
           process.execPath,
           ['scripts/label-manifest.mjs', `--input=${input}`],
-          { encoding: 'utf8' },
+          { encoding: 'utf8', windowsHide: true },
         );
       };
       expect(check(live).status).toBe(0);
@@ -328,14 +316,13 @@ describe('backlog priority policy', () => {
       expect(truncated.status).not.toBe(0);
       expect(truncated.stderr).toContain('Missing live labels: P1.');
       // The manifest itself is read from the working directory.
-      const root = mkdtempSync(join(tmpdir(), 'backlog-manifest-'));
-      directories.push(root);
+      const root = makeTempDir('backlog-manifest-');
       mkdirSync(join(root, '.github'));
       writeFileSync(join(root, '.github', 'labels.json'), '{"labels": 1}');
       const malformed = spawnSync(
         process.execPath,
         [resolve('scripts/label-manifest.mjs')],
-        { cwd: root, encoding: 'utf8' },
+        { cwd: root, encoding: 'utf8', windowsHide: true },
       );
       expect(malformed.status).not.toBe(0);
       expect(malformed.stderr).toContain('schemaVersion 1');
@@ -383,14 +370,8 @@ describe('backlog priority policy', () => {
     const many = Array.from({ length: 120 }, (_, index) =>
       issue(1000 + index, []),
     );
-    const directories: string[] = [];
-    afterAll(() => {
-      for (const directory of directories)
-        rmSync(directory, { recursive: true, force: true });
-    });
     const write = (body: string) => {
-      const directory = mkdtempSync(join(tmpdir(), 'backlog-issue-'));
-      directories.push(directory);
+      const directory = makeTempDir('backlog-issue-');
       const path = join(directory, 'report.md');
       writeFileSync(path, body);
       return path;
