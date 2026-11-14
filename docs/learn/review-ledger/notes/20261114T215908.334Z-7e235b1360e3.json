@@ -1,0 +1,7 @@
+{
+  "revision": "bba211df7703cac944a969178b8f452d2bf1c340",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked against run-e2e-suite.mjs: only the manifest gate now reads STATION_QUALIFICATION_MANIFEST_DIR through the shared helper; suites, specs, reporters and reports are unchanged. No prose change needed.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/run-e2e-suite.mjs"]}
+  ]
+}
