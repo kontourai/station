@@ -21,6 +21,23 @@ is enabled.
 
 ### Current bounded progress (2026-11-14)
 
+At `690d47d6a47c`, native provider approval has a distinct producer-bound profile:
+the actual expected image/executable/CLI/preparer must match the approved record,
+and native tools remain empty even under a matching options digest. SDK and
+native resolution cannot substitute for each other; actual SDK-owner creation
+also refuses a native approval. The two owner suites pass 146 cases. Three
+isolated guard faults are caught, source restoration is byte-exact and four
+selected restored controls pass. Server-test typing passes. These synthetic
+registry fixtures issue no production approval or source grant.
+
+The next native admission work must introduce genuine single-Task source custody.
+`LocalSourceAdmissionOwner` currently binds group/work-item subjects, and its
+generic private-v1 prototype wire explicitly grants no provider execution.
+Neither that port nor an SDK source lease may be relabeled for native use. Native
+source injection, execution-resolution binding, reservation and retained
+accounting, Codex pricing and full local/peer/SSH acceptance remain unfinished.
+Both production qualification flags stay false.
+
 Main through `c56bb322d4f0` is integrated at `c158b8fa009a`; the two-file
 session-state/channel selection passes all 126 cases. Native cleanup is
 independently submitted as [PR #4957](https://github.com/kontourai/station/pull/4957)

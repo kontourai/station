@@ -138,6 +138,35 @@ documents that `max_output_tokens` includes reasoning and visible output. That
 does not supply a complete tariff, model entitlement or approved qualification
 record. Responses pricing, source admission and native issuance remain open.
 
+### Native qualification records
+
+The separate `native-text-single-request-v1` contract is resolved through
+[`resolveBoundedNativeApiProviderContract`](../../src-server/runtime/conversation/bounded-api-provider-contract.ts).
+Its caller must supply the expected server-owned image, executable, CLI version
+and request-preparation identity. The approved registry record must match all of
+them and include the executable, image and preparation hashes in its source set.
+The `sdkPackage` binding names the actual platform distribution for this profile;
+the current implementation accepts only the Claude Linux/arm64 package. It does
+not relabel a native client as the AI SDK.
+
+Native contracts require streaming text with an empty tool array. SDK resolution
+and SDK source-owner creation refuse native approvals. Native resolution refuses
+SDK approvals. Existing provider usage validation and tariff accounting apply;
+retained historical pricing remains inert after registry revocation. There is no
+default registry, production approval, native source grant or paid launch in this
+module. Hash membership validates the supplied approval's binding; it does not
+independently prove image construction or runtime confinement.
+
+At `690d47d6a47c`, the two contract/SDK-owner suites pass 146 cases. Separate
+producer-comparison, SDK-separation and native-tool-check faults each fail their
+intended API assertion. Byte-exact restoration passes the four selected positive
+and refusal cases. These are synthetic registry fixtures, not provider evidence.
+Server-test typing passes. Native source admission and physical reservation remain
+unfinished: the existing SDK source lease and private prototype wire cannot be
+used as a native grant, and a single Task must not be given invented group/seat
+identities to enter the group-only source API. Codex/Responses qualification and
+the full inherited-authority acceptance remain open.
+
 ## Evidence and limits
 
 The [real-worker process tests](../../src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts)
