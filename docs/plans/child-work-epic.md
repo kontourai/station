@@ -19,7 +19,31 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
-### Route-assessment reduction and remaining caller failure (2026-11-14)
+### Current bounded progress (2026-11-14)
+
+At `7db32856ab53`, all eleven finalizer cases and both full controlled report-input
+journeys pass with their original workloads and deadlines. The lost-reappraisal
+caller passes at 55.03 seconds under its unchanged sixty-second bound. Earlier
+timing failures remain retained; this is not live billing or whole-epic
+qualification. The detailed caller and fixture-restoration checkpoint below
+records the scope.
+
+[PR #4955](https://github.com/kontourai/station/pull/4955) independently extracts
+the missing child-tool-text presentation fix. GitHub confirms it merged on
+2026-11-14 at 11:24:12 UTC as `e3ee3c6962d4a4c7ed978eb3d24f835825fdd813`.
+Its submitted head `9010345d81e2` integrated main, passed normal hooks and local
+readiness, and retained inspected before/after images. The landing closes that
+bounded presentation slice, not this epic.
+
+The preserved lane now includes same-live-owner native namespace cleanup at
+`d7b558f07495`. Four actual create-only Docker controls pass, a recovery-nonce
+fault is caught at the foreign-identity assertion, and byte-exact restoration
+passes those controls plus all six existing channel process cases. No worker,
+native engine or model starts in these lifecycle controls. Controller-death and
+lost-removal recovery, native funding/issuance, full local/peer/SSH enforcement
+and two-family portable acceptance remain open. Both production flags stay false.
+
+### Earlier route-assessment reduction and caller failure (2026-11-14)
 
 At `b855e4e33aaa`, ordinary route assessment defers its duplicate credential
 validity fallback to the mandatory current effective-scope lookup. Earlier
