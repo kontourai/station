@@ -194,15 +194,15 @@ emits the terminal event if the execution ended while the feed was down.
 
 - The session's own asks and forms come from its own lists
   (`GET /api/session/{id}/permission`, `/form`), which follow it to wherever it
-  moved. They are read first, so a failed descendant lookup does not lose
-  them.
+  moved.
 - Descendants (children, and their children at any depth) are looked up by
   `parentID` from the session down, at most 200 in all. Past that the walk
-  stops and a warning says so. A descendant known before the gap that ran
-  neither then nor now started nothing in the gap, so its own children are not
-  looked up. One running now is reported as running child work, and one
-  reported running that ended in the gap is settled with the outcome OpenCode
-  kept.
+  stops and a warning says so. Every descendant is looked up, including one
+  that was idle before and after the gap: OpenCode's subagent tool resumes an
+  existing child (`sessionID`), so a parent may have woken it during the gap,
+  and it may have started a child of its own and gone idle again. One running
+  now is reported as running child work, and one reported running that ended
+  in the gap is settled with the outcome OpenCode kept.
 - Descendants' asks and forms come from the server-wide lists
   (`GET /api/permission/request`, `GET /api/form`), kept only for this tree,
   since a server can run other chats' sessions. Those lists hold only the
@@ -211,8 +211,12 @@ emits the terminal event if the execution ended while the feed was down.
   own lists. Directories are compared at their real paths: OpenCode reports a
   move as it was asked (`/tmp`, not `/private/tmp`).
 
-A failure in any of these is reported in a warning, and the session's own turn
-is still caught up.
+Each of these reads stands on its own: whether the session runs, its history,
+each of its own lists, each descendant lookup, each server-wide list, each
+descendant's own lists, and the inbox. One that fails is reported in a warning
+of its own and the others still run. A failed lookup leaves out only that
+descendant's children. What needs a failed read is left as it was: without
+the running list, no child and no turn is settled and no steer is resolved.
 
 ## Governance
 
@@ -261,10 +265,20 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   plugins) without asking (`openCodeNativeAskNeedsPerson`, the native
   counterpart of the ACP path's `openCodeEditNeedsPerson`). Otherwise, a
   session grant or the mode (full access answers everything, Auto answers
-  `edit`) answers `once`. Otherwise a person decides. An automatic answer
-  OpenCode refuses (other than a 404 for an ask already gone) is put to the
-  person, so the ask never waits hidden. Station never answers `always`
-  (ruling R4).
+  `edit`) answers `once`. Otherwise a person decides, except in a delegated
+  session whose delegation sets `denyApprovals`: nobody can answer it, so the
+  ask is rejected at once with the delegated denial as OpenCode's feedback,
+  at the point where the ACP adapter declines it (after the policy, a grant
+  and the mode). Such a session's questions are cancelled, as ACP declines
+  them. Station never answers `always` (ruling R4).
+- **An automatic answer OpenCode refuses** (other than a 404 for an ask
+  already gone): a `once` is put to the person, so the ask never waits
+  hidden. A rejection (the policy's deny, the agent's kept deny, the #4828
+  decline, a delegated session's decline) is sent once more. Refused again,
+  it fails closed: it is never shown to a person who could allow it. Station
+  interrupts the session's execution, and the asking descendant's, which
+  drops the ask. It ends the turn with a `runtime.error` that gives the reason
+  for the rejection. A later re-list does not reopen the ask.
 - **After an untrusted read** (#4828), an `edit` ask from the session or a
   descendant that names a known agent-instruction or git-hook file, as a
   resource or in `metadata.files`, is rejected before any deny check, staged
@@ -285,17 +299,27 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   `session.tool.input.started`, such as `shell`, `edit` or an MCP tool's
   `<server>_<tool>`), the call's input from `session.tool.called` (the ask's
   metadata when that is not known), the Agent, the conversation and its
-  delegation, as an external interaction. The order follows ACP's: the #4828
-  decline first, then the asking agent's kept deny (native only; over ACP
+  delegation, as an external interaction. The ask must fit that tool: its
+  action is one the tool asks for in 2.3.0 (its own name, which is also an
+  MCP tool's action, or `edit`, `external_directory`, `skill` or `webfetch`
+  for the tools that ask those, `openCodeAskFitsTool`), and its message is
+  the tool call's when both name one. Code Mode runs its nested calls under
+  the `execute` call's own id and message, so a nested ask names `execute`.
+  An ask that does not fit is treated as one whose tool OpenCode did not
+  name. An evaluator that throws, at once or later, denies. The order
+  follows ACP's: the #4828 decline first, then the asking agent's kept deny (native only; over ACP
   OpenCode enforces it), then the policy. Its deny rejects the ask with its
   reason as OpenCode's feedback, which fails the tool with that text and lets
   the turn go on (a live 2.3.0 test); ACP's decline carries no reason. Its
-  allow answers `once`, except for a request addressed to a person or one the
-  configuration-edit guard gives a person, which ACP's `needsPerson` also
+  allow answers `once`, except for a request addressed to a person (a tool
+  named as a plan exit or a question, `toolRequestNeedsPerson`, which
+  matches in any casing or separator, so an MCP tool `exit_plan_mode` too)
+  or one the configuration-edit guard gives a person, which ACP's `needsPerson` also
   holds back. Its required ask goes to the person. Anything else goes on to
   the grant, the mode or the person below. An ask whose tool OpenCode did not
   name (one raised during a feed gap is the usual case) cannot be put to the
-  policy, and goes to the person; ACP, given no tool name, skips the policy
+  policy, and goes to the person (rejected instead in a delegated session
+  that may not grant approvals); ACP, given no tool name, skips the policy
   and lets a grant or the mode answer. Under full access OpenCode asks only
   where the agent's own rules say ask, and ACP's full-access launch
   configuration allows every action (`stationOpenCodeApprovalConfig`), so on

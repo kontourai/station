@@ -112,8 +112,10 @@ Over ACP it is the `requestPermission` path above. On its native transport it
 runs on each OpenCode permission ask, the session's or a descendant's, in
 ACP's order, with OpenCode's own name for the asking tool (the name its ACP
 layer reports). The same coverage limit applies: only calls OpenCode asks
-about, whose tool it names, enter the check, and an unnamed ask goes to a
-person. A native deny reaches the model as the tool's failure with its reason
+about, whose tool it names, enter the check. An unnamed ask, or one that does
+not fit the tool recorded for its call (a Code Mode nested call names the
+`execute` call), goes to a person, or is rejected in a delegated session that
+may not grant approvals. A native deny reaches the model as the tool's failure with its reason
 ([OpenCode native transport](../decisions/opencode-native-transport.md#governance)). Codex
 has no general Station pre-tool interception seam. Its preview bound browser
 and device dynamic calls pass through the staged evaluator and Station's
