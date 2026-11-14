@@ -15,7 +15,12 @@ import { canonicalJson } from '@kontourai/relay';
 import { RESERVED_SOURCE_EXECUTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { onTestFinished, test, vi } from 'vitest';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
-import { quoteBoundedApiProviderAttempt } from '../../../runtime/conversation/bounded-api-provider-contract.js';
+import {
+  BoundedApiProviderContractError,
+  type BoundedNativeProducerBinding,
+  quoteBoundedApiProviderAttempt,
+  resolveBoundedNativeApiProviderContract,
+} from '../../../runtime/conversation/bounded-api-provider-contract.js';
 import { reportInputToolDefinition } from '../../../runtime/conversation/report-input-profile.js';
 import { reservedStationSessionRecipient } from '../../../runtime/conversation/reserved-station-turn.js';
 import { RoundsFinalFetchLaunchFence } from '../delegation-group-launch-fence.js';
@@ -50,6 +55,46 @@ import {
 
 const sdkCode = (code: string) => (e: unknown) =>
   e instanceof SdkSourceRefusal && e.code === code;
+
+test('SDK source creation refuses a native approval before transport', async () => {
+  const f = await sdkFixture();
+  const sha = (text: string) => createHash('sha256').update(text).digest('hex');
+  const producer: BoundedNativeProducerBinding = {
+    engine: 'claude',
+    cliVersion: '2.1.322',
+    executableSha256: sha('synthetic-native-executable'),
+    imageId: `sha256:${sha('synthetic-native-image')}`,
+    preparationSha256: sha('synthetic-native-preparer'),
+  };
+  f.q.binding.sdkPackage = '@anthropic-ai/claude-agent-sdk-linux-arm64';
+  f.q.binding.sdkVersion = '0.3.322';
+  f.q.raw.evidence.sourceSha256s.push(
+    producer.executableSha256,
+    producer.imageId.slice(7),
+    producer.preparationSha256,
+  );
+  f.q.publishFixture(
+    JSON.stringify({
+      ...f.q.raw,
+      schema: 'native-text-single-request-v1',
+      nativeProducer: producer,
+    }),
+  );
+  const contract = resolveBoundedNativeApiProviderContract(
+    f.q.raw.id,
+    f.q.binding,
+    producer,
+    f.q.owner,
+    1000,
+  );
+  assert.throws(
+    () => createPreparedSdkSourceWireOwner({ ...f.configuration, contract }),
+    (error: unknown) =>
+      error instanceof BoundedApiProviderContractError &&
+      error.code === 'binding_mismatch',
+  );
+  assert.equal(f.starts, 0);
+});
 for (const scenario of [
   'complete',
   'truncated',

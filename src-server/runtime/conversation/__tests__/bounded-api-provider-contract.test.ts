@@ -8,12 +8,14 @@ import {
   type BoundedApiProviderBinding,
   BoundedApiProviderContractError,
   type BoundedApiQualificationRegistryOwner,
+  type BoundedNativeProducerBinding,
   boundedApiWireOptionsSha256,
   captureBoundedApiHistoricalPricing,
   priceBoundedApiHistoricalRawUsage,
   priceBoundedApiProviderRawUsage,
   quoteBoundedApiProviderAttempt,
   resolveBoundedApiProviderContract,
+  resolveBoundedNativeApiProviderContract,
 } from '../bounded-api-provider-contract.js';
 
 // Synthetic fixtures only: none of these names, tariffs, source hashes or
@@ -177,6 +179,142 @@ function refused(action: () => unknown, code: BoundedApiContractFailure): void {
 }
 const quoteFixture = (f: ReturnType<typeof fixture>) =>
   quoteBoundedApiProviderAttempt(f.resolve(), f.wire, remaining, NOW);
+
+function nativeFixture() {
+  const f = fixture();
+  const producer: BoundedNativeProducerBinding = {
+    engine: 'claude',
+    cliVersion: '2.1.322',
+    executableSha256: sha('synthetic-native-executable'),
+    imageId: `sha256:${sha('synthetic-native-image')}`,
+    preparationSha256: sha('synthetic-native-preparer'),
+  };
+  f.binding.sdkPackage = '@anthropic-ai/claude-agent-sdk-linux-arm64';
+  f.binding.sdkVersion = '0.3.322';
+  f.raw.evidence.sourceSha256s.push(
+    producer.executableSha256,
+    producer.imageId.slice(7),
+    producer.preparationSha256,
+  );
+  const tools: unknown[] = [];
+  const nativeBody = { ...f.body, stream: true, tools };
+  const publish = () => {
+    f.wire.body = JSON.stringify(nativeBody);
+    f.binding.optionsSha256 = boundedApiWireOptionsSha256('anthropic', f.wire);
+    f.publishFixture(
+      JSON.stringify({
+        ...f.raw,
+        schema: 'native-text-single-request-v1',
+        nativeProducer: producer,
+      }),
+    );
+  };
+  publish();
+  return {
+    ...f,
+    producer,
+    nativeBody,
+    publish,
+    resolveNative: (expected = producer) =>
+      resolveBoundedNativeApiProviderContract(
+        f.raw.id,
+        f.binding,
+        expected,
+        f.owner,
+        NOW,
+      ),
+  };
+}
+
+test('native contract binds the approved image/executable/preparer and retains original raw accounting', () => {
+  const f = nativeFixture(),
+    contract = f.resolveNative();
+  const quote = quoteBoundedApiProviderAttempt(
+    contract,
+    f.wire,
+    remaining,
+    NOW,
+  );
+  assert.equal(quote.outputUpperBoundTokens, 10);
+  const raw = JSON.stringify(anthropicResponse());
+  const priced = priceBoundedApiProviderRawUsage(contract, quote, raw, NOW);
+  assert.equal(priced.costMicros, 43);
+  const history = captureBoundedApiHistoricalPricing(contract, quote, NOW);
+  assert.equal(
+    priceBoundedApiHistoricalRawUsage(history, quote, raw).costMicros,
+    43,
+  );
+  f.revoke();
+  assert.equal(
+    priceBoundedApiHistoricalRawUsage(history, quote, raw).costMicros,
+    43,
+  );
+  refused(
+    () => quoteBoundedApiProviderAttempt(contract, f.wire, remaining, NOW),
+    'untrusted_contract',
+  );
+});
+
+test('SDK and native approvals cannot be resolved as each other', () => {
+  const native = nativeFixture();
+  refused(() => native.resolve(), 'binding_mismatch');
+  const sdk = fixture();
+  refused(
+    () =>
+      resolveBoundedNativeApiProviderContract(
+        sdk.raw.id,
+        sdk.binding,
+        native.producer,
+        sdk.owner,
+        NOW,
+      ),
+    'binding_mismatch',
+  );
+});
+
+for (const field of [
+  'cliVersion',
+  'executableSha256',
+  'imageId',
+  'preparationSha256',
+] as const)
+  test(`native approval refuses actual producer ${field} replacement`, () => {
+    const f = nativeFixture();
+    const value =
+      field === 'cliVersion'
+        ? '2.1.323'
+        : field === 'imageId'
+          ? `sha256:${sha('foreign-image')}`
+          : sha('foreign-source');
+    refused(
+      () => f.resolveNative({ ...f.producer, [field]: value }),
+      'binding_mismatch',
+    );
+  });
+
+test('native executable evidence must be in the approved source set', () => {
+  const f = nativeFixture();
+  f.raw.evidence.sourceSha256s.splice(
+    f.raw.evidence.sourceSha256s.indexOf(f.producer.executableSha256),
+    1,
+  );
+  f.publish();
+  refused(() => f.resolveNative(), 'untrusted_contract');
+});
+
+test('native tool definitions refuse even when their options digest was approved', () => {
+  const f = nativeFixture();
+  f.nativeBody.tools.push({
+    name: 'web_search',
+    input_schema: { type: 'object' },
+  });
+  f.publish();
+  refused(
+    () =>
+      quoteBoundedApiProviderAttempt(f.resolveNative(), f.wire, remaining, NOW),
+    'unsupported_wire',
+  );
+});
 
 function inputToolFixture() {
   const f = fixture();

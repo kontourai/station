@@ -6,6 +6,7 @@ import { REPORT_GROUP_CONTEXT_LIMITS } from '@kontourai/station-contracts/report
 import { AnthropicSealedPreparation } from '../../runtime/conversation/anthropic-sealed-preparation.js';
 import {
   assertBoundedApiCredentialBinding,
+  assertBoundedApiSdkProfile,
   type BoundedApiAttemptQuote,
   type BoundedApiProvider,
   type BoundedApiRemainingEnvelope,
@@ -312,6 +313,7 @@ function createWireOwner(
     input.preparation.assertSelection(input.provider, input.modelId);
     readObservedSdkProviderCredential(input.credential, input.provider);
   } else {
+    assertBoundedApiSdkProfile(input.contract, input.now());
     assertBoundedApiCredentialBinding(
       input.contract,
       readObservedSdkProviderCredential(input.credential, input.provider),

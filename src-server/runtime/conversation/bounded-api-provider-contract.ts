@@ -39,8 +39,18 @@ export interface BoundedApiProviderBinding {
   sourceId: string;
   sourceRevision: string;
   optionsSha256: string;
+  /** Exact wire-producing distribution; native profiles name the platform package. */
   sdkPackage: string;
   sdkVersion: string;
+}
+
+/** Expected from server-owned native image preparation, never from a route DTO. */
+export interface BoundedNativeProducerBinding {
+  engine: 'claude';
+  cliVersion: string;
+  executableSha256: string;
+  imageId: string;
+  preparationSha256: string;
 }
 
 /** Trusted SERVER capability, never a deserialized client value or request option.
@@ -114,7 +124,11 @@ type Band = Readonly<{
   output: Rational;
 }>;
 type Facts = Readonly<{
-  profile: 'direct-text-single-request-v1' | 'report-input-single-request-v1';
+  profile:
+    | 'direct-text-single-request-v1'
+    | 'report-input-single-request-v1'
+    | 'native-text-single-request-v1';
+  nativeProducer?: Readonly<BoundedNativeProducerBinding>;
   binding: BoundedApiProviderBinding;
   maxInput: number;
   maxOutput: number;
@@ -392,17 +406,24 @@ function registryDigest(
     }),
   );
 }
-function officialEndpoint(binding: BoundedApiProviderBinding): void {
+function officialEndpoint(
+  binding: BoundedApiProviderBinding,
+  native: boolean,
+): void {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(binding.modelId))
     fail('invalid_contract');
   if (binding.provider === 'anthropic') {
     if (
       binding.endpointUrl !== 'https://api.anthropic.com/v1/messages' ||
       !/^\d{4}-\d{2}-\d{2}$/u.test(binding.apiVersion) ||
-      binding.sdkPackage !== '@ai-sdk/anthropic'
+      binding.sdkPackage !==
+        (native
+          ? '@anthropic-ai/claude-agent-sdk-linux-arm64'
+          : '@ai-sdk/anthropic')
     )
       fail('invalid_contract');
   } else if (binding.provider === 'google') {
+    if (native) fail('invalid_contract');
     const base = `https://generativelanguage.googleapis.com/v1beta/models/${binding.modelId}`;
     if (
       ![
@@ -424,6 +445,35 @@ export function resolveBoundedApiProviderContract(
   owner: BoundedApiQualificationRegistryOwner,
   nowMs: number,
 ): ResolvedBoundedApiProviderContract {
+  return resolveContract(id, expected, owner, nowMs);
+}
+
+/** Native approval additionally binds the actual executable, image and preparer.
+ * This validates a supplied approval; it cannot issue one or mint source authority. */
+// UNWIRED #91: production native source admission and reservation must use this distinct profile.
+export function resolveBoundedNativeApiProviderContract(
+  id: string,
+  expected: Readonly<BoundedApiProviderBinding>,
+  expectedProducer: Readonly<BoundedNativeProducerBinding>,
+  owner: BoundedApiQualificationRegistryOwner,
+  nowMs: number,
+): ResolvedBoundedApiProviderContract {
+  return resolveContract(
+    id,
+    expected,
+    owner,
+    nowMs,
+    readNativeProducer(expectedProducer),
+  );
+}
+
+function resolveContract(
+  id: string,
+  expected: Readonly<BoundedApiProviderBinding>,
+  owner: BoundedApiQualificationRegistryOwner,
+  nowMs: number,
+  expectedProducer?: Readonly<BoundedNativeProducerBinding>,
+): ResolvedBoundedApiProviderContract {
   integer(nowMs, 'invalid_contract');
   str(id, 'invalid_contract');
   const record = owner.read(id);
@@ -434,6 +484,13 @@ export function resolveBoundedApiProviderContract(
     record,
     nowMs,
   );
+  if (
+    expectedProducer
+      ? JSON.stringify(facts.nativeProducer) !==
+        JSON.stringify(expectedProducer)
+      : facts.nativeProducer !== undefined
+  )
+    fail('binding_mismatch');
   const handle = Object.freeze({
     id,
     revision,
@@ -456,6 +513,36 @@ export function resolveBoundedApiProviderContract(
     },
   });
   return handle;
+}
+
+function readNativeProducer(
+  value: unknown,
+): Readonly<BoundedNativeProducerBinding> {
+  const raw = closed(
+    value,
+    [
+      'engine',
+      'cliVersion',
+      'executableSha256',
+      'imageId',
+      'preparationSha256',
+    ],
+    [],
+    'invalid_contract',
+  );
+  if (
+    raw.engine !== 'claude' ||
+    !/^\d+\.\d+\.\d+$/.test(str(raw.cliVersion, 'invalid_contract')) ||
+    !/^sha256:[a-f0-9]{64}$/.test(str(raw.imageId, 'invalid_contract'))
+  )
+    fail('invalid_contract');
+  return Object.freeze({
+    engine: 'claude',
+    cliVersion: str(raw.cliVersion, 'invalid_contract'),
+    executableSha256: digest(raw.executableSha256, 'invalid_contract'),
+    imageId: str(raw.imageId, 'invalid_contract'),
+    preparationSha256: digest(raw.preparationSha256, 'invalid_contract'),
+  });
 }
 
 function readQualifiedFacts(
@@ -491,12 +578,13 @@ function readQualifiedFacts(
   const raw = closed(
     parse(record.serializedContract, 65536, 'invalid_contract'),
     ['schema', 'id', 'revision', 'binding', 'evidence', 'limits', 'tariff'],
-    [],
+    ['nativeProducer'],
     'invalid_contract',
   );
   if (
     (raw.schema !== 'direct-text-single-request-v1' &&
-      raw.schema !== 'report-input-single-request-v1') ||
+      raw.schema !== 'report-input-single-request-v1' &&
+      raw.schema !== 'native-text-single-request-v1') ||
     raw.id !== id
   )
     fail('invalid_contract');
@@ -537,7 +625,22 @@ function readQualifiedFacts(
     sdkPackage: fields.sdkPackage,
     sdkVersion: fields.sdkVersion,
   };
-  officialEndpoint(binding);
+  const nativeProducer =
+    raw.schema === 'native-text-single-request-v1'
+      ? readNativeProducer(raw.nativeProducer)
+      : undefined;
+  if (!nativeProducer && raw.nativeProducer !== undefined)
+    fail('invalid_contract');
+  if (
+    nativeProducer &&
+    [
+      nativeProducer.executableSha256,
+      nativeProducer.imageId.slice(7),
+      nativeProducer.preparationSha256,
+    ].some((source) => !record.sourceSha256s.includes(source))
+  )
+    fail('untrusted_contract');
+  officialEndpoint(binding, nativeProducer !== undefined);
   digest(binding.optionsSha256, 'invalid_contract');
   const evidence = closed(
     raw.evidence,
@@ -667,6 +770,7 @@ function readQualifiedFacts(
     fail('invalid_contract');
   const facts: Facts = {
     profile: raw.schema,
+    nativeProducer,
     binding: Object.freeze(binding),
     maxInput,
     maxOutput,
@@ -819,7 +923,7 @@ export function priceBoundedApiHistoricalRawUsage(
     const serialized = closed(
       parse(record.serializedContract, 65536, 'usage_unknown'),
       ['schema', 'id', 'revision', 'binding', 'evidence', 'limits', 'tariff'],
-      [],
+      ['nativeProducer'],
       'usage_unknown',
     );
     const rawBinding = closed(
@@ -934,6 +1038,15 @@ export function assertBoundedApiCredentialBinding(
     'credentialRevision',
   ] as const)
     if (facts.binding[key] !== observed[key]) fail('binding_mismatch');
+}
+
+/** SDK source preparation cannot consume an approval for a native producer. */
+export function assertBoundedApiSdkProfile(
+  handle: ResolvedBoundedApiProviderContract,
+  nowMs: number,
+): void {
+  if (current(handle, nowMs).nativeProducer !== undefined)
+    fail('binding_mismatch');
 }
 
 function wireHeaders(
@@ -1085,7 +1198,14 @@ function outputCap(body: Obj, facts: Facts): number {
     }
     closed(
       body,
-      ['model', 'max_tokens', 'messages', 'inference_geo', 'service_tier'],
+      [
+        'model',
+        'max_tokens',
+        'messages',
+        'inference_geo',
+        'service_tier',
+        ...(facts.nativeProducer ? ['tools', 'stream'] : []),
+      ],
       [
         'system',
         'stream',
@@ -1103,6 +1223,11 @@ function outputCap(body: Obj, facts: Facts): number {
       ],
       'unsupported_wire',
     );
+    if (
+      facts.nativeProducer &&
+      (body.stream !== true || canonical(body.tools ?? null) !== '[]')
+    )
+      fail('unsupported_wire');
     if (
       body.model !== binding.modelId ||
       body.inference_geo !== 'global' ||
