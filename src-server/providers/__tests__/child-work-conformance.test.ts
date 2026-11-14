@@ -408,6 +408,7 @@ async function remoteTaskAdapterRun(): Promise<CanonicalRuntimeEvent[]> {
   const turn = await adapter.sendTurn({
     threadId: 'remote-task-conformance',
     input: 'Fix the flaky test',
+    personText: 'Fix the flaky test',
   });
   const taskId = (turn.resumeCursor as { taskId: string }).taskId;
   devin.reply(taskId, 'Fixed it.');

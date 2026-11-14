@@ -20,7 +20,10 @@ export async function adoptRemoteTaskEngineWhenReady(deps: {
   readonly service: Pick<RemoteTaskEngineService, 'readyConnections'>;
   readonly configLoader: ConfigLoader;
   readonly reloadAgents: () => Promise<void>;
-}): Promise<NativeEngineAdoptionOutcome | 'not-ready'> {
+  /** Whether the managed policy's engine allow list admits `remote-task`. */
+  readonly engineAllowed: () => boolean;
+}): Promise<NativeEngineAdoptionOutcome | 'not-ready' | 'not-allowed'> {
+  if (!deps.engineAllowed()) return 'not-allowed';
   if (deps.service.readyConnections().length === 0) return 'not-ready';
   const outcome = await adoptNativeEngineConnection(
     deps.configLoader,

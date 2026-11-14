@@ -222,6 +222,27 @@ export class ProviderSessionStartingError extends SendTurnRefusedError {
   }
 }
 
+/** Refused because this engine takes only what a person typed. */
+export const PERSON_AUTHORED_TURN_REQUIRED_CODE =
+  'person-authored-turn-required';
+
+/**
+ * A start or send refused before any effect because the engine declares
+ * `turnAuthorship: 'person-only'` and the request is not a person's own
+ * (an agent, an automation, a schedule, a delegation, a review).
+ */
+export class PersonAuthoredTurnRequiredError extends SendTurnRefusedError {
+  readonly code = PERSON_AUTHORED_TURN_REQUIRED_CODE;
+
+  constructor() {
+    super(
+      'This engine sends work off this computer, so only a message a person types in Station chat can reach it.',
+      'permission_denied',
+    );
+    this.name = 'PersonAuthoredTurnRequiredError';
+  }
+}
+
 /**
  * A send whose session's engine start failed while it waited. Nothing was
  * sent; `reason` is short and user-facing (engine detail belongs in logs).
@@ -370,6 +391,15 @@ export interface ProviderAdapterMetadata {
    * plugin adapter claims no acknowledgement until it declares one.
    */
   approvalAcknowledgement?: ApprovalAcknowledgement;
+  /**
+   * `person-only`: only a session a person started in Station's chat, and
+   * only a turn a person typed there, may reach this engine (orchestration
+   * enforces it from the composer routes' person-start and person-typed
+   * marks). For
+   * an engine that sends work off this host: an agent, an automation, a
+   * schedule, a delegation or a review never can. Absent: no such rule.
+   */
+  turnAuthorship?: 'person-only';
 }
 
 export interface ProviderAdapterModelCatalog {

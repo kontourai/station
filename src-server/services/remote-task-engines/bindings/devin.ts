@@ -156,8 +156,12 @@ export const devinBinding: RemoteTaskBinding = {
     // running session reads the message while it works.
     followUp: 'steer',
     events: true,
-    // DELETE …/sessions/{devin_id} is "Terminate Session".
+    // DELETE …/sessions/{devin_id} is "Terminate Session": it ends the
+    // session, and "once terminated, a session cannot be resumed".
     cancel: true,
+    cancelEndsTask: true,
+    finishedAcceptsFollowUp: false,
+    requiresRepository: false,
     // No `model` or branch field on create; `repos` only.
     createOptions: { model: false, baseRef: false, createPullRequest: false },
     usageUnits: ['acu', 'usd'],

@@ -3,14 +3,19 @@
  * the provider adapter over `RemoteTaskEngineService`. A chat on it picks a
  * remote task connection as its "model"; its first turn creates the task,
  * later turns send follow-ups, and each turn's reply is the vendor's
- * messages, caught up until the task is idle, waiting for the person, or
- * finished. The work runs on the vendor's machines: Station sends only the
- * person's message (no instructions, tools or attachments), opens no
- * approval, and confines nothing.
+ * messages, caught up until the task rests. The work runs on the vendor's
+ * machines: Station sends only what a person typed (`personText`), opens no
+ * approval, and confines nothing. The adapter declares
+ * `turnAuthorship: 'person-only'`, so orchestration refuses any start or send
+ * that is not a person's own (an agent, a schedule, an automation, a
+ * delegation, a review).
  *
- * Polling is the turn's own: it runs only while a turn is open, so a chat
- * nobody is writing in costs no vendor quota. Every vendor call goes through
- * the service's gate (preview, managed policy, acknowledgement, credential).
+ * A turn shows everything the store holds after what the chat last showed,
+ * whoever synced it, and ends only once the vendor reacted to the message
+ * (a reply, or a status it did not have when the message was sent) and
+ * rests, or after its wake or work bound. It polls only while it is open,
+ * and reports the task's status as progress, so a quiet vendor never reads as
+ * a stalled turn.
  */
 import crypto from 'node:crypto';
 import {
@@ -26,9 +31,13 @@ import {
   isRemoteTaskTerminal,
   nextRemoteTaskPollDelay,
   REMOTE_TASK_POLLING_DEFAULT,
+  REMOTE_TASK_VENDOR_LABELS,
   type RemoteTask,
+  type RemoteTaskCapabilities,
   type RemoteTaskRepository,
   type RemoteTaskStatus,
+  type RemoteTaskStoredEvent,
+  type RemoteTaskVendorId,
 } from '@kontourai/station-contracts/remote-task-engine';
 import type {
   CanonicalRuntimeEvent,
@@ -39,6 +48,7 @@ import { FeaturePreviewDisabledError } from '../../services/feature-previews/fea
 import { RemoteTaskError } from '../../services/remote-task-engines/remote-task-error.js';
 import type { RemoteTaskEngineService } from '../../services/remote-task-engines/service.js';
 import {
+  PersonAuthoredTurnRequiredError,
   type ProviderAdapterMetadata,
   type ProviderAdapterShape,
   type ProviderInterruptTurnResult,
@@ -55,12 +65,21 @@ export const REMOTE_TASK_PROVIDER = 'remote-task';
 
 /** Statuses after which the vendor does nothing more until someone writes. */
 const TURN_ENDING: readonly RemoteTaskStatus[] = ['idle', 'waiting-for-user'];
-/**
- * Right after a follow-up the vendor may still report its previous idle or
- * finished state. A turn ends on such a state only once it has seen the task
- * work (or reply), or after this many polls without either.
- */
-const IDLE_POLLS_BEFORE_ENDING = 3;
+
+export interface RemoteTaskTurnBounds {
+  /** A turn whose message the vendor has not reacted to by then ends "still waking". */
+  readonly wakeMs: number;
+  /** A turn still working by then ends "still working"; the task goes on. */
+  readonly workMs: number;
+  /** The longest gap between a turn's polls, under the turn-stall window. */
+  readonly pollCeilingMs: number;
+}
+
+export const REMOTE_TASK_TURN_BOUNDS: RemoteTaskTurnBounds = Object.freeze({
+  wakeMs: 10 * 60_000,
+  workMs: 60 * 60_000,
+  pollCeilingMs: 150_000,
+});
 
 type RemoteTaskChatService = Pick<
   RemoteTaskEngineService,
@@ -70,6 +89,7 @@ type RemoteTaskChatService = Pick<
   | 'sendMessage'
   | 'cancelTask'
   | 'syncTask'
+  | 'readEvents'
   | 'latestSequence'
   | 'pollingFor'
 >;
@@ -81,6 +101,8 @@ export interface RemoteTaskAdapterOptions {
   ) => Promise<RemoteTaskRepository | undefined>;
   readonly setTimer?: (run: () => void, ms: number) => unknown;
   readonly clearTimer?: (handle: unknown) => void;
+  readonly now?: () => number;
+  readonly bounds?: Partial<RemoteTaskTurnBounds>;
 }
 
 /** What a chat keeps across restarts: its connection and its task. */
@@ -104,8 +126,16 @@ function readCursor(value: unknown): RemoteTaskResumeCursor | undefined {
 
 interface ChatSession extends ProviderSession {
   connectionId: string;
+  vendor: RemoteTaskVendorId;
+  capabilities: RemoteTaskCapabilities;
   taskId?: string;
   repository?: RemoteTaskRepository;
+  /** The newest Station sequence this chat has shown. */
+  shownSequence: number;
+  /** The task ended and its vendor takes no more work on it. */
+  finished: boolean;
+  /** A first send is creating the task. */
+  pendingSend: boolean;
 }
 
 interface OpenTurn {
@@ -113,11 +143,15 @@ interface OpenTurn {
   readonly invocationId?: string;
   handle: unknown;
   delayMs: number;
-  lastSequence: number;
+  readonly startedAt: number;
+  /** The newest stored sequence when the message was sent. */
+  readonly sentAtSequence: number;
+  /** The task's status when the message was sent; absent for a new task. */
+  readonly baselineStatus?: string;
   text: string;
   closed: boolean;
-  sawWork: boolean;
-  idlePolls: number;
+  /** The vendor reacted to this message (a reply, or a new status). */
+  sawActivity: boolean;
 }
 
 /**
@@ -149,7 +183,9 @@ function refusal(error: unknown): unknown {
 }
 
 /** A finished turn's facts about the task, value-free beyond the vendor's. */
-function taskMetadata(task: RemoteTask): Record<string, unknown> {
+function taskMetadata(task: RemoteTask): {
+  remoteTask: Record<string, unknown>;
+} {
   return {
     remoteTask: {
       connectionId: task.connectionId,
@@ -162,6 +198,48 @@ function taskMetadata(task: RemoteTask): Record<string, unknown> {
       usage: task.usage,
     },
   };
+}
+
+const STATUS_WORDS: Readonly<Record<RemoteTaskStatus, string>> = {
+  queued: 'queued',
+  running: 'working',
+  'waiting-for-user': 'waiting for you',
+  idle: 'done for now',
+  completed: 'finished',
+  failed: 'failed',
+  cancelled: 'cancelled',
+  'timed-out': 'timed out',
+  unknown: 'status unknown',
+};
+
+/**
+ * The line a turn ends with: the vendor, the task's status, every result it
+ * reported (a pull request by URL, or by the vendor's reference when it gives
+ * no URL), the task's page, and where to answer when Station cannot.
+ */
+export function summaryLine(
+  vendor: RemoteTaskVendorId,
+  task: RemoteTask,
+  followUp: RemoteTaskCapabilities['followUp'],
+  stillWorking: boolean,
+): string {
+  const label = REMOTE_TASK_VENDOR_LABELS[vendor];
+  const parts = [
+    stillWorking
+      ? `${label} is still working on this; send a message to check again.`
+      : `${label}: ${STATUS_WORDS[task.status]}.`,
+  ];
+  for (const output of task.outputs) {
+    const where = output.url ?? output.reference;
+    if (where)
+      parts.push(
+        `Pull request: ${where}${output.state ? ` (${output.state})` : ''}.`,
+      );
+  }
+  if (task.url) parts.push(`Task: ${task.url}`);
+  if (followUp === 'none' && task.status === 'waiting-for-user')
+    parts.push(`Answer it in ${label}; Station cannot send it messages.`);
+  return parts.join(' ');
 }
 
 export class RemoteTaskAdapter implements ProviderAdapterShape {
@@ -178,6 +256,8 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
     continuity: { resume: 'same-session', fork: 'none', rewind: 'none' },
     approvalAcknowledgement: 'none',
     modelCatalogIdentityMapped: true,
+    // Work leaves the host: only a person's own chat and words reach it.
+    turnAuthorship: 'person-only',
     // The "model" is the remote task connection, chosen at start and kept.
     modelLaunch: {
       defaultAtStart: 'station-resolved',
@@ -195,9 +275,13 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
   readonly #turns = new Map<string, OpenTurn>();
   readonly #setTimer: (run: () => void, ms: number) => unknown;
   readonly #clearTimer: (handle: unknown) => void;
+  readonly #now: () => number;
+  readonly #bounds: RemoteTaskTurnBounds;
 
   constructor(options: RemoteTaskAdapterOptions) {
     this.#options = options;
+    this.#now = options.now ?? Date.now;
+    this.#bounds = { ...REMOTE_TASK_TURN_BOUNDS, ...options.bounds };
     this.#setTimer =
       options.setTimer ??
       ((run, ms) => {
@@ -263,6 +347,27 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
     ];
   }
 
+  /** The stored task and its newest Station sequence; undefined when none. */
+  #stored(session: ChatSession): { task: RemoteTask | null; latest: number } {
+    if (!session.taskId) return { task: null, latest: 0 };
+    try {
+      const read = this.#options.service.readEvents(
+        session.connectionId,
+        session.taskId,
+        Number.MAX_SAFE_INTEGER,
+      );
+      return {
+        task: read.task,
+        latest: this.#options.service.latestSequence(
+          session.connectionId,
+          session.taskId,
+        ),
+      };
+    } catch {
+      return { task: null, latest: 0 };
+    }
+  }
+
   // --- sessions --------------------------------------------------------------------
 
   async startSession(
@@ -284,8 +389,22 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
           : 'Choose a remote task connection for this chat.',
         MODEL_NOT_ADVERTISED_CODE,
       );
+    const label = REMOTE_TASK_VENDOR_LABELS[connection.vendor];
+    const repository = cursor?.taskId
+      ? undefined
+      : await this.#options.resolveRepository(input.cwd);
+    // A vendor that needs a repository is refused here, with the reason,
+    // rather than at the first message.
+    if (
+      !cursor?.taskId &&
+      !repository &&
+      connection.capabilities.requiresRepository
+    )
+      throw new SessionStartRefusedError(
+        `${label} needs a GitHub repository, and this chat's folder has no GitHub origin remote.`,
+        MODEL_NOT_ADVERTISED_CODE,
+      );
     const now = new Date().toISOString();
-    const repository = await this.#options.resolveRepository(input.cwd);
     const session: ChatSession = {
       provider: this.provider,
       threadId: input.threadId,
@@ -300,9 +419,24 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
       createdAt: now,
       updatedAt: now,
       connectionId: connection.id,
+      vendor: connection.vendor,
+      capabilities: connection.capabilities,
       ...(cursor?.taskId ? { taskId: cursor.taskId } : {}),
       ...(repository ? { repository } : {}),
+      shownSequence: 0,
+      finished: false,
+      pendingSend: false,
     };
+    // A resumed chat shows only what arrives from now on, never history, and
+    // stays closed if its task already ended for good.
+    if (session.taskId) {
+      const stored = this.#stored(session);
+      session.shownSequence = stored.latest;
+      session.finished =
+        !!stored.task &&
+        isRemoteTaskTerminal(stored.task.status) &&
+        !connection.capabilities.finishedAcceptsFollowUp;
+    }
     this.#sessions.set(input.threadId, session);
     this.#publish({
       ...this.#base(input.threadId),
@@ -321,12 +455,20 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
         remoteTask: {
           connectionId: connection.id,
           vendor: connection.vendor,
-          ...(repository
-            ? { repository: `${repository.owner}/${repository.name}` }
-            : {}),
+          repository: repository
+            ? `${repository.owner}/${repository.name}`
+            : null,
         },
       },
     });
+    if (!cursor?.taskId && !repository)
+      this.#publish({
+        ...this.#base(input.threadId),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: 'remote-task-no-repository',
+        message: `This chat's folder has no GitHub origin remote, so ${label} starts without a repository.`,
+      });
     return session;
   }
 
@@ -339,16 +481,28 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
         'This remote task chat has no session; start it again.',
         'unavailable',
       );
-    if (this.#turns.has(input.threadId))
+    const label = REMOTE_TASK_VENDOR_LABELS[session.vendor];
+    if (session.finished)
       throw new SendTurnRefusedError(
-        'The remote task is still answering the last message.',
+        `This ${label} task has ended and takes no more messages. Start a new chat to send more work.`,
+        'input_unsupported',
+      );
+    if (this.#turns.has(input.threadId) || session.pendingSend)
+      throw new SendTurnRefusedError(
+        `${label} is still answering the last message.`,
         'busy',
       );
-    // Only the person's own words leave the host: never the composed input
-    // with Station's ambient context or instructions.
-    const text = input.displayInput ?? input.input;
+    // Only what a person typed leaves the host. Orchestration sets
+    // `personText` for a person-authored send and removes it from any other.
+    const text = input.personText;
+    if (typeof text !== 'string' || !text.trim())
+      throw new PersonAuthoredTurnRequiredError();
+    // Claimed before the vendor call, so a second send cannot create a
+    // second paid task while the first is still being created.
+    session.pendingSend = true;
     let taskId = session.taskId;
-    let lastSequence = 0;
+    let baselineStatus: string | undefined;
+    let sentAtSequence = 0;
     try {
       if (!taskId) {
         const task = await this.#options.service.createTask(
@@ -359,11 +513,11 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
           },
         );
         taskId = task.taskId;
+        baselineStatus = undefined;
       } else {
-        lastSequence = this.#options.service.latestSequence(
-          session.connectionId,
-          taskId,
-        );
+        const stored = this.#stored(session);
+        baselineStatus = stored.task?.vendorStatus;
+        sentAtSequence = stored.latest;
         await this.#options.service.sendMessage(
           session.connectionId,
           taskId,
@@ -371,8 +525,10 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
         );
       }
     } catch (error) {
+      session.pendingSend = false;
       throw refusal(error);
     }
+    session.pendingSend = false;
     const turnId = crypto.randomUUID();
     session.taskId = taskId;
     session.status = 'running';
@@ -383,16 +539,18 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
       taskId,
     };
     session.resumeCursor = resumeCursor;
+    const now = this.#now();
     const turn: OpenTurn = {
       turnId,
       ...(input.invocationId ? { invocationId: input.invocationId } : {}),
       handle: undefined,
       delayMs: 0,
-      lastSequence,
+      startedAt: now,
+      sentAtSequence,
+      ...(baselineStatus !== undefined ? { baselineStatus } : {}),
       text: '',
       closed: false,
-      sawWork: false,
-      idlePolls: 0,
+      sawActivity: false,
     };
     this.#turns.set(input.threadId, turn);
     this.#publish({
@@ -403,15 +561,35 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
       prompt: text,
       ...(input.clientTurnId ? { clientTurnId: input.clientTurnId } : {}),
     });
+    // The remote task as one long-running call: its status is the progress
+    // this turn reports while the vendor works.
+    this.#publish({
+      ...this.#base(input.threadId),
+      ...this.#turnIds(turn),
+      itemId: `${turnId}:task`,
+      method: 'tool.started',
+      toolCallId: `${turnId}:task`,
+      toolName: 'remote_task',
+      purpose: `${label} works on this on its own machines`,
+    });
     this.#schedule(input.threadId, turn, 0);
     return { threadId: input.threadId, turnId, resumeCursor };
+  }
+
+  #turnIds(turn: OpenTurn) {
+    return {
+      turnId: turn.turnId,
+      ...(turn.invocationId ? { invocationId: turn.invocationId } : {}),
+    };
   }
 
   #schedule(threadId: string, turn: OpenTurn, delayMs: number): void {
     turn.delayMs = delayMs;
     turn.handle = this.#setTimer(
       () => void this.#poll(threadId, turn),
-      delayMs,
+      // Under the turn-stall window, so the progress this turn reports keeps
+      // a quiet vendor from reading as a stalled turn.
+      Math.min(delayMs, this.#bounds.pollCeilingMs),
     );
   }
 
@@ -419,15 +597,18 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
     const session = this.#sessions.get(threadId);
     if (turn.closed || !session?.taskId || this.#turns.get(threadId) !== turn)
       return;
+    const label = REMOTE_TASK_VENDOR_LABELS[session.vendor];
     const polling =
       this.#options.service.pollingFor(session.connectionId) ??
       REMOTE_TASK_POLLING_DEFAULT;
-    let result: Awaited<ReturnType<RemoteTaskChatService['syncTask']>>;
+    let task: RemoteTask;
     try {
-      result = await this.#options.service.syncTask(
-        session.connectionId,
-        session.taskId,
-      );
+      task = (
+        await this.#options.service.syncTask(
+          session.connectionId,
+          session.taskId,
+        )
+      ).task;
     } catch (error) {
       if (turn.closed) return;
       const code = error instanceof RemoteTaskError ? error.code : undefined;
@@ -435,6 +616,7 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
         code === 'remote-task-rate-limited' ||
         code === 'remote-task-vendor-unavailable'
       ) {
+        this.#progress(threadId, turn, `${label} is not answering; retrying.`);
         this.#schedule(
           threadId,
           turn,
@@ -460,37 +642,67 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
       return;
     }
     if (turn.closed) return;
-    // The vendor's own messages, after what this turn already showed. The
-    // person's echoed message and Station's status lines are not reply text.
-    for (const event of result.appended) {
-      if (event.sequence <= turn.lastSequence) continue;
-      turn.lastSequence = event.sequence;
+    // Everything stored after what this chat last showed, whoever synced it
+    // (this turn, the tracker, or a read): the store is the one record.
+    let stored: readonly RemoteTaskStoredEvent[] = [];
+    try {
+      stored = this.#options.service.readEvents(
+        session.connectionId,
+        session.taskId,
+        session.shownSequence,
+      ).events;
+    } catch {
+      stored = [];
+    }
+    for (const event of stored) {
+      if (event.sequence <= session.shownSequence) continue;
+      session.shownSequence = event.sequence;
+      if (event.sequence > turn.sentAtSequence && event.author === 'agent')
+        turn.sawActivity = true;
       if (event.author !== 'agent') continue;
-      turn.sawWork = true;
       const delta = turn.text ? `\n\n${event.text}` : event.text;
       turn.text += delta;
       this.#publish({
         ...this.#base(threadId),
-        turnId: turn.turnId,
-        ...(turn.invocationId ? { invocationId: turn.invocationId } : {}),
+        ...this.#turnIds(turn),
         itemId: `${turn.turnId}:reply`,
         method: 'content.text-delta',
         delta,
       });
     }
-    const resting =
-      result.quiescent ||
-      isRemoteTaskTerminal(result.task.status) ||
-      TURN_ENDING.includes(result.task.status);
-    if (!resting) turn.sawWork = true;
-    else turn.idlePolls += 1;
+    // A status the task did not have when this was sent is the vendor
+    // reacting to it; a new task reacts as soon as it reports anything.
     if (
-      resting &&
-      (turn.sawWork || turn.idlePolls >= IDLE_POLLS_BEFORE_ENDING)
-    ) {
-      this.#endTurn(threadId, turn, { kind: 'completed', task: result.task });
+      turn.baselineStatus === undefined ||
+      task.vendorStatus !== turn.baselineStatus
+    )
+      turn.sawActivity = true;
+    const resting =
+      isRemoteTaskTerminal(task.status) || TURN_ENDING.includes(task.status);
+    const elapsed = this.#now() - turn.startedAt;
+    if (resting && turn.sawActivity) {
+      if (
+        isRemoteTaskTerminal(task.status) &&
+        !session.capabilities.finishedAcceptsFollowUp
+      )
+        session.finished = true;
+      this.#endTurn(threadId, turn, { kind: 'rested', task });
       return;
     }
+    if (!turn.sawActivity && elapsed >= this.#bounds.wakeMs) {
+      // Not "completed with nothing": the vendor never picked it up.
+      this.#endTurn(threadId, turn, {
+        kind: 'aborted',
+        reason: `${label} has not picked this message up yet; it may still be waking. Its reply will show with your next message.`,
+        task,
+      });
+      return;
+    }
+    if (elapsed >= this.#bounds.workMs) {
+      this.#endTurn(threadId, turn, { kind: 'still-working', task });
+      return;
+    }
+    this.#progress(threadId, turn, `${label}: ${task.vendorStatus}`);
     this.#schedule(
       threadId,
       turn,
@@ -498,12 +710,24 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
     );
   }
 
+  #progress(threadId: string, turn: OpenTurn, message: string): void {
+    this.#publish({
+      ...this.#base(threadId),
+      ...this.#turnIds(turn),
+      itemId: `${turn.turnId}:task`,
+      method: 'tool.progress',
+      toolCallId: `${turn.turnId}:task`,
+      message,
+    });
+  }
+
   #endTurn(
     threadId: string,
     turn: OpenTurn,
     outcome:
-      | { kind: 'completed'; task: RemoteTask }
-      | { kind: 'aborted'; reason: string },
+      | { kind: 'rested'; task: RemoteTask }
+      | { kind: 'still-working'; task: RemoteTask }
+      | { kind: 'aborted'; reason: string; task?: RemoteTask },
   ): void {
     if (turn.closed) return;
     turn.closed = true;
@@ -514,28 +738,74 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
       session.status = 'ready';
       session.updatedAt = new Date().toISOString();
     }
-    const base = {
-      ...this.#base(threadId),
-      turnId: turn.turnId,
-      ...(turn.invocationId ? { invocationId: turn.invocationId } : {}),
-    };
-    if (outcome.kind === 'completed') {
-      const finishReason: TurnCompletedEvent['finishReason'] =
-        outcome.task.status === 'cancelled' ? 'cancelled' : 'stop';
+    const vendor = session?.vendor;
+    const failed =
+      outcome.kind === 'rested' &&
+      (outcome.task.status === 'failed' || outcome.task.status === 'timed-out');
+    // Every vendor's turn ends with a line naming its status and results, so
+    // a vendor with no messages (GitHub) still shows its pull request.
+    if (vendor && outcome.task) {
+      const line = summaryLine(
+        vendor,
+        outcome.task,
+        session?.capabilities.followUp ?? 'none',
+        outcome.kind === 'still-working',
+      );
+      const delta = turn.text ? `\n\n${line}` : line;
+      turn.text += delta;
       this.#publish({
-        ...base,
-        method: 'turn.completed',
-        finishReason,
-        ...(turn.text ? { outputText: turn.text } : {}),
-        metadata: taskMetadata(outcome.task),
+        ...this.#base(threadId),
+        ...this.#turnIds(turn),
+        itemId: `${turn.turnId}:reply`,
+        method: 'content.text-delta',
+        delta,
       });
-    } else {
+    }
+    const base = { ...this.#base(threadId), ...this.#turnIds(turn) };
+    this.#publish({
+      ...base,
+      itemId: `${turn.turnId}:task`,
+      method: 'tool.completed',
+      toolCallId: `${turn.turnId}:task`,
+      toolName: 'remote_task',
+      status:
+        outcome.kind === 'aborted' || failed
+          ? outcome.kind === 'aborted' && outcome.reason === 'interrupted'
+            ? 'cancelled'
+            : 'error'
+          : 'success',
+      ...(outcome.task
+        ? { output: taskMetadata(outcome.task).remoteTask }
+        : {}),
+    });
+    if (outcome.kind === 'aborted' || failed) {
       this.#publish({
         ...base,
         method: 'turn.aborted',
-        reason: outcome.reason,
+        reason:
+          outcome.kind === 'aborted'
+            ? outcome.reason
+            : `${REMOTE_TASK_VENDOR_LABELS[outcome.task.vendor]} reports the task ${outcome.task.status === 'failed' ? 'failed' : 'timed out'}.`,
+        ...(outcome.task ? { metadata: taskMetadata(outcome.task) } : {}),
       });
+      return;
     }
+    const finishReason: TurnCompletedEvent['finishReason'] =
+      outcome.kind === 'still-working'
+        ? 'other'
+        : outcome.task.status === 'cancelled'
+          ? 'cancelled'
+          : 'stop';
+    this.#publish({
+      ...base,
+      method: 'turn.completed',
+      finishReason,
+      ...(turn.text ? { outputText: turn.text } : {}),
+      metadata: {
+        ...taskMetadata(outcome.task),
+        ...(outcome.kind === 'still-working' ? { stillWorking: true } : {}),
+      },
+    });
   }
 
   async interruptTurn(
@@ -547,8 +817,16 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
     if (turnId && turnId !== turn.turnId)
       return { outcome: 'target-mismatch', activeTurnId: turn.turnId };
     const session = this.#sessions.get(threadId);
+    // Stop cancels the vendor's current work only where that leaves the task
+    // usable (a Cursor run). Where the vendor's cancel ends the whole task
+    // (Devin's terminate), Stop only stops following: ending a task is not a
+    // chat's Stop.
     let stopped = false;
-    if (session?.taskId) {
+    if (
+      session?.taskId &&
+      session.capabilities.cancel &&
+      !session.capabilities.cancelEndsTask
+    ) {
       try {
         await this.#options.service.cancelTask(
           session.connectionId,
@@ -556,14 +834,15 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
         );
         stopped = true;
       } catch {
-        // No cancel at this vendor, or it failed: the work goes on there.
+        // The work goes on at the vendor.
       }
     }
+    const label = session ? REMOTE_TASK_VENDOR_LABELS[session.vendor] : 'It';
     this.#endTurn(threadId, turn, {
       kind: 'aborted',
       reason: stopped
         ? 'interrupted'
-        : 'Stopped following the remote task; it keeps running at the vendor.',
+        : `Stopped following the remote task; ${label} keeps working on it.`,
     });
     return stopped
       ? { outcome: 'cancelled', turnId: turn.turnId }

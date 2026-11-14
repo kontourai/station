@@ -197,6 +197,7 @@ import {
   AttachmentInputUnsupportedError,
   ClientTurnInFlightError,
   ClientTurnInputConflictError,
+  PersonAuthoredTurnRequiredError,
   ProviderTurnEndedError,
   SendTurnRefusedError,
   SessionStartRefusedError,
@@ -8558,6 +8559,14 @@ export class OrchestrationService {
             startInput,
             startInput.resumeCursor === undefined ? 'start' : 'resume',
           );
+          // An engine that takes only a person's own words starts only from a
+          // person's own chat: never a delegation, task dispatch, schedule,
+          // automation or review start.
+          if (
+            adapter.metadata.turnAuthorship === 'person-only' &&
+            internal?.personChatStart !== true
+          )
+            throw new PersonAuthoredTurnRequiredError();
           await this.assertAdapterReady(adapter, connectionId);
           startInput = await this.modelLaunch.validateConnectedCliModelSelector(
             adapter,
@@ -9240,6 +9249,32 @@ export class OrchestrationService {
       );
     }
 
+    // An engine that takes only a person's own words: a send or steer the
+    // admitting route did not mark person-authored never reaches it.
+    if (command.type === 'sendTurn' || command.type === 'steerTurn') {
+      const provider =
+        this.commandProvider(command) ??
+        this.sessionReadModel.get(commandThreadId)?.provider;
+      const target = provider
+        ? this.options.adapterRegistry.get(provider)
+        : undefined;
+      if (
+        target?.metadata.turnAuthorship === 'person-only' &&
+        internal?.personAuthored !== true
+      ) {
+        const refused = new PersonAuthoredTurnRequiredError();
+        const rejectedReceipt = { ...receipt, status: 'rejected' as const };
+        this.persistReceipt(rejectedReceipt, 'authorization');
+        throw new OrchestrationCommandDispatchError(
+          refused.message,
+          rejectedReceipt,
+          undefined,
+          'persisted',
+          false,
+          refused.code,
+        );
+      }
+    }
     if (this.quarantinedThreads.has(commandThreadId)) {
       const rejectedReceipt = { ...receipt, status: 'rejected' as const };
       this.persistReceipt(rejectedReceipt, 'authorization');
@@ -9494,6 +9529,19 @@ export class OrchestrationService {
           let turnInput = stripReservedCapabilityMetadata(
             composeAmbientSendTurnInput(turnInputWithFirstTurnPrompt),
           );
+          // The person's own text rides the turn as `personText`: set from the
+          // admitting route's decision (`personAuthored`), never from a body,
+          // and taken before Station composed its context into `input`.
+          {
+            const { personText: _ignored, ...withoutPersonText } = turnInput;
+            turnInput =
+              internal?.personAuthored === true
+                ? {
+                    ...withoutPersonText,
+                    personText: turnInputWithFirstTurnPrompt.input,
+                  }
+                : withoutPersonText;
+          }
           if (internal?.reviewIsolation) {
             turnInput = {
               ...turnInput,

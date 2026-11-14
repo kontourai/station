@@ -162,7 +162,11 @@ export const cursorBinding: RemoteTaskBinding = {
     listTasks: true,
     followUp: 'steer',
     events: true,
+    // Cancel stops the latest run; the agent takes follow-ups after it.
     cancel: true,
+    cancelEndsTask: false,
+    finishedAcceptsFollowUp: true,
+    requiresRepository: false,
     createOptions: { model: true, baseRef: true, createPullRequest: true },
     usageUnits: ['tokens'],
   },

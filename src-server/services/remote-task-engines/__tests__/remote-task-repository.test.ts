@@ -37,8 +37,23 @@ describe('offering the remote task engine as an Agent', () => {
       reloadAgents: async () => {
         reloads += 1;
       },
+      engineAllowed: () => true,
     });
     expect(outcome).toBe('not-ready');
+    expect(reloads).toBe(0);
+  });
+
+  test("nothing is adopted while the managed policy's engine list leaves remote-task out", async () => {
+    let reloads = 0;
+    const outcome = await adoptRemoteTaskEngineWhenReady({
+      service: { readyConnections: () => [{} as never] },
+      configLoader: {} as never,
+      reloadAgents: async () => {
+        reloads += 1;
+      },
+      engineAllowed: () => false,
+    });
+    expect(outcome).toBe('not-allowed');
     expect(reloads).toBe(0);
   });
 });

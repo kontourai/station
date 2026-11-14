@@ -1505,6 +1505,13 @@ export interface ProviderSessionAdoptInput
 }
 
 export interface ProviderSendTurnInput {
+  /**
+   * The exact text a person typed into Station's chat, set by orchestration
+   * only for a person-authored send (`personAuthored`) and removed from
+   * every other one. An adapter that sends text off this host sends only
+   * this, never `input` (which can carry Station's composed context).
+   */
+  personText?: string;
   threadId: string;
   /** Server-assigned retained invocation; attribution only, never replay authority. */
   invocationId?: string;

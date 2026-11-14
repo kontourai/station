@@ -652,6 +652,7 @@ import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-sta
 import { launchesCommand } from '../../routes/working-directory-authority.js';
 import { BoundedAttemptBudget } from '../../security/bounded-attempt-budget.js';
 import { bindFullAccessRefusalIdentity } from '../../security/full-access-refusal.js';
+import { engineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
 import { NativeDeviceRequestAuthority } from '../../security/native-device-request-authority.js';
 import { isDefinitelyOffBox } from '../../security/off-box-peer.js';
 import { outsideAgentConsentStore } from '../../security/outside-agent-release-guard.js';
@@ -8213,12 +8214,26 @@ export function configureRuntimeRoutes(
       service: remoteTaskService,
       configLoader: context.configLoader,
       reloadAgents: () => context.reloadAgents(),
+      engineAllowed: () => engineAllowedByManagedPolicy('remote-task'),
     }).catch((error: unknown) =>
       context.logger.warn('Remote task engine adoption failed', {
         name: error instanceof Error ? error.name : typeof error,
       }),
     );
   adoptRemoteTaskEngine();
+  // The preview can be turned on at any time: offer the Agent then too. The
+  // registry has no change event, so its generation is read once a minute.
+  // The managed policy is read once at startup, so it needs no watch.
+  {
+    let generation = context.featurePreviews.generation('remote-task-engines');
+    const watch = setInterval(() => {
+      const next = context.featurePreviews.generation('remote-task-engines');
+      if (next === generation) return;
+      generation = next;
+      adoptRemoteTaskEngine();
+    }, 60_000);
+    watch.unref?.();
+  }
   context.app.route(
     '/remote-task-engines',
     createRemoteTaskEngineRoutes({

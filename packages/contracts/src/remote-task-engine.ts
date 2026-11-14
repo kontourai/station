@@ -70,6 +70,19 @@ export interface RemoteTaskCapabilities {
   readonly events: boolean;
   /** Stop a running task. */
   readonly cancel: boolean;
+  /**
+   * The vendor's cancel ends the whole task, not just its current work
+   * (Devin's cancel terminates the session). A chat's Stop then only stops
+   * following it.
+   */
+  readonly cancelEndsTask: boolean;
+  /**
+   * A finished task still takes a follow-up (a Cursor agent starts a new
+   * run); otherwise a finished task is closed to more work.
+   */
+  readonly finishedAcceptsFollowUp: boolean;
+  /** A task needs a repository; a chat without one is refused at start. */
+  readonly requiresRepository: boolean;
   /** Fields of {@link RemoteTaskCreateInput} the vendor accepts. */
   readonly createOptions: {
     readonly model: boolean;

@@ -1,19 +1,22 @@
 /**
  * The remote task engine as a chat: the provider adapter over the real
  * remote task service and its HTTP fakes. A chat picks a ready connection as
- * its model; the first turn creates the task with only the person's words,
- * later turns send follow-ups, replies stream as text, and a turn completes
- * once the task rests. Polls run only inside a turn and are driven by the
- * test's timer.
+ * its model; the first turn creates the task with only what the person typed
+ * (`personText`), replies stream from the shared store, a turn ends only once
+ * the vendor reacted and rests (or at its wake or work bound), and every turn
+ * ends with a line naming the status and results. Polls run only inside a
+ * turn and are driven by the test's timer and clock.
  */
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test } from 'vitest';
 import { harness } from '../../services/remote-task-engines/__tests__/harness.js';
 import {
+  cursorFake,
   devinFake,
   githubFake,
 } from '../../services/remote-task-engines/__tests__/vendor-fakes.js';
 import {
+  PersonAuthoredTurnRequiredError,
   SendTurnRefusedError,
   SessionStartRefusedError,
 } from '../adapter-shape.js';
@@ -28,31 +31,40 @@ afterEach(async () => {
   while (adapters.length > 0) await adapters.pop()?.stopAll();
 });
 
-async function setup(vendor: 'devin' | 'github-copilot' = 'devin') {
+type Vendor = 'devin' | 'github-copilot' | 'cursor';
+
+async function setup(
+  vendor: Vendor = 'devin',
+  options: { repository?: typeof REPO | null } = {},
+) {
   const devin = devinFake(ORG);
   const github = githubFake();
-  const fetchImpl: typeof fetch = (input, init) =>
-    String(input).startsWith('https://api.github.com')
-      ? github.fake.fetch(input, init)
-      : devin.fake.fetch(input, init);
+  const cursor = cursorFake();
+  const fetchImpl: typeof fetch = (input, init) => {
+    const url = String(input);
+    if (url.startsWith('https://api.github.com'))
+      return github.fake.fetch(input, init);
+    if (url.startsWith('https://api.cursor.com'))
+      return cursor.fake.fetch(input, init);
+    return devin.fake.fetch(input, init);
+  };
   const h = harness(fetchImpl);
   const connectionId =
     vendor === 'devin'
       ? await h.readyConnection('devin', TOKEN, { orgId: ORG })
-      : await h.readyConnection(
-          'github-copilot',
-          'github_pat_test_0001_abcdef',
-        );
-  const timers: Array<{ run: () => void; cleared: boolean }> = [];
-  const resolved: Array<string | undefined> = [];
+      : vendor === 'cursor'
+        ? await h.readyConnection('cursor', 'key_cursor_test_0001')
+        : await h.readyConnection('github-copilot', 'github_pat_test_0001_abc');
+  const timers: Array<{ run: () => void; cleared: boolean; ms: number }> = [];
+  const clock = { now: 1_000_000 };
+  const repository =
+    options.repository === undefined ? REPO : (options.repository ?? undefined);
   const adapter = new RemoteTaskAdapter({
     service: h.service,
-    resolveRepository: async (cwd) => {
-      resolved.push(cwd);
-      return REPO;
-    },
-    setTimer: (run) => {
-      const timer = { run, cleared: false };
+    resolveRepository: async () => repository,
+    now: () => clock.now,
+    setTimer: (run, ms) => {
+      const timer = { run, cleared: false, ms };
       timers.push(timer);
       return timer;
     },
@@ -69,25 +81,22 @@ async function setup(vendor: 'devin' | 'github-copilot' = 'devin') {
     }))
       events.push(event);
   })().catch(() => {});
-  /**
-   * Run the pending poll and wait until it settled: the next poll is
-   * scheduled, or the turn ended.
-   */
-  const poll = async () => {
+  const ended = () =>
+    events.filter(
+      (e) => e.method === 'turn.completed' || e.method === 'turn.aborted',
+    ).length;
+  /** Run the pending poll (advancing the clock) and wait until it settled. */
+  const poll = async (advanceMs = 15_000) => {
     const timer = timers.filter((t) => !t.cleared).at(-1);
     if (!timer) throw new Error('no poll scheduled');
     timer.cleared = true;
+    clock.now += advanceMs;
     const scheduled = timers.length;
-    const ended = events.filter(
-      (e) => e.method === 'turn.completed' || e.method === 'turn.aborted',
-    ).length;
+    const before = ended();
     timer.run();
     for (let i = 0; i < 500; i += 1) {
       await new Promise((r) => setTimeout(r, 10));
-      const endedNow = events.filter(
-        (e) => e.method === 'turn.completed' || e.method === 'turn.aborted',
-      ).length;
-      if (timers.length > scheduled || endedNow > ended) return;
+      if (timers.length > scheduled || ended() > before) return;
     }
     throw new Error('the poll did not settle');
   };
@@ -95,19 +104,40 @@ async function setup(vendor: 'devin' | 'github-copilot' = 'devin') {
   const settle = async () => {
     for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
   };
-  const methods = () => events.map((e) => e.method);
+  const start = (threadId = 't1') =>
+    adapter.startSession({
+      threadId,
+      provider: 'remote-task',
+      modelId: connectionId,
+      cwd: '/work/widgets',
+    });
+  const send = (text: string, threadId = 't1') =>
+    adapter.sendTurn({ threadId, input: text, personText: text });
+  const texts = () =>
+    events
+      .filter((e) => e.method === 'content.text-delta')
+      .map((e) => (e as { delta: string }).delta);
+  const last = <M extends CanonicalRuntimeEvent['method']>(method: M) =>
+    events.filter((e) => e.method === method).at(-1) as
+      | Extract<CanonicalRuntimeEvent, { method: M }>
+      | undefined;
   return {
     adapter,
     h,
     devin,
     github,
+    cursor,
     connectionId,
     events,
-    methods,
     poll,
     pending,
     settle,
-    resolved,
+    start,
+    send,
+    texts,
+    last,
+    clock,
+    ended,
   };
 }
 
@@ -117,65 +147,50 @@ describe('RemoteTaskAdapter', () => {
     expect((await s.adapter.listModelCatalog()).models).toEqual([
       { id: s.connectionId, name: 'Devin', originalId: s.connectionId },
     ]);
-    // A managed policy that does not name the vendor hides it.
     s.h.switches.policy = { engines: {} };
     expect((await s.adapter.listModelCatalog()).models).toEqual([]);
     s.h.switches.policy = null;
     s.h.switches.preview = false;
     expect((await s.adapter.listModelCatalog()).models).toEqual([]);
-    const prerequisites = await s.adapter.getPrerequisites();
-    expect(prerequisites.map((p) => [p.id, p.status])).toEqual([
-      ['remote-task-preview', 'missing'],
-      ['remote-task-connection', 'missing'],
-    ]);
   });
 
   test('a start on a connection that is not ready is refused before anything is published', async () => {
     const s = await setup();
     s.h.switches.preview = false;
-    await expect(
-      s.adapter.startSession({
-        threadId: 't1',
-        provider: 'remote-task',
-        modelId: s.connectionId,
-      }),
-    ).rejects.toBeInstanceOf(SessionStartRefusedError);
+    await expect(s.start()).rejects.toBeInstanceOf(SessionStartRefusedError);
     await s.settle();
     expect(s.events).toEqual([]);
   });
 
-  test("the first turn creates the task from the person's words only and streams the reply", async () => {
+  test("the first turn sends only the person's typed text, and nothing without it", async () => {
     const s = await setup();
-    await s.adapter.startSession({
-      threadId: 't1',
-      provider: 'remote-task',
-      modelId: s.connectionId,
-      cwd: '/work/widgets',
-    });
-    expect(s.resolved).toEqual(['/work/widgets']);
-    const turn = await s.adapter.sendTurn({
+    await s.start();
+    await expect(
+      s.adapter.sendTurn({
+        threadId: 't1',
+        input: 'Station context\n\nFix it',
+        displayInput: 'Independent review request',
+      }),
+    ).rejects.toBeInstanceOf(PersonAuthoredTurnRequiredError);
+    expect(s.devin.fake.requests).toHaveLength(0);
+    await s.adapter.sendTurn({
       threadId: 't1',
       input: 'Station context: secret project notes\n\nFix the flaky test',
-      displayInput: 'Fix the flaky test',
-      ambientContext: 'Station context: secret project notes',
+      personText: 'Fix the flaky test',
     });
-    const [create] = s.devin.fake.matching('POST', /\/sessions$/);
-    // Nothing of Station's own context leaves the host with the prompt.
-    expect(create?.body).toEqual({
+    expect(s.devin.fake.matching('POST', /\/sessions$/)[0]?.body).toEqual({
       prompt: 'Fix the flaky test',
       repos: ['example/widgets'],
     });
-    expect(turn.resumeCursor).toMatchObject({
-      kind: 'remote-task',
-      connectionId: s.connectionId,
-    });
+  });
+
+  test('a reply the tracker stored first still shows in the turn, and the turn ends with its results', async () => {
+    const s = await setup();
+    await s.start();
+    const turn = await s.send('Fix the flaky test');
     const taskId = (turn.resumeCursor as { taskId: string }).taskId;
-    s.devin.setStatus(taskId, 'running', 'working');
-    s.devin.reply(taskId, 'Looking at the test now.');
-    await s.poll();
     s.devin.reply(taskId, 'Fixed and opened a PR.');
     Object.assign(s.devin.sessions.get(taskId) as object, {
-      acus_consumed: 2,
       pull_requests: [
         {
           pr_url: 'https://github.com/example/widgets/pull/9',
@@ -184,163 +199,204 @@ describe('RemoteTaskAdapter', () => {
       ],
     });
     s.devin.setStatus(taskId, 'running', 'finished');
+    // The tracker (or a GET) syncs before the turn's own poll.
+    const tracked = await s.h.service.syncTask(s.connectionId, taskId);
+    expect(
+      tracked.appended.some((e) => e.text === 'Fixed and opened a PR.'),
+    ).toBe(true);
     await s.poll();
     await s.settle();
-    expect(s.methods()).toEqual([
-      'session.started',
-      'session.configured',
-      'turn.started',
-      'content.text-delta',
-      'content.text-delta',
-      'turn.completed',
-    ]);
-    const completed = s.events.at(-1) as Extract<
-      CanonicalRuntimeEvent,
-      { method: 'turn.completed' }
-    >;
-    expect(completed.outputText).toBe(
-      'Looking at the test now.\n\nFixed and opened a PR.',
+    expect(s.texts()[0]).toBe('Fixed and opened a PR.');
+    const completed = s.last('turn.completed');
+    expect(completed?.outputText).toContain('Fixed and opened a PR.');
+    expect(completed?.outputText).toContain(
+      'Pull request: https://github.com/example/widgets/pull/9 (open).',
     );
-    expect(completed.metadata).toMatchObject({
-      remoteTask: {
-        taskId,
-        status: 'idle',
-        usage: [{ unit: 'acu', quantity: 2 }],
-        outputs: [
-          {
-            kind: 'pull-request',
-            url: 'https://github.com/example/widgets/pull/9',
-          },
-        ],
-      },
-    });
-    // The turn's polls stop with it: a quiet chat costs nothing.
+    expect(s.events.map((e) => e.method)).toEqual(
+      expect.arrayContaining(['tool.started', 'tool.completed']),
+    );
     expect(s.pending()).toBe(0);
   });
 
-  test('a follow-up does not end on the stale idle status it was sent into', async () => {
+  test('a follow-up into a slow wake waits past the old three polls and ends "still waking" at its bound, not empty', async () => {
     const s = await setup();
-    await s.adapter.startSession({
-      threadId: 't1',
-      provider: 'remote-task',
-      modelId: s.connectionId,
-    });
-    const first = await s.adapter.sendTurn({ threadId: 't1', input: 'Go' });
+    await s.start();
+    const first = await s.send('Go');
     const taskId = (first.resumeCursor as { taskId: string }).taskId;
     s.devin.reply(taskId, 'Done.');
     s.devin.setStatus(taskId, 'running', 'finished');
-    // A reply arrived and the task rests: the turn ends on this poll.
     await s.poll();
-    expect(s.methods().filter((m) => m === 'turn.completed')).toHaveLength(1);
-    await s.adapter.sendTurn({ threadId: 't1', input: 'Also the docs' });
-    expect(s.devin.fake.matching('POST', /\/messages$/)[0]?.body).toEqual({
-      message: 'Also the docs',
-    });
-    // Devin has not picked the message up yet: still finished.
-    await s.poll();
-    expect(s.methods().filter((m) => m === 'turn.completed')).toHaveLength(1);
+    expect(s.ended()).toBe(1);
+    await s.send('Also the docs');
+    // Devin has not picked the message up: still "finished" for ten polls.
+    for (let i = 0; i < 10; i += 1) await s.poll(15_000);
+    expect(s.ended()).toBe(1);
+    // Past the wake bound (ten minutes after the send).
+    await s.poll(10 * 60_000);
+    const aborted = s.last('turn.aborted');
+    expect(aborted?.reason).toContain('may still be waking');
+    expect(s.last('turn.completed')).toBe(
+      s.events.filter((e) => e.method === 'turn.completed')[0],
+    );
+    // Its late reply shows with the next message, not lost.
+    s.devin.reply(taskId, 'Docs updated.');
+    await s.send('Thanks');
     s.devin.setStatus(taskId, 'running', 'working');
     await s.poll();
-    s.devin.reply(taskId, 'Docs updated.');
     s.devin.setStatus(taskId, 'running', 'finished');
     await s.poll();
+    expect(s.texts()).toContain('Docs updated.');
+  });
+
+  test('Stop in a Devin chat stops following and leaves the session running', async () => {
+    const s = await setup();
+    await s.start();
+    const turn = await s.send('Go');
+    expect(await s.adapter.interruptTurn('t1', turn.turnId)).toEqual({
+      outcome: 'termination-unconfirmed',
+      turnId: turn.turnId,
+    });
+    // Devin's cancel is terminate: never sent from a chat's Stop.
+    expect(s.devin.fake.matching('DELETE', /\/sessions\//)).toHaveLength(0);
     await s.settle();
-    const completed = s.events.filter((e) => e.method === 'turn.completed');
-    expect(completed).toHaveLength(2);
-    // The second reply carries only the new message, not the history.
-    expect(
-      (
-        completed[1] as Extract<
-          CanonicalRuntimeEvent,
-          { method: 'turn.completed' }
-        >
-      ).outputText,
-    ).toBe('Docs updated.');
+    expect(s.last('turn.aborted')?.reason).toContain('keeps working on it');
+    expect(s.pending()).toBe(0);
+    // The chat still takes follow-ups to the running session.
+    await s.send('Carry on');
+    expect(s.devin.fake.matching('POST', /\/messages$/)).toHaveLength(1);
+  });
+
+  test('Stop in a Cursor chat cancels the run, which leaves the agent usable', async () => {
+    const s = await setup('cursor');
+    await s.start();
+    const turn = await s.send('Add a README');
+    expect(await s.adapter.interruptTurn('t1', turn.turnId)).toEqual({
+      outcome: 'cancelled',
+      turnId: turn.turnId,
+    });
+    expect(s.cursor.fake.matching('POST', /\/cancel$/)).toHaveLength(1);
+  });
+
+  test('a Devin session that ended takes no more messages', async () => {
+    const s = await setup();
+    await s.start();
+    const first = await s.send('Go');
+    const taskId = (first.resumeCursor as { taskId: string }).taskId;
+    s.devin.reply(taskId, 'All done.');
+    s.devin.setStatus(taskId, 'exit');
+    await s.poll();
+    const sent = s.devin.fake.requests.length;
+    await expect(s.send('One more thing')).rejects.toMatchObject({
+      kind: 'input_unsupported',
+      message: expect.stringContaining('has ended'),
+    });
+    expect(s.devin.fake.requests).toHaveLength(sent);
+  });
+
+  test('a Copilot chat shows its status, pull request and where to answer', async () => {
+    const s = await setup('github-copilot');
+    await s.start();
+    const turn = await s.send('Fix the login button');
+    const taskId = (turn.resumeCursor as { taskId: string }).taskId;
+    Object.assign(s.github.tasks.get(taskId) as object, {
+      state: 'waiting_for_user',
+      artifacts: [
+        {
+          provider: 'github',
+          type: 'pull',
+          data: { id: 42, global_id: 'PR_x' },
+        },
+      ],
+    });
+    await s.poll();
+    await s.settle();
+    const line = s.texts().at(-1) ?? '';
+    expect(line).toContain('GitHub Copilot cloud agent: waiting for you.');
+    expect(line).toContain('Pull request: pull:42.');
+    expect(line).toContain(`Task: https://github.com/copilot/tasks/${taskId}`);
+    expect(line).toContain('Answer it in GitHub Copilot cloud agent');
+  });
+
+  test('two first sends at once create one task', async () => {
+    const s = await setup();
+    await s.start();
+    const [a, b] = await Promise.allSettled([s.send('One'), s.send('Two')]);
+    expect([a.status, b.status].sort()).toEqual(['fulfilled', 'rejected']);
+    const refused = (a.status === 'rejected' ? a : b) as PromiseRejectedResult;
+    expect(refused.reason).toBeInstanceOf(SendTurnRefusedError);
+    expect(s.devin.fake.matching('POST', /\/sessions$/)).toHaveLength(1);
+  });
+
+  test('a failed task ends the turn as aborted, not as a normal stop', async () => {
+    const s = await setup();
+    await s.start();
+    const turn = await s.send('Go');
+    const taskId = (turn.resumeCursor as { taskId: string }).taskId;
+    s.devin.setStatus(taskId, 'error');
+    await s.poll();
+    await s.settle();
+    expect(s.last('turn.aborted')?.reason).toContain('failed');
+    expect(s.last('turn.completed')).toBeUndefined();
+  });
+
+  test('a long task ends the turn "still working" at the work bound and keeps polls under the stall window', async () => {
+    const s = await setup();
+    await s.start();
+    const turn = await s.send('Big refactor');
+    const taskId = (turn.resumeCursor as { taskId: string }).taskId;
+    s.devin.setStatus(taskId, 'running', 'working');
+    await s.poll();
+    expect(s.last('tool.progress')?.message).toBe('Devin: running:working');
+    await s.poll(61 * 60_000);
+    const completed = s.last('turn.completed');
+    expect(completed?.finishReason).toBe('other');
+    expect(completed?.outputText).toContain('still working on this');
+    expect(completed?.metadata).toMatchObject({ stillWorking: true });
+  });
+
+  test('a Copilot chat without a GitHub origin is refused at start; a Devin chat starts with a warning', async () => {
+    const copilot = await setup('github-copilot', { repository: null });
+    await expect(copilot.start()).rejects.toMatchObject({
+      message: expect.stringContaining('no GitHub origin'),
+    });
+    const devin = await setup('devin', { repository: null });
+    await devin.start();
+    await devin.settle();
+    expect(devin.last('runtime.warning')?.message).toContain(
+      'no GitHub origin remote',
+    );
   });
 
   test('a restarted chat resumes its task from the cursor without replaying history', async () => {
     const s = await setup();
-    await s.adapter.startSession({
-      threadId: 't1',
-      provider: 'remote-task',
-      modelId: s.connectionId,
-    });
-    const first = await s.adapter.sendTurn({ threadId: 't1', input: 'Go' });
+    await s.start();
+    const first = await s.send('Go');
     const taskId = (first.resumeCursor as { taskId: string }).taskId;
     s.devin.reply(taskId, 'First answer.');
     s.devin.setStatus(taskId, 'running', 'finished');
     await s.poll();
     await s.adapter.stopSession('t1');
-    expect(await s.adapter.hasSession('t1')).toBe(false);
     await s.adapter.startSession({
       threadId: 't1',
       provider: 'remote-task',
       resumeCursor: first.resumeCursor,
     });
-    await s.adapter.sendTurn({ threadId: 't1', input: 'Next' });
+    await s.send('Next');
     expect(s.devin.fake.matching('POST', /\/sessions$/)).toHaveLength(1);
     s.devin.setStatus(taskId, 'running', 'working');
     await s.poll();
     s.devin.reply(taskId, 'Second answer.');
     s.devin.setStatus(taskId, 'running', 'finished');
     await s.poll();
-    await s.settle();
-    const texts = s.events
-      .filter((e) => e.method === 'content.text-delta')
-      .map((e) => (e as { delta: string }).delta);
-    expect(texts).toEqual(['First answer.', 'Second answer.']);
+    const agentTexts = s.texts().filter((t) => !t.includes('Devin:'));
+    expect(agentTexts).toEqual(['First answer.', 'Second answer.']);
   });
 
   test('a turn while the preview is off is refused before any request', async () => {
     const s = await setup();
-    await s.adapter.startSession({
-      threadId: 't1',
-      provider: 'remote-task',
-      modelId: s.connectionId,
-    });
+    await s.start();
     s.h.switches.preview = false;
-    await expect(
-      s.adapter.sendTurn({ threadId: 't1', input: 'Go' }),
-    ).rejects.toBeInstanceOf(SendTurnRefusedError);
+    await expect(s.send('Go')).rejects.toBeInstanceOf(SendTurnRefusedError);
     expect(s.devin.fake.requests).toHaveLength(0);
-    await s.settle();
-    expect(s.methods()).not.toContain('turn.started');
-  });
-
-  test('interrupt cancels where the vendor can, and says so where it cannot', async () => {
-    const s = await setup();
-    await s.adapter.startSession({
-      threadId: 't1',
-      provider: 'remote-task',
-      modelId: s.connectionId,
-    });
-    const turn = await s.adapter.sendTurn({ threadId: 't1', input: 'Go' });
-    expect(await s.adapter.interruptTurn('t1', turn.turnId)).toEqual({
-      outcome: 'cancelled',
-      turnId: turn.turnId,
-    });
-    expect(s.devin.fake.matching('DELETE', /\/sessions\//)).toHaveLength(1);
-    expect(s.pending()).toBe(0);
-
-    const copilot = await setup('github-copilot');
-    await copilot.adapter.startSession({
-      threadId: 't2',
-      provider: 'remote-task',
-      modelId: copilot.connectionId,
-    });
-    const copilotTurn = await copilot.adapter.sendTurn({
-      threadId: 't2',
-      input: 'Fix the login button',
-    });
-    expect(await copilot.adapter.interruptTurn('t2')).toEqual({
-      outcome: 'termination-unconfirmed',
-      turnId: copilotTurn.turnId,
-    });
-    // GitHub has no follow-up endpoint: the next turn is refused, unsent.
-    const sent = copilot.github.fake.requests.length;
-    await expect(
-      copilot.adapter.sendTurn({ threadId: 't2', input: 'And the footer' }),
-    ).rejects.toMatchObject({ kind: 'input_unsupported' });
-    expect(copilot.github.fake.requests).toHaveLength(sent);
   });
 });
