@@ -2549,6 +2549,8 @@ const FAST_CHECKS_SHARD_ZSH_STEP = Object.freeze({
   // full-regression and merge-queue-regression run. It installs a distro
   // package and reads no secret or credential; the shard's selection can
   // include tests that exec zsh (ops/nightly/macos-build-only-cleanup).
+  // Bounded retry of the bootstrap for transient apt/DNS failures; the last
+  // attempt's status fails the step.
   name: 'Provision and preflight zsh for process-heavy installer fixtures',
   env: {
     BOOTSTRAP_SOURCE_REPOSITORY: `\${{ github.repository }}`,
@@ -2562,7 +2564,17 @@ if [[ ! -x /bin/zsh ]]; then
     --output "$bootstrap"
   printf 'Ubuntu bootstrap workflow source: %s@%s\\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
   sha256sum "$bootstrap"
-  sudo bash "$bootstrap" zsh
+  attempt=1
+  until sudo bash "$bootstrap" zsh; do
+    status=$?
+    if [[ "$attempt" -ge 3 ]]; then
+      echo "::error::zsh provisioning failed after $attempt attempts (exit $status)" >&2
+      exit "$status"
+    fi
+    echo "::warning::zsh provisioning attempt $attempt failed (exit $status); retrying" >&2
+    sleep $((attempt * 10))
+    attempt=$((attempt + 1))
+  done
 fi
 command -v zsh
 test -x /bin/zsh

@@ -1431,7 +1431,12 @@ archive in legacy lists, DEB822 sources, and the hosted runner mirror list.
 The official Ubuntu security archive also uses HTTPS with the same host and
 path. Suites, components, signing keys, and mirror priorities remain intact. APT
 index retrieval must succeed before installing the required compiler or zsh
-package; an unavailable index stops the bootstrap. The Gallery renderer image
+package; an unavailable index stops the bootstrap. The zsh preflight in
+`fast-checks-shard` and full regression runs that bootstrap up to three times,
+sleeping 10 then 20 seconds, because transient
+`Temporary failure resolving 'archive.ubuntu.com'` errors failed every shard of
+two merge groups; after the third failure the step exits with that attempt's
+apt status and error. The Gallery renderer image
 remains pinned by digest.
 Each caller stages that helper from the immutable workflow-definition commit
 into `RUNNER_TEMP`, independently of the application checkout. Older PR heads

@@ -463,6 +463,10 @@ jobs:
       # Same provisioning as full-regression: the selection can include
       # tests that exec zsh (ops/nightly/macos-build-only-cleanup.test.mjs),
       # and ubuntu-22.04 ships without it.
+      # Transient apt mirror or DNS failures (`Temporary failure resolving
+      # 'archive.ubuntu.com'`) retry the idempotent bootstrap: three attempts
+      # and 30 seconds of backoff inside the five-minute step bound. The last
+      # attempt's own apt error and exit status still fail the step.
       - name: Provision and preflight zsh for process-heavy installer fixtures
         if: ${{ steps.slice.outputs.empty == 'false' }}
         timeout-minutes: 5
@@ -478,7 +482,17 @@ jobs:
               --output "$bootstrap"
             printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
             sha256sum "$bootstrap"
-            sudo bash "$bootstrap" zsh
+            attempt=1
+            until sudo bash "$bootstrap" zsh; do
+              status=$?
+              if [[ "$attempt" -ge 3 ]]; then
+                echo "::error::zsh provisioning failed after $attempt attempts (exit $status)" >&2
+                exit "$status"
+              fi
+              echo "::warning::zsh provisioning attempt $attempt failed (exit $status); retrying" >&2
+              sleep $((attempt * 10))
+              attempt=$((attempt + 1))
+            done
           fi
           command -v zsh
           test -x /bin/zsh

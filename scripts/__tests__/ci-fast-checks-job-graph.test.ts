@@ -1699,3 +1699,170 @@ describe('the pinned actionlint provisioning text, executed (#4748)', () => {
     });
   });
 });
+
+/**
+ * The zsh provisioning step, taken verbatim from every workflow that carries
+ * it and run in real bash. Two of a week's twenty merge-group failures were
+ * `Temporary failure resolving 'archive.ubuntu.com'` inside this apt install
+ * (runs 43034809151, 43039693039), so the bootstrap invocation retries.
+ * Only the network, the privileged installer and the clock are controlled:
+ * `curl` serves a stand-in bootstrap, `sudo` is a recording stand-in that
+ * fails the first N installs with apt's DNS error and exit 100, and `sleep`
+ * records its argument. `/bin/zsh` is rewritten to a sandbox path (every
+ * occurrence, counted) so the install branch is reached on hosts that ship
+ * zsh; the installer stand-in creates that path only when it succeeds.
+ */
+describe('the zsh provisioning text, executed', () => {
+  type RunStep = { name?: string; run?: string; env?: Record<string, string> };
+  const ZSH_STEP =
+    'Provision and preflight zsh for process-heavy installer fixtures';
+  const copies = (
+    [
+      ['ci.yml', 'fast-checks-shard'],
+      ['full-regression.yml', 'ordinary'],
+      ['full-regression.yml', 'process-heavy'],
+      ['full-regression.yml', 'exclusive'],
+    ] as const
+  ).map(([file, jobId]) => {
+    const parsed = load(
+      readFileSync(resolve(root, '.github/workflows', file), 'utf8'),
+      { schema: JSON_SCHEMA },
+    ) as { jobs: Record<string, { steps?: RunStep[] }> };
+    return [
+      file,
+      jobId,
+      parsed.jobs[jobId]?.steps?.find((step) => step.name === ZSH_STEP),
+    ] as const;
+  });
+  const makeZshDir = trackTempDirs();
+
+  function zshSandbox() {
+    const dir = makeZshDir('zsh-provisioning-');
+    const bin = join(dir, 'bin');
+    const temp = join(dir, 'runner-temp');
+    mkdirSync(bin);
+    mkdirSync(temp);
+    const target = join(dir, 'installed', 'zsh');
+    const tool = (name: string, body: string) =>
+      writeFileSync(join(bin, name), `#!/usr/bin/env bash\n${body}\n`, {
+        mode: 0o755,
+      });
+    tool(
+      'curl',
+      [
+        'out=""',
+        'while [ "$#" -gt 0 ]; do case "$1" in --output) out="$2"; shift ;; esac; shift; done',
+        'printf "#!/usr/bin/env bash\\necho stand-in bootstrap\\n" > "$out"',
+      ].join('\n'),
+    );
+    tool(
+      'sudo',
+      [
+        'printf "%s\\n" "$*" >> "$FAKE_SUDO_LOG"',
+        'calls="$(wc -l < "$FAKE_SUDO_LOG" | tr -d " ")"',
+        'if [ "$calls" -le "$FAKE_SUDO_FAILURES" ]; then',
+        '  echo "E: Failed to fetch http://archive.ubuntu.com/ubuntu/dists/jammy/InRelease  Temporary failure resolving \'archive.ubuntu.com\'" >&2',
+        '  exit 100',
+        'fi',
+        'mkdir -p "$(dirname "$FAKE_ZSH_TARGET")"',
+        'printf "#!/usr/bin/env bash\\necho \\"zsh 5.9 (stand-in)\\"\\n" > "$FAKE_ZSH_TARGET"',
+        'chmod 755 "$FAKE_ZSH_TARGET"',
+        'cp "$FAKE_ZSH_TARGET" "$FAKE_BIN/zsh"',
+      ].join('\n'),
+    );
+    tool('sleep', 'echo "$*" >> "$FAKE_SLEEP_LOG"');
+    const lines = (name: string) =>
+      existsSync(join(dir, name))
+        ? readFileSync(join(dir, name), 'utf8').split('\n').filter(Boolean)
+        : [];
+    const run = (step: RunStep, failures: number) => {
+      const script = String(step.run);
+      const occurrences = script.split('/bin/zsh').length - 1;
+      const rewritten = script.replaceAll('/bin/zsh', target);
+      const result = spawnSyncBounded(
+        'bash',
+        ['--noprofile', '--norc', '-eo', 'pipefail', '-c', rewritten],
+        {
+          encoding: 'utf8',
+          timeout: 30_000,
+          windowsHide: true,
+          env: {
+            PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+            RUNNER_TEMP: temp,
+            FAKE_BIN: bin,
+            FAKE_ZSH_TARGET: target,
+            FAKE_SUDO_FAILURES: String(failures),
+            FAKE_SUDO_LOG: join(dir, 'sudo.log'),
+            FAKE_SLEEP_LOG: join(dir, 'sleep.log'),
+            ...step.env,
+          },
+        },
+      ) as SpawnSyncReturns<string>;
+      if (
+        result.error ||
+        result.signal !== null ||
+        typeof result.status !== 'number'
+      )
+        throw new Error(
+          `zsh step did not run to an exit: ${result.error ?? result.signal}`,
+        );
+      return { ...result, occurrences };
+    };
+    return { run, lines, target };
+  }
+
+  test('every workflow provisions zsh with the same step text', () => {
+    for (const [file, jobId, step] of copies)
+      expect(step?.run, `${file} ${jobId}`).toBe(copies[0][2]?.run);
+  });
+
+  test.each(copies)(
+    '%s %s installs on the first attempt without sleeping',
+    (_file, _job, step) => {
+      const box = zshSandbox();
+      const result = box.run(step as RunStep, 0);
+      expect(result.occurrences).toBe(3);
+      expect(result.status, result.stderr).toBe(0);
+      expect(box.lines('sudo.log')).toHaveLength(1);
+      expect(box.lines('sudo.log')[0]).toMatch(
+        /^bash .*install-ci-ubuntu-packages\.sh zsh$/,
+      );
+      expect(box.lines('sleep.log')).toEqual([]);
+      expect(result.stdout).toContain('zsh 5.9 (stand-in)');
+    },
+  );
+
+  test.each(copies)(
+    '%s %s retries a transient apt failure twice and then succeeds',
+    (_file, _job, step) => {
+      const box = zshSandbox();
+      const result = box.run(step as RunStep, 2);
+      expect(result.status, result.stderr).toBe(0);
+      expect(box.lines('sudo.log')).toHaveLength(3);
+      expect(box.lines('sleep.log')).toEqual(['10', '20']);
+      expect(result.stderr).toContain(
+        'zsh provisioning attempt 1 failed (exit 100)',
+      );
+      expect(result.stdout).toContain('zsh 5.9 (stand-in)');
+    },
+  );
+
+  test.each(copies)(
+    '%s %s fails with the real apt error and status when every attempt fails',
+    (_file, _job, step) => {
+      const box = zshSandbox();
+      const result = box.run(step as RunStep, 99);
+      expect(result.status).toBe(100);
+      expect(box.lines('sudo.log')).toHaveLength(3);
+      expect(box.lines('sleep.log')).toEqual(['10', '20']);
+      expect(result.stderr).toContain(
+        "Temporary failure resolving 'archive.ubuntu.com'",
+      );
+      expect(result.stderr).toContain(
+        'zsh provisioning failed after 3 attempts (exit 100)',
+      );
+      expect(existsSync(box.target)).toBe(false);
+      expect(result.stdout).not.toContain('zsh 5.9');
+    },
+  );
+});
