@@ -624,13 +624,19 @@ In the chat dock, the **New chat** button (the conversation-plus icon on the col
 Setup from Home continues in the chat dock. When you choose **Connect**,
 **Set up**, **Edit agent**, or **Use a visual skill** on Home, your message,
 project, Agent and Model move into the chat dock's composer, which opens the
-setup page or the skills list; Home says your draft moved. If you then close
-that draft or cancel the setup return, the message comes back to Home as you
-left it in the dock. If Home's text box is empty, it goes straight back in.
-If you have typed something new meanwhile, Home keeps your new text and offers
-**Restore your earlier draft** (which swaps the two, so neither is lost) or
-**Discard it**. A draft waiting to come back survives reloading the page,
-but not closing the tab.
+setup page or the skills list; Home says your draft moved. Closing that draft
+or cancelling the setup return brings its edited message back without
+overwriting newer Home text. A waiting draft offers **Restore your earlier
+draft** (a swap, so neither message is lost) or **Discard it**. In personal
+Home, that return stays with the verified Station and access it came from,
+even if it arrives after you switch. Waiting drafts can survive a reload when
+tab storage is available and you return with the same access. They do not
+survive closing the tab, and blocked or failed storage can prevent reload
+recovery. If Station cannot verify your
+access, waiting drafts stay only in that Home view and may be lost when you
+leave or reload. Older drafts saved without their original context remain
+untouched but are not restored: signing in does not establish who wrote them,
+and there is no recovery control for them yet.
 **Enable** prepares an Agent in place on either surface.
 
 Context handed to a new chat, such as a prepared request from a plugin page,

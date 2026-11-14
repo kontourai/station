@@ -293,7 +293,7 @@ export function createDestinationRegistry(
 export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
   {
     // #928 C2a: Home is a region surface whose only placement is `main`.
-    // The palette's Home entry REVEALS it — `showSurface('home')` places it
+    // The palette's Home entry REVEALS it — `showSurfacePage('home')` places it
     // in `main`, and the model navigates to `/` — rather than navigating to
     // `/` and showing whatever surface currently occupies `main`. `route`
     // and `view` stay: `/` still resolves to the home view, which is what
@@ -303,6 +303,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     regionSurface: 'home',
     label: () => 'Home',
     hiddenFromNav: true,
+    palette: { order: 0 },
     managementViewTypes: ['home'],
     view: { type: 'home' },
   },

@@ -1,0 +1,7 @@
+{
+  "revision": "0f550209280f358974e8fa9895816d6fca7605d8",
+
+  "notes": [
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Reviewed the campaign plan UX-01 ownership and registry/palette routing against Entry 81379..0f550: the only changed recorded input adds Home palette order 0. CommandPalette enumerates getPalette and its existing Home regionSurface action opens the Home page; hiddenFromNav remains unchanged. The plan already includes Home and palette/search, treats aliases as entry paths, and separates source inspection from exact-revision runtime proof, so no prose change is warranted. All eight other recorded inputs are unchanged in this range. Source review only: current-source keyboard, narrow geometry, guarded navigation, failure/recovery and reload journeys remain unexecuted; this note claims no runtime pass.","inputs":["docs/plans/whole-app-ux-campaign.md","src-ui/src/app-shell/destination-registry.ts"]}
+  ]
+}

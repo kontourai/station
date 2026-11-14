@@ -1,0 +1,7 @@
+{
+  "revision": "01d908252d165c26828ad07ff50c9d012bf46c3a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed only the personal Home held-draft paragraph against the new StartComposerParity unavailable-authority concurrent and remounted cases at 01d908252d165c26828ad07ff50c9d012bf46c3a. HomeStartComposer gives an unverified or missing namespace a component-instance memory store without a v2 storage key; the cases reach held-draft Restore swapping, no cross-instance draft transfer and no v2 storage. The three complete merged UI owners passed 153 tests with no skips reported. The return callback is injected as a Home-store precondition, not actual dock delivery. Verified-authority tab-storage, storage-refusal/reload and legacy-draft limits remain as documented; no new browser, reload durability, provider or native proof. Prose remains accurate; no unrelated composer claims were recertified.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/StartComposerParity.test.tsx"]}
+  ]
+}

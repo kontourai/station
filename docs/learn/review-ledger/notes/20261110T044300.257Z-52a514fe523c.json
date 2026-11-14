@@ -1,0 +1,7 @@
+{
+  "revision": "01d908252d165c26828ad07ff50c9d012bf46c3a",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed only the personal Home waiting-draft explanation against the new StartComposerParity unavailable-authority concurrent and remounted cases at 01d908252d165c26828ad07ff50c9d012bf46c3a. The cases reach Restore swapping without overwriting newer text, isolation from another unverified Home instance and absence of v2 storage. The actual merged three-owner command passed 153 tests with no skips reported. Injected onClosed establishes the Home-store precondition, not dock delivery or real browser persistence. Same-authority tab-storage availability, blocked-storage/reload loss and unowned legacy-draft limits remain explicit and unchanged. No unrelated getting-started, authentication, provider, native or release claims were recertified; no prose change is needed.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/StartComposerParity.test.tsx"]}
+  ]
+}

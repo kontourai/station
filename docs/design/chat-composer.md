@@ -388,11 +388,19 @@ Up to five recent chats from the
 selected project or No project follow; with none, the composer stands alone.
 A start or hand-off from Home is taken only by the ambient dock, which says
 so (the intent is cancelable); Home keeps its message until the chat starts,
-then removes only the text it sent. A dismissed dock draft (from a hand-off
-or a Start) comes back as edited there: into an empty field directly,
-otherwise behind Restore your earlier draft (a swap) and Discard it, with a
-polite announcement. Waiting drafts are kept in the tab's session storage, so
-they survive a reload but not closing the tab.
+then removes only the text it sent. A dismissed dock draft returns as edited
+there without overwriting newer Home text. A waiting draft offers Restore your
+earlier draft (a swap) and Discard it, with a polite announcement. Personal
+Home returns stay with the verified authority that sent them, including late
+callbacks after a switch; another authority does not receive that draft.
+Verified personal Home uses authority-scoped v2 tab session storage when
+available, so waiting drafts can survive reloads under the same authority.
+Closing the tab drops them; blocked or failed storage cannot guarantee reload
+persistence. Unverified personal Home keeps them only in that component
+instance, without reload or remount persistence. Legacy unscoped drafts remain
+untouched and unassigned, never restored into Home; current access does not
+prove who wrote them, and no safe legacy recovery control is implemented.
+Project held-draft behavior is separate and unchanged.
 The desktop Inbox, embedded mobile Inbox, and start surface share their row anatomy. Touch
 cards allow two title lines while status and metadata keep predictable positions.
 Inbox dismissal is independent of an open tab: desktop keeps its hover-revealed

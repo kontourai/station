@@ -42,6 +42,7 @@ import {
 } from '../hooks/lastChosenModel';
 import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+import type { NewChatIntent } from '../lib/newChatIntent';
 
 /** jsdom runs `history.back()` as chained 0ms tasks; let queued ones land. */
 async function flushHistory() {
@@ -72,34 +73,39 @@ vi.mock('../contexts/ConfigContext', () => ({
   useConfig: () => ({ defaultApprovalMode: 'auto' }),
 }));
 
-const state = vi.hoisted(() => ({
-  dockOpen: false,
-  agents: [] as unknown[],
-  projects: [] as unknown[],
-  projectsLoading: false,
-  projectsError: false,
-  agentConnections: [] as unknown[],
-  /** `GET /api/projects/run-locations`; undefined until it answers. */
-  runLocations: undefined as Record<string, unknown> | undefined,
-  /** `GET /api/environments/peers`, as this caller may read it. */
-  peers: [] as unknown[],
-  /** `GET /api/projects/:slug/chat-defaults`, by slug. */
-  chatDefaults: {} as Record<string, unknown>,
-  /** What the device reports about this Station (its host name). */
-  device: undefined as { hostName?: string } | undefined,
-  /** `GET /api/environments/ssh`: saved Stations besides this one. */
-  environments: [] as unknown[],
-  /** `GET /api/feature-previews`: visual skills on unless a test says not. */
-  featurePreviews: [] as Array<{ id: string; enabled: boolean }>,
-}));
+const state = vi.hoisted(() => {
+  const requestAuthority = { epoch: 0 };
+  return {
+    dockOpen: false,
+    requestAuthority,
+    requestScope: {
+      apiBase: 'http://station.test',
+      authorityKey: 'parity-authority',
+      isCurrent: () => requestAuthority.epoch === 0,
+    },
+    agents: [] as unknown[],
+    projects: [] as unknown[],
+    projectsLoading: false,
+    projectsError: false,
+    agentConnections: [] as unknown[],
+    /** `GET /api/projects/run-locations`; undefined until it answers. */
+    runLocations: undefined as Record<string, unknown> | undefined,
+    /** `GET /api/environments/peers`, as this caller may read it. */
+    peers: [] as unknown[],
+    /** `GET /api/projects/:slug/chat-defaults`, by slug. */
+    chatDefaults: {} as Record<string, unknown>,
+    /** What the device reports about this Station (its host name). */
+    device: undefined as { hostName?: string } | undefined,
+    /** `GET /api/environments/ssh`: saved Stations besides this one. */
+    environments: [] as unknown[],
+    /** `GET /api/feature-previews`: visual skills on unless a test says not. */
+    featurePreviews: [] as Array<{ id: string; enabled: boolean }>,
+  };
+});
 
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  useHostRequestAuthorityScope: () => ({
-    apiBase: 'http://station.test',
-    authorityKey: 'parity-authority',
-    isCurrent: () => true,
-  }),
+  useHostRequestAuthorityScope: () => state.requestScope,
 }));
 vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => state.device,
@@ -282,6 +288,12 @@ beforeAll(() => {
 });
 beforeEach(() => {
   state.dockOpen = false;
+  state.requestAuthority.epoch = 0;
+  state.requestScope = {
+    apiBase: 'http://station.test',
+    authorityKey: 'parity-authority',
+    isCurrent: () => state.requestAuthority.epoch === 0,
+  };
   resetStartChoicesForTests();
   localStorage.clear();
   sessionStorage.clear();
@@ -1387,10 +1399,13 @@ describe('Home and the dock start the same way', () => {
   }, 30_000);
 
   describe("Home's draft survives every way a start or hand-off can end", () => {
-    function renderHome() {
+    function renderHome(
+      namespace: string | null = 'ns-1',
+      status: 'verified' | 'unavailable' = 'verified',
+    ) {
       return render(
         <AuthorityPersistenceContext.Provider
-          value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+          value={{ status, namespace, observation: null }}
         >
           <HomeStartComposer />
         </AuthorityPersistenceContext.Provider>,
@@ -1507,6 +1522,115 @@ describe('Home and the dock start the same way', () => {
       expect(screen.queryByRole('group', { name: 'Earlier draft' })).toBeNull();
       expect(field().value).toBe('Old draft');
     });
+
+    test.each([
+      { target: 'different authority', sameAuthority: false, timing: 'before' },
+      { target: 'different authority', sameAuthority: false, timing: 'late' },
+      { target: 'same authority', sameAuthority: true, timing: 'before' },
+      { target: 'same authority', sameAuthority: true, timing: 'late' },
+    ] as const)(
+      'held draft ownership on $target remount with $timing dismissal',
+      async ({ target, sameAuthority, timing }) => {
+        const taken: NewChatIntent[] = [];
+        const accept = (event: Event) => {
+          event.preventDefault();
+          taken.push((event as CustomEvent<NewChatIntent>).detail);
+        };
+        const activate = (namespace: string) => {
+          const epoch = ++state.requestAuthority.epoch;
+          state.requestScope = {
+            apiBase: 'http://station.test',
+            authorityKey: `${namespace}:activation:${epoch}`,
+            isCurrent: () => state.requestAuthority.epoch === epoch,
+          };
+        };
+        let mounted: ReturnType<typeof renderHome> | undefined;
+        window.addEventListener('station:open-new-chat', accept);
+        try {
+          activate('authority-A');
+          const scopeA = state.requestScope;
+          mounted = renderHome('authority-A');
+          fireEvent.change(field(), {
+            target: { value: 'A_PRIVATE_ORIGINAL' },
+          });
+          await handOffSkills();
+          expect(taken).toHaveLength(1);
+          const handoff = taken[0];
+          if (!handoff?.onClosed)
+            throw new Error('Accepted Home handoff did not provide onClosed');
+          const returnA = handoff.onClosed;
+          expect(handoff.initialPrompt).toBe('A_PRIVATE_ORIGINAL');
+          expect(handoff.handoff).toEqual({ kind: 'skills' });
+          expect(field().value).toBe('');
+          fireEvent.change(field(), {
+            target: { value: 'A_NEW_UNSENT' },
+          });
+          expect(field().value).toBe('A_NEW_UNSENT');
+          if (timing === 'before') {
+            act(() => returnA('dismissed', 'A_DOCK_EDITED'));
+            expect(field().value).toBe('A_NEW_UNSENT');
+            expect(
+              screen.getByRole('group', { name: 'Earlier draft' }).textContent,
+            ).toContain('A_DOCK_EDITED');
+          }
+          mounted.unmount();
+          mounted = undefined;
+          const namespace = sameAuthority ? 'authority-A' : 'authority-B';
+          activate(namespace);
+          expect(scopeA.isCurrent()).toBe(false);
+          expect(state.requestScope.isCurrent()).toBe(true);
+          mounted = renderHome(namespace);
+          await waitFor(() =>
+            expect(
+              screen.getByRole('form', { name: 'Start work' }),
+            ).toBeTruthy(),
+          );
+          await waitFor(() =>
+            expect(
+              screen.getByRole('button', { name: /^Agent:/ }),
+            ).toBeTruthy(),
+          );
+          if (timing === 'late') {
+            expect(field().value).toBe('');
+            act(() => returnA('dismissed', 'A_DOCK_EDITED'));
+          }
+          console.info(
+            `[Home authority reproduction] ${target}/${timing}: accepted A handoff; ${timing === 'before' ? 'A held before remount' : 'A callback delivered after target mount'}; target form and Agent ready`,
+          );
+          if (sameAuthority) {
+            expect(field().value).toBe('A_DOCK_EDITED');
+            expect(
+              screen.queryByRole('group', { name: 'Earlier draft' }),
+            ).toBeNull();
+            console.info(
+              `[Home authority reproduction] same-authority/${timing}: preserved A_DOCK_EDITED`,
+            );
+            return;
+          }
+          expect(field().value).toBe('');
+          expect(
+            screen.queryByRole('group', { name: 'Earlier draft' }),
+          ).toBeNull();
+          expect(
+            screen.queryByText(/A_PRIVATE_ORIGINAL|A_DOCK_EDITED/),
+          ).toBeNull();
+          expect(taken).toHaveLength(1);
+          fireEvent.change(field(), { target: { value: 'B_ONLY_NEW' } });
+          await waitFor(() => expect(startButton().disabled).toBe(false));
+          fireEvent.click(startButton());
+          expect(taken).toHaveLength(2);
+          expect(taken[1]?.initialPrompt).toBe('B_ONLY_NEW');
+          mounted.unmount();
+          mounted = undefined;
+          activate('authority-A');
+          mounted = renderHome('authority-A');
+          expect(field().value).toBe('A_DOCK_EDITED');
+        } finally {
+          mounted?.unmount();
+          window.removeEventListener('station:open-new-chat', accept);
+        }
+      },
+    );
 
     // Second review F2: a second hand-off while the first dock draft is
     // open dismisses the first (synchronously, inside the dispatch). The
@@ -1667,6 +1791,154 @@ describe('Home and the dock start the same way', () => {
       expect(earlier()?.textContent).toContain('B');
     });
 
+    test.each(['concurrent', 'remounted'] as const)(
+      'an unverified Home keeps held drafts out of a %s instance',
+      async (destination) => {
+        const taken: NewChatIntent[] = [];
+        const accept = (event: Event) => {
+          event.preventDefault();
+          taken.push((event as CustomEvent<NewChatIntent>).detail);
+        };
+        const durableHomeRows = () =>
+          Object.keys(window.sessionStorage).filter((key) =>
+            key.startsWith('station-home-held-drafts-v2:'),
+          );
+        let origin: ReturnType<typeof renderHome> | undefined;
+        let other: ReturnType<typeof renderHome> | undefined;
+        window.addEventListener('station:open-new-chat', accept);
+        try {
+          origin = renderHome(null, 'unavailable');
+          const home = within(origin.container);
+          const message = () =>
+            home.getByRole('textbox', { name: 'What would you like done?' });
+          expect(home.getByRole('form', { name: 'Start work' })).toBeTruthy();
+          await home.findByRole('button', { name: /^Agent:/ });
+          expect(durableHomeRows()).toEqual([]);
+          fireEvent.change(message(), {
+            target: { value: 'UNVERIFIED_ORIGINAL' },
+          });
+          await handOffSkills();
+          expect(taken).toHaveLength(1);
+          const handoff = taken[0];
+          if (!handoff?.onClosed)
+            throw new Error('Accepted Home handoff did not provide onClosed');
+          expect(handoff.initialPrompt).toBe('UNVERIFIED_ORIGINAL');
+          expect(handoff.handoff).toEqual({ kind: 'skills' });
+          expect(message()).toHaveProperty('value', '');
+          fireEvent.change(message(), { target: { value: 'NEWER_WORK' } });
+          // Injected return is a Home-store precondition, not dock delivery proof.
+          act(() => handoff.onClosed?.('dismissed', 'UNVERIFIED_DOCK_EDITED'));
+          expect(message()).toHaveProperty('value', 'NEWER_WORK');
+          expect(
+            home.getByRole('group', { name: 'Earlier draft' }).textContent,
+          ).toContain('UNVERIFIED_DOCK_EDITED');
+          fireEvent.click(
+            home.getByRole('button', { name: 'Restore your earlier draft' }),
+          );
+          expect(message()).toHaveProperty('value', 'UNVERIFIED_DOCK_EDITED');
+          expect(
+            home.getByRole('group', { name: 'Earlier draft' }).textContent,
+          ).toContain('NEWER_WORK');
+          expect(durableHomeRows()).toEqual([]);
+          if (destination === 'remounted') {
+            origin.unmount();
+            origin = undefined;
+          }
+          other = renderHome(null, 'unavailable');
+          const next = within(other.container);
+          expect(next.getByRole('form', { name: 'Start work' })).toBeTruthy();
+          await next.findByRole('button', { name: /^Agent:/ });
+          expect(
+            next.getByRole('textbox', { name: 'What would you like done?' }),
+          ).toHaveProperty('value', '');
+          expect(
+            next.queryByRole('group', { name: 'Earlier draft' }),
+          ).toBeNull();
+          expect(
+            next.queryByText(
+              /UNVERIFIED_ORIGINAL|UNVERIFIED_DOCK_EDITED|NEWER_WORK/,
+            ),
+          ).toBeNull();
+          expect(durableHomeRows()).toEqual([]);
+          if (destination === 'concurrent') {
+            expect(message()).toHaveProperty('value', 'UNVERIFIED_DOCK_EDITED');
+            expect(
+              home.getByRole('group', { name: 'Earlier draft' }).textContent,
+            ).toContain('NEWER_WORK');
+          }
+        } finally {
+          other?.unmount();
+          origin?.unmount();
+          window.removeEventListener('station:open-new-chat', accept);
+        }
+      },
+    );
+
+    test('unowned legacy held drafts stay preserved without restoring into a verified Home', async () => {
+      const legacyRaw = '[ "LEGACY_UNOWNED_DRAFT" ]';
+      window.sessionStorage.setItem('station-home-held-drafts-v1', legacyRaw);
+      reloadHeldHomeDraftsForTests();
+      const taken: NewChatIntent[] = [];
+      const accept = (event: Event) => {
+        event.preventDefault();
+        taken.push((event as CustomEvent<NewChatIntent>).detail);
+      };
+      let mounted: ReturnType<typeof renderHome> | undefined;
+      window.addEventListener('station:open-new-chat', accept);
+      try {
+        mounted = renderHome();
+        expect(screen.getByRole('form', { name: 'Start work' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: /^Agent:/ })).toBeTruthy();
+        console.info(
+          '[Home legacy reproduction] verified Home form and Agent ready; legacy bytes seeded only for fresh-document setup',
+        );
+        expect(field().value).toBe('');
+        expect(earlier()).toBeNull();
+        expect(screen.queryByText('LEGACY_UNOWNED_DRAFT')).toBeNull();
+        expect(
+          window.sessionStorage.getItem('station-home-held-drafts-v1'),
+        ).toBe(legacyRaw);
+        fireEvent.change(field(), { target: { value: 'OWNED_NEW_DRAFT' } });
+        await handOffSkills();
+        expect(taken).toHaveLength(1);
+        const handoff = taken[0];
+        if (!handoff?.onClosed)
+          throw new Error(
+            'Accepted owned Home handoff did not provide onClosed',
+          );
+        expect(handoff.initialPrompt).toBe('OWNED_NEW_DRAFT');
+        expect(handoff.handoff).toEqual({ kind: 'skills' });
+        expect(field().value).toBe('');
+        expect(
+          window.sessionStorage.getItem('station-home-held-drafts-v1'),
+        ).toBe(legacyRaw);
+        fireEvent.change(field(), { target: { value: 'CURRENT_NEW_DRAFT' } });
+        act(() => handoff.onClosed?.('dismissed', 'OWNED_DOCK_EDITED'));
+        expect(field().value).toBe('CURRENT_NEW_DRAFT');
+        expect(earlier()?.textContent).toContain('OWNED_DOCK_EDITED');
+        expect(
+          window.sessionStorage.getItem('station-home-held-drafts-v1'),
+        ).toBe(legacyRaw);
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Restore your earlier draft' }),
+        );
+        expect(field().value).toBe('OWNED_DOCK_EDITED');
+        expect(earlier()?.textContent).toContain('CURRENT_NEW_DRAFT');
+        expect(
+          window.sessionStorage.getItem('station-home-held-drafts-v1'),
+        ).toBe(legacyRaw);
+        fireEvent.click(screen.getByRole('button', { name: 'Discard it' }));
+        expect(earlier()).toBeNull();
+        expect(field().value).toBe('OWNED_DOCK_EDITED');
+        expect(
+          window.sessionStorage.getItem('station-home-held-drafts-v1'),
+        ).toBe(legacyRaw);
+      } finally {
+        mounted?.unmount();
+        window.removeEventListener('station:open-new-chat', accept);
+      }
+    });
+
     // Review round 3 L1: a reload keeps held drafts (this tab's storage).
     test('a held draft survives a reload and comes back on the next Home', async () => {
       const { taken } = dismissingDock();
@@ -1675,14 +1947,14 @@ describe('Home and the dock start the same way', () => {
       await handOffSkills();
       first.unmount();
       act(() => taken.at(-1)!.detail.onClosed('dismissed', 'Before reload'));
-      expect(window.sessionStorage.getItem('station-home-held-drafts-v1')).toBe(
-        JSON.stringify(['Before reload']),
-      );
+      expect(
+        window.sessionStorage.getItem('station-home-held-drafts-v2:"ns-1"'),
+      ).toBe(JSON.stringify(['Before reload']));
       reloadHeldHomeDraftsForTests();
       renderHome();
       expect(field().value).toBe('Before reload');
       expect(
-        window.sessionStorage.getItem('station-home-held-drafts-v1'),
+        window.sessionStorage.getItem('station-home-held-drafts-v2:"ns-1"'),
       ).toBeNull();
     });
 
@@ -1690,7 +1962,7 @@ describe('Home and the dock start the same way', () => {
     // a reload brings back a draft already restored or discarded.
     test('a failed storage write leaves no stale list to restore on reload', () => {
       window.sessionStorage.setItem(
-        'station-home-held-drafts-v1',
+        'station-home-held-drafts-v2:"ns-1"',
         JSON.stringify(['Old', 'Older']),
       );
       reloadHeldHomeDraftsForTests();
@@ -1706,7 +1978,7 @@ describe('Home and the dock start the same way', () => {
         expect(earlier()?.textContent).toContain('Older');
         expect(setItem).toHaveBeenCalled();
         expect(
-          window.sessionStorage.getItem('station-home-held-drafts-v1'),
+          window.sessionStorage.getItem('station-home-held-drafts-v2:"ns-1"'),
         ).toBeNull();
       } finally {
         setItem.mockRestore();
@@ -1715,7 +1987,7 @@ describe('Home and the dock start the same way', () => {
 
     test('unreadable stored drafts are ignored, not restored', () => {
       window.sessionStorage.setItem(
-        'station-home-held-drafts-v1',
+        'station-home-held-drafts-v2:"ns-1"',
         JSON.stringify([1, { text: 'x' }]),
       );
       reloadHeldHomeDraftsForTests();

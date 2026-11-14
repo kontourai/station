@@ -12,7 +12,13 @@ import {
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { useSyncExternalStore } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { commandFrecencyStorage } from '../components/command-frecency-storage';
@@ -898,6 +904,31 @@ describe('CommandPalette', () => {
     fireEvent.change(input, { target: { value: 'schedule' } });
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' });
     expect(navigateMock).toHaveBeenCalledWith('/automations');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  test('Home search offers its destination and Enter requests the Home page', async () => {
+    await renderCommandPalette();
+    open();
+    fireEvent.change(screen.getByRole('combobox'), {
+      target: { value: 'Home' },
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('status', { name: 'Loading additional commands' }),
+      ).toBeNull(),
+    );
+    expect(
+      screen.queryByText('Additional commands are unavailable.'),
+    ).toBeNull();
+    expect(screen.getByRole('option', { name: /^Home/ })).toBeTruthy();
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' });
+
+    expect(showSurfacePageMock).toHaveBeenCalledTimes(1);
+    expect(showSurfacePageMock).toHaveBeenCalledWith('home');
+    expect(showSurfaceMock).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 

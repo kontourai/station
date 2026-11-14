@@ -30,6 +30,7 @@ describe('DestinationRegistry', () => {
         (destination) => destination.id,
       ),
     ).toEqual([
+      'home',
       'agents',
       'guidance-commands',
       'guidance-skills',
@@ -54,6 +55,7 @@ describe('DestinationRegistry', () => {
         (destination) => destination.id,
       ),
     ).toEqual([
+      'home',
       'agents',
       'guidance-commands',
       'guidance-skills',
