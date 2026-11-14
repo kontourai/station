@@ -11,6 +11,7 @@ import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
+  API_ATTEMPTS,
   buildSnapshot,
   COMMENT_LIMIT,
   capacityMetrics,
@@ -34,6 +35,7 @@ import {
   renderHistory,
   renderSnapshot,
   reportSnapshot,
+  retryServerErrors,
   setupMetrics,
   shardFamily,
   snapshotComment,
@@ -448,8 +450,25 @@ describe('CI health metrics', () => {
     const snapshot = buildSnapshot(data, options);
     expect(snapshot).toMatchObject({
       incomplete: true,
+      unfinishedOnly: true,
       reasons: ['window includes 2 unfinished jobs'],
     });
+    // A finished job with no runner attribution is a collection gap, not
+    // unfinished work, and so is a collection reason.
+    const finishedUnattributed = job(3, { runner_id: null, runner_name: null });
+    expect(
+      buildSnapshot(
+        { ...data, jobs: [...data.jobs, finishedUnattributed] },
+        options,
+      ).unfinishedOnly,
+    ).toBe(false);
+    expect(
+      buildSnapshot(
+        { ...data, reasons: ['Invalid Actions runs response'] },
+        options,
+      ).unfinishedOnly,
+    ).toBe(false);
+    expect(buildSnapshot(emptyData(), options).unfinishedOnly).toBe(false);
     expect(snapshot.capacity).toMatchObject({
       unfinished: 2,
       unfinishedWaitMinutes: { count: 2, median: 60, p90: 60 },
@@ -1177,6 +1196,212 @@ describe('CI health collection bounds and command interface', () => {
   });
 });
 
+// The scheduled workflow fails when the CLI exits non-zero. Driven as the
+// real CLI against a stand-in `gh` (the CLI's only API transport) and a
+// non-shallow repository whose origin names the measured repository. Times
+// are relative to now, because stuck work is judged at collection time.
+describe.skipIf(process.platform === 'win32')(
+  'CI health CLI exit status',
+  () => {
+    const cli = join(import.meta.dirname, '../ci-health.mjs');
+    const fakeGh = `#!/usr/bin/env node
+const { existsSync, writeFileSync } = require('node:fs');
+const [, , verb, endpoint] = process.argv;
+const mode = process.env.FAKE_GH_MODE;
+const t = JSON.parse(process.env.FAKE_GH_TIMES);
+if (verb !== 'api') process.exit(2);
+// The real transport failure seen on scheduled runs: always, or only on the
+// first call (FAKE_GH_STATE records that it happened).
+if (mode === 'error' || (mode === 'flaky' && !existsSync(process.env.FAKE_GH_STATE))) {
+  if (mode === 'flaky') writeFileSync(process.env.FAKE_GH_STATE, 'failed once');
+  process.stderr.write('gh: Server Error (HTTP 502)\\n');
+  process.exit(1);
+}
+const done = mode === 'complete' || mode === 'flaky';
+const job = {
+  id: 1, name: 'test', labels: ['ubuntu-latest'], steps: [],
+  created_at: t.created,
+  ...(done
+    ? { status: 'completed', conclusion: 'success', started_at: t.started, completed_at: t.completed, runner_id: 2, runner_name: 'runner-2' }
+    : { status: 'queued', conclusion: null, started_at: null, completed_at: null, runner_id: null, runner_name: null }),
+};
+if (/\\/actions\\/runs\\?created=/.test(endpoint))
+  console.log(JSON.stringify({ total_count: 1, workflow_runs: [{
+    id: 7, run_attempt: 1, name: 'Main: Container smoke', event: 'push',
+    status: done ? 'completed' : 'queued',
+    conclusion: done ? 'success' : null,
+    created_at: t.created, head_sha: 'a'.repeat(40), head_branch: 'main',
+    pull_requests: [],
+  }] }));
+else if (endpoint.startsWith('search/issues?'))
+  // The landing search: no PR merged in the window.
+  console.log(JSON.stringify({ total_count: 0, incomplete_results: false, items: [] }));
+else if (/\\/actions\\/runs\\/7\\/attempts\\/1\\/jobs/.test(endpoint))
+  console.log(JSON.stringify({ total_count: mode === 'stuckRun' ? 0 : 1, jobs: mode === 'stuckRun' ? [] : [job] }));
+else {
+  process.stderr.write('unexpected endpoint ' + endpoint + '\\n');
+  process.exit(1);
+}
+`;
+    const setup = () => {
+      const root = makeTempDir('ci-health-cli-');
+      const bin = join(root, 'bin');
+      const repo = join(root, 'repo');
+      mkdirSync(bin);
+      mkdirSync(repo);
+      writeFileSync(join(bin, 'gh'), fakeGh, { mode: 0o755 });
+      const env = Object.fromEntries(
+        Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')),
+      );
+      const git = (args: string[]) =>
+        execFileSync('git', args, { cwd: repo, env, windowsHide: true });
+      git(['init', '-q', '-b', 'main']);
+      git([
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.invalid',
+        'commit',
+        '-q',
+        '--allow-empty',
+        '-m',
+        'fixture',
+      ]);
+      git([
+        'remote',
+        'add',
+        'origin',
+        'https://github.com/kontourai/station.git',
+      ]);
+      git(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+      return (mode: string, { createdHoursAgo = 1.5 } = {}) => {
+        const now = Date.now();
+        const ago = (hours: number) =>
+          new Date(now - hours * 3_600_000).toISOString();
+        return spawnSync(
+          process.execPath,
+          [
+            cli,
+            '--json',
+            `--since=${ago(createdHoursAgo + 0.5)}`,
+            `--until=${ago(1)}`,
+          ],
+          {
+            cwd: repo,
+            env: {
+              ...env,
+              PATH: `${bin}:${process.env.PATH ?? ''}`,
+              FAKE_GH_MODE: mode,
+              FAKE_GH_STATE: join(root, 'failed-once'),
+              FAKE_GH_TIMES: JSON.stringify({
+                created: ago(createdHoursAgo),
+                started: ago(createdHoursAgo - 0.05),
+                completed: ago(createdHoursAgo - 0.1),
+              }),
+            },
+            encoding: 'utf8',
+            timeout: 60_000,
+            windowsHide: true,
+          },
+        );
+      };
+    };
+
+    it('exits 0 for a complete window', () => {
+      const result = setup()('complete');
+      expect(result.stderr).toBe('');
+      expect(JSON.parse(result.stdout).incomplete).toBe(false);
+      expect(result.status).toBe(0);
+    });
+
+    it('reports a window incomplete only because work is unfinished, and exits 0', () => {
+      const result = setup()('unfinished');
+      const snapshot = JSON.parse(result.stdout);
+      expect(snapshot).toMatchObject({
+        incomplete: true,
+        unfinishedOnly: true,
+        stuck: { jobs: 0, runs: 0, afterHours: 6 },
+        reasons: ['window includes 1 unfinished jobs'],
+      });
+      expect(result.stderr).toContain(
+        '::warning title=CI health window incomplete::window includes 1 unfinished jobs',
+      );
+      expect(result.stderr).not.toContain('stuck');
+      expect(result.status).toBe(0);
+    });
+
+    // Not excused as running work: its own warning, and it is not counted as
+    // unfinished. It does not fail the run (not a throughput measurement).
+    it.each([
+      [
+        'stuck',
+        'window includes 1 jobs unfinished for more than 6 hours (stuck)',
+      ],
+      [
+        'stuckRun',
+        'window includes 1 runs with no jobs, unfinished for more than 6 hours (stuck)',
+      ],
+    ])('reports %s work separately from running work', (mode, reason) => {
+      const result = setup()(mode, { createdHoursAgo: 7 });
+      const snapshot = JSON.parse(result.stdout);
+      expect(snapshot.reasons).toEqual([reason]);
+      expect(snapshot.unfinishedOnly).toBe(true);
+      expect(result.stderr).toContain(
+        `::warning title=CI health stuck work::${reason}; this is stuck work, not work still running`,
+      );
+      expect(result.stderr).not.toContain('still running at the window end');
+      expect(result.status).toBe(0);
+    });
+
+    it('retries a transient 5xx and measures the window', () => {
+      const result = setup()('flaky');
+      expect(JSON.parse(result.stdout).incomplete).toBe(false);
+      expect(result.status).toBe(0);
+    }, 60_000);
+
+    it('still fails when a 5xx persists through every attempt', () => {
+      const result = setup()('error');
+      const snapshot = JSON.parse(result.stdout);
+      expect(snapshot.incomplete).toBe(true);
+      expect(snapshot.unfinishedOnly).toBe(false);
+      expect(snapshot.reasons.join('\n')).toContain('HTTP 502');
+      expect(result.status).toBe(1);
+    }, 60_000);
+  },
+);
+
+describe('bounded retry of GitHub server errors', () => {
+  const failing = (messages: string[]) => {
+    let calls = 0;
+    const call = async () => {
+      const message = messages[calls++];
+      if (message) throw new Error(message);
+      return 'ok';
+    };
+    return { call, calls: () => calls };
+  };
+  it('retries a 5xx up to the attempt bound, then throws', async () => {
+    const flaky = failing(['gh: Server Error (HTTP 502)']);
+    await expect(retryServerErrors(flaky.call, { delayMs: 0 })).resolves.toBe(
+      'ok',
+    );
+    expect(flaky.calls()).toBe(2);
+    const down = failing(Array(API_ATTEMPTS).fill('gh: HTTP 503 (HTTP 503)'));
+    await expect(retryServerErrors(down.call, { delayMs: 0 })).rejects.toThrow(
+      'HTTP 503',
+    );
+    expect(down.calls()).toBe(API_ATTEMPTS);
+    expect(API_ATTEMPTS).toBe(3);
+  });
+  it('does not retry anything that is not a 5xx', async () => {
+    const missing = failing(['gh: Not Found (HTTP 404)']);
+    await expect(
+      retryServerErrors(missing.call, { delayMs: 0 }),
+    ).rejects.toThrow('HTTP 404');
+    expect(missing.calls()).toBe(1);
+  });
+});
+
 describe('CI health lane ledger, unique catch and landing cost', () => {
   // GitHub REST workflow-run shape: `path` names the workflow file and
   // `display_title` carries ci.yml's run-name.
@@ -1877,5 +2102,23 @@ describe('CI health lane ledger, unique catch and landing cost', () => {
       '| n/a (legacy snapshot) | n/a (legacy snapshot) | n/a (legacy snapshot) |',
     );
     expect(table.split('\n')[3]).toContain('| 0 | n/a / n/a | n/a |');
+  });
+});
+
+describe('stuck runs', () => {
+  // A re-run keeps its first attempt's created_at; only run_started_at says
+  // when this attempt began.
+  it('judges a job-less run by when its current attempt started', () => {
+    const collectedAt = at(12 * 60);
+    const queued = run(9, {
+      status: 'queued',
+      conclusion: null,
+      created_at: at(0),
+    });
+    const snapshot = (runs: object[]) =>
+      buildSnapshot({ ...emptyData(), collectedAt, runs }, options).stuck;
+    expect(snapshot([queued]).runs).toBe(1);
+    expect(snapshot([{ ...queued, run_started_at: at(11 * 60) }]).runs).toBe(0);
+    expect(snapshot([{ ...queued, run_started_at: at(5 * 60) }]).runs).toBe(1);
   });
 });

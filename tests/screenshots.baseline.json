@@ -161,7 +161,7 @@
       "name": "desktop-conversation-resync",
       "width": 1440,
       "height": 900,
-      "sha256": "8df7d323e6aba801fd9ab84f993bb864cac314e20753abf157654612f95aeb42"
+      "sha256": "77de0b0b5b26973551b1b3cbdb8fe56240f8303f0a6b1097cb33694456d316ea"
     },
     {
       "name": "detected-project-desktop",
@@ -185,7 +185,7 @@
       "name": "home",
       "width": 1440,
       "height": 900,
-      "sha256": "2eb0149fbce4692f4481c1cee9bdd8e5304d5c261bb2c973e50323abe25f3089"
+      "sha256": "d6fa793158f6236e5e4cdd4361abb7d643f5957c9da07a8de1bc1658576ccbab"
     },
     {
       "name": "inventory-drilldown-older-host-dark-desktop",
@@ -287,13 +287,13 @@
       "name": "mobile-conversation-resync",
       "width": 390,
       "height": 844,
-      "sha256": "f3e7bb2b7625078194c12587151a47815f8d7a907a984b1b4d73c8a7237f77ca"
+      "sha256": "4f512c6d196eadc7383ec9128b10b122a4046e1ddb7062fdc3ca6e16eee5704e"
     },
     {
       "name": "mobile-home",
       "width": 390,
       "height": 844,
-      "sha256": "a26177013bad0b4a315ab58a2763176707efab90352e857a72c5dc84b61a44dc"
+      "sha256": "2eb7895c94c69da9f4486e8c309b1b4f9ecf5d4bcf015ce8f9c9870ab2081b0f"
     },
     {
       "name": "mobile-http-consent-320",
@@ -353,37 +353,37 @@
       "name": "new-chat-dark-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "734335e8d0c5acc3ddb76120db8482fc08ad9d83c9bda67307075e8ed4a20e0b"
+      "sha256": "3417e55f0b73dedb7a2a31a73f93f87d76ff107b52a329769d9f2944ceac43fe"
     },
     {
       "name": "new-chat-dark-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "9f8b3fa0b600704017d46dc4cf741cc496327a77d120b36072d8543cf0f61299"
+      "sha256": "89527575778d525c072e05f8073222d8d70729257cfdf684e518e9931c8b9fb9"
     },
     {
       "name": "new-chat-dark-phone",
       "width": 412,
       "height": 915,
-      "sha256": "59883c34686f6f0f16b7dcc1a3849f4c214b43a3483a5038ca7e2c9c11111fbd"
+      "sha256": "a9d7911284bd9b17390d350f9fb3536990cd90e7f51fabe58725a23a5ed2da9b"
     },
     {
       "name": "new-chat-light-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "8597831ad634eec6e47eaed54ce37558e174291798e38e988b25d3c008545621"
+      "sha256": "6be08c7471517746c13ecba3087ffa94c01ce440eca376d8e5bd9d3b159523ec"
     },
     {
       "name": "new-chat-light-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "04588ea62f72ef4550d043b42c7a4be2e895c960063e23607ab554d4e1751655"
+      "sha256": "1e53d0e5a6a4b9a646ffba3f010e7c1517b78b87c9d25805e974f96141d74656"
     },
     {
       "name": "new-chat-light-phone",
       "width": 412,
       "height": 915,
-      "sha256": "c72705f2028421699eaf4f32e2e46a9a02edc2ccf1740fb5cadd6f87d4af447e"
+      "sha256": "cdfa3fb163ee64a420924f546d7408c64dd45c521fe2e3357e81fe992e9d2fa4"
     },
     {
       "name": "overlay-add-job-modal",
@@ -546,6 +546,126 @@
       "width": 1440,
       "height": 900,
       "sha256": "05fdd25c0fb862f2d646f516ee0c0f68d2e70f8dfc393acac76acf3b5835f348"
+    },
+    {
+      "name": "reply-composer-dark-1440-long",
+      "width": 1440,
+      "height": 900,
+      "sha256": "e652d34931c7c8ddd467f41959a2347388572c74495c8da429f63de7e89563fb"
+    },
+    {
+      "name": "reply-composer-dark-1440-short",
+      "width": 1440,
+      "height": 900,
+      "sha256": "b98295d2c1ea98236d1ff9cbecc16985f83c5d6626ac949910bdedd69e013d88"
+    },
+    {
+      "name": "reply-composer-dark-320-long",
+      "width": 320,
+      "height": 915,
+      "sha256": "b9c6c5fb8b20225d398bbe13c982a8e36a4795fc925c6dacd128e8e89b49707c"
+    },
+    {
+      "name": "reply-composer-dark-320-short",
+      "width": 320,
+      "height": 915,
+      "sha256": "909cd914f4f23a887f3050a62ead2c7b9b55ecdb5a437edbfa8c6a4c01344440"
+    },
+    {
+      "name": "reply-composer-dark-360-long",
+      "width": 360,
+      "height": 915,
+      "sha256": "b011bb9709c94a54e52e8d52de6e8b688d6d1963beff3ad03a5180c5ccc120a8"
+    },
+    {
+      "name": "reply-composer-dark-360-short",
+      "width": 360,
+      "height": 915,
+      "sha256": "525831f2d02d80baa27d87b3147c8866f341e3eb41588d125bb518980638210b"
+    },
+    {
+      "name": "reply-composer-dark-390-long",
+      "width": 390,
+      "height": 915,
+      "sha256": "882dd0ce7999a187932ec2f0a7399eafadc95de4f0540d3b400eab4158f6ddba"
+    },
+    {
+      "name": "reply-composer-dark-390-short",
+      "width": 390,
+      "height": 915,
+      "sha256": "60bfe96aaaceda760f93079516bbd2b30a162e34eedbcf8045449c6ecd8ff64d"
+    },
+    {
+      "name": "reply-composer-dark-412-long",
+      "width": 412,
+      "height": 915,
+      "sha256": "b4cb596297082f6e23fa27a280dbd58eca318d1e2d3487e42a1691a6ae1649e8"
+    },
+    {
+      "name": "reply-composer-dark-412-short",
+      "width": 412,
+      "height": 915,
+      "sha256": "5a2affe431effcc4fdd5712e3c84ea6014f81b8b8a0e896d1c1985a6c35646da"
+    },
+    {
+      "name": "reply-composer-light-1440-long",
+      "width": 1440,
+      "height": 900,
+      "sha256": "8ac73f54015f1265e02936794bbf13014d215c7b9fd95be2062673e07eec4676"
+    },
+    {
+      "name": "reply-composer-light-1440-short",
+      "width": 1440,
+      "height": 900,
+      "sha256": "4d23d7179c8d6f9da48d2884273d5d7c3d70ab69c69ce467f797c91d290b3262"
+    },
+    {
+      "name": "reply-composer-light-320-long",
+      "width": 320,
+      "height": 915,
+      "sha256": "0bd64636a3b30d55ef3d3826f9c267f4e8c7bc7377ea9b4a712647563ad09aa9"
+    },
+    {
+      "name": "reply-composer-light-320-short",
+      "width": 320,
+      "height": 915,
+      "sha256": "9145ff5f0d47c6ecfd1a2b9da209a7b123d3820cee2cafc21ba2e2edac808f6a"
+    },
+    {
+      "name": "reply-composer-light-360-long",
+      "width": 360,
+      "height": 915,
+      "sha256": "b5607bbcbd4fd6dfd674f98d0cdc034c8cc87bbead88509a412baea664f50dc9"
+    },
+    {
+      "name": "reply-composer-light-360-short",
+      "width": 360,
+      "height": 915,
+      "sha256": "fac9da83e105e7c58cd1e345752d1ba356e833b07a2cba7a0b96bd736c5097b6"
+    },
+    {
+      "name": "reply-composer-light-390-long",
+      "width": 390,
+      "height": 915,
+      "sha256": "928fd6aefd591bfdbeb9308f387c959add58dc0ad0695a9be710e8c53e4a2d7c"
+    },
+    {
+      "name": "reply-composer-light-390-short",
+      "width": 390,
+      "height": 915,
+      "sha256": "20086291cb346648a503270947b050dae10f6e703a0daef79dd3298ad96436c1"
+    },
+    {
+      "name": "reply-composer-light-412-long",
+      "width": 412,
+      "height": 915,
+      "sha256": "485a111a52dab5736fba56513a4f0860140ef32e2d75cdd1b3be07e8a55a420d"
+    },
+    {
+      "name": "reply-composer-light-412-short",
+      "width": 412,
+      "height": 915,
+      "sha256": "c278e68af1ef0cb7e573ef6dd25ef1eb5690f69ad20ce2ef3b85512b6d4403aa"
     },
     {
       "name": "room-agent-abandon-dark-desktop",
@@ -834,6 +954,102 @@
       "width": 390,
       "height": 844,
       "sha256": "f894d4ea82cea701f57001c4935b3cd921f8aa8e0e4e78774728f4f2321e625e"
+    },
+    {
+      "name": "run-setup-dark-1440",
+      "width": 1440,
+      "height": 900,
+      "sha256": "6a2742a6df1cafeb136806e69216afc62857106598c9d931ea2486d1993ef57a"
+    },
+    {
+      "name": "run-setup-dark-390",
+      "width": 390,
+      "height": 844,
+      "sha256": "e85930edc576970d45134111c6d79ff35d3c185d1f9ac6cc8be558f0aeb90e72"
+    },
+    {
+      "name": "run-setup-dark-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "d447046292b18c97008f61b2f33c012e4ae558b093b6aeeb6881187a0f1ef09c"
+    },
+    {
+      "name": "run-setup-filled-dark-1440",
+      "width": 1440,
+      "height": 900,
+      "sha256": "261101b4240a1583f185cdb9f451132ecd86e11c70342d7bf1ca5e46e1dc099f"
+    },
+    {
+      "name": "run-setup-filled-dark-390",
+      "width": 390,
+      "height": 844,
+      "sha256": "e80810cac7e350bc82cebc92f4db82eee08c7ac935485b3a8a2709ccdea7f156"
+    },
+    {
+      "name": "run-setup-filled-dark-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "df81af20bc9eae5723b664f143f30d343ae63003cc71fae92436a4c00fc0493b"
+    },
+    {
+      "name": "run-setup-filled-light-1440",
+      "width": 1440,
+      "height": 900,
+      "sha256": "51c6110cc24edaca686324196ff993a8549046e2c78989e2328bb46e7eb52d29"
+    },
+    {
+      "name": "run-setup-filled-light-390",
+      "width": 390,
+      "height": 844,
+      "sha256": "ec0677306c5ec0f1e94ecc1cbf37a195455e17bc6109bdf2f37667b668a94bc6"
+    },
+    {
+      "name": "run-setup-filled-light-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "2cbef7724ba9986ec58a79d7c82fc923e91b94e8a3bb875c03cb86786cd3bdb7"
+    },
+    {
+      "name": "run-setup-full-access-390",
+      "width": 390,
+      "height": 915,
+      "sha256": "e4e29388e6975f8496aad12820c9cf05103ac037d01270d8d18ce6e503844795"
+    },
+    {
+      "name": "run-setup-full-access-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "e13988920d5101955fe0c73834138cbe52234edb114345e0fa0cbd487291af30"
+    },
+    {
+      "name": "run-setup-light-1440",
+      "width": 1440,
+      "height": 900,
+      "sha256": "1e0e6c848927f7a794e025a6136e5580a2e96d3280e06f65623936a46d0e6c3d"
+    },
+    {
+      "name": "run-setup-light-390",
+      "width": 390,
+      "height": 844,
+      "sha256": "888cc12a4a0393cfde67de7936e89cdafb16713532c3fc1f1ea04f27ac47bb5a"
+    },
+    {
+      "name": "run-setup-light-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "5872fdda54d7006a49235e2c0f2279820a5aa5dbf0b73081d8fa2474470348f6"
+    },
+    {
+      "name": "run-setup-model-stacked-dark-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "046983867af4802700b85dcfe9cb1b5222c71403d1473f5dec75cb96b7bda626"
+    },
+    {
+      "name": "run-setup-model-stacked-light-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "ad1ffada58f24320a8cfd3717aab7131b25000799fff4815a798324d543205a2"
     },
     {
       "name": "schedule",

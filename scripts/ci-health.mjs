@@ -328,6 +328,8 @@ export function capacityMetrics(jobs, until, since) {
     skipped: jobs.filter((j) => j.conclusion === 'skipped').length,
     unfinished: unfinished.length,
     unattributed: unattributed.length,
+    unattributedUnfinished: unattributed.filter((j) => j.conclusion == null)
+      .length,
     unfinishedWaitMinutes: distribution(knownUnfinished.map(waitSoFar)),
     runnerHours:
       ran.reduce(
@@ -887,8 +889,38 @@ async function command(executable, args) {
     });
   }
 }
-const api = async (endpoint, extra = []) =>
-  JSON.parse(await command('gh', ['api', endpoint, ...extra]));
+/** Attempts for one API call that GitHub answers with a 5xx. */
+export const API_ATTEMPTS = 3;
+const API_RETRY_DELAY_MS = 2_000;
+/**
+ * One gh API call. A 5xx (gh prints `Server Error (HTTP 502)` and the like)
+ * is retried with a short growing backoff: about one scheduled window in
+ * seven failed on one, which is GitHub's transient state, not a collection
+ * gap. A 5xx that persists through every attempt, and every other error,
+ * still throws.
+ */
+export async function retryServerErrors(
+  call,
+  { attempts = API_ATTEMPTS, delayMs = API_RETRY_DELAY_MS } = {},
+) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await call();
+    } catch (error) {
+      if (attempt >= attempts || !/\(HTTP 5\d\d\)/.test(error.message))
+        throw error;
+      await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+    }
+  }
+}
+// Reads only: a 5xx on the --record POST may still have created the
+// comment, so a write is never repeated.
+const api = async (endpoint, extra = []) => {
+  const call = () => command('gh', ['api', endpoint, ...extra]);
+  return JSON.parse(
+    await (extra.includes('--method') ? call() : retryServerErrors(call)),
+  );
+};
 async function pages(request, endpoint, field, limit = 100) {
   const items = [];
   for (let page = 1; page <= limit; page++) {
@@ -1199,16 +1231,57 @@ export function qualificationMetrics(runs, jobs) {
     ).length,
   };
 }
+/**
+ * Work unfinished this long after it was created is stuck, not running. No
+ * job here may run longer than 125 minutes (the largest timeout-minutes in
+ * .github/workflows) and the merge queue gives up after 120, so six hours
+ * leaves well over three hours of queue wait before anything is called
+ * stuck. A scheduled window ends two hours behind collection and spans six,
+ * so its oldest work is eight hours old: work created in a window's first two
+ * hours and still unfinished is reported.
+ */
+export const STUCK_AFTER_HOURS = 6;
+const STUCK = ' (stuck)';
 export function buildSnapshot(data, options) {
   const capacity = capacityMetrics(data.jobs, options.until, options.since);
   const lanes = laneMetrics(data.runs, data.jobs, options.until, options.since);
   const reasons = [...data.reasons];
+  const collected = time(data.collectedAt ?? options.until);
+  const stale = (at) => collected - time(at) > STUCK_AFTER_HOURS * 60 * minute;
+  const stuckJobs = data.jobs.filter(
+    (job) =>
+      job.conclusion == null &&
+      time(job.created_at) < time(options.until) &&
+      stale(job.created_at),
+  ).length;
+  // A run can sit queued with no jobs at all (seen on 2026-11-11); it never
+  // reaches the job counts, so it is counted here.
+  const runKeys = new Set(data.jobs.map((job) => job.health_run_key));
+  const stuckRuns = (data.runs ?? []).filter(
+    (run) =>
+      run.status !== 'completed' &&
+      !runKeys.has(`${run.id}:${run.run_attempt}`) &&
+      // A re-run keeps its first attempt's created_at; its own start is
+      // run_started_at.
+      stale(run.run_started_at ?? run.created_at),
+  ).length;
   if (capacity.unattributed)
     reasons.push(
       `window includes ${capacity.unattributed} jobs with unavailable runner attribution`,
     );
-  if (capacity.unfinished)
-    reasons.push(`window includes ${capacity.unfinished} unfinished jobs`);
+  // Stuck jobs are reported below, not as unfinished (still running) work.
+  if (capacity.unfinished > stuckJobs)
+    reasons.push(
+      `window includes ${capacity.unfinished - stuckJobs} unfinished jobs`,
+    );
+  if (stuckJobs)
+    reasons.push(
+      `window includes ${stuckJobs} jobs unfinished for more than ${STUCK_AFTER_HOURS} hours${STUCK}`,
+    );
+  if (stuckRuns)
+    reasons.push(
+      `window includes ${stuckRuns} runs with no jobs, unfinished for more than ${STUCK_AFTER_HOURS} hours${STUCK}`,
+    );
   const latency = landingLatency(data.landings ?? null, data.timelines ?? {});
   if (latency.missingMergeEvent)
     reasons.push(
@@ -1221,6 +1294,15 @@ export function buildSnapshot(data, options) {
     until: options.until,
     collectedAt: data.collectedAt ?? options.until,
     incomplete: reasons.length > 0,
+    // Incomplete only because work in the window had not finished (an
+    // unfinished job has no runner attribution yet either), whether still
+    // running or stuck. Nothing failed to be collected.
+    unfinishedOnly:
+      data.reasons.length === 0 &&
+      !latency.missingMergeEvent &&
+      (capacity.unfinished > 0 || stuckRuns > 0) &&
+      capacity.unattributed === capacity.unattributedUnfinished,
+    stuck: { jobs: stuckJobs, runs: stuckRuns, afterHours: STUCK_AFTER_HOURS },
     reasons,
     listingCapHits: data.capHits,
     mergeQueue: mergeMetrics(
@@ -1578,7 +1660,28 @@ export async function reportSnapshot(
 ) {
   const snapshot = buildSnapshot(await collect(options), options);
   print(options.json ? JSON.stringify(snapshot) : renderSnapshot(snapshot));
-  let failed = snapshot.incomplete;
+  // A collection failure (API error, pagination cap, unresolved PR, merge
+  // base or merge event, unavailable ledger) fails the run. A window that is
+  // incomplete only because work was still running is reported but does
+  // not: the scheduled run would otherwise be red for a measurement gap.
+  // Stuck work gets its own warning and is not described as still running.
+  // It does not fail the run: it is not a throughput measurement, and its
+  // owner is whoever clears the stuck run.
+  let failed = snapshot.incomplete && !snapshot.unfinishedOnly;
+  if (snapshot.incomplete && snapshot.unfinishedOnly) {
+    const stuck = snapshot.reasons.filter((reason) => reason.endsWith(STUCK));
+    const running = snapshot.reasons.filter(
+      (reason) => !reason.endsWith(STUCK),
+    );
+    if (stuck.length)
+      warn(
+        `::warning title=CI health stuck work::${stuck.join('; ')}; this is stuck work, not work still running`,
+      );
+    if (running.length)
+      warn(
+        `::warning title=CI health window incomplete::${running.join('; ')} (still running at the window end; not a collection failure)`,
+      );
+  }
   if (options.record)
     try {
       await post(snapshotComment(snapshot));
