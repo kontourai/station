@@ -37,6 +37,8 @@
 //   refuseConfigOptions  config ids whose session/set_config_option is
 //                        refused with an internal error (an engine that will
 //                        not take a value it listed)
+//   exitOnConfigOptions  config ids whose session/set_config_option ends
+//                        the process unanswered
 //   --prompt-steps <path>  a JSON step list replacing the default turn. Extra
 //                        step kinds: `client-request` {method, params},
 //                        `user-message-id` (a Kiro `user_message_id_assigned`
@@ -399,6 +401,10 @@ const app = acp
   .onRequest('session/set_config_option', async ({ params }) => {
     record({ method: 'session/set_config_option', configId: params.configId });
     await requestDelay('session/set_config_option');
+    if (profile.exitOnConfigOptions?.includes(params.configId)) {
+      setTimeout(() => process.exit(0), 0);
+      return new Promise(() => {});
+    }
     if (profile.refuseConfigOptions?.includes(params.configId))
       throw acp.RequestError.internalError(
         undefined,

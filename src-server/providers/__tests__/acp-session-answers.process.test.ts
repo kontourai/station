@@ -312,6 +312,20 @@ describe.skipIf(process.platform === 'win32')(
       await engine.completed(turnId);
     });
 
+    test('a reopen whose engine exits while the model is reapplied fails to start', async () => {
+      const engine = launch(
+        { ...PROFILE, exitOnConfigOptions: ['model'] },
+        TEXT_TURN,
+      );
+      const first = await engine.start('exits');
+      await engine.adapter.stopSession('exits');
+      await expect(
+        engine.start('exits', first.resumeCursor, {
+          modelId: 'gemini-3.8-flash',
+        }),
+      ).rejects.toThrow();
+    });
+
     test('a reopen applies an effort to an option that lists no values', async () => {
       // An effort option with no listed values takes any value.
       const freeForm = structuredClone(PROFILE) as {

@@ -292,6 +292,7 @@ import {
   resolveAcpRewind,
 } from './acp-session-actions.js';
 import {
+  AcpSettingUnverifiedError,
   type AdvertisedAcpModeCatalog,
   advertisedAcpSessionModes,
   applyAcpEffort,
@@ -1228,7 +1229,7 @@ async function reapplyRequestedSessionState(input: {
           applied?.id !== modelOption.id ||
           applied.currentValue !== requestedModel
         ) {
-          throw new Error(
+          throw new AcpSettingUnverifiedError(
             `ACP model application unverified: connection '${input.connectionId}' reported '${applied?.currentValue ?? 'no current value'}' after '${requestedModel}' was requested.`,
           );
         }
@@ -1265,9 +1266,13 @@ async function reapplyRequestedSessionState(input: {
       if (applied.configOptions) record.configOptions = applied.configOptions;
     }
   } catch (error) {
-    // An engine that exited (or a stop) mid-reapply fails the start as any
-    // start whose engine is gone does; only a refusal keeps the reopen.
-    if (!input.process.isAlive) throw error;
+    // Only the engine's refusal keeps the reopen: an answered JSON-RPC error
+    // (it carries a numeric `code`) or a setting it would not confirm. A
+    // closed connection or an exited engine fails the start, as any start
+    // whose engine is gone does.
+    const answered =
+      typeof (error as { code?: unknown } | null)?.code === 'number';
+    if (!answered && !(error instanceof AcpSettingUnverifiedError)) throw error;
     input.logger.warn?.(
       `ACP connection '${input.connectionId}': a reopened session kept the engine's model or effort; reapplying the requested one failed.`,
       error instanceof Error ? error.message : error,
