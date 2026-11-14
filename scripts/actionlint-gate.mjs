@@ -3342,7 +3342,7 @@ function primaryCiRouterFindings(file, document) {
 // (the dequeue job fetches the candidate head as Git objects for merge-tree).
 // Any topology/authority change requires review and a new policy digest.
 const LANDING_POLICY_SHA256 =
-  '2d70117b7341f80d25b273127dd156a76cdfbb998509832b36f516a34f9fb9f2';
+  'fb659ff2499b70d55523ff70841f07aaa076e06b052b98a847bdea05d904b824';
 function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
   if (file === '.github/workflows/pr-ci-supersession.yml') {
     const digest = createHash('sha256')
