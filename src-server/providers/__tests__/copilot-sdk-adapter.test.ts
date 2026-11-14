@@ -12,26 +12,22 @@
  */
 import {
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import type {
-  MessageOptions,
   ModelInfo,
   PermissionRequest,
-  PermissionRequestResult,
-  ResumeSessionConfig,
   SessionConfig,
   SessionEvent,
 } from '@github/copilot-sdk';
 import type { ProviderRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
-import { afterAll, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { startRecoveredOrchestrationSession } from '../../services/orchestration/orchestration-session-state.js';
 import { SessionStartRefusedError } from '../adapter-shape.js';
 import {
@@ -40,15 +36,12 @@ import {
 } from '../adapters/copilot-sdk-adapter.js';
 import {
   type CopilotRealPathFs,
+  copilotModeAllows,
   copilotRealPath,
 } from '../adapters/copilot-sdk-approval.js';
 import type {
-  CopilotHistoryRewindRequest,
-  CopilotHistoryRewindResult,
-  CopilotPermissionModeResult,
   CopilotSdkClientPort,
   CopilotSdkLaunch,
-  CopilotSdkSessionPort,
 } from '../adapters/copilot-sdk-port.js';
 import {
   COPILOT_CONNECTION_CHECK_MS,
@@ -56,8 +49,14 @@ import {
   copilotSdkClientPort,
 } from '../adapters/copilot-sdk-port.js';
 import { nativeResumeBindingKey } from '../adapters/native-resume-binding.js';
+import {
+  FakeCopilotClient,
+  type FakeCopilotSession,
+} from './copilot-sdk-fakes.js';
 
-const ROOT = mkdtempSync(join(tmpdir(), 'copilot-sdk-adapter-'));
+// Removed after the file's last test (#2421): every test shares this tree.
+const makeFixtureDir = trackTempDirs({ lifetime: 'file' });
+const ROOT = makeFixtureDir('copilot-sdk-adapter-');
 const CWD = join(ROOT, 'repo');
 const OUTSIDE = join(ROOT, 'outside');
 mkdirSync(join(CWD, 'src'), { recursive: true });
@@ -91,140 +90,6 @@ if (RELATIVE_LINKS) {
 }
 const COPILOT_HOME = join(ROOT, 'copilot-home');
 const BINDING = nativeResumeBindingKey('copilot-sdk', COPILOT_HOME, null);
-
-afterAll(() => {
-  rmSync(ROOT, { recursive: true, force: true });
-});
-
-type AnyConfig = SessionConfig | ResumeSessionConfig;
-
-class FakeCopilotSession implements CopilotSdkSessionPort {
-  readonly sends: MessageOptions[] = [];
-  readonly rewinds: CopilotHistoryRewindRequest[] = [];
-  readonly restarted: string[] = [];
-  aborts = 0;
-  abortFails = false;
-  disconnected = false;
-  permissionModeResult: CopilotPermissionModeResult = {
-    success: true,
-    mode: 'manual',
-  };
-  persisted: SessionEvent[] = [];
-  rewindResult: CopilotHistoryRewindResult = {
-    outcome: 'success',
-    eventsRemoved: 4,
-    restoredFiles: [],
-    skippedFiles: [],
-  };
-  private eventSeq = 0;
-
-  constructor(
-    readonly sessionId: string,
-    readonly config: AnyConfig,
-  ) {}
-
-  /** Delivers one runtime event through the SDK's `onEvent` callback. */
-  emit(event: SessionEvent): void {
-    this.config.onEvent?.(event);
-  }
-
-  /** Raises a permission request the way the SDK calls its handler. */
-  ask(
-    request: PermissionRequest,
-    invocation: { promptRequest?: unknown } = {},
-  ): Promise<PermissionRequestResult> {
-    return Promise.resolve(
-      this.config.onPermissionRequest!(request, {
-        sessionId: this.sessionId,
-        ...invocation,
-      } as never),
-    ) as Promise<PermissionRequestResult>;
-  }
-
-  nextEventId(): string {
-    this.eventSeq += 1;
-    return `evt-${this.eventSeq}`;
-  }
-
-  async getEvents(): Promise<SessionEvent[]> {
-    return this.persisted;
-  }
-  /** Runs before `send()` resolves: the runtime can answer before admission returns. */
-  onSend?: (messageId: string, options: MessageOptions) => void;
-
-  async send(options: MessageOptions): Promise<string> {
-    this.sends.push(options);
-    const messageId = `msg-${this.sends.length}`;
-    this.onSend?.(messageId, options);
-    return messageId;
-  }
-  async abort(): Promise<void> {
-    this.aborts += 1;
-    if (this.abortFails) throw new Error('Connection is closed.');
-  }
-  async disconnect(): Promise<void> {
-    this.disconnected = true;
-  }
-  async rewind(
-    request: CopilotHistoryRewindRequest,
-  ): Promise<CopilotHistoryRewindResult> {
-    this.rewinds.push(request);
-    return this.rewindResult;
-  }
-  async restartMcpServer(serverName: string): Promise<void> {
-    this.restarted.push(serverName);
-  }
-}
-
-class FakeCopilotClient implements CopilotSdkClientPort {
-  readonly created: FakeCopilotSession[] = [];
-  readonly resumed: Array<{ id: string; session: FakeCopilotSession }> = [];
-  stopped = 0;
-  /** Events the runtime emits while `createSession`/`resumeSession` runs. */
-  duringStart: SessionEvent[] = [];
-  /** Shapes each new session before it is returned. */
-  prepare: (session: FakeCopilotSession) => void = () => undefined;
-  models: ModelInfo[] = [];
-  private onLost?: (error: unknown) => void;
-
-  /** The runtime process dies: the connection watch reports it. */
-  loseConnection(): void {
-    this.onLost?.(new Error('Connection is closed.'));
-  }
-
-  private open(id: string, config: AnyConfig): FakeCopilotSession {
-    const session = new FakeCopilotSession(id, config);
-    this.prepare(session);
-    for (const event of this.duringStart) session.emit(event);
-    return session;
-  }
-  async createSession(config: SessionConfig): Promise<CopilotSdkSessionPort> {
-    const session = this.open('copilot-session-1', config);
-    this.created.push(session);
-    return session;
-  }
-  async resumeSession(
-    id: string,
-    config: ResumeSessionConfig,
-  ): Promise<CopilotSdkSessionPort> {
-    const session = this.open(id, config);
-    this.resumed.push({ id, session });
-    return session;
-  }
-  async listModels(): Promise<ModelInfo[]> {
-    return this.models;
-  }
-  watchConnection(onLost: (error: unknown) => void): () => void {
-    this.onLost = onLost;
-    return () => {
-      this.onLost = undefined;
-    };
-  }
-  async stop(): Promise<Error[]> {
-    this.stopped += 1;
-    return [];
-  }
-}
 
 function previewSwitch(initial: boolean) {
   const state = { enabled: initial };
@@ -1205,6 +1070,35 @@ describe('Copilot SDK adapter: approvals', () => {
     },
   );
 
+  test('a write through `..` that stays inside the directory is allowed in auto', async () => {
+    const h = harness();
+    const session = await start(h, {
+      modelOptions: { approvalMode: 'auto' },
+    });
+    await expect(
+      session.ask(
+        write('src/../new.txt', `${CWD}${sep}src${sep}..${sep}new.txt`),
+      ),
+    ).resolves.toEqual({ kind: 'approve-once' });
+    await h.settle();
+    expect(opened(h)).toHaveLength(0);
+  });
+
+  test('with an unresolvable working directory every read and write asks', () => {
+    const scope = { realCwd: undefined, grants: new Set(['write']) };
+    const inside = join(CWD, 'src', 'a.ts');
+    expect(
+      copilotModeAllows('auto', read('src/a.ts', inside), scope, false),
+    ).toBe(false);
+    expect(
+      copilotModeAllows('auto', write('src/a.ts', inside), scope, false),
+    ).toBe(false);
+    // Full access in a host session still allows: it never compares paths.
+    expect(
+      copilotModeAllows('never', write('src/a.ts', inside), scope, false),
+    ).toBe(true);
+  });
+
   test('a write whose edits reach outside the directory asks a person', async () => {
     const h = harness();
     const session = await start(h, {
@@ -1408,7 +1302,7 @@ describe('Copilot SDK adapter: approval mode per turn', () => {
 });
 
 describe('Copilot SDK adapter: subagents', () => {
-  test('a subagent is child work from started to completed', async () => {
+  test('a subagent is child work from started to completed, with its reply as the result', async () => {
     const h = harness();
     const { session, turnId } = await startedTurn(h);
     session.emit({
@@ -1437,21 +1331,35 @@ describe('Copilot SDK adapter: subagents', () => {
         durationMs: 3000,
       },
     });
+    // The subagent's task tool returns its reply to the parent.
+    session.emit({
+      type: 'tool.execution_complete',
+      id: session.nextEventId(),
+      parentId: null,
+      timestamp: at(6),
+      data: {
+        toolCallId: 'task-1',
+        success: true,
+        result: { content: 'The tests are in src/__tests__.' },
+      },
+    });
     await h.settle();
     const deltas = h.events
       .filter((e) => e.method === 'child-work.updated')
       .map((e) => (e as { delta: Record<string, unknown> }).delta);
     expect(deltas).toEqual([
       expect.objectContaining({
-        kind: 'upsert',
-        item: expect.objectContaining({
-          producer: 'engine-subagent',
-          reporterThreadId: 'thread-1',
-          childId: 'task-1',
-          status: 'running',
-          title: 'Find the tests',
-          parent: expect.objectContaining({ turnId, toolCallId: 'task-1' }),
-        }),
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: 'thread-1',
+        running: [
+          expect.objectContaining({
+            childId: 'task-1',
+            status: 'running',
+            title: 'Find the tests',
+            parent: expect.objectContaining({ turnId, toolCallId: 'task-1' }),
+          }),
+        ],
       }),
       expect.objectContaining({
         kind: 'settle',
@@ -1459,7 +1367,18 @@ describe('Copilot SDK adapter: subagents', () => {
         status: 'completed',
         usage: { totalTokens: 900, toolUses: 4, durationMs: 3000 },
       }),
+      expect.objectContaining({
+        kind: 'settle',
+        childId: 'task-1',
+        status: 'completed',
+        result: {
+          summary: 'The tests are in src/__tests__.',
+          source: 'tool-return',
+        },
+      }),
     ]);
+    // Nothing computed a nesting depth, so none is claimed.
+    expect(JSON.stringify(deltas)).not.toContain('depth');
   });
 
   test('a subagent still open when its turn ends is settled unresolved', async () => {
@@ -1794,8 +1713,8 @@ describe('Copilot SDK port: stopping the watch', () => {
 
 describe('Copilot SDK adapter: which CLI file the SDK is given', () => {
   test('maps an npm .cmd shim to the package loader beside it, or to nothing', () => {
-    const prefix = mkdtempSync(join(tmpdir(), 'copilot-cli-shim-'));
-    try {
+    const prefix = makeFixtureDir('copilot-cli-shim-');
+    {
       const shimFile = join(prefix, 'copilot.cmd');
       writeFileSync(shimFile, '@echo off\r\n');
       // No package beside the shim: nothing the SDK could spawn.
@@ -1809,8 +1728,6 @@ describe('Copilot SDK adapter: which CLI file the SDK is given', () => {
       // An executable is handed over as found.
       const exe = join(prefix, 'copilot.exe');
       expect(resolveCopilotCliLaunchPath(exe)).toBe(exe);
-    } finally {
-      rmSync(prefix, { recursive: true, force: true });
     }
   });
 });
