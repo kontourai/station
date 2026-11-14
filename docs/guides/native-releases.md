@@ -115,7 +115,10 @@ claim is recorded rather than assumed
 ([#3591](https://github.com/kontourai/station/issues/3591)): the
 `desktop-windows` job stages `station-<tag>-windows-x86_64-signing.json`, an
 attested receipt bound to the MSI checksum with `platformSigningState`
-`VERIFIED` (a `Valid` signature) or `NOT_SIGNED`, and the inventory's
+`VERIFIED` (a `Valid` signature by the imported certificate) or `NOT_SIGNED`.
+The job's PowerShell step only records what `Get-AuthenticodeSignature`
+reported; `scripts/lib/windows-release-signing.mjs` decides, and refuses every
+other status (`HashMismatch`, `NotTrusted`, `UnknownError`, ...). The inventory's
 `windows-x86_64` `platformSigning` claim (`signed`/`platform-signature` or
 `unsigned`/`not-applicable`) must match it. Until Windows signing is
 provisioned, tagged MSIs ship `NOT_SIGNED`, as Nightly does, and users see the
@@ -659,7 +662,7 @@ signing and API-key notarization data
 optional Windows Authenticode certificate data
 (`WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD`). With neither
 Windows value set, the tagged MSI ships unsigned and records `NOT_SIGNED`;
-with both set it must verify as `Valid`. Setting only one, or setting
+with both set it must verify as `Valid`, signed by that certificate. Setting only one, or setting
 `WINDOWS_SIGN_COMMAND` (which only Nightly implements so far), fails the job.
 Each protected platform job checks only its own credentials before it starts
 its signing operation. There is no shared credential-aggregator job and no

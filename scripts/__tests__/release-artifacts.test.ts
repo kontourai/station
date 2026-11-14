@@ -153,16 +153,25 @@ function writeWindowsSigningReceipt(
   mode: WindowsSigningMode,
 ) {
   const installer = `station-${TAG}-windows-x86_64.msi`;
+  const installerSha256 = createHash('sha256')
+    .update(readFileSync(join(assetsDir, installer)))
+    .digest('hex');
+  const signer = mode === 'certificate' ? 'A1'.repeat(20) : null;
   const receipt = createWindowsReleaseSigningReceipt({
     tag: TAG,
     sourceSha: SHA,
     mode,
-    authenticodeStatus: mode === 'certificate' ? 'Valid' : 'NotSigned',
-    signerThumbprint: mode === 'certificate' ? 'A1'.repeat(20) : null,
+    // The record release.yml's Authenticode observation step writes.
+    observation: {
+      installer: `D:\\a\\station\\bundle\\msi\\Station_1.2.3_x64_en-US.msi`,
+      installerSha256,
+      authenticodeStatus: mode === 'certificate' ? 'Valid' : 'NotSigned',
+      statusMessage: null,
+      signerThumbprint: signer,
+    },
+    expectedThumbprint: signer,
     installer,
-    installerSha256: createHash('sha256')
-      .update(readFileSync(join(assetsDir, installer)))
-      .digest('hex'),
+    installerSha256,
   });
   writeFileSync(
     join(assetsDir, windowsSigningReceiptAsset(TAG)),

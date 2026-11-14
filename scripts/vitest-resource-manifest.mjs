@@ -1084,6 +1084,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // staging bash steps as real child processes. Single-shot spawns, no
   // wall-clock assertion.
   'scripts/__tests__/windows-release-signing.test.ts',
+  // #3591: on Windows, runs release.yml's Authenticode observation step under
+  // real pwsh against MSI/PE fixtures it signs at test time (skipped off
+  // Windows). Single-shot spawns, no wall-clock assertion.
+  'scripts/__tests__/windows-release-authenticode.process.test.ts',
   // #2977: runs release.yml's assemble-draft admission step as a real bash
   // child against a download-artifact-shaped fixture root.
   'scripts/__tests__/release-admit-producer-assets.test.ts',

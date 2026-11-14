@@ -10,7 +10,10 @@
  * revalidates both. Tauri updater signing stays mandatory either way.
  *
  * The receipt states reuse Nightly's vocabulary (`VERIFIED` / `NOT_SIGNED`,
- * see windows-nightly.mjs). Configured signing authority must sign or fail:
+ * see windows-nightly.mjs). release.yml's PowerShell step only observes: it
+ * writes what `Get-AuthenticodeSignature` returned for the MSI (status,
+ * signer thumbprint, MSI hash) to a JSON file, and every decision about which
+ * observation each mode accepts is made here. Configured signing authority must sign or fail:
  * a partial certificate pair refuses, and so does `WINDOWS_SIGN_COMMAND`,
  * which Nightly honours but the tagged path does not implement yet.
  */
@@ -33,6 +36,13 @@ const STATES = {
     platformSigningState: 'NOT_SIGNED',
   },
 };
+const OBSERVATION_KEYS = [
+  'authenticodeStatus',
+  'installer',
+  'installerSha256',
+  'signerThumbprint',
+  'statusMessage',
+];
 /** The inventory claim each receipt state maps to. */
 const INVENTORY_CLAIMS = {
   VERIFIED: { state: 'signed', proof: 'platform-signature' },
@@ -69,25 +79,94 @@ export function windowsSigningReceiptAsset(tag) {
   return `station-${tag}-windows-x86_64-signing.json`;
 }
 
-/** Bind the observed Authenticode status to the mode and the MSI bytes. */
+/**
+ * Refuse anything but the exact record release.yml's observation step writes:
+ * `Get-AuthenticodeSignature`'s status name, its signer's thumbprint (null
+ * when there is no signer certificate) and the observed MSI's SHA-256.
+ */
+export function parseWindowsAuthenticodeObservation(observation) {
+  if (
+    !observation ||
+    typeof observation !== 'object' ||
+    Array.isArray(observation) ||
+    JSON.stringify(Object.keys(observation).sort()) !==
+      JSON.stringify(OBSERVATION_KEYS) ||
+    typeof observation.authenticodeStatus !== 'string' ||
+    observation.authenticodeStatus === '' ||
+    typeof observation.installer !== 'string' ||
+    !CHECKSUM.test(observation.installerSha256 ?? '') ||
+    !(
+      observation.signerThumbprint === null ||
+      typeof observation.signerThumbprint === 'string'
+    ) ||
+    !(
+      observation.statusMessage === null ||
+      typeof observation.statusMessage === 'string'
+    )
+  )
+    fail('Authenticode observation is malformed');
+  return observation;
+}
+
+/**
+ * The signing policy: certificate mode accepts only a Valid signature by the
+ * certificate release.yml imported; unsigned mode accepts only NotSigned with
+ * no signer. Every other status (HashMismatch, NotTrusted, UnknownError, ...)
+ * refuses in both modes.
+ */
+export function decideWindowsAuthenticode({
+  mode,
+  observation,
+  expectedThumbprint = null,
+}) {
+  const expected = STATES[mode];
+  if (!expected) fail(`unknown signing mode ${JSON.stringify(mode)}`);
+  const observed = parseWindowsAuthenticodeObservation(observation);
+  if (observed.authenticodeStatus !== expected.authenticodeStatus)
+    fail(
+      `${mode} mode requires Authenticode status ${expected.authenticodeStatus}, observed ${JSON.stringify(observed.authenticodeStatus)}${observed.statusMessage ? ` (${observed.statusMessage})` : ''}`,
+    );
+  if (mode === 'certificate') {
+    if (!THUMBPRINT.test(expectedThumbprint ?? ''))
+      fail(
+        'certificate mode requires the imported release certificate thumbprint',
+      );
+    if (observed.signerThumbprint !== expectedThumbprint)
+      fail(
+        `the MSI is signed by ${JSON.stringify(observed.signerThumbprint)}, not the imported release certificate ${expectedThumbprint}`,
+      );
+  } else if (observed.signerThumbprint !== null) {
+    fail(
+      `unsigned mode observed signer ${JSON.stringify(observed.signerThumbprint)}`,
+    );
+  }
+  return {
+    authenticodeStatus: observed.authenticodeStatus,
+    platformSigningState: expected.platformSigningState,
+    signerThumbprint: mode === 'certificate' ? observed.signerThumbprint : null,
+    installerSha256: observed.installerSha256,
+  };
+}
+
+/** Bind the decided Authenticode observation to the release and MSI bytes. */
 export function createWindowsReleaseSigningReceipt({
   tag,
   sourceSha,
   mode,
-  authenticodeStatus,
-  signerThumbprint,
+  observation,
+  expectedThumbprint = null,
   installer,
   installerSha256,
 }) {
-  const expected = STATES[mode];
-  if (!expected) fail(`unknown signing mode ${JSON.stringify(mode)}`);
-  if (authenticodeStatus !== expected.authenticodeStatus)
+  const decision = decideWindowsAuthenticode({
+    mode,
+    observation,
+    expectedThumbprint,
+  });
+  if (decision.installerSha256 !== installerSha256)
     fail(
-      `${mode} mode requires Authenticode status ${expected.authenticodeStatus}, observed ${JSON.stringify(authenticodeStatus)}`,
+      `the Authenticode observation is for MSI sha256 ${decision.installerSha256}, not the staged installer ${installerSha256}`,
     );
-  const thumbprint = mode === 'certificate' ? signerThumbprint : null;
-  if (mode === 'certificate' && !THUMBPRINT.test(thumbprint ?? ''))
-    fail('a valid signature must name its signer thumbprint');
   const receipt = {
     kind: KIND,
     tag,
@@ -96,9 +175,9 @@ export function createWindowsReleaseSigningReceipt({
     installer,
     installerSha256,
     signingMode: mode,
-    authenticodeStatus,
-    platformSigningState: expected.platformSigningState,
-    signerThumbprint: thumbprint,
+    authenticodeStatus: decision.authenticodeStatus,
+    platformSigningState: decision.platformSigningState,
+    signerThumbprint: decision.signerThumbprint,
   };
   assertWindowsReleaseSigningReceipt(receipt, {
     tag,
@@ -165,6 +244,21 @@ function option(argv, name) {
   return argv[index + 1];
 }
 
+function optional(argv, name) {
+  return argv.includes(name) ? option(argv, name) : null;
+}
+
+function readObservation(argv) {
+  const path = option(argv, '--observation');
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    fail(
+      `cannot read Authenticode observation ${path}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 function summary(mode) {
   return mode === 'certificate'
     ? 'Windows Authenticode: signing with the configured certificate; the MSI must verify as Valid.'
@@ -181,16 +275,23 @@ if (invokedDirectly(import.meta.url)) {
       if (process.env.GITHUB_STEP_SUMMARY)
         appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary(mode)}\n`);
       console.log(`mode=${mode}`);
+    } else if (command === 'check') {
+      const decision = decideWindowsAuthenticode({
+        mode: option(argv, '--mode'),
+        observation: readObservation(argv),
+        expectedThumbprint: optional(argv, '--expected-thumbprint'),
+      });
+      console.log(
+        `Windows Authenticode ${decision.authenticodeStatus} accepted: platformSigningState=${decision.platformSigningState}`,
+      );
     } else if (command === 'receipt') {
       const installer = option(argv, '--installer');
       const receipt = createWindowsReleaseSigningReceipt({
         tag: option(argv, '--tag'),
         sourceSha: option(argv, '--sha'),
         mode: option(argv, '--mode'),
-        authenticodeStatus: option(argv, '--authenticode-status'),
-        signerThumbprint: argv.includes('--signer-thumbprint')
-          ? option(argv, '--signer-thumbprint')
-          : null,
+        observation: readObservation(argv),
+        expectedThumbprint: optional(argv, '--expected-thumbprint'),
         installer: basename(installer),
         installerSha256: createHash('sha256')
           .update(readFileSync(installer))
@@ -205,7 +306,7 @@ if (invokedDirectly(import.meta.url)) {
       );
     } else {
       fail(
-        'usage: windows-release-signing.mjs <mode|receipt --tag --sha --mode --authenticode-status [--signer-thumbprint] --installer --output>',
+        'usage: windows-release-signing.mjs <mode | check --mode --observation [--expected-thumbprint] | receipt --tag --sha --mode --observation [--expected-thumbprint] --installer --output>',
       );
     }
   } catch (error) {

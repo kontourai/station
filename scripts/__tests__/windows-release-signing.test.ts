@@ -16,6 +16,7 @@ import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import {
   assertWindowsReleaseSigningReceipt,
   createWindowsReleaseSigningReceipt,
+  decideWindowsAuthenticode,
   windowsPlatformSigningClaim,
   windowsReleaseSigningMode,
 } from '../lib/windows-release-signing.mjs';
@@ -24,13 +25,33 @@ import {
  * #3591: tagged releases ship the Windows MSI unsigned when no Authenticode
  * credentials exist, refuse partial or unsupported signing authority, and
  * keep the certificate path's Valid requirement. The workflow cases run the
- * desktop-windows bash steps from release.yml itself as child processes.
+ * desktop-windows bash steps from release.yml itself as child processes; the
+ * PowerShell observation step runs for real against signed and unsigned files
+ * in windows-release-authenticode.process.test.ts (Windows only).
  */
 
 const root = resolve(import.meta.dirname, '../..');
 const TAG = 'v1.2.3';
 const SHA = 'a'.repeat(40);
 const THUMBPRINT = 'A1'.repeat(20);
+const OTHER_THUMBPRINT = 'B2'.repeat(20);
+const MSI_SHA256 = 'c'.repeat(64);
+
+/** The record release.yml's observation step writes (ConvertTo-Json shape). */
+function observation(
+  authenticodeStatus: string,
+  signerThumbprint: string | null,
+  installerSha256 = MSI_SHA256,
+) {
+  return {
+    installer:
+      'D:\\a\\station\\src-desktop\\target\\x86_64-pc-windows-msvc\\release\\bundle\\msi\\Station_1.2.3_x64_en-US.msi',
+    installerSha256,
+    authenticodeStatus,
+    statusMessage: `Status ${authenticodeStatus}`,
+    signerThumbprint,
+  };
+}
 const temporaryRoots: string[] = [];
 /** A GitHub Actions expression exactly as release.yml spells it. */
 const gh = (expression: string) => ['$', '{{ ', expression, ' }}'].join('');
@@ -40,6 +61,7 @@ type Step = {
   id?: string;
   if?: string;
   run?: string;
+  shell?: string;
   env?: Record<string, string>;
 };
 
@@ -56,8 +78,8 @@ function step(name: string): Step {
 
 const DECIDE = 'Decide the Windows Authenticode signing mode';
 const IMPORT = 'Import Windows Authenticode certificate';
-const VERIFY =
-  'Verify Windows Authenticode signature and versioned build output';
+const OBSERVE = 'Observe Windows Authenticode signature';
+const PROVENANCE = 'Verify versioned MSI build provenance';
 const STAGE = 'Stage canonical Windows artifacts and their signing receipt';
 const UPDATER = 'Fail closed and create tag-bound updater configuration';
 
@@ -122,20 +144,136 @@ describe('windowsReleaseSigningMode', () => {
   });
 });
 
+describe('decideWindowsAuthenticode', () => {
+  it('accepts NotSigned with no signer in unsigned mode', () => {
+    expect(
+      decideWindowsAuthenticode({
+        mode: 'unsigned',
+        observation: observation('NotSigned', null),
+      }),
+    ).toEqual({
+      authenticodeStatus: 'NotSigned',
+      platformSigningState: 'NOT_SIGNED',
+      signerThumbprint: null,
+      installerSha256: MSI_SHA256,
+    });
+  });
+
+  it('accepts Valid only when the imported certificate signed it', () => {
+    expect(
+      decideWindowsAuthenticode({
+        mode: 'certificate',
+        observation: observation('Valid', THUMBPRINT),
+        expectedThumbprint: THUMBPRINT,
+      }),
+    ).toMatchObject({
+      platformSigningState: 'VERIFIED',
+      signerThumbprint: THUMBPRINT,
+    });
+    expect(() =>
+      decideWindowsAuthenticode({
+        mode: 'certificate',
+        observation: observation('Valid', OTHER_THUMBPRINT),
+        expectedThumbprint: THUMBPRINT,
+      }),
+    ).toThrow('not the imported release certificate');
+    expect(() =>
+      decideWindowsAuthenticode({
+        mode: 'certificate',
+        observation: observation('Valid', THUMBPRINT),
+      }),
+    ).toThrow('requires the imported release certificate thumbprint');
+  });
+
+  // Every status Get-AuthenticodeSignature can report other than the one a
+  // mode expects refuses, signed or not.
+  it.each([
+    'HashMismatch',
+    'NotTrusted',
+    'UnknownError',
+    'NotSupportedFileFormat',
+    'Incompatible',
+  ])('refuses %s in both modes', (status) => {
+    expect(() =>
+      decideWindowsAuthenticode({
+        mode: 'certificate',
+        observation: observation(status, THUMBPRINT),
+        expectedThumbprint: THUMBPRINT,
+      }),
+    ).toThrow(
+      `certificate mode requires Authenticode status Valid, observed "${status}"`,
+    );
+    expect(() =>
+      decideWindowsAuthenticode({
+        mode: 'unsigned',
+        observation: observation(status, null),
+      }),
+    ).toThrow(
+      `unsigned mode requires Authenticode status NotSigned, observed "${status}"`,
+    );
+  });
+
+  it('refuses NotSigned in certificate mode and Valid in unsigned mode', () => {
+    expect(() =>
+      decideWindowsAuthenticode({
+        mode: 'certificate',
+        observation: observation('NotSigned', null),
+        expectedThumbprint: THUMBPRINT,
+      }),
+    ).toThrow('observed "NotSigned"');
+    expect(() =>
+      decideWindowsAuthenticode({
+        mode: 'unsigned',
+        observation: observation('Valid', THUMBPRINT),
+      }),
+    ).toThrow('observed "Valid"');
+  });
+
+  it('refuses a signer in unsigned mode and an unknown mode', () => {
+    expect(() =>
+      decideWindowsAuthenticode({
+        mode: 'unsigned',
+        observation: observation('NotSigned', THUMBPRINT),
+      }),
+    ).toThrow('unsigned mode observed signer');
+    expect(() =>
+      decideWindowsAuthenticode({
+        mode: '',
+        observation: observation('NotSigned', null),
+      }),
+    ).toThrow('unknown signing mode ""');
+  });
+
+  it.each([
+    ['a missing field', { authenticodeStatus: 'NotSigned' }],
+    ['an extra field', { ...observation('NotSigned', null), verdict: 'ok' }],
+    ['an upper-case hash', observation('NotSigned', null, 'C'.repeat(64))],
+    [
+      'a numeric status',
+      { ...observation('NotSigned', null), authenticodeStatus: 2 },
+    ],
+    ['an empty status', observation('', null)],
+    ['no record', null],
+  ])('refuses an observation with %s', (_label, value) => {
+    expect(() =>
+      decideWindowsAuthenticode({ mode: 'unsigned', observation: value }),
+    ).toThrow('Authenticode observation is malformed');
+  });
+});
+
 describe('Windows release signing receipt', () => {
   const base = {
     tag: TAG,
     sourceSha: SHA,
     installer: `station-${TAG}-windows-x86_64.msi`,
-    installerSha256: 'c'.repeat(64),
+    installerSha256: MSI_SHA256,
   };
 
   it('records NOT_SIGNED only for an unsigned-mode MSI Windows reports as NotSigned', () => {
     const receipt = createWindowsReleaseSigningReceipt({
       ...base,
       mode: 'unsigned',
-      authenticodeStatus: 'NotSigned',
-      signerThumbprint: null,
+      observation: observation('NotSigned', null),
     });
     expect(receipt).toMatchObject({
       platformSigningState: 'NOT_SIGNED',
@@ -151,8 +289,8 @@ describe('Windows release signing receipt', () => {
     const receipt = createWindowsReleaseSigningReceipt({
       ...base,
       mode: 'certificate',
-      authenticodeStatus: 'Valid',
-      signerThumbprint: THUMBPRINT,
+      observation: observation('Valid', THUMBPRINT),
+      expectedThumbprint: THUMBPRINT,
     });
     expect(receipt.platformSigningState).toBe('VERIFIED');
     expect(windowsPlatformSigningClaim(receipt)).toEqual({
@@ -172,18 +310,27 @@ describe('Windows release signing receipt', () => {
       createWindowsReleaseSigningReceipt({
         ...base,
         mode,
-        authenticodeStatus: status,
-        signerThumbprint: thumbprint,
+        observation: observation(status, thumbprint),
+        expectedThumbprint: THUMBPRINT,
       }),
     ).toThrow('Windows release signing');
+  });
+
+  it('refuses an observation of different MSI bytes', () => {
+    expect(() =>
+      createWindowsReleaseSigningReceipt({
+        ...base,
+        mode: 'unsigned',
+        observation: observation('NotSigned', null, 'd'.repeat(64)),
+      }),
+    ).toThrow('not the staged installer');
   });
 
   it('binds the receipt to the release installer bytes', () => {
     const receipt = createWindowsReleaseSigningReceipt({
       ...base,
       mode: 'unsigned',
-      authenticodeStatus: 'NotSigned',
-      signerThumbprint: null,
+      observation: observation('NotSigned', null),
     });
     expect(() =>
       assertWindowsReleaseSigningReceipt(receipt, {
@@ -234,11 +381,16 @@ describe('release.yml desktop-windows Authenticode steps', () => {
         ),
       },
     });
-    expect(step(IMPORT).if).toBe(
-      gh("steps.windows-signing.outputs.mode == 'certificate'"),
+    expect(step(IMPORT)).toMatchObject({
+      id: 'windows-certificate',
+      if: gh("steps.windows-signing.outputs.mode == 'certificate'"),
+    });
+    expect(step(IMPORT).run).toContain(
+      '"thumbprint=$($imported.Thumbprint)" | Out-File -FilePath $env:GITHUB_OUTPUT',
     );
-    const order = [UPDATER, DECIDE, IMPORT, VERIFY, STAGE].map((name) =>
-      windowsJob.steps.findIndex((candidate) => candidate.name === name),
+    const order = [UPDATER, DECIDE, IMPORT, OBSERVE, PROVENANCE, STAGE].map(
+      (name) =>
+        windowsJob.steps.findIndex((candidate) => candidate.name === name),
     );
     expect(order).toEqual([...order].sort((left, right) => left - right));
   });
@@ -300,21 +452,19 @@ describe('release.yml desktop-windows Authenticode steps', () => {
     }
   });
 
-  it('verifies Valid for certificate mode and NotSigned for unsigned mode', () => {
-    // pwsh is not executed here (NOT_VERIFIED locally); pin each branch.
-    const verify = step(VERIFY);
-    expect(verify.env).toEqual({
-      WINDOWS_SIGNING_MODE: gh('steps.windows-signing.outputs.mode'),
+  it('feeds the observation step the mode and the imported signer', () => {
+    // The step's behaviour runs under real pwsh in
+    // windows-release-authenticode.process.test.ts; only its wiring is here.
+    expect(step(OBSERVE)).toMatchObject({
+      id: 'windows-authenticode',
+      shell: 'pwsh',
+      env: {
+        WINDOWS_SIGNING_MODE: gh('steps.windows-signing.outputs.mode'),
+        EXPECTED_SIGNER_THUMBPRINT: gh(
+          'steps.windows-certificate.outputs.thumbprint',
+        ),
+      },
     });
-    expect(verify.run).toContain(
-      "if ($env:WINDOWS_SIGNING_MODE -eq 'certificate') {\n  if ($signature.Status -ne 'Valid')",
-    );
-    expect(verify.run).toContain(
-      "} elseif ($env:WINDOWS_SIGNING_MODE -eq 'unsigned') {\n  if ($signature.Status -ne 'NotSigned')",
-    );
-    expect(verify.run).toContain(
-      '} else { throw "Unknown Windows signing mode',
-    );
   });
 
   it('publishes the draft with notes derived from the validated inventory', () => {
@@ -340,7 +490,12 @@ describe('release.yml desktop-windows Authenticode steps', () => {
   });
 
   describe('staging the MSI-bound receipt', () => {
-    function stage(env: Record<string, string>) {
+    function stage(
+      status: string,
+      thumbprint: string | null,
+      env: Record<string, string>,
+      observedSha256?: string,
+    ) {
       const workspace = temporary();
       symlinkSync(resolve(root, 'scripts'), join(workspace, 'scripts'));
       const bundle = join(
@@ -357,11 +512,22 @@ describe('release.yml desktop-windows Authenticode steps', () => {
       );
       const summary = join(workspace, 'summary');
       writeFileSync(summary, '');
+      const msiSha256 = createHash('sha256').update(msi).digest('hex');
+      const observed = join(workspace, 'station-windows-authenticode.json');
+      writeFileSync(
+        observed,
+        JSON.stringify(
+          observation(status, thumbprint, observedSha256 ?? msiSha256),
+          null,
+          2,
+        ),
+      );
       const result = runStep(step(STAGE).run as string, workspace, {
         RELEASE_TAG: TAG,
         RELEASE_SHA: SHA,
         GITHUB_STEP_SUMMARY: summary,
-        SIGNER_THUMBPRINT: '',
+        AUTHENTICODE_OBSERVATION: observed,
+        EXPECTED_SIGNER_THUMBPRINT: '',
         ...env,
       });
       const receipt = join(
@@ -374,23 +540,25 @@ describe('release.yml desktop-windows Authenticode steps', () => {
         receipt: existsSync(receipt)
           ? JSON.parse(readFileSync(receipt, 'utf8'))
           : null,
-        msiSha256: createHash('sha256').update(msi).digest('hex'),
+        msiSha256,
       };
     }
 
-    it('takes the mode and observed status from the earlier steps', () => {
+    it('takes the mode, observation and imported signer from the earlier steps', () => {
       expect(step(STAGE).env).toMatchObject({
         WINDOWS_SIGNING_MODE: gh('steps.windows-signing.outputs.mode'),
-        AUTHENTICODE_STATUS: gh('steps.windows-authenticode.outputs.status'),
-        SIGNER_THUMBPRINT: gh('steps.windows-authenticode.outputs.thumbprint'),
+        AUTHENTICODE_OBSERVATION: gh(
+          'steps.windows-authenticode.outputs.observation',
+        ),
+        EXPECTED_SIGNER_THUMBPRINT: gh(
+          'steps.windows-certificate.outputs.thumbprint',
+        ),
       });
-      expect(step(VERIFY).id).toBe('windows-authenticode');
     });
 
     it('stages a NOT_SIGNED receipt for an unsigned build', () => {
-      const { result, summary, receipt, msiSha256 } = stage({
+      const { result, summary, receipt, msiSha256 } = stage('NotSigned', null, {
         WINDOWS_SIGNING_MODE: 'unsigned',
-        AUTHENTICODE_STATUS: 'NotSigned',
       });
       expect(result.status, result.stderr).toBe(0);
       expect(receipt).toMatchObject({
@@ -406,10 +574,9 @@ describe('release.yml desktop-windows Authenticode steps', () => {
     });
 
     it('stages a VERIFIED receipt for a certificate-signed build', () => {
-      const { result, receipt } = stage({
+      const { result, receipt } = stage('Valid', THUMBPRINT, {
         WINDOWS_SIGNING_MODE: 'certificate',
-        AUTHENTICODE_STATUS: 'Valid',
-        SIGNER_THUMBPRINT: THUMBPRINT,
+        EXPECTED_SIGNER_THUMBPRINT: THUMBPRINT,
       });
       expect(result.status, result.stderr).toBe(0);
       expect(receipt).toMatchObject({
@@ -419,20 +586,34 @@ describe('release.yml desktop-windows Authenticode steps', () => {
     });
 
     it.each([
-      ['unsigned', 'Valid', THUMBPRINT],
-      ['certificate', 'NotSigned', ''],
-      ['', 'NotSigned', ''],
+      ['unsigned', 'Valid', THUMBPRINT, ''],
+      ['certificate', 'NotSigned', null, THUMBPRINT],
+      ['certificate', 'Valid', OTHER_THUMBPRINT, THUMBPRINT],
+      ['certificate', 'HashMismatch', THUMBPRINT, THUMBPRINT],
+      ['', 'NotSigned', null, ''],
     ])(
       'refuses mode %j with observed status %s',
-      (mode, status, thumbprint) => {
-        const { result, receipt } = stage({
+      (mode, status, thumbprint, expected) => {
+        const { result, receipt } = stage(status, thumbprint, {
           WINDOWS_SIGNING_MODE: mode,
-          AUTHENTICODE_STATUS: status,
-          SIGNER_THUMBPRINT: thumbprint,
+          EXPECTED_SIGNER_THUMBPRINT: expected,
         });
         expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain('Windows release signing');
         expect(receipt).toBeNull();
       },
     );
+
+    it('refuses an observation of other MSI bytes than the staged one', () => {
+      const { result, receipt } = stage(
+        'NotSigned',
+        null,
+        { WINDOWS_SIGNING_MODE: 'unsigned' },
+        'd'.repeat(64),
+      );
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('not the staged installer');
+      expect(receipt).toBeNull();
+    });
   });
 });
