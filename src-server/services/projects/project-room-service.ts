@@ -65,6 +65,12 @@ export interface ProjectRoomAdmission {
 }
 /** Byte storage for room files (`ProjectRoomAttachments`), keyed by a binding tuple. */
 export interface ProjectRoomAttachmentPort {
+  /**
+   * Runs `operation` under the store's cross-process lock. `store`, `release`
+   * and `sweep` are called only inside it, and so is any message write that
+   * names files (`ProjectRoomAttachments.locked`).
+   */
+  locked<T>(operation: () => Promise<T>): Promise<T>;
   store(
     binding: readonly string[],
     inputs: ChatAttachmentInput[],
@@ -119,6 +125,14 @@ export class ProjectRoomService {
     readonly access: ProjectRoomAccessPort,
     private readonly attachments?: ProjectRoomAttachmentPort,
   ) {}
+  /**
+   * Runs a whole admitted operation under the file store's lock: the lock is
+   * taken first and the operation's authority check runs inside it, so access
+   * revoked while waiting refuses before anything is written.
+   */
+  private underFileLock<T>(operation: () => Promise<T>): Promise<T> {
+    return this.attachments ? this.attachments.locked(operation) : operation();
+  }
   /** Byte-store failures (a validation, the per-room cap) refuse as invalid. */
   private files<T>(run: (port: ProjectRoomAttachmentPort) => T): T {
     if (!this.attachments) throw new ProjectRoomRefusal('not_found');
@@ -332,6 +346,21 @@ export class ProjectRoomService {
     input: ProjectRoomAppendInput,
     channelId?: string,
   ) {
+    // A message naming files is linked under the file lock, so no sweep in
+    // another process can release a file between this check and the link.
+    if (!input.attachments?.length)
+      return this.appendAdmitted(request, slug, guard, input, channelId);
+    return this.underFileLock(() =>
+      this.appendAdmitted(request, slug, guard, input, channelId),
+    );
+  }
+  private appendAdmitted(
+    request: Request,
+    slug: string,
+    guard: ProjectRoomMutationGuard,
+    input: ProjectRoomAppendInput,
+    channelId?: string,
+  ) {
     return this.run(
       request,
       slug,
@@ -412,40 +441,46 @@ export class ProjectRoomService {
     input: ProjectRoomDeleteInput,
     channelId?: string,
   ) {
-    return this.run(
-      request,
-      slug,
-      'discuss',
-      guard,
-      (scope, actor, _caps, assertCurrent) => {
-        const deleted = this.store.deleteMessage(
-          scope,
-          actor,
-          messageId,
-          input,
-          assertCurrent,
-          channelId,
-        );
-        // The tombstone already withholds the files; their place in the
-        // uploader's quota goes with them. A failure here is logged, and the
-        // next upload's sweep releases them instead.
-        if (this.attachments) {
-          const files = this.store.messageFiles(scope, messageId, channelId);
-          if (files.ids.length)
-            try {
-              this.attachments.release(
-                attachmentBinding(scope, files.roomId, files.author),
-                files.ids,
-              );
-            } catch (error) {
-              logger.warn('Project room files of a deleted message were kept', {
-                error: error instanceof Error ? error.message : String(error),
-              });
-            }
-        }
-        return deleted;
-      },
-      channelId,
+    return this.underFileLock(() =>
+      this.run(
+        request,
+        slug,
+        'discuss',
+        guard,
+        (scope, actor, _caps, assertCurrent) => {
+          const deleted = this.store.deleteMessage(
+            scope,
+            actor,
+            messageId,
+            input,
+            assertCurrent,
+            channelId,
+          );
+          // The tombstone already withholds the files; their place in the
+          // uploader's quota goes with them. A failure here is logged, and the
+          // next upload's sweep releases them instead.
+          if (this.attachments) {
+            const files = this.store.messageFiles(scope, messageId, channelId);
+            if (files.ids.length)
+              try {
+                this.attachments.release(
+                  attachmentBinding(scope, files.roomId, files.author),
+                  files.ids,
+                );
+              } catch (error) {
+                logger.warn(
+                  'Project room files of a deleted message were kept',
+                  {
+                    error:
+                      error instanceof Error ? error.message : String(error),
+                  },
+                );
+              }
+          }
+          return deleted;
+        },
+        channelId,
+      ),
     );
   }
   /** Stores files for a message the caller is about to send in this room. */
@@ -456,32 +491,34 @@ export class ProjectRoomService {
     inputs: ChatAttachmentInput[],
     channelId?: string,
   ) {
-    return this.run(
-      request,
-      slug,
-      'discuss',
-      guard,
-      (scope, actor, _caps, assertCurrent) => {
-        const roomId = this.store.writableRoomId(scope, channelId);
-        assertCurrent();
-        const binding = attachmentBinding(scope, roomId, actor);
-        // Before counting the quota, release what no standing message needs:
-        // a deleted message's files and old unsent uploads.
-        if (this.attachments)
-          try {
-            this.attachments.sweep(
-              binding,
-              Date.now() - PROJECT_ROOM_UNSENT_FILE_TTL_MS,
-              (ids) => this.store.attachmentLinks(roomId, ids),
-            );
-          } catch (error) {
-            logger.warn('Project room upload sweep did not finish', {
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
-        return this.files((port) => port.store(binding, inputs));
-      },
-      channelId,
+    return this.underFileLock(() =>
+      this.run(
+        request,
+        slug,
+        'discuss',
+        guard,
+        (scope, actor, _caps, assertCurrent) => {
+          const roomId = this.store.writableRoomId(scope, channelId);
+          assertCurrent();
+          const binding = attachmentBinding(scope, roomId, actor);
+          // Before counting the quota, release what no standing message needs:
+          // a deleted message's files and old unsent uploads.
+          if (this.attachments)
+            try {
+              this.attachments.sweep(
+                binding,
+                Date.now() - PROJECT_ROOM_UNSENT_FILE_TTL_MS,
+                (ids) => this.store.attachmentLinks(roomId, ids),
+              );
+            } catch (error) {
+              logger.warn('Project room upload sweep did not finish', {
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          return this.files((port) => port.store(binding, inputs));
+        },
+        channelId,
+      ),
     );
   }
   /** A file of a readable message in this room; anything else is not found. */

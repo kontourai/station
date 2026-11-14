@@ -1,7 +1,14 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, openSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { afterEach, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { AttachmentBlobStore } from '../orchestration/attachment-blob-store.js';
@@ -378,4 +385,64 @@ it('bytes on disk are exactly the bytes live files name, across release and re-u
   expect(store.read(binding(second, theirs.roomId), theirs.id)?.bytes).toEqual(
     variant('child-live').bytes,
   );
+});
+
+it('an upload waiting on the store lock is refused if access is revoked meanwhile, and writes nothing', async () => {
+  const { readdirSync } = await import('node:fs');
+  const home = makeTempDir('room-lock-revocation-');
+  const root = join(home, 'project-room-attachments');
+  const first = scopeFor('first', randomUUID());
+  const runtime = createProjectRoomRuntime(home);
+  cleanup.push(runtime.close);
+  let allowed = true;
+  const revocable: ProjectRoomAccessPort = {
+    async withAction(_request, _slug, _action, _expected, operation) {
+      if (!allowed) throw new Error('access revoked');
+      return operation(
+        first,
+        actor,
+        { view: true, discuss: true, edit: false, execute: false },
+        () => {
+          if (!allowed) throw new Error('access revoked');
+        },
+      );
+    },
+    async current() {
+      return allowed;
+    },
+  };
+  const service = new ProjectRoomService(
+    runtime.store,
+    revocable,
+    new ProjectRoomAttachments(root),
+  );
+  cleanup.push(() => service.close());
+  const request = new Request('http://station');
+  const room = (await service.open(request, 'first')).data;
+  const guard = {
+    expectedRoomId: room.roomId,
+    expectedProjectId: first.localProjectId,
+    expectedActorId: actor.id,
+  };
+  // Another holder (as another process would) keeps the store lock.
+  mkdirSync(root, { recursive: true });
+  const unlock = await acquireFileMutationLockAsync(join(root, 'store.lock'));
+  let settled = false;
+  const upload = service
+    .storeAttachments(request, 'first', guard, [png('late.png')])
+    .finally(() => {
+      settled = true;
+    });
+  upload.catch(() => {});
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  // Still waiting on the lock: its authority check has not run yet.
+  expect(settled).toBe(false);
+  allowed = false;
+  await unlock();
+  await expect(upload).rejects.toThrow();
+  const bindings = join(root, 'bindings');
+  const files = existsSync(bindings)
+    ? readdirSync(bindings).flatMap((key) => readdirSync(join(bindings, key)))
+    : [];
+  expect(files).toEqual([]);
 });

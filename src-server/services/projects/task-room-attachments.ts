@@ -19,7 +19,7 @@ import {
   isTaskRoomAttachments,
   type TaskRoomAttachment,
 } from '@kontourai/station-contracts/project-task-room';
-import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { AttachmentBlobStore } from '../orchestration/attachment-blob-store.js';
 
 /** Files stored under one binding (a Task incarnation or a Project room). */
@@ -242,28 +242,46 @@ export class TaskRoomAttachments {
 
 /**
  * Project-room files (#4812). Bytes are deleted only when no binding names
- * them, and only under one store-wide cross-process lock that every upload
- * (blob and binding publication) also holds, so no process can publish the
- * same bytes between the reference scan and the deletion (#4852 review). The
- * byte store's age and size eviction is off: it cannot tell a live blob from
- * a released one. Every byte on disk therefore backs a live binding, and the
- * bindings are bounded by the per-binding file limit.
+ * them, under one store-wide cross-process lock that every upload (blob and
+ * binding publication), every release (binding removal, reference scan and
+ * deletion) and every message that names files also holds, so no process can
+ * publish or link the same bytes between the reference scan and the deletion
+ * (#4852 review). The byte store's age and size eviction is off: it cannot
+ * tell a live blob from a released one. Every byte on disk therefore backs a
+ * live binding, and the bindings are bounded by the per-binding file limit.
  *
- * The lock is the synchronous form so that each operation stays inside the
- * caller's synchronous authority check. Uncontended it is one file create;
- * only another process sharing this Station home can contend it, and every
- * hold is one short store or reclaim.
+ * The lock is the yielding form (`acquireFileMutationLockAsync`), so waiting
+ * on it never blocks the event loop. A caller runs its whole operation inside
+ * `locked`, including its authority check, so a person whose access changed
+ * while waiting is refused there, before anything is written. `store`,
+ * `release` and `sweep` refuse to run outside `locked`.
  */
 export class ProjectRoomAttachments {
   private readonly files: RoomAttachments;
+  private holding = 0;
   constructor(private readonly root: string) {
     this.files = new RoomAttachments(root, 'room', { retention: false });
+  }
+  /** Runs `operation` while holding the store's cross-process lock. */
+  async locked<T>(operation: () => Promise<T> | T): Promise<T> {
+    mkdirSync(this.root, { recursive: true });
+    const unlock = await acquireFileMutationLockAsync(
+      join(this.root, 'store.lock'),
+    );
+    this.holding += 1;
+    try {
+      return await operation();
+    } finally {
+      this.holding -= 1;
+      await unlock();
+    }
   }
   store(
     binding: readonly string[],
     inputs: ChatAttachmentInput[],
   ): TaskRoomAttachment[] {
-    return this.locked(() => this.files.store(binding, inputs));
+    this.held();
+    return this.files.store(binding, inputs);
   }
   read(binding: readonly string[], id: string) {
     return this.files.read(binding, id);
@@ -276,7 +294,8 @@ export class ProjectRoomAttachments {
   }
   /** Gives up these files, and the bytes no other file names. */
   release(binding: readonly string[], ids: readonly string[]): void {
-    this.locked(() => this.files.reclaim(binding, ids));
+    this.held();
+    this.files.reclaim(binding, ids);
   }
   /** Releases the files no standing message needs (see `RoomAttachments.stale`). */
   sweep(
@@ -284,20 +303,13 @@ export class ProjectRoomAttachments {
     unsentBefore: number,
     links: (ids: string[]) => { standing: Set<string>; linked: Set<string> },
   ): void {
-    this.locked(() =>
-      this.files.reclaim(
-        binding,
-        this.files.stale(binding, unsentBefore, links),
-      ),
-    );
+    this.held();
+    this.files.reclaim(binding, this.files.stale(binding, unsentBefore, links));
   }
-  private locked<T>(run: () => T): T {
-    mkdirSync(this.root, { recursive: true });
-    const unlock = acquireFileMutationLock(join(this.root, 'store.lock'));
-    try {
-      return run();
-    } finally {
-      unlock();
-    }
+  private held() {
+    if (!this.holding)
+      throw new Error(
+        'Project room files are written only under the store lock.',
+      );
   }
 }
