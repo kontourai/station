@@ -148,6 +148,21 @@ describe('schema definitions', () => {
     }
   });
 
+  test('ACP admission refuses the remote-task- prefix remote task engines own', () => {
+    // Remote task connections keep their vendor token in the engine vault
+    // under their id; an ACP connection of the same id would share it.
+    expect(() =>
+      acpConnectionSchema.parse({
+        id: 'remote-task-0123456789abcdef',
+        command: 'engine-cli',
+      }),
+    ).toThrow(/remote-task-/);
+    expect(
+      acpConnectionSchema.parse({ id: 'remote-tasks', command: 'engine-cli' })
+        .id,
+    ).toBe('remote-tasks');
+  });
+
   test('credential recovery schemas fail closed for hostile refs, labels, booleans, and confirmation', () => {
     expect(
       credentialProfileUpsertRequestSchema.parse({

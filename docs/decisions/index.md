@@ -27,6 +27,7 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [project-room-realtime](./project-room-realtime.md) | current | Keep Room durability independent of realtime transport and harden SSE first |
 | [pull-request-guide-generation](./pull-request-guide-generation.md) | current | Generate shared pull request guides without model execution tools |
 | [registry-sources-detected-by-structure](./registry-sources-detected-by-structure.md) | current | A registry source is a location; what it provides is detected from the structure of its content |
+| [remote-task-engines](./remote-task-engines.md) | current | Drive cloud-hosted coding agents through one remote task engine abstraction |
 | [revision-evidence-freeze-policy](./revision-evidence-freeze-policy.md) | current | Freeze Task room revision evidence only when a consumer references it |
 | [tailscale-serve-own-origin](./tailscale-serve-own-origin.md) | current | A Station trusts its own daemon-attested Tailscale Serve HTTPS origin without ALLOWED_ORIGINS |
 | [task-tracker-followups](./task-tracker-followups.md) | current | Bounded GitHub follow-ups for tracker-backed Tasks |

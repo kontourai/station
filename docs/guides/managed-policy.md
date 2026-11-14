@@ -618,6 +618,7 @@ Station launches are started.
 | `allowed` | The engines that may run: any of `claude`, `codex`, `muse`, `acp` (every ACP connection) and `station-agent` (Station's own agent). Leave it out to allow every engine. An engine a plugin adds is never on the list, so an allow list turns plugin engines off. |
 | `acpRegistryAgents` | `false` stops ACP connections added from the public ACP registry from running and from being added. A custom ACP connection is still allowed while `acp` is. `true` is refused. |
 | `engineHostAuth` | `"off"` stops Station giving any engine an access token from its own engine sign-in store (Kiro without kiro-cli asks for one). Engines that keep their own sign-in, such as kiro-cli, are unaffected. `"allowed"`, or leaving it out, lets it. Also off whenever `acp` is not allowed. |
+| `remoteTasks` | The remote task engines that may be used: any of `devin`, `github-copilot` and `cursor`. A remote task runs on the vendor's machines, so prompts and repository code leave the computer. Unlike every other key here, leaving it out restricts: on a machine with a policy, a vendor this list does not name is off. Without any policy, the Feature Preview and each connection's acknowledgement decide. See [remote task engines](../decisions/remote-task-engines.md). |
 | `instances.<engine>` | How every connection of `claude`, `codex`, `muse` or `acp` is launched. `station-agent` runs inside Station and has no launch to pin. |
 
 Station refuses an unknown engine id, a repeated one, and an `instances`
@@ -881,6 +882,7 @@ Every value is in `HKLM\SOFTWARE\Policies\Kontour\Station`.
 | Allowed engines | `AllowedEngines` (`REG_DWORD` state), `EngineClaude`, `EngineCodex`, `EngineMuse`, `EngineAcp`, `EngineStationAgent` (`REG_DWORD` each, 1 checked) | `limits.engines.allowed`, the checked engine ids |
 | Allow ACP registry agents | `AcpRegistryAgents` (`REG_DWORD`) | `limits.engines.acpRegistryAgents: false` when Disabled |
 | Allow Station to sign engines in | `EngineHostAuth` (`REG_DWORD`) | `limits.engines.engineHostAuth: "off"` when Disabled |
+| Allowed remote task engines | `RemoteTaskEngines` (`REG_DWORD` state), `RemoteTaskDevin`, `RemoteTaskGitHubCopilot`, `RemoteTaskCursor` (`REG_DWORD` each, 1 checked) | `limits.engines.remoteTasks`, the checked vendor ids. Not Configured allows none. |
 | Engine launch configuration (JSON) | `EngineInstances` (`REG_DWORD` state), `EngineInstancesJson` (`REG_MULTI_SZ`, lines joined) | `limits.engines.instances` |
 
 The template carries a setting for every limit this release enforces. Later

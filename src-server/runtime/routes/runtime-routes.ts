@@ -612,6 +612,7 @@ import { createUICommandRoutes } from '../../routes/projects/ui-commands.js';
 import { createConversationPullRequestLinkRoutes } from '../../routes/pull-requests/conversation-pull-request-links.js';
 import { createPullRequestRoutes } from '../../routes/pull-requests/pull-request-routes.js';
 import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
+import { createRemoteTaskEngineRoutes } from '../../routes/remote-task-engines/remote-task-engine-routes.js';
 import { createSearchRoutes } from '../../routes/search.js';
 import { createSecretBindingRoutes } from '../../routes/secret-bindings.js';
 import { createSetupImportRoutes } from '../../routes/setup-imports.js';
@@ -729,6 +730,7 @@ import type { ConnectionService } from '../../services/connections/connection-se
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
 import type { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
+import { engineHostAuth } from '../../services/engine-host-auth/service.js';
 import {
   ANSWER_ASSESSMENT_UPDATED_EVENT,
   AnswerAssessmentModule,
@@ -925,6 +927,9 @@ import {
   taskRoomVersionSource,
 } from '../../services/read-markers/room-version-sources.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
+import { RemoteTaskCredentials } from '../../services/remote-task-engines/credentials.js';
+import { RemoteTaskEngineService } from '../../services/remote-task-engines/service.js';
+import { RemoteTaskTracker } from '../../services/remote-task-engines/tracker.js';
 import {
   conversationAutomationsFrom,
   readStoredScheduledTurnTerminal,
@@ -8164,6 +8169,36 @@ export function configureRuntimeRoutes(
     createACPSignInRoutes({
       ctx: runtimeContext,
       service: engineSignInService,
+    }),
+  );
+  // docs/decisions/remote-task-engines.md: cloud coding agents. Bound here
+  // unconditionally so the preview is offered; every route, the tracker's
+  // polls and the service's vendor calls read the selector at each use.
+  const remoteTaskService = new RemoteTaskEngineService({
+    homeDir: context.configLoader.getProjectHomeDir(),
+    credentials: new RemoteTaskCredentials(
+      () => engineHostAuth()?.vault ?? null,
+    ),
+    preview: context.featurePreviews.bind({
+      id: 'remote-task-engines',
+      label: 'Remote task engines',
+      description:
+        "Send coding tasks to cloud agents (Devin, GitHub Copilot cloud agent, Cursor Cloud Agents) that run on the vendor's machines. Prompts and repository code leave this computer, and each task spends your vendor account's credits.",
+    }),
+    managedPolicy: () => context.managedPolicy ?? null,
+    fetch: (input, init) => fetch(input, init),
+    logger: context.logger,
+  });
+  const remoteTaskTracker = new RemoteTaskTracker({
+    service: remoteTaskService,
+    logger: context.logger,
+  });
+  context.app.route(
+    '/remote-task-engines',
+    createRemoteTaskEngineRoutes({
+      service: remoteTaskService,
+      tracker: remoteTaskTracker,
+      logger: context.logger,
     }),
   );
   context.app.route('/agents', createAgentToolRoutes(runtimeContext));

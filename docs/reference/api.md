@@ -6790,6 +6790,80 @@ only this read and GET/POST/DELETE of the existing profile device-code login
 leaf; it does not add `engine:login` to the operator's default scope set.
 See [profile sign-in](../guides/connections.md#sign-an-engine-profile-in-from-a-device).
 
+## Remote task engines
+
+```http
+GET    /remote-task-engines/connections
+POST   /remote-task-engines/connections
+GET    /remote-task-engines/connections/:id
+PATCH  /remote-task-engines/connections/:id
+DELETE /remote-task-engines/connections/:id
+POST   /remote-task-engines/connections/:id/acknowledgement
+DELETE /remote-task-engines/connections/:id/acknowledgement
+PUT    /remote-task-engines/connections/:id/credential
+DELETE /remote-task-engines/connections/:id/credential
+GET    /remote-task-engines/connections/:id/tasks?cursor=
+POST   /remote-task-engines/connections/:id/tasks
+GET    /remote-task-engines/connections/:id/tasks/:taskId
+POST   /remote-task-engines/connections/:id/tasks/:taskId/messages
+POST   /remote-task-engines/connections/:id/tasks/:taskId/cancel
+POST   /remote-task-engines/connections/:id/tasks/:taskId/sync
+GET    /remote-task-engines/connections/:id/tasks/:taskId/events?after=
+```
+
+These routes send work to cloud coding agents that run on the vendor's
+machines ([the decision](../decisions/remote-task-engines.md)). Shapes are in
+`@kontourai/station-contracts/remote-task-engine`. An answer is
+`{success: true, data}` or `{success: false, error, code}`.
+
+**Who may call.** Reads are `orchestration:read` and changes
+`orchestration:operate`. The credential leaf is `engine:login`. A request that
+may be an agent's is refused with 403 `remote-task-not-granted`.
+
+**Refusals.** Each one is decided before any request reaches the vendor:
+
+| Status and `code` | When |
+| --- | --- |
+| 404 `feature_preview_disabled` | The `remote-task-engines` preview is off. The answer also carries `previewId` and `settingsPath`. |
+| 403 `remote-task-policy-refused` | The managed policy does not name the vendor. |
+| 403 `remote-task-acknowledgement-required` | No current acknowledgement for the connection's vendor. |
+| 409 `remote-task-credential-missing` | No token is set. |
+| 405 `remote-task-capability-unsupported` | The vendor lacks the operation or option. |
+| 400 `remote-task-invalid` | A field or the polling settings are out of range, a token shorter than 16 characters, a repository segment of only dots, or a task id that is not the vendor's shape. |
+| 409 `remote-task-conflict` | A settings change on a connection that already has stored tasks. |
+
+**Vendor answers.**
+
+| Status and `code` | When |
+| --- | --- |
+| 429 `remote-task-rate-limited` | The vendor is limiting requests. The answer carries `Retry-After` and `retryAfterMs` when the vendor gave a wait. |
+| 502 `remote-task-vendor-refused` | The vendor refused. The answer carries `vendorStatus` and the vendor's own message, redacted of the token. |
+| 503 `remote-task-vendor-unavailable` | The vendor is unreachable or failed. |
+| 502 `remote-task-vendor-malformed` | The vendor's answer is larger than 4 MiB or lacks a field Station needs. |
+| 404 `remote-task-not-found` | No such connection or task. |
+| 500 `remote-task-store-failed` | Station could not read or save the task. |
+
+**Retained maintenance.** Removing a connection, clearing its token and
+withdrawing its acknowledgement work with the preview or the policy off.
+
+**Acknowledging.** The acknowledgement body is `{statement}`. It must be the
+connection view's `acknowledgementStatement` exactly.
+
+**Reading messages.** `events` returns `{events, task, tracking,
+firstSequence, missed}`: Station's stored messages after a Station sequence.
+Pass `after`, or the `Last-Event-ID` header, with the last `sequence` the
+client holds; a reconnecting client receives only what followed. Station keeps
+a task's newest 2,000 messages within 4 MiB and cuts a message at 16,000
+characters (`truncated: true`). `missed` is true when messages after `after`
+were dropped before the client read them, and `firstSequence` is the oldest
+kept. `sync` reads the vendor at once.
+
+**Polling.** Station polls a task only while a client has created, written
+to, synced or read it within the last 15 minutes, and stops once the task is
+finished, idle or waiting for the person. After a restart nothing polls until
+a client reads a task again. A task the vendor refused (not a rate limit or an
+outage) is not polled again on a read; a write, cancel or `sync` restarts it.
+
 ## Opt-in native Device proof binding management
 
 ```http
