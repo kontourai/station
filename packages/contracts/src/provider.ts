@@ -1608,6 +1608,14 @@ export interface ProviderSession {
   cwd?: string;
   workspaceIsolation?: WorkspaceIsolationMetadata;
   resumeCursor?: unknown;
+  /**
+   * Set on the session a start returns when the engine could not reload the
+   * conversation it was asked to resume and Station started a new engine
+   * session in its place (`ACP_SESSION_STARTED_FRESH_CODE`). The new engine
+   * holds none of what the conversation's first turn delivered, so
+   * orchestration delivers that first-turn context again on the next turn.
+   */
+  engineContextStartedFresh?: true;
   controlMode?: SessionControlMode;
   attachedSource?: AttachedSessionSourceMetadata;
   /** Opaque Station lineage for an adopted continuation. */

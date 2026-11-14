@@ -78,15 +78,24 @@ export function assertAcpReattachedRequestedSession(
 
 /**
  * Engines that cannot reload a stored session on a sign-in route they do
- * start new sessions on. For these, and only for the exact refusal named,
- * a reattach is replaced by a new engine session with a visible warning
- * rather than failing: no other route can reach the conversation, and the
- * replacement can change nothing the person set up.
+ * start new sessions on. For these, only for the exact refusal named, and
+ * only while the connection has the credential that route uses, a reattach
+ * is replaced by a new engine session with a visible warning rather than
+ * failing: no other route can reach the conversation. The replacement
+ * changes none of the person's engine settings or sign-ins; what it loses is
+ * the engine's copy of the conversation, which the warning says, and
+ * orchestration delivers the session's first-turn instructions again on the
+ * next turn (`turnStartedSinceEngineContextBegan` in
+ * orchestration-service.ts).
  */
 const ACP_REATTACH_NEW_SESSION_ON_REFUSAL: ReadonlyArray<{
   identity: AcpHandshakeIdentity;
   refusal: { code: number; messagePrefix: string };
+  /** The credential variable the route needs; without it, no fresh start. */
+  requiresCredentialEnv: string;
   reason: string;
+  /** What the person can do so the engine reloads conversations. */
+  remedy: string;
   observed: string;
 }> = [
   {
@@ -101,10 +110,18 @@ const ACP_REATTACH_NEW_SESSION_ON_REFUSAL: ReadonlyArray<{
     // key route to the person's own Gemini CLI settings
     // (acpRpcDispatcher.ts authenticate). A new session uses the saved
     // method if there is one, so a broken sign-in still fails the start.
+    //
+    // The same refusal also follows a passing Google token-refresh failure.
+    // A connection with no GEMINI_API_KEY can only be on that route, so it
+    // never starts fresh; one with a key may still be, which the remedy
+    // says.
     identity: { agentInfoName: 'gemini-cli' },
     refusal: { code: -32000, messagePrefix: 'Authentication required' },
+    requiresCredentialEnv: 'GEMINI_API_KEY',
     reason:
-      'Gemini CLI reloads a conversation only with a saved sign-in, and this connection signs in with an API key',
+      'Gemini CLI refused to reload this conversation without a saved sign-in method',
+    remedy:
+      "To let Gemini CLI reload conversations, choose its Gemini API key sign-in once in this engine's sign-in options. If you sign in with Google, this can also follow a passing Google sign-in failure.",
     observed:
       'google-gemini/gemini-cli 4ed06ed0dd packages/cli/src/acp/acpSessionManager.ts newSession, prepareSessionConfig; acpRpcDispatcher.ts authenticate',
   },
@@ -118,16 +135,19 @@ const ACP_REATTACH_NEW_SESSION_ON_REFUSAL: ReadonlyArray<{
 export function acpReattachRefusalStartsNewSession(
   handshake: AcpIdentityHandshake | null | undefined,
   error: unknown,
-): string | undefined {
+  hasCredentialEnv: (name: string) => boolean,
+): { reason: string; remedy: string } | undefined {
   if (!handshake || !isRecord(error)) return undefined;
   const { code, message } = error as { code?: unknown; message?: unknown };
-  return ACP_REATTACH_NEW_SESSION_ON_REFUSAL.find(
-    ({ identity, refusal }) =>
+  const row = ACP_REATTACH_NEW_SESSION_ON_REFUSAL.find(
+    ({ identity, refusal, requiresCredentialEnv }) =>
       matchesAcpHandshakeIdentity(handshake, identity) &&
       code === refusal.code &&
       typeof message === 'string' &&
-      message.startsWith(refusal.messagePrefix),
-  )?.reason;
+      message.startsWith(refusal.messagePrefix) &&
+      hasCredentialEnv(requiresCredentialEnv),
+  );
+  return row ? { reason: row.reason, remedy: row.remedy } : undefined;
 }
 
 export class AcpReattachedOtherSessionError extends Error {

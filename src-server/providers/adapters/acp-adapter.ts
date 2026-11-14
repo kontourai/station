@@ -2073,7 +2073,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           : undefined;
       // Set when a reviewed engine refused the reattach in the one way that
       // makes a new engine session the only route (acp-reattach-identity.ts).
-      let startedFreshReason: string | undefined;
+      let startedFresh: { reason: string; remedy: string } | undefined;
       if (isAcpResumeCursor(input.resumeCursor)) {
         const reattach = acpReattachMethod(acpProcess.initResult);
         if (!reattach) {
@@ -2137,17 +2137,21 @@ export class AcpAdapter implements ProviderAdapterShape {
               outcome = 'loaded';
             }
           } catch (error) {
-            startedFreshReason = acpReattachRefusalStartsNewSession(
+            startedFresh = acpReattachRefusalStartsNewSession(
               acpProcess.initResult,
               error,
+              // The connection's stored credential, or the host environment
+              // the engine process inherits.
+              (name) =>
+                !!engineCredentialEnvFor(config)?.[name] || !!process.env[name],
             );
-            if (!startedFreshReason) throw error;
+            if (!startedFresh) throw error;
             acpResumeSessions.add(1, {
               connectionId: config.id,
               outcome: 'started-fresh',
             });
           }
-          if (!startedFreshReason) {
+          if (!startedFresh) {
             // An engine that answered with a new session in place of this one
             // fails the resume: continuing would run the conversation against
             // an engine that holds none of it.
@@ -2168,7 +2172,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           record.reattaching = false;
         }
       }
-      if (!isAcpResumeCursor(input.resumeCursor) || startedFreshReason) {
+      if (!isAcpResumeCursor(input.resumeCursor) || startedFresh) {
         const sessionResult = await acpProcess.newSession(
           cwd,
           passthroughMcpServers,
@@ -2205,7 +2209,10 @@ export class AcpAdapter implements ProviderAdapterShape {
             }),
           ),
         } satisfies AcpResumeCursor;
-        if (startedFreshReason) {
+        if (startedFresh) {
+          // Orchestration delivers the first-turn context again on the next
+          // turn; this tells it before the warning below is stored.
+          session.engineContextStartedFresh = true;
           // Said in the conversation, never silent: the history Station
           // shows is no longer the engine's context.
           this.publish({
@@ -2216,7 +2223,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             method: 'runtime.warning',
             severity: 'warning',
             code: ACP_SESSION_STARTED_FRESH_CODE,
-            message: `${record.engineName} could not reload this conversation (${startedFreshReason}), so Station started a new ${record.engineName} session. Earlier messages are still shown here, but ${record.engineName} does not have them.`,
+            message: `${record.engineName} could not reload this conversation (${startedFresh.reason}), so Station started a new ${record.engineName} session. Earlier messages are still shown here, but ${record.engineName} does not have them; Station sends this chat's instructions again with your next message. ${startedFresh.remedy}`,
             details: { connectionId: config.id },
           });
         }

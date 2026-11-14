@@ -3449,7 +3449,12 @@ describe('AcpAdapter', () => {
       }
     };
 
+    /** A key-only Gemini connection: the key the engine inherits. */
+    const withGeminiKey = () => vi.stubEnv('GEMINI_API_KEY', 'test-gemini-key');
+    afterEach(() => vi.unstubAllEnvs());
+
     test('Gemini CLI that cannot reload a key-only session starts a new one and says so', async () => {
+      withGeminiKey();
       const { adapter, processes } = createAdapter({
         loadSessionCapability: true,
         onProcess: (proc) => {
@@ -3474,13 +3479,58 @@ describe('AcpAdapter', () => {
         code: ACP_SESSION_STARTED_FRESH_CODE,
         severity: 'warning',
       });
-      expect((warning as { message: string }).message).toContain(
-        'does not have them',
+      const message = (warning as { message: string }).message;
+      // The reason is neutral (a passing Google sign-in failure reads the
+      // same), the instructions are said to follow, and the fix is named.
+      expect(message).toContain(
+        'refused to reload this conversation without a saved sign-in method',
       );
+      expect(message).toContain('does not have them');
+      expect(message).toContain('instructions again');
+      expect(message).toContain('choose its Gemini API key sign-in once');
+      expect(message).not.toContain('signs in with an API key');
       await adapter.stopAll();
     });
 
+    test('Gemini CLI with no API key fails the resume instead of starting fresh', async () => {
+      // Without GEMINI_API_KEY the connection can only be on a saved Google
+      // sign-in, so the refusal is that sign-in failing, perhaps only for
+      // now: the conversation's pointer is kept and the resume fails.
+      vi.stubEnv('GEMINI_API_KEY', '');
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          asGemini(proc);
+          proc.loadSessionError = geminiNoSavedSignIn();
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-gemini-google')),
+      ).rejects.toThrow('Authentication required');
+      expect(processes[0].newSessionCalls).toBe(0);
+    });
+
+    test('Gemini CLI answering -32000 with another message fails the resume', async () => {
+      // Only the exact "Authentication required" refusal is reviewed.
+      withGeminiKey();
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          asGemini(proc);
+          proc.loadSessionError = new RequestError(
+            -32000,
+            'Session could not be restored',
+          );
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-gemini-other-32000')),
+      ).rejects.toThrow('Session could not be restored');
+      expect(processes[0].newSessionCalls).toBe(0);
+    });
+
     test('a saved Gemini sign-in that is broken still fails the start', async () => {
+      withGeminiKey();
       // The same refusal follows a saved method that failed to refresh; the
       // new session uses that saved method and fails too.
       const { adapter, processes } = createAdapter({
@@ -3501,6 +3551,7 @@ describe('AcpAdapter', () => {
     });
 
     test('the same refusal from an engine not identified as Gemini CLI fails the resume', async () => {
+      withGeminiKey();
       const { adapter, processes } = createAdapter({
         loadSessionCapability: true,
         onProcess: (proc) => {
