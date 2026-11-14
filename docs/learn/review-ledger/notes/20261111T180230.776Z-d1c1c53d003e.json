@@ -1,7 +1,0 @@
-{
-  "revision": "20c50c3a2706856dabf1a85f5a4e0533f5c380f1",
-
-  "notes": [
-    {"path":"docs/design/automations.md","note":"Re-checked against 20c50c3a2706, which only adds to the bubblewrap read-denial table row the cases exact-path hiding does not cover (a dangling hidden link's target once created, a middle link in a chain, differently named copies such as ~/.claude.json.tmp.*) and corrects the connections guide on which folders the 1,000-entry limit counts. No heading changed. This document links the design doc at line 368 for approval posture; it states nothing about bubblewrap hiding or the entry limit. No claim affected.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md"]}
-  ]
-}

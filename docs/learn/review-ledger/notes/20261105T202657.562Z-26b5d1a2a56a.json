@@ -1,7 +1,0 @@
-{
-  "revision": "7d593e0b6ea57c67db71c16d4f3595a25c3a02ee",
-
-  "notes": [
-    {"path":"docs/design/motion.md","note":"Only the gallery's new-chat helper now waits for the draft's setup placeholder to clear before tapping; this document makes no claim about that step.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]}
-  ]
-}

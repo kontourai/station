@@ -42,6 +42,7 @@ type SnapshotChatState = Pick<
   | 'currentSessionId'
   | 'conversationId'
   | 'pendingApprovals'
+  | 'pendingRequestKinds'
   | 'answeredApprovals'
   | 'pendingApprovalTurnIds'
   | 'approvalToasts'
@@ -238,6 +239,7 @@ type SelectedSnapshotRow = {
   record: ConversationRecord | undefined;
   openRequestIds: string[] | undefined;
   blockingOpenRequestIds: string[] | undefined;
+  openRequestKinds: Record<string, 'input' | 'approval'>;
   lastTurnEndMethod?: 'turn.completed' | 'turn.aborted' | 'runtime.error';
   /** #3157: that turn end was a provider usage-limit stop. */
   usageLimitStopped?: boolean;
@@ -351,6 +353,9 @@ function selectSnapshotRows(
               ),
             ),
           ];
+    const openRequestKinds = Object.fromEntries(
+      candidates.flatMap((row) => Object.entries(row.openRequestKinds ?? {})),
+    );
     const latest = (rows: SnapshotSession[]) =>
       rows.reduce((best, row) =>
         snapshotRowRecency(row) >= snapshotRowRecency(best) ? row : best,
@@ -381,6 +386,7 @@ function selectSnapshotRows(
         record,
         openRequestIds,
         blockingOpenRequestIds,
+        openRequestKinds,
         lastTurnEndMethod,
         usageLimitStopped,
       });
@@ -398,6 +404,7 @@ function selectSnapshotRows(
       record: undefined,
       openRequestIds,
       blockingOpenRequestIds,
+      openRequestKinds,
       lastTurnEndMethod,
       usageLimitStopped,
     });
@@ -418,6 +425,7 @@ function planSnapshot(
         row: session,
         record,
         blockingOpenRequestIds,
+        openRequestKinds,
         lastTurnEndMethod,
         usageLimitStopped,
       },
@@ -538,6 +546,7 @@ function planSnapshot(
           ...(blockingOpenRequestIds
             ? {
                 pendingApprovals: blockingOpenRequestIds,
+                pendingRequestKinds: openRequestKinds,
                 // An answer is only meaningful while its request is still
                 // open: one the server no longer lists was resolved, and its
                 // mark would otherwise outlive it.

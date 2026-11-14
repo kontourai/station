@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useElapsedClock } from '../hooks/useElapsedClock';
+import { formatDuration } from '../utils/relativeTime';
 
 /** Elapsed observation time, never an estimate of progress or completion. */
 export function ElapsedWait({
@@ -10,7 +11,7 @@ export function ElapsedWait({
 }: {
   /**
    * Epoch ms the wait began. It may come from another clock (a server
-   * timestamp): a start ahead of this clock reads 0:00, never negative.
+   * timestamp): a start ahead of this clock reads 0s, never negative.
    */
   startedAt?: number;
   elapsedMs?: number;
@@ -19,10 +20,6 @@ export function ElapsedWait({
 }) {
   const [mountedAt] = useState(Date.now);
   const now = useElapsedClock(elapsedMs === undefined);
-  const seconds = Math.max(
-    0,
-    Math.floor((elapsedMs ?? now - (startedAt ?? mountedAt)) / 1000),
-  );
   return (
     <span
       className="elapsed-wait"
@@ -32,7 +29,7 @@ export function ElapsedWait({
       title="Elapsed time; not an estimate of completion"
     >
       {label ? `${label}${separator}` : ''}
-      {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
+      {formatDuration(elapsedMs ?? now - (startedAt ?? mountedAt))}
     </span>
   );
 }

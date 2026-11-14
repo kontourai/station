@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import { describe, expect, test } from 'vitest';
+import { deriveWorkflowRuntimeStrip } from '../../components/flow/WorkflowPlanPanel';
 import type { ChatSession } from '../../types';
 import { workflowPlanRuntimeState } from '../builtinWorkspacePaneRegistry';
 
@@ -30,7 +31,35 @@ describe('the plan pane runtime state', () => {
     expect(workflowPlanRuntimeState(undefined)).toEqual({
       status: null,
       pendingApprovals: 0,
+      pendingInputs: 0,
+      waitingOnUser: false,
       isProcessingStep: false,
     });
   });
+});
+
+test('the plan strip reads input kinds from its real session projection, with permission first', () => {
+  const question = session({
+    orchestrationStatus: 'awaiting-approval',
+    pendingApprovals: ['q'],
+    pendingRequestKinds: { q: 'input' },
+  });
+  expect(
+    deriveWorkflowRuntimeStrip(workflowPlanRuntimeState(question))?.label,
+  ).toBe('Needs input (1)');
+  const mixed = session({
+    ...question,
+    pendingApprovals: ['q', 'p'],
+    pendingRequestKinds: { q: 'input', p: 'approval' },
+  });
+  expect(
+    deriveWorkflowRuntimeStrip(workflowPlanRuntimeState(mixed))?.label,
+  ).toBe('Needs approval (1)');
+  expect(
+    deriveWorkflowRuntimeStrip(
+      workflowPlanRuntimeState(
+        session({ ...question, answeredApprovals: ['q'] }),
+      ),
+    ),
+  ).toBeNull();
 });

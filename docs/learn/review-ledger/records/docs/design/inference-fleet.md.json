@@ -34,10 +34,6 @@
 
     "package.json#/dependencies/@kontourai~1ferry",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "src-server/runtime/conversation/bounded-api-turn-grant.ts",
 
     "src-server/runtime/conversation/bounded-api-model.ts",
@@ -56,7 +52,9 @@
 
     "packages/agent-runtime/src/turn-effects.ts",
 
-    "packages/agent-runtime/src/turn-journal.ts"
+    "packages/agent-runtime/src/turn-journal.ts",
+
+    "packages/contracts/package.json#/dependencies/@kontourai~1datum"
   ],
 
   "checks": [

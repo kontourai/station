@@ -146,10 +146,6 @@
 
     "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "packages/shared/src/mcp-tool-selection.ts",
 
     "src-server/runtime/tools/tool-approval.ts",
@@ -196,7 +192,11 @@
 
     "src-server/services/automation/repair-store.ts",
 
-    "packages/shared/src/station-home-store-registry.ts"
+    "packages/shared/src/station-home-store-registry.ts",
+
+    "package.json#/dependencies/@voltagent~1core",
+
+    "package.json#/dependencies/@strands-agents~1sdk"
   ],
 
   "checks": [

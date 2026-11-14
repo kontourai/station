@@ -639,3 +639,57 @@ test('a server error with quota remaining ignores the rate-limit reset', async (
     vi.useRealTimers();
   }
 });
+
+test.each([
+  ['v0.1.11-rc.1', 'v0.1.10'],
+  ['v0.1.11-rc.3', 'v0.1.11-rc.2'],
+  ['v0.1.11', 'v0.1.10'],
+])(
+  'server notes for %s compare against %s across RC promotion',
+  async (tag, prior) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes('/releases?'))
+          return Response.json([
+            { tag_name: 'v0.1.11-rc.2' },
+            { tag_name: 'v0.1.11-rc.4', draft: true },
+            { tag_name: 'v0.1.10' },
+          ]);
+        if (url.includes('/tags?')) return Response.json([]);
+        if (url.includes(`/commits/${prior}`))
+          return Response.json({ sha: previous });
+        if (url.endsWith('/generate-notes')) {
+          expect(JSON.parse(String(init?.body)).previous_tag_name).toBe(prior);
+          return Response.json({ body: '* RC promotion changes' });
+        }
+        throw new Error(`Unexpected request ${url}`);
+      }),
+    );
+    await expect(
+      generateServerReleaseNotes({
+        tag,
+        source,
+        repository: options.repository,
+        token: options.token,
+      }),
+    ).resolves.toBe('* RC promotion changes');
+  },
+);
+
+test.each(['v0.1.11-rc.0', 'v0.1.11-rc.99', 'v0.1.11-rc.1.2'])(
+  'server notes refuse invalid release identity %s before contacting GitHub',
+  async (tag) => {
+    const request = vi.fn();
+    vi.stubGlobal('fetch', request);
+    await expect(
+      generateServerReleaseNotes({
+        tag,
+        source,
+        repository: options.repository,
+        token: options.token,
+      }),
+    ).rejects.toThrow('exact-source');
+    expect(request).not.toHaveBeenCalled();
+  },
+);

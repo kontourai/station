@@ -1,7 +1,0 @@
-{
-  "revision": "c6559fe95afea627239a46dfe300b733084aa26c",
-
-  "notes": [
-    {"path":"docs/reference/sdk.md","note":"Terminal epic merge with main #4473: kept #4454's openOrAdoptProjectShell / ordinal / restoredAt / terminal history paragraph (main only added a blank line there); #4473's bridged chat requests and paired-station-chats additions merged unchanged.","inputs":["docs/reference/sdk.md"]}
-  ]
-}

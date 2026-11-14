@@ -1,7 +1,0 @@
-{
-  "revision": "add31d1b06a7f75ee3ab9ff5790de56a35d592af",
-
-  "notes": [
-    {"path":"scripts/AGENTS.md","note":"Removed the windowsHide sentence, now enforced by scripts/windows-hide-ratchet.mjs with a per-file lower-only baseline and known-bad fixture tests. Bounded-capture, resource classification, code-health, mutation evidence and lint guidance are unchanged; npm scripts named still resolve.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
-  ]
-}

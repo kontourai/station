@@ -1,7 +1,0 @@
-{
-  "revision": "4b84c10a9b680691c13e3395396e3d49d7bdbaf9",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"Scoped source review of the explicit boolean return annotation on the initial hoisted Composer authority mock. The existing revocation case changes current to false and supplies () => current; the current request-scope contract returns boolean, so the annotation corrects literal-true inference without changing fixture runtime, reset/finally behavior, assertions, outcomes or production. Hosted source 50b832b5 failed UI compilation with TS2322 at test650:33. The normal Connect declaration producer completed on its bound inputs, then canonical npm run typecheck:ui actually exited0 on test83cc07bc/product8fc457ee. The earlier failed local dependent compilation remains a separate receipt. Prior ROOT55757/57 is historical source-byte/logic jsdom proof, not a rerun of this annotation or final merged HEAD. No new browser timing, real authority/revocation, lost-reply/Retry/history persistence, provider, native/device or release claim is made. The owning prose remains accurate; other design claims and historical receipts are not renewed.","inputs":["docs/design/task-room-agent-requests.md","src-ui/src/__tests__/TaskRoomComposer.test.tsx"]}
-  ]
-}

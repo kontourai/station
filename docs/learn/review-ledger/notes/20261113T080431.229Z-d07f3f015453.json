@@ -1,7 +1,0 @@
-{
-  "revision": "03d40ad8a0ab1271734953b5fbef22d5169b88cc",
-
-  "notes": [
-    {"path":"docs/guides/dependency-security.md","note":"Checked against the package.json script change: the only addition is perf:station-weight; none of this document's claims name or depend on it, and every script it names is unchanged.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]}
-  ]
-}

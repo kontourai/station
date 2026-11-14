@@ -62,13 +62,9 @@
 
     "src-server/routes/environments/home-authority-routes.ts",
 
-    "src-server/routes/orchestration/orchestration.ts",
-
     "src-server/routes/spatial-board.ts",
 
     "src-server/runtime/bootstrap/personal-home-authority-database.ts",
-
-    "src-server/runtime/routes/runtime-routes.ts",
 
     "src-server/services/orchestration/delegation-attempt-claim-store.ts",
 

@@ -1,7 +1,0 @@
-{
-  "revision": "cb050434448573c94044f8d8fc183af0dbcec38b",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Reviewed the generated KnowledgeStoreProvider topic against its updated module-map source and private-root code. Topic generation preserves the documented retrieval interface; no live provider or device qualification is claimed.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

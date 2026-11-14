@@ -349,6 +349,25 @@ describe('readStatusCommandResult', () => {
     code,
   });
 
+  test("Grok Build's own rule reads grok 1.0.77's live `grok models` output", () => {
+    const rule = BUILTIN_ACP_ENGINES.find((entry) => entry.id === 'grok-build')
+      ?.auth?.statusRule;
+    expect(rule).toBeDefined();
+    if (!rule) return;
+    const listing =
+      '\n\nDefault model: grok-4.7\n\nAvailable models:\n  * grok-4.7 (default)\n';
+    expect(
+      readStatusCommandResult(
+        ok(`You are logged in with grok.com.${listing}`),
+        rule,
+      ),
+    ).toBe('authenticated');
+    expect(
+      readStatusCommandResult(ok(`You are not authenticated.${listing}`), rule),
+    ).toBe('unauthenticated');
+    expect(readStatusCommandResult(ok(listing), rule)).toBe('unknown');
+  });
+
   test('exit 0 alone is unknown unless the rule says the vendor defines it', () => {
     expect(readStatusCommandResult(ok(''), { signedOutText: ['nope'] })).toBe(
       'unknown',

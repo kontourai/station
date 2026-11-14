@@ -1,7 +1,0 @@
-{
-  "revision": "89116d6d6a6c2c3403623f86e91b7e4934fe7fda",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Shortcuts section left at its base text. KeyboardShortcutsContext.tsx adds useOptionalShortcutRegistry (subscribes like useShortcutRegistry; undefined outside the provider) for header/CommandPaletteEntry.tsx; CommandPalette.tsx changes (emptyQueryGroups, drawn-order navigation, coarse-pointer legend) stay within the palette consumer described here. Owners and dispatch rules unchanged.","inputs":["docs/architecture/module-map.md"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "19680ee709d2401051e5c92cb4f72c718b0cd263",
-
-  "notes": [
-    {"path":"docs/guides/browser-workspace.md","note":"Updated: narrow-pane open sizing, empty local-server state, View for everyone watching group with Match this pane, touch menus without shortcuts, shared-viewport paragraph and decision link. Verified against BrowserPane.tsx and real renders at 390/412/1440 in light and dark.","inputs":["docs/guides/browser-workspace.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.css","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]}
-  ]
-}

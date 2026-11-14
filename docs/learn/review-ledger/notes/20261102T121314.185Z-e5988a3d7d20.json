@@ -1,7 +1,0 @@
-{
-  "revision": "a3e67b39c59207ded7ea29b7f89bd514498ed4c7",
-
-  "notes": [
-    {"path":"docs/guides/private-runner-partition.md","note":"WorkspacePaneFrame gained an opt-in fill prop (class workspace-pane-frame--fill, a flex column that fills a flex host); only the Coding lower panel passes it, every other frame stays a block. Checked this document's frame claims (error boundary, Retry/details/Close actions, recovery diagnostics, lifecycle attribute, elementless dock): none depend on the frame's layout; no prose change needed.","inputs":["docs/guides/private-runner-partition.md","src-ui/src/workspace-panes/WorkspacePaneFrame.tsx"]}
-  ]
-}

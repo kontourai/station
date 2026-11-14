@@ -1,9 +1,0 @@
-{
-  "revision": "3058a5ae470285877029004bd5355e910f6563f4",
-
-  "notes": [
-    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Checked the delta to src-server/routes/system/archive-update.ts since the last note: the managed update refusal's text field is renamed from message to sentence, with no behavior change. This frozen ADR's installer, manifest and upgrade claims are unaffected.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","src-server/routes/system/archive-update.ts"]},
-
-    {"path":"docs/reference/api.md","note":"Checked the delta to src-server/routes/system/system-update-routes.ts since the last note: the managed update refusal's internal text field is renamed from message to sentence; the response fields this page documents (message, selfUpdateUnavailableReason, managedPolicyCode, error, code and the 403 status) are unchanged.","inputs":["docs/reference/api.md","src-server/routes/system/system-update-routes.ts"]}
-  ]
-}

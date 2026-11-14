@@ -1,9 +1,0 @@
-{
-  "revision": "3ab2992967c43cc747e29776845bfe9b18179e66",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Stale only through api.md's sentence on default skill folder names; terminal routes are unaffected. No prose change.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
-
-    {"path":"docs/guides/integrating-station.md","note":"Stale through api.md's default-name sentence. This guide states no registry source names. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
-  ]
-}

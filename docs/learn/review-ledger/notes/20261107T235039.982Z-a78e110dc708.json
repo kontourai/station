@@ -1,7 +1,0 @@
-{
-  "revision": "80d74e20fbfb565fdca115a07d24de5da3b518d2",
-
-  "notes": [
-    {"path":"docs/design/settings-architecture.md","note":"Re-reviewed after the Appearance Display layout tweak: Density and Motion stretch like Mode; the documented Display choices and persistence are unchanged.","inputs":["docs/design/settings-architecture.md","src-ui/src/pages/AppearancePage.tsx"]}
-  ]
-}

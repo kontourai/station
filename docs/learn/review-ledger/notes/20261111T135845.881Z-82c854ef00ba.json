@@ -1,7 +1,0 @@
-{
-  "revision": "3793293fce1c765f522714dd9a70a22b260bc9e9",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Re-checked against 3793293fce1c, which gives .github/workflows/seatbelt-kernel.yml a path-filtered push-to-main trigger, renames it Main: Seatbelt kernel legs, declares the push-only lane in ci-workflow-contract.test.ts, rewords the Seatbelt paragraph and inventory row in docs/guides/testing.md and one comment in scripts/vitest-resource-manifest.mjs. No heading in testing.md changed. Re-read the changed paragraph and row against the workflow file: it runs on main pushes to the listed paths and on dispatch, and has no pull-request trigger, so the guide now says a regression shows after merge.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-workflow-contract.test.ts","scripts/vitest-resource-manifest.mjs"]}
-  ]
-}

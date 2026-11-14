@@ -1,7 +1,0 @@
-{
-  "revision": "3114c734e52526593611b43ac13482e7fbb9d455",
-
-  "notes": [
-    {"path":"packages/telemetry-broker/README.md","note":"Documented channels lists and migration 10 (lite-store.ts SOURCE_CHANNELS_SCHEMA, assertLiteSchema shape and constraint, store.ts migration count), updated the source example to the station source, the refusal sentence and unknown-channel sentence, the salt pointer to the Worker, and the public dashboard description (public-dashboard.ts: single weekly-active cell, no cell sums, top picks only above ln(20)/epsilon and the runner-up). Covered by lite-weekly.test.ts schema 10 test and pages.test.ts.","inputs":["packages/telemetry-broker/README.md","packages/telemetry-broker/qualify-lite.mjs","packages/telemetry-broker/qualify-resilience.mjs","packages/telemetry-broker/qualify-sender.mjs","packages/telemetry-broker/src/__tests__/lite-weekly.test.ts","packages/telemetry-broker/src/lite-store.ts","packages/telemetry-broker/src/public-dashboard.ts","packages/telemetry-broker/src/store.ts"]}
-  ]
-}

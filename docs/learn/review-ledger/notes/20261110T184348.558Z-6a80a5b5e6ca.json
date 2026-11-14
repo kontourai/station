@@ -1,7 +1,0 @@
-{
-  "revision": "467d00a941aa40676bfc3c293dd538c862bbbbda",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"chat.css changed only the toolbar connection chip's reserved min-width from 116px to calc(116em / 12) so it scales with the density base size; this document states no chip width and its claims are unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat/chat.css"]}
-  ]
-}

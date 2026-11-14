@@ -124,10 +124,6 @@
 
     "tests/helpers/live-station-task.ts",
 
-    "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
-
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx",
-
     "src-ui/src/components/PickerCreateAction.tsx",
 
     "src-ui/src/components/PickerCreateAction.css",
@@ -189,8 +185,6 @@
     "src-server/services/projects/project-service.ts",
 
     "packages/contracts/src/project.ts",
-
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.css",
 
     "src-ui/src/components/home/HomeStartComposer.tsx",
 
@@ -348,7 +342,9 @@
 
     "src-ui/src/__tests__/activity-retirement.test.ts",
 
-    "src-ui/src/components/chat-dock/__tests__/useChatDockOverlays.child-intents.test.tsx"
+    "src-ui/src/components/chat-dock/__tests__/useChatDockOverlays.child-intents.test.tsx",
+
+    "tests/child-transcript-chat.spec.ts"
   ],
 
   "checks": [

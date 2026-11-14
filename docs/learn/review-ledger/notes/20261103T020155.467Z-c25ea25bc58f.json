@@ -1,7 +1,0 @@
-{
-  "revision": "437bb138a168be4ac90bb0f732ad98e81dfb7b6c",
-
-  "notes": [
-    {"path":"packages/contracts/AGENTS.md","note":"Re-checked after contracts.md's troubleshoot row gained seed fields and limits (#4470). This file routes readers to the contracts reference and states helper rules; the troubleshoot module's new exports are pure constants and a type in their owning module, consistent with those rules. No prose change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
-  ]
-}

@@ -54,13 +54,11 @@
 
     "examples/fieldwork-review/package.json#/peerDependencies/@tanstack~1react-query",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "examples/fieldwork-review/package.json",
 
-    "pnpm-lock.yaml"
+    "pnpm-lock.yaml",
+
+    "pnpm-lock.yaml#/importers/examples~1fieldwork-review/dependencies/@kontourai~1fieldwork"
   ],
 
   "checks": [

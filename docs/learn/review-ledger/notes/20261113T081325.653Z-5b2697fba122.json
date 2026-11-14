@@ -1,7 +1,0 @@
-{
-  "revision": "0f5882949fcf96e48041a2fa362a27f2b194754c",
-
-  "notes": [
-    {"path":"scripts/AGENTS.md","note":"The new child-process test is classified in scripts/vitest-resource-manifest.mjs as required; the testing guide only gained a pointer subsection. Claims unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
-  ]
-}

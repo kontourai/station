@@ -28,8 +28,6 @@
 
     "src-server/runtime/bootstrap/runtime-tenant-context.ts",
 
-    "src-server/runtime/bootstrap/station-runtime.ts",
-
     "packages/cli/src/commands/service-run.ts",
 
     "packages/cli/src/commands/service-liveness.ts",

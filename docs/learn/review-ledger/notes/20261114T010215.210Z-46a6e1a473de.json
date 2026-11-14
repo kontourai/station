@@ -1,0 +1,7 @@
+{
+  "revision": "aac3c60768bd001e27b57bf3d9b1e304ca2bb5b8",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Checked the source-policy publisher claims against the workflow: it still reconciles CI lifecycle events (now requested and completed; in_progress could only republish pending), metadata start events still allocate no publisher, and only the digest pins changed in actionlint-gate.mjs. No prose change needed.","inputs":["docs/guides/releasing.md",".github/workflows/source-verification-policy.yml","scripts/actionlint-gate.mjs"]}
+  ]
+}

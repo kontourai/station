@@ -1,7 +1,0 @@
-{
-  "revision": "0f499f408347a7676cbd70867b4008442d49f63c",
-
-  "notes": [
-    {"path":"docs/guides/knowledge.md","note":"Reviewed migration admission ordering and failure cases against the migration service and real-registry tests. An unsupported index provider is refused before source snapshot and registration; unresolvable registrations fail closed.","inputs":["docs/guides/knowledge.md","src-server/knowledge-index/migrate-pre-index-knowledge.ts"]}
-  ]
-}

@@ -140,10 +140,6 @@
 
     "vite.config.ts",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "packages/contracts/src/channel-identity.ts"
   ],
 

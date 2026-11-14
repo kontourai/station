@@ -148,10 +148,6 @@
 
     "src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "packages/telemetry-broker/src/noisy-count.ts",
 
     "packages/telemetry-broker/src/lite-store.ts",
@@ -200,7 +196,15 @@
 
     "src-server/security/runtime-request-security.ts",
 
-    "src-ui/src/contexts/AnalyticsContext.tsx"
+    "src-ui/src/contexts/AnalyticsContext.tsx",
+
+    "package.json#/dependencies/@opentelemetry~1sdk-node",
+
+    "pnpm-lock.yaml#/packages/@opentelemetry~1sdk-node@0.223.0",
+
+    "package.json#/dependencies/@opentelemetry~1instrumentation-http",
+
+    "package.json#/dependencies/@opentelemetry~1instrumentation-aws-sdk"
   ],
 
   "checks": [

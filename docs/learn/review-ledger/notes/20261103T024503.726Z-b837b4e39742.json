@@ -1,7 +1,0 @@
-{
-  "revision": "03a8d2a7f3da2376eab89e44b0f20b8f88a4a0b0",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the diagnostic-only requestAgent change against the request-journal and uncertainty contracts: node:util inspect retains Error messages and stacks when setup refuses; assertions, dispatch, publication and persistence behavior are unchanged. The combined focused run passed both startup boundaries and authorization coverage (50/51 overall), but one initial delegation setup failed before the journal-read assertion with the symptom tracked in #4480. The instrumented standalone module passed 21/21; this does not explain or fix the intermittent refusal and is not a clean combined-run claim. No prose change or provider-acceptance claim is warranted.","inputs":["docs/design/task-room-agent-requests.md","src-server/services/projects/__tests__/task-room-conversation-module.test.ts"]}
-  ]
-}

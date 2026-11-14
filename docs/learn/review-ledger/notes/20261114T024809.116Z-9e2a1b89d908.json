@@ -1,0 +1,7 @@
+{
+  "revision": "fdcf60cf70a9aa11add975e120423d693339b8cd",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Store build-number paragraph: added the minor 0-999 / patch 0-99 bound and its rationale, checked against taggedStoreIdentity in scripts/lib/native-release-config.mjs and its pinned test (v0.1.100-rc.1 refused, v0.2.0-rc.1 = 20001). Rest of the document unchanged in this commit.","inputs":["docs/guides/native-releases.md","scripts/lib/native-release-config.mjs"]}
+  ]
+}

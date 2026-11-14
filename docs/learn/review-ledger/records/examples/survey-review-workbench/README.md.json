@@ -26,8 +26,6 @@
 
     "src-server/routes/plugins/plugin-public-routes.ts",
 
-    "src-server/runtime/bootstrap/station-runtime.ts",
-
     "src-server/services/plugins/__tests__/plugin-public-server.test.ts",
 
     "src-server/services/plugins/plugin-install-transaction.ts",
@@ -36,9 +34,9 @@
 
     "src-server/services/plugins/plugin-public-server.ts",
 
-    "pnpm-lock.yaml#/packages",
+    "package.json#/dependencies/@kontourai~1survey",
 
-    "pnpm-lock.yaml#/snapshots"
+    "package.json#/dependencies/@kontourai~1surface"
   ],
 
   "checks": [

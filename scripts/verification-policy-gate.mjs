@@ -97,6 +97,11 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
     process.execPath,
     Object.freeze(['scripts/test-realtime-wait-gate.mjs']),
   ]),
+  // The merge-queue diff job's whitespace check, on the change's own lines.
+  Object.freeze([
+    process.execPath,
+    Object.freeze(['scripts/diff-whitespace-gate.mjs']),
+  ]),
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
   // #2922: cheap verify:static gates on the PR-visible lane; see

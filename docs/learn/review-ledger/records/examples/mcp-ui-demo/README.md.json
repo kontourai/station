@@ -26,13 +26,15 @@
 
     "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "src-ui/src/views/agent-editor/AgentToolLibrary.tsx",
 
-    "pnpm-lock.yaml"
+    "pnpm-lock.yaml",
+
+    "package.json#/dependencies/@modelcontextprotocol~1ext-apps",
+
+    "package.json#/dependencies/@modelcontextprotocol~1server",
+
+    "pnpm-lock.yaml#/packages/@modelcontextprotocol~1ext-apps@2.0.4"
   ],
 
   "checks": [

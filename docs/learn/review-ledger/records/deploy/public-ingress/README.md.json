@@ -66,17 +66,21 @@
 
     "src-server/runtime/bootstrap/station-control-runtime-env.ts",
 
-    "src-server/runtime/bootstrap/station-runtime.ts",
-
     "src-server/runtime/mcp/mcp-manager.ts",
-
-    "src-server/runtime/routes/runtime-routes.ts",
 
     "src-server/services/orchestration/__tests__/home-reference-recovery.test.ts",
 
     "src-server/services/ssh/device-pairing-service.ts",
 
-    "src-server/services/ssh/environment-security-service.ts"
+    "src-server/services/ssh/environment-security-service.ts",
+
+    "src-server/runtime/bootstrap/runtime-http.ts",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "packages/shared/src/station-home-lifecycle.ts",
+
+    "packages/shared/src/instance-registry.ts"
   ],
 
   "checks": [

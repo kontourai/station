@@ -2,6 +2,7 @@ import type { OwnedSessionActivity } from '@kontourai/station-contracts/orchestr
 import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import { isInputRequestEvent } from '@kontourai/station-shared/input-request';
 import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
 import { providerFailure } from '../../providers/provider-failure.js';
 
@@ -800,6 +801,14 @@ export function buildOrchestrationSessionSummary(options: {
   const openRequestIds = options.openRequestIds?.filter(
     (id) => !settledRequestIds.has(id),
   );
+  const latestRequests = new Map<
+    string,
+    Extract<CanonicalRuntimeEvent, { method: 'request.opened' }>
+  >();
+  for (const event of events) {
+    if (event.method === 'request.opened')
+      latestRequests.set(event.requestId, event);
+  }
   const summary: OrchestrationSessionSummary = {
     durability: options.readDurabilityProfile?.(base.provider, base.threadId),
     provider: base.provider,
@@ -872,6 +881,14 @@ export function buildOrchestrationSessionSummary(options: {
     ...(openRequestIds
       ? {
           openRequestIds: [...openRequestIds],
+          openRequestKinds: Object.fromEntries(
+            openRequestIds.flatMap((id) => {
+              const event = latestRequests.get(id);
+              if (!event || event.method !== 'request.opened') return [];
+              const kind = isInputRequestEvent(event) ? 'input' : 'approval';
+              return [[id, kind] as const];
+            }),
+          ),
           blockingOpenRequestIds: openRequestIds.filter(
             (id) =>
               !options.events?.some(

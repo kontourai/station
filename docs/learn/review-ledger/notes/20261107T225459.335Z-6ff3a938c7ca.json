@@ -1,7 +1,0 @@
-{
-  "revision": "d5e3c3757b2dfb3fd2d38d801292f5c5a3bbfed6",
-
-  "notes": [
-    {"path":"docs/user/settings.md","note":"Reviewed device-settings contract change; this page covers Feature previews, Developer tools, Shared answers and Device hosts, none of which change. Density and motion live on the Appearance page (theming guide).","inputs":["docs/user/settings.md","packages/contracts/src/device-settings.ts"]}
-  ]
-}

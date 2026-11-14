@@ -5,6 +5,7 @@ import {
   ENGINE_TURN_FAILED_CODE,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { sessionAttentionKind } from '@kontourai/station-contracts/session-attention';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
@@ -4643,3 +4644,103 @@ test('delegation initiation preserves authenticated actor separately from the re
     'initiator',
   );
 });
+test('summary carries unresolved input kinds alongside blocking ids', () => {
+  const loaded = {
+    provider: 'codex' as const,
+    threadId: 'kind-thread',
+    status: 'running' as const,
+    createdAt: '2026-11-01T00:00:00Z',
+    updatedAt: '2026-11-01T00:00:00Z',
+  };
+  const events: CanonicalRuntimeEvent[] = [
+    {
+      ...loaded,
+      eventId: 'question',
+      method: 'request.opened',
+      requestId: 'q',
+      requestType: 'input',
+      title: 'Question',
+    },
+  ];
+  expect(
+    buildOrchestrationSessionSummary({
+      answerability: OBSERVATION,
+      loaded,
+      events,
+      openRequestIds: ['q'],
+    }),
+  ).toMatchObject({
+    blockingOpenRequestIds: ['q'],
+    openRequestKinds: { q: 'input' },
+    lifecycleState: 'needs_input',
+  });
+});
+
+test('summary does not invent a permission kind when the open event is unavailable', () => {
+  const loaded = {
+    provider: 'codex' as const,
+    threadId: 'missing-kind',
+    status: 'running' as const,
+    createdAt: '2026-11-01T00:00:00Z',
+    updatedAt: '2026-11-01T00:00:00Z',
+  };
+  const summary = buildOrchestrationSessionSummary({
+    answerability: OBSERVATION,
+    loaded,
+    events: [],
+    openRequestIds: ['unknown'],
+  });
+  expect(summary?.openRequestIds).toEqual(['unknown']);
+  expect(summary?.openRequestKinds?.unknown).toBeUndefined();
+});
+
+test.each(['AskUserQuestion', 'cursor/create_plan', 'ExitPlanMode'])(
+  'summary display kind for %s never changes lifecycle routing',
+  (toolName) => {
+    const loaded = {
+      provider: 'claude' as const,
+      threadId: 'display-form',
+      status: 'running' as const,
+      createdAt: '2026-11-01T00:00:00Z',
+      updatedAt: '2026-11-01T00:00:00Z',
+    };
+    const summary = buildOrchestrationSessionSummary({
+      loaded,
+      answerability: OBSERVATION,
+      openRequestIds: ['q'],
+      events: [
+        {
+          provider: 'claude',
+          threadId: loaded.threadId,
+          createdAt: loaded.createdAt,
+          eventId: 'q-event',
+          method: 'request.opened',
+          requestId: 'q',
+          requestType: 'approval',
+          title: 'Review',
+          payload: {
+            toolName,
+            inputRequest: {
+              schema: 'station.input-request/v1',
+              source: 'harness:claude',
+              requester: 'Claude',
+              message: 'Choose',
+              body: {
+                kind: 'form',
+                fields: [{ name: 'answer', kind: 'string', required: true }],
+              },
+            },
+          },
+        },
+      ],
+    });
+    expect(summary.openRequestKinds).toEqual({
+      q: toolName === 'AskUserQuestion' ? 'input' : 'approval',
+    });
+    expect(summary.lifecycleState).toBe('review_pending');
+    // The real writer keeps forms as a pending review; only the display refines it.
+    expect(sessionAttentionKind(summary)).toBe(
+      toolName === 'AskUserQuestion' ? 'answer' : 'approval',
+    );
+  },
+);

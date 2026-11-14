@@ -1,0 +1,15 @@
+{
+  "revision": "296b850c950f6f6ba07af1a52f9855cc3731d73e",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Cites docs/reference/api.md; only its Project display metadata paragraph changed (create/update responses carry repositoryDisplay); this document's claims are unaffected.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Cites docs/reference/api.md; only its Project display metadata paragraph changed (create/update responses carry repositoryDisplay); this document's claims are unaffected.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/reference/api.md","note":"Project display metadata now says create and update responses also carry repositoryDisplay; matches project-service.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Project identity claims unchanged; attach response unchanged, create/update add only the read-side repositoryDisplay label.","inputs":["docs/reference/sdk.md","src-server/services/projects/project-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Project list row shows the Git repository, or without one the run folder (ContextPickerOptions).","inputs":["docs/user/getting-started.md","src-server/services/projects/project-service.ts"]}
+  ]
+}

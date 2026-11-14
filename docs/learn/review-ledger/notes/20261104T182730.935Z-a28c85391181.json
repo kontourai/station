@@ -1,7 +1,0 @@
-{
-  "revision": "66d67a8fa9ea0339f9e136c0293005794583cfec",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Edited the process-custody paragraph: on Windows the command itself is ended at once (its pid is pinned by Node's handle) before any process-table read, then proven descendants are ended by pid. Checked against command-process.ts terminateWindows and command-process.process.test.ts ('ends the command at once, while its process table is still being read').","inputs":["docs/design/terminal.md"]}
-  ]
-}

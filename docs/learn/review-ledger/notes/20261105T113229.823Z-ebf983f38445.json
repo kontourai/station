@@ -1,7 +1,0 @@
-{
-  "revision": "c433140d690c3f73e807fd52286b5afda8d2796b",
-
-  "notes": [
-    {"path":"packages/agent-runtime/CONTEXT.md","note":"The benchmark only gained the required purpose: 'agent-run' on its temp agent (the field became required when managed engine limits started gating agent runs). Its measurements, home-byte counting and sidecar reporting are unchanged; I re-read this doc's benchmark paragraph and nothing it states changed.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/benchmark-agent-runtime.mts"]}
-  ]
-}

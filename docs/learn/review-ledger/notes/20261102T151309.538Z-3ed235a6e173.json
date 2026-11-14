@@ -1,9 +1,0 @@
-{
-  "revision": "714a412b8626ee30bda56d2478ff9b5db24831ae",
-
-  "notes": [
-    {"path":"docs/guides/self-configuring-agent.md","note":"Scoped cascade evidence delta: the process fixture now waits on the maintenance promise captured when the real health callback invokes it, rather than treating health-start completion as cascade completion. The real peer-owner process and health suites passed 14/14. Verified-edge scope, no guessed Stop, retained unknown custody and independently authorized release remain unchanged.","inputs":["docs/guides/self-configuring-agent.md","src-server/services/orchestration/__tests__/cascade-stop-delivery.process.test.ts"]},
-
-    {"path":"docs/reference/contracts.md","note":"Scoped cascade evidence delta: the health process test awaits only the actually invoked maintenance promise before reading stop/effect/pending counts. No public cancellation or ownedWork shape changed; grouped custody still preserves uncertainty and current own lifecycle. Process plus health tests passed 14/14; no live provider/device or wall-clock guarantee is claimed.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/__tests__/cascade-stop-delivery.process.test.ts"]}
-  ]
-}

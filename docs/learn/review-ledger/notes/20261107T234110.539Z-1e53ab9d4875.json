@@ -1,7 +1,0 @@
-{
-  "revision": "aef9ae03457e2ce46a29bc0d388d1821cd6ca165",
-
-  "notes": [
-    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Checked UX-03 lane row (views/connections-hub/, ProviderSettingsView, AgentConnectionView, connections guide) and the claim that routing.ts owns Agent and connection children URLs: still true (engine detail tab segment is a connection child). Scope/handoff rules are not claims about row status or resolver behaviour.","inputs":["docs/plans/whole-app-ux-campaign.md","src-ui/src/app-shell/routing.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "f2a722d821c61998ea4f6e54005746ab007624ff",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Reviewed the generated documentation topic delta against the canonical SessionCommandModule prose: the shipped topic now states that a fresh attributed start records prepared ownership before accepting its first turn, with ordinary caller checks retained. Generation changes the content and digest only; credential-free documentation, topic tree and Station Control execution authority remain unchanged. Historical inspection media retain their stated limits.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

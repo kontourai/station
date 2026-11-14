@@ -1,7 +1,0 @@
-{
-  "revision": "aef9ae03457e2ce46a29bc0d388d1821cd6ca165",
-
-  "notes": [
-    {"path":"docs/learn/walkthroughs.md","note":"Checked the Connections section: prose still defers to the guide for current layout. Added row status badges to the list of changes the connections-models.png and connections-tour.webm captures predate (ResourceStatusBadge/resourceRow replace the status text in Models and Engines rows). Media itself is not recaptured here. Link targets ProviderConnectionForm and connection-service are unchanged.","inputs":["docs/learn/walkthroughs.md","src-ui/src/components/SplitPaneLayout.tsx","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ProviderSettingsView.tsx"]}
-  ]
-}

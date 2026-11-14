@@ -32,23 +32,15 @@
 
     "src-server/runtime/bootstrap/runtime-service-bootstrap.ts",
 
-    "src-server/runtime/bootstrap/station-runtime.ts",
-
     "src-server/runtime/conversation/runtime-event-log.ts",
 
     "src-server/runtime/routes/runtime-route-support.ts",
-
-    "src-server/runtime/routes/runtime-routes.ts",
 
     "src-server/services/flow/flow-readiness-bridge.ts",
 
     "src-server/services/flow/flow-run-service.ts",
 
-    "src-server/services/orchestration/event-store.ts",
-
     "src-server/services/orchestration/flow-policy-sidecar.ts",
-
-    "src-server/services/orchestration/orchestration-service.ts",
 
     "src-server/services/orchestration/session-command-module.ts",
 
@@ -60,7 +52,9 @@
 
     "src-server/services/orchestration/cli-session-group.ts",
 
-    "src-server/services/orchestration/station-report-group-runtime.ts"
+    "src-server/services/orchestration/station-report-group-runtime.ts",
+
+    "src-server/routes/evidence/flow-runs.ts"
   ],
 
   "checks": [

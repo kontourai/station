@@ -222,6 +222,7 @@ export const projectCreateSchema = z
     name: z.string().min(1),
     slug: z.string().optional(),
     icon: projectIconSchema,
+    iconDisabled: z.boolean().optional(),
     workingDirectory: z.string().optional(),
     repositoryAcquisitionId: z.string().uuid().optional(),
     creationRequestId: z.string().uuid().optional(),

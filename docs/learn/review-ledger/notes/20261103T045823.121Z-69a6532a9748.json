@@ -1,7 +1,0 @@
-{
-  "revision": "043ab6b201fe989658a467ba3be20929d0452588",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Change under review (#4480 follow-ups on fix/start-owner-gate-followups-20261103): the interim start owner is bound only for a fresh start whose session.started has not settled and only when the stamp matches the dispatching principal (attachStarted now receives the dispatcher, startedBy); it is cleared when that session.started settles (appended, declined or abandoned), when an owner-bearing session.configured is appended, on failed-start cleanup and on teardown; the command gate prefers the durable owner. Checked the SessionCommandModule Interface (execute start-session and its four outcomes) and the orchestration rows: unchanged; only the internal attachStarted hook gained the dispatching principal.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-command-module.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "91978da65ff851fbdfa759fc83049406b733445c",
-
-  "notes": [
-    {"path":"docs/architecture/abstraction-review.md","note":"Rechecked the observation-paths section against the revised monitoring guide paragraph (settled ACP input on the result row, one tool name per call). Its cited issues and claims are unaffected. Document reading only.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]}
-  ]
-}

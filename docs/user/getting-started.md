@@ -360,8 +360,12 @@ is published means the two files are from different builds; download both
 again.
 
 The Windows installer is not publisher-signed yet
-([#3591](https://github.com/kontourai/station/issues/3591)). When you run
-the downloaded installer, Microsoft Defender SmartScreen therefore shows
+([#3591](https://github.com/kontourai/station/issues/3591)). This applies to
+the Nightly installer and to the Windows MSI on tagged
+[releases](https://github.com/kontourai/station/releases)
+(`station-v<version>-windows-x86_64.msi`), whose release records it as
+unsigned. When you run the downloaded installer, Microsoft Defender
+SmartScreen therefore shows
 "Windows protected your PC" with an unknown publisher; choose **More info**,
 then **Run anyway**. On Windows 11 with Smart App Control turned on, Windows
 can block the unsigned installer with no such option. The app's own updates
@@ -494,8 +498,8 @@ show what **Start** will use:
   turn the server reports as still running), the other engines are not listed
   and **Use Agent defaults** is unavailable.
 - The **project** control in the start heading shows its name, or **Without a project**.
-  Open it to choose a project. The list shows each project's folder and the
-  folder this chat will run in. For a linked checkout, that is its resolved
+  Open it to choose a project. Each project shows its Git repository, or without one
+  the folder its chats run in. For a linked checkout, that is its resolved
   execution root. An unavailable location states why Station cannot start
   there; a folder not checked yet is marked **Not checked** and the start
   checks it. A project with no folder
@@ -649,13 +653,15 @@ chat with the same Agent and Project. When earlier messages have no completed
 answer to fork from, neither is offered; **New chat from this message** remains.
 
 Some engines can also forget part of a chat in place. Where the running engine
-says it can (Kiro's agent service), your message's actions include **Rewind
+says it can (Kiro's agent service, Grok Build), your message's actions include **Rewind
 conversation to here**. After you confirm, the agent no longer sees that message
 or anything after it. The messages stay in the chat, dimmed and marked
 **Rewound**, and a line says how many files the engine restored, when it says.
 This is not a checkpoint restore; only files the engine restores itself change.
 It is refused while a turn runs, and for a message from before the engine last
-restarted; the dialog says why.
+restarted; the dialog says why. On Grok Build, if you changed a file since that
+message that the rewind would restore, nothing is rewound and the dialog names
+the file.
 
 The usage disclosure ends after your usage decision. **Personalize Station**
 opens optional preferences after the work entry; it is not a prerequisite for a
@@ -713,9 +719,11 @@ visible. Authorized work chats appear under their Task, including independent
 Agent requests and linked conversations. A chat associated with several Tasks
 stays separate. Select a Task to reveal Overview or a work chat to read its
 conversation. Running counts include actual chats, not the Task's status. **Show work**
-filters by project or Station and stays selected on this device. It starts at
-**All work**; **Current project** follows the project whose page you are on,
-and shows all work anywhere else. If work needs
+filters by project or Station and stays selected on this device. Until you choose
+a scope, it follows the project whose page you are on and shows all work anywhere
+else. The control shows **This project: <name>** on its page and **All work**
+elsewhere. **Always <name> · <Station>** pins a project across navigation. An
+explicit choice such as **All work** stays selected as you navigate. If work needs
 you outside the filter, choose **Show all** from the notice.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss
@@ -780,10 +788,12 @@ The next sidebar project selection updates that default again.
 
 To give a project an icon, open its settings and choose the icon beside its
 name under **Basic info**. Station suggests artwork it finds in the project
-folder, such as a favicon, app icon or logo, but applies nothing until you
-pick it. You can also upload a PNG, JPEG, WebP or ICO image of up to 128 KB,
+folder, such as a favicon, app icon or logo. A repository without a custom
+icon uses detected artwork automatically. You can also upload a PNG, JPEG, WebP or ICO image of up to 128 KB,
 type an emoji or short symbol, or choose **No icon**, then **Save**. The New
-Project dialog offers the same choices. Links and file paths are not accepted
+Project dialog offers the same choices. Clearing a custom icon restores detected
+artwork; **No icon** hides it. Choose **Use detected icon** in Settings to
+restore automatic detection. Links and file paths are not accepted
 as icons; if a project's existing icon can't be shown any more, such as one
 saved as a link before that, its settings say so and ask you to choose a new
 one. The icon appears beside the project in
@@ -1010,6 +1020,11 @@ list above the composer, states the risk and removes it only after **I checked, 
 every open window. It does not hold back the messages written after
 it.
 
+The chat status says **Needs input** for questions and **Needs approval** for
+tool permissions. Approval takes priority when both wait. Background work keeps
+its count and elapsed time visible after the main turn ends. Elapsed time uses
+words such as **2m 1s**.
+
 Quiet turns show elapsed silence without guessing that an engine retried. Retry
 status appears only when the engine reports it. The **Drafts** icon opens **Saved
 drafts** (also Ctrl/Cmd+S in the composer). Save a copy of an unsent prompt,
@@ -1120,8 +1135,8 @@ with **Retry** and **Open run**. The Brief is shared with agent requests unless
 you turn off **Brief attached**. Saved answers appear in Results, with their
 source and evidence available through **Answer details**. For engines that can resume, idle agent threads remain available after restarting Station. Ended or replaced runs still require a new agent request.
 
-After first-run setup, Home can offer **Start your first task** for a confirmed
-Project. This separate guided starter keeps its focused title entry and dispatch receipt. If the Agent is unavailable, Station
+Create Tasks from a Project; Home no longer offers a first-task card.
+Existing guided starter links keep their focused title entry and dispatch receipt. If the Agent is unavailable, Station
 shows the setup reason without creating a Task. If a start has an uncertain
 outcome, inspect that Task rather than creating another to retry it.
 
@@ -1164,6 +1179,9 @@ transcript in the chat pane. The title becomes **Parent chat › Subagent**;
 choose an ancestor to return without losing its draft or reading position.
 Escape returns one level. On a phone, use the back button or swipe from the
 left edge. Engine transcripts are read only and refresh while running.
+
+If a tool result has no recorded text, the reader says **Text output unavailable.**
+This does not mean the tool produced no output.
 
 Use **Home** or the inbox to find work. Notification and session links open
 that session in Chat, including attached records and sessions whose Agent
@@ -1315,10 +1333,9 @@ the meaning of linked-work states.
 
 ## Inspect Approval And Review Evidence
 
-Home can offer a real approval notification or independent-review receipt to
-inspect after first-run setup. The approval action opens that Notifications
-row; it does not approve or deny it. The review action opens the receipt in its
-Project's Review layout. Missing or unavailable records remain visible as such.
+Open approval requests in **Notifications** and independent-review receipts
+in the Project's **Review** layout. Inspecting a request does not approve or deny
+it. Home no longer offers starter inspection cards.
 
 Reading a receipt does not satisfy a gate. See
 [how the inspection keeps the exact target](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#inspect-approval-and-review-evidence).
@@ -1336,13 +1353,10 @@ a model connection (Station's engine); if none is ready, the form offers **Set
 up a scheduled-job agent** to open agent creation; choose **Use a model
 connection** there.
 
-Home can create **station-starter-check** and run it once. Its daily schedule
-stays disabled until you enable it. Open the receipt to read the findings;
-a completed run means the check ran, not that its findings passed a gate.
-
-After an interruption, **Resume exact check** continues the recorded check.
-Failed or uncertain runs offer **Inspect receipt**. They are not restarted
-automatically. See [Scheduler identity and recovery](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#run-a-scheduled-readiness-check).
+Create and inspect scheduled jobs in **Automations**. Home no longer creates a
+starter check. Existing `station-starter-check` jobs and their receipts remain
+available; removing the Home card does not change their enabled state. A
+completed run means it ran, not that its findings passed a gate.
 
 ## When Something Goes Wrong
 

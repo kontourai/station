@@ -1399,15 +1399,15 @@ export const MUTATIONS = [
   {
     id: 'fast-checks-shard-threshold',
     test: 'scripts/__tests__/fast-checks-plan.test.ts',
-    failure: '41 selected files produce 2 shards',
+    failure: '101 selected files produce 2 shards',
     files: [
       {
         path: 'scripts/lib/fast-checks-shards.mjs',
         change: (source) =>
           exactReplace(
             source,
-            'FAST_CHECKS_FILES_PER_SHARD = 40',
-            'FAST_CHECKS_FILES_PER_SHARD = 41',
+            'FAST_CHECKS_FILES_PER_SHARD = 100',
+            'FAST_CHECKS_FILES_PER_SHARD = 101',
           ),
       },
     ],

@@ -1,7 +1,0 @@
-{
-  "revision": "5b047f63851d26d0cc112eb1b395c6fb46afebc8",
-
-  "notes": [
-    {"path":"docs/reference/connect.md","note":"Re-checked after the env-security test change: it only widens the test-local createOffer type to accept the optional scope the real service already takes; no connect.md claim depends on it.","inputs":["docs/reference/connect.md","src-server/services/ssh/__tests__/environment-security-service.test.ts"]}
-  ]
-}

@@ -24,11 +24,11 @@
 
     "scripts/verify-node-pty-prebuild.mjs",
 
-    "pnpm-lock.yaml#/packages",
+    "scripts/dependency-lifecycle.mjs",
 
-    "pnpm-lock.yaml#/snapshots",
+    "pnpm-lock.yaml#/packages/node-pty@1.2.0-beta.18",
 
-    "scripts/dependency-lifecycle.mjs"
+    "package.json#/dependencies/node-pty"
   ],
 
   "checks": [

@@ -179,7 +179,7 @@ describe('deriveChatStatus — one status, by priority', () => {
     const lines = Array.from(
       document.querySelectorAll('.chat-status-pill__details p'),
     ).map((line) => line.textContent);
-    expect(lines).toContain('No progress · 4m');
+    expect(lines).toContain('No progress · 4m 10s');
     expect(lines.join('|')).not.toMatch(/No progress for/);
   });
 
@@ -322,12 +322,12 @@ describe('ChatStatusPill', () => {
     render(<ChatStatusPill status={working} />);
     const clock = () =>
       document.querySelector('.chat-status-pill__clock')?.textContent;
-    expect(clock()).toBe('4:10');
+    expect(clock()).toBe('4m 10s');
     const before = glyphRenders.count;
     act(() => {
       vi.advanceTimersByTime(3000);
     });
-    expect(clock()).toBe('4:13');
+    expect(clock()).toBe('4m 13s');
     expect(glyphRenders.count).toBe(before);
   });
 
@@ -400,3 +400,52 @@ describe('ChatStatusPill', () => {
     ).toBe('Working');
   });
 });
+
+test.each([
+  [{ inputCount: 1 }, 'Needs input'],
+  [{ inputCount: 2, approvalCount: 1 }, 'Needs approval'],
+  [
+    {
+      activity: {
+        conversationId: 'c',
+        asOfSequence: 2,
+        runningChildWork: {
+          count: 2,
+          producers: [],
+          oldestStartedAt: '2026-09-29T00:00:00Z',
+        },
+      },
+    },
+    '2 background tasks running',
+  ],
+  [
+    {
+      activity: {
+        conversationId: 'c',
+        asOfSequence: 3,
+        runningChildWork: {
+          count: 0,
+          producers: [],
+          followUpPending: true as const,
+        },
+      },
+    },
+    'Waiting for background reply',
+  ],
+])(
+  'renders idle-turn status from authoritative request/child facts: %s',
+  (over, label) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse('2026-09-29T00:03:12Z'));
+    const status = deriveChatStatus({ ...base, ...over });
+    expect(status?.label).toBe(label);
+    render(<ChatStatusPill status={status} onRevealApproval={() => {}} />);
+    expect(
+      document.querySelector('.chat-status-pill__label')?.textContent,
+    ).toBe(label);
+    if (status?.clockFrom)
+      expect(
+        document.querySelector('.chat-status-pill__clock')?.textContent,
+      ).toBe('3m 12s');
+  },
+);

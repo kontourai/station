@@ -77,7 +77,10 @@ import {
 } from '../../routes/system/native-relay-enrollment-routes.js';
 import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay-surface-routes.js';
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
-import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
+import {
+  createRelayManagementRoutes,
+  createUnconfiguredRelayManagementRoutes,
+} from '../../routes/system/relay-management-routes.js';
 import { createTelemetryCompanionRoutes } from '../../routes/system/telemetry-companion-routes.js';
 import { createTelemetryIncidentLinkRoutes } from '../../routes/system/telemetry-incident-link-routes.js';
 import { createToolLibraryRoutes } from '../../routes/tool-library.js';
@@ -3015,10 +3018,20 @@ export function configureRuntimeRoutes(
       createNativeRelayEnrollmentOperatorRoutes(context.nativeRelayEnrollment),
     );
   }
+  const relayCapabilityDeps = {
+    resolveActor: (c: Context) => resolveOrchestrationRequestPrincipal(c),
+    isManager: (request: Request) =>
+      hasRelayManagementAuthority(
+        request,
+        context.environmentSecurityService,
+        context.environmentSecurityService.devicePairing,
+      ),
+  };
   if (context.relayInvitationOwner && context.nativeSurfaceRegistry)
     context.app.route(
       '/api/relay-management',
       createRelayManagementRoutes({
+        ...relayCapabilityDeps,
         owner: context.relayInvitationOwner,
         registry: context.nativeSurfaceRegistry,
         managedRemoteRefusal: () =>
@@ -3027,7 +3040,6 @@ export function configureRuntimeRoutes(
             ? managedRemoteClientsDenial(context.managedPolicy.summary)
             : undefined,
         enrollment: context.nativeRelayEnrollment,
-        resolveActor: (c) => resolveOrchestrationRequestPrincipal(c),
         actorCurrency: (request, actor) =>
           captureRelayManagementActor(
             request,
@@ -3071,13 +3083,12 @@ export function configureRuntimeRoutes(
             authority: native ? 'native-device-proof' : principal?.authority,
           });
         },
-        isManager: (request) =>
-          hasRelayManagementAuthority(
-            request,
-            context.environmentSecurityService,
-            context.environmentSecurityService.devicePairing,
-          ),
       }),
+    );
+  else
+    context.app.route(
+      '/api/relay-management',
+      createUnconfiguredRelayManagementRoutes(relayCapabilityDeps),
     );
   if (context.nativeSurfaceRegistry)
     context.app.route(

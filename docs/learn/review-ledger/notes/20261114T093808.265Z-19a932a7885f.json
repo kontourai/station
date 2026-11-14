@@ -1,0 +1,7 @@
+{
+  "revision": "092eebec8017dd9a6b04d6e2ed1d30d47cd0c197",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Scoped follow-up review at 092eebec8017 for the existing child-chat fixture theme setup. Account preferences own the effective theme; writing only the legacy device envelope had left the nominal light product cases dark. The fixture now serves the requested theme through its modeled GET /api/me/preferences, rejects other methods and asserts html data-theme before transcript checks. Browser typing and fixture-policy checks pass. The main-mapper control reaches all six intended unavailable-text failures only after the active-theme assertions; the restored mapper passes all seven cases in 14.8s. Retained and opened the twelve verified-theme before/after PNGs at 390/412/1440 in both themes; the unavailable marker is readable without new clipping. Earlier nominal light product frames are not light-theme evidence. Canonical gallery controls remain separate and unchanged. No production theme behavior or native/device/provider qualification is changed by this fixture repair.","inputs":["docs/user/getting-started.md","tests/child-transcript-chat.spec.ts"]}
+  ]
+}

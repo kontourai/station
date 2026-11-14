@@ -1,7 +1,0 @@
-{
-  "revision": "a24aae73095dce0b3b0cfba50053e5cd02931fe5",
-
-  "notes": [
-    {"path":"docs/design/verified-action-replay.md","note":"Delta review fix: the Replayed result and the server-state paragraph now promise matching end conditions and observed progress during replay, not attribution, matching the observed-progress rule; record summary aligned. No tests executed.","inputs":["docs/design/verified-action-replay.md"]}
-  ]
-}

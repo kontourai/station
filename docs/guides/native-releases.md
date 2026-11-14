@@ -4,7 +4,9 @@ The [release process](releasing.md) owns integration, scheduled qualification,
 repair sweeps and promotion decisions. This guide owns platform operations.
 
 Station stages every supported package from one immutable `vMAJOR.MINOR.PATCH`
-or `vMAJOR.MINOR.PATCH-preview.N` tag. The tag workflow never publishes the
+or release-candidate `vMAJOR.MINOR.PATCH-rc.N` tag; Beta `-preview.N` tags are
+retired ([#4929](https://github.com/kontourai/station/issues/4929)) and
+`Release: Publish` refuses rc tags until rc publication exists. The tag workflow never publishes the
 GitHub Release. It uploads workflow artifacts while each platform builds, then
 one assembler creates a draft only after the deterministic inventory and every
 checksum validate. `Release: Publish` is a separately approved manual
@@ -37,9 +39,13 @@ comes from the ledger-writing path. Missing cells remain `NOT_VERIFIED` or
 The [variant owner](../../scripts/lib/release-variants.mjs) and checked-in
 [inventory schema](../../schemas/release-artifact-manifest.schema.json)
 cover portable server, macOS arm64 and x86_64, Windows x86_64, Linux x86_64,
-and Android universal APK/AAB. Stable additionally inventories the iOS simulator
-archive and device IPA. Preview excludes iOS from this GitHub asset inventory
-while its separate Beta TestFlight job remains required by draft assembly.
+and Android universal APK/AAB, plus the iOS simulator archive and device IPA.
+A final `vX.Y.Z` and a candidate `vX.Y.Z-rc.N` inventory the same variants:
+asset names carry the tag (`station-v0.2.0-rc.1-…`), while the inventory's
+`version` is the base `X.Y.Z` and its `channel` is `stable`. One parser,
+[`release-tag.mjs`](../../scripts/lib/release-tag.mjs), reads the tag for every
+staging script and refuses retired `-preview.N` tags
+([#4929](https://github.com/kontourai/station/issues/4929)).
 Every desktop updater bundle must have its
 matching Tauri `.sig` file, and that signature must name the manifest's
 version in its trusted comment (`version:`): assembling `latest.json`
@@ -64,7 +70,8 @@ and container fragments in a separate scratch directory with fixed predicates
 (`runtime`, `native`, and `image`). The generator rejects traversal, symlinks, duplicate component IDs,
 cross-scope subjects, source/predicate disagreement, non-canonical JSON, and
 invalid UTF-8 before the existing inventory authority recomputes the four asset
-digests and binds them to the exact stable or preview tag.
+digests and binds them to the exact release tag; each SBOM names the base
+version as its component version.
 
 The production JavaScript fragment now comes from
 [`generate-pnpm-sbom.mjs`](../../scripts/generate-pnpm-sbom.mjs), which reads
@@ -107,21 +114,38 @@ distribution-readiness claim. The release workflow retains the archive as a
 diagnostic/smoke input, not an end-user install channel. That historical
 observation was not rerun in this documentation audit. All other variants
 marked distributable must satisfy the platform-signing contract for that
-operating system. Desktop updater signing is tracked separately: macOS and
-Windows tagged releases require both a valid platform signature and a Tauri updater signature;
+operating system. Desktop updater signing is tracked separately: macOS tagged
+releases require both a valid platform signature and a Tauri updater signature;
 Linux AppImage has no platform-signing mechanism but still requires its updater
-signature. The validator rejects false or conflated signing claims, missing
-bytes, duplicate variants, source/tag disagreement, invalid checksums, and
-missing updater signatures.
+signature. Windows always requires its updater signature, but its Authenticode
+claim is recorded rather than assumed
+([#3591](https://github.com/kontourai/station/issues/3591)): the
+`desktop-windows` job stages `station-<tag>-windows-x86_64-signing.json`, an
+attested receipt bound to the MSI checksum with `platformSigningState`
+`VERIFIED` (a `Valid` signature by the imported certificate) or `NOT_SIGNED`.
+The job's PowerShell step only records what `Get-AuthenticodeSignature`
+reported; `scripts/lib/windows-release-signing.mjs` decides, and refuses every
+other status (`HashMismatch`, `NotTrusted`, `UnknownError`, ...). The inventory's
+`windows-x86_64` `platformSigning` claim (`signed`/`platform-signature` or
+`unsigned`/`not-applicable`) must match it. Until Windows signing is
+provisioned, tagged MSIs ship `NOT_SIGNED`, as Nightly does, and users see the
+SmartScreen prompt once; `release-artifacts.mjs draft-notes` derives the draft
+signing notice from the inventory and appends it to the generated changelog and installation instructions before creating the draft. The validator rejects false or conflated signing
+claims, a Windows claim that differs from its receipt, missing bytes, duplicate
+variants, source/tag disagreement, invalid checksums, and missing updater
+signatures.
 
 The release tag is also the native application version authority. The root
 `package.json` records one stable release-train base (`X.Y.Z`); preflight
-requires both `vX.Y.Z-preview.N` and `vX.Y.Z` to match that base, then creates
-a release-only Tauri overlay from the tag's exact version. Preview-to-Stable
-promotion can therefore retain the exact reviewed commit.
+requires both `vX.Y.Z-rc.N` and `vX.Y.Z` to match that base, then creates a
+release-only Tauri overlay with Stable identity and the bare base version
+`X.Y.Z` for both, so a candidate's bytes can later be promoted unchanged.
 The overlay also derives Android `versionCode` and iOS `CFBundleVersion` from
-the tag (`major * 10_000_000 + minor * 10_000 + patch * 100 + channel`, where
-channel is the preview number 1–98 or `99` for the stable tag). That integer is
+the tag (`major * 10_000_000 + minor * 10_000 + patch * 100 + slot`, where
+slot is the candidate number 1–98 or `99` for the final tag). Minor is limited
+to 0–999 and patch to 0–99, and a tag outside those bounds is refused, because
+an overflowing component would collide with or outrank a later release
+(`v0.1.100-rc.1` and `v0.2.0-rc.1` would both be `20001`). That integer is
 what Play and App Store Connect use as the monotonic build number; do not
 fall back to Gradle's `1` / `1.0` defaults for a store upload. Nightly
 Android uses a different application id and its own day-based numbering. Before
@@ -647,9 +671,12 @@ signing and API-key notarization data
 `APPLE_API_ISSUER_ID`, `APPLE_API_PRIVATE_KEY`), iOS distribution data
 (`APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64`,
 `APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`, `APPLE_DEVELOPMENT_TEAM`,
-`APPLE_IOS_SIGNING_IDENTITY`, `APPLE_PROVISIONING_PROFILE_BASE64`), and Windows
-Authenticode certificate data
-(`WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD`).
+`APPLE_IOS_SIGNING_IDENTITY`, `APPLE_PROVISIONING_PROFILE_BASE64`), and
+optional Windows Authenticode certificate data
+(`WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD`). With neither
+Windows value set, the tagged MSI ships unsigned and records `NOT_SIGNED`;
+with both set it must verify as `Valid`, signed by that certificate. Setting only one, or setting
+`WINDOWS_SIGN_COMMAND` (which only Nightly implements so far), fails the job.
 Each protected platform job checks only its own credentials before it starts
 its signing operation. There is no shared credential-aggregator job and no
 desktop matrix with cross-platform secrets: macOS receives Apple plus Tauri
@@ -666,16 +693,17 @@ Nightly-on-main and Release-on-version-tag workflow identities, and scope Secret
 Manager access to the two Android upload-key secrets. Those account policies
 must be checked by the owner; workflow variables alone do not establish them. iOS similarly treats
 `APPLE_API_KEY_ID`/`APPLE_API_ISSUER_ID`/`APPLE_API_PRIVATE_KEY` as the
-required macOS-notary credential and required Stable TestFlight credential. Every signing secret listed above remains required
-and fails closed. See [mobile-release.md](./mobile-release.md) for the trust
+required macOS-notary credential and required Stable TestFlight credential. Every signing secret listed above except
+the optional Windows pair remains required and fails closed. See [mobile-release.md](./mobile-release.md) for the trust
 configuration and store-side first-run steps. Never commit certificate,
 provisioning, keystore, updater-key, or store credential files.
 
 The tag workflow fails closed when a required credential is absent. It verifies
-macOS code signing and the notarization staple, Windows Authenticode, Android
-APK/AAB signatures, and Tauri updater signatures before inventory assembly. An
-unsigned APK, IPA, desktop bundle, or updater is never uploaded as a
-distributable release asset. Tagged Android releases require the configured
+macOS code signing and the notarization staple, Windows Authenticode when it is
+configured, Android APK/AAB signatures, and Tauri updater signatures before
+inventory assembly. An unsigned APK, IPA, macOS or Linux desktop bundle, or
+updater is never uploaded as a distributable release asset; the Windows MSI is
+the one recorded exception above. Tagged Android releases require the configured
 keyless Play path and fail closed if signing retrieval or upload fails; the
 Nightly staging also fails when its required signing setup is absent.
 Stable, Beta, and Nightly App Store upload is required and fail-closed once a

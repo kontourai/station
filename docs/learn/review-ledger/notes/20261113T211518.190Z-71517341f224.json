@@ -1,0 +1,33 @@
+{
+  "revision": "5f1a6786dce3f74cc7be4f89e8a1f9f20940fae9",
+
+  "notes": [
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Re-review after a comment-only change: acp-adapter.ts's acpFailureMessage doc comment and two Grok reader comments in acp-engine-extension-events.ts now state the evidence without naming another product; no behavior changed. This page states nothing about these comments. No prose change.","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Re-review after a comment-only change: acp-adapter.ts's acpFailureMessage doc comment and two Grok reader comments in acp-engine-extension-events.ts now state the evidence without naming another product; no behavior changed. This page states nothing about these comments. No prose change.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Re-review after a comment-only change: acp-adapter.ts's acpFailureMessage doc comment and two Grok reader comments in acp-engine-extension-events.ts now state the evidence without naming another product; no behavior changed. docs/guides/acp.md's exit_plan_mode row now says Grok lists an exit_plan_mode tool but no live capture shows its request, which matches the fixture (the name appears only in the handshake's tool list, never as an _x.ai request). This page does not cover exit_plan_mode. No prose change.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Re-review after a comment-only change: acp-adapter.ts's acpFailureMessage doc comment and two Grok reader comments in acp-engine-extension-events.ts now state the evidence without naming another product; no behavior changed. docs/guides/acp.md's exit_plan_mode row now says Grok lists an exit_plan_mode tool but no live capture shows its request, which matches the fixture (the name appears only in the handshake's tool list, never as an _x.ai request). Checked the row against the capture fixture.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Re-review after a comment-only change: acp-adapter.ts's acpFailureMessage doc comment and two Grok reader comments in acp-engine-extension-events.ts now state the evidence without naming another product; no behavior changed. This page states nothing about these comments. No prose change.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Re-review after a comment-only change: acp-adapter.ts's acpFailureMessage doc comment and two Grok reader comments in acp-engine-extension-events.ts now state the evidence without naming another product; no behavior changed. This page states nothing about these comments. No prose change.","inputs":["docs/guides/connections.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Re-review after a comment-only change: acp-adapter.ts's acpFailureMessage doc comment and two Grok reader comments in acp-engine-extension-events.ts now state the evidence without naming another product; no behavior changed. This page states nothing about these comments. No prose change.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Re-review after a comment-only change: acp-adapter.ts's acpFailureMessage doc comment and two Grok reader comments in acp-engine-extension-events.ts now state the evidence without naming another product; no behavior changed. This page states nothing about these comments. No prose change.","inputs":["docs/reference/api.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Re-review after a comment-only change: acp-adapter.ts's acpFailureMessage doc comment and two Grok reader comments in acp-engine-extension-events.ts now state the evidence without naming another product; no behavior changed. This page states nothing about these comments. No prose change.","inputs":["docs/reference/cli.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Re-review after a comment-only change: acp-adapter.ts's acpFailureMessage doc comment and two Grok reader comments in acp-engine-extension-events.ts now state the evidence without naming another product; no behavior changed. This page states nothing about these comments. No prose change.","inputs":["docs/reference/contracts.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Re-review after a comment-only change: acp-adapter.ts's acpFailureMessage doc comment and two Grok reader comments in acp-engine-extension-events.ts now state the evidence without naming another product; no behavior changed. This page states nothing about these comments. No prose change.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Re-review after a comment-only change: acp-adapter.ts's acpFailureMessage doc comment and two Grok reader comments in acp-engine-extension-events.ts now state the evidence without naming another product; no behavior changed. This page states nothing about these comments. No prose change.","inputs":["docs/reference/station-docs.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Re-review after a comment-only change: acp-adapter.ts's acpFailureMessage doc comment and two Grok reader comments in acp-engine-extension-events.ts now state the evidence without naming another product; no behavior changed. This page states nothing about these comments. No prose change.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Re-review after path-read-pin-boundary.test.ts gained two entries in UNREPORTED_PATH_READING_SUITES (the Grok suites read only the scrubbed capture under fixtures/). This guide does not list that set or its members. No prose change.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

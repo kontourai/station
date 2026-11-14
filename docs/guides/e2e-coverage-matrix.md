@@ -65,8 +65,9 @@ app or physical-device receipt.
 
 - The Starter clean-install bucket boots a runner-owned, freshly created home
   with provider discovery and inherited product/OTLP telemetry disabled. It
-  proves the Starter journey without reading a developer's Station state or
-  sending to an endpoint configured in the parent shell. Scheduler admission
+  exercises first-run setup and real direct-chat Work without reading a
+  developer's Station state or sending to an inherited endpoint. It no longer
+  expects the retired Home scheduled-check card. Scheduler admission
   is covered at the service and ledger seams; host resource observations are
   diagnostic only and do not control product work.
 - The app now has a promoted product Playwright gate covering primary nav,

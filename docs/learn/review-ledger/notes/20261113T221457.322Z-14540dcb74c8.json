@@ -1,0 +1,11 @@
+{
+  "revision": "37a002361181d65b16f52f61e714d5b152a7e7bf",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"tests/e2e-manifest.mjs only renamed the three required PR-smoke observation titles (mobile project-choice journeys at 320/390/412) to match the renamed tests after the dock project picker was removed; this document names neither title, and its claims about the smoke contract and suites are unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"tests/e2e-manifest.mjs only renamed the three required PR-smoke observation titles (mobile project-choice journeys at 320/390/412) to match the renamed tests after the dock project picker was removed; this document names neither title, and its claims about the smoke contract and suites are unchanged.","inputs":["docs/plans/whole-app-ux-campaign.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"tests/e2e-manifest.mjs only renamed the three required PR-smoke observation titles (mobile project-choice journeys at 320/390/412) to match the renamed tests after the dock project picker was removed; this document names neither title, and its claims about the smoke contract and suites are unchanged.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]}
+  ]
+}

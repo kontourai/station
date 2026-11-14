@@ -1,3 +1,5 @@
+import { isReleaseTag } from './release-tag.mjs';
+
 const API = 'https://api.github.com';
 
 function identity(plan) {
@@ -222,25 +224,29 @@ export async function publishDesktopReleaseNotes({
     throw new Error('GitHub did not confirm the archived changelog');
 }
 
+function isServerReleaseTag(tag) {
+  return (
+    isReleaseTag(tag) ||
+    /^v\d+\.\d+\.\d+-(?:nightly|preview)\.\d+(?:\.\d+)?$/.test(tag ?? '')
+  );
+}
+
 export async function generateServerReleaseNotes({
   tag,
   source,
   repository,
   token,
 }) {
-  if (
-    !/^v\d+\.\d+\.\d+(?:-(?:nightly|preview)\.\d+(?:\.\d+)?)?$/.test(
-      tag ?? '',
-    ) ||
-    !/^[a-f0-9]{40}$/.test(source ?? '')
-  )
+  if (!isServerReleaseTag(tag) || !/^[a-f0-9]{40}$/.test(source ?? ''))
     throw new Error('Expected an exact-source server release');
   const api = github(repository, token);
   const ring = tag.includes('-nightly.')
     ? 'nightly'
-    : tag.includes('-preview.')
-      ? 'preview'
-      : 'stable';
+    : tag.includes('-rc.')
+      ? 'rc'
+      : tag.includes('-preview.')
+        ? 'preview'
+        : 'stable';
   const order = (value) =>
     value
       .slice(1)
@@ -261,9 +267,11 @@ export async function generateServerReleaseNotes({
   const releaseRing = (value) =>
     value.includes('-nightly.')
       ? 'nightly'
-      : value.includes('-preview.')
-        ? 'preview'
-        : 'stable';
+      : value.includes('-rc.')
+        ? 'rc'
+        : value.includes('-preview.')
+          ? 'preview'
+          : 'stable';
   // API order is publication order, not version order. Promotion must span
   // the preceding base version, rather than compare against its own prerelease.
   const compare = (a, b) => {
@@ -273,7 +281,7 @@ export async function generateServerReleaseNotes({
       if (x[i] !== y[i]) return x[i] - y[i];
     }
     const rank = (value) =>
-      value.includes('-nightly.') ? 0 : value.includes('-preview.') ? 1 : 2;
+      value.includes('-nightly.') ? 0 : value.includes('-') ? 1 : 2;
     if (rank(a) !== rank(b)) return rank(a) - rank(b);
     for (let i = 3; i < Math.max(x.length, y.length); i++) {
       if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0);
@@ -287,13 +295,7 @@ export async function generateServerReleaseNotes({
     if (!Array.isArray(releases)) throw new Error('Invalid release history');
     for (const release of releases) {
       const candidate = release.tag_name;
-      if (
-        release.draft ||
-        !/^v\d+\.\d+\.\d+(?:-(?:nightly|preview)\.\d+(?:\.\d+)?)?$/.test(
-          candidate ?? '',
-        ) ||
-        !older(candidate)
-      )
+      if (release.draft || !isServerReleaseTag(candidate) || !older(candidate))
         continue;
       const lowerBase = order(candidate)
         .slice(0, 3)

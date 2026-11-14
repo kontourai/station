@@ -336,6 +336,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/ios-web-build-version.test.ts',
   // Executes cancellation against a loopback Actions API; owns one short Node child.
   'scripts/__tests__/pr-ci-supersession.test.ts',
+  // Runs the main-push verdict step as one short Node child against a loopback Actions API.
+  'scripts/__tests__/ci-merge-group-verdict.test.ts',
+  // Runs the source-policy publisher CLI as one short Node child against a loopback Actions API.
+  'scripts/__tests__/source-verification-policy.test.ts',
   // Runs the signer diagnostic CLI against a loopback Actions API.
   'scripts/__tests__/pr-conflict-signer-diagnostic.test.ts',
   // #3101: runs the conflict-deferral CLI against a loopback GitHub API.
@@ -1120,9 +1124,25 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // processes with release.yml's arguments. Single-shot spawns, no wall-clock
   // assertion.
   'scripts/__tests__/release-artifacts.test.ts',
+  // #3591: runs release.yml's desktop-windows signing-mode and receipt
+  // staging bash steps as real child processes. Single-shot spawns, no
+  // wall-clock assertion.
+  'scripts/__tests__/windows-release-signing.test.ts',
+  // #3591: on Windows, runs release.yml's Authenticode observation step under
+  // real pwsh against MSI/PE fixtures it signs at test time (skipped off
+  // Windows). Single-shot spawns, no wall-clock assertion.
+  'scripts/__tests__/windows-release-authenticode.process.test.ts',
   // #2977: runs release.yml's assemble-draft admission step as a real bash
   // child against a download-artifact-shaped fixture root.
   'scripts/__tests__/release-admit-producer-assets.test.ts',
+  // #4929: runs release.yml's portable, container-descriptor, host-manifest,
+  // admission and inventory step text as real bash children, plus the SBOM
+  // context and generation CLIs, for a release-candidate producer set.
+  // Single-shot spawns under owned temp dirs, no wall-clock assertion.
+  'scripts/__tests__/release-candidate-staging.test.ts',
+  // #4929: runs the shared release-tag parser's CLI, which the portable
+  // packager calls from bash, as a real child to prove its exit statuses.
+  'scripts/__tests__/release-tag.test.ts',
   // #1776: runs the pinned tauri-cli `icon` fan-out twice as a real child
   // process to prove the committed iOS channel sets are byte-reproducible.
   // #1797 adds two more runs for the desktop `.icns`, whose writer was the

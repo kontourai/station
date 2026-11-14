@@ -1,0 +1,7 @@
+{
+  "revision": "aac3c60768bd001e27b57bf3d9b1e304ca2bb5b8",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Checked: browser smoke job and aggregate requirements are unchanged by the shard-size proxy and the added whitespace static. No prose change.","inputs":["docs/testing/browser-smoke.md","scripts/__tests__/run-ci-fast.test.ts","scripts/lib/fast-checks-shards.mjs"]}
+  ]
+}

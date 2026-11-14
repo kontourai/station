@@ -1,9 +1,0 @@
-{
-  "revision": "0a508db2983116a0ef2365191d6425ad9b22a916",
-
-  "notes": [
-    {"path":"README.md","note":"#4515 main merge: plugins.md (a source of this doc) gained the managed-policy paragraph saying a registry the policy refuses is not asked during an update check and its installed plugins are listed under managedByPolicy. README only links the plugin guide in its developer table (line 175) and makes no update-check or registry claim; consistent.","inputs":["README.md","docs/guides/plugins.md"]},
-
-    {"path":"docs/user/getting-started.md","note":"#4515 main merge: plugins.md (a source of this doc) gained the managed-policy paragraph on refused registries during update checks (listed under managedByPolicy, not as errors). Read this doc's plugin mentions (620, 759, 783, 998-1002): plugin pages, visual skills and loading packages through Registry; none describes update checks or registry trust; consistent.","inputs":["docs/user/getting-started.md","docs/guides/plugins.md"]}
-  ]
-}

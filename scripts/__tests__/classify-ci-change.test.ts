@@ -7,8 +7,10 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { builtinModules } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
+import { transformSync } from 'esbuild';
 import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 import {
@@ -895,7 +897,10 @@ describe('iOS builds native inputs before landing and the rest of the UI after',
   // client build before landing; every other executed file is generic
   // tooling that Linux lanes run on each PR, so it builds after landing.
   test('every file the iOS build job executes is classified by the native-name rule', () => {
-    const { files, packageDirs } = iosJobExecutionClosure();
+    const { files, packageDirs, unresolved } = iosJobExecutionClosure();
+    // A relative import the walk cannot resolve would hide everything behind
+    // it; refuse it rather than drop the edge.
+    expect(unresolved).toEqual([]);
     // Reachability: the walk really crossed npm-script indirection, a
     // workspace script and the import graph.
     for (const reached of [
@@ -929,7 +934,24 @@ describe('iOS builds native inputs before landing and the rest of the UI after',
   // packages (all of their non-test sources) and relative paths that leave
   // src-ui, transitively.
   test('every root the UI bundle can import builds after landing at least', () => {
-    const { files, packageDirs } = uiBundleImportClosure();
+    const { files, packageDirs, unresolved, aliasTargets } =
+      uiBundleImportClosure();
+    // The aliases come from evaluating vite.config.ts; prove they were read.
+    expect(aliasTargets).toEqual(
+      expect.arrayContaining([
+        'src-ui/src',
+        'src-shared',
+        'packages/connect/src/index.ts',
+        'packages/sdk/src/index.ts',
+      ]),
+    );
+    // Every relative or aliased import resolves (`./x.js` to `x.ts` as the
+    // bundler does, `@shared/...` to src-shared); a dropped edge fails here.
+    // The one listed match is not an import: it is text inside the template
+    // literal plugin-scaffold.ts writes into a NEW plugin's source file.
+    expect(unresolved).toEqual([
+      'packages/shared/src/plugin-scaffold.ts -> ./pane.css',
+    ]);
     expect(packageDirs).toEqual(
       expect.arrayContaining([
         'packages/basis-pane',
@@ -976,49 +998,149 @@ function trackedFiles(paths: string[]) {
 }
 
 /**
- * Static import edges of one source file: repository files it reaches by a
- * relative specifier, and workspace packages it imports by name. Dynamic
- * specifiers built at run time, child processes and readFileSync reads are
- * not import edges and are not seen.
+ * Vite's own `resolve.alias` for the native build, read by evaluating
+ * vite.config.ts rather than by pattern-matching its text. Each entry is a
+ * prefix (string `find`, matched exactly or as `find/...`) or an exact
+ * RegExp, applied in order, first match wins, as Vite applies them.
  */
-function importEdges(file: string) {
-  const text = readFileSync(join(repoRoot, file), 'utf8');
+const VITE_ALIASES = await (async () => {
+  const module = (await import('../../vite.config')) as {
+    default: (env: { command: string; mode: string }) => {
+      resolve?: {
+        alias?: Array<{ find: string | RegExp; replacement: string }>;
+      };
+    };
+  };
+  return (
+    module.default({ command: 'build', mode: 'native' }).resolve?.alias ?? []
+  );
+})();
+
+function applyViteAlias(specifier: string) {
+  for (const { find, replacement } of VITE_ALIASES) {
+    if (typeof find === 'string') {
+      if (specifier === find) return replacement;
+      if (specifier.startsWith(`${find}/`))
+        return join(replacement, specifier.slice(find.length + 1));
+    } else if (find.test(specifier))
+      return specifier.replace(find, replacement);
+  }
+  return null;
+}
+
+/**
+ * How the bundler and tsc find a module from a resolved base path: the exact
+ * file, the file with a source extension, an index file, and the TypeScript
+ * convention of writing `./x.js` for the source `./x.ts`.
+ */
+function resolveModulePath(base: string) {
+  const candidates = [
+    base,
+    ...['.ts', '.tsx', '.mts', '.mjs', '.js', '.jsx', '.json'].map(
+      (extension) => `${base}${extension}`,
+    ),
+    ...['index.ts', 'index.tsx', 'index.mjs', 'index.js'].map((index) =>
+      join(base, index),
+    ),
+  ];
+  const typeScriptSource = base.match(/^(.*)\.(js|jsx|mjs|cjs)$/);
+  if (typeScriptSource) {
+    const [, stem, extension] = typeScriptSource;
+    candidates.push(
+      ...(
+        { js: ['.ts', '.tsx'], jsx: ['.tsx'], mjs: ['.mts'], cjs: ['.cts'] }[
+          extension
+        ] ?? []
+      ).map((source) => `${stem}${source}`),
+    );
+  }
+  return candidates.find(
+    (candidate) => existsSync(candidate) && statSync(candidate).isFile(),
+  );
+}
+
+/**
+ * Static import edges of one source file: repository files it reaches by a
+ * relative specifier (or, inside the UI bundle, a Vite alias), and workspace
+ * packages it imports by name. A relative or aliased specifier that resolves
+ * to nothing is returned in `unresolved`, so callers can refuse it instead
+ * of silently dropping the edge. Dynamic specifiers built at run time, child
+ * processes and readFileSync reads are not import edges and are not seen.
+ */
+function importEdges(file: string, viteAliases: boolean) {
+  // Comments are prose, and prose says "from 'somewhere'" too. Compile the
+  // file first, as the bundler does: esbuild drops comments and type-only
+  // imports, so what is left is what a build actually loads.
+  // A declaration file is types only; no build loads its imports.
+  if (/\.d\.[cm]?ts$/.test(file))
+    return { files: [], packages: [], unresolved: [] };
+  const extension = file.slice(file.lastIndexOf('.') + 1);
+  const text = transformSync(readFileSync(join(repoRoot, file), 'utf8'), {
+    loader:
+      extension === 'tsx' || extension === 'jsx'
+        ? extension
+        : extension === 'ts' || extension === 'mts'
+          ? 'ts'
+          : 'js',
+    legalComments: 'none',
+    // Whitespace minification is what removes every comment.
+    minifyWhitespace: true,
+  }).code;
   const files: string[] = [];
   const packages: string[] = [];
+  const unresolved: string[] = [];
   for (const match of text.matchAll(
-    /(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+|\brequire\(\s*)['"]([^'"]+)['"]/g,
+    // Import shapes in esbuild's minified output: `}from"x"`, `x from"x"`,
+    // `*from"x"`, `import"x"`, `import("x")`, `require("x")`. A specifier
+    // never contains a comma, paren or space, which keeps string data out.
+    /(?:(?<=[}\s*])from|\bimport\s*\(|\bimport|\brequire\()\s*["'`]([\w@./~$][^"'`\s,;()]*)["'`]/g,
   )) {
-    const specifier = match[1];
-    if (specifier.startsWith('.')) {
-      const base = join(dirname(join(repoRoot, file)), specifier);
-      const target = [
-        base,
-        `${base}.ts`,
-        `${base}.tsx`,
-        `${base}.mjs`,
-        `${base}.js`,
-        `${base}.json`,
-        join(base, 'index.ts'),
-        join(base, 'index.tsx'),
-        join(base, 'index.mjs'),
-      ].find(
-        (candidate) => existsSync(candidate) && statSync(candidate).isFile(),
-      );
-      if (target) files.push(relative(repoRoot, target).split('\\').join('/'));
-      continue;
-    }
+    // A specifier interpolated into generated code is not an import here.
+    if (match[1].includes('${')) continue;
+    const specifier = match[1].replace(/\?.*$/, '');
+    const aliased = viteAliases ? applyViteAlias(specifier) : null;
+    const base = aliased
+      ? aliased
+      : specifier.startsWith('.')
+        ? join(dirname(join(repoRoot, file)), specifier)
+        : null;
     const name = specifier.split('/').slice(0, 2).join('/');
     const dir = WORKSPACE_PACKAGES.get(name);
     if (dir) packages.push(dir);
+    if (base === null) {
+      // A bare specifier must be a workspace package, a Node built-in, or an
+      // installed dependency. Anything else is an alias this walk did not
+      // apply (e.g. `@shared/...` without Vite's aliases), so it is refused
+      // like an unresolved path rather than skipped.
+      const bare = specifier.startsWith('@') ? name : specifier.split('/')[0];
+      if (
+        !dir &&
+        !specifier.startsWith('node:') &&
+        !builtinModules.includes(bare) &&
+        !existsSync(join(repoRoot, 'node_modules', bare))
+      )
+        unresolved.push(`${file} -> ${match[1]}`);
+      continue;
+    }
+    const target = resolveModulePath(base);
+    if (target) files.push(relative(repoRoot, target).split('\\').join('/'));
+    else unresolved.push(`${file} -> ${match[1]}`);
   }
-  return { files, packages };
+  return { files, packages, unresolved };
 }
 
+/**
+ * `bundle` walks as Vite bundles the UI: Vite aliases apply, and reaching a
+ * workspace package walks every non-test source in it. Otherwise (the iOS
+ * job's Node scripts) aliases do not apply and packages are only recorded.
+ */
 function walkImports(
   seedFiles: string[],
   seedPackages: string[],
-  followPackages: boolean,
+  bundle: boolean,
 ) {
+  const followPackages = bundle;
+  const unresolved: string[] = [];
   const files = new Set<string>();
   const packageDirs = new Set<string>();
   const pending = [...seedFiles];
@@ -1038,27 +1160,39 @@ function walkImports(
     if (files.has(file)) continue;
     files.add(file);
     if (!NON_TEST_SOURCE.test(file)) continue;
-    const edges = importEdges(file);
+    const edges = importEdges(file, bundle);
     pending.push(...edges.files);
+    unresolved.push(...edges.unresolved);
     for (const dir of edges.packages) addPackage(dir);
   }
-  return { files: [...files].sort(), packageDirs: [...packageDirs].sort() };
+  return {
+    files: [...files].sort(),
+    packageDirs: [...packageDirs].sort(),
+    unresolved: unresolved.sort(),
+  };
 }
 
 function uiBundleImportClosure() {
   const seeds = trackedFiles(['src-ui']).filter(
     (path) => NON_TEST_SOURCE.test(path) && !TEST_SOURCE.test(path),
   );
-  // vite.config.ts aliases point UI specifiers straight at package sources.
-  const aliased = [
-    ...readFileSync(join(repoRoot, 'vite.config.ts'), 'utf8').matchAll(
-      /['"](packages\/[^/'"]+)\//g,
+  // Alias targets are reached even when no UI file imports them today.
+  const aliasTargets = VITE_ALIASES.map(({ replacement }) =>
+    relative(repoRoot, replacement).split('\\').join('/'),
+  );
+  const aliasedPackages = [
+    ...new Set(
+      aliasTargets
+        .map((target) => target.match(/^packages\/[^/]+/)?.[0])
+        .filter((dir): dir is string => Boolean(dir)),
     ),
-  ].map((match) => match[1]);
-  const result = walkImports(seeds, aliased, true);
+  ];
+  const result = walkImports(seeds, aliasedPackages, true);
   return {
     files: result.files.filter((file) => !file.startsWith('src-ui/')),
     packageDirs: result.packageDirs,
+    unresolved: result.unresolved,
+    aliasTargets,
   };
 }
 

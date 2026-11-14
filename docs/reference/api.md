@@ -1,5 +1,15 @@
 # Station API Documentation
 
+## Project display metadata
+
+Operator Project list and detail reads, and create and update responses,
+include `repositoryDisplay` from the
+manifest's primary Git resource, or acquisition metadata when no manifest exists.
+Detected repository artwork is `derivedIcon` (at most 12 KiB before base64), not
+saved `icon`. Clearing `icon` through the update route saves `iconDisabled: true`;
+choosing an explicit icon clears that flag. Member views omit detected artwork
+and repository metadata.
+
 ## Paired Station conversation tunnel
 
 On a personal host with **Paired Station chats** enabled,
@@ -1316,8 +1326,8 @@ POST /api/starter-work/launch
 DELETE /api/starter-work/:starterId/binding
 ```
 
-Starter Work links a bounded onboarding catalog to real Work owners. Its five
-IDs are `start-task`, `continue-session`, `inspect-approval`, `inspect-receipt`,
+Starter Work links a bounded onboarding catalog to real Work owners. The catalog
+offers `start-task` and `continue-session`. The five accepted endpoint IDs remain `start-task`, `continue-session`, `inspect-approval`, `inspect-receipt`,
 and `run-scheduled-check`. Binding/launch and inspection candidates require the
 home's completed first-run decision. Catalog/status reads describe readiness
 and correlation; they do not make a browser checklist authoritative.

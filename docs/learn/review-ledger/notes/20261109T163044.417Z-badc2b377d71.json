@@ -1,7 +1,0 @@
-{
-  "revision": "1044461c353090158d3b021729a92afc45d45eeb",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"changed-verification.test.ts only raised its SPAWNED_SCRIPT_EDGES count pin from 12 to 13 for the windows-hide-ratchet edge; this guide states no edge count, and its selection, lane and fixture-route claims are unchanged.","inputs":["docs/guides/testing.md","scripts/__tests__/changed-verification.test.ts"]}
-  ]
-}

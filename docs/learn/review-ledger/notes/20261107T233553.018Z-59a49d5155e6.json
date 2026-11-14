@@ -1,7 +1,0 @@
-{
-  "revision": "ae8e7424e01da43085f107391bb83e7a305406db",
-
-  "notes": [
-    {"path":"docs/design/revision-bound-evidence.md","note":"event-store.ts changes are confined to the windowed usage-rollup receipt query (optional connection columns/filter) and do not touch what this document describes. Checked the receipt identity/resolution split between RevisionEvidenceModule and EventStore; revision receipts, not usage receipts.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]}
-  ]
-}

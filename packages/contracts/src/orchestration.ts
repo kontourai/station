@@ -1266,6 +1266,8 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   openRequestIds?: string[];
   /** Current requests that suspend progress; absent on older hosts. */
   blockingOpenRequestIds?: string[];
+  /** Display-only kinds of unresolved requests; never changes request routing. Absent on older hosts. */
+  openRequestKinds?: Record<string, 'input' | 'approval'>;
   lifecycleState?: SessionLifecycleState;
   previousLifecycleState?: SessionLifecycleState;
   /**

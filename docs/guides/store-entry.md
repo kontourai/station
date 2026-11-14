@@ -56,14 +56,17 @@ and [mobile-release.md](./mobile-release.md). Listing copy lives in
   and the workflow together, never in one alone. A missing key (the normal
   first-run state) fails before any tag or provider mutation.
 - Tag overlay derives Android `versionCode` and iOS `CFBundleVersion` from the
-  tag. Do not hand-edit `1` / `1.0` fallbacks in Gradle for a store upload.
+  tag, and refuses a base with minor above 999 or patch above 99
+  ([native releases](native-releases.md)). Do not hand-edit `1` / `1.0` fallbacks in Gradle for a store upload.
 
 Before starting a release train, query current GitHub releases/tags and compare
 them with `package.json`; never choose the next version from examples in a
 guide. The train must use a new `MAJOR.MINOR.PATCH` base. Preflight requires
-both `vMAJOR.MINOR.PATCH-preview.N` and `vMAJOR.MINOR.PATCH` tags to match that
-same base version. Preview numbering belongs to the tag/build overlay, so an
-accepted preview commit can be promoted to Stable without a source edit.
+both release-candidate `vMAJOR.MINOR.PATCH-rc.N` and final `vMAJOR.MINOR.PATCH`
+tags to match that same base version. Both build the Stable app at that bare
+base version; the candidate number only selects the store build slot, so an
+accepted candidate needs no source edit
+([#4929](https://github.com/kontourai/station/issues/4929)).
 
 ## 1. Apple (one-time)
 
@@ -164,9 +167,11 @@ Complete the [external TestFlight setup](mobile-release.md#nightly-external-test
 for beta review information, reviewer access and tester automatic updates.
 Internal cohort dispatches remain internal-only.
 
-Desktop Developer ID, Authenticode, and Tauri updater keys are a separate
-product. Skip them if this month is mobile beta only; those desktop jobs will
-fail closed until they exist.
+Desktop Developer ID and Tauri updater keys are a separate product. Skip them
+if this month is mobile beta only; those desktop jobs will fail closed until
+they exist. Windows Authenticode is optional: without it the tagged Windows MSI
+ships unsigned and records that state
+([#3591](https://github.com/kontourai/station/issues/3591)).
 
 ## 4. First binaries
 
@@ -178,8 +183,8 @@ tag that gets past Android signing):
 2. Add testers.
 3. Later tags use the keyless GitHub OIDC service account.
 
-Stable tags call the Stable delivery lane; preview tags call the Beta lane;
-the scheduled Nightly uses the same reserved day/index build number as its
+Release-candidate and final tags call the Stable delivery lane (Beta `-preview`
+tags are retired); the scheduled Nightly uses the same reserved day/index build number as its
 Android build. Every lane first reconciles the exact App Store build number:
 an absent build uploads once, PROCESSING is polled, VALID is receipted without
 a duplicate upload, and any other or ambiguous state fails closed. Receipts

@@ -6,7 +6,9 @@ import {
   type EngineExtensionConsumerId,
   EXTENSION_NOTIFICATION_BINDINGS,
   engineExtensionBinding,
+  engineExtensionRowLive,
   extensionNotificationBinding,
+  GROK_LIVE_CAPTURE,
   KIRO_V3_LIVE_CAPTURE,
   takeUnboundExtensionNotice,
 } from '../extension-notification-bindings.js';
@@ -299,6 +301,48 @@ describe('extension notification bindings', () => {
         observedAgainst: ['kiro-v3'],
         evidence: 'engine-extension-binding',
       },
+      {
+        namespace: '_x.ai',
+        type: 'session/setup',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['xai-acp'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_x.ai',
+        type: 'mcp/server_status',
+        consumer: 'engine-mcp.status',
+        observedAgainst: ['xai-acp'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_x.ai',
+        type: 'session/interjection',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['xai-acp'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_x.ai',
+        type: 'task_backgrounded',
+        consumer: 'child-work',
+        observedAgainst: ['xai-acp'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_x.ai',
+        type: 'task_completed',
+        consumer: 'child-work',
+        observedAgainst: ['xai-acp'],
+        evidence: 'engine-extension-binding',
+      },
+      {
+        namespace: '_x.ai',
+        type: 'monitor_event',
+        consumer: 'child-work',
+        observedAgainst: ['xai-acp'],
+        evidence: 'engine-extension-binding',
+      },
     ]);
   });
 
@@ -350,13 +394,21 @@ describe('engine extension bindings (Kiro parity)', () => {
         (unimplemented as string[]).includes(consumer),
       ),
     ).toEqual([]);
-    // `child-work` is implemented through the engine row
-    // (`acp-child-work.ts`), and the v2 tuple keeps its host-chrome row.
+    // `child-work` is implemented, and both Kiro rows run (their readers act
+    // only on a session whose handshake names the wire, `acp-child-work.ts`);
+    // the v2 roster's opaque envelope keeps its host-chrome row.
     expect(ENGINE_EXTENSION_CONSUMERS['child-work'].implemented).toBe(true);
     expect(
       extensionNotificationBinding('_kiro.dev', 'subagent/list_update')
         ?.consumer,
     ).toBe('acp.host-chrome');
+    for (const id of [
+      'kiro-v2.subagent-list-update',
+      'kiro-v3.tool.agent-subtask',
+    ]) {
+      const row = ENGINE_EXTENSION_BINDINGS.find((entry) => entry.id === id);
+      expect(row && engineExtensionRowLive(row), id).toBe(true);
+    }
   });
 
   test('the events-and-UI consumers are implemented, so their rows bind', () => {
@@ -427,5 +479,77 @@ describe('engine extension bindings (Kiro parity)', () => {
     );
     expect(capture).not.toMatch(/\/Users\//);
     expect(capture).not.toMatch(/sess_[0-9a-f]{8}-/);
+  });
+});
+
+describe('engine extension bindings (Grok)', () => {
+  const frames = () =>
+    readFileSync(new URL(`../../${GROK_LIVE_CAPTURE}`, import.meta.url), 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { dir: string; msg: any });
+
+  test('every row observed live is in the scrubbed 1.0.77 capture, as that wire shape', () => {
+    const engineFrames = frames()
+      .filter(({ dir }) => dir === 'E->C')
+      .map(({ msg }) => msg);
+    const seen = (row: (typeof ENGINE_EXTENSION_BINDINGS)[number]) =>
+      engineFrames.some((msg) => {
+        const { wire } = row;
+        if (wire.kind === 'notification')
+          return msg.method === wire.method && msg.id === undefined;
+        if (wire.kind === 'session-update-kind')
+          return (
+            msg.method === wire.method &&
+            msg.params?.update?.sessionUpdate === wire.sessionUpdate
+          );
+        return false;
+      });
+    const live = ENGINE_EXTENSION_BINDINGS.filter(
+      ({ observed }) => observed.variant === 'grok-1.0.77',
+    );
+    expect(live.map(({ id }) => id)).toEqual([
+      'grok.session-setup',
+      'grok.mcp-server-status',
+      'grok.session-interjection',
+      'grok.task-backgrounded',
+      'grok.task-completed',
+      'grok.monitor-event',
+      'grok.background-tasks',
+      'grok.subagent-spawned',
+      'grok.subagent-progress',
+      'grok.subagent-finished',
+      'grok.queue-changed',
+      'grok.turn-completed',
+    ]);
+    expect(live.filter((row) => !seen(row)).map(({ id }) => id)).toEqual([]);
+  });
+
+  test('every Grok row is keyed by the grok-build handshake, never declared', () => {
+    const grok = ENGINE_EXTENSION_BINDINGS.filter(({ id }) =>
+      id.startsWith('grok.'),
+    );
+    expect(grok.length).toBeGreaterThan(0);
+    for (const row of grok) {
+      expect(row.basis).toBe('undeclared-engine');
+      expect(row.observed.variant).toBe('grok-1.0.77');
+    }
+  });
+
+  test('the capture holds no home directory, real id or private name', () => {
+    const capture = readFileSync(
+      new URL(`../../${GROK_LIVE_CAPTURE}`, import.meta.url),
+      'utf8',
+    );
+    expect(capture).not.toMatch(/\/Users\//);
+    // Every UUID is a fixture placeholder (`00000000-0000-4000-8000-…`).
+    const uuids = capture.match(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g,
+    );
+    expect(uuids?.length).toBeGreaterThan(0);
+    expect(
+      uuids?.filter((id) => !id.startsWith('00000000-0000-4000-8000-')),
+    ).toEqual([]);
+    expect(capture).not.toMatch(/"signature": "(?!<redacted>)/);
   });
 });

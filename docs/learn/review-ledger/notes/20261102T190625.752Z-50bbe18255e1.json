@@ -1,7 +1,0 @@
-{
-  "revision": "817732d57e86534ed2245d162a346166fd2e7df2",
-
-  "notes": [
-    {"path":"docs/guides/work-board-security.md","note":"Reviewed against the PR source admission change (ci.yml pr-admission job, scripts/pr-source-admission.mjs, supersession SOURCE_JOBS, hash-pinned gate): no claim in this document about PR admission, source jobs or conflict handling is made inaccurate.","inputs":["docs/guides/work-board-security.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]}
-  ]
-}

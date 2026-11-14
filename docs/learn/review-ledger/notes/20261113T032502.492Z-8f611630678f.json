@@ -1,0 +1,7 @@
+{
+  "revision": "3bdc83d59cda27df027f5dbe2735b23974604ba0",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reviewed additive openRequestKinds snapshot metadata, blocking request classification, permission-before-input attention, answered-request subtraction, and background-only elapsed presentation against the adapter, lifecycle, summary, live/snapshot handler and pill seams. Existing authorization and response contracts remain unchanged. Focused 347-test run passed; live provider, device and release behavior not verified.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter.ts","src-server/providers/adapters/claude-adapter.ts","src-server/services/orchestration/orchestration-session-state.ts","src-ui/src/hooks/orchestration/snapshotHandlers.ts","src-ui/src/hooks/useDerivedSessions.ts"]}
+  ]
+}

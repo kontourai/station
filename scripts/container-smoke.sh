@@ -7,7 +7,7 @@ COMPOSE_PROJECT_NAME="station-smoke-${RUN_TOKEN}"
 export COMPOSE_PROJECT_NAME
 compose=(docker compose -f "$ROOT/docker-compose.yml")
 SHA=${STATION_RELEASE_SHA:-$(git -C "$ROOT" rev-parse HEAD)}
-REF=${STATION_RELEASE_REF:-$(git -C "$ROOT" describe --tags --exact-match "$SHA" 2>/dev/null || printf 'v0.0.0-preview.1')}
+REF=${STATION_RELEASE_REF:-$(git -C "$ROOT" describe --tags --exact-match "$SHA" 2>/dev/null || printf 'v0.0.0-rc.1')}
 CREATED_AT_INPUT=${STATION_RELEASE_CREATED_AT:-$(git -C "$ROOT" show -s --format=%ct "$SHA")}
 CREATED_AT=$(node -e 'const value=process.argv[1]; const epochSeconds=Number(value); const date=value.trim()!==""&&Number.isFinite(epochSeconds)?new Date(epochSeconds*1000):new Date(value); if(!Number.isFinite(date.valueOf())) throw new Error("invalid release creation time"); process.stdout.write(date.toISOString())' "$CREATED_AT_INPUT")
 REPOSITORY=${STATION_IMAGE_REPOSITORY:-kontourai/station}

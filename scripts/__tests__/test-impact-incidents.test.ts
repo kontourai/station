@@ -17,6 +17,10 @@ import {
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import {
+  configuredVitestEnvironment,
+  vitestEnvironmentSuites,
+} from '../lib/dependency-change-scan.mjs';
 import { prepareChangedSelection } from '../run-changed-verification.mjs';
 import { FAST_STATIC_COMMANDS } from '../run-ci-fast.mjs';
 import {
@@ -135,6 +139,135 @@ describe('#3200: a sibling dependency bump selects the suites importing it', () 
       });
       expect(dependencyReasons(result), name).toEqual([]);
     }
+  });
+});
+
+describe('#4631: a test-runtime environment bump runs the suites in that environment', () => {
+  // The suites that failed in the queue for four unrelated pull requests
+  // after jsdom 31 merged with them deferred (#4910/#4911). None imports
+  // jsdom; each declares the jsdom environment in its docblock.
+  const BROKEN = [
+    'src-ui/src/__tests__/MCPToolUIFrame.test.tsx',
+    'src-ui/src/__tests__/TaskRoomComposer.test.tsx',
+    'src-ui/src/__tests__/settings-catalog-completeness.test.tsx',
+  ];
+  // A node-environment suite (no docblock; the root default is node).
+  const NODE_SUITE = 'scripts/__tests__/run-ci-fast.test.ts';
+  const runtimeReasons = (result: ReturnType<typeof select>) =>
+    result.selection.tests
+      .flatMap((entry: { reasons: string[] }) => entry.reasons)
+      .filter((reason: string) => reason.includes('(#4631)'));
+
+  // The base side: the real head files with jsdom moved back a major, in the
+  // exact shape pnpm writes, as #4631's own diff moved it forward.
+  function jsdomBase(path: string): string | null {
+    const text = head(path);
+    if (text === null) return null;
+    if (path.endsWith('package.json')) {
+      const manifest = JSON.parse(text);
+      for (const section of ['dependencies', 'devDependencies'])
+        if (manifest[section]?.jsdom) manifest[section].jsdom = '^29.1.1';
+      return `${JSON.stringify(manifest, null, 2)}\n`;
+    }
+    if (path === 'pnpm-lock.yaml') {
+      const rewritten = text.replace(
+        /(\n {6}jsdom:\n {8}specifier: )[^\n]+(\n {8}version: )[^\n]+/g,
+        '$1^29.1.1$2 29.1.1',
+      );
+      expect(rewritten).not.toBe(text);
+      return rewritten;
+    }
+    return text;
+  }
+
+  test('the hosted plan runs every jsdom suite, and the deferral stays explicit', () => {
+    const result = select(['package.json', 'pnpm-lock.yaml'], jsdomBase, true);
+    for (const suite of BROKEN) expect(executed(result)).toContain(suite);
+    expect(executed(result)).not.toContain(NODE_SUITE);
+    const jsdomSuites = vitestEnvironmentSuites({ root }).get('jsdom') ?? [];
+    // 1,362 jsdom suites when written; the bound only guards a derivation
+    // that silently came back nearly empty.
+    expect(jsdomSuites.length).toBeGreaterThan(1000);
+    expect(executed(result)).toEqual(expect.arrayContaining(jsdomSuites));
+    // The manifest edits still escalate: running the jsdom suites narrows
+    // what the deferral leaves unrun, it does not discharge it.
+    expect(
+      result.selection.lanes.map((lane: { id: string }) => lane.id),
+    ).toContain('ci-fast');
+  });
+
+  test('a lockfile-only jsdom bump selects them too', () => {
+    const result = select(['pnpm-lock.yaml'], jsdomBase, true);
+    for (const suite of BROKEN) expect(executed(result)).toContain(suite);
+  });
+
+  test('no version change, or a non-environment bump, selects none of them', () => {
+    expect(runtimeReasons(select(['package.json', 'pnpm-lock.yaml']))).toEqual(
+      [],
+    );
+    for (const [section, name] of [
+      ['devDependencies', 'vitest'],
+      ['devDependencies', 'react'],
+    ]) {
+      const result = select(['package.json'], (path) => {
+        const manifest = JSON.parse(head(path) as string);
+        expect(manifest[section]?.[name], name).toBeDefined();
+        manifest[section][name] = '0.0.1';
+        return JSON.stringify(manifest);
+      });
+      expect(runtimeReasons(result), name).toEqual([]);
+    }
+  });
+
+  test('environments follow the docblock, then the configured default', () => {
+    // Assembled, because Vitest reads this pragma anywhere in a test file's
+    // text: spelled out here it would run this suite under jsdom.
+    const pragma = (environment: string) =>
+      `/** @vitest${'-'}environment ${environment} */\n`;
+    const sources: Record<string, string> = {
+      'a.test.ts': pragma('jsdom'),
+      'b.test.ts': `// ${pragma('happy-dom')}`,
+      'c.test.ts': '// no docblock\n',
+      'd.test.ts': pragma('node'),
+      'tests/e.spec.ts': pragma('jsdom'),
+    };
+    const suites = (defaultEnvironment: string) =>
+      Object.fromEntries(
+        vitestEnvironmentSuites({
+          root,
+          testFiles: Object.keys(sources),
+          read: (path) => sources[path],
+          defaultEnvironment,
+        }),
+      );
+    expect(suites('node')).toEqual({
+      jsdom: ['a.test.ts'],
+      'happy-dom': ['b.test.ts'],
+    });
+    expect(suites('jsdom')).toEqual({
+      jsdom: ['a.test.ts', 'c.test.ts'],
+      'happy-dom': ['b.test.ts'],
+    });
+    expect(configuredVitestEnvironment(root)).toBe('node');
+  });
+
+  test('a config the scan cannot read exactly is refused, not guessed', () => {
+    const config = (test: string) => () =>
+      `import { defineConfig } from 'vitest/config';\nexport default defineConfig({ test: ${test} });\n`;
+    expect(
+      configuredVitestEnvironment(root, config("{ environment: 'jsdom' }")),
+    ).toBe('jsdom');
+    expect(configuredVitestEnvironment(root, config('{}'))).toBe('node');
+    for (const test of [
+      "{ environment: process.env.ENV ?? 'node' }",
+      "{ environmentMatchGlobs: [['**/*.tsx', 'jsdom']] }",
+      '{ projects: [] }',
+      '{ ...shared }',
+    ])
+      expect(
+        () => configuredVitestEnvironment(root, config(test)),
+        test,
+      ).toThrow(/test runtime: vitest\.config\.ts/);
   });
 });
 

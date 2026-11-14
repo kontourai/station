@@ -76,10 +76,6 @@
 
     "package.json#/dependencies/@agentclientprotocol~1sdk",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "packages/shared/src/mcp-tool-selection.ts",
 
     "src-server/runtime/tools/tool-approval.ts",
@@ -136,7 +132,9 @@
 
     "src-server/services/orchestration/delegation-tool-policy.ts",
 
-    "src-server/runtime/agents/request-delegation.ts"
+    "src-server/runtime/agents/request-delegation.ts",
+
+    "pnpm-lock.yaml#/packages/@anthropic-ai~1claude-agent-sdk@0.3.322"
   ],
 
   "checks": [

@@ -140,10 +140,6 @@
 
     "scripts/__tests__/tauri-context.test.ts",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "src-desktop/src/desktop_update.rs",
 
     "src-desktop/src/native_secure_entry.rs",
@@ -216,7 +212,27 @@
 
     "scripts/__tests__/desktop-runtime-pruning.test.ts",
 
-    "scripts/__tests__/server-build-portability.test.ts"
+    "scripts/__tests__/server-build-portability.test.ts",
+
+    "package.json#/dependencies/@tauri-apps~1api",
+
+    "package.json#/devDependencies/@tauri-apps~1cli",
+
+    "package.json#/dependencies/@tauri-apps~1plugin-notification",
+
+    "package.json#/dependencies/@tauri-apps~1plugin-updater",
+
+    "package.json#/dependencies/@tauri-apps~1plugin-process",
+
+    "package.json#/dependencies/@tauri-apps~1plugin-deep-link",
+
+    "package.json#/dependencies/@tauri-apps~1plugin-haptics",
+
+    "package.json#/dependencies/@kontourai~1flow-agents",
+
+    "pnpm-lock.yaml#/packages/node-pty@1.2.0-beta.18",
+
+    "pnpm-lock.yaml#/packages/koffi@3.3.7"
   ],
 
   "checks": [
