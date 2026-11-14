@@ -1,0 +1,7 @@
+{
+  "revision": "1c249eec27300e9057925878365f300c210eab54",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Links to the CLI reference only; it repeats no backup or rollback exclusion list, so the cli.md engines/ exclusion addition leaves its claims accurate.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]}
+  ]
+}

@@ -17,12 +17,15 @@ import { pipeline } from 'node:stream/promises';
 import { build } from 'esbuild';
 import { z } from 'zod/v3';
 import { NativeModelContainer } from '../src-server/services/connections/native-model-container.js';
+import { acquireHeavyCheckSlot } from './lib/heavy-check-slots.mjs';
 import { runLabCommand } from './lib/local-collaboration-process.mjs';
 
 if (!process.argv.includes('--run-real-local-lab'))
   throw new Error(
     'Pass --run-real-local-lab to build an isolated model-channel image and start its owned container.',
   );
+const slot = await acquireHeavyCheckSlot({ label: 'lab:native-model-channel' });
+process.once('exit', slot.release);
 const base =
   'node@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54';
 const includeEngines = process.argv.includes('--with-native-engines');
@@ -177,11 +180,9 @@ try {
   );
   const bundled = await build({
     metafile: true,
+    absWorkingDir: root,
     entryPoints: [
-      join(
-        root,
-        'src-server/services/connections/native-model-stdio-worker.ts',
-      ),
+      'src-server/services/connections/native-model-stdio-worker.ts',
     ],
     bundle: true,
     platform: 'node',

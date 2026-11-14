@@ -3,10 +3,15 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   AcpCredentialBridgingRefusedError,
   AcpInboundExtensionRegistry,
+  AcpReviewedBindingRefusedError,
   CREDENTIAL_SHAPED_WORDS,
   createAcpInboundExtensionRequestHandler,
+  type EngineCredentialIssuer,
+  type EngineSecretStore,
   extensionMethodWords,
   isCredentialShapedExtensionMethod,
+  REVIEWED_ENGINE_CREDENTIAL_BINDINGS,
+  REVIEWED_ENGINE_SECRET_BINDINGS,
   REVIEWED_INBOUND_EXTENSION_REQUESTS,
 } from '../acp-inbound-extension-policy.js';
 
@@ -266,14 +271,23 @@ describe('createAcpInboundExtensionRequestHandler', () => {
   });
 
   test('pins the reviewed inbound requests, each registrable and exact', () => {
-    expect(REVIEWED_INBOUND_EXTENSION_REQUESTS).toEqual([
+    expect(
+      REVIEWED_INBOUND_EXTENSION_REQUESTS.map(({ method, handler }) => ({
+        method,
+        handler,
+      })),
+    ).toEqual([
       { method: 'cursor/ask_question', handler: 'cursor.ask-question' },
       { method: 'cursor/create_plan', handler: 'cursor.create-plan' },
+      { method: '_kiro/userInput', handler: 'kiro.user-input' },
+      { method: '_kiro/mcp/elicitation', handler: 'kiro.mcp-elicitation' },
+      { method: '_kiro/openExternalUrl', handler: 'kiro.open-external-url' },
+      { method: '_kiro/terminal/shell_type', handler: 'client.terminal-facts' },
     ]);
     const registry = new AcpInboundExtensionRegistry();
     for (const entry of REVIEWED_INBOUND_EXTENSION_REQUESTS)
       registry.register(entry.method, () => ({}));
-    expect(registry.size).toBe(2);
+    expect(registry.size).toBe(6);
     expect(registry.resolve('_cursor/ask_question')).toBeUndefined();
   });
 
@@ -318,5 +332,273 @@ describe('createAcpInboundExtensionRequestHandler', () => {
         connectionId: 'kiro',
       },
     );
+  });
+});
+
+/** The error a handler call rejects with; fails the test if it resolves. */
+async function rejectionOf(
+  answer: Record<string, unknown> | Promise<Record<string, unknown>>,
+): Promise<RequestError> {
+  try {
+    await answer;
+  } catch (error) {
+    return error as RequestError;
+  }
+  throw new Error('expected a refusal, got an answer');
+}
+
+describe('reviewed credential and secret bindings (docs/decisions/engine-credential-provider.md)', () => {
+  const kiro = REVIEWED_ENGINE_CREDENTIAL_BINDINGS.find(
+    (binding) => binding.id === 'kiro.get-access-token',
+  )!;
+  const codex = REVIEWED_ENGINE_CREDENTIAL_BINDINGS.find(
+    (binding) => binding.id === 'codex.chatgpt-auth-tokens-refresh',
+  )!;
+  const grants = REVIEWED_ENGINE_SECRET_BINDINGS[0]!;
+  const scope = { connectionId: 'conn-1', credentialProfileRef: 'default' };
+  const bundleLaunch = {
+    builtinDescriptor: true,
+    argv: [
+      '--experimental-wasm-modules',
+      'acp-server.js',
+      '--transport=stdio',
+      '--auth=acp-callback',
+    ],
+  };
+  const issuer = (
+    result: Awaited<ReturnType<EngineCredentialIssuer['issue']>>,
+  ): EngineCredentialIssuer & { calls: number } => {
+    const self = {
+      scope,
+      calls: 0,
+      issue: async () => {
+        self.calls += 1;
+        return result;
+      },
+    };
+    return self;
+  };
+  const issued = issuer({
+    kind: 'issued',
+    issue: {
+      accessToken: 'access-token-value',
+      expiresAt: '2026-11-13T07:00:00.000Z',
+      attributes: {
+        profileArn: 'arn:example',
+        accessToken: 'attribute-must-not-win',
+      },
+    },
+  });
+  const KEY = `kiro.mcp.${'a'.repeat(64)}.tokens`;
+
+  test('pins the reviewed tables, frozen', () => {
+    expect(Object.isFrozen(REVIEWED_ENGINE_CREDENTIAL_BINDINGS)).toBe(true);
+    expect(
+      REVIEWED_ENGINE_CREDENTIAL_BINDINGS.map(
+        ({ id, kind, wire, delegationArgv }) => ({
+          id,
+          kind,
+          wire,
+          delegationArgv,
+        }),
+      ),
+    ).toEqual([
+      {
+        id: 'kiro.get-access-token',
+        kind: 'kiro.oidc-access-token',
+        wire: {
+          protocol: 'acp',
+          method: '_kiro/auth/getAccessToken',
+          scope: 'connection',
+        },
+        delegationArgv: ['--auth=acp-callback'],
+      },
+      {
+        id: 'codex.chatgpt-auth-tokens-refresh',
+        kind: 'openai.chatgpt-auth-tokens',
+        wire: {
+          protocol: 'codex-app-server',
+          method: 'account/chatgptAuthTokens/refresh',
+          push: 'account/login/start',
+        },
+        delegationArgv: [],
+      },
+    ]);
+    expect(
+      REVIEWED_ENGINE_SECRET_BINDINGS.map(({ id, methods }) => ({
+        id,
+        methods,
+      })),
+    ).toEqual([
+      {
+        id: 'kiro.mcp-grant-storage',
+        methods: {
+          get: '_kiro/secret/get',
+          store: '_kiro/secret/store',
+          delete: '_kiro/secret/delete',
+        },
+      },
+    ]);
+    for (const binding of [
+      ...REVIEWED_ENGINE_CREDENTIAL_BINDINGS,
+      ...REVIEWED_ENGINE_SECRET_BINDINGS,
+    ])
+      expect(Object.isFrozen(binding)).toBe(true);
+  });
+
+  test('the generic register still refuses every reviewed credential and secret method', () => {
+    const registry = new AcpInboundExtensionRegistry();
+    for (const method of [kiro.wire.method, ...Object.values(grants.methods)]) {
+      expect(() => registry.register(method, () => ({ value: 'x' }))).toThrow(
+        AcpCredentialBridgingRefusedError,
+      );
+    }
+    expect(registry.size).toBe(0);
+  });
+
+  test('a reviewed binding answers through its responder, and only once registered', async () => {
+    const registry = new AcpInboundExtensionRegistry();
+    const onExtMethod = createAcpInboundExtensionRequestHandler({ registry });
+    await expect(onExtMethod(kiro.wire.method, {})).rejects.toMatchObject({
+      code: -32601,
+    });
+
+    registry.registerCredentialResponder(kiro, issued, bundleLaunch);
+    expect(registry.answers(kiro.wire.method)).toBe(true);
+    await expect(onExtMethod(kiro.wire.method, {})).resolves.toEqual({
+      profileArn: 'arn:example',
+      accessToken: 'access-token-value',
+      expiresAt: '2026-11-13T07:00:00.000Z',
+    });
+  });
+
+  test('a look-alike binding object is refused, however exact the copy', () => {
+    const registry = new AcpInboundExtensionRegistry();
+    const lookAlike = { ...kiro, wire: { ...kiro.wire } };
+    expect(lookAlike).toEqual(kiro);
+    expect(() =>
+      registry.registerCredentialResponder(lookAlike, issued, bundleLaunch),
+    ).toThrow(AcpReviewedBindingRefusedError);
+    const secretLookAlike = { ...grants };
+    expect(() =>
+      registry.registerSecretResponder(
+        secretLookAlike,
+        {} as EngineSecretStore,
+      ),
+    ).toThrow(AcpReviewedBindingRefusedError);
+    expect(registry.resolve(kiro.wire.method)).toBeUndefined();
+    expect(registry.resolve(grants.methods.get)).toBeUndefined();
+  });
+
+  test.each([
+    ['a non-built-in launch', { ...bundleLaunch, builtinDescriptor: false }],
+    [
+      'a launch without the delegation argument',
+      {
+        builtinDescriptor: true,
+        argv: ['acp', '--agent-engine', 'v3', '--auth-method', 'cli'],
+      },
+    ],
+    [
+      'a split delegation argument',
+      { builtinDescriptor: true, argv: ['--auth', 'acp-callback'] },
+    ],
+  ])('a credential responder is refused for %s', (_, launch) => {
+    const registry = new AcpInboundExtensionRegistry();
+    expect(() =>
+      registry.registerCredentialResponder(kiro, issued, launch),
+    ).toThrow(AcpReviewedBindingRefusedError);
+    expect(registry.answers(kiro.wire.method)).toBe(false);
+  });
+
+  test('the ACP registry refuses a binding whose wire is not ACP', () => {
+    const registry = new AcpInboundExtensionRegistry();
+    expect(() =>
+      registry.registerCredentialResponder(codex, issued, {
+        builtinDescriptor: true,
+        argv: ['app-server'],
+      }),
+    ).toThrow(/not an ACP binding/);
+  });
+
+  test('a refused or failing issue answers -32000 with no token or issuer text', async () => {
+    for (const failing of [
+      issuer({ kind: 'refused', reason: 'signed-out' }),
+      {
+        scope,
+        issue: async () => {
+          throw new Error(
+            'refresh failed for token rt-secret-value at /vault/path',
+          );
+        },
+      },
+    ]) {
+      const registry = new AcpInboundExtensionRegistry();
+      registry.registerCredentialResponder(kiro, failing, bundleLaunch);
+      const onExtMethod = createAcpInboundExtensionRequestHandler({ registry });
+      const error = await rejectionOf(onExtMethod(kiro.wire.method, {}));
+      expect(error).toBeInstanceOf(RequestError);
+      expect(error.code).toBe(-32000);
+      expect(
+        JSON.stringify({ message: error.message, data: error.data }),
+      ).not.toMatch(/rt-secret-value|vault|access-token-value/);
+    }
+  });
+
+  test('a secret responder serves get, store and delete, and refuses a foreign key without echoing the value', async () => {
+    const stored = new Map<string, string>();
+    const store: EngineSecretStore = {
+      scope,
+      get: async (key) => stored.get(key),
+      store: async (key, value) => void stored.set(key, value),
+      delete: async (key) => void stored.delete(key),
+    };
+    const registry = new AcpInboundExtensionRegistry();
+    registry.registerSecretResponder(grants, store);
+    const onExtMethod = createAcpInboundExtensionRequestHandler({ registry });
+    await expect(
+      onExtMethod(grants.methods.get, { key: KEY }),
+    ).resolves.toEqual({});
+    await expect(
+      onExtMethod(grants.methods.store, { key: KEY, value: 'v1' }),
+    ).resolves.toEqual({});
+    await expect(
+      onExtMethod(grants.methods.get, { key: KEY }),
+    ).resolves.toEqual({ value: 'v1' });
+    await expect(
+      onExtMethod(grants.methods.delete, { key: KEY }),
+    ).resolves.toEqual({});
+    expect(stored.size).toBe(0);
+
+    const refusal = await rejectionOf(
+      onExtMethod(grants.methods.store, {
+        key: 'other.key',
+        value: 'secret-value-123',
+      }),
+    );
+    expect(refusal).toBeInstanceOf(RequestError);
+    expect(refusal.code).toBe(-32602);
+    expect(
+      JSON.stringify({ message: refusal.message, data: refusal.data }),
+    ).not.toContain('secret-value-123');
+    expect(stored.size).toBe(0);
+  });
+
+  test('a credential-shaped method planted in the generic map stays unanswered beside a reviewed responder', () => {
+    const registry = new AcpInboundExtensionRegistry();
+    registry.registerSecretResponder(grants, {} as EngineSecretStore);
+    (registry as unknown as { handlers: Map<string, unknown> }).handlers.set(
+      kiro.wire.method,
+      () => ({ accessToken: 'leaked' }),
+    );
+    expect(registry.resolve(kiro.wire.method)).toBeUndefined();
+    expect(registry.answers(grants.methods.get)).toBe(true);
+  });
+
+  test('unregister stops a reviewed method answering', () => {
+    const registry = new AcpInboundExtensionRegistry();
+    registry.registerCredentialResponder(kiro, issued, bundleLaunch);
+    registry.unregister(kiro.wire.method);
+    expect(registry.answers(kiro.wire.method)).toBe(false);
   });
 });

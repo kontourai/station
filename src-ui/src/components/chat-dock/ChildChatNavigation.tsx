@@ -161,7 +161,7 @@ export function ChildChatNavigation({
           {index > 0 && <span aria-hidden="true"> › </span>}
           {index < entries.length ? (
             <Button variant="ghost" onClick={() => pop(index)}>
-              {entry.title}
+              <span className="child-chat-trail__label">{entry.title}</span>
             </Button>
           ) : (
             <span aria-current="page">{entry.title}</span>

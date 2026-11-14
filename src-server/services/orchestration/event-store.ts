@@ -7913,6 +7913,8 @@ export class EventStore {
    * The usage fold's facts, in canonical order. The method index excludes
    * transcript deltas; SQL removes large input/output fields before JS sees
    * them. Keep optional usage fields absent rather than manufacturing nulls.
+   * A method the fold reads (`foldUsageEvents`) must be listed here, or it
+   * never reaches the fold in production.
    */
   listUsageEventPayloads(
     threadId: string,
@@ -7923,14 +7925,15 @@ export class EventStore {
          WHEN method = 'turn.started' THEN json_remove(payload, '$.prompt', '$.attachments', '$.metadata')
          WHEN method = 'turn.completed' THEN json_remove(payload, '$.outputText')
          WHEN method = 'tool.completed' THEN json_remove(payload, '$.output', '$.result', '$.images', '$.attachments', '$.metadata')
-         WHEN method IN ('session.started', 'session.configured', 'turn.completed', 'token-usage.updated') THEN payload
+         WHEN method IN ('session.started', 'session.configured', 'turn.completed', 'token-usage.updated', 'engine-mcp.status') THEN payload
          ELSE json_object('eventId', id, 'threadId', thread_id,
            'provider', provider, 'method', method, 'createdAt', created_at)
          END AS payload, observed_at
        FROM orchestration_events
        WHERE thread_id = ? AND (
          method IN ('session.started', 'session.configured', 'turn.started',
-           'turn.completed', 'tool.completed', 'token-usage.updated')
+           'turn.completed', 'tool.completed', 'token-usage.updated',
+           'engine-mcp.status')
          OR id = (SELECT id FROM orchestration_events WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1)
          OR id = (SELECT id FROM orchestration_events WHERE thread_id = ? AND provider != 'station-agent' LIMIT 1))
        ORDER BY sequence ASC`,

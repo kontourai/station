@@ -644,6 +644,16 @@ caps omit its start event. An explicit `null` clears activity; only older
 responses without the field fall back to their loaded events. A missing tool
 report remains absent.
 
+`useSessionLiveContinuityQuery(threadId, apiBase?, config?)` reads what a
+live Session's engine declared it can do natively (`SessionLiveContinuity`:
+`live`, `rewind`, `fork`); a host without the read answers nothing offered.
+`useRewindSessionToTurnMutation(apiBase?, requestScope?)` and
+`rewindOrchestrationSessionToTurn({ threadId, turnId })` rewind that engine's
+context in place to before a turn and answer the typed
+`SessionRewindOutcome`; a host without the route answers `refused`
+`unsupported`. See the
+[session API](session-api.md#engine-continuity-and-rewind-sessionsthreadidcontinuity-rewind).
+
 ### Read a reported child's transcript
 
 A child report's `source` records `tool-return`, `provider-summary`,
@@ -2034,7 +2044,9 @@ Fetches app configuration.
 
 ### `useStatsQuery(agentSlug, conversationId, config?)`
 
-Fetches conversation stats. Disabled when either param is undefined.
+Fetches conversation stats. Disabled when either param is undefined. The
+response's `engineMcp`, when present, is the engine's folded MCP status, which
+a reopened conversation shows in place of the live list.
 
 ### `useConversationUsageTreeQuery(conversationId, apiBase?, config?)`
 
@@ -6423,9 +6435,19 @@ sign-in for an engine run as a command (`/acp/connections/:id/sign-in*`):
 `useEngineSignInAttemptQuery` (polls every 2 seconds while a sign-in runs),
 `useEngineSignInMutation` (start by method id, or cancel) and
 `useEngineCredentialMutation` (set a key value or clear it; the value is never
-read back). Responses are parsed strictly against
-`@kontourai/station-contracts/engine-sign-in`, and every caller supplies a
-captured `ApiRequestScope`.
+read back). For an engine Station signs in itself, the view carries
+`hostAuth`, and `useEngineHostAuthLoginQuery` (polls every 2 seconds while the
+sign-in runs; it carries the device code), `useEngineHostAuthLoginMutation`
+(start with a `HostAuthLoginRequest`, or cancel),
+`useEngineHostAuthSignOutMutation` and `useManagedEngineInstallMutation`
+(`{ consent: true }`) drive `/host-auth/login`, `/host-auth/sign-out` and
+`/managed-install`; the view polls while an install runs. A
+`{ identity: 'social' }` start answers with `authorizationUrl`, Kiro's page to
+open on the Station's computer, and a failed attempt may carry `failure`. The
+view lists `social` only for a browser on that computer and otherwise carries
+`socialSignIn: 'needs-browser-on-host'`. Responses are parsed
+strictly against `@kontourai/station-contracts/engine-sign-in`, and every
+caller supplies a captured `ApiRequestScope`.
 
 ## Engine account queries
 

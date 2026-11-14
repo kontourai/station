@@ -76,6 +76,11 @@ match. Supported services download first, then offer a confirmed restart or
 **When idle**. The existing server observer keeps following an accepted
 request if the panel is closed. Browser and mobile devices can open this
 server section, and mobile app release links appear in the same panel.
+The server section also shows its installed version’s changelog. App and server
+upgrades can each open a changelog once; server presentation is remembered per
+endpoint and instance, and the app prompt takes precedence when both are pending.
+The first observation of each server records its version without a popup.
+
 **Update policies and details** opens Settings, where automatic-download
 policies remain. Source-installation and manual host guidance remain reachable
 from the server section; see [update mechanisms](nightly.md#update-checks-in-settings-source-check-vs-release-check).

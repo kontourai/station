@@ -292,8 +292,9 @@ test('strips every server-derived model evidence key while preserving ordinary o
  *   555-633).
  * - acp (`src-server/providers/adapters/acp-adapter.ts`):
  *   `modelOptions.mode` is the requested advertised session mode
- *   (station#1945). Display-only `effectiveModelMetadata(...)` echoes still
- *   exist and do not add keys.
+ *   (station#1945). `modelOptions.effort` is applied through a
+ *   `thought_level` config option the session advertises. Display-only
+ *   `effectiveModelMetadata(...)` echoes still exist and do not add keys.
  * - ollama/bedrock: read only `modelOptions.systemPrompt` — out of
  *   station#978's scope, so it is NOT added to either support list; a
  *   caller-supplied `systemPrompt` is rejected as unsupported for every
@@ -320,8 +321,8 @@ describe('PROVIDER_MODEL_OPTION_SUPPORT', () => {
     ]);
   });
 
-  test('acp supports the advertised session-mode key; ollama and bedrock support none', () => {
-    expect(PROVIDER_MODEL_OPTION_SUPPORT.acp).toEqual(['mode']);
+  test('acp supports the advertised session-mode and effort keys; ollama and bedrock support none', () => {
+    expect(PROVIDER_MODEL_OPTION_SUPPORT.acp).toEqual(['mode', 'effort']);
     expect(PROVIDER_MODEL_OPTION_SUPPORT.ollama).toEqual([]);
     expect(PROVIDER_MODEL_OPTION_SUPPORT.bedrock).toEqual([]);
   });
@@ -412,6 +413,7 @@ describe('unsupportedModelOptionKeys', () => {
       unsupportedModelOptionKeys('acp', { systemPrompt: 'be terse' }),
     ).toEqual(['systemPrompt']);
     expect(unsupportedModelOptionKeys('acp', { mode: 'plan' })).toEqual([]);
+    expect(unsupportedModelOptionKeys('acp', { effort: 'high' })).toEqual([]);
     expect(unsupportedModelOptionKeys('acp', { approvalMode: 'ask' })).toEqual([
       'approvalMode',
     ]);

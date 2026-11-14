@@ -10118,9 +10118,10 @@ describe('OrchestrationService', () => {
     );
   });
 
-  test('matrix-none engine child deltas never become conversation running work through service wiring', async () => {
-    // ACP 1.1.1 has no subagent concept, so its matrix cell stays `none`
-    // (muse's became `declared` with muse serve, #2452).
+  test('a non-reporting engine’s stray child deltas never become conversation running work through service wiring', async () => {
+    // ACP reports subagents per connection: an engine that does not (every
+    // ACP engine but Kiro) says `not-reported` at its start, exactly as the
+    // adapter publishes it, and a stray delta after that changes nothing.
     const acp = new FakeAdapter('acp');
     const isolated = new OrchestrationService({
       adapterRegistry: createRegistry([acp]),
@@ -10138,6 +10139,18 @@ describe('OrchestrationService', () => {
         projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
       }
     ).projectAndPublishEvent.bind(isolated);
+    publish({
+      eventId: 'matrix-none-not-reported',
+      provider: 'acp',
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'child-work.updated',
+      delta: {
+        kind: 'not-reported',
+        reporterThreadId: threadId,
+        reason: 'This engine reports no subagents to Station over ACP.',
+      },
+    });
     publish({
       eventId: 'matrix-none-child-delta',
       provider: 'acp',
@@ -28386,6 +28399,8 @@ describe('OrchestrationService', () => {
       'extension.notification': 'non-fold',
       'conversation.forked': 'non-fold',
       'child-work.updated': 'non-fold',
+      'model.rerouted': 'non-fold',
+      'engine-mcp.status': 'non-fold',
     };
     const NON_FOLD_METHODS = (
       Object.keys(METHOD_ROLE) as CanonicalRuntimeEvent['method'][]

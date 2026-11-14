@@ -4,6 +4,7 @@
  */
 
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import { CONVERSATION_REPORTED_COST_UNITS_MAX } from '@kontourai/station-contracts/runtime';
 import {
   isValidContextObservation,
   type SessionUsageAggregate,
@@ -63,6 +64,13 @@ function usageAggregateToConversationStats(
     cacheReadTokens: aggregate.cacheReadTokens,
     cacheWriteTokens: aggregate.cacheWriteTokens,
     contextTokens: aggregate.contextTokens,
+    ...(aggregate.contextPercent !== undefined
+      ? { contextPercent: aggregate.contextPercent }
+      : {}),
+    ...(aggregate.reportedCosts
+      ? { reportedCosts: aggregate.reportedCosts }
+      : {}),
+    ...(aggregate.engineMcp ? { engineMcp: aggregate.engineMcp } : {}),
     turns: aggregate.turns,
     toolCalls: aggregate.toolCalls,
     estimatedCost: aggregate.reportedCostUsd,
@@ -78,7 +86,12 @@ function hasUsageSignal(aggregate: SessionUsageAggregate): boolean {
     // A context observation counts whether or not the engine also reported
     // the window size — the window can be resolved from the model
     // inventory, so occupancy alone is still a real measurement.
-    aggregate.contextTokens !== undefined
+    aggregate.contextTokens !== undefined ||
+    aggregate.contextPercent !== undefined ||
+    aggregate.reportedCosts !== undefined ||
+    // An engine that has only reported its MCP servers so far (a session
+    // whose first turn has not finished) still has a panel to show.
+    aggregate.engineMcp !== undefined
   );
 }
 
@@ -111,7 +124,33 @@ function combineLineageStats(
     turns: list.reduce((total, stats) => total + (stats.turns ?? 0), 0),
     toolCalls: list.reduce((total, stats) => total + (stats.toolCalls ?? 0), 0),
     ...(cost !== undefined ? { estimatedCost: cost } : {}),
+    ...sumReportedCostsByUnit(list),
   };
+}
+
+/**
+ * Lineage records' engine-reported costs, summed per unit, at most
+ * CONVERSATION_REPORTED_COST_UNITS_MAX units (each record is capped, but
+ * their union need not be).
+ */
+function sumReportedCostsByUnit(
+  list: ConversationStats[],
+): Pick<ConversationStats, 'reportedCosts'> {
+  const byUnit = new Map<string, number>();
+  for (const stats of list)
+    for (const { unit, amount } of stats.reportedCosts ?? []) {
+      if (
+        !byUnit.has(unit) &&
+        byUnit.size >= CONVERSATION_REPORTED_COST_UNITS_MAX
+      )
+        continue;
+      byUnit.set(unit, (byUnit.get(unit) ?? 0) + amount);
+    }
+  return byUnit.size > 0
+    ? {
+        reportedCosts: [...byUnit].map(([unit, amount]) => ({ unit, amount })),
+      }
+    : {};
 }
 
 function combineLineageModelStats(

@@ -1,5 +1,5 @@
 import { fetchOrchestrationConversationEventWindow } from '@kontourai/station-sdk';
-import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
+import { isCardAnsweredRequestEvent } from '@kontourai/station-shared/input-request';
 import type { StationStateScope } from '../../connections/station-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
@@ -104,9 +104,9 @@ function hydratePage(
           },
         }
       : {};
-    // A questionnaire or an MCP form is answered on its own card, not by the
-    // approval toast, so the placeholder stays; only the turn is bound.
-    if (inputRequestFromRequestEvent(event)) {
+    // A questionnaire, an MCP form or a link is answered on its own card, not
+    // by the approval toast, so the placeholder stays; only the turn is bound.
+    if (isCardAnsweredRequestEvent(event)) {
       if (learnedTurnId) chatStore.updateChat(event.threadId, bindTurn);
       continue;
     }

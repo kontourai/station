@@ -59,12 +59,13 @@ function useNewApprovalAnnouncement(
     // Still loading history, or the render that finished loading it:
     // whatever it brings was already waiting.
     if (!settled || !wasSettled || fresh.length === 0) return;
-    // A form names its own ask; its tool name is a protocol method.
-    const names = fresh.map((request) =>
-      request.inputRequest
-        ? inputRequestSummary(request.inputRequest.message)
-        : toolRequestDisplayName(request.toolName || request.name) || 'a tool',
-    );
+    // A form or a link names its own ask; its tool name is a protocol method.
+    const names = fresh.map((request) => {
+      const asked = request.inputRequest ?? request.inputRequestUrl;
+      return asked
+        ? inputRequestSummary(asked.message)
+        : toolRequestDisplayName(request.toolName || request.name) || 'a tool';
+    });
     setAnnouncement((previous) => ({
       id: previous.id + 1,
       text:
@@ -125,7 +126,7 @@ export function PendingApprovalStrip({
           aria-label="Approvals waiting on you"
         >
           {requests.map((request) =>
-            request.inputRequest ? (
+            request.inputRequest || request.inputRequestUrl ? (
               <LazyBoundary
                 key={requestKey(request)}
                 load={loadInputRequest}

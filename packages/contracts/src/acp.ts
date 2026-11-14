@@ -1,3 +1,7 @@
+import {
+  isManagedInstallId,
+  MANAGED_RUNTIME_SCRIPT_TOKEN,
+} from './managed-engine-install.js';
 import { isObjectRecord } from './record-guard.js';
 
 export interface ACPConnectionConfig {
@@ -90,10 +94,27 @@ export interface ACPConnectionRegistryEntry {
   /** Data only, not yet applied: nothing renders it today. */
   homepageUrl?: string;
   /**
+   * An engine runtime Station installs itself from a pinned manifest
+   * (`@kontourai/station-contracts/managed-engine-install`) and runs with
+   * these arguments. Accepted only from built-in entries; a plugin entry that
+   * carries one is refused, like `launchEnv`.
+   */
+  managedRuntime?: ACPManagedRuntimeDescriptor;
+  /**
    * Server projection: `install` for the platform Station runs on. Not part
    * of a descriptor; producers leave it unset.
    */
   hostInstall?: ACPEngineInstallRecipe;
+}
+
+/**
+ * How a built-in entry runs a managed install. `installId` names the pin; the
+ * install's runtime is the program, and `argv` its arguments, where exactly one
+ * argument is `{script}`, replaced by the install's entry script.
+ */
+export interface ACPManagedRuntimeDescriptor {
+  installId: string;
+  argv: string[];
 }
 
 export const ACP_PUBLIC_REGISTRY_DISTRIBUTIONS = [
@@ -253,6 +274,8 @@ export const ACP_LAUNCH_ENV_PREFIXES = [
   'DROID_',
   'FACTORY_',
   'AUGMENT_',
+  // KIRO_CLI_CLIENT_APPLICATION names the client to kiro-cli.
+  'KIRO_CLI_',
 ] as const;
 /**
  * Characters that render as nothing (Unicode Default_Ignorable_Code_Point:
@@ -468,6 +491,7 @@ export function validateACPEngineDescriptor(
       | 'platforms'
       | 'auth'
       | 'homepageUrl'
+      | 'managedRuntime'
     >
   >,
 ): string[] {
@@ -609,7 +633,41 @@ export function validateACPEngineDescriptor(
       }
     }
   }
+  if (entry.managedRuntime !== undefined) {
+    validateManagedRuntime(entry.managedRuntime, errors);
+  }
   return errors;
+}
+
+function validateManagedRuntime(value: unknown, errors: string[]): void {
+  if (!isObjectRecord(value)) {
+    errors.push('managedRuntime must be an object');
+    return;
+  }
+  const { installId, argv, ...rest } = value;
+  if (Object.keys(rest).length > 0) {
+    errors.push(
+      `managedRuntime: unknown field ${Object.keys(rest).join(', ')}`,
+    );
+  }
+  if (!isManagedInstallId(installId)) {
+    errors.push('managedRuntime.installId is not valid');
+  }
+  if (argv === undefined) {
+    errors.push('managedRuntime.argv is required');
+    return;
+  }
+  const before = errors.length;
+  boundedStringList(argv, 'managedRuntime.argv', errors);
+  if (errors.length > before) return;
+  const scripts = (argv as string[]).filter(
+    (arg) => arg === MANAGED_RUNTIME_SCRIPT_TOKEN,
+  ).length;
+  if (scripts !== 1) {
+    errors.push(
+      `managedRuntime.argv must contain ${MANAGED_RUNTIME_SCRIPT_TOKEN} exactly once`,
+    );
+  }
 }
 
 /** Whether an entry launches on a host platform (`process.platform` value). */

@@ -1,0 +1,7 @@
+{
+  "revision": "86eb350aab7717090b7910cdd15b2ac753821714",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Its links into connections.md (setup steps, qualification limits) still resolve; the connections change only adds the engines/ backup sentence in the KAS install section.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

@@ -617,6 +617,7 @@ Station launches are started.
 | --- | --- |
 | `allowed` | The engines that may run: any of `claude`, `codex`, `muse`, `acp` (every ACP connection) and `station-agent` (Station's own agent). Leave it out to allow every engine. An engine a plugin adds is never on the list, so an allow list turns plugin engines off. |
 | `acpRegistryAgents` | `false` stops ACP connections added from the public ACP registry from running and from being added. A custom ACP connection is still allowed while `acp` is. `true` is refused. |
+| `engineHostAuth` | `"off"` stops Station giving any engine an access token from its own engine sign-in store (Kiro without kiro-cli asks for one). Engines that keep their own sign-in, such as kiro-cli, are unaffected. `"allowed"`, or leaving it out, lets it. Also off whenever `acp` is not allowed. |
 | `instances.<engine>` | How every connection of `claude`, `codex`, `muse` or `acp` is launched. `station-agent` runs inside Station and has no launch to pin. |
 
 Station refuses an unknown engine id, a repeated one, and an `instances`
@@ -879,6 +880,7 @@ Every value is in `HKLM\SOFTWARE\Policies\Kontour\Station`.
 | Allow the nightly channel | `NightlyChannel` (`REG_DWORD`) | `limits.updates.allowNightly: false` when Disabled |
 | Allowed engines | `AllowedEngines` (`REG_DWORD` state), `EngineClaude`, `EngineCodex`, `EngineMuse`, `EngineAcp`, `EngineStationAgent` (`REG_DWORD` each, 1 checked) | `limits.engines.allowed`, the checked engine ids |
 | Allow ACP registry agents | `AcpRegistryAgents` (`REG_DWORD`) | `limits.engines.acpRegistryAgents: false` when Disabled |
+| Allow Station to sign engines in | `EngineHostAuth` (`REG_DWORD`) | `limits.engines.engineHostAuth: "off"` when Disabled |
 | Engine launch configuration (JSON) | `EngineInstances` (`REG_DWORD` state), `EngineInstancesJson` (`REG_MULTI_SZ`, lines joined) | `limits.engines.instances` |
 
 The template carries a setting for every limit this release enforces. Later

@@ -251,6 +251,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',
   'packages/cli/src/__tests__/passive-cli.test.ts',
   'scripts/__tests__/server-scenario.test.ts',
+  // Builds and starts an isolated Station on free ports, runs the bundled
+  // Claude engine against a loopback stub, and owns detached process trees.
+  'scripts/__tests__/station-weight.end-to-end.process.test.ts',
+  // Detached and double-forked node children, a CPU-burning worker, git
+  // fixtures and the runner's gate as a child process.
+  'scripts/__tests__/station-weight.process.test.ts',
   // Real IPC child observes the native histogram at reset acknowledgement and blocks for 80ms.
   'scripts/__tests__/server-scenario-probe.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
@@ -733,6 +739,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // paths' EXIT STATUS and printed verdicts are proven, not just the pure
   // evaluation functions.
   'scripts/__tests__/codeql-sarif-policy.cli.test.ts',
+  // Runs the security-analysis gate-change job's real bash/git script as a
+  // child process against throwaway fixture repositories (partial fetch,
+  // merge base, .github/ diff). Single-shot spawns, no wall-clock assertion.
+  'scripts/__tests__/security-analysis-gate-change.test.ts',
   // station#1312: same shape again — the issue-lifecycle module graph is
   // loaded in fresh node children, one entry module per case, because only a
   // cold import proves the graph has no evaluation-order cycle; in-process
@@ -1384,9 +1394,29 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3290: spawns an OpenCode-shaped ACP engine through the real
   // ACPProcess, so the launch environment is the one actually delivered.
   'src-server/providers/__tests__/acp-approval-mode.process.test.ts',
+  // Installs a fake Kiro agent service with the real installer and launches
+  // it through the real ACPProcess, managed and as a custom command.
+  'src-server/services/engine-host-auth/__tests__/engine-host-auth-launch.process.test.ts',
+  // Runs a managed runtime's `--version` (Node, and a slow shell stand-in
+  // killed by an abort) through the ACP adapter's readiness.
+  'src-server/providers/__tests__/acp-managed-runtime-readiness.test.ts',
+  // Two real processes race one expiring credential through the vault's
+  // cross-process refresh lock against a local stub issuer.
+  'src-server/services/engine-host-auth/__tests__/engine-host-auth-refresh-lock.process.test.ts',
+  // Extracts fixture archives with the host's own tar and runs the installed
+  // runtime, so the extraction and launch are the real ones.
+  'src-server/services/engines/__tests__/managed-install.test.ts',
+  // Launches the fake ACP agent through the real ACPProcess so the agent
+  // records the client capabilities `initialize` actually announced.
+  'src-server/services/acp/__tests__/acp-client-announcements.process.test.ts',
   // Launches the profile-driven fake engine through the real ACPProcess,
   // adapter and probe; the process boundary is the qualification claim.
   'src-server/providers/__tests__/acp-engine-qualification.process.test.ts',
+  // Kiro parity: the fake ACP agent, driven by recorded kiro-cli profiles,
+  // through the real adapter and ACPProcess; it records what Station
+  // announced and answered.
+  'src-server/providers/__tests__/acp-kiro-announce.process.test.ts',
+  'src-server/providers/__tests__/acp-kiro-parity.process.test.ts',
   // #3924: runs the real `opencode` (when this host has one) with fresh XDG
   // directories against a planted project plugin; skips loudly where no
   // opencode binary resolves.

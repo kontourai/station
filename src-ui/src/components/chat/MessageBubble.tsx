@@ -1,5 +1,6 @@
 import { readTaskProposal } from '@kontourai/station-contracts/task-graph';
 import { isSupportedTurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
+import { Badge } from '@kontourai/ui/react';
 import {
   Fragment,
   memo,
@@ -74,6 +75,7 @@ import {
   hasAnswerText,
   useHasVisibleTranscriptContent,
 } from './message-bubble/visibleContent';
+import { useSessionRewindAction } from './SessionRewind';
 import { TaskProposalCard } from './TaskProposalCard';
 import type { ToolApprovalOutcome } from './ToolCallDisplay';
 import { TranscriptMarker, transcriptMarkerLabel } from './TranscriptMarker';
@@ -387,6 +389,7 @@ function MessageBubbleComponent({
     textContent,
     { showReasoning },
   );
+  const rewindToHere = useSessionRewindAction(msg);
 
   const flowPart = msg.contentParts?.find(
     (part) =>
@@ -553,6 +556,8 @@ function MessageBubbleComponent({
     msg.role === 'user' && msg.stationRestartContinuation === true;
   const stationAuthored =
     stationCheckBack || stationMemoryContinuation || stationRestartContinuation;
+  // An in-place engine rewind hid this turn from the engine; the row stays.
+  const rewound = msg.rewound === true;
   const avatarContent = sender ? (
     <span className="agent-incoming__avatar" aria-hidden="true">
       <InboxGlyph />
@@ -668,7 +673,8 @@ function MessageBubbleComponent({
         discardUnsent),
   );
   const userMessageMenu =
-    msg.role === 'user' && (textMenuActions || menuTaskTarget) ? (
+    msg.role === 'user' &&
+    (textMenuActions || menuTaskTarget || rewindToHere) ? (
       <LazyBoundary
         load={loadUserMessageActionsMenu}
         componentProps={{
@@ -680,6 +686,7 @@ function MessageBubbleComponent({
               : undefined,
           onEditAndResend: textContent ? editAndResend : undefined,
           onDiscardUnsent: textContent ? discardUnsent : undefined,
+          onRewindToHere: rewindToHere,
           taskTarget: menuTaskTarget,
           handleRef: userMenuHandle,
           // The phone already opens a sheet for the row: its actions are
@@ -1220,7 +1227,7 @@ function MessageBubbleComponent({
         onPointerDown={bubbleGesture.onPointerDown}
         onPointerUp={bubbleGesture.onPointerUp}
         onPointerCancel={bubbleGesture.onPointerCancel}
-        className={`message ${sender ? 'agent-incoming' : msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${stationAuthored ? ' message--station-check-back' : ''}${
+        className={`message ${sender ? 'agent-incoming' : msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${stationAuthored ? ' message--station-check-back' : ''}${rewound ? ' message--rewound' : ''}${
           // Outlined, not filled, until the agent has the message.
           undelivered
             ? ` message--undelivered message--delivery-${undelivered}`
@@ -1243,6 +1250,11 @@ function MessageBubbleComponent({
         {sender && !isMobile && <IncomingAgentHeader sender={sender} />}
         {!isMobile && metadataControls}
         {!isMobile && metadataIdentity}
+        {rewound ? (
+          <div className="message__rewound-badge">
+            <Badge value="Rewound" tone="neutral" />
+          </div>
+        ) : null}
         {stationAuthored ? (
           <div className="message__station-label">
             {isMobile ? <TimeGlyph className="message__station-glyph" /> : null}

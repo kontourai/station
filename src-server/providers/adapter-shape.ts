@@ -7,6 +7,10 @@ import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
 import type { ConnectionRecoveryCapability } from '@kontourai/station-contracts/connection-recovery';
 import type {
+  EngineCommandOutcome,
+  EngineCommandRoute,
+} from '@kontourai/station-contracts/engine-commands';
+import type {
   InputRequestContent,
   SessionGrantScope,
 } from '@kontourai/station-contracts/input-request';
@@ -23,6 +27,8 @@ import type {
   ProviderSessionSourceAffinity,
   ProviderSessionStartInput,
   ProviderTurnStartResult,
+  SessionLiveContinuity,
+  SessionRewindOutcome,
 } from '@kontourai/station-contracts/provider';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
@@ -178,6 +184,25 @@ export class ProviderTurnInProgressError extends SendTurnRefusedError {
       'busy',
     );
     this.name = 'ProviderTurnInProgressError';
+  }
+}
+
+/**
+ * A send refused because the session's engine is rewinding its context in
+ * place and has not answered yet. It shares the provider-turn code: the
+ * engine is busy with work that is not this send's turn, the send never
+ * reached it, and the same send succeeds once that work ends, so the inbox
+ * holds it and clients send it then.
+ */
+export class SessionRewindingError extends SendTurnRefusedError {
+  readonly code = PROVIDER_TURN_IN_PROGRESS_CODE;
+
+  constructor() {
+    super(
+      'Station is rewinding this conversation; send again when it finishes.',
+      'busy',
+    );
+    this.name = 'SessionRewindingError';
   }
 }
 
@@ -558,6 +583,36 @@ export interface ProviderAdapterShape {
     threadId: string,
     taskId: string,
   ): Promise<ProviderTaskStopResult>;
+  /**
+   * Ask the session's engine to restart one MCP server it runs itself (one
+   * an `engine-mcp.status` event named), optionally starting that server's
+   * OAuth sign-in; the consent link then arrives as a URL input request.
+   * Present only where some engine the adapter runs has such a call; an
+   * engine of the adapter's without one answers `not-declared`.
+   */
+  reconnectMcpServer?(
+    threadId: string,
+    serverName: string,
+    options: { startOAuth: boolean },
+  ): Promise<EngineCommandOutcome>;
+  /**
+   * This live session's continuity as its own engine declared it. `live:
+   * false` when no engine process holds the session. Present only on an
+   * adapter some of whose engines can declare a native mechanism; absent
+   * reads as `none` for both.
+   */
+  sessionContinuity?(threadId: string): SessionLiveContinuity;
+  /**
+   * Rewind the engine's context in place to before `turnId`: that turn and
+   * every later one are hidden from the engine. The transcript keeps every
+   * turn. Refused with a typed reason before anything reaches the engine
+   * when the session declares no in-place rewind, is not live, is running a
+   * turn, or never reported an id for the turn.
+   */
+  rewindSession?(
+    threadId: string,
+    turnId: string,
+  ): Promise<SessionRewindOutcome>;
   respondToRequest(
     threadId: string,
     requestId: string,
@@ -656,6 +711,11 @@ export interface ProviderAdapterShape {
       description: string;
       argumentHint?: string;
       passthrough: boolean;
+      /**
+       * How the command runs on the engine: prompt text, or the engine's own
+       * request where the live session declared one. Absent: prompt text.
+       */
+      route?: EngineCommandRoute;
     }>
   >;
   listModels?(options?: { signal?: AbortSignal; maxEntries?: number }): Promise<

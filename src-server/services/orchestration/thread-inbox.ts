@@ -1048,6 +1048,21 @@ export class ThreadInboxDelivery {
     });
   }
 
+  /**
+   * A Session became free without a turn event: an in-place rewind ended
+   * (applied, refused or past its deadline), and sends refused busy meanwhile
+   * may go now rather than at their next timed re-check.
+   */
+  nudge(threadId: string): void {
+    try {
+      this.drive(this.ports.conversationOf(threadId), false);
+    } catch (error) {
+      this.ports.logger.warn('thread inbox delivery failed', {
+        error: errorText(error),
+      });
+    }
+  }
+
   stop(): void {
     this.stopped = true;
     this.unregisterPostTool?.();

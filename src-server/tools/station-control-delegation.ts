@@ -4085,9 +4085,11 @@ function optionalNumber(value: unknown): number | undefined {
  * #225: the usage fields a delegated-task event carries, keyed by the
  * canonical `TokenUsageUpdatedEvent` so a field added to the contract is a
  * compile error here instead of a silent drop. Pricing snapshots and serving
- * routes stay on the canonical receipt; this projection carries token counters.
- * `reportedCostUsd` has a per-provider scope (per-turn versus cumulative)
- * that this per-event projection cannot state.
+ * routes stay on the canonical receipt; this projection carries token counters
+ * and context occupancy. `reportedCostUsd` has a per-provider scope (per-turn
+ * versus cumulative) that this per-event projection cannot state;
+ * `reportedCost` is a cost in the engine's own unit, not a counter, and stays
+ * on the canonical event too.
  */
 type DelegatedUsageField = Exclude<
   keyof TokenUsageUpdatedEvent,
@@ -4096,6 +4098,7 @@ type DelegatedUsageField = Exclude<
   | 'pricingSnapshot'
   | 'servingRoute'
   | 'reportedCostUsd'
+  | 'reportedCost'
 >;
 
 const DELEGATED_USAGE_FIELD_PROJECTORS: {
@@ -4119,6 +4122,10 @@ const DELEGATED_USAGE_FIELD_PROJECTORS: {
   },
   contextTokens: optionalNumber,
   contextWindowTokens: optionalNumber,
+  contextPercent: (value) => {
+    const percent = optionalNumber(value);
+    return percent !== undefined && percent <= 100 ? percent : undefined;
+  },
 };
 
 function optionalCount(value: unknown): number | undefined {

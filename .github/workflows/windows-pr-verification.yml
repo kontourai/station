@@ -4,10 +4,22 @@ name: "PR: Windows"
 # Candidate code runs only on an ephemeral GitHub-hosted Windows runner with
 # read-only permissions, so fork PRs receive the same proof instead of a
 # skipped required check that GitHub would incorrectly count as success.
+#
+# The one skip is about WHEN, never WHO: on PR events a draft, and the
+# automation app's same-repository release PR (regenerated on every main
+# push), skip the floor. A draft can be neither merged nor queued. Marking
+# it ready (`ready_for_review`) runs the floor on that head, and later pushes
+# to the non-draft PR run it as before. Until the ready run creates its check,
+# the newest `Windows PR portable floor` on that head is still the draft's
+# `skipped`, so `gh pr ready` and an immediate `gh pr merge --auto` can
+# enqueue on it. That is harmless only because the merge group runs the floor
+# for every candidate, the release PR included: the merge group is the gate,
+# and the post-ready PR run is early feedback. Forks and humans get the same
+# rule.
 on:
   pull_request_target:
     branches: [main]
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     branches: [main]
     types: [checks_requested]
@@ -22,6 +34,10 @@ concurrency:
 jobs:
   windows-pr-portable:
     name: Windows PR portable floor
+    # The same draft and release-PR guard as build-ios.yml and
+    # gallery-pr-check.yml (scripts/__tests__/ci-workflow-contract.test.ts
+    # pins all three); the header says why it fits this workflow's trust rule.
+    if: github.event_name != 'pull_request_target' || (!github.event.pull_request.draft && (github.event.pull_request.head.ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login != 'station-automation[bot]'))
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
