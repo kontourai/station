@@ -138,7 +138,7 @@ describe('OpenCodeServeClient requests', () => {
     '/api/%61gent/build',
     '/api/session/ses_1/messag%65',
     '/api/session/ses_1/message?after=a%20b',
-  ])('%s is refused: %% only inside a route parameter', (path) => {
+  ])('%s is refused: percent-encoding only inside a route parameter', (path) => {
     expect(() => assertOpenCodeServePathAllowed('GET', path)).toThrow(
       OpenCodeServeDeniedPathError,
     );
