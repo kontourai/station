@@ -263,7 +263,15 @@ or retries. It maintains one P1 issue owned by repository release maintainers
 when no qualification job started within eight hours, no source qualification
 passed within fourteen hours, or the latest unqualified run has remained queued
 or running for more than three hours. The eight-hour start and fourteen-hour success bounds allow schedule and
-execution delay. It also reports a
+execution delay. It first selects the newest executed red run, downloads
+its failure manifests and classifies it; the body then says whether main is
+red only on known failures, owned by which open issues, with a line
+"red only on known failures since <run>" carried across observations, and
+that release qualification stays blocked. In report mode the alert
+decisions are unchanged. With `STATION_QUALIFICATION_SIGNAL=enforce`, a
+known-only run that completed within the 24-hour scheduled-skip window
+replaces the fourteen-hour staleness reason with that line, and a new
+failure is reported as its own reason. It also reports a
 failed scheduled or manual Nightly delivery after its source gate passed. The
 passing gate's completion time and exact source identify qualification health;
 a long native build does not make qualification stale by itself.
@@ -391,6 +399,15 @@ when they failed before creating a reservation.
 to completed canonical main-qualification runs. It keeps one P1 issue titled
 `Main qualification repair`, with failed source/run, job outcomes, an owner,
 state and a deadline 24 hours after the episode opens.
+
+Each prepare run downloads the run's `qualification-manifest-*` artifacts
+with the existing `actions: read` and writes the [failure
+classification](testing.md#known-qualification-failures) into the episode's
+report. In report mode (the default) that changes no decision. With
+`STATION_QUALIFICATION_SIGNAL=enforce`, a run red only on known failures
+whose issues are open opens no episode and only refreshes an open one;
+it never closes an episode, and a new failure still opens or updates it.
+Only a green qualification run or a person closes an episode.
 
 By default no automated repair agent runs: repository variable
 `QUALIFICATION_REPAIR_AGENT` is unset, and the issue is opened or updated with
