@@ -37,10 +37,12 @@ findings are report-only: each is a warning annotation, the job summary
 lists them with the open, actionable `P1` and unclassified counts, and one
 **Backlog policy findings** tracking issue carries the counts and the first
 50 entries of each list (closed when nothing is reported). The run still
-succeeds. The issue is written by a separate job that installs nothing; it
-posts only a report for its own checkout, under GitHub's body limit, with
-`@` mentions broken and issue numbers in code spans so the listed issues
-gain no timeline cross-references. A permanently red daily run was ignored, so failing on
+succeeds. The issue is written by a separate job that installs nothing. It
+writes only to an issue the workflow bot opened, posts only a report stamped
+with its own checkout's revision (which shows the report is current, not who
+wrote it), refuses posted text over GitHub's body limit, and breaks `@`
+mentions, including entity-encoded ones. Issue numbers are in code spans so
+the listed issues gain no timeline cross-references. A permanently red daily run was ignored, so failing on
 findings carried no signal. The run fails when it cannot judge the backlog:
 live labels that drift from `.github/labels.json`, a malformed manifest, an
 API failure or an incomplete issue read. It

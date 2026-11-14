@@ -14,6 +14,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
+  assertReportRevision,
   postableReport,
   runGh,
   upsertTrackingIssue,
@@ -99,8 +100,9 @@ const checkedOutRevision = () =>
 
 /**
  * Create, update, reopen or close the single tracking issue. The report comes
- * from another job, so it must describe this job's checkout (`head`), and it
- * is posted only through `postableReport` (size bound, no live mentions).
+ * from another job, so it must be stamped with this job's checkout (`head`;
+ * that proves it is current, not who wrote it), and it is posted only through
+ * `postableReport` (no live mentions, size bound on the posted text).
  * @param {{ repo: string, reportPath: string, head?: string, gh?: (args: string[]) => string }} input
  */
 export function upsertFreshnessIssue({
@@ -112,11 +114,7 @@ export function upsertFreshnessIssue({
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo ?? ''))
     throw new Error('--repo must be owner/name');
   const report = readFileSync(reportPath, 'utf8');
-  const revision = reportRevision(report);
-  if (revision !== head)
-    throw new Error(
-      `report describes ${revision}, but this checkout is ${head}; refusing to post it`,
-    );
+  assertReportRevision(reportRevision(report), head);
   return upsertTrackingIssue({
     repo,
     reportPath: postableReport(reportPath),

@@ -1851,10 +1851,10 @@ describe('Nightly freshness sweep (#2923)', () => {
         gh,
       }),
     ).toThrow(/refusing to post it/);
-    writeFileSync(reportPath, `${report(1).body}${'x'.repeat(60_000)}`);
+    writeFileSync(reportPath, `${report(1).body}${'x'.repeat(65_536)}`);
     expect(() =>
       upsertFreshnessIssue({ repo: 'owner/repo', reportPath, head, gh }),
-    ).toThrow(/refusing to post more than 60000/);
+    ).toThrow(/refusing to post more than 65536/);
     expect(posted).toHaveLength(1);
   });
 

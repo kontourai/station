@@ -430,7 +430,7 @@ describe('backlog priority policy', () => {
           gh: gh(''),
         }),
       ).toThrow(/refusing to post it/);
-      const huge = write(`${report}${'x'.repeat(60_000)}`);
+      const huge = write(`${report}${'x'.repeat(65_536)}`);
       expect(() =>
         upsertBacklogIssue({
           repo: 'o/r',
@@ -438,7 +438,7 @@ describe('backlog priority policy', () => {
           head: revision,
           gh: gh(''),
         }),
-      ).toThrow(/refusing to post more than 60000/);
+      ).toThrow(/refusing to post more than 65536/);
       expect(posted).toHaveLength(1);
       const clean = write(
         buildBacklogReport(evaluateBacklogPriorityPolicy([issue(1, [p2])]), {

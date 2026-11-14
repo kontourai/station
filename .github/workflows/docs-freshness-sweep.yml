@@ -45,9 +45,10 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-          # No package-manager cache: an install-time script in the
-          # installing jobs could otherwise save a poisoned cache that other
-          # workflows restore, and the issue-writing jobs restore nothing.
+          # setup-node's automatic cache engages only for npm and this repo
+          # uses pnpm, so this changes nothing today. It guards a future
+          # switch: an install-time script must not save a cache that other
+          # workflows on main restore.
           package-manager-cache: false
       - run: npm run dependencies:ci
       - name: Report stale documentation reviews
@@ -79,9 +80,10 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-          # No package-manager cache: an install-time script in the
-          # installing jobs could otherwise save a poisoned cache that other
-          # workflows restore, and the issue-writing jobs restore nothing.
+          # setup-node's automatic cache engages only for npm and this repo
+          # uses pnpm, so this changes nothing today. It guards a future
+          # switch: an install-time script must not save a cache that other
+          # workflows on main restore.
           package-manager-cache: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -114,9 +116,10 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-          # No package-manager cache: an install-time script in the
-          # installing jobs could otherwise save a poisoned cache that other
-          # workflows restore, and the issue-writing jobs restore nothing.
+          # setup-node's automatic cache engages only for npm and this repo
+          # uses pnpm, so this changes nothing today. It guards a future
+          # switch: an install-time script must not save a cache that other
+          # workflows on main restore.
           package-manager-cache: false
       - run: npm run dependencies:ci
       - name: Report code hygiene
@@ -164,9 +167,10 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-          # No package-manager cache: an install-time script in the
-          # installing jobs could otherwise save a poisoned cache that other
-          # workflows restore, and the issue-writing jobs restore nothing.
+          # setup-node's automatic cache engages only for npm and this repo
+          # uses pnpm, so this changes nothing today. It guards a future
+          # switch: an install-time script must not save a cache that other
+          # workflows on main restore.
           package-manager-cache: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:

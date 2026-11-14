@@ -6,6 +6,7 @@ import process from 'node:process';
 import { validateIssueLabelAxes } from './label-manifest.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
+  assertReportRevision,
   postableReport,
   runGh,
   upsertTrackingIssue,
@@ -310,7 +311,8 @@ export function buildBacklogReport(result, { revision }) {
 
 /**
  * Keep the one tracking issue current from a report another job wrote: only
- * for this checkout's revision, within the size bound, mentions broken.
+ * one stamped with this checkout's revision (current, which is not proof of
+ * who wrote it), with mentions broken and the posted text within the bound.
  * @param {{ repo: string, reportPath: string, head?: string, gh?: (args: string[]) => string }} input
  */
 export function upsertBacklogIssue({
@@ -329,10 +331,7 @@ export function upsertBacklogIssue({
     'm',
   ).exec(readFileSync(reportPath, 'utf8'));
   if (!match) throw new Error(`report is missing the ${MARKER} marker`);
-  if (match[2] !== head)
-    throw new Error(
-      `report describes ${match[2]}, but this checkout is ${head}; refusing to post it`,
-    );
+  assertReportRevision(match[2], head);
   return upsertTrackingIssue({
     repo,
     reportPath: postableReport(reportPath),
