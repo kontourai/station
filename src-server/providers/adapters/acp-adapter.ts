@@ -886,6 +886,12 @@ export interface AcpSessionRecord {
    * between its first notice and the next prompt's.
    */
   enginePromptStarts?: Map<string, number>;
+  /**
+   * The engine's clock less Station's, from the latest frame stamped with
+   * the engine's own time (`_meta.agentTimestampMs`, Grok), less the frame's
+   * transit. Unset until such a frame arrives.
+   */
+  engineClockOffsetMs?: number;
   /** Whether a frame naming another session was dropped (logged once). */
   droppedForeignFrame?: boolean;
   /** Drops `session/update` while a relaunch replays history (`session/load`). */
@@ -1118,11 +1124,28 @@ export const ACP_TURN_MESSAGES_MAX = 500;
 /** How much of a turn's prompt text the ledger keeps to check a rewind point. */
 const ACP_TURN_PROMPT_TEXT_MAX = 1024;
 /**
- * How long before Station read a prompt's first notice its rewind point may
- * have been created: Station reads the notice late when its own event loop
- * is busy (live, on one host, the point came 10-22 ms after the notice).
+ * How late Station may read an engine prompt's first notice. A prompt's
+ * window starts and ends this much before the notices that bound it, so the
+ * windows of consecutive prompts still tile time and a point lands in only
+ * one (live, on one host, a point came 10-22 ms after its notice).
  */
-const ACP_REWIND_POINT_EARLY_MS = 1000;
+const ACP_REWIND_NOTICE_LAG_MS = 250;
+/**
+ * How far the engine's clock may be from Station's before its rewind points'
+ * times cannot be read against Station's notices.
+ */
+const ACP_ENGINE_CLOCK_MAX_OFFSET_MS = 500;
+
+/** Remember how far the engine's clock is from Station's, when a frame says. */
+function noteEngineClock(
+  record: Pick<AcpSessionRecord, 'engineClockOffsetMs'>,
+  params: unknown,
+): void {
+  const meta = isRecord(params) ? params._meta : undefined;
+  const stamped = isRecord(meta) ? meta.agentTimestampMs : undefined;
+  if (typeof stamped === 'number' && Number.isFinite(stamped))
+    record.engineClockOffsetMs = stamped - Date.now();
+}
 
 /**
  * For a managed-runtime connection, the installed runtime readiness should
@@ -3753,15 +3776,16 @@ export class AcpAdapter implements ProviderAdapterShape {
    * itself (a built-in slash command) takes neither. Each point says when it
    * was created (`created_at`; live, 10-22 ms after the engine's first notice
    * of its prompt, and later when a prompt hook runs first), and the engine
-   * runs one prompt at a time, so a turn's point is the one point created
-   * between its prompt's first notice (less `ACP_REWIND_POINT_EARLY_MS`, for
-   * Station's own lag in reading it) and the next prompt's first notice. Its
-   * preview must also be the turn's. Every turn from the chosen one to the
-   * last must resolve so, each to its own point: no point, two, or a preview
-   * that differs resolves nothing, and a clock offset that moves points out
-   * of their windows leaves some turn without one rather than choosing a
-   * neighbour. The one exception is a later turn whose text is a slash
-   * command: the engine may have run it itself, without a point.
+   * runs one prompt at a time, so a turn's point is the one point created in
+   * its window: from its prompt's first notice to the next prompt's, both
+   * moved `ACP_REWIND_NOTICE_LAG_MS` earlier for Station reading a notice
+   * late, so consecutive windows tile time. The times are compared only
+   * while the engine's clock is within `ACP_ENGINE_CLOCK_MAX_OFFSET_MS` of
+   * Station's, measured from its stamped frames. The point's preview must
+   * also be the turn's, and every turn from the chosen one to the last must
+   * resolve so, each to its own point; otherwise nothing resolves. The one
+   * exception is a later turn whose text is a slash command: the engine may
+   * have run it itself, without a point.
    */
   private async promptIndexForTurn(
     record: AcpSessionRecord,
@@ -3772,6 +3796,14 @@ export class AcpAdapter implements ProviderAdapterShape {
     position: number,
     read: <T>(answer: Promise<T>) => Promise<T | typeof ACP_REWIND_TIMED_OUT>,
   ): Promise<{ index: number } | { failed: string }> {
+    const offset = record.engineClockOffsetMs;
+    if (
+      offset === undefined ||
+      Math.abs(offset) > ACP_ENGINE_CLOCK_MAX_OFFSET_MS
+    )
+      return {
+        failed: `${record.engineName}'s clock is not known to agree with Station's, so its rewind points cannot be matched to this conversation's turns. Nothing was changed.`,
+      };
     const listed = await read(process.extMethod(pointsMethod, { sessionId }));
     if (listed === ACP_REWIND_TIMED_OUT)
       return {
@@ -3795,8 +3827,9 @@ export class AcpAdapter implements ProviderAdapterShape {
           : points.filter(
               (point) =>
                 point.createdAt !== undefined &&
-                point.createdAt >= startedAt - ACP_REWIND_POINT_EARLY_MS &&
-                (next === undefined || point.createdAt < next),
+                point.createdAt >= startedAt - ACP_REWIND_NOTICE_LAG_MS &&
+                (next === undefined ||
+                  point.createdAt < next - ACP_REWIND_NOTICE_LAG_MS),
             );
       const [point] = inWindow;
       // A later turn that was a slash command the engine ran itself has no
@@ -4276,6 +4309,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       onSessionUpdate: async (params: SessionNotification) => {
         if (this.dropForeignFrame(record, params.sessionId, context.logger))
           return;
+        noteEngineClock(record, params);
         this.recordTurnMessage(record, params.update);
         this.handleSessionUpdate(record, params.update);
         if (params.update.sessionUpdate === 'config_option_update')
@@ -4284,6 +4318,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       onExtNotification: (method, params) => {
         if (this.dropForeignFrame(record, params?.sessionId, context.logger))
           return;
+        noteEngineClock(record, params);
         this.handleExtensionNotification(record, method, params);
       },
       // Unrecognized inbound extension REQUESTS get a spec-conformant
