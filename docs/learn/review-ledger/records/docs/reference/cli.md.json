@@ -272,13 +272,15 @@
 
     "src-ui/src/views/home/home-view-model.ts",
 
-    "src-ui/src/views/SessionsView.tsx",
-
-    "src-ui/src/views/activity/__tests__/ActivityList.test.tsx",
-
     "src-ui/src/views/SessionsView.css",
 
-    "packages/cli/src/__tests__/telemetry-command.test.ts"
+    "packages/cli/src/__tests__/telemetry-command.test.ts",
+
+    "src-ui/src/components/home/HomeWorkRow.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockInboxRows.tsx",
+
+    "src-ui/src/components/home/__tests__/HomeWorkRow.projectMarks.test.tsx"
   ],
 
   "checks": [
