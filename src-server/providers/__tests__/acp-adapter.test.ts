@@ -92,6 +92,15 @@ import {
   QWEN_SUBAGENT_PARENT_CALL_ID,
 } from './fixtures/qwen-code-subagent-frames.js';
 
+/**
+ * A recorded frame re-addressed to the fake engine's own session: the adapter
+ * drops a frame that names another session than its process's.
+ */
+const inOwnSession = (
+  proc: FakeAcpProcess,
+  params: Record<string, unknown>,
+): any => ({ ...params, sessionId: proc.sessionId });
+
 /** Station homes for engine credential stores (cleaned after each test). */
 const makeCredentialHome = trackTempDirs();
 
@@ -453,7 +462,9 @@ describe('AcpAdapter', () => {
     });
     await nextEvent(iterator, 'turn.started');
     for (const frame of QWEN_SUBAGENT_FRAMES)
-      await processes[0]!.client.sessionUpdate(frame.params as any);
+      await processes[0]!.client.sessionUpdate(
+        inOwnSession(processes[0]!, frame.params),
+      );
     processes[0]!.resolvePrompt('end_turn');
     for (;;) {
       const event = (await iterator.next()).value as CanonicalRuntimeEvent;
@@ -509,7 +520,9 @@ describe('AcpAdapter', () => {
       if (event.method === 'turn.started') break;
     }
     for (const frame of QWEN_SUBAGENT_FRAMES)
-      await processes[0]!.client.sessionUpdate(frame.params as any);
+      await processes[0]!.client.sessionUpdate(
+        inOwnSession(processes[0]!, frame.params),
+      );
     processes[0]!.resolvePrompt('end_turn');
     for (;;) {
       const event = (await iterator.next()).value as CanonicalRuntimeEvent;
@@ -566,8 +579,8 @@ describe('AcpAdapter', () => {
       const { adapter, proc, iterator, turn } = await qwenTurn(
         'thread-qwen-interrupt',
       );
-      await proc.client.sessionUpdate(parentCall!.params as any);
-      await proc.client.sessionUpdate(nestedCall!.params as any);
+      await proc.client.sessionUpdate(inOwnSession(proc, parentCall!.params));
+      await proc.client.sessionUpdate(inOwnSession(proc, nestedCall!.params));
       await adapter.interruptTurn('thread-qwen-interrupt', turn.turnId);
       const deltas = await childWorkUntil(iterator, 'turn.aborted');
       expect(deltas.map((delta) => delta.kind)).toEqual([
@@ -590,8 +603,8 @@ describe('AcpAdapter', () => {
       const { adapter, proc, iterator, turn } = await qwenTurn(
         'thread-qwen-late-frames',
       );
-      await proc.client.sessionUpdate(parentCall!.params as any);
-      await proc.client.sessionUpdate(nestedCall!.params as any);
+      await proc.client.sessionUpdate(inOwnSession(proc, parentCall!.params));
+      await proc.client.sessionUpdate(inOwnSession(proc, nestedCall!.params));
       await adapter.interruptTurn('thread-qwen-late-frames', turn.turnId);
       const atInterrupt = await childWorkUntil(iterator, 'turn.aborted');
       expect(atInterrupt.map((delta) => delta.kind)).toEqual([
@@ -603,8 +616,8 @@ describe('AcpAdapter', () => {
       (lateSubagentCallEnd.update as { status: string }).status = 'failed';
       const lateAgentCallEnd = structuredClone(parentResult!.params);
       (lateAgentCallEnd.update as { status: string }).status = 'failed';
-      await proc.client.sessionUpdate(lateSubagentCallEnd as any);
-      await proc.client.sessionUpdate(lateAgentCallEnd as any);
+      await proc.client.sessionUpdate(inOwnSession(proc, lateSubagentCallEnd));
+      await proc.client.sessionUpdate(inOwnSession(proc, lateAgentCallEnd));
       const after: CanonicalRuntimeEvent[] = [];
       for (;;) {
         const event = await nextEventOrTimeout(iterator, 200);
@@ -622,8 +635,8 @@ describe('AcpAdapter', () => {
       const { adapter, proc, iterator } = await qwenTurn(
         'thread-qwen-unclosed',
       );
-      await proc.client.sessionUpdate(parentCall!.params as any);
-      await proc.client.sessionUpdate(nestedCall!.params as any);
+      await proc.client.sessionUpdate(inOwnSession(proc, parentCall!.params));
+      await proc.client.sessionUpdate(inOwnSession(proc, nestedCall!.params));
       proc.resolvePrompt('end_turn');
       const deltas = await childWorkUntil(iterator, 'turn.completed');
       expect(deltas.map((delta) => delta.kind)).toEqual([
@@ -641,9 +654,9 @@ describe('AcpAdapter', () => {
       const { adapter, proc, iterator } = await qwenTurn(
         'thread-qwen-progress-first',
       );
-      await proc.client.sessionUpdate(parentCall!.params as any);
-      await proc.client.sessionUpdate(progressNote!.params as any);
-      await proc.client.sessionUpdate(parentResult!.params as any);
+      await proc.client.sessionUpdate(inOwnSession(proc, parentCall!.params));
+      await proc.client.sessionUpdate(inOwnSession(proc, progressNote!.params));
+      await proc.client.sessionUpdate(inOwnSession(proc, parentResult!.params));
       proc.resolvePrompt('end_turn');
       const deltas = await childWorkUntil(iterator, 'turn.completed');
       expect(deltas.map((delta) => delta.kind)).toEqual([
