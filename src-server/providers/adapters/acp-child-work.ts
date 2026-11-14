@@ -440,3 +440,30 @@ export function settleAcpNestedSubagent(
   publishSettle(ctx, item, status.status);
   publishSnapshot(ctx, [...roster.values()]);
 }
+
+/**
+ * The prompt that runs listed Qwen subagents ended before their Agent calls
+ * did (an interrupt, a steer that cancels the prompt, an engine restart, or
+ * a prompt that ended without closing them). Each is settled: `cancelled`
+ * when Station cancelled the prompt, `unresolved` when no outcome was
+ * observed. Nothing else would end them: the child-work projection does not
+ * read turn ends.
+ */
+export function settleAcpNestedSubagentsAtPromptEnd(
+  ctx: AcpChildWorkContext,
+  status: Extract<ChildWorkTerminalStatus, 'cancelled' | 'unresolved'>,
+): void {
+  const roster = ctx.state?.acpNestedSubagents;
+  if (!roster?.size) return;
+  // Only the ended prompt's own children (`ctx.activeTurnId` is that turn).
+  const ended = [...roster.values()].filter(
+    (item) =>
+      item.parent?.turnId === undefined ||
+      item.parent.turnId === ctx.activeTurnId,
+  );
+  if (ended.length === 0) return;
+  for (const item of ended) roster.delete(item.childId);
+  ctx.state?.acpSubagentBoundWarned?.delete('nested-tool-call');
+  for (const item of ended) publishSettle(ctx, item, status);
+  publishSnapshot(ctx, [...roster.values()]);
+}

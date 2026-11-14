@@ -511,6 +511,107 @@ describe('AcpAdapter', () => {
     await adapter.stopAll();
   });
 
+  describe('a Qwen Code subagent whose prompt ends first', () => {
+    const [parentCall, nestedCall, progressNote, , parentResult] =
+      QWEN_SUBAGENT_FRAMES;
+
+    async function qwenTurn(threadId: string) {
+      const { adapter, processes } = createAdapter({
+        onProcess: (proc) => {
+          proc.initResult!.agentInfo = { name: 'qwen-code', version: '0.27.3' };
+        },
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        provider: 'acp',
+        threadId,
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+      });
+      await nextEvent(iterator, 'session.started');
+      await nextEvent(iterator, 'session.configured');
+      const turn = await adapter.sendTurn({ threadId, input: 'Explore.' });
+      await nextEvent(iterator, 'turn.started');
+      return { adapter, proc: processes[0]!, iterator, turn };
+    }
+
+    async function childWorkUntil(
+      iterator: AsyncIterator<CanonicalRuntimeEvent>,
+      method: string,
+    ) {
+      const deltas: Array<Record<string, unknown>> = [];
+      for (;;) {
+        const event = await nextEvent(iterator, method);
+        if (event.method === 'child-work.updated')
+          deltas.push((event as { delta: Record<string, unknown> }).delta);
+        if (event.method === method) return deltas;
+      }
+    }
+
+    test('an interrupt ends a running subagent as cancelled', async () => {
+      const { adapter, proc, iterator, turn } = await qwenTurn(
+        'thread-qwen-interrupt',
+      );
+      await proc.client.sessionUpdate(parentCall!.params as any);
+      await proc.client.sessionUpdate(nestedCall!.params as any);
+      await adapter.interruptTurn('thread-qwen-interrupt', turn.turnId);
+      const deltas = await childWorkUntil(iterator, 'turn.aborted');
+      expect(deltas.map((delta) => delta.kind)).toEqual([
+        'snapshot',
+        'settle',
+        'snapshot',
+      ]);
+      expect(deltas[1]).toMatchObject({
+        childId: QWEN_SUBAGENT_PARENT_CALL_ID,
+        status: 'cancelled',
+      });
+      expect(deltas[2]).toMatchObject({ running: [] });
+      await adapter.stopAll();
+    });
+
+    test('a prompt that ends without closing the Agent call ends it unresolved', async () => {
+      const { adapter, proc, iterator } = await qwenTurn(
+        'thread-qwen-unclosed',
+      );
+      await proc.client.sessionUpdate(parentCall!.params as any);
+      await proc.client.sessionUpdate(nestedCall!.params as any);
+      proc.resolvePrompt('end_turn');
+      const deltas = await childWorkUntil(iterator, 'turn.completed');
+      expect(deltas.map((delta) => delta.kind)).toEqual([
+        'snapshot',
+        'settle',
+        'snapshot',
+      ]);
+      expect(deltas[1]).toMatchObject({ status: 'unresolved' });
+      await adapter.stopAll();
+    });
+
+    test('a progress note on the Agent call alone lists the subagent', async () => {
+      // tool-call-emitter.ts emitProgressUpdate: the note lands on the
+      // parent call with `subagentProgress: true` and no parentToolCallId.
+      const { adapter, proc, iterator } = await qwenTurn(
+        'thread-qwen-progress-first',
+      );
+      await proc.client.sessionUpdate(parentCall!.params as any);
+      await proc.client.sessionUpdate(progressNote!.params as any);
+      await proc.client.sessionUpdate(parentResult!.params as any);
+      proc.resolvePrompt('end_turn');
+      const deltas = await childWorkUntil(iterator, 'turn.completed');
+      expect(deltas.map((delta) => delta.kind)).toEqual([
+        'snapshot',
+        'settle',
+        'snapshot',
+      ]);
+      expect(deltas[0]).toMatchObject({
+        running: [
+          { childId: QWEN_SUBAGENT_PARENT_CALL_ID, kindLabel: 'Explore' },
+        ],
+      });
+      expect(deltas[1]).toMatchObject({ status: 'completed' });
+      await adapter.stopAll();
+    });
+  });
+
   test('#2316: an interrupt settles the open permission request; a late answer is refused and grants nothing', async () => {
     const { adapter, processes } = createAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -3279,9 +3380,9 @@ describe('AcpAdapter', () => {
       expect(processes[0].loadSessionCalls).toBe(1);
       // No authenticate: the session is started on whatever Gemini uses.
       expect(processes[0].newSessionCalls).toBe(1);
-      expect(
-        processes[0].extMethodCalls.map(({ method }) => method),
-      ).toEqual([]);
+      expect(processes[0].extMethodCalls.map(({ method }) => method)).toEqual(
+        [],
+      );
       const warning = (await drain(iterator)).find(
         (event) => event.method === 'runtime.warning',
       );

@@ -639,7 +639,12 @@ How the events behave:
   notes on the call itself carry the marker with `subagentProgress: true`.
   Station lists the subagent running from its first such frame, named by the
   Agent call and labelled by `_meta.subagentType`, and ends it with that call's
-  own outcome. A subagent inside a subagent is its own child. These frames
+  own outcome. A subagent inside a subagent is its own child. One still
+  listed when its prompt ends is settled with it: `cancelled` when Station
+  cancelled the prompt (an interrupt, a steer by cancel and re-prompt, an
+  engine restart), `unresolved` when the prompt ended without closing the
+  Agent call. Nothing else would end it, since the child-work projection
+  does not read turn ends. These frames
   stay tool calls too. The shape is read from Qwen Code's source, not a live
   capture. Bound past 64 running like `agent-subtask`.
   Not bound, with the reason:

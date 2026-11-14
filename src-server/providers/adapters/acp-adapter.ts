@@ -238,6 +238,7 @@ import {
   type AcpSubagentWire,
   acpChildWorkNotReportedEvent,
   acpSubagentWires,
+  settleAcpNestedSubagentsAtPromptEnd,
 } from './acp-child-work.js';
 import {
   acpCommandAnswer,
@@ -3071,6 +3072,12 @@ export class AcpAdapter implements ProviderAdapterShape {
     // this makes an interrupt truthful even when the process never settles.
     record.toolUpdateSupervisor.cancelAll();
     this.settleRequestsAtPromptEnd(record, threadId, targetTurnId);
+    this.settleNestedSubagentsAtPromptEnd(
+      record,
+      threadId,
+      targetTurnId,
+      'cancelled',
+    );
     await record.process.cancel();
     if (!this.ownsActiveTurn(threadId, record, targetTurnId)) {
       return {
@@ -3876,6 +3883,24 @@ export class AcpAdapter implements ProviderAdapterShape {
     } catch (error) {
       return acpCommandFailure(error);
     }
+  }
+
+  /** Ends the Qwen subagents the ended prompt still listed (acp-child-work.ts). */
+  private settleNestedSubagentsAtPromptEnd(
+    record: AcpSessionRecord,
+    threadId: string,
+    turnId: string,
+    status: 'cancelled' | 'unresolved',
+  ): void {
+    settleAcpNestedSubagentsAtPromptEnd(
+      {
+        session: { threadId },
+        activeTurnId: turnId,
+        publish: (event) => this.publish(event),
+        state: record,
+      },
+      status,
+    );
   }
 
   private publishAgentProjectionWarning(
@@ -4740,6 +4765,12 @@ export class AcpAdapter implements ProviderAdapterShape {
             ? 'engine-restarted'
             : 'stopped',
         });
+        this.settleNestedSubagentsAtPromptEnd(
+          record,
+          threadId,
+          turnId,
+          'cancelled',
+        );
         record.activeTurnId = undefined;
       }
     }
@@ -5289,6 +5320,12 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
         record.turnErrorNotifications = undefined;
         this.settleRequestsAtPromptEnd(record, threadId, turnId);
+        this.settleNestedSubagentsAtPromptEnd(
+          record,
+          threadId,
+          turnId,
+          response.stopReason === 'cancelled' ? 'cancelled' : 'unresolved',
+        );
         this.publish({
           eventId: crypto.randomUUID(),
           provider: this.provider,
@@ -5315,6 +5352,12 @@ export class AcpAdapter implements ProviderAdapterShape {
         const coReportedCause = record.turnErrorNotifications?.at(-1)?.message;
         record.turnErrorNotifications = undefined;
         this.settleRequestsAtPromptEnd(record, threadId, turnId);
+        this.settleNestedSubagentsAtPromptEnd(
+          record,
+          threadId,
+          turnId,
+          'unresolved',
+        );
         if (quota) {
           this.publish({
             eventId: crypto.randomUUID(),
@@ -5408,6 +5451,12 @@ export class AcpAdapter implements ProviderAdapterShape {
     const promptEpoch = record.promptEpoch;
     record.toolUpdateSupervisor.cancelAll();
     this.settleRequestsAtPromptEnd(record, threadId, turnId);
+    this.settleNestedSubagentsAtPromptEnd(
+      record,
+      threadId,
+      turnId,
+      'cancelled',
+    );
     await record.process.cancel();
     if (record.activeTurnId !== turnId) {
       throw new ProviderTurnEndedError();
