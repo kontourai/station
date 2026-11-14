@@ -1132,10 +1132,23 @@ describe('input review notes', () => {
 
   // The property this storage rests on: freshness scripts from before input
   // notes existed read what --input writes. Their code is taken from Git at
-  // the commit this lane started from, not copied into the repository.
+  // the commit this lane started from, not copied into the repository. That
+  // reader is the one main had at that commit; the serialization pin above is
+  // what covers readers older than it.
   it('is read by the freshness check as it was before input notes existed', () => {
     const OLD = 'e75a9e7947e5';
     const repo = join(import.meta.dirname, '../..');
+    // A shallow clone lacks the commit. Say so, instead of failing later on
+    // an unexplained `git show` error; this never becomes a pass.
+    const present = spawnSync(
+      'git',
+      ['-C', repo, 'cat-file', '-e', `${OLD}^{commit}`],
+      { env: gitEnv(), windowsHide: true },
+    );
+    if (present.status !== 0)
+      throw new Error(
+        `this test needs full history (fetch-depth: 0): commit ${OLD} is absent from this checkout`,
+      );
     const show = (path: string) =>
       execFileSync('git', ['-C', repo, 'show', `${OLD}:${path}`], {
         env: gitEnv(),
