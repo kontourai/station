@@ -4392,10 +4392,11 @@ function childChatScreens(): Screen[] {
             const actionsBox = await dock
               .getByRole('button', { name: 'Chat actions', exact: true })
               .boundingBox();
+            // Phone chat actions lead the title (chat-inventory-drilldown-mobile).
             expect(
-              (titleBox?.x ?? 0) + (titleBox?.width ?? 0),
-              'breadcrumb stays before actions',
-            ).toBeLessThanOrEqual(actionsBox?.x ?? 0);
+              (actionsBox?.x ?? 0) + (actionsBox?.width ?? 0),
+              'chat actions stay before the breadcrumb',
+            ).toBeLessThanOrEqual((titleBox?.x ?? 0) + 0.5);
           }
           const overflow = await dock.evaluate(
             (element) => element.scrollWidth > element.clientWidth + 1,
