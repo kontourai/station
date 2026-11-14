@@ -1400,6 +1400,24 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
     await session.stop();
   });
 
+  test('a window holding two points resolves nothing', async () => {
+    // A second point with the same preview appeared inside turn 0's window.
+    const t = times[0]!;
+    const { session, turns, listed } = await ambientTurns(
+      [t, t + 4_000],
+      [t + 15, t + 1_000, t + 4_015],
+    );
+    answerLive(session, { '_x.ai/rewind/points': [listed] });
+    expect(
+      await session.adapter.rewindSession(session.threadId, turns[0]!),
+    ).toEqual({
+      kind: 'failed',
+      message: expect.stringContaining('do not line up'),
+    });
+    expect(session.proc.extMethodCalls).toHaveLength(1);
+    await session.stop();
+  });
+
   test('a notice Station read a little late still bounds its window', async () => {
     // Turn 2's notice was read 30 ms after Grok sent it; its point came 15 ms
     // after the send, so before Station's read.
