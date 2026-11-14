@@ -40,6 +40,7 @@ import {
   mapAcpExtensionNotification,
   mapAcpSessionUpdate,
 } from '../adapters/acp-adapter-events.js';
+import type { AcpSubagentWire } from '../adapters/acp-child-work.js';
 import { AcpToolUpdateSupervisor } from '../adapters/acp-tool-update-supervisor.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
@@ -52,6 +53,7 @@ import {
   CODEX_COLLAB_V2_SPAWN_WAIT_COMPLETED,
   replayCodexCapture,
 } from './codex-collab-fixtures.js';
+import { QWEN_SUBAGENT_FRAMES } from './fixtures/qwen-code-subagent-frames.js';
 import {
   MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES,
   MUSE_13_BASH_TOOL_TURN_LINES,
@@ -279,6 +281,8 @@ function acpGoldenFrames(): Array<{ method: string; params: any }> {
 
 function replayAcpFrames(
   frames: Array<{ method: string; params: any }>,
+  // A Kiro session: its handshake names both Kiro subagent wires.
+  wires: AcpSubagentWire[] = ['roster', 'agent-subtask'],
 ): CanonicalRuntimeEvent[] {
   const events: CanonicalRuntimeEvent[] = [];
   const session = {
@@ -293,8 +297,7 @@ function replayAcpFrames(
     session,
     activeTurnId: 'turn-acp',
     publish: (event) => events.push(event),
-    // A Kiro session: its handshake names both subagent wires.
-    state: { acpSubagentWires: new Set(['roster', 'agent-subtask']) },
+    state: { acpSubagentWires: new Set(wires) },
     toolUpdateSupervisor: new AcpToolUpdateSupervisor(session, (event) =>
       events.push(event),
     ),
@@ -323,12 +326,16 @@ const ACP_FORMATS = {
         (frame) => frame.params?.update?._meta?.kiro?.kind === 'agent-subtask',
       ),
     ),
+  // A Qwen Code session: its handshake (`qwen-code`) names the nested wire.
+  'Qwen Code nested tool call': async () =>
+    replayAcpFrames(QWEN_SUBAGENT_FRAMES, ['nested-tool-call']),
 };
 
 async function replayAcpKiroSubagents(): Promise<CanonicalRuntimeEvent[]> {
   return [
     ...(await ACP_FORMATS['kiro-cli subagent/list_update']()),
     ...(await ACP_FORMATS['Kiro agent service agent-subtask']()),
+    ...(await ACP_FORMATS['Qwen Code nested tool call']()),
   ];
 }
 

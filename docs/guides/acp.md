@@ -103,6 +103,52 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    advertises `loadSession`. Any other resume failure fails the start rather
    than loading: the fallback is closed, so an unexplained resume failure is
    reported instead of hidden behind a replayed load.
+   ACP's load and resume answers carry no session id, so the protocol cannot
+   say when an engine answered by starting a new, empty session instead.
+   Where an engine names the session it attached in its own `_meta`, a small
+   table in
+   [acp-reattach-identity.ts](../../src-server/providers/adapters/acp-reattach-identity.ts)
+   reads that name, keyed on the engine's
+   handshake: Hermes (`agentInfo.name` `hermes-agent`) names it in
+   `_meta.hermes.sessionProvenance.acpSessionId`. `hermes acp` up to
+   v0.22.0, and in v0.22.2, answers a resume of an unknown id by creating a
+   session and returning success (seen live on 0.17.0). From v0.22.1 its
+   gateway viewer errors instead. When the named session is not the one Station asked for, the
+   start fails like any other resume failure (counted as `other-session` on
+   `station.acp.resume_sessions`) rather than running the conversation
+   against an engine that holds none of it. The same check applies when the
+   approval-floor relaunch reattaches. An answer without the field, or from
+   another engine, decides nothing. That leaves one Hermes case it cannot
+   catch: a `session/load` of an unknown id answers `{}` with no `_meta`
+   (seen live on 0.17.0). Station loads Hermes only after `session/resume`
+   answers method-not-found, and Hermes advertises and answers resume, so
+   that path is not reached today.
+   The same module names the one refusal after which Station starts a new
+   engine session instead of failing. Gemini CLI (`agentInfo.name`
+   `gemini-cli`) creates sessions with its saved sign-in method, or with the
+   API key when none is saved, but reloads them only with a saved method: a
+   key-only connection gets `Authentication required` (-32000) on
+   `session/load`. When the connection has a `GEMINI_API_KEY` (stored in
+   Station or inherited from the host environment) and Gemini refuses
+   exactly that way, Station starts a new Gemini session and says so in the
+   conversation (`acp.session-started-fresh`, counted `started-fresh`). The
+   notice names the fix: choose Gemini's API key sign-in once, after which
+   Gemini can reload conversations. A connection without the key can only be
+   on a saved Google sign-in, so the same refusal there (for example a
+   passing Google token-refresh failure) fails the resume and keeps the
+   conversation's pointer. With both a key and a Google sign-in Station
+   cannot tell the two causes apart, and the notice says a passing Google
+   sign-in failure is possible. Station never calls `authenticate` to switch
+   Gemini to the key: authenticating would clear a saved Google login and
+   change the person's own Gemini CLI settings. A new session uses the saved
+   method when there is one, so a broken sign-in still fails the start.
+   The new engine session holds none of the conversation, including what its
+   first turn delivered. Orchestration therefore treats the notice as a new
+   start of the engine's context: the next turn carries the Agent's authored
+   prompt, Station's instructions and any Task brief again, once
+   (`turnStartedSinceEngineContextBegan`). The approval-floor relaunch has no
+   such fallback: a key-only Gemini session refused there keeps its old
+   engine process and the switch fails visibly.
    On `session/load`, ACP has the agent replay the whole conversation as
    `session/update` notifications before it answers. Station already stored
    that history, so while the session reattaches the adapter does not publish
@@ -184,7 +230,7 @@ provide no confirmed safe execution boundary, so the composer waits for the turn
 to finish. Attachments remain in the draft until then. See the
 [composer contract](../design/chat-composer.md#turn-activity-and-follow-up-delivery).
 
-An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro and Grok answer these methods without declaring them, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag). Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
+An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro and Grok answer these methods without declaring them, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag). Goose (`agentInfo.name` `goose`) is steered with its undeclared `_goose/unstable/session/steer`, which joins a named run: each Goose prompt announces its run as `_meta.goose.activeRunId` on a `session_info_update`, and Station sends that id as `expectedRunId`. With no run announced, Goose would refuse the steer, so Station uses the fallback below. A run is forgotten when its prompt ends, and a steer Goose refuses with -32602 (its run ended or was replaced) also falls back. Known gap: Goose drops steers it accepted but had not yet read when the run ends (`discard_pending_steers`), without reporting the drop. A steer it did read reappears as a user message chunk whose `messageId` matches the steer's and whose `_meta.goose.steer` is `true`. Station has no consumer for steer delivery status yet (the `session.steer-status` binding consumer is a placeholder), so such a dropped steer is not reported. That row is read from Goose's source (v1.59.0), not a live run. Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
 
 ### Canonical Event Vocabulary
 
@@ -606,6 +652,30 @@ How the events behave:
   The roster's opaque `extension.notification` stays host chrome. Neither wire
   has a live capture (kirocrew's live captures omit the roster because it names
   the host's agents); the shapes are kirocrew's test vectors.
+  Qwen Code (`agentInfo.name` `qwen-code`) runs each subagent inside one Agent
+  tool call. The subagent's own tool calls carry `_meta.provenance:
+  'subagent'` and name that call as `_meta.parentToolCallId`. Its progress
+  notes on the call itself carry the marker with `subagentProgress: true`.
+  Station lists the subagent running from its first such frame, named by the
+  Agent call and labelled by `_meta.subagentType`, and ends it with that call's
+  own outcome. A subagent inside a subagent is its own child. One still
+  listed when its prompt ends is settled with it: `cancelled` when Station
+  cancelled the prompt (an interrupt, a steer by cancel and re-prompt, an
+  engine restart), `unresolved` when the prompt ended without closing the
+  Agent call. Nothing else would end it, since the child-work projection
+  does not read turn ends. These frames
+  stay tool calls too. The shape is read from Qwen Code's source, not a live
+  capture. Bound past 64 running like `agent-subtask`.
+  Not bound, with the reason:
+  - **Cursor's `cursor/task`.** Its documentation describes a completion
+    notification only, with no start, no session id, and no handshake
+    identity, and it also gives the notification a response type. A child
+    cannot be listed running from it.
+  - **Copilot CLI.** Its changelog says ACP clients receive subagent IDs, but
+    the wire shape is not public.
+  - **Goose `subagent_id`.** It appears only inside an MCP log entry relayed
+    as `_meta.toolNotification` on the parent call, with no start or end.
+    The emitter in Goose's current source could not be pinned.
 
 Observed on kiro-cli 2.35.0 `--agent-engine v3`:
 
@@ -885,6 +955,20 @@ HTTP. The rules, in full:
   connects to it with an MCP HTTP client, exactly as it would any other HTTP
   MCP server. Nothing ACP-specific is required beyond supporting the
   transport.
+- **The same list on reattach, except the token.** `session/load` and
+  `session/resume` carry `mcpServers` resolved exactly as for `session/new`,
+  in the same order. A relaunch inside one Station process (the approval-floor
+  switch) resends the session's own list unchanged. A fresh engine start
+  (after a Station restart, or a credential recovery) resolves the list again
+  from the current configuration and mints a new token, which revokes the
+  previous one. A Station restart loses every token anyway, since they are
+  held only in memory. So the list matches the first one except for the
+  `Authorization` header, plus any configuration change made since. Station
+  does not persist tokens to make the lists identical: that would keep a
+  bearer valid across restarts. Hermes's gateway (from v0.22.1) fingerprints
+  the whole list, headers included. On a changed list its ACP viewer re-binds
+  the session's servers while the session is idle, and fails the load while a
+  turn is running, which Station reports as a failed resume.
 - **`Authorization: Bearer <token>`.** The credential is in the header list,
   never in the URL — the URL carries no token at all. Present the header on
   every request to that endpoint.

@@ -58,6 +58,24 @@ describe('resolveAcpSteerChannel', () => {
     });
   });
 
+  test('Goose, which declares feature flags but not its methods, steers a named run', () => {
+    // aaif-goose/goose v1.59.0 crates/goose/src/acp/server.rs on_initialize.
+    const goose = {
+      protocolVersion: 1,
+      agentInfo: { name: 'goose', version: '1.59.0' },
+      agentCapabilities: {
+        loadSession: true,
+        _meta: { goose: { recipeParameterScopes: {} } },
+      },
+    };
+    expect(resolveAcpSteerChannel(goose)).toEqual({
+      channel: 'run-steer',
+      methods: ['_goose/unstable/session/steer'],
+      basis: 'undeclared-engine',
+      activeRun: { namespace: 'goose', key: 'activeRunId' },
+    });
+  });
+
   test('a similar name, a falsy flag or no handshake selects nothing', () => {
     const none = { channel: 'cancel-reprompt', methods: [], basis: 'none' };
     expect(

@@ -380,10 +380,77 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     },
   },
   {
+    id: 'gemini',
+    name: 'Gemini CLI',
+    // Google's 2026-05-19 notice (developers.googleblog.com, "transitioning
+    // Gemini CLI to Antigravity CLI"): from 2026-06-18 it serves only paid
+    // API keys and Gemini Code Assist Standard or Enterprise.
+    description:
+      "Google's Gemini CLI. Since June 18, 2026 Google serves it only to paid Gemini API keys and Gemini Code Assist Standard or Enterprise, not to free or Google AI Pro and Ultra accounts.",
+    command: 'gemini',
+    // `--experimental-acp` still parses but is deprecated in favour of
+    // `--acp` (packages/cli/src/config/config.ts, google-gemini/gemini-cli
+    // 4ed06ed0dd, v0.68.0).
+    args: ['--acp'],
+    icon: 'GM',
+    tags: ['acp', 'gemini', 'google'],
+    homepageUrl: 'https://geminicli.com/docs/',
+    install: {
+      darwin: {
+        command: 'brew install gemini-cli',
+        docsUrl: 'https://www.geminicli.com/docs/get-started/installation',
+      },
+      linux: {
+        command: 'npm install -g @google/gemini-cli',
+        docsUrl: 'https://www.geminicli.com/docs/get-started/installation',
+        note: 'Needs Node.js 20 or later.',
+      },
+      win32: {
+        command: 'npm install -g @google/gemini-cli',
+        docsUrl: 'https://www.geminicli.com/docs/get-started/installation',
+        note: 'Needs Node.js 20 or later.',
+      },
+    },
+    auth: {
+      signInHint:
+        'Sign in with a Google account that has Gemini Code Assist Standard or Enterprise, or provide a paid Gemini API key. Gemini CLI uses its saved sign-in first and the key only when none is saved.',
+      // Precedence (packages/cli/src/acp/acpSessionManager.ts, 4ed06ed0dd):
+      // `newSession` uses the saved `security.auth.selectedType`, else the
+      // key (`GEMINI_API_KEY`, read by packages/core contentGenerator.ts).
+      // `loadSession` has no key fallback and asks for authentication when
+      // nothing is saved; see acp-reattach-identity.ts for how a key-only
+      // reattach is handled. `GOOGLE_API_KEY` is read only for Vertex AI,
+      // which also needs GOOGLE_GENAI_USE_VERTEXAI=true, so a key field
+      // cannot use it.
+      credentialEnvVars: ['GEMINI_API_KEY'],
+      // Every advertised method stays offered. The key field does not
+      // replace `gemini-api-key`: with a Google sign-in saved, Gemini CLI
+      // ignores the key until that method is chosen (and choosing it clears
+      // the cached Google login, acpRpcDispatcher.ts authenticate).
+      // The Google sign-in carries Gemini CLI's terms, which name
+      // "using third-party software" with its OAuth (docs/resources/
+      // tos-privacy.md); the person decides with that in view.
+      subscriptionTermsNotices: [
+        {
+          provider: 'Google',
+          termsUrl:
+            'https://github.com/google-gemini/gemini-cli/blob/main/docs/resources/tos-privacy.md',
+          authMethodIds: ['oauth-personal'],
+        },
+      ],
+    },
+  },
+  {
     id: 'factory-droid',
     name: 'Factory Droid',
     description: "Factory's Droid coding agent CLI.",
     command: 'droid',
+    // Factory's docs for droid 1.x list `-o acp` and never `acp-daemon`
+    // (docs.factory.com/droid-exec/overview.md, 2026-11-13), but Factory's
+    // own ACP registry entry for droid 1.10.1 still launches `acp-daemon`
+    // (agentclientprotocol/registry factory-droid/agent.json @ 270502f077c8).
+    // What differs between the two is not documented; kept until a live
+    // `initialize` on 1.x says otherwise.
     args: ['exec', '--output-format', 'acp-daemon'],
     icon: 'FD',
     tags: ['acp', 'factory', 'droid'],
@@ -424,6 +491,10 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     name: 'Hermes Agent',
     description: "Nous Research's Hermes Agent.",
     command: 'hermes',
+    // From v0.22.1 `hermes acp` is a viewer of the `hermes gateway` daemon,
+    // and starts that daemon itself when none runs
+    // (hermes_cli/gateway_client.py connect_gateway, ensure_gateway_runtime;
+    // NousResearch/hermes-agent v0.23.1), so connecting needs no extra step.
     args: ['acp'],
     icon: 'HA',
     tags: ['acp', 'hermes', 'nous'],

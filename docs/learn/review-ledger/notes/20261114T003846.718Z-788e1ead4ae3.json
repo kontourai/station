@@ -1,0 +1,7 @@
+{
+  "revision": "dd94fa7bc51237efe66b1197ecccbcb84841eebe",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"station-docs-content.ts was regenerated with npm run docs:mcp:generate after the module map's ExtensionNotificationBindings section gained the Qwen Code reporter and the vendor-source evidence class; the only content change is that topic's prose. The reference's claims about how topics are generated, checked and served are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

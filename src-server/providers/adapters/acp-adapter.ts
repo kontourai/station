@@ -64,6 +64,7 @@ import {
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   ACP_SESSION_REWOUND_CODE,
   ACP_SESSION_REWOUND_LATE_CODE,
+  ACP_SESSION_STARTED_FRESH_CODE,
   ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
@@ -237,6 +238,7 @@ import {
   type AcpSubagentWire,
   acpChildWorkNotReportedEvent,
   acpSubagentWires,
+  settleAcpNestedSubagentsAtPromptEnd,
 } from './acp-child-work.js';
 import {
   acpCommandAnswer,
@@ -274,6 +276,10 @@ import {
   resolveAcpPassthroughMcpServers,
 } from './acp-mcp-passthrough.js';
 import {
+  acpReattachRefusalStartsNewSession,
+  assertAcpReattachedRequestedSession,
+} from './acp-reattach-identity.js';
+import {
   acpSessionContinuity,
   readAcpRewindAnswer,
   readAcpUserMessageId,
@@ -291,7 +297,9 @@ import {
   requestedAcpSessionMode,
 } from './acp-session-mode.js';
 import {
+  type AcpSteerActiveRunSource,
   acpSteerParams,
+  isAcpInvalidParams,
   isAcpMethodNotFound,
   resolveAcpSteerChannel,
 } from './acp-steer.js';
@@ -811,6 +819,10 @@ export interface AcpSessionRecord {
   configOptionWaiters?: Set<() => void>;
   /** The subagent wires the handshake identified (`acp-child-work.ts`). */
   acpSubagentWires?: ReadonlySet<AcpSubagentWire>;
+  /** Where the engine names its running prompt, for a run steer (`acp-steer.ts`). */
+  acpSteerActiveRunSource?: AcpSteerActiveRunSource;
+  /** The running prompt the engine last named, if it names one. */
+  acpActiveRunId?: string;
   /** An in-place rewind is waiting on the engine; no turn may start. */
   rewinding?: boolean;
   /** A rewind past its deadline is still with the engine; no rewind may start. */
@@ -1037,6 +1049,24 @@ function acpProcessEndsSoon(
 /** How long a timed-out rewind's answer is still waited for (5 min). */
 const ACP_REWIND_LATE_ANSWER_TIMEOUT_MS = 5 * 60_000;
 const ACP_REWIND_TIMED_OUT = Symbol('acp-rewind-timed-out');
+
+/**
+ * Fails a reattach the engine answered with another session
+ * (`acp-reattach-identity.ts`), counted on every reattach path.
+ */
+function assertReattachedSession(
+  connectionId: string,
+  handshake: Parameters<typeof assertAcpReattachedRequestedSession>[0],
+  requestedSessionId: string,
+  answer: unknown,
+): void {
+  try {
+    assertAcpReattachedRequestedSession(handshake, requestedSessionId, answer);
+  } catch (error) {
+    acpResumeSessions.add(1, { connectionId, outcome: 'other-session' });
+    throw error;
+  }
+}
 
 export class AcpAdapter implements ProviderAdapterShape {
   readonly provider = 'acp' as const;
@@ -1605,6 +1635,9 @@ export class AcpAdapter implements ProviderAdapterShape {
       // Known from `initialize` on, so a subagent frame during session start
       // is read under the same identity.
       record.acpSubagentWires = acpSubagentWires(acpProcess.initResult);
+      record.acpSteerActiveRunSource = resolveAcpSteerChannel(
+        acpProcess.initResult,
+      ).activeRun;
       this.requireCurrentGeneration(input.threadId, record.generation);
       record.startedPublished = true;
       this.publish({
@@ -2038,6 +2071,9 @@ export class AcpAdapter implements ProviderAdapterShape {
         agentProjection && 'meta' in agentProjection
           ? agentProjection.meta
           : undefined;
+      // Set when a reviewed engine refused the reattach in the one way that
+      // makes a new engine session the only route (acp-reattach-identity.ts).
+      let startedFresh: { reason: string; remedy: string } | undefined;
       if (isAcpResumeCursor(input.resumeCursor)) {
         const reattach = acpReattachMethod(acpProcess.initResult);
         if (!reattach) {
@@ -2059,27 +2095,40 @@ export class AcpAdapter implements ProviderAdapterShape {
         // earlier answer.
         record.reattaching = true;
         try {
-          let outcome: 'resumed' | 'loaded';
-          if (reattach === 'resume') {
-            try {
-              await acpProcess.resumeSession(
-                acpSessionId,
-                cwd,
-                passthroughMcpServers,
-              );
-              outcome = 'resumed';
-            } catch (error) {
-              // An engine that advertises `sessionCapabilities.resume` but
-              // answers "method not found" is loaded instead. Any other
-              // failure is real and propagates (fail closed: loading after
-              // an unexplained resume failure could mask it).
-              if (
-                !isAcpMethodNotFound(error) ||
-                acpProcess.initResult?.agentCapabilities?.loadSession !== true
-              ) {
-                throw error;
+          let outcome: 'resumed' | 'loaded' = 'loaded';
+          let answer: unknown;
+          try {
+            if (reattach === 'resume') {
+              try {
+                answer = await acpProcess.resumeSession(
+                  acpSessionId,
+                  cwd,
+                  passthroughMcpServers,
+                );
+                outcome = 'resumed';
+              } catch (error) {
+                // An engine that advertises `sessionCapabilities.resume` but
+                // answers "method not found" is loaded instead. Any other
+                // failure is real and propagates (fail closed: loading after
+                // an unexplained resume failure could mask it).
+                if (
+                  !isAcpMethodNotFound(error) ||
+                  acpProcess.initResult?.agentCapabilities?.loadSession !== true
+                ) {
+                  throw error;
+                }
+                answer = await acpProcess.loadSession(
+                  acpSessionId,
+                  cwd,
+                  passthroughMcpServers,
+                  sessionMeta,
+                );
+                outcome = 'loaded';
               }
-              await acpProcess.loadSession(
+            } else {
+              // Sent again on load: the engine registers client agents per
+              // session process and has none after a restart.
+              answer = await acpProcess.loadSession(
                 acpSessionId,
                 cwd,
                 passthroughMcpServers,
@@ -2087,27 +2136,43 @@ export class AcpAdapter implements ProviderAdapterShape {
               );
               outcome = 'loaded';
             }
-          } else {
-            // Sent again on load: the engine registers client agents per
-            // session process and has none after a restart.
-            await acpProcess.loadSession(
-              acpSessionId,
-              cwd,
-              passthroughMcpServers,
-              sessionMeta,
+          } catch (error) {
+            startedFresh = acpReattachRefusalStartsNewSession(
+              acpProcess.initResult,
+              error,
+              // The connection's stored credential, or the host environment
+              // the engine process inherits.
+              (name) =>
+                !!engineCredentialEnvFor(config)?.[name] || !!process.env[name],
             );
-            outcome = 'loaded';
+            if (!startedFresh) throw error;
+            acpResumeSessions.add(1, {
+              connectionId: config.id,
+              outcome: 'started-fresh',
+            });
           }
-          // The SDK dispatches each notification without awaiting it before
-          // reading the next message, so the last replayed updates can still
-          // be in flight (as microtasks) when the response resolves. Yield a
-          // macrotask so they land while the replay is still suppressed.
-          await new Promise<void>((resolve) => setImmediate(resolve));
-          acpResumeSessions.add(1, { connectionId: config.id, outcome });
+          if (!startedFresh) {
+            // An engine that answered with a new session in place of this one
+            // fails the resume: continuing would run the conversation against
+            // an engine that holds none of it.
+            assertReattachedSession(
+              config.id,
+              acpProcess.initResult,
+              acpSessionId,
+              answer,
+            );
+            // The SDK dispatches each notification without awaiting it before
+            // reading the next message, so the last replayed updates can still
+            // be in flight (as microtasks) when the response resolves. Yield a
+            // macrotask so they land while the replay is still suppressed.
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            acpResumeSessions.add(1, { connectionId: config.id, outcome });
+          }
         } finally {
           record.reattaching = false;
         }
-      } else {
+      }
+      if (!isAcpResumeCursor(input.resumeCursor) || startedFresh) {
         const sessionResult = await acpProcess.newSession(
           cwd,
           passthroughMcpServers,
@@ -2144,6 +2209,24 @@ export class AcpAdapter implements ProviderAdapterShape {
             }),
           ),
         } satisfies AcpResumeCursor;
+        if (startedFresh) {
+          // Orchestration delivers the first-turn context again on the next
+          // turn; this tells it before the warning below is stored.
+          session.engineContextStartedFresh = true;
+          // Said in the conversation, never silent: the history Station
+          // shows is no longer the engine's context.
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId: input.threadId,
+            createdAt: new Date().toISOString(),
+            method: 'runtime.warning',
+            severity: 'warning',
+            code: ACP_SESSION_STARTED_FRESH_CODE,
+            message: `${record.engineName} could not reload this conversation (${startedFresh.reason}), so Station started a new ${record.engineName} session. Earlier messages are still shown here, but ${record.engineName} does not have them; Station sends this chat's instructions again with your next message. ${startedFresh.remedy}`,
+            details: { connectionId: config.id },
+          });
+        }
         // A `config_option_update` that arrived before this answer may hold
         // a model option the answer itself left out.
         const updatedBeforeAnswer = record.configOptions;
@@ -3008,6 +3091,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     // this makes an interrupt truthful even when the process never settles.
     record.toolUpdateSupervisor.cancelAll();
     this.settleRequestsAtPromptEnd(record, threadId, targetTurnId);
+    this.settlePromptEndState(record, threadId, targetTurnId, 'cancelled');
     await record.process.cancel();
     if (!this.ownsActiveTurn(threadId, record, targetTurnId)) {
       return {
@@ -3815,6 +3899,29 @@ export class AcpAdapter implements ProviderAdapterShape {
     }
   }
 
+  /**
+   * Ends what only the ended prompt had: the engine's announced run
+   * (`acp-steer.ts`; a later steer must not name it) and the Qwen subagents
+   * it still listed (`acp-child-work.ts`).
+   */
+  private settlePromptEndState(
+    record: AcpSessionRecord,
+    threadId: string,
+    turnId: string,
+    status: 'cancelled' | 'unresolved',
+  ): void {
+    record.acpActiveRunId = undefined;
+    settleAcpNestedSubagentsAtPromptEnd(
+      {
+        session: { threadId },
+        activeTurnId: turnId,
+        publish: (event) => this.publish(event),
+        state: record,
+      },
+      status,
+    );
+  }
+
   private publishAgentProjectionWarning(
     record: AcpSessionRecord,
     reason: string,
@@ -4215,15 +4322,27 @@ export class AcpAdapter implements ProviderAdapterShape {
             cwd,
             record.mcpServers ?? [],
           );
+          assertReattachedSession(
+            record.connectionId,
+            next.initResult,
+            cursor.acpSessionId,
+            resumed,
+          );
           configOptions = resumed.configOptions ?? undefined;
           return;
         }
         record.suppressSessionUpdates = true;
         try {
-          await next.loadSession(
+          const loaded = await next.loadSession(
             cursor.acpSessionId,
             cwd,
             record.mcpServers ?? [],
+          );
+          assertReattachedSession(
+            record.connectionId,
+            next.initResult,
+            cursor.acpSessionId,
+            loaded,
           );
         } finally {
           record.suppressSessionUpdates = false;
@@ -4667,6 +4786,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             ? 'engine-restarted'
             : 'stopped',
         });
+        this.settlePromptEndState(record, threadId, turnId, 'cancelled');
         record.activeTurnId = undefined;
       }
     }
@@ -5216,6 +5336,12 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
         record.turnErrorNotifications = undefined;
         this.settleRequestsAtPromptEnd(record, threadId, turnId);
+        this.settlePromptEndState(
+          record,
+          threadId,
+          turnId,
+          response.stopReason === 'cancelled' ? 'cancelled' : 'unresolved',
+        );
         this.publish({
           eventId: crypto.randomUUID(),
           provider: this.provider,
@@ -5242,6 +5368,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         const coReportedCause = record.turnErrorNotifications?.at(-1)?.message;
         record.turnErrorNotifications = undefined;
         this.settleRequestsAtPromptEnd(record, threadId, turnId);
+        this.settlePromptEndState(record, threadId, turnId, 'unresolved');
         if (quota) {
           this.publish({
             eventId: crypto.randomUUID(),
@@ -5305,14 +5432,27 @@ export class AcpAdapter implements ProviderAdapterShape {
     const selection = resolveAcpSteerChannel(record.process.initResult);
     const sessionId = record.process.sessionId;
     if (!sessionId || selection.channel === 'cancel-reprompt') return false;
+    // A run steer joins the prompt the engine announced; with none known it
+    // would be refused, so the turn is steered by cancel + re-prompt.
+    const params = acpSteerParams(
+      selection.channel,
+      sessionId,
+      text,
+      record.acpActiveRunId,
+    );
+    if (!params) return false;
     for (const method of selection.methods) {
       try {
-        await record.process.extMethod(
-          method,
-          acpSteerParams(selection.channel, sessionId, text),
-        );
+        await record.process.extMethod(method, params);
         return true;
       } catch (error) {
+        // The named run ended or was replaced before the steer arrived:
+        // steer the turn by cancel + re-prompt instead, which reports a turn
+        // that has itself ended as such.
+        if (selection.channel === 'run-steer' && isAcpInvalidParams(error)) {
+          record.acpActiveRunId = undefined;
+          return false;
+        }
         if (!isAcpMethodNotFound(error)) throw error;
       }
     }
@@ -5329,6 +5469,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     const promptEpoch = record.promptEpoch;
     record.toolUpdateSupervisor.cancelAll();
     this.settleRequestsAtPromptEnd(record, threadId, turnId);
+    this.settlePromptEndState(record, threadId, turnId, 'cancelled');
     await record.process.cancel();
     if (record.activeTurnId !== turnId) {
       throw new ProviderTurnEndedError();

@@ -1,0 +1,7 @@
+{
+  "revision": "b7c3561fcd86409a033a8f797923d1902fe21fb6",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"The cited agent-configuration guide changed one table row: the Agent prompt is delivered again with the next message after an ACP engine started a new session. This inventory of agent identity surfaces makes no claim about prompt delivery, so its claims stand.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agent-configuration.md"]}
+  ]
+}

@@ -912,6 +912,15 @@ export interface SessionLiveContinuity {
 export const ACP_AGENT_PROJECTION_UNAPPLIED_CODE =
   'acp.agent-projection-unapplied';
 
+/**
+ * `RuntimeWarningEvent.code` an ACP session publishes when the engine could
+ * not reload the stored conversation and Station started a new engine
+ * session in its place, deliberately and only where a reviewed engine row
+ * says the engine cannot reload it otherwise. The conversation's history
+ * stays in Station; the engine no longer has it.
+ */
+export const ACP_SESSION_STARTED_FRESH_CODE = 'acp.session-started-fresh';
+
 /** A provider explicitly disproved the exact native binding being resumed. */
 export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
 
@@ -1599,6 +1608,14 @@ export interface ProviderSession {
   cwd?: string;
   workspaceIsolation?: WorkspaceIsolationMetadata;
   resumeCursor?: unknown;
+  /**
+   * Set on the session a start returns when the engine could not reload the
+   * conversation it was asked to resume and Station started a new engine
+   * session in its place (`ACP_SESSION_STARTED_FRESH_CODE`). The new engine
+   * holds none of what the conversation's first turn delivered, so
+   * orchestration delivers that first-turn context again on the next turn.
+   */
+  engineContextStartedFresh?: true;
   controlMode?: SessionControlMode;
   attachedSource?: AttachedSessionSourceMetadata;
   /** Opaque Station lineage for an adopted continuation. */

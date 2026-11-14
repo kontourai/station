@@ -41,6 +41,7 @@ import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orch
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { ProjectTaskRoomGrant } from '@kontourai/station-contracts/project-task-room';
 import {
+  ACP_SESSION_STARTED_FRESH_CODE,
   PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
@@ -16770,6 +16771,160 @@ describe('OrchestrationService', () => {
     );
 
     await museService.shutdown();
+  });
+
+  test('a recovered ACP engine that started a new session (acp.session-started-fresh) gets the first-turn instructions again, once', async () => {
+    // The ACP adapter starts a new engine session when a reviewed engine
+    // cannot reload the conversation (acp-reattach-identity.ts) and says so
+    // with ACP_SESSION_STARTED_FRESH_CODE. That engine never received the
+    // authored prompt the conversation's first turn carried.
+    const turnsOn = (adapter: FakeAdapter) => {
+      adapter.sendTurn.mockImplementation(async (input) => {
+        // Unique across both engine processes, as real turn ids are.
+        const turnId = `acp-turn-${randomUUID()}`;
+        adapter.events.push({
+          eventId: randomUUID(),
+          provider: adapter.provider,
+          threadId: input.threadId,
+          turnId,
+          createdAt: new Date().toISOString(),
+          method: 'turn.started',
+          prompt: input.displayInput ?? input.input,
+        });
+        adapter.events.push({
+          eventId: randomUUID(),
+          provider: adapter.provider,
+          threadId: input.threadId,
+          turnId,
+          createdAt: new Date().toISOString(),
+          method: 'turn.completed',
+          finishReason: 'stop',
+        });
+        return { threadId: input.threadId, turnId };
+      });
+    };
+    const startsWith = (
+      adapter: FakeAdapter,
+      startedFresh: boolean,
+    ) =>
+      adapter.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        adapter.events.push({
+          eventId: randomUUID(),
+          provider: 'acp',
+          threadId: input.threadId,
+          createdAt: now,
+          method: 'session.started',
+          sessionId: input.threadId,
+          initialState: 'created',
+          metadata: { ...input.metadata },
+        });
+        if (startedFresh)
+          adapter.events.push({
+            eventId: randomUUID(),
+            provider: 'acp',
+            threadId: input.threadId,
+            createdAt: now,
+            method: 'runtime.warning',
+            severity: 'warning',
+            code: ACP_SESSION_STARTED_FRESH_CODE,
+            message:
+              'Gemini CLI could not reload this conversation, so Station started a new Gemini CLI session.',
+          });
+        const started: ProviderSession = {
+          provider: 'acp',
+          threadId: input.threadId,
+          status: 'ready',
+          // Kept for recovery, as the ACP adapter's sessions are.
+          persistSession: true,
+          // What the ACP adapter's start returns when it started fresh.
+          ...(startedFresh ? { engineContextStartedFresh: true as const } : {}),
+          createdAt: now,
+          updatedAt: now,
+        };
+        // The engine now holds the session (`hasSession`), as the default
+        // fake start records it.
+        adapter.sessions.set(input.threadId, started);
+        return started;
+      });
+    const resolveSessionAgent = createSessionAgentResolver({
+      loadAgentSpec: async () => ({ name: 'Gemini Agent', prompt: 'Be terse.' }),
+      resolveToolServer: async () => null,
+      resolveSkillDir: async () => null,
+    });
+    const acp = new FakeAdapter('acp');
+    startsWith(acp, false);
+    turnsOn(acp);
+    const first = new OrchestrationService({
+      adapterRegistry: createRegistry([acp]),
+      eventBus,
+      eventStore,
+      resolveSessionAgent,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = 'thread-acp-started-fresh-instructions';
+    await first.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'acp', metadata: { agentSlug: 'gemini' } },
+    });
+    await waitFor(
+      () => eventStore.listEvents(threadId),
+      (events) => events.some((event) => event.method === 'session.started'),
+    );
+    await first.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'Hello' },
+    });
+    expect(acp.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ input: 'Be terse.\nHello' }),
+    );
+    await waitFor(
+      () => eventStore.listEvents(threadId),
+      (events) => events.some((event) => event.method === 'turn.started'),
+    );
+    // A Station restart: the engine is materialized by the next turn, and
+    // its start logs the started-fresh warning inside that same dispatch.
+    const recovered = new FakeAdapter('acp');
+    startsWith(recovered, true);
+    turnsOn(recovered);
+    const second = new OrchestrationService({
+      adapterRegistry: createRegistry([recovered]),
+      eventBus: new EventBus(),
+      eventStore,
+      resolveSessionAgent,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    second.initialize();
+    await awaitSessionRecoveryCompleted(second);
+    await second.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'After restart' },
+    });
+    expect(recovered.startSession).toHaveBeenCalledTimes(1);
+    expect(recovered.sendTurn).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        input: 'Be terse.\nAfter restart',
+        displayInput: 'After restart',
+        metadata: expect.objectContaining({
+          firstTurnInstructionsComposed: true,
+        }),
+      }),
+    );
+    await waitFor(
+      () => eventStore.listEvents(threadId),
+      (events) =>
+        events.filter((event) => event.method === 'turn.started').length ===
+        2,
+    );
+    // Delivered once to the new engine session: not again after that.
+    await second.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'Again' },
+    });
+    expect(recovered.sendTurn).toHaveBeenLastCalledWith(
+      expect.objectContaining({ input: 'Again' }),
+    );
+    await Promise.all([first.shutdown(), second.shutdown()]);
   });
 
   test('sendTurn validates attachments before dispatch and records successful bytes', async () => {

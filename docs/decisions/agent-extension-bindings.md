@@ -13,6 +13,12 @@ evidence:
     ref: packages/contracts/src/engine-commands.ts
   - kind: doc
     ref: src-server/services/acp/__tests__/fixtures/kiro-v3-2.35.0-session-frames.jsonl
+  - kind: doc
+    ref: src-server/providers/adapters/acp-steer.ts
+  - kind: doc
+    ref: src-server/providers/adapters/acp-child-work.ts
+  - kind: doc
+    ref: src-server/providers/adapters/acp-reattach-identity.ts
 ---
 
 # Agent extension bindings
@@ -22,7 +28,8 @@ still decides how Station consumes agent extensions. A binding is data: an
 id, the exact wire method or flag, a basis and its evidence. "Delivered"
 means this session's `initialize` declares the method or flag, or a reviewed
 handshake-identity entry matches. Station never infers support from method
-names or launch commands. This record amends it in three places.
+names or launch commands. This record amends it in three places, and section
+4 records rows for engines other than Kiro.
 
 ## 1. Credential requests: superseded
 
@@ -86,3 +93,32 @@ host paths, session ids and private agent names, are the repository fixtures
 - The v3 `autopilot` config option (`on` by default) did not self-approve.
   With it on and off, the engine still sent `session/request_permission`,
   and a reject was honored. Station treats it as an ordinary engine option.
+
+## 4. Other engines' rows, read from vendor source (2026-11-13)
+
+These rows rest on each vendor's published source at a named commit, not on
+a live run, and each says so in its `observed` field. Each matches a handshake
+identity the engine states at `initialize`, never a launch command.
+
+| Engine (identity) | Row | Table | Source |
+|---|---|---|---|
+| Goose (`agentInfo.name` `goose`) | steer with `_goose/unstable/session/steer`, joining the run Goose announced as `_meta.goose.activeRunId`; with no run announced, or a -32602 refusal, cancel + re-prompt | steer table, `acp-steer.ts` | aaif-goose/goose v1.59.0 `crates/goose/src/acp/server.rs`, `crates/goose-sdk-types/src/custom_requests.rs` |
+| Qwen Code (`agentInfo.name` `qwen-code`) | subagents from nested tool calls (`_meta.provenance: 'subagent'`, `parentToolCallId`) | `ENGINE_EXTENSION_BINDINGS` `qwen-code.tool.subagent` and the reporter table in `acp-child-work.ts` | QwenLM/qwen-code 6f754be65489 `SubAgentTracker.ts`, `tool-call-emitter.ts`, `transcript-replay.ts` |
+| Hermes (`agentInfo.name` `hermes-agent`) | a reattach answer naming another session in `_meta.hermes.sessionProvenance.acpSessionId` fails the resume (`hermes acp` up to v0.22.0 and in v0.22.2; confirmed live on 0.17.0) | `acp-reattach-identity.ts` | NousResearch/hermes-agent v0.22.0 `acp_adapter/server.py`, v0.23.1 `gateway_server.py`, `provenance.py` |
+| Gemini CLI (`agentInfo.name` `gemini-cli`) | a `session/load` refused with `Authentication required` (-32000), on a connection that has a `GEMINI_API_KEY`, starts a new engine session with a visible warning naming the fix, and the next turn re-delivers the first-turn instructions; without the key the resume fails; Station never calls `authenticate` for it | `acp-reattach-identity.ts` | google-gemini/gemini-cli 4ed06ed0dd `packages/cli/src/acp/acpSessionManager.ts`, `acpRpcDispatcher.ts` |
+
+Goose declares `_meta.goose` feature flags at `initialize` but no method
+list. Its steer is therefore an identity row, not a declared one.
+
+**Unbound by decision:**
+
+- Cursor's `cursor/task`. Its documentation describes a completion
+  notification only, with no start, no session id and no handshake identity,
+  and it also gives the notification a response type. A child cannot be
+  listed running from it.
+- Copilot CLI subagent ids. Its 1.0.81 changelog entry says ACP clients receive
+  them, but the wire shape is not public.
+- Goose `subagent_id`. It appears only inside an MCP log entry that Goose
+  relays as `_meta.toolNotification` on the parent tool call. That entry has
+  no start or end, and the emitter could not be pinned in Goose's current
+  source.
