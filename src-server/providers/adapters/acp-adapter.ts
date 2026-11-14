@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import {
   assertEngineAllowedByManagedPolicy,
+  managedEngineLaunch,
   managedEnginePrerequisites,
 } from '../../security/managed-engine-limits.js';
 import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
@@ -4855,9 +4856,17 @@ export class AcpAdapter implements ProviderAdapterShape {
     } catch (error) {
       return { ok: false, reason: errorMessage(error) };
     }
-    const resolved = await findCliBinaryAsync(command);
+    // The binary a launch would run: a managed policy's `acp` pin replaces
+    // the connection's command (`acp-process.ts`), so the version and the
+    // rules are read from that one.
+    const launched = managedEngineLaunch(
+      'acp',
+      { command, args: [], env: {} },
+      'user',
+    ).command;
+    const resolved = await findCliBinaryAsync(launched);
     if (!resolved) {
-      return { ok: false, reason: `${command} could not be found` };
+      return { ok: false, reason: `${launched} could not be found` };
     }
     // Ruling R1: Station's check reads 1.x's `debug agent <name>`, which
     // 2.x does not have, and 2.x keeps saved approvals the check cannot

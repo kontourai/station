@@ -823,7 +823,7 @@ export function acpStationApprovalEngine(
  * Whether a saved ACP connection runs OpenCode: the OpenCode descriptor's own
  * id, or a command whose executable is `opencode` launched as `opencode acp`.
  * The `opencode` engine runs exactly these records; a managed policy governs
- * them; a managed policy governs them through its `acp` entry (R5′).
+ * them through its `acp` entry (R5′).
  */
 export function isOpenCodeAcpConnection(
   config:

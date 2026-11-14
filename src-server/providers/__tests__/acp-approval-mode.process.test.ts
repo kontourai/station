@@ -10,9 +10,14 @@ import {
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
+import {
+  parseManagedPolicyDocument,
+  summarizeManagedPolicy,
+} from '@kontourai/station-contracts/managed-policy';
 import type { ApprovalMode } from '@kontourai/station-contracts/provider';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { installManagedEngineLimits } from '../../security/managed-engine-limits.js';
 import { openCodeAgentReader } from '../../services/acp/opencode-approval-verify.js';
 import type { CanonicalRuntimeEvent } from '../adapter-shape.js';
 import {
@@ -309,6 +314,42 @@ describe.skipIf(process.platform === 'win32')(
       await start(h, 'r1-own-approvals');
       expect(launches(h)).toHaveLength(1);
       expect(launches(h)[0]?.OPENCODE_CONFIG_CONTENT ?? null).toBeNull();
+    });
+
+    test("ruling R1 reads the version of the binary a managed policy's acp pin launches, not the connection's command", async () => {
+      // The connection's own `opencode` is 1.x; the pinned one is 2.3.0.
+      h = harness('opencode');
+      const pinnedDir = makeTempDir('station-acp-approval-pin-');
+      const pinned = join(pinnedDir, 'opencode');
+      writeFileSync(
+        pinned,
+        `#!/bin/sh\nFAKE_OPENCODE_VERSION='opencode v2.3.0' exec "${process.execPath}" "${FIXTURE}" "$@"\n`,
+      );
+      chmodSync(pinned, 0o755);
+      const parsed = parseManagedPolicyDocument({
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: {
+          engines: {
+            allowed: ['acp'],
+            instances: { acp: { locked: true, binaryPath: pinned } },
+          },
+        },
+      });
+      if (!parsed.ok) throw new Error(JSON.stringify(parsed.problems));
+      installManagedEngineLimits({
+        document: parsed.document,
+        summary: summarizeManagedPolicy(parsed.document),
+      });
+      try {
+        await expect(start(h, 'r1-pinned', 'ask')).rejects.toMatchObject({
+          code: 'acp_approval_governance_refused',
+          message: expect.stringMatching(/OpenCode 2\.3\.0 runs over ACP here/),
+        });
+        expect(launches(h)).toHaveLength(0);
+      } finally {
+        installManagedEngineLimits(null);
+      }
     });
 
     test('the launch environment carries Station rules merged into the inline configuration Station inherited', async () => {

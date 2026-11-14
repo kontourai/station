@@ -31,7 +31,7 @@
 // absolute path under --work ({PROJ}, {HOME}, {WORK}, slash-less forms too,
 // since OpenCode reports relative `subpath`s), the caller's home directory
 // ({USERHOME}), the binary's directory ({BIN}), the host name and the user
-// name. The privacy suite (opencode-serve-fixtures.privacy.test.ts) checks
+// name. The privacy suite (opencode-serve-fixtures.test.ts) checks
 // the committed files.
 //
 // Settled by the 2.3.0 capture (2026-11-13), recorded as `finding` lines:
