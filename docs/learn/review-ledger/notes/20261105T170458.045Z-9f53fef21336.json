@@ -1,7 +1,0 @@
-{
-  "revision": "39655fe5dd7d9d3766d6fd462ba41b9ec7413260",
-
-  "notes": [
-    {"path":"docs/guides/connections.md","note":"Rechecked the repo-free Sources empty state after the push ratchet caught redundant absence copy. The shared Empty now points to documents or connected tools and explains when to add a repository. Four mounted source tests passed in 5.51 seconds; the state-primitives ratchet passes at the existing 53 ceiling. No gate, source authority or repo-free creation behavior changed.","inputs":["docs/guides/connections.md","src-ui/src/views/project-settings/ProjectRepositorySources.tsx","src-ui/src/views/project-settings/__tests__/ProjectRepositorySources.test.tsx"]}
-  ]
-}

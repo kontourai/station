@@ -1,7 +1,0 @@
-{
-  "revision": "0d3712d565fe419ce914cd01832b2ef830b5b8f1",
-
-  "notes": [
-    {"path":"README.md","note":"Reviewed the public introduction and Why Station copy against the owner-approved individual-first, idea-to-delivery positioning and the existing concepts, provider/engine, plugins, and deployment-authentication owners. Kept the current invited-browser read-only boundary and explicit future framing for active team work. Provider choice does not claim equal engine behavior or automatic history migration. Installation, privacy, command, and technical sections retain their existing qualified behavior. This note covers the README copy delta, not new provider, device, hosted-team, or release qualification.","inputs":["README.md"]}
-  ]
-}

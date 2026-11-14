@@ -1,9 +1,0 @@
-{
-  "revision": "659fbeeef47f08d8da52cd1894e04c5e7d56bf99",
-
-  "notes": [
-    {"path":"docs/guides/starter-work.md","note":"Reviewed the Starter Work launch, first-use Knowledge navigation and verification claims. The runtime delta changes root authorization and adds private-memory routes; it does not change Project creation intent or Starter dispatch.","inputs":["docs/guides/starter-work.md","src-server/runtime/routes/runtime-routes.ts"]},
-
-    {"path":"docs/guides/workspace-packages.md","note":"Reviewed workspace package capture, restoration, identity limits and verification. The runtime delta concerns Knowledge roots and private memory; the workspace transfer format and Project registration routes are unchanged.","inputs":["docs/guides/workspace-packages.md","src-server/runtime/routes/runtime-routes.ts"]}
-  ]
-}

@@ -1,0 +1,7 @@
+{
+  "revision": "b30c1ac383d4bd2b3baf64df34584531c38dcbdd",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Show work default still follows this Station's project page and shows all work elsewhere; the filter stays Station-qualified (InboxScopeFilter restored).","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/InboxScopeFilter.tsx"]}
+  ]
+}

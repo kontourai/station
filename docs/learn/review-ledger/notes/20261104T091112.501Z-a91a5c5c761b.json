@@ -1,7 +1,0 @@
-{
-  "revision": "a79e534d8b43498f45960c96473470bcb31e14db",
-
-  "notes": [
-    {"path":"docs/design/connections-onboarding.md","note":"#4517 follow-up: type-only refactor. config-loader-app.ts observeAppConfigFile and project-service.ts call the same managed-settings helpers without as-unknown casts; behavior is unchanged (tests and the type-laundering gate rerun green). Checked this document's claims about app config observation and project writes; it remains accurate.","inputs":["docs/design/connections-onboarding.md","src-server/domain/config-loader-app.ts"]}
-  ]
-}

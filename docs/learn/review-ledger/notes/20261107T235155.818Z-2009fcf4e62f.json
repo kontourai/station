@@ -1,7 +1,0 @@
-{
-  "revision": "80d74e20fbfb565fdca115a07d24de5da3b518d2",
-
-  "notes": [
-    {"path":"docs/design/shell-skeletons.md","note":"Reviewed the Appearance page-frame subtitle change (now names density and motion); the skeleton and frame ownership claims are unchanged.","inputs":["docs/design/shell-skeletons.md","src-ui/src/app-shell/page-frame-registry.ts"]}
-  ]
-}

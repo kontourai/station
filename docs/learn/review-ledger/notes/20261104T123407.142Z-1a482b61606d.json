@@ -1,7 +1,0 @@
-{
-  "revision": "13418bc53eae583185294a515615977bfad836db",
-
-  "notes": [
-    {"path":"docs/learn/media/connections-models.png","note":"Opened retained image c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c at 13418bc53eae583185294a515615977bfad836db; reviewed media.json historical classification, caption/alt/scenario, walkthrough limits and capture source edges against the main-relative SplitPane delta. Image still illustrates the selected example Models connection with endpoint, default model, Ready fixture label, last check Not checked and Test Connection control. Optional searchInputRef forwarding to the existing input changes no layout, CSS, connection control or behavior for ProviderSettingsView/AgentConnectionView, which do not pass it. Captured revision and image identity remain unchanged. Historical wording/chrome and sample API evidence remain explicit; no current-appearance, hover contrast, keyboard/focus, responsive, provider/model test or Skills journey proof is claimed. No other capture or source edge was refreshed.","inputs":["docs/learn/media/connections-models.png","src-ui/src/components/SplitPaneLayout.tsx"]}
-  ]
-}

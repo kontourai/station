@@ -1,7 +1,0 @@
-{
-  "revision": "d5e3c3757b2dfb3fd2d38d801292f5c5a3bbfed6",
-
-  "notes": [
-    {"path":"docs/guides/theming.md","note":"Added Density and motion: Comfortable 13px default and Compact 12px/12.5px tokens keyed on data-density, Reduced motion via data-motion, account sibling-file persistence, startup stamp and evidence tests; traced tokens.css, display-preferences.ts, color-theme-apply.ts, appearance-cache.ts, startup-theme.js and AppearancePage.tsx.","inputs":["docs/guides/theming.md","src-ui/src/lib/appearance-cache.ts","src-ui/src/lib/color-theme-apply.ts","src-ui/src/lib/device-settings-store.ts","src-ui/src/tokens.css"]}
-  ]
-}

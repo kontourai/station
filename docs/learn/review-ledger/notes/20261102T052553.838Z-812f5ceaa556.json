@@ -1,7 +1,0 @@
-{
-  "revision": "81718ba55ec30ba4dce934b27ad58903c2fed929",
-
-  "notes": [
-    {"path":"packages/agent-runtime/CONTEXT.md","note":"Checked the agent-runtime conformance and Station adoption limits against the added recovery testing exports; agent-runtime behavior and evidence claims are unchanged.","inputs":["packages/agent-runtime/CONTEXT.md","packages/monument/src/testing/index.ts"]}
-  ]
-}

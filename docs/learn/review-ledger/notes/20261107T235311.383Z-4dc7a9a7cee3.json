@@ -1,7 +1,0 @@
-{
-  "revision": "80d74e20fbfb565fdca115a07d24de5da3b518d2",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Re-reviewed after dropping the mobile Appearance gallery screen: one desktop appearance screen is added; the screenshot workflow description is unchanged.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
-  ]
-}

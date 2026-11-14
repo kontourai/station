@@ -1,7 +1,0 @@
-{
-  "revision": "b183399f776473cb3a425fd4fc9e08064e791e4d",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Reviewed the regenerated Durable Station Agent topic against the merged module map: writer-10 storage/cursor and frame batching, 128-part model prefixes, separate 1024-frame transactions, explicit legacy layout and the 1,048,576-frame ceiling. Previously reviewed inbox and bound-device topic changes remain generated from their canonical sources. Topic count, lookup and distribution contracts remain unchanged; this is source-generation review, not runtime/provider/device qualification.","inputs":["docs/reference/station-docs.md"]}
-  ]
-}

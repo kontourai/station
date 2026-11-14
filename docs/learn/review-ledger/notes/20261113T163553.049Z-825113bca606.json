@@ -1,0 +1,19 @@
+{
+  "revision": "1032fa43eb7b18fb13e19178024251e62a0fef12",
+
+  "notes": [
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the config/product-laws.json delta: only the mobile primary-context fault observation selector now names the unique picker-absence test. Law id, invariant, observation, enforcement, owners and all other laws are unchanged. This document's verification/contract/security guidance remains accurate; no runtime or historical evidence is renewed.","inputs":["docs/guides/delegation-attempt-claims.md","config/product-laws.json"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the config/product-laws.json delta: only the mobile primary-context fault observation selector now names the unique picker-absence test. Law id, invariant, observation, enforcement, owners and all other laws are unchanged. This document's verification/contract/security guidance remains accurate; no runtime or historical evidence is renewed.","inputs":["docs/guides/home-transfer-controller.md","config/product-laws.json"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed the config/product-laws.json delta: only the mobile primary-context fault observation selector now names the unique picker-absence test. Law id, invariant, observation, enforcement, owners and all other laws are unchanged. This document's verification/contract/security guidance remains accurate; no runtime or historical evidence is renewed.","inputs":["docs/guides/private-runner-partition.md","config/product-laws.json"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed the config/product-laws.json delta: only the mobile primary-context fault observation selector now names the unique picker-absence test. Law id, invariant, observation, enforcement, owners and all other laws are unchanged. This document's verification/contract/security guidance remains accurate; no runtime or historical evidence is renewed.","inputs":["docs/guides/product-law-authoring.md","config/product-laws.json"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed the config/product-laws.json delta: only the mobile primary-context fault observation selector now names the unique picker-absence test. Law id, invariant, observation, enforcement, owners and all other laws are unchanged. This document's verification/contract/security guidance remains accurate; no runtime or historical evidence is renewed.","inputs":["docs/guides/repository-layout.md","config/product-laws.json"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the config/product-laws.json delta: only the mobile primary-context fault observation selector now names the unique picker-absence test. Law id, invariant, observation, enforcement, owners and all other laws are unchanged. This document's verification/contract/security guidance remains accurate; no runtime or historical evidence is renewed.","inputs":["docs/guides/work-board-security.md","config/product-laws.json"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed the config/product-laws.json delta: only the mobile primary-context fault observation selector now names the unique picker-absence test. Law id, invariant, observation, enforcement, owners and all other laws are unchanged. This document's verification/contract/security guidance remains accurate; no runtime or historical evidence is renewed.","inputs":["docs/guides/workspace-packages.md","config/product-laws.json"]}
+  ]
+}

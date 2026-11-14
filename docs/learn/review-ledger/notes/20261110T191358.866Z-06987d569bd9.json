@@ -1,7 +1,0 @@
-{
-  "revision": "c4e5d95ea73bb0245cc61f1ae5b973e5b248f9a4",
-
-  "notes": [
-    {"path":"docs/guides/responsive-ui.md","note":"Added installed-app zoom lock and toast swipe-dismiss paragraph. Traced PlatformProfileContext profile effect into platform/installedAppZoom.ts (viewport meta, html.is-zoom-locked touch-action, gesturestart) and NotificationContainer transient-stack swipeToDismiss; approval/pairing cards excluded. Browser-tab 16px focus-zoom floor in index.css unchanged. Focused jsdom tests only; physical iOS/Android shells unverified.","inputs":["docs/guides/responsive-ui.md","src-ui/src/index.css","src-ui/src/platform/PlatformProfileContext.tsx"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "bd3a36955737bb10abac0c6a8ce4b6152c5caf93",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Scoped review at bd3a36955737 of the Task-room Enter-to-send and Shift+Enter-for-newline instructions. The existing TaskRoomMessageInput and canonical human-message submit route retain those keys, IME protection and one-send behavior. Conditional restoration of the original still-current textarea after confirmation introduces no new user action, setting or recipient flow, so the guide text remains correct without a token prose edit. The committed repair advances owner generation only on committed layout and preserves cancellation after competing focus across acknowledgement/unlock; it supersedes the earlier concurrency/focus gap, not the historical 53-GRG record. REPAIR88 reached four intended new behavior failures with 53 existing passes and then57 whole-owner passes. FINISH89 changed only named-import ordering and scoped lint exited0 with two disclosed stable test-local component warnings. These are source and controlled jsdom observations, not Chrome native100/500ms, real persistence/reload, provider, physical-device or release qualification. Other onboarding, agent, run, navigation and historical claims in this guide are not renewed.","inputs":["docs/user/getting-started.md","src-ui/src/workspace-panes/TaskRoomComposer.tsx"]}
-  ]
-}

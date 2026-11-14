@@ -1,7 +1,0 @@
-{
-  "revision": "47c44cfd0183623f741dee33769d05f577e104e4",
-
-  "notes": [
-    {"path":"docs/guides/releasing.md","note":"Reviewed the affected delivery-stage, same-run plan/queue-field actionlint, source-admission/evidence-reuse, bounded-repair and local-versus-hosted qualification claims against the exact primaryCiJobFixture tuple-return annotation in scripts/__tests__/actionlint-gate.test.ts. The change preserves the typed first workflow record before generic rest records and changes no runtime fixture order, assertion, workflow, action pin, permission, admission, artifact route, queue or release authority. The existing hosted counterexample was three TS2571 errors on PR4750 head7a5cbc70; ROOTFIX427 scripts typecheck passed (513 compiled,56 deferred), read-only scoped Biome/diff checks passed and the complete existing actionlint owner passed434 tests with0 skips. No prose change is needed for this type-only repair. Local test results do not qualify hosted scheduling, action artifact/fork behavior, other GNU host profiles, signing, provider/device outcomes or release readiness. Existing seven-day expiry, legacy inline installs and shard-prefix limitations and earlier STOP/config-continuity disclosures remain. No full regression, native journey or live provider run was performed for this review.","inputs":["docs/guides/releasing.md","scripts/__tests__/actionlint-gate.test.ts"]}
-  ]
-}

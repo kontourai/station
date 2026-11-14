@@ -1,7 +1,0 @@
-{
-  "revision": "d01945f79bd697d4428c65e50a0ace785c659c95",
-
-  "notes": [
-    {"path":"docs/design/automations.md","note":"Checked the actions-preview clarification against intake intent retention, the native runtime pending skip and current-policy admission, and the focused runtime baseline. This does not verify a live provider or per-rule observe mode.","inputs":["docs/design/automations.md"]}
-  ]
-}

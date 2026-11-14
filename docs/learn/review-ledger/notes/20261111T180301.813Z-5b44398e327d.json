@@ -1,7 +1,0 @@
-{
-  "revision": "20c50c3a2706856dabf1a85f5a4e0533f5c380f1",
-
-  "notes": [
-    {"path":"docs/guides/machine-relationships.md","note":"Re-checked against 20c50c3a2706, which only adds to the bubblewrap read-denial table row the cases exact-path hiding does not cover (a dangling hidden link's target once created, a middle link in a chain, differently named copies such as ~/.claude.json.tmp.*) and corrects the connections guide on which folders the 1,000-entry limit counts. No heading changed. This document links the connections guide at lines 7 and 63 for connection setup; it states nothing about confined-session hiding or limits. No claim affected.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
-  ]
-}

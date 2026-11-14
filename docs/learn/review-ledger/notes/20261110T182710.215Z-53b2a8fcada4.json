@@ -1,7 +1,0 @@
-{
-  "revision": "443525c6391299e53e8c8c63d12af330b36d51b9",
-
-  "notes": [
-    {"path":"docs/guides/keyboard-shortcuts.md","note":"#4688 Added Undo last action (app.undoLastAction, Mod+Z) section: declines in text fields, contenteditable, CodeMirror, terminals and with nothing pending; shares the inbox dismissal chord. Verified with undoable-actions.test.tsx and ProjectSidebarBoards undo tests.","inputs":["docs/guides/keyboard-shortcuts.md"]}
-  ]
-}

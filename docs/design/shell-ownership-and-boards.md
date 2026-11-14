@@ -385,3 +385,10 @@ the existing registry seams so the panel can move one section at a time.
 - Does an instance-shared Board need its own role, or is operator-only
   sufficient for the first cut?
 - Which Survey workbench states map to inbox items versus layout content?
+
+### New-chat project choice
+
+The start composer owns project choice. Neither phone nor desktop dock headers
+carry a project picker. New chat retains the current dock default: the project
+page context or the remembered choice, falling back to No project when absent.
+Clear project scope remains an Inbox filter action, separate from that default.

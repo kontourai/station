@@ -11,6 +11,10 @@ import { useProjectDraftState } from './useProjectDraftState';
 function useProjectDraftValues(partition?: string) {
   const [name, setName] = useProjectDraftState('', partition);
   const [icon, setIcon] = useProjectDraftState('', partition);
+  const [iconDisabled, setIconDisabled] = useProjectDraftState(
+    false,
+    partition,
+  );
   const [description, setDescription] = useProjectDraftState('', partition);
   const [directory, setDirectory] = useProjectDraftState('', partition);
   const [startIntent, setStartIntent] =
@@ -38,6 +42,8 @@ function useProjectDraftValues(partition?: string) {
     repositoryAcquisition,
     setRepositoryAcquisition,
     icon,
+    iconDisabled,
+    setIconDisabled,
     name,
     nameTouched,
     setDescription,
@@ -76,6 +82,7 @@ export function useNewProjectDraft(isOpen: boolean, partition?: string) {
   const reset = () => {
     draft.setName('');
     draft.setIcon('');
+    draft.setIconDisabled(false);
     draft.setDescription('');
     draft.setDefaultEnvironment({ kind: 'current' });
     draft.setDirectory('');

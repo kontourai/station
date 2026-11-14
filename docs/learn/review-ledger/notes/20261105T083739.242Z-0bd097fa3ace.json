@@ -1,9 +1,0 @@
-{
-  "revision": "2f2f151c80d056de587f02a9282cad81435fd894",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Scoped normal-main merge review at 2f2f151c80d0: upstream changes only the introduction and its sharing/deployment link; this lane adds child-result/retention guidance and Directory context in separate sections. Both remain present. The sole record conflict was additive source links: preserved upstream deployment/plugin links and this lane retention/notice/Directory links, with no summary or review-baseline replacement. No new provider/device claim is made. Post-merge managed dependencies passed and the unchanged 29-file selection passed 1036 tests in 47.10s wall.","inputs":["docs/user/getting-started.md"]},
-
-    {"path":"docs/reference/contracts.md","note":"Scoped normal-main merge review at 2f2f151c80d0: upstream appends the device-local showReleaseNotesAfterUpdate boolean contract, while this lane child-result provenance/precedence section remains intact in its own domain. The domains do not share a reducer or runtime gate. Preserved both texts and upstream release limits; no published package or full-epic acceptance is inferred. Post-merge 1036 focused tests passed.","inputs":["docs/reference/contracts.md"]}
-  ]
-}

@@ -1,9 +1,0 @@
-{
-  "revision": "873794027580b425c73dc0ddca1289091d3fb55f",
-
-  "notes": [
-    {"path":"docs/guides/documentation.md","note":"Reviewed the corpus.json builtOn addition against the guide's manifest and Docs kit instructions. The new entry declares the Corpus Store dependency; document order, topics and the pinned docs checker are unchanged. The pinned Corpus check passes locally.","inputs":["docs/guides/documentation.md","corpus.json"]},
-
-    {"path":"docs/pages/README.md","note":"Reviewed the corpus.json builtOn addition against the Pages manifest description. It changes dependency attribution only; public-doc source ordering, the bundle-only manual, topics and the Pages renderer pin remain unchanged. The pinned Corpus check passes locally.","inputs":["docs/pages/README.md","corpus.json"]}
-  ]
-}

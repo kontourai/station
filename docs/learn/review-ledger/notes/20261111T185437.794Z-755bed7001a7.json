@@ -1,7 +1,0 @@
-{
-  "revision": "0ef8e63cfa1b84d7cfab69217ff298e12ee2fad5",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"station-docs-content.ts regenerated: only the shipped ProjectRoom architecture topic changed, following the module-map ProjectRoom migration paragraph. The station-docs reference's claims about the shipped topic set and its generation are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

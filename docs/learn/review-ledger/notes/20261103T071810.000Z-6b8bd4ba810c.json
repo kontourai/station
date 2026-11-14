@@ -1,7 +1,0 @@
-{
-  "revision": "5b7033e91e4ad86b049f637a65f8508e74a9a5c4",
-
-  "notes": [
-    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed the explicit historical rollout status and current Session API pointer after the start-publication contract update. The old flag, rollback and enablement paragraphs remain historical; no current instruction promises acceptance before durable publication. Private adapter and no-migration rationale remain unchanged. This is a scoped dependency review, not new provider or release qualification.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
-  ]
-}

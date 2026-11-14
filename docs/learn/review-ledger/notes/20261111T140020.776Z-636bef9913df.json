@@ -1,7 +1,0 @@
-{
-  "revision": "3793293fce1c765f522714dd9a70a22b260bc9e9",
-
-  "notes": [
-    {"path":"packages/agent-runtime/CONTEXT.md","note":"Re-checked against 3793293fce1c, which gives .github/workflows/seatbelt-kernel.yml a path-filtered push-to-main trigger, renames it Main: Seatbelt kernel legs, declares the push-only lane in ci-workflow-contract.test.ts, rewords the Seatbelt paragraph and inventory row in docs/guides/testing.md and one comment in scripts/vitest-resource-manifest.mjs. No heading in testing.md changed. Its only overlap is the manifest classification of its tests; only one comment in the manifest changed and no classification. No claim affected.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "556b67b08dae2a70d0b481c226bce1d7781d5b96",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Re-checked after the Starter Work guide (a cited input) gained its pointer to this guide's plan progress paragraph and main's merge: the Start Your First Task section's plan progress claims still match taskPlanProgress.ts and TaskPlanProgress.tsx; Refresh Tasks naming follows main.","inputs":["docs/user/getting-started.md","docs/guides/starter-work.md"]}
-  ]
-}

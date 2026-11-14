@@ -1,7 +1,0 @@
-{
-  "revision": "5ff4b10e24f3d8cabc6940ea79ba5c6dba8ce082",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Re-checked against 5ff4b10e24f3, which changes only how StationRuntime hands two Claude resolvers to the confinement preflight factory: as closures read when a preflight runs, no longer as field references read while routes are composed. A preflight still calls the same resolvers. This map mentions route composition four times (the protected-application capture, the #1363 runtime search slice, the station-control dispatch-scope test, and plugin grant revocation). None describes the confinement preflight or when its resolvers are bound, so no claim is affected.","inputs":["docs/architecture/module-map.md","src-server/runtime/bootstrap/station-runtime.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "1d54203348f30c950798a88a75818bf40ae2043e",
-
-  "notes": [
-    {"path":"docs/guides/starter-work.md","note":"Reviewed only the effect of adding four invitation UI comparison images to the shared media registry. Existing starter-work image bytes, digests, captured revisions and evidence fields are unchanged; the new captures are explicitly synthetic invitation UI fixtures and do not change or requalify this guide’s Task/project/provider workflow. Existing source/runtime/physical evidence limits remain in force; this is a scoped registry-dependency review, not a full starter journey re-audit.","inputs":["docs/guides/starter-work.md","docs/learn/media.json"]}
-  ]
-}

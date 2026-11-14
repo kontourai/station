@@ -44,7 +44,11 @@ vi.mock('../components/chat/AttachAnswerToTaskButton', () => ({
   ConnectedAttachUserInputToTaskButton: () => null,
 }));
 vi.mock('../components/chat/StreamingMessage', () => ({
-  StreamingMessage: () => <div data-testid="streaming-message">Streaming</div>,
+  StreamingMessage: ({ statusLabel }: { statusLabel?: string }) => (
+    <div data-testid="streaming-message" data-status-label={statusLabel}>
+      Streaming
+    </div>
+  ),
 }));
 vi.mock('../components/chat/SessionSummaryCard', () => ({
   SessionSummaryCard: () => null,
@@ -280,6 +284,26 @@ describe('#2316 inline approval card', () => {
     windowEvents.settled = true;
     vi.unstubAllGlobals();
     _setApiBase('');
+  });
+
+  test('the fallback live row receives the known input kind before coarse process status', async () => {
+    windowEvents.current = [];
+    stubFetch(() => Response.json({ success: true, data: [] }));
+    renderCard(
+      chatSession({
+        status: 'sending',
+        orchestrationStatus: 'running',
+        orchestrationTurnOpen: true,
+        isThinking: true,
+        pendingApprovals: ['question'],
+        pendingRequestKinds: { question: 'input' },
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('streaming-message').dataset.statusLabel).toBe(
+        'Needs input',
+      ),
+    );
   });
 
   test('remounting an accepted decision keeps it locked until the request resolves', async () => {

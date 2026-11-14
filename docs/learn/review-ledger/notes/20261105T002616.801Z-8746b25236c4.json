@@ -1,7 +1,0 @@
-{
-  "revision": "c2549144a425b6373203490eccbce61836934a27",
-
-  "notes": [
-    {"path":"packages/telemetry-broker/README.md","note":"Updated the public dashboard paragraph to the single aboveNoise predicate (public-dashboard.ts: hero, muted masked columns, folded bars, 'within noise' table cells) and the leader's difference bound (derived in the module comment; pages.test.ts pins both). broker-error.ts adds day_closed, used only by the Worker receiver; no Node receiver claim changes.","inputs":["packages/telemetry-broker/README.md","packages/telemetry-broker/src/broker-error.ts","packages/telemetry-broker/src/public-dashboard.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "9170c82b8bdd47568d62e634f1c3ca7f45342764",
-
-  "notes": [
-    {"path":"docs/reviews/sidebar-focus-20261107/README.md","note":"Reviewed the completed bounded browser receipt against exact predecessor/current source and all ten published images. Verified focus observations, source-mode and fixture distinctions, explicit touch settings, visible offline retry/loading outcomes and cleanup scope. Header crop pixels are unchanged and annotations are outside the UI. Preserved the separate #4665 modal finding and all provider, two-human, physical-device, packaged and full-product limits.","inputs":["docs/reviews/sidebar-focus-20261107/README.md","docs/reviews/sidebar-focus-20261107/capture-manifest.json","docs/reviews/sidebar-focus-20261107/drawer-touch-dark.png","docs/reviews/sidebar-focus-20261107/drawer-touch-light.png","docs/reviews/sidebar-focus-20261107/focus-comparison.png","docs/reviews/sidebar-focus-20261107/offline-message.png","docs/reviews/sidebar-focus-20261107/recovered-message.png","docs/reviews/sidebar-focus-20261107/task-desktop-dark.png","docs/reviews/sidebar-focus-20261107/task-desktop-light.png","docs/reviews/sidebar-focus-20261107/task-mobile-dark.png","docs/reviews/sidebar-focus-20261107/task-mobile-light.png","docs/reviews/sidebar-focus-20261107/throttled-loading.png","packages/connect/src/react/ConnectionManagerModalContent.tsx","src-ui/src/__tests__/ProjectSidebarReturnFocus.test.tsx","src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]}
-  ]
-}

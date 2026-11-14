@@ -1,7 +1,0 @@
-{
-  "revision": "2a568cddeefe6e06c8549c76a7369a731322d515",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Reviewed the regenerated Durable Station Agent topic against its module-map source: the documented prefix batch cap changes from 128 to 1024 parts and the bundle digest changes accordingly. The 131-topic allowlist, lookup contract and distribution scope are unchanged. This source-generation review does not establish a live server, provider or browser journey.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

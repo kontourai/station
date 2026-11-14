@@ -1,7 +1,0 @@
-{
-  "revision": "b5fbece343eb9b6cf3622bd6f12f07e07a9f5a8e",
-
-  "notes": [
-    {"path":"docs/design/pane-relationships.md","note":"SessionsView change adds the plan line inside the Activity row subtitle only; Quick review, row menu, selection, filters and focus return are unchanged, so the pane-relationship claims still hold.","inputs":["docs/design/pane-relationships.md","src-ui/src/views/SessionsView.tsx"]}
-  ]
-}

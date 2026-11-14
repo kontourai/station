@@ -1,7 +1,0 @@
-{
-  "revision": "443525c6391299e53e8c8c63d12af330b36d51b9",
-
-  "notes": [
-    {"path":"docs/guides/theming.md","note":"#4688 main.tsx change only nests UndoableActionShortcut (a Mod+Z registration) inside InboxDismissUndo around App; provider order, share mount, theme/accent application, document publisher and env reads that this document cites are unchanged.","inputs":["docs/guides/theming.md","src-ui/src/main.tsx"]}
-  ]
-}

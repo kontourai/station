@@ -1,7 +1,0 @@
-{
-  "revision": "5c7b074b2e6c1b54b9e5ce641d0f1a30b3efe4b8",
-
-  "notes": [
-    {"path":"docs/reference/cli.md","note":"Rechecked after typing fixes in the telemetry command test (same arguments and assertions). The cli.md telemetry claims still match packages/cli/src/commands/telemetry.ts.","inputs":["docs/reference/cli.md","packages/cli/src/__tests__/telemetry-command.test.ts"]}
-  ]
-}

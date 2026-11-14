@@ -1,7 +1,0 @@
-{
-  "revision": "dfa150cef8cacaefcb7b573af12c2a95f1e4edb8",
-
-  "notes": [
-    {"path":"docs/pages/README.md","note":"Checked the new product-image paragraph against scripts/build-github-pages.mjs (copyGalleryScreens, PAGES_GALLERY_SCREENS), docs/pages/index.html (hero img and og/twitter image URLs) and product-docs-source-links.test.ts (baseline membership, non-volatile, Pages list). The build was run locally and dist-pages/media contained the copied screen. Hosted Pages deployment NOT_VERIFIED.","inputs":["docs/pages/README.md","scripts/build-github-pages.mjs"]}
-  ]
-}

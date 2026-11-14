@@ -1,7 +1,0 @@
-{
-  "revision": "9b8b72a3d46e2847a421432e03355238779b2ecf",
-
-  "notes": [
-    {"path":"docs/README.md","note":"Checked the Browser workspace link against the current guide and route ownership; no native or release qualification.","inputs":["docs/README.md","docs/architecture/module-map.md","packages/contracts/src/workspace-browser-pane.ts","src-server/routes/browser-agent.ts","src-server/routes/browser.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/browser/browser-automation.ts","src-server/services/browser/browser-live-surfaces.ts","src-server/services/browser/browser-service.ts","src-server/services/browser/hosts/chromium-server-host.ts","src-server/tools/station-control-browser-tools.ts","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx","src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts"]}
-  ]
-}

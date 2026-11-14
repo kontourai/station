@@ -1,7 +1,0 @@
-{
-  "revision": "68b5f26225f25000a68cbab9738f8532a18d277e",
-
-  "notes": [
-    {"path":"docs/guides/development.md","note":"Added the self-contained Seeding a dev home from real data section; checked each kept/dropped claim against scripts/seed-dev-home.mjs and its test.","inputs":["docs/guides/development.md"]}
-  ]
-}

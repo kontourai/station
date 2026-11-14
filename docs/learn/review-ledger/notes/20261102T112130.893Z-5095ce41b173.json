@@ -1,7 +1,0 @@
-{
-  "revision": "a40273789b8f878197ca9fea6c9e37c99c8d1370",
-
-  "notes": [
-    {"path":"docs/reference/contracts.md","note":"Reviewed the Device agent policy additions for logs and Task recording against the current contract and tool routes. The contract reference describes shared DTO and manifest shapes; the per-tool policy additions do not change those claims.","inputs":["docs/reference/contracts.md","src-server/tools/station-control-policy.ts"]}
-  ]
-}

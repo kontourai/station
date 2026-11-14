@@ -1,7 +1,0 @@
-{
-  "revision": "01d5e741b544d48ab35ac61beb03d356c2cee23e",
-
-  "notes": [
-    {"path":"docs/design/chat-composer.md","note":"Scoped composer delta: traced ChatDockBody pending versus settled Session read, mode-picker disabled disclosure, queued inbox retry for an unknown declaration and declared-none refusal. Eight UI read-state assertions and the real queued-steer service regression pass with caught source mutations. Existing send modes, offline custody and placement acknowledgement remain unchanged; browser capture is pending.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/event-store.ts","src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
-  ]
-}

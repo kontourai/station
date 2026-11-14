@@ -1,7 +1,0 @@
-{
-  "revision": "b5dfad8dd1091f689c21662e4a94d2e5883e55d0",
-
-  "notes": [
-    {"path":"docs/reference/sdk.md","note":"invoke.ts changed only how the managed station-agent refusal is attached (a named middleware on each of the three literal invoke routes instead of a loop over paths). Routes, paths, status codes, refusal code and order are unchanged; I re-read this doc's invoke and tool-approval claims and none changed.","inputs":["docs/reference/sdk.md","src-server/routes/agents/invoke.ts"]}
-  ]
-}

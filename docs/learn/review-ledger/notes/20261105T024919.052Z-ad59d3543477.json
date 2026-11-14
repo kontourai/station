@@ -1,7 +1,0 @@
-{
-  "revision": "23aa27c119144072e28ecf1429d9476b70d23609",
-
-  "notes": [
-    {"path":"docs/README.md","note":"Browser pane phone UX (fix/browser-pane-phone-ux): reviewed against BrowserPane.tsx/CSS changes (narrow-pane open sizing, shared-viewport menu heading and Match this pane, viewport-change notice, local-server empty/error states, blur on submit, coarse-pointer shortcut hints). No claim about those behaviors here; no prose change.","inputs":["docs/README.md","docs/architecture/module-map.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]}
-  ]
-}

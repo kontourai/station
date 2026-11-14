@@ -1,7 +1,0 @@
-{
-  "revision": "027d18fb057529e3000267c2c7b193759c83aa47",
-
-  "notes": [
-    {"path":"docs/learn/media/inspect-request.webm","note":"Claude session-grant change: orchestration-service.ts changes only how acceptForSession answers carry sessionGrantScope (non-declaring adapters get a one-call accept for 'rule'; no Auto record for scoped answers). Per media.json this recording opens the inspector, expands Request identity and closes it with no decision, so that path is not exercised. Frames not viewed: ffmpeg is unavailable here. Checked the PNG of the same scenario instead.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

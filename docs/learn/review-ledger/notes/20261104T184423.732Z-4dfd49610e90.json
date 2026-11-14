@@ -1,9 +1,0 @@
-{
-  "revision": "a998e54442178e291c11dab19aa41e784178bd4f",
-
-  "notes": [
-    {"path":"docs/reference/session-api.md","note":"Wording fix (#4570 round 5): a ceiling-refused start or restart started no engine session, so there is no uncertain start to inspect, and a parked session keeps its history. Replaces 'there is no session to inspect', which was wrong for a parked session restart. The rest of the section is unchanged.","inputs":["docs/reference/session-api.md"]},
-
-    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"session-api.md delta: one sentence reworded about ceiling-refused starts. Searched this ADR for ceiling, refused-start and session-inspection claims; it makes none, so it stays accurate.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
-  ]
-}

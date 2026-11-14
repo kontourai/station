@@ -1,7 +1,0 @@
-{
-  "revision": "b5fbece343eb9b6cf3622bd6f12f07e07a9f5a8e",
-
-  "notes": [
-    {"path":"docs/guides/plugins.md","note":"HomeView.test.tsx only adds a mock for the Session activity read used by the plan line; plugin guide claims are unaffected.","inputs":["docs/guides/plugins.md","src-ui/src/__tests__/HomeView.test.tsx"]}
-  ]
-}

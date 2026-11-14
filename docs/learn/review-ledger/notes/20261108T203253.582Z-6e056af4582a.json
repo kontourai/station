@@ -1,7 +1,0 @@
-{
-  "revision": "add31d1b06a7f75ee3ab9ff5790de56a35d592af",
-
-  "notes": [
-    {"path":"src-server/AGENTS.md","note":"Removed the windowsHide sentence: scripts/windows-hide-ratchet.mjs now fails a new child-process call without it (verification:policy:gate and pre-push static gates), proven by a git-exec.ts fault injection. Remaining routing, logger, capability-flag, batching, path-helper and integrity rules are unchanged.","inputs":["src-server/AGENTS.md"]}
-  ]
-}

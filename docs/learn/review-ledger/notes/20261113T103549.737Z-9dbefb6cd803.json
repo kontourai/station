@@ -1,7 +1,0 @@
-{
-  "revision": "2c476418da94a8ee6d20ce91c9e0fe55f8f44b1d",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Reviewed the Gallery container section against .github/workflows/nightly-gallery.yml: the image is mcr.microsoft.com/playwright:v1.65.0-noble pinned by digest, matching lock-resolved @playwright/test 1.65.0. Replaced the stale v1.64.1-noble example (left by #4631) with the vX.Y.Z-noble tag shape; the workflow comment got the same wording. The enforcement and limits paragraph is unchanged and still accurate (ci-workflow-contract checks the version, not registry digest contents).","inputs":["docs/guides/testing.md",".github/workflows/nightly-gallery.yml"]}
-  ]
-}

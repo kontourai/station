@@ -1,7 +1,0 @@
-{
-  "revision": "443525c6391299e53e8c8c63d12af330b36d51b9",
-
-  "notes": [
-    {"path":"docs/design/shell-ownership-and-boards.md","note":"#4688 Board Delete and Move to project in ProjectSidebarBoards are now deferred behind General Undo; promotion still moves the record into the project when committed, via the same promote mutation. Section/create/rename/promote claims unchanged; deleting the open Board now navigates Home (#4458).","inputs":["docs/design/shell-ownership-and-boards.md","docs/user/personal-boards.md","src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx"]}
-  ]
-}

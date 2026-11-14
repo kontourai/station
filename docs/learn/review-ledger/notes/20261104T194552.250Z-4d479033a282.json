@@ -1,7 +1,0 @@
-{
-  "revision": "041656060bd9556cf816942d25605c442ea80fff",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"The replay fixture moved out of fixtures/ (which the path-read pin scanner ignores) to packages/sdk/src/__tests__/terminal-view/replay-plain-text.ts; the retention suite and the doc's rendered-restore claim are unchanged.","inputs":["docs/design/terminal.md","packages/sdk/src/__tests__/terminal-view/fixtures/replay-plain-text.ts","src-server/services/terminal/__tests__/terminal-retention.process.test.ts","packages/sdk/src/__tests__/terminal-view/replay-plain-text.ts"]}
-  ]
-}

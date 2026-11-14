@@ -1,7 +1,0 @@
-{
-  "revision": "d480071f64bfe5c19b0a5baccc65053bbd189637",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Reviewed the four new Task capability gallery reference images after opening each PNG at 390/1440 in dark/light. The baseline command merged only these new entries and retained all 56 existing entries; zero gallery findings were accepted or allowlisted. This is local browser evidence, not full-gallery, hosted, native, provider or release qualification.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]}
-  ]
-}

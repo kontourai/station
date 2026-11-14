@@ -1,3 +1,10 @@
+function repositoryLabel(remote: string): string {
+  return remote
+    .replace(/^https?:\/\//, '')
+    .replace(/\.git$/, '')
+    .replace(/^github\.com\//, '');
+}
+
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
 import { isStationAgentIdentity } from '@kontourai/station-contracts/agent-identity';
 import type { NoProjectChatFolder } from '@kontourai/station-contracts/config';
@@ -73,7 +80,12 @@ export const NO_PROJECT_LABEL = 'No project';
  * the engine: `'home'` or `'managed'`.
  */
 export type NewChatWorkspaceHint =
-  | { kind: 'project'; path: string }
+  | {
+      kind: 'project';
+      path: string;
+      repository?: string;
+      repositoryRemote?: string;
+    }
   | { kind: 'connection'; path: string }
   | { kind: 'home' }
   | { kind: 'managed' }
@@ -90,6 +102,8 @@ export type NewChatWorkspaceHint =
 /** The hint as one sentence, for a chip's folder line and the menu. */
 export function workspaceHintText(hint: NewChatWorkspaceHint): string {
   switch (hint.kind) {
+    case 'project':
+      return `Runs in ${hint.repository ?? hint.path}`;
     case 'home':
       return 'Runs in your home folder (~)';
     case 'managed':
@@ -263,7 +277,16 @@ export function resolveNewChatWorkspaceHint({
       : { kind: 'unchecked', reason: project.runsAt.reason };
   }
   const projectDirectory = project ? projectRunDirectory(project) : undefined;
-  if (projectDirectory) return { kind: 'project', path: projectDirectory };
+  if (projectDirectory) {
+    const remote =
+      project?.repositoryDisplay ?? project?.repositorySource?.canonicalRemote;
+    const repository = remote ? repositoryLabel(remote) : undefined;
+    return {
+      kind: 'project',
+      path: projectDirectory,
+      ...(repository ? { repository, repositoryRemote: remote } : {}),
+    };
+  }
 
   const connectionId = agent?.execution?.agentConnectionId;
   const connectionDirectory = connectionId
@@ -418,6 +441,8 @@ export interface NewChatModalContextOption {
   glyph?: 'folder' | 'globe';
   /** The directory the project's chats run in, when the project has one. */
   workingDirectory?: string;
+  repository?: string;
+  repositoryRemote?: string;
   /** Why a chat cannot start in this project here (#3370); absent when it can. */
   unavailable?: string;
   /** Why the folder was not checked this time; not a refusal. */
@@ -532,7 +557,11 @@ export function buildContextOptions(
     if (!project) {
       continue;
     }
-    const icon = displayableProjectIcon(project.icon);
+    const icon = displayableProjectIcon(
+      project.icon ?? (project.iconDisabled ? undefined : project.derivedIcon),
+    );
+    const remote =
+      project.repositoryDisplay ?? project.repositorySource?.canonicalRemote;
     options.push({
       value: project.slug,
       label: project.name,
@@ -540,6 +569,12 @@ export function buildContextOptions(
       // or path as an <img>, and a legacy stored link must not load here.
       ...(icon ? { icon } : { glyph: 'folder' as const }),
       workingDirectory: projectRunDirectory(project),
+      ...(remote
+        ? {
+            repository: repositoryLabel(remote),
+            repositoryRemote: remote,
+          }
+        : {}),
       ...(project.runsAt?.kind === 'unavailable'
         ? { unavailable: project.runsAt.reason }
         : {}),

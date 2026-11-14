@@ -1,7 +1,0 @@
-{
-  "revision": "6c94e0c6d5526b1e0f0f21ba94e2e240e235c174",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Added the Windows close rule (after a successful taskkill both hosts wait for exit and never call node-pty's kill(), which signals the dead shell's pid five seconds later), checked against node-pty-adapter.ts terminateTree, pty-workload-host.ts terminate, node-pty 1.1's WindowsPtyAgent.kill and the two late-exit tests; dropped the AttachConsole known-limit line, which no longer occurs on close.","inputs":["docs/design/terminal.md","src-server/adapters/node-pty-adapter.ts","src-server/services/terminal/pty-workload-host.ts","src-server/adapters/__tests__/node-pty-adapter.test.ts"]}
-  ]
-}

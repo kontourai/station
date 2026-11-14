@@ -1,7 +1,0 @@
-{
-  "revision": "b731d4459aa64b3416d01545ae94a044f44c78f6",
-
-  "notes": [
-    {"path":"docs/reference/sdk.md","note":"TerminalView section: added the shared-session contract (output copied before the worker, so a session may hand every listener and late subscribers the same array) and the no-box rule (keeps its grid, never resizes the session), checked against controller.ts; touchKeys row now states 44px targets fit 390px with ^C, and the faded scrolling edge when narrower, checked against TerminalView.tsx/css and the geometry test. Rest of the section unchanged.","inputs":["docs/reference/sdk.md"]}
-  ]
-}

@@ -1,9 +1,0 @@
-{
-  "revision": "4c6a13ee3668dcd2c34474f2a78b4bff5f070388",
-
-  "notes": [
-    {"path":".veritas/init-plans/documentation-maintenance.md","note":"This PR adds a new Veritas policy-change attestation and advances .veritas/attestations/HEAD to it (actor briananderson1222) for narrowing the governance-block target to AGENTS.md. Searched the plan for attestation claims: it describes the attestation step generically and names no specific attestation id, so it stays accurate.","inputs":[".veritas/init-plans/documentation-maintenance.md",".veritas/attestations/HEAD"]},
-
-    {"path":"docs/guides/documentation.md","note":"This PR adds a new Veritas policy-change attestation and advances .veritas/attestations/HEAD to it for narrowing the governance-block target to AGENTS.md. Searched the guide for attestation claims: none reference a specific attestation, so nothing changes.","inputs":["docs/guides/documentation.md",".veritas/attestations/HEAD"]}
-  ]
-}

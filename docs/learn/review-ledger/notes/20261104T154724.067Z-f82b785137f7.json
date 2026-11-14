@@ -1,7 +1,0 @@
-{
-  "revision": "16dacc4c9755f1fdaf288fbdad2ea9a327b82e87",
-
-  "notes": [
-    {"path":"docs/guides/agent-efficiency.md","note":"settings.md change only rewords the Continue after restart note's content; this guide's claims do not depend on it.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md"]}
-  ]
-}

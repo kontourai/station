@@ -1,7 +1,0 @@
-{
-  "revision": "38fc9ec80dd877cfb6638a832702551f7fc65542",
-
-  "notes": [
-    {"path":"docs/design/chat-composer.md","note":"chat.css and TranscriptTurnRail.css changed: chat.css lost the from-prompt gradient/glow rules and avatar hover ring; the turn-rail preview popover swapped a translucent blurred panel for solid --k-panel-raised with --k-elevation-overlay. Checked the Turn rail, Markers, Previous/Next turn and pulsing/elapsed-clock sections: they describe behavior (gutter, ticks, hover/focus preview, Escape, hide thresholds), not preview backdrop, gradients or glow, so all remain true. No quoted UI text changed.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/TranscriptTurnRail.css","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]}
-  ]
-}

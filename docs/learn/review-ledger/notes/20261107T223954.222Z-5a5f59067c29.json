@@ -1,7 +1,0 @@
-{
-  "revision": "d5e3c3757b2dfb3fd2d38d801292f5c5a3bbfed6",
-
-  "notes": [
-    {"path":"docs/patterns/backend.md","note":"Reviewed against the tokens.css and device-settings-store changes; no backend pattern claim depends on text size or the held appearance keys.","inputs":["docs/patterns/backend.md","src-ui/src/lib/device-settings-store.ts","src-ui/src/tokens.css"]}
-  ]
-}

@@ -311,7 +311,7 @@ describe('#2309 a reload in the middle of a turn running in a lineage child', ()
     act(() => applyOrchestrationSnapshot(snapshot(activity(500))));
 
     // No new event arrived: the snapshot alone carries the turn.
-    expect(screen.getByText(/Working for 4:10/)).toBeTruthy();
+    expect(screen.getByText(/Working for 4m 10s/)).toBeTruthy();
     const stop = screen.getByRole('button', { name: 'Stop the current turn' });
 
     await act(async () => {
@@ -340,8 +340,8 @@ describe('#2309 a reload in the middle of a turn running in a lineage child', ()
         openTurnStartedAt: Date.now() - 10_000,
       }),
     );
-    expect(screen.getByText(/Working for 4:10/)).toBeTruthy();
-    expect(screen.queryByText(/Working for 0:10/)).toBeNull();
+    expect(screen.getByText(/Working for 4m 10s/)).toBeTruthy();
+    expect(screen.queryByText(/Working for 10s/)).toBeNull();
   });
 
   test('the clock keeps the server start as time passes, not this view mount', () => {
@@ -350,7 +350,7 @@ describe('#2309 a reload in the middle of a turn running in a lineage child', ()
     act(() => {
       vi.advanceTimersByTime(5_000);
     });
-    expect(screen.getByText(/Working for 4:15/)).toBeTruthy();
+    expect(screen.getByText(/Working for 4m 15s/)).toBeTruthy();
   });
 });
 
@@ -374,11 +374,11 @@ describe('#2309 what the turn is doing', () => {
       ),
     );
     // `sleep 290`: no event for minutes, yet the row keeps counting.
-    expect(progressText()).toBe('Running bash · 4m');
+    expect(progressText()).toBe('Running bash · 4m 5s');
     act(() => {
       vi.advanceTimersByTime(30_000);
     });
-    expect(progressText()).toBe('Running bash · 4m');
+    expect(progressText()).toBe('Running bash · 4m 35s');
 
     // The call completes (the binding on tool.completed): between tools.
     const completedAt = iso(Date.now());
@@ -433,7 +433,7 @@ describe('#2309 what the turn is doing', () => {
       ),
     );
     expect(progressText()).toBe(
-      'Last: bash · done· No progress from Claude Code for 12m',
+      'Last: bash · done· No progress from Claude Code for 12m 0s',
     );
   });
 
@@ -503,7 +503,7 @@ describe('#2309 an older server that sends no activity', () => {
         turnId: TURN,
       }),
     );
-    expect(screen.getByText(/Working for 4:10/)).toBeTruthy();
+    expect(screen.getByText(/Working for 4m 10s/)).toBeTruthy();
   });
 });
 
@@ -552,7 +552,7 @@ describe('#2309 progress row reads the newest running tool', () => {
         ),
       ),
     );
-    expect(screen.getByText(/Working for 4:10/)).toBeTruthy();
+    expect(screen.getByText(/Working for 4m 10s/)).toBeTruthy();
     expect(progressText()).toBeNull();
   });
 });
@@ -766,6 +766,6 @@ describe('#2309 review F7: one clock, one silence', () => {
         ),
       ),
     );
-    expect(progressText()).toBe('Running bash · 4m');
+    expect(progressText()).toBe('Running bash · 4m 10s');
   });
 });

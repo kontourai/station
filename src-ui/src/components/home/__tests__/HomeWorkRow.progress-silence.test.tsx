@@ -143,7 +143,7 @@ describe('HomeWorkRow status line from the server projections (station#4054)', (
       },
     });
 
-    expect(visibleStatus()).toBe('No progress · 4m');
+    expect(visibleStatus()).toBe('No progress · 4m 12s');
   });
 
   test('renders no quiet wording when the watchdog holds no marker', () => {
