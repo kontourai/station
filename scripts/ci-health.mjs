@@ -408,6 +408,381 @@ export function setupMetrics(jobs) {
     }),
   );
 }
+// Shard and matrix legs differ only in counters, which become `N`:
+// "X of Y" ranges ("1-2 of 8", "ordinary-1-of-8") and numbers that stand alone
+// after a space, "(", "," or "/" ("shard 3", "test (1, 4)", "1/4"). A number
+// joined to a word by a hyphen ("macos-14", "windows-2022", "ubuntu-22"),
+// inside a token ("linux-x64", "22.04") or leading the name as a stage
+// ordinal ("1 · Source gate") names a platform or step and is kept.
+export function laneJobName(name) {
+  return String(name ?? '')
+    .replace(
+      /(?<![A-Za-z0-9_.])\d+(-\d+)?([- ])of\2\d+(?![A-Za-z0-9_.])/g,
+      (_, range, sep) => `N${range ? '-N' : ''}${sep}of${sep}N`,
+    )
+    .replace(/(?<=[\s(,/])\d+(?=$|[\s),/])/g, 'N');
+}
+const runKey = (run) => `${run.id}:${run.run_attempt ?? 1}`;
+const workflowFile = (run) =>
+  run?.path?.replace(/^\.github\/workflows\//, '').replace(/@.*$/, '') ??
+  run?.name ??
+  'unknown';
+const pullRequestEvent = (event) =>
+  ['pull_request', 'pull_request_target'].includes(event);
+const jobFailed = (job) => ['failure', 'timed_out'].includes(job.conclusion);
+const round2 = (n) => (n == null ? null : Math.round(n * 100) / 100);
+const roundDistribution = (d) => ({
+  count: d.count,
+  median: round2(d.median),
+  p90: round2(d.p90),
+});
+/** Lane rows kept in a snapshot; the rest fold into one `other` row. */
+export const LANE_ROW_LIMIT = 25;
+export const EVENT_CLASSES = [
+  'pull_request',
+  'merge_group',
+  'push',
+  'schedule',
+  'workflow_run',
+  'other',
+];
+const eventClass = (event) =>
+  pullRequestEvent(event)
+    ? 'pull_request'
+    : EVENT_CLASSES.includes(event)
+      ? event
+      : 'other';
+// Same job population and clipping as capacityMetrics, so lane runner-minutes
+// sum to its runner-hours.
+function windowJobs(jobs, until, since) {
+  return jobs.filter(
+    (job) =>
+      (!until || time(job.created_at) < time(until)) &&
+      (!since || !job.completed_at || time(job.completed_at) > time(since)),
+  );
+}
+export function laneMetrics(runs, jobs, until, since, limit = LANE_ROW_LIMIT) {
+  const runsByKey = new Map(runs.map((run) => [runKey(run), run]));
+  const lanes = new Map();
+  const byEvent = Object.fromEntries(EVENT_CLASSES.map((e) => [e, 0]));
+  let total = 0;
+  let cancelled = 0;
+  for (const job of windowJobs(jobs, until, since)) {
+    const run = runsByKey.get(job.health_run_key);
+    const workflow = workflowFile(run);
+    const name = laneJobName(job.name);
+    const event = run?.event ?? 'unknown';
+    const key = JSON.stringify([workflow, name, event]);
+    const lane = lanes.get(key) ?? {
+      workflow,
+      job: name,
+      event,
+      executed: 0,
+      runnerMinutes: 0,
+      jobMinutes: [],
+      waitMinutes: [],
+      failures: 0,
+      cancelledRunMinutes: 0,
+      unfinished: 0,
+      unattributed: 0,
+    };
+    lanes.set(key, lane);
+    // The capacity definitions of unfinished and unattributed jobs; either
+    // already makes the snapshot incomplete, and the row says so.
+    if (job.conclusion == null) lane.unfinished++;
+    else if (
+      !assignedRunner(job) &&
+      job.status !== 'queued' &&
+      job.conclusion !== 'skipped' &&
+      job.conclusion !== 'cancelled'
+    )
+      lane.unattributed++;
+    if (!executed(job)) continue;
+    const minutes = intervalMinutes(
+      job.started_at,
+      job.completed_at,
+      since,
+      until,
+    );
+    lane.executed++;
+    lane.runnerMinutes += minutes;
+    lane.jobMinutes.push(duration(job));
+    lane.waitMinutes.push(
+      intervalMinutes(job.created_at, job.started_at, undefined, until),
+    );
+    if (jobFailed(job)) lane.failures++;
+    if (run?.conclusion === 'cancelled') {
+      lane.cancelledRunMinutes += minutes;
+      cancelled += minutes;
+    }
+    byEvent[eventClass(event)] += minutes;
+    total += minutes;
+  }
+  const rows = [...lanes.values()]
+    .filter((lane) => lane.executed || lane.unfinished || lane.unattributed)
+    .sort(
+      (a, b) =>
+        b.runnerMinutes - a.runnerMinutes ||
+        a.workflow.localeCompare(b.workflow) ||
+        a.job.localeCompare(b.job) ||
+        a.event.localeCompare(b.event),
+    );
+  const shareOf = (n) =>
+    total ? Math.round((n / total) * 10_000) / 10_000 : null;
+  const row = (lane) => ({
+    workflow: lane.workflow,
+    job: lane.job,
+    event: lane.event,
+    executed: lane.executed,
+    runnerMinutes: round2(lane.runnerMinutes),
+    share: shareOf(lane.runnerMinutes),
+    jobMinutes: roundDistribution(distribution(lane.jobMinutes)),
+    waitMinutes: roundDistribution(distribution(lane.waitMinutes)),
+    failures: lane.failures,
+    cancelledRunMinutes: round2(lane.cancelledRunMinutes),
+    incomplete: lane.unfinished + lane.unattributed > 0,
+    unfinished: lane.unfinished,
+    unattributed: lane.unattributed,
+  });
+  const rest = rows.slice(limit);
+  const sum = (field) => rest.reduce((n, lane) => n + lane[field], 0);
+  return {
+    totalRunnerMinutes: round2(total),
+    cancelledRunMinutes: round2(cancelled),
+    cancelledRunShare: ratio(cancelled, total),
+    runnerHoursByEvent: Object.fromEntries(
+      EVENT_CLASSES.map((e) => [e, round2(byEvent[e] / 60)]),
+    ),
+    rows: rows.slice(0, limit).map(row),
+    other: rest.length
+      ? {
+          lanes: rest.length,
+          executed: sum('executed'),
+          runnerMinutes: round2(sum('runnerMinutes')),
+          share: shareOf(sum('runnerMinutes')),
+          failures: sum('failures'),
+          cancelledRunMinutes: round2(sum('cancelledRunMinutes')),
+          incomplete: rest.some((l) => l.unfinished + l.unattributed > 0),
+          unfinished: sum('unfinished'),
+          unattributed: sum('unattributed'),
+        }
+      : null,
+  };
+}
+// PR-event workflows whose triggers are not source events (`opened`,
+// `synchronize`): landing automation reacts to labels and dequeues, and
+// supersession to closes. Their jobs verify nothing about the head, so a
+// "failure" there is not a catch. A test pins this list against the checked-in
+// trigger types; the script itself runs without a YAML parser.
+export const NON_VERIFYING_PR_WORKFLOWS = [
+  'landing-automation.yml',
+  'pr-ci-supersession.yml',
+];
+const ciReference = (run) =>
+  run.path === '.github/workflows/ci.yml' ||
+  (run.path == null && run.name === 'PR: CI');
+/**
+ * PR-level unique catch: per lane, head SHAs where the lane failed while the
+ * `ci.yml` source verdict passed on the same SHA. Any passing attempt on a SHA
+ * supersedes failed attempts on that SHA, on both sides.
+ */
+export function uniqueCatchMetrics(runs, jobs, limit = LANE_ROW_LIMIT) {
+  const pullRuns = runs.filter((run) => pullRequestEvent(run.event));
+  const verdict = (map, key, outcome) => {
+    if (!outcome) return;
+    if (map.get(key) !== 'success') map.set(key, outcome);
+  };
+  const ci = new Map();
+  for (const run of pullRuns) {
+    // `edited` metadata runs share the head SHA but verify nothing.
+    if (!ciReference(run) || run.display_title === 'PR metadata') continue;
+    verdict(
+      ci,
+      run.head_sha,
+      run.conclusion === 'success'
+        ? 'success'
+        : ['failure', 'timed_out'].includes(run.conclusion)
+          ? 'failure'
+          : null,
+    );
+  }
+  const runsByKey = new Map(pullRuns.map((run) => [runKey(run), run]));
+  const attempts = new Map();
+  for (const job of jobs) {
+    const run = runsByKey.get(job.health_run_key);
+    if (
+      !run ||
+      ciReference(run) ||
+      NON_VERIFYING_PR_WORKFLOWS.includes(workflowFile(run))
+    )
+      continue;
+    const lane = JSON.stringify([workflowFile(run), laneJobName(job.name)]);
+    const key = `${lane}\n${job.health_run_key}`;
+    const attempt = attempts.get(key) ?? {
+      lane,
+      sha: run.head_sha,
+      outcomes: [],
+    };
+    attempts.set(key, attempt);
+    attempt.outcomes.push(job.conclusion);
+  }
+  const lanes = new Map();
+  for (const { lane, sha, outcomes } of attempts.values()) {
+    const shas = lanes.get(lane) ?? new Map();
+    lanes.set(lane, shas);
+    // One failed shard fails the lane's attempt; it passes only when every
+    // leg concluded and at least one ran successfully.
+    verdict(
+      shas,
+      sha,
+      outcomes.some((c) => ['failure', 'timed_out'].includes(c))
+        ? 'failure'
+        : outcomes.every((c) =>
+              ['success', 'skipped', 'neutral'].includes(c),
+            ) && outcomes.includes('success')
+          ? 'success'
+          : null,
+    );
+  }
+  const rows = [...lanes]
+    .map(([lane, shas]) => {
+      const [workflow, job] = JSON.parse(lane);
+      const failedShas = [...shas].filter(([, v]) => v === 'failure');
+      return {
+        workflow,
+        job,
+        shas: shas.size,
+        failedShas: failedShas.length,
+        failedWhileCiPassed: failedShas.filter(
+          ([sha]) => ci.get(sha) === 'success',
+        ).length,
+      };
+    })
+    .filter((row) => row.shas)
+    .sort(
+      (a, b) =>
+        b.failedWhileCiPassed - a.failedWhileCiPassed ||
+        b.failedShas - a.failedShas ||
+        b.shas - a.shas ||
+        a.workflow.localeCompare(b.workflow) ||
+        a.job.localeCompare(b.job),
+    );
+  return {
+    note: 'Counts real defects and flakes together: an upper bound on value, not a defect count.',
+    reference: 'ci.yml',
+    referenceShas: ci.size,
+    referencePassedShas: [...ci.values()].filter((v) => v === 'success').length,
+    rows: rows.slice(0, limit),
+    omittedLanes: Math.max(0, rows.length - limit),
+  };
+}
+// A merge-queue squash commit carries the time its group was built, which can
+// precede the push to main by hours, so commit dates cannot place a landing in
+// the window. GitHub's `merged_at` can; one search lists every PR it places in
+// the window. Search ranges are inclusive, so the half-open window is applied
+// to the returned timestamps.
+const searchTime = (value) =>
+  new Date(value).toISOString().replace(/\.\d{3}Z$/, 'Z');
+export async function mergedPullRequests(request, repo, since, until) {
+  const endpoint = `search/issues?q=${encodeURIComponent(`repo:${repo} is:pr is:merged merged:${searchTime(since)}..${searchTime(until)}`)}`;
+  const items = [];
+  for (let page = 1; ; page++) {
+    const data = await request(`${endpoint}&per_page=100&page=${page}`);
+    if (!Number.isInteger(data.total_count) || !Array.isArray(data.items))
+      throw new Error('Invalid merged pull request search response');
+    if (data.incomplete_results)
+      throw new Error('Merged pull request search returned incomplete results');
+    if (data.total_count > 1000)
+      throw new Error(
+        `Merged pull request search cap (1000) at ${since}..${until}`,
+      );
+    items.push(...data.items);
+    if (data.items.length < 100 || items.length >= data.total_count) break;
+  }
+  return [
+    ...new Set(
+      items
+        .filter((item) => {
+          const at = time(item.pull_request?.merged_at);
+          if (!Number.isFinite(at))
+            throw new Error(
+              `Merged pull request search item #${item.number} has no merged_at`,
+            );
+          return at >= time(since) && at < time(until);
+        })
+        .map((item) => item.number),
+    ),
+  ].sort((a, b) => a - b);
+}
+export function costPerLanding(lanes, runnerHours, landings) {
+  const count = landings?.length ?? null;
+  return {
+    landings: count,
+    landingSource: 'PRs whose merged_at is in the window',
+    runnerHours: round2(runnerHours),
+    runnerHoursPerLanding: count ? round2(runnerHours / count) : null,
+    runnerHoursByEvent: lanes.runnerHoursByEvent,
+  };
+}
+export function landingLatency(landings, timelines) {
+  if (landings == null)
+    return {
+      merged: null,
+      measured: 0,
+      notQueuedAtMerge: 0,
+      missingMergeEvent: 0,
+      multipleEntries: 0,
+      lastEntryToMergeMinutes: distribution([]),
+      firstEntryToMergeMinutes: distribution([]),
+    };
+  const last = [];
+  const first = [];
+  let notQueuedAtMerge = 0;
+  let missingMergeEvent = 0;
+  let multipleEntries = 0;
+  for (const pr of new Set(landings)) {
+    const timeline = timelines[pr] ?? [];
+    const merged = timeline
+      .filter((e) => e.event === 'merged')
+      .map(eventTime)
+      .sort((a, b) => a - b)[0];
+    if (merged == null || !Number.isFinite(merged)) {
+      missingMergeEvent++;
+      continue;
+    }
+    const entries = timeline
+      .filter(
+        (e) => e.event === 'added_to_merge_queue' && eventTime(e) <= merged,
+      )
+      .map(eventTime)
+      .sort((a, b) => a - b);
+    // GitHub logs a queue removal with every queue merge, a second before or
+    // at the same second (PRs 4879, 4876). Any other removal after the last
+    // entry means the PR left the queue and was merged some other way.
+    const removals = timeline
+      .filter((e) => e.event === 'removed_from_merge_queue')
+      .map(eventTime);
+    if (
+      !entries.length ||
+      removals.some((at) => at > entries.at(-1) && at < merged - minute)
+    ) {
+      notQueuedAtMerge++;
+      continue;
+    }
+    if (entries.length > 1) multipleEntries++;
+    first.push((merged - entries[0]) / minute);
+    last.push((merged - entries.at(-1)) / minute);
+  }
+  return {
+    merged: new Set(landings).size,
+    measured: last.length,
+    notQueuedAtMerge,
+    missingMergeEvent,
+    multipleEntries,
+    lastEntryToMergeMinutes: roundDistribution(distribution(last)),
+    firstEntryToMergeMinutes: roundDistribution(distribution(first)),
+  };
+}
 /** The `git log` output format `ledgerMetrics` parses. */
 export const LEDGER_LOG_FORMAT = [
   '--format=%x1e%s',
@@ -599,6 +974,7 @@ export async function collectHealth(
   const jobs = [];
   const timelines = {};
   let ledger = null;
+  let landings = null;
   try {
     const collectWindow = async (start, end) => {
       const endpoint = `repos/${repo}/actions/runs?created=${encodeURIComponent(`${start}..${end}`)}`;
@@ -758,6 +1134,15 @@ export async function collectHealth(
       ...LEDGER_LOG_FORMAT,
     ]);
     ledger = ledgerMetrics(log);
+    // Landing latency needs each landed PR's timeline: one search plus one
+    // paginated request per landing not already fetched for a failed group.
+    const landed = await mergedPullRequests(request, repo, since, until);
+    for (const pr of landed)
+      timelines[pr] ??= await pages(
+        request,
+        `repos/${repo}/issues/${pr}/timeline`,
+      );
+    landings = landed;
   } catch (error) {
     reasons.push(error.message);
   }
@@ -773,6 +1158,7 @@ export async function collectHealth(
     jobs,
     timelines,
     ledger,
+    landings,
     reasons,
     capHits,
     collectedAt: new Date().toISOString(),
@@ -815,6 +1201,7 @@ export function qualificationMetrics(runs, jobs) {
 }
 export function buildSnapshot(data, options) {
   const capacity = capacityMetrics(data.jobs, options.until, options.since);
+  const lanes = laneMetrics(data.runs, data.jobs, options.until, options.since);
   const reasons = [...data.reasons];
   if (capacity.unattributed)
     reasons.push(
@@ -822,6 +1209,11 @@ export function buildSnapshot(data, options) {
     );
   if (capacity.unfinished)
     reasons.push(`window includes ${capacity.unfinished} unfinished jobs`);
+  const latency = landingLatency(data.landings ?? null, data.timelines ?? {});
+  if (latency.missingMergeEvent)
+    reasons.push(
+      `window includes ${latency.missingMergeEvent} merged PRs without a timeline merge event`,
+    );
   return {
     schema: 'station-ci-health/v1',
     repo: options.repo,
@@ -847,6 +1239,14 @@ export function buildSnapshot(data, options) {
     ),
     setupVsTest: setupMetrics(data.jobs),
     reviewLedger: data.ledger,
+    lanes,
+    uniqueCatch: uniqueCatchMetrics(data.runs, data.jobs),
+    costPerLanding: costPerLanding(
+      lanes,
+      capacity.runnerHours,
+      data.landings ?? null,
+    ),
+    landingLatency: latency,
   };
 }
 export function parseOptions(args, now = new Date()) {
@@ -980,11 +1380,119 @@ export function renderSnapshot(s) {
         ? `${s.reviewLedger.mergesTouchingLedger} / ${number(s.reviewLedger.medianFiles)} / ${number(s.reviewLedger.maxFiles)}`
         : 'unavailable',
     ],
+    ...(s.costPerLanding
+      ? [
+          [
+            'Landed PRs / runner-hours per landing',
+            `${number(s.costPerLanding.landings)} / ${number(s.costPerLanding.runnerHoursPerLanding)}`,
+          ],
+          [
+            'Runner-hours by event',
+            Object.entries(s.costPerLanding.runnerHoursByEvent)
+              .map(([event, hours]) => `${event} ${number(hours)}`)
+              .join(', '),
+          ],
+          [
+            'Runner-minutes in cancelled runs / share',
+            `${number(s.lanes.cancelledRunMinutes)} / ${percent(s.lanes.cancelledRunShare)}`,
+          ],
+          [
+            'Last queue entry to merge minutes median / p90',
+            stats(s.landingLatency.lastEntryToMergeMinutes),
+          ],
+          [
+            'First queue entry to merge minutes median / p90',
+            stats(s.landingLatency.firstEntryToMergeMinutes),
+          ],
+          [
+            'Merged PRs: with re-entry / not queued at merge / no merge event',
+            `${s.landingLatency.multipleEntries} / ${s.landingLatency.notQueuedAtMerge} / ${s.landingLatency.missingMergeEvent}`,
+          ],
+        ]
+      : []),
   ];
-  return `${s.repo}: ${s.since} .. ${s.until}\n${s.incomplete ? `INCOMPLETE: ${s.reasons.join('; ')}` : 'Complete REST collection'}; listing cap hits: ${s.listingCapHits}\n\n| Measure | Value |\n| --- | --- |\n${rows.map(([label, value]) => `| ${label} | ${String(value).replaceAll('|', '\\|')} |`).join('\n')}`;
+  const table = (header, body) =>
+    `| ${header.join(' | ')} |\n| ${header.map(() => '---').join(' | ')} |\n${body.map((cells) => `| ${cells.map((v) => String(v).replaceAll('|', '\\|')).join(' | ')} |`).join('\n')}`;
+  const laneTable = s.lanes
+    ? `\n\nRunner-minutes by lane (top ${s.lanes.rows.length}${s.lanes.other ? ` of ${s.lanes.rows.length + s.lanes.other.lanes}` : ''})\n\n${table(
+        [
+          'Workflow',
+          'Job',
+          'Event',
+          'Jobs',
+          'Runner-min',
+          'Share',
+          'Job min median / p90',
+          'Wait min median / p90',
+          'Failures',
+          'Cancelled-run min',
+        ],
+        [
+          ...s.lanes.rows.map((r) => [
+            r.workflow,
+            r.job,
+            r.event,
+            r.executed,
+            number(r.runnerMinutes),
+            percent(r.share),
+            `${number(r.jobMinutes.median)} / ${number(r.jobMinutes.p90)}`,
+            `${number(r.waitMinutes.median)} / ${number(r.waitMinutes.p90)}`,
+            r.failures,
+            `${number(r.cancelledRunMinutes)}${r.incomplete ? ' (incomplete)' : ''}`,
+          ]),
+          ...(s.lanes.other
+            ? [
+                [
+                  `other (${s.lanes.other.lanes} lanes)`,
+                  '',
+                  '',
+                  s.lanes.other.executed,
+                  number(s.lanes.other.runnerMinutes),
+                  percent(s.lanes.other.share),
+                  '',
+                  '',
+                  s.lanes.other.failures,
+                  `${number(s.lanes.other.cancelledRunMinutes)}${s.lanes.other.incomplete ? ' (incomplete)' : ''}`,
+                ],
+              ]
+            : []),
+        ],
+      )}`
+    : '';
+  const catchTable = s.uniqueCatch
+    ? `\n\nPR-level unique catch against ${s.uniqueCatch.reference} (${s.uniqueCatch.referencePassedShas}/${s.uniqueCatch.referenceShas} head SHAs passed). ${s.uniqueCatch.note}${s.uniqueCatch.omittedLanes ? ` ${s.uniqueCatch.omittedLanes} lanes omitted.` : ''}\n\n${table(
+        [
+          'Workflow',
+          'Job',
+          'Head SHAs',
+          'Failed SHAs',
+          'Failed while CI passed',
+        ],
+        s.uniqueCatch.rows.map((r) => [
+          r.workflow,
+          r.job,
+          r.shas,
+          r.failedShas,
+          r.failedWhileCiPassed,
+        ]),
+      )}`
+    : '';
+  return `${s.repo}: ${s.since} .. ${s.until}\n${s.incomplete ? `INCOMPLETE: ${s.reasons.join('; ')}` : 'Complete REST collection'}; listing cap hits: ${s.listingCapHits}\n\n${table(['Measure', 'Value'], rows)}${laneTable}${catchTable}`;
 }
+/** GitHub refuses issue comment bodies longer than this many characters. */
+export const COMMENT_LIMIT = 65_536;
 export function snapshotComment(snapshot) {
-  return `CI health ${snapshot.since} .. ${snapshot.until}: ${snapshot.mergeQueue.groupsFailed}/${snapshot.mergeQueue.groupsBuilt} groups failed (${percent(snapshot.mergeQueue.failureRate)}); incomplete=${snapshot.incomplete}.\n\n\`\`\`json\n${JSON.stringify(snapshot, null, 2)}\n\`\`\``;
+  const body = (json) =>
+    `CI health ${snapshot.since} .. ${snapshot.until}: ${snapshot.mergeQueue.groupsFailed}/${snapshot.mergeQueue.groupsBuilt} groups failed (${percent(snapshot.mergeQueue.failureRate)}); incomplete=${snapshot.incomplete}.\n\n\`\`\`json\n${json}\n\`\`\``;
+  // Lane rows are capped; unindented JSON is the fallback for an unusually
+  // long window so recording keeps working. History parses either form.
+  const pretty = body(JSON.stringify(snapshot, null, 2));
+  if (pretty.length <= COMMENT_LIMIT) return pretty;
+  const compact = body(JSON.stringify(snapshot));
+  if (compact.length <= COMMENT_LIMIT) return compact;
+  throw new Error(
+    `CI health comment is ${compact.length} characters; GitHub accepts ${COMMENT_LIMIT}`,
+  );
 }
 export function readHistory(comments) {
   return comments
@@ -1006,7 +1514,9 @@ export function readHistory(comments) {
     .sort((a, b) => time(a.until) - time(b.until));
 }
 export function renderHistory(snapshots) {
-  return `| Window end | Hours | Failed groups | >=18 hosted running | Wait >5 min | Wait >20 min | New commits / unchanged | Incomplete |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n${snapshots.map((s) => `| ${s.until} | ${number((time(s.until) - time(s.since)) / (60 * minute))} | ${percent(s.mergeQueue.failureRate)} | ${s.capacity.hostedConcurrency ? percent(s.capacity.hostedConcurrency.shareAtLeast18) : 'unavailable (legacy snapshot)'} | ${percent(s.capacity.waitOver5Share)} | ${percent(s.capacity.waitOver20Share)} | ${s.mergeQueue.reentries.neededNewCommits} / ${s.mergeQueue.reentries.passedUnchanged} | ${s.incomplete} |`).join('\n')}`;
+  // Snapshots recorded before the lane ledger lack these fields.
+  const legacy = 'n/a (legacy snapshot)';
+  return `| Window end | Hours | Failed groups | >=18 hosted running | Wait >5 min | Wait >20 min | New commits / unchanged | Runner-h per landing | Last entry to merge min median / p90 | Cancelled-run share | Incomplete |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${snapshots.map((s) => `| ${s.until} | ${number((time(s.until) - time(s.since)) / (60 * minute))} | ${percent(s.mergeQueue.failureRate)} | ${s.capacity.hostedConcurrency ? percent(s.capacity.hostedConcurrency.shareAtLeast18) : 'unavailable (legacy snapshot)'} | ${percent(s.capacity.waitOver5Share)} | ${percent(s.capacity.waitOver20Share)} | ${s.mergeQueue.reentries.neededNewCommits} / ${s.mergeQueue.reentries.passedUnchanged} | ${s.costPerLanding ? number(s.costPerLanding.runnerHoursPerLanding) : legacy} | ${s.landingLatency ? `${number(s.landingLatency.lastEntryToMergeMinutes.median)} / ${number(s.landingLatency.lastEntryToMergeMinutes.p90)}` : legacy} | ${s.lanes ? percent(s.lanes.cancelledRunShare) : legacy} | ${s.incomplete} |`).join('\n')}`;
 }
 async function main() {
   const options = parseOptions(process.argv.slice(2));
@@ -1037,18 +1547,46 @@ async function main() {
     }
     return;
   }
-  const snapshot = buildSnapshot(await collectHealth(options), options);
+  process.exitCode = await reportSnapshot(options);
+}
+/**
+ * Collect, print, then record. The snapshot is printed before recording so a
+ * refused or failed comment still leaves the measurement in the output the
+ * workflow retains; either failure exits nonzero.
+ * @param {any} options
+ * @param {{
+ *   collect?: (options: any) => Promise<any>,
+ *   post?: (body: string) => Promise<unknown>,
+ *   print?: (text: string) => void,
+ *   warn?: (text: string) => void,
+ * }} [deps]
+ */
+export async function reportSnapshot(
+  options,
+  {
+    collect = (o) => collectHealth(o),
+    post = (body) =>
+      api(`repos/${options.repo}/issues/${options.issue}/comments`, [
+        '--method',
+        'POST',
+        '-f',
+        `body=${body}`,
+      ]),
+    print = console.log,
+    warn = console.error,
+  } = {},
+) {
+  const snapshot = buildSnapshot(await collect(options), options);
+  print(options.json ? JSON.stringify(snapshot) : renderSnapshot(snapshot));
+  let failed = snapshot.incomplete;
   if (options.record)
-    await api(`repos/${options.repo}/issues/${options.issue}/comments`, [
-      '--method',
-      'POST',
-      '-f',
-      `body=${snapshotComment(snapshot)}`,
-    ]);
-  console.log(
-    options.json ? JSON.stringify(snapshot) : renderSnapshot(snapshot),
-  );
-  if (snapshot.incomplete) process.exitCode = 1;
+    try {
+      await post(snapshotComment(snapshot));
+    } catch (error) {
+      warn(`Recording failed: ${error.message}`);
+      failed = true;
+    }
+  return failed ? 1 : 0;
 }
 if (invokedDirectly(import.meta.url))
   main().catch((error) => {
