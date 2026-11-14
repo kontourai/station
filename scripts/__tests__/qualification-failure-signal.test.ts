@@ -704,7 +704,8 @@ describe('review round: hooks, duplicates, steps, bounds', () => {
     );
     expect(reasons(JOBS(exclusive), { a: padded })[0]).toMatch(/exceeds/);
     const many = Array.from(
-      { length: MANIFEST_BOUNDS.failedTestsPerGroup + 1 },
+      // A literal, not the constant: raising the bound must fail this.
+      { length: 501 },
       (_, index) => ({
         file: 'many.test.ts',
         titlePath: [`t${index}`],
@@ -714,7 +715,7 @@ describe('review round: hooks, duplicates, steps, bounds', () => {
       reasons(JOBS(exclusive), {
         a: { ...big, phases: [{ ...big.phases[0], groups: [group(many)] }] },
       })[0],
-    ).toMatch(/at most 500/);
+    ).toMatch(/holds 501 entries; at most 500$/);
     const directory = makeTempDir('station-many-manifests-');
     for (let index = 0; index < 70; index++) {
       mkdirSync(join(directory, `m${index}`));
