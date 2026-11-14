@@ -16,8 +16,12 @@
 // minutes of capture).
 //
 // `compare` judges the base's targeted capture of exactly those screens and
-// prints `verdict=main` only when every composed failure (screen plus finding
-// identity) also fails on the base; anything else is `verdict=pr`.
+// prints `verdict=main` only when every composed failure also fails on the
+// base the same way; anything else is `verdict=pr`. "The same way" is the
+// screen plus the finding identity, and for a screen that did not render or
+// whose audit threw (identities `capture-failed`, `audit-error`,
+// `audit-missing`, which are constants) also its normalised error text; see
+// normaliseFailureDetail for exactly what is treated as volatile.
 //
 // Both judge with the copy of scripts/gallery-ui-findings.mjs that sits next
 // to this file. The workflow runs this file from a worktree of the base
@@ -79,7 +83,72 @@ function readCapture(dir) {
   return capture;
 }
 
-const key = ({ screen, identity }) => `${screen}\u0000${identity}`;
+/** The judge's constant identities for a screen it could not judge. */
+const UNUSABLE_IDENTITIES = new Set([
+  'capture-failed',
+  'audit-error',
+  'audit-missing',
+]);
+
+/**
+ * The comparable part of an unusable screen's error. Removed or masked, as
+ * volatile between two builds of the same failure: ANSI colour codes; the
+ * `Browser errors: [...]` line the capture appends (console output carries
+ * bundle hashes and stack positions that differ between any two builds, and
+ * console errors never fail a screen on their own); a Playwright `Call log:`
+ * and everything after it (retry attempts, timings, element snapshots);
+ * loopback URLs' ports; absolute filesystem paths under runner, temp and
+ * home roots; and the numbers on `Received...:` lines (a measurement).
+ * Everything else is compared verbatim, including the assertion message,
+ * matcher, `Expected` bound, locator and timeout bound, so a different
+ * assertion, a timeout versus an assertion, or a different bound is a
+ * different failure. When in doubt, two errors are not the same.
+ */
+export function normaliseFailureDetail(detail) {
+  let text = String(detail ?? '').replace(
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escapes are the input.
+    /\u001b\[[0-9;?]*[ -/]*[@-~]/g,
+    '',
+  );
+  const callLog = text.search(/^\s*Call log:/m);
+  if (callLog >= 0) text = text.slice(0, callLog);
+  return text
+    .split('\n')
+    .filter((line) => !line.startsWith('Browser errors: '))
+    .map((line) =>
+      line
+        .replace(
+          /\b(https?|wss?):\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):\d+/g,
+          '$1://$2:<port>',
+        )
+        .replace(
+          /(?:[A-Za-z]:)?\/(?:__w|home|Users|tmp|private|var|opt|root|runner|github|ms-playwright)\/[^\s'"`(),[\]]*/g,
+          '<path>',
+        ),
+    )
+    .map((line) =>
+      /^\s*Received(?: [a-z]+)?:/.test(line)
+        ? line.replace(/-?\d+(?:\.\d+)?/g, '<n>')
+        : line,
+    )
+    .map((line) => line.trimEnd())
+    .join('\n')
+    .trim();
+}
+
+/** A judge failure reduced to what compare matches on. */
+export function failureKey({ screen, identity, detail }) {
+  return {
+    screen,
+    identity,
+    signature: UNUSABLE_IDENTITIES.has(identity)
+      ? normaliseFailureDetail(detail)
+      : '',
+  };
+}
+
+const key = ({ screen, identity, signature }) =>
+  `${screen}\u0000${identity}\u0000${signature ?? ''}`;
 
 /**
  * What to capture again on the base, from the composed capture's verdict.
@@ -105,7 +174,7 @@ export function planAttribution(failures, baseScreens, max) {
 
 /**
  * `main` only when every composed failure also fails, with the same finding
- * identity, on the base's capture of the same screens.
+ * identity and normalised error, on the base's capture of the same screens.
  */
 export function compareAttribution(failures, baseFailures) {
   const onBase = new Set(baseFailures.map(key));
@@ -119,17 +188,17 @@ export function compareAttribution(failures, baseFailures) {
 }
 
 const listFailures = (failures) =>
-  failures.map(({ screen, identity }) => `${screen}: ${identity}`);
+  failures.map(
+    ({ screen, identity, signature }) =>
+      `${screen}: ${identity}${signature ? ` (${signature.split('\n')[0]})` : ''}`,
+  );
 
 function runPlan(options) {
   const verdict = judge(
     readCapture(options.gallery),
     readAllowlist(options.allowlist),
   );
-  const failures = verdict.failures.map(({ screen, identity }) => ({
-    screen,
-    identity,
-  }));
+  const failures = verdict.failures.map(failureKey);
   const map = JSON.parse(
     readFileSync(join(options['base-root'], SCREEN_MAP), 'utf8'),
   );
@@ -169,7 +238,10 @@ function runCompare(options) {
     readAllowlist(join(options['base-root'], ALLOWLIST)),
     plan.screens,
   );
-  const result = compareAttribution(plan.failures, baseVerdict.failures);
+  const result = compareAttribution(
+    plan.failures,
+    baseVerdict.failures.map(failureKey),
+  );
   const sha = options['base-sha'];
   const lines =
     result.verdict === 'main'

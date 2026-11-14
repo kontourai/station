@@ -14,6 +14,7 @@ import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   compareAttribution,
   DEFAULT_MAX_SCREENS,
+  normaliseFailureDetail,
   planAttribution,
 } from '../gallery-main-attribution.mjs';
 
@@ -621,6 +622,121 @@ describe('PR Gallery attributes a failure main already has', () => {
     const result = run();
     expect(result.output).toBe('verdict=pr\n');
     expect(result.summary).toContain('INTRODUCED home: overflow:document');
+  });
+});
+
+// Playwright's message shape for the #4931 breadcrumb assertion.
+const breadcrumb = (received: string, expected = '306') =>
+  [
+    'breadcrumb stays before actions',
+    '',
+    '\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m',
+    '',
+    `Expected: <= \u001b[32m${expected}\u001b[39m`,
+    `Received:    \u001b[31m${received}\u001b[39m`,
+  ].join('\n');
+const timeout = [
+  'locator.click: Timeout 15000ms exceeded.',
+  'Call log:',
+  "  - waiting for getByRole('button', { name: 'Chat actions', exact: true })",
+].join('\n');
+const browserErrors = (port: number) =>
+  `Browser errors: ${JSON.stringify([`TypeError: x at http://localhost:${port}/assets/index-abc.js:1:2`])}`;
+
+describe('a render failure is excused only by the same error on main', () => {
+  const failingOnBoth = (composedError: string, baseError: string) =>
+    attributionFixture({
+      composed: [failedCapture('child-chat-dark-390', composedError)],
+      baseCapture: manifest(
+        [failedCapture('child-chat-dark-390', baseError)],
+        ['child-chat-dark-390'],
+      ),
+    }).run();
+
+  it('excuses the same assertion with a different measurement', () => {
+    const result = failingOnBoth(breadcrumb('320.5'), breadcrumb('284'));
+    expect(result.output, result.out).toBe('verdict=main\n');
+  });
+
+  it('keeps a different assertion on the same screen red', () => {
+    const other = breadcrumb('320.5').replace(
+      'breadcrumb stays before actions',
+      'dock does not overflow',
+    );
+    const result = failingOnBoth(other, breadcrumb('284'));
+    expect(result.output, result.out).toBe('verdict=pr\n');
+    expect(result.summary).toContain(
+      'INTRODUCED child-chat-dark-390: capture-failed (dock does not overflow)',
+    );
+  });
+
+  it('keeps a different expected bound red', () => {
+    const result = failingOnBoth(breadcrumb('320', '300'), breadcrumb('320'));
+    expect(result.output, result.out).toBe('verdict=pr\n');
+  });
+
+  it('keeps a timeout on the pull request red when main fails an assertion', () => {
+    const result = failingOnBoth(timeout, breadcrumb('284'));
+    expect(result.output, result.out).toBe('verdict=pr\n');
+  });
+
+  it('excuses the same error when only the console lines differ', () => {
+    // Decision: console output is not compared. It never fails a screen on
+    // its own, and it carries bundle hashes and ports that differ between
+    // any two builds, so comparing it would never excuse anything.
+    const result = failingOnBoth(
+      `${breadcrumb('320.5')}\n${browserErrors(5314)}`,
+      breadcrumb('320.5'),
+    );
+    expect(result.output, result.out).toBe('verdict=main\n');
+  });
+
+  it('compares an audit error by its message too', () => {
+    const auditError = (error: string) =>
+      screen('home', { uiAudit: { error } });
+    const run = (composed: string, base: string) =>
+      attributionFixture({
+        composed: [auditError(composed)],
+        baseCapture: manifest([auditError(base)], ['home']),
+      }).run().output;
+    expect(
+      run('axe failed: frame detached', 'axe failed: frame detached'),
+    ).toBe('verdict=main\n');
+    expect(run('axe failed: frame detached', 'audit timed out')).toBe(
+      'verdict=pr\n',
+    );
+  });
+});
+
+describe('normaliseFailureDetail', () => {
+  it('masks only the volatile parts', () => {
+    expect(normaliseFailureDetail(breadcrumb('320.5'))).toBe(
+      [
+        'breadcrumb stays before actions',
+        '',
+        'expect(received).toBeLessThanOrEqual(expected)',
+        '',
+        'Expected: <= 306',
+        'Received:    <n>',
+      ].join('\n'),
+    );
+    expect(normaliseFailureDetail(timeout)).toBe(
+      'locator.click: Timeout 15000ms exceeded.',
+    );
+    expect(
+      normaliseFailureDetail(
+        'page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3282/agents',
+      ),
+    ).toBe(
+      'page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:<port>/agents',
+    );
+    expect(
+      normaliseFailureDetail('ENOENT: /__w/station/station/gallery/home.png'),
+    ).toBe('ENOENT: <path>');
+    // A route path is not a filesystem path, and Expected keeps its numbers.
+    expect(normaliseFailureDetail('GET /api/agents failed; Expected: 3')).toBe(
+      'GET /api/agents failed; Expected: 3',
+    );
   });
 });
 
