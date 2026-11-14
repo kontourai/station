@@ -59,6 +59,7 @@ describe('OpenCode serve captures', () => {
         'mode-switch',
         'move',
         'move-denied',
+        'move-gap',
         'permission-allow',
         'permission-reject',
         'permission-saved',

@@ -44,7 +44,7 @@ const CODE_DIR_NAMES = ['plugin', 'plugins', 'tool', 'tools'] as const;
 export const OPENCODE_CONFIG_SCAN_MAX_BYTES = 1024 * 1024;
 
 /** The real path of `path`, or of its deepest existing ancestor joined back. */
-function realish(path: string): string {
+export function realish(path: string): string {
   let existing = path;
   const rest: string[] = [];
   while (!existsSync(existing)) {

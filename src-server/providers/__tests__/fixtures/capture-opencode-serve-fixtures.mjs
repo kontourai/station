@@ -1749,6 +1749,8 @@ S['subagent-gap'] = async (rec) => {
   const grandchildren = await rec.api('GET', `/api/session?parentID=${child}`);
   const grandchild = grandchildren.json?.data?.[0]?.id;
   await rec.api('GET', `/api/session?parentID=${grandchild}`);
+  await rec.api('GET', `/api/session/${s}/permission`);
+  await rec.api('GET', `/api/session/${s}/form`);
   await rec.api('GET', '/api/permission/request');
   await rec.api('GET', '/api/form');
   await rec.api('GET', `/api/session/${s}/inbox`);
@@ -1763,6 +1765,62 @@ S['subagent-gap'] = async (rec) => {
   await B.waitFor(is('session.execution.succeeded', s), 60_000);
   await sleep(1500);
   await rec.api('GET', `/api/session?parentID=${s}`);
+};
+
+/**
+ * A session moved (Code Mode's `opencode.session_move`, inside the
+ * project) and then, while the feed was down, asking for a shell command:
+ * what a client reads on reconnect. The session's own lists
+ * (`GET /api/session/{id}/permission`, `/form`) follow it to its new
+ * directory; the server-wide lists (`/api/permission/request`, `/api/form`)
+ * are the server's launch directory's, which no longer holds it.
+ */
+S['move-gap'] = async (rec) => {
+  const sub = path.join(PROJ, 'sub-gap');
+  mkdirSync(sub, { recursive: true });
+  try {
+    const A = await rec.tap('A');
+    const s = await createSession(rec, 'move-gap', {
+      agent: 'build',
+      permissions: CONFINED_RULES,
+    });
+    await rec.api('POST', `/api/session/${s}/prompt`, {
+      text: 'DO_MOVE sub-gap',
+    });
+    await A.waitFor(is('session.moved', s));
+    await settled(A, s);
+    A.close();
+    await rec.api('POST', `/api/session/${s}/prompt`, {
+      text: 'DO_BASH moved',
+    });
+    const deadline = Date.now() + 30_000;
+    let ask;
+    while (!ask) {
+      if (Date.now() > deadline)
+        throw new Error('no ask from the moved session');
+      await sleep(200);
+      ask = (await unrecorded(rec, `/api/session/${s}/permission`))?.data?.[0];
+    }
+    const B = await rec.tap('B');
+    await rec.api('GET', '/api/session/active');
+    await rec.api('GET', `/api/session/${s}/message?order=desc&limit=50`);
+    await rec.api('GET', `/api/session/${s}/permission`);
+    await rec.api('GET', `/api/session/${s}/form`);
+    const global = await rec.api('GET', '/api/permission/request');
+    await rec.api('GET', '/api/form');
+    await rec.api('GET', `/api/session?parentID=${s}`);
+    await rec.api('GET', `/api/session/${s}/inbox`);
+    rec.finding(
+      `after the move, the session's own list holds its ask; the server-wide list ${(global.json?.data ?? []).some((item) => item.id === ask.id) ? 'holds it too' : 'does not'}`,
+    );
+    await rec.api('POST', `/api/session/${s}/permission/${ask.id}/reply`, {
+      decision: 'once',
+    });
+    await B.waitFor(is('session.execution.succeeded', s), 60_000);
+    await sleep(1500);
+  } finally {
+    rmSync(sub, { recursive: true, force: true });
+  }
 };
 
 const ORDER = [
@@ -1793,6 +1851,7 @@ const ORDER = [
   'move',
   'move-denied',
   'subagent-gap',
+  'move-gap',
 ];
 // Captured separately, with `--config plain --only plan-deny`.
 const PLAIN_ONLY = new Set(['plan-deny']);

@@ -43,7 +43,7 @@ export const OPENCODE_SERVE_VERIFIED_FINGERPRINTS: Readonly<
   Record<string, string>
 > = {
   '2.3.0':
-    'sha256:b3c872e9441fc1201634513754efef914f6251c024a280187b2e3cfc8067433e',
+    'sha256:8c3af8896582344955576aab199b9d9dcd5921d0cb3f17d081c003cf488cdfd7',
 };
 
 const HTTP_METHODS = [

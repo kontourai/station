@@ -1093,6 +1093,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       ...(mode ? { approvalMode: mode } : {}),
       ...(agentRules ? { agentRules } : {}),
       cwd,
+      serverDirectory: lease.cwd,
       configEnv: plan.env,
       agentRulesFor: (name) => this.agentRules(lease.client, name),
       // #4828: the ledger and ancestry the ACP path asks (acp-adapter.ts).

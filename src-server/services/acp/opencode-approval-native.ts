@@ -18,6 +18,7 @@
  * ({@link openCodeSavedApprovalOverrides}), and never saves one itself:
  * a session grant stays in the adapter and is answered `once` (ruling R4).
  */
+import { isAbsolute, resolve } from 'node:path';
 import type { AcpAppliedApprovalMode } from '../../providers/adapters/acp-approval-mode.js';
 import { untrustedPersistenceTarget } from '../plugins/untrusted-persistence-protection.js';
 
@@ -175,18 +176,30 @@ export const OPENCODE_SESSION_MOVE_ACTION = 'opencode_session_move';
  * `metadata.files[].file`; they are classified as the ACP path classifies a
  * write's locations (`acpPersistenceTarget`). A shell command's ask is not:
  * ACP declines only file changes, and leaves a command to the staged
- * evaluator, which the native transport does not run (an Agent's session
- * runs over ACP).
+ * evaluator, which the native transport runs for a session started as an
+ * Agent as ACP does (`OpenCodeNativeSession` `decideAsk`).
  */
-export function openCodeNativePersistenceTarget(ask: {
-  readonly action: string;
-  readonly resources: readonly string[];
-  readonly files?: readonly string[];
-}): string | undefined {
+export function openCodeNativePersistenceTarget(
+  ask: {
+    readonly action: string;
+    readonly resources: readonly string[];
+    readonly files?: readonly string[];
+  },
+  /**
+   * The asking session's directory, which OpenCode names a file relative
+   * to: a relative file is also classified at its absolute path there, so a
+   * custom `core.hooksPath` (read for an absolute path only) is found.
+   */
+  cwd?: string,
+): string | undefined {
   if (ask.action !== 'edit') return undefined;
   for (const file of [...ask.resources, ...(ask.files ?? [])]) {
-    const verdict = untrustedPersistenceTarget('edit', { path: file });
-    if (verdict) return verdict.target;
+    const paths =
+      cwd && !isAbsolute(file) ? [file, resolve(cwd, file)] : [file];
+    for (const candidate of paths) {
+      const verdict = untrustedPersistenceTarget('edit', { path: candidate });
+      if (verdict) return verdict.target;
+    }
   }
   return undefined;
 }

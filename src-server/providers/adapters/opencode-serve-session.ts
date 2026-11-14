@@ -30,6 +30,7 @@
  * they close then, and a late answer is refused without reaching OpenCode.
  */
 import crypto from 'node:crypto';
+import { isAbsolute } from 'node:path';
 import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
 import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
 import type {
@@ -63,7 +64,10 @@ import {
   openCodeNativePersistenceTarget,
   openCodeNativeStationRejects,
 } from '../../services/acp/opencode-approval-native.js';
-import { openCodeNativeAskNeedsPerson } from '../../services/acp/opencode-project-config.js';
+import {
+  openCodeNativeAskNeedsPerson,
+  realish,
+} from '../../services/acp/opencode-project-config.js';
 import { errorMessage } from '../../utils/error-message.js';
 import {
   type ProviderInterruptTurnResult,
@@ -192,6 +196,12 @@ export interface OpenCodeNativeSessionDeps {
    * where it was created, then wherever `session.moved` says it went.
    */
   cwd: string;
+  /**
+   * The directory the server was launched in: the location its server-wide
+   * lists of pending asks and forms (`/api/permission/request`,
+   * `/api/form`) are read from. Defaults to {@link cwd} at start.
+   */
+  readonly serverDirectory?: string;
   /** The environment the server was launched with: where its global configuration lives. */
   readonly configEnv?: NodeJS.ProcessEnv;
   /**
@@ -417,9 +427,13 @@ export class OpenCodeNativeSession {
   /** Events of types this build does not map, by type. Never fatal. */
   readonly unknownEvents = new Map<string, number>();
 
+  /** Where the session was when it started here (before any move). */
+  private readonly startDirectory: string;
+
   constructor(deps: OpenCodeNativeSessionDeps) {
     this.deps = deps;
     this.sessionId = deps.sessionId;
+    this.startDirectory = deps.cwd;
     this.ready = new Promise((resolve) => {
       this.feedReady = resolve;
     });
@@ -1029,60 +1043,105 @@ export class OpenCodeNativeSession {
   }
 
   /**
-   * Descendants, then the pending asks and forms of this session and every
-   * descendant: a child's ask raised during the gap is listed here only
-   * (`GET /session/{id}/permission` lists one session's). They are the
-   * server's own location's (its launch directory): the asks of a session
-   * that moved elsewhere are listed there, which this does not read (the
-   * client sends no location query, as it sends no `%` in a query).
+   * The pending asks and forms of this session and every descendant, and
+   * the descendants themselves. This session's are read from its own lists
+   * (`GET /api/session/{id}/permission`, `/form`), which follow it wherever
+   * it moved, before and whatever the descendant lookup does: a failed
+   * lookup is reported, and this session's asks are still reopened. A
+   * descendant's are read from the server-wide lists, which hold only the
+   * server's launch directory's (`move-gap` capture), each kept only when
+   * it is from this tree (a server may run other sessions); a descendant
+   * in another directory is read from its own lists.
    */
   private async reconcileTree(
     activeSessions: Record<string, unknown>,
   ): Promise<void> {
-    const client = this.deps.client;
+    await this.relistOwn(this.sessionId);
     await this.reconcileDescendants(activeSessions);
-    const tree = (sessionId: unknown) =>
-      sessionId === this.sessionId ||
-      (typeof sessionId === 'string' && this.children.has(sessionId));
+    if (this.children.size === 0) return;
+    const client = this.deps.client;
+    const descendant = (sessionId: unknown) =>
+      typeof sessionId === 'string' && this.children.has(sessionId);
     const permissions = await client.request<{ data?: unknown }>(
       'GET',
       '/api/permission/request',
     );
     for (const item of ownArray(permissions?.data) ?? []) {
       const ask = ownRecord(item);
-      if (ask && tree(ask.sessionID)) this.onPermissionAsked(ask);
+      if (ask && descendant(ask.sessionID)) this.onPermissionAsked(ask);
     }
     const forms = await client.request<{ data?: unknown }>('GET', '/api/form');
     for (const item of ownArray(forms?.data) ?? []) {
-      if (tree(ownRecord(item)?.sessionID)) this.onFormCreated(item);
+      if (descendant(ownRecord(item)?.sessionID)) this.onFormCreated(item);
+    }
+    const real = (directory: string) =>
+      isAbsolute(directory) ? realish(directory) : directory;
+    const server = real(this.deps.serverDirectory ?? this.startDirectory);
+    for (const child of [...this.children.values()]) {
+      if (child.directory && real(child.directory) !== server)
+        await this.relistOwn(child.childId);
+    }
+  }
+
+  /** One session's pending asks and forms, from its own lists. */
+  private async relistOwn(sessionId: string): Promise<void> {
+    const client = this.deps.client;
+    const base = `/api/session/${sessionId}`;
+    const permissions = await client.request<{ data?: unknown }>(
+      'GET',
+      `${base}/permission`,
+    );
+    for (const item of ownArray(permissions?.data) ?? []) {
+      const ask = ownRecord(item);
+      if (ask && ask.sessionID === sessionId) this.onPermissionAsked(ask);
+    }
+    const forms = await client.request<{ data?: unknown }>(
+      'GET',
+      `${base}/form`,
+    );
+    for (const item of ownArray(forms?.data) ?? []) {
+      if (ownRecord(item)?.sessionID === sessionId) this.onFormCreated(item);
     }
   }
 
   /**
    * Descendants a feed gap hid (PLAN A.4): children, and their children,
-   * that started during it, each looked up by `parentID` from this session
-   * down (at most {@link DESCENDANTS_MAX}). Each one's agent and directory
-   * are refreshed; one running now is reported running, and one reported
-   * running that has since ended is settled with the outcome OpenCode
-   * kept for it.
+   * looked up by `parentID` from this session down, at most
+   * {@link DESCENDANTS_MAX} in all (a warning says when more were left
+   * out). A descendant known before the gap that ran neither then nor now
+   * started nothing during it, so its own children are not looked up.
+   * Each one's agent and directory are refreshed; one running now is
+   * reported running, and one reported running that has since ended is
+   * settled with the outcome OpenCode kept for it.
    */
   private async reconcileDescendants(
     activeSessions: Record<string, unknown>,
   ): Promise<void> {
     const queue = [this.sessionId];
     const seen = new Set(queue);
+    const knownBefore = new Set(this.children.keys());
     const listed: Array<{ child: ChildSession; outcome?: string }> = [];
-    while (queue.length > 0 && seen.size <= DESCENDANTS_MAX) {
+    let truncated = false;
+    while (queue.length > 0 && !truncated) {
       const parentId = queue.shift() as string;
+      const known = knownBefore.has(parentId)
+        ? this.children.get(parentId)
+        : undefined;
+      if (known && !known.running && !Object.hasOwn(activeSessions, parentId))
+        continue;
       const answer = await this.deps.client.request<{ data?: unknown }>(
         'GET',
-        `/api/session?parentID=${encodeURIComponent(parentId)}&limit=${DESCENDANTS_MAX}`,
+        `/api/session?parentID=${encodeURIComponent(parentId)}&limit=${DESCENDANTS_MAX + 1}`,
       );
       for (const item of ownArray(answer?.data) ?? []) {
         const info = ownRecord(item);
         const childId = readString(info?.id);
         if (!info || !childId || seen.has(childId)) continue;
         if (readString(info.parentID) !== parentId) continue;
+        if (seen.size > DESCENDANTS_MAX) {
+          truncated = true;
+          break;
+        }
         seen.add(childId);
         queue.push(childId);
         const child = this.trackChild(childId, parentId, info);
@@ -1090,6 +1149,12 @@ export class OpenCodeNativeSession {
         listed.push({ child, ...(outcome ? { outcome } : {}) });
       }
     }
+    if (truncated)
+      this.emit({
+        method: 'runtime.warning',
+        severity: 'warning',
+        message: `Station re-read the first ${DESCENDANTS_MAX} subagent sessions of this ${this.deps.engineName} chat after reconnecting; the others are not reported and their pending requests are not shown.`,
+      });
     for (const { child, outcome } of listed) {
       const runningNow = Object.hasOwn(activeSessions, child.childId);
       if (runningNow && !child.running) this.markChildRunning(child);
@@ -1545,8 +1610,11 @@ export class OpenCodeNativeSession {
    * already loaded the destination's own configuration.
    */
   private onMoved(sessionId: string, data: Record<string, unknown>): void {
-    const directory = readString(ownRecord(data.location)?.directory);
-    if (!directory) return;
+    const named = readString(ownRecord(data.location)?.directory);
+    if (!named) return;
+    // OpenCode names the directory as the move was asked, not resolved
+    // (`/tmp` for `/private/tmp`): compared and checked as its real path.
+    const directory = isAbsolute(named) ? realish(named) : named;
     if (sessionId === this.sessionId) this.deps.cwd = directory;
     else {
       const child = this.children.get(sessionId);
@@ -1913,7 +1981,10 @@ export class OpenCodeNativeSession {
     // #4828, first: after an untrusted read, a change to a known
     // agent-instruction or git-hook file is rejected, whatever a grant, the
     // mode or the agent would say (as on ACP, before its staged policy).
-    if (openCodeNativePersistenceTarget(ask) && this.deps.untrustedRead) {
+    if (
+      openCodeNativePersistenceTarget(ask, this.askDirectory(sessionId)) &&
+      this.deps.untrustedRead
+    ) {
       const untrustedRead = this.deps.untrustedRead;
       this.autoAnswering.add(nativeId);
       void untrustedRead()
@@ -1927,6 +1998,17 @@ export class OpenCodeNativeSession {
       return;
     }
     this.routeAsk(ask);
+  }
+
+  /**
+   * The directory a session of this tree asks from, which its relative
+   * resources are named against: this session's (followed through moves),
+   * or a descendant's own, else this session's.
+   */
+  private askDirectory(sessionId: string): string {
+    return sessionId === this.sessionId
+      ? this.deps.cwd
+      : (this.children.get(sessionId)?.directory ?? this.deps.cwd);
   }
 
   /** Decide an ask on the rules of the agent that asked. */
@@ -2004,10 +2086,7 @@ export class OpenCodeNativeSession {
       return;
     }
     // OpenCode names a write relative to the asking session's directory.
-    const cwd =
-      ask.sessionId === this.sessionId
-        ? this.deps.cwd
-        : (this.children.get(ask.sessionId)?.directory ?? this.deps.cwd);
+    const cwd = this.askDirectory(ask.sessionId);
     const configNeedsPerson = () =>
       openCodeNativeAskNeedsPerson(request, cwd, this.deps.configEnv);
     const answer = (personOnly: boolean) => {

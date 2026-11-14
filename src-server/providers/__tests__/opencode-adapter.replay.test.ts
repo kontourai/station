@@ -3,6 +3,10 @@
  * against the real 2.3.0 wire replayed from the captures
  * (`opencode-serve-replay.ts`).
  */
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { ACP_APPROVAL_TAKEOVER_FAILED_CODE } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -114,9 +118,11 @@ async function setup(
   adapterOptions: Partial<
     ConstructorParameters<typeof OpenCodeAdapter>[0]
   > = {},
+  /** The directory the replayed server runs in (default `/replay/proj`). */
+  leaseCwd?: string,
 ) {
   const replay = await OpenCodeServeReplay.start(replayOptions);
-  const leaser = replayLeaser(replay);
+  const leaser = replayLeaser(replay, leaseCwd);
   // Station names its prompts; the replay's engine knows the recorded names.
   const promptIds = recordedPromptIds(
     replayOptions.scenario,
@@ -1634,6 +1640,21 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
             },
           }
         : record;
+  /** The subagent capture with its child created in `directory`. */
+  const childIn =
+    (directory: string) =>
+    (record: OpenCodeReplayRecord): OpenCodeReplayRecord =>
+      record.kind === 'sse' &&
+      record.event?.type === 'session.created' &&
+      record.event.data?.sessionID === CHILD
+        ? {
+            ...record,
+            event: {
+              ...record.event,
+              data: { ...record.event.data, location: { directory } },
+            },
+          }
+        : record;
   /** Agent rules by name, an empty saved list, and 204 for every reply. */
   const childGovernance =
     (rules: Record<string, OpenCodeNativeRule[] | 'fail'>) =>
@@ -2704,6 +2725,72 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     expect(read.asked).toHaveLength(1);
   });
 
+  /** A git repository whose hooks live in `.hooks-custom` (`core.hooksPath`). */
+  function customHooksRepo(): string {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'oc-hooks-')));
+    open.push({
+      stop: async () => rmSync(dir, { recursive: true, force: true }),
+    });
+    execFileSync('git', ['init', '-q', dir]);
+    execFileSync('git', [
+      '-C',
+      dir,
+      'config',
+      'core.hooksPath',
+      '.hooks-custom',
+    ]);
+    return dir;
+  }
+
+  test('after an untrusted read, an edit of a hook in a custom `core.hooksPath`, named relative to the session, is rejected (#4828)', async () => {
+    const repo = customHooksRepo();
+    const read = ledger(['thread-1']);
+    const h = await setup(
+      { scenario: 'governed', rewrite: editOf('.hooks-custom/pre-commit') },
+      { acp: { untrustedContentLedger: read.ledger } },
+      repo,
+    );
+    await h.start({ approvalMode: 'auto' });
+    const edit = await h.turn('DO_EDIT one');
+    await h.waitFor(completedFor(edit.turnId));
+    expect(replies(h)).toEqual([{ decision: 'reject' }]);
+  });
+
+  test("after an untrusted read, a child's edit of a hook in a custom `core.hooksPath` is named against the child's own directory (#4828)", async () => {
+    const repo = customHooksRepo();
+    const read = ledger(['thread-1']);
+    const ask = childAsk('edit', ['.hooks-custom/pre-commit']);
+    const h = await setup(
+      {
+        scenario: 'subagent',
+        rewrite: (record) => ask(childIn(repo)(record)),
+        respond: childGovernance({ build: [], general: [] }),
+      },
+      { acp: { untrustedContentLedger: read.ledger } },
+    );
+    await h.start({ approvalMode: 'auto' });
+    await h.turn('DO_TASK now');
+    await h.waitFor(() => repliesTo(h, CHILD).length === 1);
+    expect(repliesTo(h, CHILD)).toEqual([{ decision: 'reject' }]);
+  });
+
+  test("the configuration-edit guard reads a child's write against the child's own directory", async () => {
+    const childDir = '/replay/child-dir';
+    const ask = childAsk('edit', [`${childDir}/notes.txt`]);
+    const h = await setup({
+      scenario: 'subagent',
+      rewrite: (record) => ask(childIn(childDir)(record)),
+      respond: childGovernance({ build: [], general: [] }),
+    });
+    await h.start({ approvalMode: 'auto' });
+    await h.turn('DO_TASK now');
+    // Inside the child's directory: Auto answers it. Read against the
+    // parent's (`/replay/proj`) it would be outside, and a person's.
+    await h.waitFor(() => repliesTo(h, CHILD).length === 1);
+    expect(repliesTo(h, CHILD)).toEqual([{ decision: 'once' }]);
+    expect(opened(h.events)).toEqual([]);
+  });
+
   test("after an untrusted read, a child's edit of a git hook is rejected before a session grant or the mode (#4828)", async () => {
     const read = ledger(['thread-1']);
     const h = await setup(
@@ -3004,6 +3091,371 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     );
     expect(policy.calls).toEqual([]);
     expect(replies(h)).toEqual([]);
+  });
+});
+
+describe('OpenCodeAdapter native reconnect re-reads (2.3.0 replay)', () => {
+  const replies = (h: { replay: OpenCodeServeReplay }) =>
+    h.replay
+      .made('POST', '/api/session/:id/permission/:id/reply')
+      .map((reply) => reply.body);
+  const MOVE_GAP_ASK = 'per_1dba838220010FF9zDMVk4Pzat';
+  /** The agent and saved-approval reads a governed start makes. */
+  const governance = (request: { method: string; path: string }) => {
+    if (request.method === 'GET' && request.path === '/api/permission/saved')
+      return { status: 200, body: { data: [] } };
+    const agent = /^\/api\/agent\/([^/]+)$/.exec(request.path)?.[1];
+    if (request.method === 'GET' && agent)
+      return {
+        status: 200,
+        body: { data: { name: agent, permissions: [] } },
+      };
+    return undefined;
+  };
+
+  test('a session that moved has its ask from a feed gap reopened from its own list, which follows it (the server-wide list does not hold it)', async () => {
+    const h = await setup(
+      { scenario: 'move-gap', respond: governance },
+      { findProjectCode: async () => [] },
+    );
+    await h.start({ approvalMode: 'ask' });
+    const moved = await h.turn('DO_MOVE sub-gap');
+    await h.waitFor(completedFor(moved.turnId));
+    await h.turn('DO_BASH moved');
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.opened' && event.requestId === MOVE_GAP_ASK,
+        10_000,
+      ),
+    ).toMatchObject({
+      payload: {
+        rawInput: { action: 'shell', resources: ['echo hello-from-bash'] },
+      },
+    });
+    await h.waitFor(
+      () => h.replay.made('GET', '/api/session/:id/form').length === 1,
+    );
+    expect(h.replay.made('GET', '/api/session/:id/permission')).toHaveLength(1);
+  });
+
+  /** The move-gap capture with the session moved to `directory`. */
+  const movedTo =
+    (directory: string) =>
+    (record: OpenCodeReplayRecord): OpenCodeReplayRecord =>
+      record.kind === 'sse' && record.event?.type === 'session.moved'
+        ? {
+            ...record,
+            event: {
+              ...record.event,
+              data: { ...record.event.data, location: { directory } },
+            },
+          }
+        : record;
+
+  test("the configuration-edit guard follows the session's own move: a write inside its new directory is Auto's to answer", async () => {
+    const moved = '/replay/moved';
+    const h = await setup(
+      {
+        scenario: 'move-gap',
+        respond: governance,
+        // The ask the gap hid, made an edit inside the new directory.
+        rewrite: (record) => {
+          const next = movedTo(moved)(record);
+          if (
+            next.kind !== 'http' ||
+            next.method !== 'GET' ||
+            !/^\/api\/session\/ses_[^/]+\/permission$/.test(next.path ?? '')
+          )
+            return next;
+          const listed = next.response as {
+            data: Array<Record<string, unknown>>;
+          };
+          return {
+            ...next,
+            response: {
+              ...listed,
+              data: listed.data.map((ask) => ({
+                ...ask,
+                action: 'edit',
+                resources: [`${moved}/notes.txt`],
+                save: ['*'],
+              })),
+            },
+          };
+        },
+      },
+      { findProjectCode: async () => [] },
+    );
+    await h.start({ approvalMode: 'auto' });
+    const first = await h.turn('DO_MOVE sub-gap');
+    await h.waitFor(completedFor(first.turnId));
+    await h.turn('DO_BASH moved');
+    // Read against the server's directory (`/replay/proj`) it would be
+    // outside the project, and a person's.
+    await h.waitFor(() => replies(h).length === 1, 10_000);
+    expect(replies(h)).toEqual([{ decision: 'once' }]);
+    expect(opened(h.events)).toEqual([]);
+  });
+
+  /** Frames of the move-gap capture's first feed, made a child's. */
+  const KNOWN_CHILD = 'ses_e2457cknownchildKnownChild';
+  const childOnFirstFeed =
+    (types: Record<string, string>) =>
+    (record: OpenCodeReplayRecord): OpenCodeReplayRecord => {
+      const type =
+        record.kind === 'sse' && record.tap === 'A'
+          ? types[record.event?.type ?? '']
+          : undefined;
+      if (!type) return record;
+      return {
+        ...record,
+        event: {
+          type,
+          data: {
+            sessionID: KNOWN_CHILD,
+            parentID: 'ses_e2457ce8dffe98Zg4A032fhyKD',
+            agent: 'general',
+            location: { directory: '{PROJ}' },
+          },
+        },
+      };
+    };
+  const listsChild =
+    (outcome?: string) => (request: { method: string; path: string }) =>
+      request.method === 'GET' &&
+      request.path.startsWith(
+        '/api/session?parentID=ses_e2457ce8dffe98Zg4A032fhyKD',
+      )
+        ? {
+            status: 200,
+            body: {
+              data: [
+                {
+                  id: KNOWN_CHILD,
+                  parentID: 'ses_e2457ce8dffe98Zg4A032fhyKD',
+                  agent: 'general',
+                  ...(outcome ? { outcome } : {}),
+                },
+              ],
+            },
+          }
+        : request.method === 'GET' &&
+            request.path.startsWith('/api/session?parentID=')
+          ? { status: 200, body: { data: [] } }
+          : governance(request);
+
+  test('a child that was running when the feed dropped and ended during the gap is settled on reconnect', async () => {
+    const h = await setup(
+      {
+        scenario: 'move-gap',
+        respond: listsChild('failed'),
+        rewrite: childOnFirstFeed({
+          'vcs.branch.updated': 'session.created',
+          'agent.updated': 'session.execution.started',
+        }),
+      },
+      { findProjectCode: async () => [] },
+    );
+    await h.start({ approvalMode: 'ask' });
+    const first = await h.turn('DO_MOVE sub-gap');
+    await h.waitFor(completedFor(first.turnId));
+    await h.turn('DO_BASH moved');
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          (event.delta as { kind: string }).kind === 'settle',
+        10_000,
+      ),
+    ).toMatchObject({
+      delta: { kind: 'settle', childId: KNOWN_CHILD, status: 'failed' },
+    });
+  });
+
+  test('a known child that ran neither before the gap nor now is not searched for children of its own', async () => {
+    const h = await setup(
+      {
+        scenario: 'move-gap',
+        respond: listsChild(),
+        rewrite: childOnFirstFeed({
+          'vcs.branch.updated': 'session.created',
+          'agent.updated': 'session.execution.started',
+          'command.updated': 'session.execution.succeeded',
+        }),
+      },
+      { findProjectCode: async () => [] },
+    );
+    await h.start({ approvalMode: 'ask' });
+    const first = await h.turn('DO_MOVE sub-gap');
+    await h.waitFor(completedFor(first.turnId));
+    await h.turn('DO_BASH moved');
+    await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.requestId === MOVE_GAP_ASK,
+      10_000,
+    );
+    await h.waitFor(() => h.replay.made('GET', '/api/session').length > 0);
+    expect(
+      h.replay
+        .made('GET', '/api/session')
+        .map((request) =>
+          new URL(request.path, 'http://x').searchParams.get('parentID'),
+        ),
+    ).toEqual(['ses_e2457ce8dffe98Zg4A032fhyKD']);
+  });
+
+  test('a descendant walk past its bound stops there and says so', async () => {
+    const many = Array.from({ length: 205 }, (_, index) => ({
+      id: `ses_e2457manychild${String(index).padStart(10, '0')}`,
+      parentID: 'ses_e2457ce8dffe98Zg4A032fhyKD',
+    }));
+    const h = await setup(
+      {
+        scenario: 'move-gap',
+        respond: (request) =>
+          request.method === 'GET' &&
+          request.path.startsWith(
+            '/api/session?parentID=ses_e2457ce8dffe98Zg4A032fhyKD',
+          )
+            ? { status: 200, body: { data: many } }
+            : request.method === 'GET' &&
+                request.path.startsWith('/api/session?parentID=')
+              ? { status: 200, body: { data: [] } }
+              : governance(request),
+      },
+      { findProjectCode: async () => [] },
+    );
+    await h.start({ approvalMode: 'ask' });
+    const first = await h.turn('DO_MOVE sub-gap');
+    await h.waitFor(completedFor(first.turnId));
+    await h.turn('DO_BASH moved');
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'runtime.warning' &&
+          String(event.message).includes('first 200 subagent sessions'),
+        10_000,
+      ),
+    ).toBeDefined();
+    // Full once the root's children are read: nothing more is looked up,
+    // and only the first 200 are kept as child work.
+    expect(h.replay.made('GET', '/api/session')).toHaveLength(1);
+    const reported = new Set(
+      h.events
+        .filter((event) => event.method === 'child-work.updated')
+        .flatMap((event) => {
+          const delta = event.delta as {
+            running?: Array<{ childId: string }>;
+            childId?: string;
+          };
+          return [
+            ...(delta.running ?? []).map((item) => item.childId),
+            ...(delta.childId ? [delta.childId] : []),
+          ];
+        }),
+    );
+    expect(reported.has(many[200]!.id)).toBe(false);
+  });
+
+  test("a failed descendant lookup is reported and the session's own ask is still reopened", async () => {
+    const h = await setup(
+      {
+        scenario: 'move-gap',
+        respond: (request) =>
+          request.method === 'GET' &&
+          request.path.startsWith('/api/session?parentID=')
+            ? { status: 500, body: { error: 'unavailable' } }
+            : governance(request),
+      },
+      { findProjectCode: async () => [] },
+    );
+    await h.start({ approvalMode: 'ask' });
+    const moved = await h.turn('DO_MOVE sub-gap');
+    await h.waitFor(completedFor(moved.turnId));
+    await h.turn('DO_BASH moved');
+    await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.requestId === MOVE_GAP_ASK,
+      10_000,
+    );
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'runtime.warning' &&
+          String(event.message).includes('could not re-read'),
+      ),
+    ).toBeDefined();
+  });
+
+  test("an ask or form of a session outside this chat's tree, listed server-wide, is neither shown nor answered", async () => {
+    const recordedList = (path: string) =>
+      loadOpenCodeFixture('subagent-gap').find(
+        (record) =>
+          record.kind === 'http' &&
+          record.method === 'GET' &&
+          record.path === path,
+      )?.response as { data: unknown[] };
+    const FOREIGN = 'ses_foreignfoForeignForeign1';
+    const h = await setup({
+      scenario: 'subagent-gap',
+      respond: (request) => {
+        if (request.method !== 'GET') return undefined;
+        if (request.path === '/api/permission/request')
+          return {
+            status: 200,
+            body: {
+              ...recordedList('/api/permission/request'),
+              data: [
+                {
+                  id: 'per_foreignAsk',
+                  sessionID: FOREIGN,
+                  action: 'shell',
+                  resources: ['echo other chat'],
+                  save: ['echo *'],
+                },
+                ...recordedList('/api/permission/request').data,
+              ],
+            },
+          };
+        if (request.path === '/api/form')
+          return {
+            status: 200,
+            body: {
+              ...recordedList('/api/form'),
+              data: [
+                {
+                  id: 'frm_foreignForm',
+                  sessionID: FOREIGN,
+                  title: 'Other chat',
+                  fields: [],
+                },
+                ...recordedList('/api/form').data,
+              ],
+            },
+          };
+        return undefined;
+      },
+    });
+    // Full access answers every ask of this tree `once` without a person:
+    // a foreign ask adopted would be answered for another chat.
+    await h.start({ approvalMode: 'never' }, { confinement: 'host' });
+    const { turnId } = await h.turn('DO_TASK_DEEP now');
+    await h.waitFor(completedFor(turnId), 10_000);
+    expect(
+      h.events.filter(
+        (event) =>
+          event.method === 'request.opened' &&
+          String(event.requestId).includes('foreign'),
+      ),
+    ).toEqual([]);
+    expect(
+      h.replay.requests.filter((request) => request.path.includes(FOREIGN)),
+    ).toEqual([]);
+    // This tree's own ask from the same list was answered.
+    expect(
+      h.replay.made('POST', '/api/session/:id/permission/:id/reply'),
+    ).toHaveLength(1);
   });
 });
 
