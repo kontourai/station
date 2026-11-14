@@ -13,8 +13,9 @@ merged changes; Beta and Stable require its exact-source evidence.
 Beta is being retired in favor of a release-candidate step
 ([#4929](https://github.com/kontourai/station/issues/4929)): `vX.Y.Z-preview.N`
 tags are replaced by `vX.Y.Z-rc.N` tags, which stage with Stable identity and
-the bare base version. Publishing an rc tag is not available yet, so the
-Preview steps below describe the retiring flow.
+the bare base version and stage a complete draft named for the rc tag.
+Publishing an rc tag is not available yet, so the Preview steps below describe
+the retiring flow.
 
 ```mermaid
 flowchart TD

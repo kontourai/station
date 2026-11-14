@@ -39,9 +39,13 @@ comes from the ledger-writing path. Missing cells remain `NOT_VERIFIED` or
 The [variant owner](../../scripts/lib/release-variants.mjs) and checked-in
 [inventory schema](../../schemas/release-artifact-manifest.schema.json)
 cover portable server, macOS arm64 and x86_64, Windows x86_64, Linux x86_64,
-and Android universal APK/AAB. Stable additionally inventories the iOS simulator
-archive and device IPA. Preview excludes iOS from this GitHub asset inventory
-while its separate Beta TestFlight job remains required by draft assembly.
+and Android universal APK/AAB, plus the iOS simulator archive and device IPA.
+A final `vX.Y.Z` and a candidate `vX.Y.Z-rc.N` inventory the same variants:
+asset names carry the tag (`station-v0.2.0-rc.1-…`), while the inventory's
+`version` is the base `X.Y.Z` and its `channel` is `stable`. One parser,
+[`release-tag.mjs`](../../scripts/lib/release-tag.mjs), reads the tag for every
+staging script and refuses retired `-preview.N` tags
+([#4929](https://github.com/kontourai/station/issues/4929)).
 Every desktop updater bundle must have its
 matching Tauri `.sig` file, and that signature must name the manifest's
 version in its trusted comment (`version:`): assembling `latest.json`
@@ -66,7 +70,8 @@ and container fragments in a separate scratch directory with fixed predicates
 (`runtime`, `native`, and `image`). The generator rejects traversal, symlinks, duplicate component IDs,
 cross-scope subjects, source/predicate disagreement, non-canonical JSON, and
 invalid UTF-8 before the existing inventory authority recomputes the four asset
-digests and binds them to the exact stable or preview tag.
+digests and binds them to the exact release tag; each SBOM names the base
+version as its component version.
 
 The production JavaScript fragment now comes from
 [`generate-pnpm-sbom.mjs`](../../scripts/generate-pnpm-sbom.mjs), which reads
