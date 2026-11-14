@@ -299,6 +299,7 @@ import {
 import {
   type AcpSteerActiveRunSource,
   acpSteerParams,
+  isAcpInvalidParams,
   isAcpMethodNotFound,
   resolveAcpSteerChannel,
 } from './acp-steer.js';
@@ -1048,6 +1049,24 @@ function acpProcessEndsSoon(
 /** How long a timed-out rewind's answer is still waited for (5 min). */
 const ACP_REWIND_LATE_ANSWER_TIMEOUT_MS = 5 * 60_000;
 const ACP_REWIND_TIMED_OUT = Symbol('acp-rewind-timed-out');
+
+/**
+ * Fails a reattach the engine answered with another session
+ * (`acp-reattach-identity.ts`), counted on every reattach path.
+ */
+function assertReattachedSession(
+  connectionId: string,
+  handshake: Parameters<typeof assertAcpReattachedRequestedSession>[0],
+  requestedSessionId: string,
+  answer: unknown,
+): void {
+  try {
+    assertAcpReattachedRequestedSession(handshake, requestedSessionId, answer);
+  } catch (error) {
+    acpResumeSessions.add(1, { connectionId, outcome: 'other-session' });
+    throw error;
+  }
+}
 
 export class AcpAdapter implements ProviderAdapterShape {
   readonly provider = 'acp' as const;
@@ -2132,19 +2151,12 @@ export class AcpAdapter implements ProviderAdapterShape {
             // An engine that answered with a new session in place of this one
             // fails the resume: continuing would run the conversation against
             // an engine that holds none of it.
-            try {
-              assertAcpReattachedRequestedSession(
-                acpProcess.initResult,
-                acpSessionId,
-                answer,
-              );
-            } catch (error) {
-              acpResumeSessions.add(1, {
-                connectionId: config.id,
-                outcome: 'other-session',
-              });
-              throw error;
-            }
+            assertReattachedSession(
+              config.id,
+              acpProcess.initResult,
+              acpSessionId,
+              answer,
+            );
             // The SDK dispatches each notification without awaiting it before
             // reading the next message, so the last replayed updates can still
             // be in flight (as microtasks) when the response resolves. Yield a
@@ -3072,12 +3084,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     // this makes an interrupt truthful even when the process never settles.
     record.toolUpdateSupervisor.cancelAll();
     this.settleRequestsAtPromptEnd(record, threadId, targetTurnId);
-    this.settleNestedSubagentsAtPromptEnd(
-      record,
-      threadId,
-      targetTurnId,
-      'cancelled',
-    );
+    this.settlePromptEndState(record, threadId, targetTurnId, 'cancelled');
     await record.process.cancel();
     if (!this.ownsActiveTurn(threadId, record, targetTurnId)) {
       return {
@@ -3885,13 +3892,18 @@ export class AcpAdapter implements ProviderAdapterShape {
     }
   }
 
-  /** Ends the Qwen subagents the ended prompt still listed (acp-child-work.ts). */
-  private settleNestedSubagentsAtPromptEnd(
+  /**
+   * Ends what only the ended prompt had: the engine's announced run
+   * (`acp-steer.ts`; a later steer must not name it) and the Qwen subagents
+   * it still listed (`acp-child-work.ts`).
+   */
+  private settlePromptEndState(
     record: AcpSessionRecord,
     threadId: string,
     turnId: string,
     status: 'cancelled' | 'unresolved',
   ): void {
+    record.acpActiveRunId = undefined;
     settleAcpNestedSubagentsAtPromptEnd(
       {
         session: { threadId },
@@ -4303,7 +4315,8 @@ export class AcpAdapter implements ProviderAdapterShape {
             cwd,
             record.mcpServers ?? [],
           );
-          assertAcpReattachedRequestedSession(
+          assertReattachedSession(
+            record.connectionId,
             next.initResult,
             cursor.acpSessionId,
             resumed,
@@ -4318,7 +4331,8 @@ export class AcpAdapter implements ProviderAdapterShape {
             cwd,
             record.mcpServers ?? [],
           );
-          assertAcpReattachedRequestedSession(
+          assertReattachedSession(
+            record.connectionId,
             next.initResult,
             cursor.acpSessionId,
             loaded,
@@ -4765,12 +4779,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             ? 'engine-restarted'
             : 'stopped',
         });
-        this.settleNestedSubagentsAtPromptEnd(
-          record,
-          threadId,
-          turnId,
-          'cancelled',
-        );
+        this.settlePromptEndState(record, threadId, turnId, 'cancelled');
         record.activeTurnId = undefined;
       }
     }
@@ -5320,7 +5329,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
         record.turnErrorNotifications = undefined;
         this.settleRequestsAtPromptEnd(record, threadId, turnId);
-        this.settleNestedSubagentsAtPromptEnd(
+        this.settlePromptEndState(
           record,
           threadId,
           turnId,
@@ -5352,12 +5361,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         const coReportedCause = record.turnErrorNotifications?.at(-1)?.message;
         record.turnErrorNotifications = undefined;
         this.settleRequestsAtPromptEnd(record, threadId, turnId);
-        this.settleNestedSubagentsAtPromptEnd(
-          record,
-          threadId,
-          turnId,
-          'unresolved',
-        );
+        this.settlePromptEndState(record, threadId, turnId, 'unresolved');
         if (quota) {
           this.publish({
             eventId: crypto.randomUUID(),
@@ -5435,6 +5439,13 @@ export class AcpAdapter implements ProviderAdapterShape {
         await record.process.extMethod(method, params);
         return true;
       } catch (error) {
+        // The named run ended or was replaced before the steer arrived:
+        // steer the turn by cancel + re-prompt instead, which reports a turn
+        // that has itself ended as such.
+        if (selection.channel === 'run-steer' && isAcpInvalidParams(error)) {
+          record.acpActiveRunId = undefined;
+          return false;
+        }
         if (!isAcpMethodNotFound(error)) throw error;
       }
     }
@@ -5451,12 +5462,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     const promptEpoch = record.promptEpoch;
     record.toolUpdateSupervisor.cancelAll();
     this.settleRequestsAtPromptEnd(record, threadId, turnId);
-    this.settleNestedSubagentsAtPromptEnd(
-      record,
-      threadId,
-      turnId,
-      'cancelled',
-    );
+    this.settlePromptEndState(record, threadId, turnId, 'cancelled');
     await record.process.cancel();
     if (record.activeTurnId !== turnId) {
       throw new ProviderTurnEndedError();

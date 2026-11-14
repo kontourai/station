@@ -75,6 +75,7 @@ const managedWorkspaceHome = mkdtempSync(
 afterAll(() => rmSync(managedWorkspaceHome, { recursive: true, force: true }));
 
 import { NO_PERSON_INTENT } from '../../services/approvals/guardian-conversation.js';
+import { acpResumeSessions } from '../../telemetry/metrics.js';
 import { FakeAcpProcess } from './fake-acp-process.js';
 import {
   QWEN_SUBAGENT_FRAMES,
@@ -3344,6 +3345,54 @@ describe('AcpAdapter', () => {
       await expect(
         adapter.startSession(resumeKiroCursor('thread-resume-unreviewed')),
       ).resolves.toMatchObject({ threadId: 'thread-resume-unreviewed' });
+    });
+
+    test('the approval-floor relaunch keeps the old process when the new one attaches another session', async () => {
+      const add = vi.spyOn(acpResumeSessions, 'add');
+      try {
+        const { adapter, processes } = createAdapter({
+          resumeSessionCapability: true,
+          onProcess: (proc, index) => {
+            asHermes(proc);
+            // The replacement answers the resume with a session it created.
+            if (index === 1)
+              proc.resumeSessionResult = hermesAnswer(
+                '6f1c2a9e-0d4b-4c55-9a51-2f3e4d5c6b7a',
+              );
+          },
+        });
+        await adapter.startSession({
+          provider: 'acp',
+          threadId: 'thread-relaunch-other-session',
+          cwd: '/tmp/project',
+          metadata: { connectionId: 'kiro' },
+        });
+        const record = (
+          adapter as unknown as {
+            sessions: Map<string, { process: unknown }>;
+          }
+        ).sessions.get('thread-relaunch-other-session')!;
+        const outcome = await (
+          adapter as unknown as {
+            relaunchOnApprovalFloor: (
+              record: unknown,
+              floor: undefined,
+            ) => Promise<{ ok: boolean }>;
+          }
+        ).relaunchOnApprovalFloor(record, undefined);
+        expect(outcome.ok).toBe(false);
+        expect(processes[1]?.resumeSessionCalls).toBe(1);
+        // The session keeps its first process; the replacement is discarded.
+        expect(record.process).toBe(processes[0]);
+        expect(processes[1]?.destroyed).toBe(true);
+        expect(add).toHaveBeenCalledWith(1, {
+          connectionId: 'kiro',
+          outcome: 'other-session',
+        });
+        await adapter.stopAll();
+      } finally {
+        add.mockRestore();
+      }
     });
 
     /** What Gemini CLI's `initialize` says about itself (acpRpcDispatcher.ts). */
@@ -7499,6 +7548,68 @@ describe('AcpAdapter.steerTurn', () => {
     expect(processes[0]?.extMethodCalls).toEqual([]);
     expect(processes[0]?.cancelCalls).toBe(1);
     expect(processes[0]?.promptContents).toHaveLength(2);
+    await adapter.stopAll();
+  });
+
+  test('a run steer Goose refuses because the run ended falls back to cancel + re-prompt', async () => {
+    // acp/server.rs require_active_run: `invalid_params().data("no active
+    // run to steer")` once the run is cleared, or an expected/actual run
+    // mismatch once another run started.
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-goose-run-ended',
+      { connectionOverrides: gooseConnection, onProcess: asGoose },
+    );
+    await announceGooseRun(processes[0]!, GOOSE_RUN);
+    processes[0]!.extMethodError = RequestError.invalidParams(
+      'no active run to steer',
+    );
+
+    await adapter.steerTurn('thread-goose-run-ended', 'now', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls.map(({ method }) => method)).toEqual([
+      '_goose/unstable/session/steer',
+    ]);
+    expect(processes[0]?.cancelCalls).toBe(1);
+    expect(processes[0]?.promptContents).toHaveLength(2);
+    await adapter.stopAll();
+  });
+
+  test("a Goose run is forgotten when its prompt ends, so the next turn's steer does not name it", async () => {
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: gooseConnection,
+      onProcess: asGoose,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-goose-next-turn',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    await adapter.sendTurn({ threadId: 'thread-goose-next-turn', input: 'a' });
+    await nextEvent(iterator, 'turn.started');
+    await announceGooseRun(processes[0]!, GOOSE_RUN);
+    processes[0]!.resolvePrompt('end_turn');
+    for (;;) {
+      if (
+        (await nextEvent(iterator, 'turn.completed')).method ===
+        'turn.completed'
+      )
+        break;
+    }
+    const next = await adapter.sendTurn({
+      threadId: 'thread-goose-next-turn',
+      input: 'b',
+    });
+    await nextEvent(iterator, 'turn.started');
+
+    // Goose has not announced the new prompt's run yet.
+    await adapter.steerTurn('thread-goose-next-turn', 'now', next.turnId);
+
+    expect(processes[0]?.extMethodCalls).toEqual([]);
+    expect(processes[0]?.cancelCalls).toBe(1);
     await adapter.stopAll();
   });
 

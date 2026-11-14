@@ -223,6 +223,20 @@ export function trackAcpSteerActiveRun(
  * The steer request for a native channel, or `undefined` when a `run-steer`
  * has no announced run to join.
  */
+/**
+ * JSON-RPC invalid params (-32602). Goose answers a run steer this way when
+ * the run it names has ended or been replaced ("no active run to steer",
+ * "expected active run id ...": acp/server.rs require_active_run).
+ */
+export function isAcpInvalidParams(error: unknown): boolean {
+  return (
+    !!error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    (error as { code: unknown }).code === -32602
+  );
+}
+
 export function acpSteerParams(
   channel: Exclude<AcpSteerChannel, 'cancel-reprompt'>,
   sessionId: string,
