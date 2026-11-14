@@ -59,6 +59,10 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  credentialScrubRows,
+  scrubText,
+} from './capture-opencode-serve-scrub.mjs';
 
 function parseArgs(argv) {
   const out = {};
@@ -124,7 +128,7 @@ function pathForms(p) {
 }
 
 const SCRUB = [
-  [PASSWORD, '{PASSWORD}'],
+  ...credentialScrubRows('opencode', PASSWORD),
   ...pathForms(PROJ).map((form) => [form, '{PROJ}']),
   ...pathForms(HOME).map((form) => [form, '{HOME}']),
   ...pathForms(WORK).map((form) => [form, '{WORK}']),
@@ -135,9 +139,7 @@ const SCRUB = [
 ].filter(([from]) => from && from.length >= 3);
 
 function scrub(text) {
-  let out = text;
-  for (const [from, to] of SCRUB) out = out.split(from).join(to);
-  return out;
+  return scrubText(text, SCRUB);
 }
 
 // ---------------------------------------------------------------- mock model

@@ -1,5 +1,11 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
+import {
+  credentialScrubRows,
+  scrubText,
+} from './fixtures/capture-opencode-serve-scrub.mjs';
+
+const OPENCODE_BASIC_PREFIX = Buffer.from('opencode:').toString('base64');
 
 /**
  * The OpenCode 2.3.0 `serve` captures (`capture-opencode-serve-fixtures.mjs`):
@@ -59,6 +65,22 @@ describe('OpenCode serve captures', () => {
     );
   });
 
+  test('the capture scrubber removes every credential form', () => {
+    const password = 'p'.repeat(43);
+    const basic = Buffer.from(`opencode:${password}`).toString('base64');
+    expect(basic.startsWith(OPENCODE_BASIC_PREFIX)).toBe(true);
+    const recorded = JSON.stringify({
+      headers: { authorization: `Basic ${basic}` },
+      echoed: basic,
+      env: { OPENCODE_PASSWORD: password },
+    });
+    const out = scrubText(recorded, credentialScrubRows('opencode', password));
+    expect(out).not.toContain(password);
+    expect(out).not.toContain(OPENCODE_BASIC_PREFIX);
+    expect(out).toContain('"authorization":"Basic {AUTH}"');
+    expect(out).toContain('"echoed":"{AUTH}"');
+  });
+
   test('the captures hold no machine path, credential or private name', () => {
     const allowed = new Set([
       '{PROJ}',
@@ -68,6 +90,7 @@ describe('OpenCode serve captures', () => {
       '{USERHOME}',
       '{HOSTNAME}',
       '{USER}',
+      '{AUTH}',
     ]);
     for (const name of files) {
       const text = read(name);
@@ -93,6 +116,9 @@ describe('OpenCode serve captures', () => {
         );
       }
       expect(text, name).not.toMatch(/Basic [A-Za-z0-9+/=]{16,}/);
+      // `base64("opencode:")`: the start of any Basic credential for the
+      // server's user, prefixed or bare.
+      expect(text, name).not.toContain(OPENCODE_BASIC_PREFIX);
       const placeholders = text.match(/\{[A-Z]+\}/g) ?? [];
       expect(
         placeholders.filter((token) => !allowed.has(token)),
