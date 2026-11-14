@@ -687,6 +687,74 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     await adapter.stopSession('hosted');
   });
 
+  it('runs the Copilot SDK engine only through its preview, which a hosted runtime never offers', async () => {
+    home = await createSchemaHome('station-copilot-sdk-runtime-');
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    await runtime.initialize();
+    const subject = runtime as any;
+    const adapter = subject.copilotSdkAdapter;
+    const adoption = await waitFor(
+      () => nativeEngineAdoption.calls.at(-1) as any,
+      'native adoption window',
+    );
+    const candidate = adoption.previewCandidates.find(
+      (entry: { id: string }) => entry.id === 'copilot-sdk',
+    );
+    expect(candidate.cli).toBe('copilot');
+    // Off by default: no start, no adoption.
+    expect(adapter.previewEnabled()).toBe(false);
+    expect(candidate.allowed()).toBe(false);
+    await expect(
+      adapter.startSession({
+        threadId: 'copilot-off',
+        provider: 'copilot-sdk',
+        cwd: home,
+      }),
+    ).rejects.toMatchObject({ code: 'feature_preview_disabled' });
+    // A choice made after composition is read at the next operation.
+    await subject.featurePreviews.setEnabled('copilot-sdk-engine', true);
+    expect(adapter.previewEnabled()).toBe(true);
+    expect(candidate.allowed()).toBe(true);
+    await runtime.shutdown();
+    runtime = undefined;
+    rmDirSyncRetrying(home);
+
+    home = await createSchemaHome('station-copilot-sdk-hosted-');
+    const registryPath = join(home, 'hosted-tenants.json');
+    writeFileSync(
+      registryPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        tenants: [{ id: 'alpha', authority: 'alpha.station.test' }],
+      }),
+    );
+    process.env[hostedRegistryFileEnv] = registryPath;
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    await runtime.initialize();
+    const hosted = runtime as any;
+    // Never bound, so the adapter's lazy selector takes the disabled branch.
+    expect(hosted.copilotSdkPreview).toBeUndefined();
+    await expect(
+      hosted.featurePreviews.setEnabled('copilot-sdk-engine', true),
+    ).rejects.toBeInstanceOf(FeaturePreviewNotOfferedError);
+    expect(hosted.copilotSdkAdapter.previewEnabled()).toBe(false);
+    await expect(
+      hosted.copilotSdkAdapter.startSession({
+        threadId: 'copilot-hosted',
+        provider: 'copilot-sdk',
+        cwd: home,
+      }),
+    ).rejects.toMatchObject({ code: 'feature_preview_disabled' });
+  });
+
   it('rejects an incompatible home before EventStore can create SQLite state', () => {
     home = mkdtempSync(join(tmpdir(), 'station-coldstart-incompatible-'));
     mkdirSync(join(home, 'config'), { recursive: true });
