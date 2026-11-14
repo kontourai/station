@@ -33,9 +33,14 @@ classified, so a blocked or decision-needed issue does not need a priority
 simply to satisfy the policy.
 
 The GitHub workflow runs daily and manually through `workflow_dispatch`. Its
-findings are report-only: each is a warning annotation and the job summary
-lists them with the open, actionable `P1` and unclassified counts, and the
-run still succeeds. A permanently red daily run was ignored, so failing on
+findings are report-only: each is a warning annotation, the job summary
+lists them with the open, actionable `P1` and unclassified counts, and one
+**Backlog policy findings** tracking issue carries the counts and the first
+50 entries of each list (closed when nothing is reported). The run still
+succeeds. The issue is written by a separate job that installs nothing; it
+posts only a report for its own checkout, under GitHub's body limit, with
+`@` mentions broken and issue numbers in code spans so the listed issues
+gain no timeline cross-references. A permanently red daily run was ignored, so failing on
 findings carried no signal. The run fails when it cannot judge the backlog:
 live labels that drift from `.github/labels.json`, a malformed manifest, an
 API failure or an incomplete issue read. It
