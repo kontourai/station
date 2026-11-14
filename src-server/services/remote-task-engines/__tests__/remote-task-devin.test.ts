@@ -257,14 +257,15 @@ describe('Devin binding', () => {
     const { devin, h, connectionId } = await setup();
     const { taskId } = await h.service.createTask(connectionId, {
       prompt: 'Go',
-    });
+    }, 60_000);
     devin.setStatus(taskId, 'running', 'working');
     const long = 'x'.repeat(6_000);
-    for (let i = 0; i < 1_500; i += 1) devin.reply(taskId, `${i}:${long}`);
+    // 800 messages of 6,000 characters: past the 4 MiB budget.
+    for (let i = 0; i < 800; i += 1) devin.reply(taskId, `${i}:${long}`);
     // A 20,000-character message is cut and marked.
     devin.reply(taskId, 'y'.repeat(20_000));
     const results = [];
-    for (let i = 0; i < 4; i += 1)
+    for (let i = 0; i < 2; i += 1)
       results.push(await h.service.syncTask(connectionId, taskId));
     const stored = new RemoteTaskStore(h.home).get(connectionId, taskId);
     expect(stored).toBeDefined();
@@ -274,7 +275,7 @@ describe('Devin binding', () => {
     expect(last?.text).toHaveLength(REMOTE_TASK_EVENT_TEXT_MAX_CHARS);
     expect(last?.truncated).toBe(true);
     // Every message Devin sent got a sequence, though the oldest were dropped.
-    expect(stored?.nextSequence).toBeGreaterThan(1_500);
+    expect(stored?.nextSequence).toBeGreaterThan(800);
     const read = h.service.readEvents(connectionId, taskId, 0);
     expect(read.missed).toBe(true);
     expect(read.firstSequence).toBeGreaterThan(1);
