@@ -1095,6 +1095,7 @@ non-retryable.
 | `engine-sign-in-required` | `auth` | `false` |
 | `engine-turn-failed` | `provider_error` | `false` |
 | `execution_engine_changed` | `conflict` | `false` |
+| `feature_preview_disabled` | `unavailable` | `true` |
 | `foreground_message_indeterminate` | `indeterminate` | `false` |
 | `managed-policy-capability-disabled` | `permission_denied` | `false` |
 | `managed-policy-remote-clients` | `permission_denied` | `false` |

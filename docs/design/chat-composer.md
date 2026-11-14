@@ -956,7 +956,8 @@ uses explicit Queue and Steer labels. Stop stays visible throughout the turn. It
 picker defaults to **Steer** where the selected engine can prove native mid-turn
 input, and to **Queue** (a new turn after the entire current turn finishes)
 everywhere else, including safe-stop steering. A chosen mode holds until the
-conversation changes. Claude Code and Codex have additive steering.
+conversation changes. Claude Code, Codex and the GitHub Copilot (SDK)
+preview engine have additive steering.
 ACP's capability matrix also includes cancel-and-reprompt, which is not proof
 of native steering for the current session.
 After a device's full access is revoked, a turn that started unconfined is not
@@ -965,7 +966,8 @@ input, and the message stays for the next turn, which runs confined (#2898).
 
 Station-owned steering waits durably for the next post-tool boundary the loop
 observes, otherwise the next turn boundary. Its wording says **Steer when safe**.
-Claude and Codex retain engine-defined native placement. The composer reads the
+Claude, Codex and the GitHub Copilot (SDK) preview engine retain
+engine-defined native placement. The composer reads the
 current adapter declaration sent by session snapshots and conversation-open
 responses. A missing declaration is unknown; the client does not infer it from
 provider names. While the Session projection is pending, the mode picker and

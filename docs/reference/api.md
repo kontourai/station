@@ -6742,8 +6742,8 @@ is required. Older/source-home usage without `accountKey` remains unattributed.
 
 `GET /api/analytics/usage-rollup` accepts `provider` and `localOnly=1` for
 engine activity. `provider` must be a provider kind with declared usage
-semantics (`claude`, `codex`, `bedrock`, `ollama`, `muse`, `opencode`, or
-`acp`); any other value is a 400. A declared kind with no receipts in the
+semantics (`claude`, `codex`, `bedrock`, `ollama`, `muse`, `copilot-sdk`,
+`opencode`, or `acp`); any other value is a 400. A declared kind with no receipts in the
 window answers empty rows with `unknown` coverage. ACP reports context
 occupancy and at most a cost in the engine's own unit, never token totals, so it
 has no receipts and its provider coverage says so.

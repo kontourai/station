@@ -1037,6 +1037,7 @@ is attribution, never a grant or a claim of personal lifetime totals.
 | Bedrock and Ollama adapters | Tokens reported for each model call | Absent usage stays absent; cost estimates need an eligible pricing snapshot |
 | Muse serve | Model-call input/output/cache figures, emitted as per-turn usage | Uses the wire `usage` object rather than `cumulative`; child-work usage stays a separate projection |
 | Muse stdio | Completed work and other reported lifecycle facts | Its envelope supplies no token-usage event |
+| GitHub Copilot (SDK) engine (Feature Preview) | Input/output tokens of each model call, a subagent's calls included, plus cache read/write and reasoning tokens when reported, from `assistant.usage`, summed as per-turn usage | No cost figure: the SDK's `cost` is an experimental billing multiplier, not spend |
 | ACP, including ACP-backed engines | Reported context occupancy/window, an engine's own context percentage, and costs in the engine's own unit | Occupancy is not consumed tokens; a reported cost (an ISO currency or a vendor unit such as credits) is shown in conversation statistics as reported, one total per unit, never converted to USD, and usage receipts do not include it |
 | Station agent / direct model-provider chat | Saved messages and their recorded usage/estimates | Canonical relay joins use saved messages as primary; overlapping engine activity is separately disclosed |
 

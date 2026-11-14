@@ -156,7 +156,8 @@ list.
 A configured, reachable local model is one credential-free option. Discovery, configuration, and readiness are different facts; inspect the Connections surface before assuming a detected service is ready for a conversation.
 
 Startup can adopt detected Claude, Codex, and Muse engines with their default
-Agents. An explicitly removed engine is not silently recreated. Adoption is
+Agents; with the `copilot-sdk-engine` Feature Preview on, it also adopts
+GitHub Copilot (SDK) when `copilot` is on `PATH`, from the next start. An explicitly removed engine is not silently recreated. Adoption is
 not credential or launch-readiness proof; use [Getting started](../user/getting-started.md)
 and [Connections](../guides/connections.md) for that distinction.
 
