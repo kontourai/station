@@ -615,7 +615,7 @@ Station launches are started.
 
 | Key | Rules |
 | --- | --- |
-| `allowed` | The engines that may run: any of `claude`, `codex`, `muse`, `acp` (every ACP connection) and `station-agent` (Station's own agent). Leave it out to allow every engine. An engine a plugin adds is never on the list, so an allow list turns plugin engines off. |
+| `allowed` | The engines that may run: any of `claude`, `codex`, `muse`, `acp` (every ACP connection), `station-agent` (Station's own agent) and `remote-task` (chats on a remote task engine; `remoteTasks` still names which vendors). Leave it out to allow every engine. An engine a plugin adds is never on the list, so an allow list turns plugin engines off. |
 | `acpRegistryAgents` | `false` stops ACP connections added from the public ACP registry from running and from being added. A custom ACP connection is still allowed while `acp` is. `true` is refused. |
 | `engineHostAuth` | `"off"` stops Station giving any engine an access token from its own engine sign-in store (Kiro without kiro-cli asks for one). Engines that keep their own sign-in, such as kiro-cli, are unaffected. `"allowed"`, or leaving it out, lets it. Also off whenever `acp` is not allowed. |
 | `remoteTasks` | The remote task engines that may be used: any of `devin`, `github-copilot` and `cursor`. A remote task runs on the vendor's machines, so prompts and repository code leave the computer. Unlike every other key here, leaving it out restricts: on a machine with a policy, a vendor this list does not name is off. Without any policy, the Feature Preview and each connection's acknowledgement decide. See [remote task engines](../decisions/remote-task-engines.md). |
@@ -879,7 +879,7 @@ Every value is in `HKLM\SOFTWARE\Policies\Kontour\Station`.
 | Allow updates | `Updates` (`REG_DWORD`) | `limits.updates.mode: "off"` when Disabled |
 | Update mirror | `UpdateMirror` (`REG_DWORD` state), `UpdateFeedUrl` (`REG_SZ`) | `limits.updates.feedUrl` |
 | Allow the nightly channel | `NightlyChannel` (`REG_DWORD`) | `limits.updates.allowNightly: false` when Disabled |
-| Allowed engines | `AllowedEngines` (`REG_DWORD` state), `EngineClaude`, `EngineCodex`, `EngineMuse`, `EngineAcp`, `EngineStationAgent` (`REG_DWORD` each, 1 checked) | `limits.engines.allowed`, the checked engine ids |
+| Allowed engines | `AllowedEngines` (`REG_DWORD` state), `EngineClaude`, `EngineCodex`, `EngineMuse`, `EngineAcp`, `EngineStationAgent`, `EngineRemoteTask` (`REG_DWORD` each, 1 checked) | `limits.engines.allowed`, the checked engine ids |
 | Allow ACP registry agents | `AcpRegistryAgents` (`REG_DWORD`) | `limits.engines.acpRegistryAgents: false` when Disabled |
 | Allow Station to sign engines in | `EngineHostAuth` (`REG_DWORD`) | `limits.engines.engineHostAuth: "off"` when Disabled |
 | Allowed remote task engines | `RemoteTaskEngines` (`REG_DWORD` state), `RemoteTaskDevin`, `RemoteTaskGitHubCopilot`, `RemoteTaskCursor` (`REG_DWORD` each, 1 checked) | `limits.engines.remoteTasks`, the checked vendor ids. Not Configured allows none. |

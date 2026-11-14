@@ -69,13 +69,36 @@ The routes' events read uses Station's own per-task sequence, with
 `after` or `Last-Event-ID`, the same resume role the orchestration stream
 gives `Last-Event-ID`.
 
-The second, stacked on the first, composes the chat adapter. It needs four
-things:
+The second, stacked on the first, composes the chat adapter:
 
-- a new engine family in the closed `EngineCapabilityMatrix`;
-- an answer to how `limits.engines.allowed` treats it;
-- a transcript projection of the stored messages onto runtime events;
-- Agent and picker entries, behind the same preview.
+- **Engine family.** `remote-task` in the closed `EngineCapabilityMatrix`.
+  Every cell that could carry something of the host's is unsupported:
+  instructions, tool servers, skills, commands, tool policy, images. The
+  model selection is a session `flag`, because the picker's "model" is the
+  connection, fixed at start.
+- **Managed policy.** `remote-task` is an engine id `limits.engines.allowed`
+  can name. A chat needs both that list (when there is one) and
+  `limits.engines.remoteTasks` naming the connection's vendor.
+- **Adapter.** `RemoteTaskAdapter` over the service. The first turn creates
+  the task, later turns send follow-ups, and an interrupt cancels where the
+  vendor can (otherwise `termination-unconfirmed`). Only the person's own
+  words are sent, never the composed input with Station's ambient context.
+  The repository is the chat's working copy's GitHub `origin`; Station reads
+  only the remote's URL.
+- **Transcript projection.** A turn polls only while it is open. Each new
+  agent message is a `content.text-delta`; user echoes and status lines are
+  not reply text. The turn completes once the task rests, carrying its
+  status, outputs and usage in the vendor's unit as metadata. A follow-up
+  does not end on the stale idle status it was sent into: a turn ends at
+  rest only after it saw work or a reply, or after three polls without
+  either. A restarted chat resumes its task from its resume cursor without
+  replaying history.
+- **Agent and picker.** The adapter is registered always, and every start
+  and turn passes the service's gate. Its model catalog lists only the
+  connections ready for a chat. The engine connection and its same-id Agent
+  are adopted into the agent registry once a connection is ready (preview
+  on, policy allows it, acknowledged, token set), through the registry's
+  native adoption, which honours a recorded decline.
 
 ### Capabilities
 
@@ -201,6 +224,10 @@ selected organizations only".
   [`bindings/index.ts`](../../src-server/services/remote-task-engines/bindings/index.ts).
 - The routes are
   [`remote-task-engine-routes.ts`](../../src-server/routes/remote-task-engines/remote-task-engine-routes.ts).
+- The chat adapter is
+  [`remote-task-adapter.ts`](../../src-server/providers/adapters/remote-task-adapter.ts),
+  registered and adopted in the route composition
+  ([`adoption.ts`](../../src-server/services/remote-task-engines/adoption.ts)).
   Their pairing scopes are in `pairing-route-scopes.ts`: reads are
   `orchestration:read`, changes `orchestration:operate`, and the token
   `engine:login`.
@@ -227,6 +254,9 @@ Tests:
   interest, cadence and what is retried.
 - [Service rules](../../src-server/services/remote-task-engines/__tests__/remote-task-service.test.ts):
   capability flags, usage units, and removal during a sync.
+- [Chat adapter](../../src-server/providers/__tests__/remote-task-adapter.test.ts):
+  the picker lists ready connections, the first turn sends only the person's
+  words, follow-ups, restart resume, preview refusal, interrupt.
 
 ## Not verified
 
