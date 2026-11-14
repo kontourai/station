@@ -3797,8 +3797,8 @@ export class AcpAdapter implements ProviderAdapterShape {
    * late, so consecutive windows tile time. A point's time is read on
    * Station's clock, less the engine's measured offset, and only while that
    * offset is within `ACP_ENGINE_CLOCK_MAX_OFFSET_MS`. The point's preview
-   * must also be the turn's, and the turn before the chosen one and every
-   * turn after it must resolve so, each to its own point; otherwise nothing
+   * must also be the turn's, and every turn the ledger holds must resolve
+   * so, each to its own point at a rising index; otherwise nothing
    * resolves. The one exception is a turn other than the chosen one whose
    * text is a slash command: the engine may have run it itself, without a
    * point.
@@ -3832,12 +3832,13 @@ export class AcpAdapter implements ProviderAdapterShape {
       };
     const starts = [...(record.enginePromptStarts?.values() ?? [])];
     const resolved: number[] = [];
-    // The turn before the chosen one is resolved too, so a chosen turn the
-    // engine made no point for cannot take a short previous turn's point.
-    const from = Math.max(0, position - 1);
+    // Every turn the ledger holds is resolved, not only the chosen one and
+    // those after it: a turn shorter than the lag allowance can lose its
+    // point to the next window, and following that chain back always ends
+    // at a turn left with none, wherever in the conversation it starts.
     let chosen: number | undefined;
-    for (const [k, turn] of turns.slice(from).entries()) {
-      const isChosen = from + k === position;
+    for (const [k, turn] of turns.entries()) {
+      const isChosen = k === position;
       const startedAt = turn.startedAt;
       const next = starts.find(
         (at) => startedAt !== undefined && at > startedAt,

@@ -1512,6 +1512,40 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
     await session.stop();
   });
 
+  test('a run of short turns before a pointless one cannot pass a point along', async () => {
+    // Turns 0 and 1 each ran under the lag allowance; a hook blocked turn 2.
+    const t = times[0]!;
+    const { session, turns, listed } = await ambientTurns(
+      [t, t + 200, t + 400, t + 10_000],
+      [t + 15, t + 215, t + 10_015],
+    );
+    answerLive(session, { '_x.ai/rewind/points': [listed] });
+    expect(
+      await session.adapter.rewindSession(session.threadId, turns[2]!),
+    ).toEqual({
+      kind: 'failed',
+      message: expect.stringContaining('do not line up'),
+    });
+    expect(session.proc.extMethodCalls).toHaveLength(1);
+    await session.stop();
+  });
+
+  test('a turn Grok made no point for stops rewinds to the turns after it too', async () => {
+    const t = times[0]!;
+    const { session, turns, listed } = await ambientTurns(
+      [t, t + 4_000, t + 8_000],
+      [t + 15, t + 8_015],
+    );
+    answerLive(session, { '_x.ai/rewind/points': [listed] });
+    expect(
+      await session.adapter.rewindSession(session.threadId, turns[2]!),
+    ).toEqual({
+      kind: 'failed',
+      message: expect.stringContaining('do not line up'),
+    });
+    await session.stop();
+  });
+
   test('an old stamp, as a load replays, does not spoil the clock reading', async () => {
     const { session, turns } = await threeTurns();
     await session.agent.notify('session/update', {

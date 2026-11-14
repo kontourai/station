@@ -746,15 +746,17 @@ session's own continuity, which
   be the one Grok lists for the turn's text (its first non-empty line, cut
   to 57 characters plus `...` when longer than 60); Station puts the same
   ambient line (the timezone) first in every prompt, so the preview alone
-  rarely tells turns apart. The turn before the chosen one and every turn
-  after it must resolve the same way, each to its own point, except that a
-  turn other than the chosen one that is a slash command may have none
-  (Grok can run one itself). Otherwise the rewind fails with nothing
-  changed: no point in a window, two, or a preview that differs. So a turn
-  Grok made no point for (a prompt hook blocked it) cannot be rewound to,
-  and while it stays in the conversation neither can the turn before it or
-  any turn earlier; a notice Station reads more than about a quarter second
-  late also fails the rewind. A point copied into a fork carries no time and
+  rarely tells turns apart. Every turn the adapter remembers must resolve
+  the same way, each to its own point at a rising index, except that a turn
+  other than the chosen one that is a slash command may have none (Grok can
+  run one itself): a turn shorter than the quarter second can lose its point
+  to the next window, and that chain always leaves some turn with none.
+  Otherwise the rewind fails with nothing changed: no point in a window,
+  two, or a preview that differs. So a turn Grok made no point for (a prompt
+  hook blocked it) stops every Grok rewind and fork in the conversation while
+  the adapter remembers it; a notice Station reads more than about a quarter
+  second late, and a step of more than about a quarter second in Grok's
+  clock after earlier turns, fail rewinds too. A point copied into a fork carries no time and
   never matches, and a prompt that opens with a tag block Grok strips from
   its preview never matches either.
   The chosen point's `prompt_index` is the one sent. It then sends `_x.ai/rewind/execute { sessionId,
