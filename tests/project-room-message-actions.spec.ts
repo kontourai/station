@@ -589,4 +589,127 @@ test.describe
         await guestContext.close();
       }
     });
+    test('history notices at the 500-message limit: Load earlier by keyboard stops with a note, and incoming messages that unload older rows are announced (900px and 1440px)', async () => {
+      test.setTimeout(600_000);
+      // Seed one channel through the API: 520 messages, paced under the
+      // runtime's per-principal mutation budget (300 a minute).
+      const room = await operatorJson(`/api/projects/${SLUG}/room`);
+      const projectId = room.body.data.scope.localProjectId as string;
+      const actorId = room.body.data.actor.id as string;
+      const created = await operatorJson(`/api/projects/${SLUG}/channels`, {
+        method: 'POST',
+        body: {
+          expectedProjectId: projectId,
+          expectedActorId: actorId,
+          name: 'history-limit',
+        },
+      });
+      expect(created.status, JSON.stringify(created.body)).toBe(200);
+      const channelId = created.body.data.channelId as string;
+      let windowStart = Date.now();
+      let inWindow = 0;
+      const post = async (text: string) => {
+        if (inWindow === 200) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, Math.max(0, windowStart + 61_000 - Date.now())),
+          );
+          windowStart = Date.now();
+          inWindow = 0;
+        }
+        inWindow += 1;
+        const sent = await operatorJson(
+          `/api/projects/${SLUG}/channels/${channelId}/messages`,
+          {
+            method: 'POST',
+            body: {
+              expectedRoomId: channelId,
+              expectedProjectId: projectId,
+              expectedActorId: actorId,
+              intentId: randomUUID(),
+              text,
+            },
+          },
+        );
+        expect(sent.status, JSON.stringify(sent.body)).toBe(200);
+      };
+      for (let n = 1; n <= 520; n++) await post(`History ${n}`);
+
+      const openChannel = async (client: Client, width: number) => {
+        await client.page.setViewportSize({ width, height: 900 });
+        await client.page.goto(
+          `${live.ui}/projects/${SLUG}?section=room&channel=${channelId}`,
+        );
+        await expect(
+          client.room.getByRole('textbox', { name: 'Message the project' }),
+        ).toBeVisible({ timeout: 30_000 });
+        await expect(client.room.getByText('History 520')).toBeVisible();
+      };
+      const limit = (client: Client) =>
+        client.room
+          .getByRole('status')
+          .filter({ hasText: 'This view keeps the latest 500 messages.' });
+      const unloaded = (client: Client) =>
+        client.room.getByRole('status').filter({
+          hasText: 'Earlier messages were unloaded to keep this view current.',
+        });
+      // Keyboard path: focus Load earlier and activate it with Enter, then
+      // Space, until the room says it keeps no more.
+      const pageBack = async (client: Client) => {
+        for (let press = 0; press < 25; press++) {
+          if (await limit(client).count()) break;
+          const older = client.room.getByRole('button', {
+            name: 'Load earlier messages',
+          });
+          await older.focus();
+          await client.page.keyboard.press(press % 2 ? 'Space' : 'Enter');
+          // The button names itself "Loading earlier messages" while a page
+          // is in flight; wait for that to finish.
+          await expect(
+            client.room.getByRole('button', {
+              name: 'Loading earlier messages',
+            }),
+          ).toHaveCount(0, { timeout: 30_000 });
+        }
+        await expect(limit(client)).toBeVisible({ timeout: 30_000 });
+        await expect(
+          client.room.getByRole('button', { name: 'Load earlier messages' }),
+        ).toHaveCount(0);
+      };
+      const readable = async (client: Client, note: Locator) => {
+        await expect(note).toBeInViewport();
+        // A polite live region: announced, never focused.
+        await expect(note).toHaveAttribute('role', 'status');
+        expect(
+          await note.evaluate((element) => element === document.activeElement),
+        ).toBe(false);
+        expect(
+          await note.evaluate(
+            (element) => parseFloat(getComputedStyle(element).fontSize) >= 12,
+          ),
+        ).toBe(true);
+        await expectNoHorizontalScroll(client.page);
+      };
+
+      await openChannel(clientA, 1440);
+      await openChannel(clientB, 900);
+      for (const client of [clientA, clientB]) {
+        await pageBack(client);
+        await limit(client).scrollIntoViewIfNeeded();
+        await readable(client, limit(client));
+      }
+      // Real incoming messages move the tail far enough to unload the oldest
+      // rows these clients loaded; each says so, on its own, without focus.
+      for (let n = 521; n <= 550; n++) await post(`History ${n}`);
+      for (const client of [clientA, clientB]) {
+        await expect(client.room.getByText('History 550')).toBeVisible({
+          timeout: 30_000,
+        });
+        await expect(unloaded(client)).toHaveCount(1, { timeout: 30_000 });
+        await unloaded(client).scrollIntoViewIfNeeded();
+        await readable(client, unloaded(client));
+        await expect(
+          client.room.getByRole('button', { name: 'Load earlier messages' }),
+        ).toBeVisible();
+      }
+    });
   });

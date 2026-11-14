@@ -670,7 +670,9 @@ export function RoomConversation({
           className={`room-conversation__content${!rows.length && !loading ? ' room-conversation__content--empty' : ''}`}
         >
           {olderNote && (
-            <p className="room-conversation__older-note" role="note">
+            // A polite live region: the note can appear with no action from
+            // the reader (rows unloaded), so it is announced, never focused.
+            <p className="room-conversation__older-note" role="status">
               {olderNote}
             </p>
           )}

@@ -115,7 +115,8 @@ attachment ID grants no access. An image's bytes must start with its declared im
 type's signature (a prefix check, not a full decode). Room history and durable agent requests store only
 `TaskRoomAttachment` descriptors. Bytes use the existing content-addressed store's
 retention settings (90 days and 512 MiB by default); a retained history entry may
-therefore outlive its bytes and show an unavailable attachment.
+therefore outlive its bytes and show an unavailable attachment, even while its
+message stands (#4947).
 
 The [room routes](../../src-server/routes/orchestration/project-task-rooms.ts)
 expose upload and authenticated byte reads under `/api/tasks/:taskId/room/attachments`.

@@ -1106,10 +1106,15 @@ reacted. The stored message row is never rewritten.
   that message stands. An image's bytes must start with the declared image
   type's signature (a prefix check, not a full image decode). Each uploader may hold 1280 files in a room. Deleting a message
   releases its files, and each upload first releases that uploader's unsent
-  files older than a day. Releasing frees files and quota, never bytes: the
-  deduplicated byte store is shared across processes, so released bytes stay
-  until its own age and size retention (90 days, 512 MiB by default) reclaims
-  them (#4942).
+  files older than a day. A release deletes the bytes no other file names,
+  under one store-wide lock that every upload also holds, across processes;
+  the store never evicts by age or size. Live data is bounded per binding,
+  not across the store: one uploader in one room holds at most 1280 files of
+  up to 5 MiB (6.25 GiB), unsent uploads included until their day is up.
+  Reported limits, not separately proven: a crash between writing bytes and
+  their file can leave up to 15 MiB unreferenced per crashed upload, which
+  nothing reclaims yet, and each release scans every binding in the store,
+  so its cost grows with the store (#4942).
   Account-bound devices may read room files, and send messages, reactions,
   edits and files once the operator grants the device operate scope (account
   binding starts read-only); unlike Task-room files, these never reach an
