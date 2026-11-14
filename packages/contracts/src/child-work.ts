@@ -1160,6 +1160,21 @@ export function childWorkForReporter(
   );
 }
 
+/**
+ * Drops a reporter's statement that it reports no child work, keeping its
+ * items: a new session start on the same thread makes its own statement (or
+ * reports), so an earlier one must not outlive it.
+ */
+export function clearChildWorkNotReported(
+  state: ChildWorkRegistryState,
+  reporterThreadId: string,
+): ChildWorkRegistryState {
+  if (!(reporterThreadId in state.notReported)) return state;
+  const notReported = { ...state.notReported };
+  delete notReported[reporterThreadId];
+  return { ...state, notReported };
+}
+
 /** Drops everything a reporter held, e.g. when its session exits. */
 export function forgetChildWorkReporter(
   state: ChildWorkRegistryState,

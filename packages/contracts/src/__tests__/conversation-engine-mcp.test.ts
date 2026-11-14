@@ -42,6 +42,17 @@ describe('foldEngineMcpStatus', () => {
     ).toEqual(['a:ready', 'b:ready', 'c:starting']);
   });
 
+  test('keeps a server the engine only reports as configured (Muse)', () => {
+    const configured = {
+      name: 'm',
+      state: 'configured',
+      scope: 'engine-config',
+    } as const;
+    expect(
+      foldEngineMcpStatus(undefined, { servers: [configured], complete: true }),
+    ).toEqual({ servers: [configured] });
+  });
+
   test('the reconnect bit is the latest report’s', () => {
     const on = foldEngineMcpStatus(undefined, {
       servers: [ready],

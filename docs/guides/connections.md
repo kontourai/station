@@ -94,7 +94,7 @@ and [connection form](../../src-ui/src/views/provider-settings/ProviderConnectio
 
 ## Sign an engine profile in from a device
 
-Open **Connections → Engines → Codex** or **Claude**. The account picker shows
+Open **Connections → Engines → Codex**, **Claude** or **Muse**. The account picker shows
 saved accounts and marks the account currently in use. Picking an account changes
 what you view; it does not change the account used by runs. Existing account
 application controls remain under **Advanced**.
@@ -106,6 +106,28 @@ and select **Finish sign-in**. Station reports completion only after the engine
 confirms authentication. **Cancel** stops a pending login. Returning to the
 account resumes status checks. Login capabilities come from the installed CLI;
 unsupported or unreadable installations remain unavailable.
+
+Muse Code (#1942) signs in with a device code too: Station runs the bare
+`muse login`, offered only while `muse login --help` still says "approve a code
+in your browser", and relays its link and code. Sign-in state comes from
+`muse usage --json`: its JSON answer is signed in, "not logged in" is signed
+out, and anything else is unknown. API-key sign-in is not offered for a
+profile, and a profile never inherits `META_API_KEY` from Station's
+environment: Muse honours that key under any config home, so Station keeps it
+for the default account only. A Muse profile is an XDG config root: sessions, `muse serve` hosts
+and exec turns run with `XDG_CONFIG_HOME` set to the profile, where Muse reads
+its `muse/` folder, and a named profile that cannot be prepared refuses the
+start. Import copies `settings.json` and `skills/`, `auth.json` only when you
+tick the credential box, and never `trust.json` (folder trust is your decision,
+not the profile's). `XDG_DATA_HOME` is not moved, so sessions resume under any
+profile. Because `XDG_CONFIG_HOME` is not private to Muse, tools a profile
+session runs inherit it: a tool that reads its configuration from
+`XDG_CONFIG_HOME` when that is set (for example the GitHub CLI's
+`gh/hosts.yml`) looks in the profile instead and does not find it there. Per-profile
+allowance for Muse reads unavailable: the account it was observed on reported
+no allowance, so Station has no real shape to map. The device-code relay was
+checked live against Muse Code 1.4.18 up to the code, then cancelled before
+approval.
 
 Relayed login applies to saved credential profiles. The default account follows
 the connection's configured home and environment and is managed by the host CLI;
@@ -190,7 +212,8 @@ and extra-usage shapes are live-observed as well as fixture-validated. Other pla
 older activity remains visible. **Activity for** switches
 between the selected credential profile and all accounts of this engine. New
 Claude and Codex sessions record an opaque account key from the profile actually
-resolved for the process. Raw profile references are not published in runtime
+resolved for the process; Muse sessions record none yet, so their receipts stay
+unattributed. Raw profile references are not published in runtime
 events. Source-home continuations and older events without this observation
 remain unattributed. A process restart does not inherit a previous process's
 account observation. Account filtering excludes unattributed receipts; it never
@@ -1487,8 +1510,9 @@ server's environment, the connection `env`, the profile overlay, the profile's
 own config-home key, then Station's engine temp directory
 ([resolver](../../src-server/providers/app-home/credential-profile-env.ts)). The profile is the
 one an Agent pins, the one credential recovery is trying, or else the
-connection's active profile. The overlay reaches Claude Code and Codex session
-starts and Codex quota reads for that profile. It is not applied to model
+connection's active profile. The overlay reaches Claude Code, Codex and Muse
+session starts and Codex quota reads for that profile. Muse has no connection
+`env` layer, and its profile's config-home key is `XDG_CONFIG_HOME`. It is not applied to model
 discovery, adopted sessions and source-home resumes, login readiness checks,
 login/enrolment into the profile, or the per-profile usage read
 (`GET /api/connections/agent/<engine>/credential-usage`), which reads the

@@ -103,6 +103,27 @@ test('editing uses the shared typed operation and saves paused without a resume 
   );
 });
 
+test('a goal whose engine reports no token or time figures shows none, never zero, and no save copy without set', () => {
+  fixtures.query.data = {
+    state: 'available',
+    capability: {
+      implementation: 'engine',
+      operations: ['read', 'pause', 'clear'],
+      maxObjectiveChars: 4000,
+      tokenBudget: 'unsupported',
+      completion: 'implementation-reported',
+      saveState: 'paused',
+    },
+    goal: { objective: 'Ship the parity slice', status: 'active' },
+  };
+  render(<SessionGoalControl sessionId="session" />);
+  const region = screen.getByRole('region', { name: 'Session goal' });
+  expect(screen.getByText('Ship the parity slice')).toBeTruthy();
+  expect(region.textContent).not.toMatch(/tokens used|token budget|\b0s\b/);
+  expect(region.textContent).not.toMatch(/Save a paused objective/);
+  expect(screen.queryByRole('button', { name: /goal$/ })).toBeNull();
+});
+
 test('an uncertain mutation stays visible without retrying', async () => {
   fixtures.mutate.mockResolvedValue({ state: 'indeterminate' });
   render(<SessionGoalControl sessionId="session" />);

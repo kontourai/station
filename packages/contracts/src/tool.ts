@@ -899,6 +899,14 @@ export interface AgentConnectionView extends ConnectionConfig {
   modelExecution?: ModelInventoryExecutionIdentity;
   /** Adapter-declared continuity; absent older/plugin rows mean no native capability. */
   continuity?: import('./provider.js').ProviderContinuityCapabilities;
+  /**
+   * #2266: the adapter's declared model-launch capability: whether an
+   * explicit model selector is applied at each lifecycle point. Independent
+   * of `runtimeCatalog`: an engine can apply a selector it cannot enumerate,
+   * so an empty catalog never means selection is unsupported. Absent (an
+   * older host, or an adapter that declares none) is unknown.
+   */
+  modelLaunch?: import('./provider.js').ModelLaunchCapabilities;
   runtimeCatalog?: RuntimeCatalogStatus;
   /** Live ACP provider-routing evidence; absent on non-ACP connections. */
   providerRouting?: ACPProviderRoutingStatus;
