@@ -286,11 +286,8 @@ export class PluginRegistry {
   private healthyProbesToSkip = 0;
   /** Probes skipped after the next re-read; grows up to a ceiling. */
   private healthyProbeBackoff = 1;
-  /**
-   * The connection generation of the in-flight load when it is a background
-   * re-read the person has not asked to watch; otherwise undefined.
-   */
-  private backgroundReloadGeneration: number | undefined;
+  /** Whether the in-flight load is a background re-read nobody is watching. */
+  private backgroundReloadInFlight = false;
   private loadListeners = new Set<() => void>();
   private loadStatus: PluginRegistryLoadStatus = {
     state: 'loading',
@@ -1013,14 +1010,14 @@ export class PluginRegistry {
   /** Reload — re-fetch plugin list and load any new bundles */
   reload(): Promise<PluginRegistrySettledLoadState> {
     if (this.reloadInFlight) {
-      // Retry pressed during a background re-read for this same connection
-      // joins it and shows its progress, instead of queueing a second read.
-      if (this.backgroundReloadGeneration === this.apiBaseGeneration) {
-        this.backgroundReloadGeneration = undefined;
+      // Every caller gets a fresh pass behind the running one: its read may
+      // predate an install or a recovery. Behind a background re-read, show
+      // that a load is now under way rather than the old failure.
+      if (this.backgroundReloadInFlight) {
+        this.backgroundReloadInFlight = false;
         this.setLoadStatus('loading');
-      } else {
-        this.reloadQueued = true;
       }
+      this.reloadQueued = true;
       return this.reloadInFlight;
     }
     return this.startReload(false);
@@ -1029,15 +1026,13 @@ export class PluginRegistry {
   private startReload(
     background: boolean,
   ): Promise<PluginRegistrySettledLoadState> {
-    this.backgroundReloadGeneration = background
-      ? this.apiBaseGeneration
-      : undefined;
+    this.backgroundReloadInFlight = background;
     const operation = this.drainReloads(background);
     this.reloadInFlight = operation;
     const settle = () => {
       if (this.reloadInFlight !== operation) return;
       this.reloadInFlight = undefined;
-      this.backgroundReloadGeneration = undefined;
+      this.backgroundReloadInFlight = false;
     };
     void operation.then(settle, settle);
     return operation;
@@ -1083,6 +1078,9 @@ export class PluginRegistry {
     const loadState = await this.initialize();
     if (this.failure !== 'registry-unavailable')
       this.resetHealthyProbeBackoff();
+    // A pass queued behind a background re-read reports the outcome; showing
+    // this one's first would flash the old failure between two loads.
+    if (background && this.reloadQueued) return loadState;
     this.setLoadStatus(loadState, this.failedPluginNames, this.failure);
     return loadState;
   }

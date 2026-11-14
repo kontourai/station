@@ -285,12 +285,15 @@ export function useConnectionStatus({
 
   const onHealthyProbeRef = useRef(onHealthyProbe);
   onHealthyProbeRef.current = onHealthyProbe;
-  const seenProbesRef = useRef(snapshot.completedProbes);
+  // Keyed by connection: another connection's coordinator keeps its own
+  // count, so a switch sets a new baseline instead of reading as a probe.
+  const seenProbesRef = useRef({ key, count: snapshot.completedProbes });
   useEffect(() => {
-    if (seenProbesRef.current === snapshot.completedProbes) return;
-    seenProbesRef.current = snapshot.completedProbes;
+    const seen = seenProbesRef.current;
+    seenProbesRef.current = { key, count: snapshot.completedProbes };
+    if (seen.key !== key || seen.count === snapshot.completedProbes) return;
     if (snapshot.status === 'connected') onHealthyProbeRef.current?.();
-  }, [snapshot.completedProbes, snapshot.status]);
+  }, [key, snapshot.completedProbes, snapshot.status]);
 
   return { ...snapshot, recheck: entry.coordinator.trigger };
 }

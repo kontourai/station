@@ -72,7 +72,8 @@ re-read runs on the 1st, 3rd, 7th and 15th probe after the failure and every
 8th after that; probes during a re-read do not count. It runs in the
 background: the tab keeps showing **Extensions could not load** and **Retry**
 until a re-read succeeds, then shows the plugin. Pressing **Retry** during a
-background re-read shows its progress rather than starting another.
+background re-read shows the loading state at once and reads again after the
+running re-read ends, like any other reload.
 See the [registry](../../src-ui/src/core/PluginRegistry.ts).
 
 The capability is a per-launch 256-bit secret checked in constant time. It

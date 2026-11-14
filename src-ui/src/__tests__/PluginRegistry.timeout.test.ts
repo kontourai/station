@@ -436,24 +436,94 @@ describe('PluginRegistry inventory timeout', () => {
     }
   });
 
-  test('Retry during a background re-read shows its progress and starts no second read', async () => {
+  test('Retry during a failing background re-read shows loading, then a fresh pass reports the failure', async () => {
     vi.useFakeTimers();
     try {
       const inventory = controlInventory('503');
       const registry = loopbackRegistry();
       await degradeWith503(registry);
+      const states: Array<{ state: string; failure?: string }> = [];
+      registry.subscribe(() => {
+        const { state, failure } = registry.getLoadStatus();
+        states.push({ state, failure });
+      });
 
       registry.retryUnavailableInventory();
       await vi.advanceTimersByTimeAsync(0);
       expect(inventory.reads).toBe(4);
       const retried = registry.reload();
       expect(registry.getLoadStatus().state).toBe('loading');
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(10_000);
       await expect(retried).resolves.toBe('degraded');
-      expect(inventory.reads).toBe(6);
+      // The background chain's three reads, then the fresh pass's three.
+      expect(inventory.reads).toBe(9);
+      expect(states).toEqual([
+        { state: 'loading', failure: undefined },
+        { state: 'degraded', failure: 'registry-unavailable' },
+      ]);
       await vi.advanceTimersByTimeAsync(120_000);
-      expect(inventory.reads).toBe(6);
+      expect(inventory.reads).toBe(9);
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a reload during a failing background re-read gets a fresh read, which can succeed and register components', async () => {
+    vi.useFakeTimers();
+    try {
+      let reads = 0;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL) => {
+          if (!String(input).endsWith('/api/plugins')) return new Response('');
+          reads += 1;
+          // Initial load 1-3 and the background chain 4-6 fail.
+          if (reads <= 6) return new Response('', { status: 503 });
+          return Response.json({
+            plugins: [
+              {
+                name: 'knowledge-docs-starter',
+                version: '1.0.0',
+                hasBundle: true,
+              },
+            ],
+          });
+        }),
+      );
+      const registry = new PluginRegistry(Promise.resolve({ platform: 'web' }));
+      registry.setApiBase('http://localhost:3000');
+      await degradeWith503(registry);
+
+      registry.retryUnavailableInventory();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(reads).toBe(4);
+      // Not Retry: an install or a plugin-change event reloading.
+      const reloading = registry.reload();
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(reads).toBe(7);
+
+      const script = await vi.waitFor(() => {
+        const element = document.head.querySelector<HTMLScriptElement>(
+          'script[data-station-plugin]',
+        );
+        if (!element) throw new Error('Plugin script was not appended.');
+        return element;
+      });
+      const KnowledgeSources = () => null;
+      (window as any).__station_ai_plugins = {
+        'knowledge-docs-starter': {
+          components: { 'knowledge-sources': KnowledgeSources },
+        },
+      };
+      script.dispatchEvent(new Event('load'));
+      await expect(reloading).resolves.toBe('ready');
+      expect(registry.getLoadStatus().state).toBe('ready');
+      expect(registry.getLayout('knowledge-sources')).toBe(KnowledgeSources);
+    } finally {
+      document.head
+        .querySelectorAll('[data-station-plugin]')
+        .forEach((node) => node.remove());
+      delete (window as any).__station_ai_plugins;
       vi.useRealTimers();
     }
   });
