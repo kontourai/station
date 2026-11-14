@@ -43,11 +43,15 @@ import {
   OpenCodeAdapter,
 } from '../adapters/opencode-adapter.js';
 import { openCodeMcpDigest } from '../adapters/opencode-native-mcp.js';
-import { OpenCodeRequestClosedError } from '../adapters/opencode-serve-session.js';
+import {
+  OpenCodeRequestClosedError,
+  openCodeAskFitsTool,
+} from '../adapters/opencode-serve-session.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import {
   loadOpenCodeFixture,
   type OpenCodeReplayRecord,
+  type OpenCodeReplayRequest,
   OpenCodeServeReplay,
   type OpenCodeServeReplayOptions,
   pageOpenCodeHistory,
@@ -154,6 +158,9 @@ async function setup(
       XDG_DATA_HOME: '/replay/xdg',
     }),
     reconnectFirstMs: 5,
+    // A turn stopped on a refused rejection that OpenCode never confirms
+    // ends sooner than in production; tests of the wait set their own.
+    failCloseSettleMs: 300,
     newMessageId: () => {
       const id = promptIds.shift();
       if (!id) throw new Error('the replay has no more recorded prompt ids');
@@ -3256,10 +3263,15 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     expect(policy.calls.map((entry) => entry.tool.toolName)).toEqual(['edit']);
   });
 
-  /** Every reply POST fails with 500 `times` times, then succeeds. */
+  /**
+   * Every reply POST fails with 500 `times` times, then succeeds; an
+   * interrupt is taken (204), as OpenCode takes one for a running session.
+   */
   const repliesFail = (times: number) => {
     let failed = 0;
     return (request: { method: string; path: string }) => {
+      if (request.method === 'POST' && request.path.endsWith('/interrupt'))
+        return { status: 204 };
       if (request.method !== 'POST' || !request.path.endsWith('/reply'))
         return undefined;
       if (failed >= times) return { status: 204 };
@@ -3447,6 +3459,314 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     expect(
       h.events.find((event) => event.method === 'runtime.warning'),
     ).toMatchObject({ message: expect.stringContaining('delegated session') });
+  });
+
+  // --- A rejection OpenCode will not take: round 9 --------------------------
+
+  const SUBAGENT_ROOT = 'ses_e28e4e161ffeTvcyrSzodqSP8U';
+  /** The child's rejection is refused (500, every time); its agent denies edits. */
+  const childRejectionRefused = () => {
+    const fail = repliesFail(Number.POSITIVE_INFINITY);
+    const governance = childGovernance({
+      build: [],
+      general: [{ action: 'edit', resource: '*', effect: 'deny' }],
+    });
+    return (request: OpenCodeReplayRequest) =>
+      fail(request) ?? governance(request);
+  };
+  const interruptPaths = (h: { replay: OpenCodeServeReplay }) =>
+    interrupts(h).map((request) => request.path);
+
+  test("a child's rejection OpenCode will not take interrupts the child's own session as well as this one's (a 2.3.0 subagent is a job of its own)", async () => {
+    const h = await setup({
+      scenario: 'subagent',
+      rewrite: childAsk('edit', ['notes.txt']),
+      respond: childRejectionRefused(),
+    });
+    await h.start({ approvalMode: 'auto' });
+    const { turnId } = await h.turn('DO_TASK now');
+    const failure = await h.waitFor(
+      (event) => event.method === 'runtime.error' && event.turnId === turnId,
+    );
+    expect(String(failure.message)).toContain(`from subagent session ${CHILD}`);
+    expect(String(failure.message)).toContain('so Station stopped the turn.');
+    await h.waitFor(() => interrupts(h).length === 2);
+    expect(interruptPaths(h).sort()).toEqual(
+      [
+        `/api/session/${CHILD}/interrupt`,
+        `/api/session/${SUBAGENT_ROOT}/interrupt`,
+      ].sort(),
+    );
+    expect(opened(h.events)).toEqual([]);
+  });
+
+  test("a background child's rejection OpenCode will not take, while a later turn runs, interrupts only that child and warns: the later turn goes on", async () => {
+    // The subagent capture, made a background child outliving its turn:
+    // the root's first execution ends while the child runs, the engine
+    // starts another root execution (its own turn), and then the child
+    // asks.
+    const asRoot = (record: OpenCodeReplayRecord, type: string) => ({
+      ...record,
+      event: { type, data: { sessionID: SUBAGENT_ROOT } },
+    });
+    const h = await setup({
+      scenario: 'subagent',
+      rewrite: (record) => {
+        if (record.kind === 'sse' && record.event?.data?.sessionID === CHILD) {
+          if (record.event.type === 'session.step.started')
+            return asRoot(record, 'session.execution.succeeded');
+          if (record.event.type === 'session.step.first-token')
+            return asRoot(record, 'session.execution.started');
+        }
+        return childAsk('edit', ['notes.txt'])(record);
+      },
+      respond: childRejectionRefused(),
+    });
+    await h.start({ approvalMode: 'auto' });
+    const first = await h.turn('DO_TASK now');
+    await h.waitFor(completedFor(first.turnId));
+    const warning = await h.waitFor(
+      (event) =>
+        event.method === 'runtime.warning' &&
+        String(event.message).includes(`from subagent session ${CHILD}`),
+    );
+    expect(String(warning.message)).toContain(
+      'so Station stopped that subagent.',
+    );
+    // The engine's own later turn completes as OpenCode ran it.
+    const later = await h.waitFor(
+      (event) =>
+        event.method === 'turn.completed' && event.turnId !== first.turnId,
+    );
+    expect(later).toMatchObject({
+      finishReason: 'stop',
+      metadata: { trigger: 'provider' },
+    });
+    expect(interruptPaths(h)).toEqual([`/api/session/${CHILD}/interrupt`]);
+    expect(
+      h.events.filter((event) => event.method === 'runtime.error'),
+    ).toEqual([]);
+  });
+
+  test('a turn stopped on a rejection OpenCode will not take ends only when OpenCode says its execution ended; meanwhile a next turn is refused as busy and a steer as too late', async () => {
+    let released = false;
+    const h = await setup(
+      {
+        scenario: 'interrupt-pending',
+        respond: repliesFail(Number.POSITIVE_INFINITY),
+        holdFrame: (record) =>
+          record.kind === 'sse' &&
+          record.event?.type === 'session.execution.interrupted'
+            ? () => released
+            : undefined,
+      },
+      { failCloseSettleMs: 10_000 },
+    );
+    await h.start({ approvalMode: 'ask' }, { metadata: DENY_APPROVALS });
+    const { turnId } = await h.turn('DO_BASH wait');
+    await h.waitFor(() => interrupts(h).length === 1);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const ended = () =>
+      h.events.filter(
+        (event) =>
+          event.turnId === turnId &&
+          ['runtime.error', 'turn.completed', 'turn.aborted'].includes(
+            event.method,
+          ),
+      );
+    expect(ended()).toEqual([]);
+    await expect(h.turn('DO_BASH next')).rejects.toMatchObject({
+      name: 'SendTurnRefusedError',
+      kind: 'busy',
+    });
+    await expect(
+      h.adapter.steerTurn('thread-1', 'one more thing', turnId),
+    ).rejects.toBeInstanceOf(ProviderTurnEndedError);
+    expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(1);
+    released = true;
+    const failure = await h.waitFor(
+      (event) => event.method === 'runtime.error' && event.turnId === turnId,
+    );
+    expect(String(failure.message)).toContain('so Station stopped the turn.');
+    expect(ended()).toHaveLength(1);
+    expect(opened(h.events)).toEqual([]);
+  });
+
+  test('a turn stopped on a rejection OpenCode will not take, whose end OpenCode never reports, ends when the wait runs out and says so', async () => {
+    const h = await setup(
+      {
+        scenario: 'interrupt-pending',
+        respond: repliesFail(Number.POSITIVE_INFINITY),
+        holdFrame: (record) =>
+          record.kind === 'sse' &&
+          record.event?.type === 'session.execution.interrupted'
+            ? () => false
+            : undefined,
+      },
+      { failCloseSettleMs: 600 },
+    );
+    await h.start({ approvalMode: 'ask' }, { metadata: DENY_APPROVALS });
+    const { turnId } = await h.turn('DO_BASH wait');
+    await h.waitFor(() => interrupts(h).length === 1);
+    await expect(h.turn('DO_BASH next')).rejects.toMatchObject({
+      kind: 'busy',
+    });
+    const failure = await h.waitFor(
+      (event) => event.method === 'runtime.error' && event.turnId === turnId,
+    );
+    expect(String(failure.message)).toContain(
+      'OpenCode had not confirmed its execution ended.',
+    );
+  });
+
+  test('a rejection OpenCode will not take whose interrupt fails too warns, says the turn may still run, and stopping the session rejects and interrupts again', async () => {
+    const policy = stagedPolicy(() => ({
+      behavior: 'deny',
+      denial: { allowed: false, reason: 'shell is not for reviewers' },
+    }));
+    const fail = repliesFail(Number.POSITIVE_INFINITY);
+    const h = await setup(
+      {
+        scenario: 'permission-allow',
+        omit: heldAtFirstAsk('permission-allow'),
+        respond: (request) =>
+          request.method === 'POST' && request.path.endsWith('/interrupt')
+            ? { status: 500, body: { error: 'interrupt broke' } }
+            : fail(request),
+      },
+      { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
+    );
+    await h.start(undefined, { agent: AGENT });
+    const { turnId } = await h.turn('DO_BASH please');
+    const warning = await h.waitFor(
+      (event) =>
+        event.method === 'runtime.warning' &&
+        String(event.message).includes('could not interrupt'),
+    );
+    expect(String(warning.message)).toContain('interrupt with 500');
+    const failure = await h.waitFor(
+      (event) => event.method === 'runtime.error' && event.turnId === turnId,
+    );
+    expect(String(failure.message)).toContain(
+      'Station could not stop the turn in OpenCode',
+    );
+    expect(String(failure.message)).toContain('may still be running it');
+    expect(replies(h)).toHaveLength(2);
+    expect(interrupts(h)).toHaveLength(1);
+    // Nothing runs as far as Station's turn goes, but OpenCode may still
+    // hold the ask: stopping interrupts and rejects it once more.
+    await h.adapter.stopSession('thread-1');
+    expect(interrupts(h)).toHaveLength(2);
+    expect(replies(h)).toEqual([
+      { decision: 'reject', message: 'shell is not for reviewers' },
+      { decision: 'reject', message: 'shell is not for reviewers' },
+      { decision: 'reject' },
+    ]);
+  });
+
+  test('a rejection OpenCode would not take is not reopened by a later re-list, though the mode would now allow it', async () => {
+    const ROOT = 'ses_e2457ce8dffe98Zg4A032fhyKD';
+    const ASK = 'per_1dba838220010FF9zDMVk4Pzat';
+    const edit = {
+      id: ASK,
+      sessionID: ROOT,
+      action: 'edit',
+      resources: ['/replay/proj/notes.txt'],
+      save: ['*'],
+    };
+    let refused = 0;
+    const h = await setup(
+      {
+        scenario: 'move-gap',
+        rewrite: (record) => {
+          // Live on the first feed, during the first turn: OpenCode asks.
+          if (
+            record.kind === 'sse' &&
+            record.tap === 'A' &&
+            record.event?.type === 'session.tool.progress'
+          )
+            return {
+              ...record,
+              event: { type: 'permission.asked', data: edit },
+            };
+          // Still pending when the second feed's re-list reads it.
+          if (
+            record.kind === 'http' &&
+            record.method === 'GET' &&
+            record.path === `/api/session/${ROOT}/permission`
+          )
+            return { ...record, response: { data: [edit] } };
+          return record;
+        },
+        respond: (request) => {
+          if (request.method === 'POST' && request.path.endsWith('/reply')) {
+            refused += 1;
+            return refused <= 2
+              ? { status: 500, body: { error: 'reply broke' } }
+              : { status: 204 };
+          }
+          if (
+            request.method === 'POST' &&
+            (request.path.endsWith('/interrupt') ||
+              request.path.endsWith('/agent'))
+          )
+            return { status: 204 };
+          if (request.method === 'PATCH') return { status: 204 };
+          if (
+            request.method === 'GET' &&
+            request.path === '/api/permission/saved'
+          )
+            return { status: 200, body: { data: [] } };
+          const agent = /^\/api\/agent\/([^/]+)$/.exec(request.path)?.[1];
+          if (request.method === 'GET' && agent)
+            return {
+              status: 200,
+              body: {
+                data: {
+                  name: agent,
+                  permissions:
+                    agent === 'plan'
+                      ? [{ action: 'edit', resource: '*', effect: 'deny' }]
+                      : [],
+                },
+              },
+            };
+          return undefined;
+        },
+      },
+      { findProjectCode: async () => [] },
+    );
+    // Plan's own rules deny the edit: Station rejects it, and OpenCode
+    // will not take the rejection.
+    await h.start({ approvalMode: 'ask', mode: 'plan' });
+    const first = await h.turn('DO_MOVE sub-gap');
+    const failure = await h.waitFor(
+      (event) =>
+        event.method === 'runtime.error' && event.turnId === first.turnId,
+    );
+    expect(String(failure.message)).toContain('request to edit');
+    // Under full access on build the same ask would be answered `once`.
+    await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'DO_BASH moved',
+      modelOptions: { approvalMode: 'never', mode: 'build' },
+      confinement: 'host',
+    });
+    await h.waitFor(
+      () => h.replay.made('GET', '/api/session/:id/inbox').length > 0,
+      10_000,
+    );
+    expect(
+      h.replay.made('GET', '/api/session/:id/permission').length,
+    ).toBeGreaterThan(0);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(replies(h)).toEqual([
+      { decision: 'reject' },
+      { decision: 'reject' },
+    ]);
+    expect(opened(h.events).filter((event) => event.requestId === ASK)).toEqual(
+      [],
+    );
   });
 });
 
@@ -4161,6 +4481,241 @@ describe('OpenCodeAdapter native reconnect re-reads (2.3.0 replay)', () => {
       h.replay.made('POST', '/api/session/:id/permission/:id/reply'),
     ).toHaveLength(1);
   });
+
+  // --- Round 9 -------------------------------------------------------------
+
+  const RECONNECT_ROOT = 'ses_e28b1fc17fferh6a5WrnQhzEcF';
+  const KID = 'ses_e28b1kidRunningAcrossGap01';
+  /** Tap B shows nothing after it connects: only the re-reads tell. */
+  const quietSecondFeed = (record: OpenCodeReplayRecord) =>
+    record.tap === 'B' &&
+    record.kind === 'sse' &&
+    record.event?.type !== 'server.connected';
+  /** Answers for the descendant reads of the reconnect capture. */
+  const descendantReads =
+    (children: (parentId: string) => Array<Record<string, unknown>>) =>
+    (request: { method: string; path: string }) => {
+      if (request.method !== 'GET') return undefined;
+      const parent = /^\/api\/session\?parentID=([^&]+)/.exec(
+        request.path,
+      )?.[1];
+      if (parent)
+        return {
+          status: 200,
+          body: { data: children(decodeURIComponent(parent)) },
+        };
+      if (
+        request.path === '/api/permission/request' ||
+        request.path === '/api/form'
+      )
+        return { status: 200, body: { data: [] } };
+      return undefined;
+    };
+  const warnings = (events: Event[]) =>
+    events.filter((event) => event.method === 'runtime.warning');
+
+  test('a reconnect that cannot read which sessions run settles nothing: the live turn, a running child and a queued steer all stay as they were', async () => {
+    const STEER = 'msg_1e28b1steerKeptAcrossGap01';
+    const promptIds = [
+      ...recordedPromptIds('reconnect', quietSecondFeed),
+      STEER,
+    ];
+    let replay: OpenCodeServeReplay | undefined;
+    let deltas = 0;
+    const reads = descendantReads((parent) =>
+      parent === RECONNECT_ROOT ? [{ id: KID, parentID: RECONNECT_ROOT }] : [],
+    );
+    const h = await setup(
+      {
+        scenario: 'reconnect',
+        omit: quietSecondFeed,
+        // The first feed's first two text deltas, made a child that starts.
+        rewrite: (record) => {
+          if (
+            record.kind !== 'sse' ||
+            record.tap !== 'A' ||
+            record.event?.type !== 'session.text.delta' ||
+            deltas >= 2
+          )
+            return record;
+          deltas += 1;
+          return {
+            ...record,
+            event:
+              deltas === 1
+                ? {
+                    type: 'session.created',
+                    data: { sessionID: KID, parentID: RECONNECT_ROOT },
+                  }
+                : {
+                    type: 'session.execution.started',
+                    data: { sessionID: KID },
+                  },
+          };
+        },
+        // The first feed drops only once the steer is queued.
+        holdFrame: (record) =>
+          record.kind === 'sse-close' && record.tap === 'A'
+            ? () =>
+                (replay?.made('POST', '/api/session/:id/prompt').length ?? 0) >=
+                2
+            : undefined,
+        respond: (request) =>
+          request.method === 'GET' && request.path === '/api/session/active'
+            ? { status: 500, body: { error: 'active broke' } }
+            : reads(request),
+      },
+      {
+        newMessageId: () => {
+          const id = promptIds.shift();
+          if (!id) throw new Error('no more prompt ids');
+          return id;
+        },
+      },
+    );
+    replay = h.replay;
+    await h.start();
+    const { turnId } = await h.turn('DO_SLOW stream');
+    await h.waitFor(
+      (event) =>
+        event.method === 'child-work.updated' &&
+        (event.delta as { kind: string }).kind === 'snapshot',
+    );
+    let steerOutcome = 'pending';
+    h.adapter.steerTurn('thread-1', 'STEER kept', turnId).then(
+      () => {
+        steerOutcome = 'delivered';
+      },
+      () => {
+        steerOutcome = 'refused';
+      },
+    );
+    await h.waitFor(
+      () => h.replay.made('GET', '/api/session/:id/inbox').length > 0,
+      10_000,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    // One warning, the failed read's: nothing else in the re-read failed.
+    expect(warnings(h.events).map((event) => event.message)).toEqual([
+      expect.stringContaining('could not re-read which sessions are running'),
+    ]);
+    expect(
+      h.events.filter(
+        (event) =>
+          event.turnId === turnId &&
+          ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
+            event.method,
+          ),
+      ),
+    ).toEqual([]);
+    expect(
+      h.events.filter(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          (event.delta as { kind: string }).kind === 'settle',
+      ),
+    ).toEqual([]);
+    expect(h.replay.made('DELETE', '/api/session/:id/inbox/:id')).toEqual([]);
+    expect(steerOutcome).toBe('pending');
+  });
+
+  test('a reconnect looks descendants up a few at a time: four lookups in flight, never more', async () => {
+    const kids = Array.from({ length: 6 }, (_, index) => ({
+      id: `ses_e28b1kidParallelLookup0${index}`,
+      parentID: RECONNECT_ROOT,
+    }));
+    let released = false;
+    const reads = descendantReads((parent) =>
+      parent === RECONNECT_ROOT ? kids : [],
+    );
+    const h = await setup({
+      scenario: 'reconnect',
+      respond: reads,
+      holdUntil: (request) =>
+        request.method === 'GET' &&
+        request.path.startsWith('/api/session?parentID=') &&
+        !request.path.includes(RECONNECT_ROOT)
+          ? () => released
+          : undefined,
+    });
+    await h.start();
+    await h.turn('DO_SLOW stream');
+    const kidLookups = () =>
+      h.replay.requests.filter(
+        (request) =>
+          request.path.startsWith('/api/session?parentID=') &&
+          !request.path.includes(RECONNECT_ROOT),
+      );
+    await h.waitFor(() => kidLookups().length === 4, 10_000);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(kidLookups()).toHaveLength(4);
+    released = true;
+    // Any request wakes the held answers.
+    await h.replay
+      .client()
+      .request('GET', '/api/info')
+      .catch(() => undefined);
+    await h.waitFor(() => kidLookups().length === 6);
+    await h.waitFor(
+      () => h.replay.made('GET', '/api/session/:id/inbox').length > 0,
+    );
+  });
+
+  /** The live native session behind `thread-1`, to make one of its steps throw. */
+  const liveSession = (h: Awaited<ReturnType<typeof setup>>) =>
+    (
+      h.adapter as unknown as {
+        native: Map<string, { native: Record<string, unknown> }>;
+      }
+    ).native.get('thread-1')?.native as Record<string, unknown>;
+
+  test("a reconnect's bookkeeping that throws is reported, and the re-reads after it still run", async () => {
+    const h = await setup({ scenario: 'reconnect' });
+    await h.start();
+    const { turnId } = await h.turn('DO_SLOW stream');
+    liveSession(h).reconcileTree = async () => {
+      throw new Error('bookkeeping broke');
+    };
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'runtime.warning' &&
+          String(event.message).includes('bookkeeping broke'),
+        10_000,
+      ),
+    ).toMatchObject({
+      message: expect.stringContaining(
+        'could not re-read its subagents and pending requests',
+      ),
+    });
+    await h.waitFor(
+      () => h.replay.made('GET', '/api/session/:id/inbox').length === 1,
+    );
+    await h.waitFor(completedFor(turnId), 10_000);
+  });
+
+  test('a reconnect that throws outside any one re-read is reported, and the feed it opened goes on: no reconnect loop', async () => {
+    const h = await setup({ scenario: 'reconnect' });
+    await h.start();
+    const { turnId } = await h.turn('DO_SLOW stream');
+    liveSession(h).reconcile = async () => {
+      throw new Error('reconcile broke');
+    };
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'runtime.warning' &&
+          String(event.message).includes('reconcile broke'),
+        10_000,
+      ),
+    ).toMatchObject({
+      message: expect.stringContaining(
+        'could not re-read what the feed gap hid',
+      ),
+    });
+    // The second feed (the replay's last) carries the turn to its end.
+    await h.waitFor(completedFor(turnId), 10_000);
+  });
 });
 
 describe('OpenCodeResumeCursor shape guard', () => {
@@ -4195,5 +4750,18 @@ describe('OpenCodeResumeCursor shape guard', () => {
     ['an ACP cursor itself', { acpSessionId: 'ses_1', connectionId: 'o' }],
   ])('refuses %s', (_label, value) => {
     expect(isOpenCodeResumeCursor(value)).toBe(false);
+  });
+});
+
+describe('openCodeAskFitsTool', () => {
+  test("Code Mode's session move asks `external_directory`; its worktree removal asks `edit` only", () => {
+    expect(
+      openCodeAskFitsTool('opencode_session_move', 'external_directory'),
+    ).toBe(true);
+    expect(openCodeAskFitsTool('opencode_session_move', 'edit')).toBe(false);
+    expect(openCodeAskFitsTool('opencode_worktree_remove', 'edit')).toBe(true);
+    expect(
+      openCodeAskFitsTool('opencode_worktree_remove', 'external_directory'),
+    ).toBe(false);
   });
 });

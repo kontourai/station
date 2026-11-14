@@ -251,6 +251,8 @@ export interface OpenCodeAdapterOptions {
   verifiedFingerprints?: Readonly<Record<string, string>>;
   managedWorkspaceHomeDir?: string;
   reconnectFirstMs?: number;
+  /** Tests: how long a turn stopped on a refused rejection waits for OpenCode. */
+  failCloseSettleMs?: number;
   /** Tests: the ids native sessions give their prompts. */
   newMessageId?: () => string;
 }
@@ -1110,6 +1112,9 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       onMoved: (move) => onMoved(move),
       ...(this.options.reconnectFirstMs
         ? { reconnectFirstMs: this.options.reconnectFirstMs }
+        : {}),
+      ...(this.options.failCloseSettleMs
+        ? { failCloseSettleMs: this.options.failCloseSettleMs }
         : {}),
       ...(this.options.newMessageId
         ? { newMessageId: this.options.newMessageId }

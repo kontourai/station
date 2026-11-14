@@ -30,6 +30,9 @@
  * same one.
  * `respond` answers a request itself (a failure, or an answer computed the
  * way the real handler computes it), ahead of anything recorded.
+ * `holdFrame` holds a feed record (a frame, or a connection's end) until
+ * the condition it returns holds, checked as the replay sees requests and
+ * every few milliseconds.
  */
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
@@ -124,6 +127,8 @@ export interface OpenCodeServeReplayOptions {
   ) => ((record: OpenCodeReplayRecord) => boolean) | undefined;
   /** Changes each recorded history (oldest first) before it is paged. */
   historyRewrite?: (recorded: unknown[]) => unknown[];
+  /** Holds a feed record until the condition returned holds; undefined: not held. */
+  holdFrame?: (record: OpenCodeReplayRecord) => (() => boolean) | undefined;
   /** Answers a request instead of the recording; undefined: not this one. */
   respond?: (
     request: OpenCodeReplayRequest,
@@ -156,6 +161,7 @@ export class OpenCodeServeReplay {
   private closed = false;
   private readonly holdUntil: OpenCodeServeReplayOptions['holdUntil'];
   private readonly respond: OpenCodeServeReplayOptions['respond'];
+  private readonly holdFrame: OpenCodeServeReplayOptions['holdFrame'];
   private readonly historyRewrite: (recorded: unknown[]) => unknown[];
   private history: readonly unknown[] = [];
 
@@ -163,6 +169,7 @@ export class OpenCodeServeReplay {
     this.password = options.password ?? 'replay-password';
     this.holdUntil = options.holdUntil;
     this.respond = options.respond;
+    this.holdFrame = options.holdFrame;
     this.historyRewrite = options.historyRewrite ?? ((recorded) => recorded);
     const seen = new Map<string, number>();
     for (const loaded of loadOpenCodeFixture(options.scenario)) {
@@ -336,6 +343,14 @@ export class OpenCodeServeReplay {
       if (this.closed || res.destroyed) return;
       if (record.gate) await this.gate(record.gate.key, record.gate.count);
       if (record.tap !== tap) continue;
+      const held = this.holdFrame?.(record);
+      if (held)
+        while (!this.closed && !res.destroyed && !held())
+          await new Promise<void>((resolve) => {
+            this.waiters.push(resolve);
+            setTimeout(resolve, 10);
+          });
+      if (this.closed || res.destroyed) return;
       if (record.kind === 'sse' && record.event) {
         res.write(`data: ${JSON.stringify(record.event)}\n\n`);
         this.written.push(record);
