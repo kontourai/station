@@ -128,8 +128,9 @@ describe('release-versioning output contract', () => {
         NEW_CHANGELOG.replace('### Minor Changes', '### Major Changes'),
       ],
       [
+        // Same length, so only the byte-identical tail check can refuse it.
         'an edited older tail',
-        NEW_CHANGELOG.replace('Initial release.', 'Initial release, edited.'),
+        NEW_CHANGELOG.replace('Initial release.', 'Altered release.'),
       ],
       [
         'a dependency at an unreleased version',
