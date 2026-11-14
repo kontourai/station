@@ -703,6 +703,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // paths' EXIT STATUS and printed verdicts are proven, not just the pure
   // evaluation functions.
   'scripts/__tests__/codeql-sarif-policy.cli.test.ts',
+  // Runs the security-analysis gate-change job's real bash/git script as a
+  // child process against throwaway fixture repositories (partial fetch,
+  // merge base, .github/ diff). Single-shot spawns, no wall-clock assertion.
+  'scripts/__tests__/security-analysis-gate-change.test.ts',
   // station#1312: same shape again — the issue-lifecycle module graph is
   // loaded in fresh node children, one entry module per case, because only a
   // cold import proves the graph has no evaluation-order cycle; in-process

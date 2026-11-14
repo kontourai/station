@@ -409,7 +409,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`release.yml`](../../.github/workflows/release.yml) | Stage Station release | **Release: Stage** | `v*` tag pushes. |
 | [`seatbelt-kernel.yml`](../../.github/workflows/seatbelt-kernel.yml) | Tool: Seatbelt kernel legs | **Main: Seatbelt kernel legs** | main pushes (path filtered); manual dispatch. |
 | [`secret-scan.yml`](../../.github/workflows/secret-scan.yml) | Secret Scan | **PR: Secret scan** | PR events; main pushes; manual dispatch. |
-| [`security-analysis.yml`](../../.github/workflows/security-analysis.yml) | Security analysis | **PR: Security analysis** | PR events (dependency review only; CodeQL reports skipped); merge queue; UTC schedule: `11 9 * * *`; manual dispatch. |
+| [`security-analysis.yml`](../../.github/workflows/security-analysis.yml) | Security analysis | **PR: Security analysis** | PR events (dependency review; CodeQL only when the PR changes `.github/`, otherwise reported skipped); merge queue; UTC schedule: `11 9 * * *`; manual dispatch. |
 | [`source-availability.yml`](../../.github/workflows/source-availability.yml) | Source availability | **Main: Source availability** | main pushes. |
 | [`starved-pr-report.yml`](../../.github/workflows/starved-pr-report.yml) | Starved pull request report | **Repo: Starved PR report** | UTC schedule: `17 * * * *`; manual dispatch. |
 | [`testflight-delivery.yml`](../../.github/workflows/testflight-delivery.yml) | Deliver iOS TestFlight channel | **Release: TestFlight delivery** | reused by `Nightly: Native cohort`, `Nightly: Native staging`, `Release: Stage`, `Release: Internal TestFlight cohort`. |
