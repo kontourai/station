@@ -14,6 +14,21 @@
 > This is the contract for the chat composer/dock and for the principle it
 > enforces. Revise this doc — not just the code — when direction changes.
 
+## Run setup in the composer toolbar
+
+Reply and start composers share one bottom row inside the input box: attachment,
+voice and other tools on the left, then Run setup immediately beside Send or
+Start on the right. The reply's next-turn destination notice and conversation
+status/resync action stay above the box when present.
+
+Run setup is a quiet ghost pill with overlapping Agent and engine marks, a
+secondary-weight Agent · model label, and the shared caret. Safety warnings stay
+on the marks. The Agent name truncates first; in narrow composers the label
+hides, keeping marks and caret. On phones, More draft options groups Saved drafts
+and Clear message to preserve the toolbar targets. The full summary remains in the accessible name
+and hover title, and the touch target stays at least 44px. The existing setup
+owner opens above the toolbar on desktop and as a bottom sheet on phones.
+
 ## Interaction stability and conversation continuity
 
 For a memory-exhausted turn restored from history, the dock offers Continue
@@ -119,7 +134,7 @@ source and workspace controls, with specialist management still in Settings.
 
 Home and the chat dock share one start composer (`StartComposer`, driven in
 the dock by `NewChatModal`). Both use a heading with the inline Project picker,
-compact Agent and Model controls inside the message box, and a Station/location
+a compact Run setup control beside Start inside the message box, and a Station/location
 line below it.
 
 **New chat** is not a dialog. It opens a draft in the chat dock's body, in place
@@ -133,8 +148,8 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   model. Setup, repair and read errors scroll above the composer.
 - **Header.** The dock's title slot (and the phone header) reads **New chat**,
   **New Task** or **Fork from here** (**Regenerate** or **Edit and resend**
-  for a fork a message action started), and the header's project controls
-  stand down so the draft's Project chip is the one destination.
+  for a fork a message action started). The start composer's Project chip
+  is the single owner of destination choice; dock headers have no project picker.
 - **Leaving.** Escape, Back, **Cancel return** or Cancel fork dismisses the
   draft and hands back its text; on a phone this restores the dock size the
   draft replaced. Start (and a fork's open) closes it as started before
@@ -158,7 +173,7 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   the person moves focus or clicks away (a window switch does not count).
 
 The Project page opens on Overview and keeps its shared Project Room separate
-from direct Agent conversations. Separate Agent and Engine & model controls sit
+from direct Agent conversations. The shared Run setup control sits
 inside the composer beside Start and, while the `visual-skills` Feature Preview
 is on, the overflow for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
 dimmed and disabled with its one fixing button, and shows a state badge only
@@ -421,8 +436,8 @@ Recent work and the inbox provide the work list.
 Home's Recent work rows use a recorded Directory label when no Project label
 is available and a working folder is known. For a Project, the decorative mark
 before its name is its chosen icon, or, without one, a dot in its sidebar colour
-(the name stays plain text); a row read from another Station draws no mark,
-since its slug names that Station's Project. The hover card's Project row
+(the name stays plain text). A row read from another Station uses neutral
+initials, never this Station's icon or colour, since the Project belongs there. The hover card's Project row
 repeats that mark, and its Git section reads the row's local session folder, as
 in the dock.
 The shared New chat action remains directly reachable in mobile chrome and
@@ -460,8 +475,10 @@ bottom is not shown and a row left with no status takes no height. Scroll-button
 without enlarging its target. The desktop header exposes Hide inbox /
 Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 
-Pending tool requests from the loaded event window also feed Needs approval,
-whose action opens the conversation's approval sheet. Failed history or
+Pending tool permissions feed Needs approval; questions and forms feed Needs
+answer. Permission takes priority when both wait. The action opens the
+conversation's request sheet. Background work keeps the pill visible after the
+main turn ends, using the server count and oldest reported start. Failed history or
 continuation observation shows Status unavailable and withholds the cached
 working clock; the remote turn may still be running. Already loaded transcript
 content stays visible through a failed refresh. A failed continuation check owns
@@ -839,14 +856,21 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 ### 3.1 Provider and model picker
 
-- Agent and Model selectors show their selected values without repeating the field labels.
-  Their accessible names and tooltips retain the field name, exact Provider/model identity,
-  selection source, and any unavailable reason. A long value ends in an ellipsis inside
-  its chip. The Agent chip keeps its name whole up to half the row; the chips beside it
-  give way first. With no model reported the Model chip reads **Model**, and its
-  accessible name keeps "Model & effort". When the Agent is reached through a model route ("via model-proxy
-  (home-server)"), a narrow composer drops that route before the Agent's name (#3050); the
-  chip's accessible name and tooltip keep it. Once a chat has a Session, the Engine & model
+- Chat replies, Home and dock starts share one **Run setup** button, with the
+  Agent and engine marks and a compact Agent/model label. Identical marks appear
+  once; different marks overlap with the smaller engine mark underneath. A missing
+  Agent mark uses the generic Agent glyph. Its accessible name starts with the visible Agent/model label and adds only
+  available approval and mode values. The trigger has no setup caption. Full access,
+  pending or refused approval changes add a corner warning badge with matching
+  accessible text. Conversation overrides use a neutral dot, announced as
+  "changed for this conversation". ACP uses the connection engine mark when its
+  command resolves a known engine; unknown engines omit the engine mark. It opens a sheet on phones
+  and a popover on desktop containing the existing Agent, Model, Approval and
+  advertised Mode controls. Picker ownership, unavailable reasons, pending
+  approval states and engine-owned approval disclosures are preserved.
+  The Agent name truncates first to keep the model visible inside the button;
+  the full values remain accessible.
+  Once a chat has a Session, the Engine & model
   caption names the engine that Session runs on (its own connection for a generic ACP
   engine), not the Agent's current connection: repointing an Agent does not move an
   open Session, and only a successor Session starts on the new engine. A
@@ -1116,15 +1140,11 @@ simple per-device preference rather than claiming to detect an attached keyboard
   dictation and takes the transcript with it. An unavailable mic stays focusable;
   tapping or activating it opens its reason, including when the composer cannot
   accept dictation.
-  Paste requires the browser to deliver clipboard files. Mobile WebViews
-  often offer no Paste for an image-only clipboard, so the reply, start and
-  Task composers show **Paste image** beside Attach in the Android and iOS
-  apps (`clipboard-image`) and on a touch browser with
-  `navigator.clipboard.read()`. It reads the clipboard's images
-  (`useClipboardImagePaste`) into that composer's own Attach path and says so
-  when the clipboard has no image. Desktop pointers paste into the field and
-  do not show it. Real-device clipboard behavior is not qualified by these
-  tests; see [native capabilities](native-capabilities.md#clipboard-images-and-the-share-target).
+  Reply and start composers accept images delivered by the browser's paste
+  event into the textarea, including Ctrl/Cmd+V on desktop. They do not offer
+  a separate clipboard-reading button. The room composer retains its existing
+  clipboard action and hook. Real-device keyboard image insertion remains
+  separately qualified; see [native capabilities](native-capabilities.md#clipboard-images-and-the-share-target).
 - The composer decides image support before Send from the engine's declared
   and observed answers (`resolveComposerImageSupport`). When images cannot be
   sent, image chips say so and Send is disabled with the reason until the
@@ -1225,7 +1245,7 @@ screenshots.
 Conversation switching stays a direct phone-header action with a 44px target.
 Project selection belongs to the New chat composer's Project chip; it does not
 change an existing conversation's binding. The future-project switcher is absent
-from an active conversation's header. This reflects the October 30 product
+from every dock header, including empty and Inbox states. This reflects the October 30 product
 decision to remove a competing project hierarchy, while retaining project
 context in the conversation's session details.
 The **Chats and tasks** picker keeps the shared **New chat** action at the lower
@@ -1237,26 +1257,20 @@ the conversation (up to three, overlapping, then "+N"; the Agent's own mark
 when no engine with a mark is recorded) beside the Agent's name, then the
 conversation title, the Project with its icon (or a folder when it has none),
 a pencil when this device holds an unsent draft for it, and a right-aligned
-status/time. Unresolved Agents retain their name. The status line is the ladder's own words (`Needs answer`, `Needs
+status/time. Unresolved Agents retain their name. The status line is the ladder's own words (`Needs input`, `Needs
 approval`, …, the same words the dock row prints), prefixed with "Last known:"
 when its latest observation failed. Verified running time uses the
 recorded open-turn start; without one, the row's compact time trails the status
 line (`· 2m`). One ellipsis opens the
 existing details/actions sheet, including Git and PR reads on demand.
 
-The **Projects** picker uses the same **+** component, named **New project**,
-and opens the canonical `/projects/new` flow. Its empty state explains the
-next action. Chosen Project icons and the accent palette match the sidebar;
-the workspace map uses initials tiles while picker fallbacks use accent marks. A checkmark
-identifies the selected project. Other rows show stacked switch arrows; the
-separate home icon opens the Project workspace. Hover, keyboard focus or a hold
-explains each action; the hold does not also perform it. Selecting an existing row changes the dock's
-binding, and its separate Open action shows the workspace.
+The start composer's **Project** chip opens **Choose project**. Choosing a
+Project changes the new-chat default without starting a chat or navigating.
 
 Selecting a workspace through the sidebar also sets the default project for
 new chats after navigation guards admit the route. It preserves the active
 chat and its original project. Opening an existing conversation also preserves
-this default. Project choice belongs to the start composer. Active conversation
+this default. Project choice belongs to the start composer. All dock
 headers omit the future-chat Project control; the conversation's own project
 remains in its session context card's Workspace row.
 
@@ -1346,9 +1360,11 @@ and terminal undo retain their keys.
 
 Customize → Appearance offers Comfortable, Wide and Full answer widths.
 The compact context ring places its percentage inside the ring beside Send;
-Agent, model, Mode and Approval retain their separate controls. Basis stays
+Agent, model, Mode and Approval remain choices inside Run setup. Basis stays
 answer-scoped. Chat inventory and Browse turns are conversation overflow actions.
 
 The dev UI proxy uses the production unavailable envelope during API restarts.
 The access screen retries temporary unavailability while visible, preserving
 the existing session; an authentication refusal still requires sign-in.
+
+When permissions and input requests both wait, the status pill says **Needs approval**. Its badge counts permissions only; opening the requests shows both kinds. Home, Inbox and Sessions refine a `review_pending` summary to **Needs input** only when every remaining blocking request is known to be input. Home and Inbox exclude requests already answered on this device; mixed or unknown request kinds remain approvals. The replay transcript keeps **Waiting for approval** for permissions and uses **Needs input** for known questions. This is display wording; it does not change the runtime lifecycle.

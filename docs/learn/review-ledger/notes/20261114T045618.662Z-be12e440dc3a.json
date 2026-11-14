@@ -1,0 +1,23 @@
+{
+  "revision": "5a40e09247b40880a93e414baf592e8a6b5fabd2",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Checked the service-ownership, registry-claimant and unauthenticated-write claims; they live in the CLI service commands, the shared instance registry and route security, all already cited or outside the hub. The hub's runtime lease acquisition is not what the README describes.","inputs":["deploy/public-ingress/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"No statement concerns runtime composition, wiring or defaults; every implementation route points at a service module. Nothing in the hub supports a claim here.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked the telemetry paragraph and the owner table; each claim is owned by the named service or by runtime-routes.ts, which the record already cites. The hub only constructs UsageTelemetryService and the doc does not describe that construction.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"The review provider is constructed and handed to the Flow routes in runtime-routes.ts, not in the hub. Citing runtime-routes.ts keeps the provider-presence dependency; flow-runs.ts and the service are already cited.","inputs":["docs/design/survey-flow-review.md","src-server/runtime/routes/runtime-routes.ts","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the persistence-boundary and service-run claims; neither depends on runtime composition, and the rest is design direction. The hosted persistence boundary is already cited directly.","inputs":["docs/guides/integrating-station.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Checked install path, recovery preview, event subscription and publisher analytics claims; each is owned by plugin routes, runtime-routes or a cited plugin service. The hub only passes these owners into construction, which the guide does not describe.","inputs":["docs/guides/plugins.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/builder-delivery-viewer/README.md","note":"Every claim is about the example's own server module or the plugin install/grant routes already cited. The hub only disposes plugin server modules at shutdown, which this README does not mention.","inputs":["examples/builder-delivery-viewer/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the auto-approve, dispatch-authority and child-context claims. They come from the example's agent.json and the cited delegation and dispatch-scope modules. The hub's default auto-approved tools apply to the default Agent, not this example.","inputs":["examples/self-configuring-agent/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/survey-review-workbench/README.md","note":"The storage contract is computed by the example's own server module and routing by the plugin public routes, both cited. Nothing here describes hub wiring.","inputs":["examples/survey-review-workbench/README.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

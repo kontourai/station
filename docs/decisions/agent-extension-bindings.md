@@ -153,4 +153,3 @@ frames, scrubbed of host paths, ids and private names, are
 
 What Station leaves unbound, and why, is listed in
 [the ACP guide](../guides/acp.md#grok-extensions-station-does-not-support).
-

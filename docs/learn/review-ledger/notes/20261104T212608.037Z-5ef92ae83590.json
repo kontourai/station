@@ -1,7 +1,0 @@
-{
-  "revision": "a8ac1577b84cb1c96611d98f394fcdcada06b3ee",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Rechecked the phone input, selection and WebGL-restore claims against packages/sdk/src/terminal-view/input/keyboard.ts, controller.ts, engine/terminal-engine.ts and render/webgl2-renderer.ts after #3994's mobile fixes; recorded the 2026-11-04 Android Chrome emulator and desktop passes at 031fed73e8 and the remaining NOT_VERIFIED items (physical phone, Desktop and iOS shells, Android shell start, phone terminal_run approval, Windows script runner).","inputs":["docs/design/terminal.md"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "4306d3056107fb1a0446f3f001784d5bbb8f364d",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Reviewed the recorded-size paragraph and resize-accounting delta against TerminalJournal pending, tail and read budgets and the TerminalSessions resize/write/read caller. History-off replay now evicts older replay windows and restates a standalone effective grid before retained output. The non-native resize owner showed four intended behavioral failures before repair and four passes after repair in task524; task527 changed only test formatting. Six full SDK store/view, cleanup deadline, Windows guard and gateway-admission owners passed 51 tests in task527. No real PTY, Windows Job, retention-worker crash cause or full readiness qualification is claimed; other terminal-design claims were not re-reviewed here.","inputs":["docs/design/terminal.md","src-server/services/terminal/terminal-journal.ts","src-server/adapters/__tests__/node-pty-adapter.test.ts","src-server/services/terminal/__tests__/terminal-journal-resize.test.ts"]}
-  ]
-}

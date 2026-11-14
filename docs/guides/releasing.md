@@ -10,6 +10,13 @@ Preview is the Beta channel. Nightly publishes usable main-edge builds after
 its source and artifact gates. Full qualification on main tests the combined
 merged changes; Beta and Stable require its exact-source evidence.
 
+Beta is being retired in favor of a release-candidate step
+([#4929](https://github.com/kontourai/station/issues/4929)): `vX.Y.Z-preview.N`
+tags are replaced by `vX.Y.Z-rc.N` tags, which stage with Stable identity and
+the bare base version and stage a complete draft named for the rc tag.
+Publishing an rc tag is not available yet, so the Preview steps below describe
+the retiring flow.
+
 ```mermaid
 flowchart TD
     PR["PR: required affected tests, security and platform checks"] --> MQ["Merge queue: combined candidate checks"]
@@ -289,8 +296,11 @@ including after an earlier suite fails; the final receipt still requires every
 job to pass. Together with the corpus matrices, the Free peak is four runners
 and the integration planning reserve is twelve; Expanded uses seven and twenty. These are planning bounds,
 not a cross-workflow reservation or a guarantee that another repository will
-leave capacity unused. The merge queue builds one candidate at a time, with
-up to three entries per merge batch. Background callers share the native FIFO
+leave capacity unused. The merge queue builds up to two candidates at a time,
+each on top of the one ahead of it, with up to three entries per merge batch.
+One merge-group build peaked at seven concurrent jobs when measured on
+2026-11-13, so two concurrent builds can exceed the twelve-runner reserve; the
+reserve stays a planning bound. Background callers share the native FIFO
 group described above; integration uses source-specific groups and release
 qualification has its own group. The class input is validated before fanout.
 These groups do not reserve slots across other repositories.
@@ -413,7 +423,14 @@ label, then arms auto-merge once. Adding the label or marking a PR ready also
 triggers trusted-base automation, which first verifies successful CI for its
 current head. Both landing jobs load their helpers from the workflow's own
 trusted revision (`github.workflow_sha`), including when the PR event's base
-predates those helpers. Candidate code is never executed. It does not poll the queue, bypass checks,
+predates those helpers. The arm job, not the workflow, holds the
+concurrency group, keyed by the PR's head branch, so arm runs for one PR are
+serialized and other PRs' runs never queue behind them. An event the arm job
+skips (another label, a red or queue CI run, a dequeue) is meant not to take
+a pending arm run's place; that relies on GitHub queuing a job for its
+concurrency group only after its `if` admits it, which GitHub does not
+document; a hosted run has not yet confirmed it here. A dequeue run and a label arm run for
+the same PR can run at once; both arm only the head they read. Candidate code is never executed. It does not poll the queue, bypass checks,
 merge main into contributors' branches or wake an agent for status observation.
 Repair PRs opt in automatically. Maintainers can label their own ready PRs;
 unlabelled lanes remain under their owner's control.

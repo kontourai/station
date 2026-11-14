@@ -15,9 +15,13 @@ permissions:
 
 jobs:
   cancel-obsolete:
+    # A metadata-only edit (ci.yml run-name `PR metadata`: title/body edit,
+    # no base change) does not move the head, so it supersedes nothing. A
+    # base retarget is named `Source verification` and still runs.
     if: >-
       ${{ (github.event_name == 'workflow_run' &&
            (github.event.workflow_run.event == 'pull_request_target' || github.event.workflow_run.event == 'merge_group') &&
+           github.event.workflow_run.display_title != 'PR metadata' &&
            github.event.workflow_run.head_repository.full_name == github.repository) ||
           (github.event_name == 'pull_request_target' && github.event.action == 'closed' &&
            github.event.pull_request.merged == true &&

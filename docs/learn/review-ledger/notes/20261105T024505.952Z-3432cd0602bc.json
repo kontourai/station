@@ -1,7 +1,0 @@
-{
-  "revision": "de116cb1041f0bdc3d90629051ab9549b62bbab0",
-
-  "notes": [
-    {"path":"README.md","note":"Removed external-engine names from the marketing introduction under the existing publication policy. The owner-selected public promise, personal coding flow, interactive Task-room direction, and current sharing limits are unchanged. Engine-specific setup remains in the technical guide. No capability or runtime qualification changed.","inputs":["README.md"]}
-  ]
-}

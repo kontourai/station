@@ -1,7 +1,0 @@
-{
-  "revision": "295927a8572920f15b01b2bfb92fad664bb26119",
-
-  "notes": [
-    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed the sidebar fixture delta against D3's mounted Personal Boards section and shared footer/Updates composition. The build-info mock now partially imports the real module, preserving readClientReleaseVersion instead of making the actual UpdatesControl throw inside LazyBoundary. The existing positive Board assertions and whole-panel no-error assertions remain intact. The exact two-suite baseline reproduced all three hosted failures; the five affected registry/sidebar/navigation suites then passed 111 tests in 11.71s, and UI typechecking passed. This repairs controlled fixture fidelity; it changes no Board route, ownership, persistence or navigation behavior and establishes no server/provider qualification.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/__tests__/ProjectSidebar.test.tsx"]}
-  ]
-}

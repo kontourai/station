@@ -1,7 +1,0 @@
-{
-  "revision": "71dfbcf5c9efb4f7177c85a9a12a196b120018cb",
-
-  "notes": [
-    {"path":"docs/guides/plugins.md","note":"Reviewed plugin and layout-host claims against the renderer test change: the fixture enables the Browser preview and scopes its launcher assertion to the Browser region. Plugin admission, public SDK boundaries and layout behavior are unchanged.","inputs":["docs/guides/plugins.md","src-ui/src/app-shell/__tests__/ProjectLayoutRenderer.test.tsx"]}
-  ]
-}

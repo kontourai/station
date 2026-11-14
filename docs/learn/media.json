@@ -784,6 +784,58 @@
         "docs/guides/nightly.md",
         "docs/patterns/frontend.md"
       ]
+    },
+    {
+      "path": "docs/learn/media/child-tool-text-before-390-dark.png",
+      "kind": "image",
+      "digest": "242d38c6737a5d596d78569d15e73b695bb4315a5f216bfeb70030139fa65028",
+      "alt": "Child tool result before the missing-text fix at 390px in dark theme.",
+      "caption": "Before the fix: the tool result has no recorded text label.",
+      "scenario": "Read a child transcript with missing tool text",
+      "evidence": "Controlled Chromium product journey at 092eebec8017dd9a6b04d6e2ed1d30d47cd0c197, with synthetic child transcript data and asserted account theme. Historical before control: mapper bytes from main a7017a3e515c893c233767e4598350d636e1a49e were temporarily substituted; mapper SHA256 cc201803e1d49e0b3a6cf2a6afa96eba948680317069dd0857ebf26b1d9d7a99. All six missing-text assertions failed as intended; the legacy-route control passed. The committed mapper was restored byte-exactly. No live-provider, native-shell, physical-device or whole-epic qualification. Historical surrounding Home and dock chrome from the captured revision is retained; these comparisons illustrate tool-text semantics, not current Home appearance.",
+      "capturedRevision": "092eebec8017dd9a6b04d6e2ed1d30d47cd0c197",
+      "documents": [
+        "docs/user/getting-started.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/child-tool-text-after-390-dark.png",
+      "kind": "image",
+      "digest": "a4c003cf3aea92eb7817bf343c0a7918eb33b27ca22a0067832e7238cae83589",
+      "alt": "Child tool result after the missing-text fix at 390px in dark theme.",
+      "caption": "After the fix: the reader labels the text unavailable.",
+      "scenario": "Read a child transcript with missing tool text",
+      "evidence": "Controlled Chromium product journey at 7916f45466a394055ecb84a5f88f0273698e084c after normal integration of main a92cc325a046. Synthetic child transcript data, committed unavailable-text mapper and asserted account theme. All seven browser cases passed in a 15.0s browser phase, with navigation and touch checks retained. All six merged-head frames at 390/412/1440 in both themes were opened and inspected. This illustrates child transcript text semantics; the surrounding Home data is fixture data. No live-provider, native-shell, physical-device or whole-epic qualification.",
+      "capturedRevision": "7916f45466a394055ecb84a5f88f0273698e084c",
+      "documents": [
+        "docs/user/getting-started.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/child-tool-text-before-1440-light.png",
+      "kind": "image",
+      "digest": "21aaa665134db24b11482d730e1a7e8cbeb15bd7f4e25559b80ed324835c5553",
+      "alt": "Child tool result before the missing-text fix at 1440px in light theme.",
+      "caption": "Before the fix: the tool result has no recorded text label.",
+      "scenario": "Read a child transcript with missing tool text",
+      "evidence": "Controlled Chromium product journey at 092eebec8017dd9a6b04d6e2ed1d30d47cd0c197, with synthetic child transcript data and asserted account theme. Historical before control: mapper bytes from main a7017a3e515c893c233767e4598350d636e1a49e were temporarily substituted; mapper SHA256 cc201803e1d49e0b3a6cf2a6afa96eba948680317069dd0857ebf26b1d9d7a99. All six missing-text assertions failed as intended; the legacy-route control passed. The committed mapper was restored byte-exactly. No live-provider, native-shell, physical-device or whole-epic qualification. Historical surrounding Home and dock chrome from the captured revision is retained; these comparisons illustrate tool-text semantics, not current Home appearance.",
+      "capturedRevision": "092eebec8017dd9a6b04d6e2ed1d30d47cd0c197",
+      "documents": [
+        "docs/user/getting-started.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/child-tool-text-after-1440-light.png",
+      "kind": "image",
+      "digest": "e3c955f4cd5044463e87f3a1bb6e43a84798987fcd3a81cb57df672918e2a53d",
+      "alt": "Child tool result after the missing-text fix at 1440px in light theme.",
+      "caption": "After the fix: the reader labels the text unavailable.",
+      "scenario": "Read a child transcript with missing tool text",
+      "evidence": "Controlled Chromium product journey at 7916f45466a394055ecb84a5f88f0273698e084c after normal integration of main a92cc325a046. Synthetic child transcript data, committed unavailable-text mapper and asserted account theme. All seven browser cases passed in a 15.0s browser phase, with navigation and touch checks retained. All six merged-head frames at 390/412/1440 in both themes were opened and inspected. This illustrates child transcript text semantics; the surrounding Home data is fixture data. No live-provider, native-shell, physical-device or whole-epic qualification.",
+      "capturedRevision": "7916f45466a394055ecb84a5f88f0273698e084c",
+      "documents": [
+        "docs/user/getting-started.md"
+      ]
     }
   ]
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "aac3c60768bd001e27b57bf3d9b1e304ca2bb5b8",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Checked the fast-checks/statics/shard description and verification lane prose: still accurate with the added diff-whitespace static, the 100-file shard proxy and the updated mutation table entry; local ci:fast remains unsharded. No prose change.","inputs":["docs/guides/development.md","scripts/__tests__/run-ci-fast.test.ts","scripts/lib/fast-checks-shards.mjs","scripts/run-ci-fast.mjs","scripts/run-test-mutations.mjs","scripts/verification-policy-gate.mjs"]}
+  ]
+}

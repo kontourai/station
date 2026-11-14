@@ -1,7 +1,0 @@
-{
-  "revision": "7c7e177463249c6df8b2855546f0415d4a49f202",
-
-  "notes": [
-    {"path":"docs/guides/distribution-profiles.md","note":"Re-checked after registry.ts serialized a fixed source-input reason. The Marketplace sources section's claims (adding grants and installs nothing; removal preserves packages) are unaffected. No prose change.","inputs":["docs/guides/distribution-profiles.md","src-server/routes/plugins/registry.ts"]}
-  ]
-}

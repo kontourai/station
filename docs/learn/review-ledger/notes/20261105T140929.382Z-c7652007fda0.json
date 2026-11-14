@@ -1,7 +1,0 @@
-{
-  "revision": "f965f7c7c3673e6bfaf958c1d07dd09a3528700e",
-
-  "notes": [
-    {"path":"AGENTS.md","note":"Checked gate-for's new conversation route against the root focused-evidence instructions: it prints the G1-G5 gate without starting browser or broad integration lanes. Worktree and merge rules remain applicable; no live ruleset revalidation was performed.","inputs":["AGENTS.md","scripts/gate-for.mjs"]}
-  ]
-}

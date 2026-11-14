@@ -1,7 +1,0 @@
-{
-  "revision": "d5e3c3757b2dfb3fd2d38d801292f5c5a3bbfed6",
-
-  "notes": [
-    {"path":"docs/guides/keyboard-shortcuts.md","note":"Reviewed device-settings-store change; shortcut overrides and the theme toggle shortcut are unchanged.","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/lib/device-settings-store.ts"]}
-  ]
-}

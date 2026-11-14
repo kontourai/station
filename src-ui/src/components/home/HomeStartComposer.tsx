@@ -466,6 +466,10 @@ export function HomeStartComposer({
         status: 'ready',
         agent,
         modelLabel,
+        executionAgent:
+          agents.find(
+            (entry) => entry.slug === effectiveChoice?.executionAgentId,
+          ) ?? agent,
         executionAgentId: agent
           ? start.modelChoiceFor(agent)?.executionAgentId
           : undefined,
@@ -512,6 +516,17 @@ export function HomeStartComposer({
         accent: isGlobal ? undefined : accents.get(context),
         icon: isGlobal ? undefined : icons.get(context),
         folder: workspaceHintText(workspaceHint),
+        folderTitle:
+          'path' in workspaceHint
+            ? [
+                workspaceHint.kind === 'project'
+                  ? workspaceHint.repositoryRemote
+                  : undefined,
+                workspaceHint.path,
+              ]
+                .filter(Boolean)
+                .join(' · ')
+            : undefined,
       };
   const noAgentToOffer = !agent && !defaultSelection?.missingPreferredAgentSlug;
   const canStart =

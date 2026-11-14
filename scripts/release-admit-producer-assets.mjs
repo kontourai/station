@@ -30,7 +30,8 @@ import {
 import { join } from 'node:path';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
-const RELEASE_CHANNELS = ['preview', 'stable'];
+// Every tagged release, candidate or final, is the Stable ring (#4929).
+const RELEASE_CHANNELS = ['stable'];
 const ARTIFACT_SEGMENT = /^[A-Za-z0-9._-]+$/;
 
 function fail(message) {
@@ -53,28 +54,24 @@ export function producerArtifactSources({ channel, iosBundleVersion } = {}) {
     { artifact: 'station-desktop-linux-x86_64', directory: '.' },
     { artifact: 'station-portable', directory: '.' },
     // release.yml `host-manifest` (#2959): the five station-server archives
-    // and the unsigned manifest payload, for both rings. The per-target
+    // and the unsigned manifest payload. The per-target
     // `station-server-<target>` build artifacts share the download root and
     // stay out: they also carry descriptors that are not release assets.
     { artifact: 'station-host-stream', directory: '.' },
     { artifact: 'station-android', directory: '.' },
     { artifact: 'station-container-release', directory: '.' },
   ];
-  // Preview releases publish no iOS variant (release-variants.mjs); the
-  // simulator job is skipped and the beta TestFlight IPA is not a draft asset.
-  if (channel === 'stable') {
-    if (!ARTIFACT_SEGMENT.test(iosBundleVersion ?? ''))
-      fail(`invalid iOS bundle version ${JSON.stringify(iosBundleVersion)}`);
-    sources.push(
-      { artifact: 'station-ios-simulator-verification', directory: '.' },
-      {
-        // testflight-delivery.yml `deliver`: the audited IPA, uploaded with
-        // receipts and identity files that stay out of the release.
-        artifact: `station-stable-ios-staged-${iosBundleVersion}`,
-        directory: 'release-assets',
-      },
-    );
-  }
+  if (!ARTIFACT_SEGMENT.test(iosBundleVersion ?? ''))
+    fail(`invalid iOS bundle version ${JSON.stringify(iosBundleVersion)}`);
+  sources.push(
+    { artifact: 'station-ios-simulator-verification', directory: '.' },
+    {
+      // testflight-delivery.yml `deliver`: the audited IPA, uploaded with
+      // receipts and identity files that stay out of the release.
+      artifact: `station-stable-ios-staged-${iosBundleVersion}`,
+      directory: 'release-assets',
+    },
+  );
   return sources;
 }
 

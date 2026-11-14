@@ -1,9 +1,0 @@
-{
-  "revision": "65171cfb0ec9a809efca756cc8731c4213c60e79",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"fixture-audit.ts delta (#4570): the audit now answers GET /api/settings/managed-policy with the route's no-policy body, beside the existing focus-presence 204. Updated the testing-architecture sentence that listed the audit's exceptions; the rest of the map is unchanged.","inputs":["docs/architecture/module-map.md","tests/helpers/fixture-audit.ts"]},
-
-    {"path":"tests/AGENTS.md","note":"fixture-audit.ts delta: a second modeled exception for the managed-policy status read, answered with the route's real no-policy body, not an empty success. The rule to route unknown mock requests through rejectUnexpectedFixtureRequest and never answer an unmodeled read with an empty success still holds.","inputs":["tests/AGENTS.md","tests/helpers/fixture-audit.ts"]}
-  ]
-}

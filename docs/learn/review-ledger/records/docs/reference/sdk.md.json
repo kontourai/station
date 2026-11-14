@@ -622,10 +622,6 @@
 
     "packages/sdk/package.json#/scripts",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "packages/sdk/src/client/http.ts",
 
     "packages/contracts/src/personal-board.ts",

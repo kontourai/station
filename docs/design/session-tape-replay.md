@@ -104,7 +104,7 @@ reconnecting, catch-up, revoked credentials, multiple turns, incomplete history,
 virtualized long history, and reduced motion in both themes. This is browser
 evidence; native lifecycle and device delivery require separate verification.
 
-Chat activity uses one aligned phrase, `Working for m:ss`: the clock is the
+Chat activity uses elapsed duration words such as `2m 1s`: the clock is the
 open turn's, so the timed phrase names the turn, never its current phase.
 Without a clock the row names the phase instead (`Thinking…`, `Working…`), and
 the progress row beneath names a running or last tool. Active tool rows supply
@@ -115,8 +115,10 @@ estimate of completion.
 A replay renders these as inline rows, because that is what its scenarios pin.
 A live chat pane presents the same facts in one floating status pill
 ([`ChatStatusPill`](../../src-ui/src/components/status/ChatStatusPill.tsx)):
-approval first, then the live-update connection, then what the turn is doing,
-with the same turn clock. A live-update outage is shown only after it outlasts
+connection recovery first, then permission or input requests, then turn or
+background activity. Permission outranks input when both wait. A live turn
+uses its turn clock; background-only activity uses the oldest reported child
+start. A live-update outage is shown only after it outlasts
 one reconnect cycle (2.5s), so a phone blip does not flash a status.
 
 The separate [reasoning disclosure](../../src-ui/src/components/chat/ReasoningSection.tsx)
