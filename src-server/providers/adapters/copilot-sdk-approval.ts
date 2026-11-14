@@ -30,14 +30,7 @@
  * github/copilot-sdk `nodejs/src/generated/session-events.ts`.
  */
 import { lstatSync, readlinkSync, realpathSync } from 'node:fs';
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-} from 'node:path';
+import { dirname, isAbsolute, join, parse, relative, sep } from 'node:path';
 import type {
   PermissionRequest,
   PermissionRequestResult,
@@ -84,13 +77,31 @@ function errorCode(error: unknown): string | undefined {
   return (error as NodeJS.ErrnoException | undefined)?.code;
 }
 
+/** The root of an absolute path and its segments, `.` dropped, `..` kept. */
+function pathSegments(absolute: string): { root: string; segments: string[] } {
+  const root = parse(absolute).root;
+  const segments = absolute
+    .slice(root.length)
+    .split(/[\\/]+/)
+    .filter((segment) => segment !== '' && segment !== '.');
+  return { root, segments };
+}
+
 /**
- * The real path of `target` (absolute, or relative to `base`): every symlink
- * resolved, also for a file that does not exist yet, through its nearest
- * existing parent. A dangling symlink is followed to where it points, since
- * a write through it lands there; more than {@link SYMLINK_HOPS_MAX} links is
- * unresolvable. `undefined` when the path cannot be resolved for any reason
- * other than not existing, so the caller asks a person.
+ * The real path of `target` (absolute, or relative to the real directory
+ * `base`), resolved one segment at a time the way the kernel does:
+ *
+ * - an existing component is replaced by its real path;
+ * - `..` leaves the real directory reached so far, never a lexical parent
+ *   (`path.resolve` and `path.join` collapse `..` before links resolve, which
+ *   the kernel does not);
+ * - a dangling symlink is followed to where it points, its target read
+ *   relative to the link's real directory, since a write through it lands
+ *   there; more than {@link SYMLINK_HOPS_MAX} links is unresolvable;
+ * - a name that does not exist yet is kept as named.
+ *
+ * `undefined` when any step fails for a reason other than not existing, so
+ * the caller asks a person.
  *
  * Time of check only: the runtime acts after Station answers, so a link
  * swapped in between is not seen. This narrows what Station approves without
@@ -103,25 +114,43 @@ export function copilotRealPath(
   hops = 0,
 ): string | undefined {
   if (hops > SYMLINK_HOPS_MAX) return undefined;
-  const absolute = resolve(base, target);
+  const { root, segments } = pathSegments(
+    isAbsolute(target) ? target : `${base}${sep}${target}`,
+  );
+  let current: string;
   try {
-    return fs.realpath(absolute);
-  } catch (error) {
-    if (errorCode(error) !== 'ENOENT') return undefined;
+    current = fs.realpath(root);
+  } catch {
+    return undefined;
   }
-  // Missing: a dangling symlink, or a name not created yet.
-  let link: string | undefined;
-  try {
-    if (fs.lstat(absolute).isSymbolicLink()) link = fs.readlink(absolute);
-  } catch (error) {
-    if (errorCode(error) !== 'ENOENT') return undefined;
+  for (const segment of segments) {
+    if (segment === '..') {
+      current = dirname(current);
+      continue;
+    }
+    const candidate = join(current, segment);
+    try {
+      current = fs.realpath(candidate);
+      continue;
+    } catch (error) {
+      if (errorCode(error) !== 'ENOENT') return undefined;
+    }
+    // Missing: a dangling symlink, or a name not created yet.
+    let link: string | undefined;
+    try {
+      if (fs.lstat(candidate).isSymbolicLink()) link = fs.readlink(candidate);
+    } catch (error) {
+      if (errorCode(error) !== 'ENOENT') return undefined;
+    }
+    if (link === undefined) {
+      current = candidate;
+      continue;
+    }
+    const followed = copilotRealPath(link, current, fs, hops + 1);
+    if (followed === undefined) return undefined;
+    current = followed;
   }
-  if (link !== undefined)
-    return copilotRealPath(link, dirname(absolute), fs, hops + 1);
-  const parent = dirname(absolute);
-  if (parent === absolute) return undefined;
-  const real = copilotRealPath(parent, base, fs, hops);
-  return real === undefined ? undefined : join(real, basename(absolute));
+  return current;
 }
 
 function within(directory: string, real: string): boolean {
