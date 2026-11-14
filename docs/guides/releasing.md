@@ -299,8 +299,21 @@ not a cross-workflow reservation or a guarantee that another repository will
 leave capacity unused. The merge queue builds up to two candidates at a time,
 each on top of the one ahead of it, with up to three entries per merge batch.
 One merge-group build peaked at seven concurrent jobs when measured on
-2026-11-13, so two concurrent builds can exceed the twelve-runner reserve; the
-reserve stays a planning bound. Background callers share the native FIFO
+2026-11-13. Measured across all workflows from 06:46Z to 17:30Z on 2026-11-14,
+two concurrent builds peaked at eleven jobs, one of them on a macOS runner,
+inside the twelve-runner reserve; the reserve stays a planning bound. PR source
+computation is bounded separately at eight slots (five shard, two statics and
+one for the release-bot PR; see [testing](testing.md)). Eleven merge-group jobs,
+the Free qualification peak of four and those eight already total 23 before unbounded per-PR
+lanes, so the PR slots bound how many PR source jobs can wait for a runner
+ahead of a merge-group job, not a share of the twenty. GitHub has no priority
+between them. The slot count was sized from the wait for a slot alone: it
+does not model the pool, and a job that used to be superseded while waiting
+for a slot can now start. From 00:00Z to 03:00Z on 2026-11-14, before the
+heavy platform lanes left pull-request events, all twenty hosted runners were
+busy a quarter of the time and merge-group jobs waited a median of three
+minutes (p90 about fifteen) for a runner. If that wait rises after this
+change, lower the shard slot count before anything else. Background callers share the native FIFO
 group described above; integration uses source-specific groups and release
 qualification has its own group. The class input is validated before fanout.
 These groups do not reserve slots across other repositories.
@@ -423,7 +436,14 @@ label, then arms auto-merge once. Adding the label or marking a PR ready also
 triggers trusted-base automation, which first verifies successful CI for its
 current head. Both landing jobs load their helpers from the workflow's own
 trusted revision (`github.workflow_sha`), including when the PR event's base
-predates those helpers. Candidate code is never executed. It does not poll the queue, bypass checks,
+predates those helpers. The arm job, not the workflow, holds the
+concurrency group, keyed by the PR's head branch, so arm runs for one PR are
+serialized and other PRs' runs never queue behind them. An event the arm job
+skips (another label, a red or queue CI run, a dequeue) is meant not to take
+a pending arm run's place; that relies on GitHub queuing a job for its
+concurrency group only after its `if` admits it, which GitHub does not
+document; a hosted run has not yet confirmed it here. A dequeue run and a label arm run for
+the same PR can run at once; both arm only the head they read. Candidate code is never executed. It does not poll the queue, bypass checks,
 merge main into contributors' branches or wake an agent for status observation.
 Repair PRs opt in automatically. Maintainers can label their own ready PRs;
 unlabelled lanes remain under their owner's control.

@@ -302,8 +302,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/ci-ubuntu-bootstrap-source.test.ts',
   // Runs the evidence CLI against temporary Git roots and a loopback Actions API.
   'scripts/__tests__/qualification-evidence.test.ts',
-  // Runs the advisory review gate as a real child against a loopback GitHub API.
-  'scripts/__tests__/advisory-review-gate.test.ts',
   // #2675: runs the Nightly plan step's shell under bash in a temporary dir.
   'scripts/__tests__/ios-web-build-version.test.ts',
   // Executes cancellation against a loopback Actions API; owns one short Node child.

@@ -327,7 +327,9 @@ The old queue ref must be absent or point elsewhere. Complete job inventories an
 fence each normal cancellation; an active old ref, changed owner or attempt,
 unknown runner metadata or API failure prevents it. This path can normally
 cancel an assigned runner doing obsolete work, but never force-cancels. A 202
-is a request, not terminal settlement. It does not cancel unrelated workflow
+is a request, not terminal settlement. A 409 refusal, here and when retiring a
+merged PR's optional delivery runs, cancels nothing and is reported as a
+warning; the pass continues. It does not cancel unrelated workflow
 families or replace any regression result with success.
 
 For the one-candidate throughput trial and its before/after measurements, use
@@ -339,7 +341,17 @@ higher delivery throughput.
 every six hours while that outcome issue remains open. It installs no project
 dependencies and starts no tests, retries, cancellations or merges. Its six-hour
 observation windows end two hours behind the cadence boundary; unfinished or
-unattributed work remains explicitly incomplete and fails the report job.
+unattributed work remains explicitly incomplete. A window that is incomplete
+only because work was still running (unfinished jobs, which also lack runner
+attribution) is recorded with a warning annotation and does not fail the
+report job. Work unfinished more than six hours after it was created, or a
+run with no jobs that old, is reported as stuck in its own warning rather
+than as running; it does not fail the job either, because it is not a
+throughput measurement. A read GitHub answers with a 5xx is retried up to
+three attempts with a short backoff (the `--record` write is not); any
+collection failure that remains (an API error, a pagination cap, an
+unresolved PR or merge base, finished work without runner attribution, or an
+unavailable ledger) still fails it.
 Snapshots are retained for 30 days. This reporting does not establish a speedup,
 close the issue automatically or replace manual-intervention outcome review.
 
@@ -400,7 +412,6 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
 | [`ci-throughput-health.yml`](../../.github/workflows/ci-throughput-health.yml) | — | **Repo: CI throughput health** | UTC schedule: `41 */6 * * *`; manual dispatch; reports only while #3101 is open. |
 | [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes (heavy lane skipped when the merge queue already verified that exact SHA and base); manual dispatch. |
-| [`codex-pr-review.yml`](../../.github/workflows/codex-pr-review.yml) | Advisory PR review | **PR: Advisory review** | after `PR: Secret scan`. |
 | [`container-smoke.yml`](../../.github/workflows/container-smoke.yml) | Container smoke | **Main: Container smoke** | main pushes; manual dispatch. |
 | [`dated-todo-sweep.yml`](../../.github/workflows/dated-todo-sweep.yml) | Dated TODO sweep | **Repo: Dated TODO sweep** | UTC schedule: `41 4 * * 1`; manual dispatch. |
 | [`dependency-advisory.yml`](../../.github/workflows/dependency-advisory.yml) | Scheduled dependency advisory floor | **Repo: Dependency advisory** | UTC schedule: `23 2,8,14,20 * * *`; manual dispatch. |
@@ -417,9 +428,9 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`interactive-workspace-performance.yml`](../../.github/workflows/interactive-workspace-performance.yml) | Interactive Workspace Performance | **Tool: Interactive workspace performance** | manual dispatch. |
 | [`internal-testflight.yml`](../../.github/workflows/internal-testflight.yml) | Internal iOS TestFlight cohort | **Release: Internal TestFlight cohort** | manual dispatch. |
 | [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
-| [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new issue comments. |
+| [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new comments on issues (pull-request comments skip at job level). |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
-| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`. |
+| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`, `Repo: Docs freshness sweep`, `Repo: CI throughput health`, filtered to runs on `main`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | main pushes (source qualification only); UTC schedule: `17 */6 * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic (manual): Merge integration** | manual full-corpus diagnosis, never a required check; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
@@ -435,7 +446,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`pr-duplicate-sweep.yml`](../../.github/workflows/pr-duplicate-sweep.yml) | PR duplicate sweep | **Repo: Duplicate sweep** | UTC schedule: `27 */6 * * *`; manual dispatch. |
 | [`publish-packages.yml`](../../.github/workflows/publish-packages.yml) | Publish Packages | **Main: Publish packages** | main pushes; manual dispatch. |
 | [`publish-release.yml`](../../.github/workflows/publish-release.yml) | Publish Station release | **Release: Publish** | manual dispatch. |
-| [`qualification-after-repair.yml`](../../.github/workflows/qualification-after-repair.yml) | Qualify landed repair | **Main: Qualify landed repair** | after `PR: CI`. |
+| [`qualification-after-repair.yml`](../../.github/workflows/qualification-after-repair.yml) | Qualify landed repair | **Main: Qualify landed repair** | after `PR: CI` runs on `main`. |
 | [`qualification-repair.yml`](../../.github/workflows/qualification-repair.yml) | Qualification repair | **Main: Qualification repair** | after `Main: Qualification`; manual dispatch. |
 | [`recover-terminal-capacity-owner.yml`](../../.github/workflows/recover-terminal-capacity-owner.yml) | Recover terminal physical-host capacity owner | **Tool: Recover terminal capacity owner** | manual dispatch. |
 | [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Beta/Stable TestFlight. |
@@ -460,7 +471,6 @@ workflow is obsolete. Disabled state was checked through the Actions REST API.
 | Candidate | Reason / decision needed |
 | --- | --- |
 | `Tool: CI extended` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
-| `PR: Advisory review` | Disabled manually; review admission/cost before any re-enable (slice I). |
 | `Main: Full qualification` | Zero runs in the dated seven-day inventory; confirm continued need at its callers. |
 | `Tool: Interactive workspace performance` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
 | `Release: Internal TestFlight cohort` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
@@ -802,18 +812,32 @@ source proof remains pending; failed or cancelled source proof remains non-passi
 rollout is described in [releasing](releasing.md#qualification-cadence-and-evidence-reuse).
 
 PR source computation has repository-wide FIFO ceilings: at most two statics
-jobs and three affected-test shard jobs run across all PRs. Statics use two
-buckets. Shards use two shared buckets plus a third for odd-numbered shards of
-PRs whose numbers end in 0, 1 or 2; larger plans retain every shard. Waiting jobs consume no runner. Different-head
+jobs and five affected-test shard jobs run across all PRs. Statics use two
+buckets by PR number parity. Shards use five shared buckets: the PR number's
+last digit mod 5 plus the shard index, mod 5 (the table is in `ci.yml`), so one
+PR's shards never share a bucket and every plan's first shard spreads across all
+five; larger plans retain every shard. The release-bot PR (head
+`changeset-release/main` from this repository, opened by
+`station-automation[bot]`) is re-pushed on every main push, so its shard and
+statics jobs share one dedicated `ci-pr-release-bot` slot and never enter the
+shared buckets; supersession cancels its older heads as for any PR. A job holds
+its bucket while it waits for a runner. Waiting jobs consume no runner. `pull_request_target` reads these
+groups from the base branch, so a bucket change applies to PR runs created
+after it lands. Different-head
 supersession still cancels obsolete source runs, including native FIFO
 `pending` waiters, after rechecking the live PR head and run attempt. A normal
 cancellation request is followed to its observed state. If the same obsolete
 attempt still waits after a bounded settlement check, the controller may issue
 one force-cancel after revalidating the PR and run identities and confirming
-that no unfinished job has an assigned runner. Missing terminal confirmation
-fails the controller; cancellation never becomes source PASS. Same-head
+that no unfinished job has an assigned runner. A run that does not settle in
+the pass (an assigned runner has not yet acted on the cancellation, GitHub
+refuses it with HTTP 409, or a force-cancel is not yet terminal) is reported
+as a warning, and the pass continues to the branch's other obsolete runs; the
+next `PR: CI` event for the branch tries again. Ambiguous job metadata,
+changed identities and any other API failure still fail the controller;
+cancellation never becomes source PASS. Same-head
 duplicates wait rather than cancelling another run's proof. Merge-group, push and manual
-diagnostic jobs use separate source-specific groups. These five PR computation
+diagnostic jobs use separate source-specific groups. These eight PR computation
 slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 

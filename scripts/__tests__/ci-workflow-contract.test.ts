@@ -385,10 +385,13 @@ describe('CI verification workflow contracts', () => {
       ({ file }) => file === '.github/workflows/main-health.yml',
     )?.document as
       | {
-          on?: { workflow_run?: { workflows?: unknown } };
+          on?: { workflow_run?: { workflows?: unknown; branches?: unknown } };
           permissions?: unknown;
         }
       | undefined;
+    // Both jobs require head_branch == 'main', so a branch filter on the
+    // triggering run's head branch removes only runs that would skip.
+    expect(parsedMainHealth?.on?.workflow_run?.branches).toEqual(['main']);
     const intendedTargetFiles = [
       '.github/workflows/nightly.yml',
       '.github/workflows/nightly-gallery.yml',
@@ -403,6 +406,10 @@ describe('CI verification workflow contracts', () => {
       // Only its main push run reaches the head_branch guard: the sole iOS
       // build of a UI-only change happens there (build-ios.yml).
       '.github/workflows/build-ios.yml',
+      // Scheduled housekeeping that went red unnoticed: the docs sweep for
+      // weeks (#4270), CI throughput health on most windows.
+      '.github/workflows/docs-freshness-sweep.yml',
+      '.github/workflows/ci-throughput-health.yml',
     ];
     const intendedTargetNames = intendedTargetFiles.map((targetFile) => {
       const target = workflowDocuments.find(({ file }) => file === targetFile)
@@ -1142,10 +1149,16 @@ describe('CI verification workflow contracts', () => {
     });
 
     const repair = load(workflow('qualification-after-repair.yml')) as {
-      on: { workflow_run: { workflows: string[] } };
+      on: { workflow_run: { workflows: string[]; branches?: string[] } };
       jobs: { dispatch: { if: string } };
     };
     expect(repair.on.workflow_run.workflows).toEqual(['PR: CI']);
+    // The job also requires head_branch == 'main'; the trigger filter only
+    // stops PR and queue runs from starting a run that would skip.
+    expect(repair.on.workflow_run.branches).toEqual(['main']);
+    expect(repair.jobs.dispatch.if).toContain(
+      "github.event.workflow_run.head_branch == 'main'",
+    );
     expect(repair.jobs.dispatch.if).toContain(
       "github.event.workflow_run.event == 'push'",
     );
