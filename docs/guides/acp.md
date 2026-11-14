@@ -1032,10 +1032,12 @@ Station reads the binary's `--version` to tell the two apart
   the chat to another folder is turned off, because OpenCode loads the new
   folder's plugins as it moves; a chat moved there anyway, into a folder whose
   OpenCode configuration runs code, is stopped with a warning. A chat started
-  as an Agent runs over ACP, where Station's tool policy for the Agent is
-  enforced. That path does not
+  as an Agent runs there too: Station's tool policy for the Agent is checked
+  on each permission OpenCode asks for, as over ACP. That path does not
   need `debug agent`, so it is where #4435 is resolved. 1.x, an unverified 2.x,
-  and every chat while the preview is off still run over ACP. The design,
+  and every chat while the preview is off still run over ACP. A 2.x chat that
+  falls back to ACP gets the refusal above (ruling R1) for any Station approval
+  mode, Ask and Auto included; without one, OpenCode's own approvals apply. The design,
   fallback rules and limits are in
   [the OpenCode native transport decision](../decisions/opencode-native-transport.md).
   #4435 stays open until this ships.

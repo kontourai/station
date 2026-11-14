@@ -1374,20 +1374,24 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // (`readModelRef`); ACP: the session's catalog, as for `acp`. Start
     // time only on both.
     modelSelection: { state: 'session', channel: 'wire' },
-    // Station's staged policy exists only for a session started as an
-    // Agent, and such a session always runs over ACP
-    // (`OpenCodeAdapter.nativeUnsupported`), where it enters at
-    // `requestPermission` exactly as on the `acp` row. The native transport
-    // runs no staged evaluator: it carries only sessions without an Agent,
-    // whose asks OpenCode's own rules plus Station's session ruleset answer
-    // (`opencode-approval-native.ts`).
+    // Station's staged policy, for a session started as an Agent, on both
+    // transports. ACP: at `requestPermission`, exactly as on the `acp` row
+    // (the declared hook and module, which the tool-policy tripwire checks).
+    // Native: on each OpenCode `permission.asked`, the session's or a
+    // descendant's, in ACP's order, with the tool name OpenCode's ACP layer
+    // reports (`OpenCodeNativeSession.decideAsk`; replay tests "a session
+    // started as an Agent runs natively, and its Station tool policy's deny
+    // ..." and siblings in `opencode-adapter.replay.test.ts`, and a live
+    // 2.3.0 deny in `opencode-native.process.test.ts`). On either, only calls
+    // OpenCode asks about and names a tool for are covered, and the engine
+    // reports that name.
     toolPolicy: {
       state: 'partial',
       permissionHook: 'requestPermission',
       evidence: 'sharedStagedPolicy',
       toolIdentity: 'self-reported',
       coverageLimit:
-        'A session started as an Agent runs over ACP; only calls that invoke requestPermission and report a tool name enter this policy seam.',
+        "Only calls OpenCode asks permission for and names a tool for enter this policy seam, over ACP or OpenCode's own server.",
       adapterModule: 'acp-adapter',
     },
     // Native: images go as `POST .../prompt` `files` (data URIs), as

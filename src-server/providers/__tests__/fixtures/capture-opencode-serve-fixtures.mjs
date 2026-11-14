@@ -63,6 +63,10 @@
 //     raising an ask while no feed is open: `GET /api/permission/request`
 //     lists it, and `GET /api/session?parentID=` finds the child, then the
 //     grandchild (subagent-gap).
+// (k) After a session moves, an ask it raises while no feed is open is in
+//     its own `GET /api/session/{id}/permission`, and not in the server-wide
+//     `GET /api/permission/request`, which lists the server's launch
+//     directory (move-gap).
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import {
