@@ -755,6 +755,37 @@ describe('a render failure is excused only by the same error on main', () => {
     );
   });
 
+  it('never excuses an error that is empty once normalised', () => {
+    // An empty message, and the capture's join of an empty message with
+    // its appended console line.
+    for (const error of ['', ['', browserErrors(5314)].join('\n')]) {
+      const empty = failedCapture('child-chat-dark-390', error);
+      const result = attributionFixture({
+        composed: [empty, screen('home')],
+        baseCapture: manifest([empty], ['child-chat-dark-390']),
+      }).run();
+      expect(result.output, result.out).toBe('verdict=pr\n');
+      expect(result.summary).toContain(
+        'INTRODUCED child-chat-dark-390: capture-failed (error is empty)',
+      );
+    }
+  });
+
+  it('still matches a finding by its identity alone', () => {
+    const result = attributionFixture({
+      composed: [
+        withFinding('home', 'overflow:document'),
+        screen('child-chat-dark-390'),
+      ],
+      baseCapture: manifest(
+        [withFinding('home', 'overflow:document')],
+        ['home'],
+      ),
+      capture: 'success',
+    }).run();
+    expect(result.output, result.out).toBe('verdict=main\n');
+  });
+
   it('excuses a stack whose only difference is the checkout root', () => {
     const fixture = attributionFixture({
       composed: [screen('home')],

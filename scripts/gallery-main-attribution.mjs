@@ -119,6 +119,7 @@ const APPENDED_CONSOLE_LINE = /\nBrowser errors: \[.*\]$/;
  * - a `Received...:` line whose whole value is a plain number becomes
  *   `Received...: <n>` (a measurement, as toBeLessThanOrEqual prints it).
  *   Quoted, structured or mixed values are compared exactly.
+ * An error that is empty after all of this never matches (failureKey).
  * Everything else is compared verbatim: the assertion message, matcher,
  * `Expected` bound, locator, timeout bound, routes and other paths. When in
  * doubt, two errors are not the same.
@@ -155,21 +156,32 @@ export function normaliseFailureDetail(detail, { root, appendedConsole } = {}) {
     .trim();
 }
 
-/** A judge failure reduced to what compare matches on. */
+/**
+ * A judge failure reduced to what compare matches on. An unusable screen's
+ * signature is null, and so never matches, when its error is not text or
+ * normalises to nothing: with nothing to compare, it is the PR's failure.
+ * The empty signature of every other identity means "the identity alone".
+ */
 function failureKey({ screen, identity, detail }, root) {
-  return {
-    screen,
-    identity,
-    signature: UNUSABLE_IDENTITIES.has(identity)
-      ? normaliseFailureDetail(detail, {
-          root,
-          appendedConsole: identity === 'capture-failed',
-        })
-      : '',
-  };
+  if (!UNUSABLE_IDENTITIES.has(identity))
+    return { screen, identity, signature: '' };
+  const signature = normaliseFailureDetail(detail, {
+    root,
+    appendedConsole: identity === 'capture-failed',
+  });
+  if (signature === null)
+    return { screen, identity, signature, unmatchable: 'error is not text' };
+  if (signature === '')
+    return {
+      screen,
+      identity,
+      signature: null,
+      unmatchable: 'error is empty',
+    };
+  return { screen, identity, signature };
 }
 
-// A null signature (a non-string error) matches nothing.
+// A null signature (an empty or non-text error) matches nothing.
 const key = ({ screen, identity, signature }) =>
   signature === null
     ? null
@@ -244,7 +256,8 @@ const listFailures = (failures) =>
  */
 function describeIntroduced(failure, baseFailures) {
   const label = `${failure.screen}: ${failure.identity}`;
-  if (failure.signature === null) return `${label} (error is not text)`;
+  if (failure.signature === null)
+    return `${label} (${failure.unmatchable ?? 'error is not comparable'})`;
   if (!failure.signature) return label;
   const onMain = baseFailures.find(
     ({ screen, identity }) =>

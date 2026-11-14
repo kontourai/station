@@ -1535,7 +1535,8 @@ loopback ports and each checkout's own root at the start of a path, and
 masking a `Received` value only when it is a plain number. The assertion
 message, matcher, `Expected` bound, locator, timeout bound, quoted or mixed
 `Received` values, repo-relative paths with their line numbers, and URL paths
-must match, and an error that is not text never matches. `telemetry-feedback-mobile`
+must match, and an error that is not text, or is empty once normalised, never
+matches. `telemetry-feedback-mobile`
 throws one line that embeds console output, so its failure is never excused.
 So a break already on `main` does not turn unrelated
 PRs red, while breaking the same screen another way stays red. A crash or
