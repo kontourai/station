@@ -35,7 +35,7 @@ import { workspaceManifestPaths } from './workspace-dependency-satisfaction.mjs'
  * the tests it already selects. Workspace packages are excluded: their source
  * is in this repository and selects its consumers through the import graph.
  */
-const DEPENDENCY_IMPACT_SCOPE = '@kontourai/';
+export const DEPENDENCY_IMPACT_SCOPE = '@kontourai/';
 
 /**
  * Above this many importing suites, a changed package defers to `test-full`
@@ -108,11 +108,15 @@ function diffKeyedValues(before, after, nameOf, source, changes) {
  * and head reads of the changed dependency files, mapped to the changed paths
  * that show it. Workspace packages and names outside the scope are dropped.
  *
+ * `scope: null` keeps every non-workspace name, for callers that apply
+ * their own narrower rule (the test-runtime environment packages below).
+ *
  * @param {{
  *   root?: string,
  *   paths: readonly string[],
  *   readBase: (path: string) => string | null,
  *   readHead: (path: string) => string | null,
+ *   scope?: string | null,
  * }} options `null` means the file does not exist on that side.
  * @returns {Map<string, Set<string>>}
  */
@@ -121,6 +125,7 @@ export function changedDependencies({
   paths,
   readBase,
   readHead,
+  scope = DEPENDENCY_IMPACT_SCOPE,
 }) {
   const changes = new Map();
   for (const path of paths) {
@@ -187,9 +192,163 @@ export function changedDependencies({
           workspaceNames.add(name);
   }
   for (const name of [...changes.keys()])
-    if (!name.startsWith(DEPENDENCY_IMPACT_SCOPE) || workspaceNames.has(name))
+    if ((scope !== null && !name.startsWith(scope)) || workspaceNames.has(name))
       changes.delete(name);
   return changes;
+}
+
+/**
+ * #4631: a test-runtime dependency is not imported by the suites it breaks.
+ * jsdom 31 changed focus handling for every suite Vitest ran under the
+ * `jsdom` environment, but those suites name `@testing-library/react`, not
+ * jsdom, and the manifest edits only reached related discovery as Vitest
+ * global rerun triggers, which a hosted plan defers to `test-full`. The bump
+ * landed with every one of those suites deferred and failed four unrelated
+ * pull requests in the queue.
+ *
+ * The environment a suite runs under is read the way Vitest reads it: its
+ * `@vitest-environment` docblock, else the root config's `test.environment`
+ * (Vitest's own default is `node`). The package behind an environment
+ * follows Vitest's own rule, so the set is derived from the configuration
+ * rather than listed here. Vitest itself is deliberately not in the set: a
+ * Vitest bump affects every suite, which is the full corpus `test-full`
+ * already owns, and more than the four shards' budget holds.
+ */
+const VITEST_ENVIRONMENT_DOCBLOCK = /@(?:vitest|jest)-environment\s+([\w-]+)\b/;
+const VITEST_ENVIRONMENT_PACKAGES = Object.freeze({
+  jsdom: 'jsdom',
+  'happy-dom': 'happy-dom',
+  'edge-runtime': '@edge-runtime/vm',
+});
+const VITEST_CONFIG = 'vitest.config.ts';
+/**
+ * Root `test` options that would make a suite's environment depend on more
+ * than its docblock and the default; refused rather than misread.
+ */
+const UNSUPPORTED_ENVIRONMENT_OPTIONS = Object.freeze([
+  'environmentMatchGlobs',
+  'projects',
+  'workspace',
+]);
+
+/** Vitest's `getEnvPackageName`: the package an environment name loads. */
+function vitestEnvironmentPackage(environment) {
+  if (environment === 'node') return null;
+  if (Object.hasOwn(VITEST_ENVIRONMENT_PACKAGES, environment))
+    return VITEST_ENVIRONMENT_PACKAGES[environment];
+  if (environment.startsWith('.') || isAbsolute(environment)) return null;
+  return `vitest-environment-${environment}`;
+}
+
+function propertyName(node) {
+  return node.name &&
+    (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name))
+    ? node.name.text
+    : undefined;
+}
+
+/**
+ * The root config's default `test.environment`, read from its source: the
+ * object literal passed to `defineConfig`. Anything this cannot read exactly
+ * (a computed environment, per-glob or per-project environments) throws, so
+ * a config change cannot silently shrink the selection.
+ */
+export function configuredVitestEnvironment(
+  root,
+  read = (path) => readFileSync(join(root, path), 'utf8'),
+) {
+  const source = ts.createSourceFile(
+    VITEST_CONFIG,
+    read(VITEST_CONFIG),
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  let options;
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'defineConfig'
+    ) {
+      const [config] = node.arguments;
+      if (!config || !ts.isObjectLiteralExpression(config) || options)
+        throw new Error(
+          `test runtime: ${VITEST_CONFIG} must pass one object literal to defineConfig`,
+        );
+      const test = config.properties.find(
+        (property) => propertyName(property) === 'test',
+      );
+      if (!test) {
+        options = [];
+        return;
+      }
+      if (
+        !ts.isPropertyAssignment(test) ||
+        !ts.isObjectLiteralExpression(test.initializer)
+      )
+        throw new Error(
+          `test runtime: ${VITEST_CONFIG} test options must be an object literal`,
+        );
+      options = test.initializer.properties;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  if (!options)
+    throw new Error(`test runtime: ${VITEST_CONFIG} has no defineConfig call`);
+  for (const property of options) {
+    const name = ts.isSpreadAssignment(property)
+      ? '...spread'
+      : propertyName(property);
+    if (name === '...spread' || UNSUPPORTED_ENVIRONMENT_OPTIONS.includes(name))
+      throw new Error(
+        `test runtime: ${VITEST_CONFIG} test.${name} can change a suite's environment; teach dependency-change-scan.mjs to read it`,
+      );
+  }
+  const environment = options.find(
+    (property) => propertyName(property) === 'environment',
+  );
+  if (!environment) return 'node';
+  if (
+    !ts.isPropertyAssignment(environment) ||
+    !ts.isStringLiteralLike(environment.initializer)
+  )
+    throw new Error(
+      `test runtime: ${VITEST_CONFIG} test.environment must be a string literal`,
+    );
+  return environment.initializer.text;
+}
+
+/**
+ * The corpus suites (not `tests/`) each test-runtime environment package
+ * runs, keyed by package name. A suite in the `node` environment, or in an
+ * in-repository environment file, needs no package and is not listed.
+ *
+ * @param {{ root: string, testFiles?: readonly string[], read?: (path: string) => string, defaultEnvironment?: string }} options
+ * @returns {Map<string, string[]>}
+ */
+export function vitestEnvironmentSuites({
+  root,
+  testFiles = collectCorpusTestFiles(root).map((absolute) =>
+    relative(root, absolute).split(sep).join('/'),
+  ),
+  read = (path) => readFileSync(join(root, path), 'utf8'),
+  defaultEnvironment = configuredVitestEnvironment(root),
+}) {
+  const suites = new Map();
+  for (const file of testFiles) {
+    if (file.startsWith('tests/')) continue;
+    const environment =
+      VITEST_ENVIRONMENT_DOCBLOCK.exec(read(file))?.[1] ?? defaultEnvironment;
+    const name = vitestEnvironmentPackage(environment);
+    if (!name) continue;
+    const files = suites.get(name) ?? [];
+    files.push(file);
+    suites.set(name, files);
+  }
+  for (const files of suites.values()) files.sort();
+  return suites;
 }
 
 /**

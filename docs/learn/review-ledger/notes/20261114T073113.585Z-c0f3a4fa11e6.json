@@ -1,0 +1,15 @@
+{
+  "revision": "ccffe17e41a042822a450c02523bcf1b1bea049b",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Rewrote the capacity paragraph's merge-queue sentence: the ruleset's build concurrency is now 2 (read back from the ruleset API on 2026-11-14: max_entries_to_build 2, max_entries_to_merge 3, ALLGREEN), and a merge-group build peaked at seven concurrent jobs in the 2026-11-13 measurement, so two builds can exceed the twelve-runner planning reserve stated just above. Left the profile, slot and reserve numbers unchanged; they are configuration this change does not touch.","inputs":["docs/guides/releasing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Updated the main-push paragraph to match scripts/ci-merge-group-verdict.mjs: the warning now covers every answer except not-a-main-push, no-merge-group-run, a non-success queue run, a queue base that differs from the push's before, and a required job that did not succeed. Re-read the resource-class and changed-selection sections against the merged scripts/vitest-resource-manifest.mjs (main added process-heavy entries only; classification rules unchanged), scripts/__tests__/ci-workflow-contract.test.ts and scripts/__tests__/changed-verification.test.ts (the unmodelled-edge list is no longer pinned by exact length; the guide states no count). No other prose change needed.","inputs":["docs/guides/testing.md","scripts/__tests__/changed-verification.test.ts","scripts/__tests__/ci-workflow-contract.test.ts","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Checked the one resource-class claim (turn-retention.process.test.ts owns the process-heavy case) against the merged scripts/vitest-resource-manifest.mjs: that entry is unchanged; the merge only added other process-heavy files from main. No prose change needed.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Re-read the resource-class and child-process guidance against the merged scripts/vitest-resource-manifest.mjs: the merge from main adds process-heavy entries and changes no class definition, budget or rule. No prose change needed.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Read the fixture README against scripts/__tests__/changed-verification.test.ts at this change: the only test edit replaces an exact length pin on the unmodelled-input edge list with a non-empty check plus one named edge; the fixtures and what they model are unchanged, and the README states no count. No prose change needed.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/__tests__/changed-verification.test.ts"]}
+  ]
+}

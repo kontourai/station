@@ -1,0 +1,7 @@
+{
+  "revision": "aac3c60768bd001e27b57bf3d9b1e304ca2bb5b8",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Checked: its routes into docs/guides/testing.md still resolve; the testing.md edits (supersession admission, whitespace static, runtime-environment selection, shard proxy) change no instruction here.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

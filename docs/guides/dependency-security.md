@@ -811,9 +811,24 @@ The isolated [source-policy workflow](../../.github/workflows/source-verificatio
 also receives `statuses:write`. It checks out trusted policy, never candidate
 code, and publishes only `Source verification policy` from existing GitHub run
 and job evidence. `PR: CI` calls it after core source checks and before optional
-delivery work for source-changing PR events. Lifecycle reconciliation handles
-requested, in-progress and completed source runs; metadata start events allocate
-no publisher, while metadata completion can reconcile existing proof.
+delivery work for source-changing PR events, and after `fast-checks` on merge
+groups, where it publishes on the queue head and checks out policy from the
+queue base. Both run the same verdict over the run's own completed source
+jobs, so a later lifecycle reconcile republishes the same state rather than
+replacing it. As with every merge-group job, including the title publisher,
+the merge-group workflow definition is the queued candidate's own; only the
+script comes from the base, and the main-branch lifecycle reconcile remains
+the recovery publisher. Lifecycle reconciliation publishes pending when a
+first attempt is requested and when a re-run attempt starts (`in_progress`
+with `run_attempt` above 1, because GitHub sends no `requested` event for a
+re-run), and publishes the verdict on completion. A first attempt's
+`in_progress` event is skipped at job level, since `requested` already
+published pending. Metadata request and start events allocate no publisher,
+while metadata completion can reconcile existing proof. The per-head
+concurrency group sits on the publishing job, not the workflow, so a run whose
+job is skipped never enters it: GitHub keeps one pending run per group, and a
+skipped run waiting there would replace and cancel a pending one that would
+have published.
 
 The policy binds the exact head, repository and every current main-target PR
 sharing that head. It checks recorded base ancestry and the current run attempt;
