@@ -30,10 +30,12 @@ describe('security analysis workflow', () => {
 
   // A push to main re-analysed the commit its merge group had already
   // analysed, and the PR-event run repeated the analysis on every PR push.
-  test('analyses CodeQL once per landing: skipped on PR events, run in the merge group and daily on main', () => {
+  // A merge group runs its candidate's own YAML, so a PR that changes
+  // .github/ keeps the base-defined PR-level run (gate-change decides).
+  test('analyses CodeQL once per landing: merge group and daily on main, on the PR only for .github/ changes', () => {
     const document = load(workflow) as {
       on: Record<string, unknown>;
-      jobs: Record<string, { if?: unknown }>;
+      jobs: Record<string, { if?: unknown; needs?: unknown }>;
     };
     expect(Object.keys(document.on).sort()).toEqual([
       'merge_group',
@@ -43,9 +45,19 @@ describe('security analysis workflow', () => {
     ]);
     expect(document.on).not.toHaveProperty('push');
     expect(document.on.schedule).toEqual([{ cron: '11 9 * * *' }]);
+    expect(Object.keys(document.jobs).sort()).toEqual([
+      'codeql',
+      'dependency-review',
+      'gate-change',
+    ]);
+    expect(document.jobs.codeql.needs).toBe('gate-change');
     expect(document.jobs.codeql.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-      "${{ github.event_name != 'pull_request_target' }}",
+      "${{ !cancelled() && (github.event_name != 'pull_request_target' || needs.gate-change.result != 'success' || needs.gate-change.outputs.analyse != 'false') }}",
+    );
+    expect(document.jobs['gate-change'].if).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ github.event_name == 'pull_request_target' }}",
     );
     // Dependency review keeps its PR-event run unchanged.
     expect(document.jobs['dependency-review'].if).toBe(

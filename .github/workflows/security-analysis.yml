@@ -52,16 +52,75 @@ jobs:
           license-check: false
           warn-only: false
           comment-summary-in-pr: never
+  # pull_request_target reads this file from the protected base, but a merge
+  # group runs the YAML of its own candidate commit. A pull request that edits
+  # anything under .github/ could therefore redefine (or impersonate) the
+  # merge-group CodeQL context, so such a pull request still gets the
+  # base-defined analysis here, before it can be queued. Git plumbing only:
+  # no candidate file is checked out, parsed or executed, and every failure
+  # answers analyse=true.
+  gate-change:
+    name: CodeQL gate-change classification
+    if: ${{ github.event_name == 'pull_request_target' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      analyse: ${{ steps.classify.outputs.analyse }}
+    steps:
+      - id: classify
+        name: Classify workflow changes since the merge base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          # Full commit history without trees or blobs (a few MB): enough for
+          # an exact merge base, with only the .github/ trees fetched lazily.
+          # A fork head is fetched by SHA from the base repository too; if that
+          # ever fails, the analysis runs.
+          classify() {
+            [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || return 10
+            repo="$(mktemp -d)" || return 11
+            git -C "$repo" init -q || return 11
+            git -C "$repo" remote add origin "$REPOSITORY_URL" || return 11
+            git -C "$repo" fetch -q --no-tags --filter=tree:0 origin "$BASE_SHA" "$HEAD_SHA" || return 12
+            [ "$(git -C "$repo" rev-parse --is-shallow-repository)" = false ] || return 13
+            merge_base="$(git -C "$repo" merge-base --all "$BASE_SHA" "$HEAD_SHA")" || return 14
+            [[ "$merge_base" =~ ^[0-9a-f]{40}$ ]] || return 14
+            # Exit 0: no .github/ change; 1: a change; anything else: an error.
+            git -C "$repo" diff --quiet --no-ext-diff "$merge_base" "$HEAD_SHA" -- .github/
+          }
+          status=0
+          classify || status=$?
+          analyse=true
+          case "$status" in
+            0)
+              analyse=false
+              echo "No .github/ change since the merge base; CodeQL runs in the merge group."
+              ;;
+            1)
+              echo "This pull request changes .github/; running the base-defined CodeQL analysis now."
+              ;;
+            *)
+              echo "::warning::CodeQL gate-change classification failed closed (status $status); running the analysis now."
+              ;;
+          esac
+          echo "analyse=$analyse" >> "$GITHUB_OUTPUT"
   codeql:
     name: CodeQL JavaScript and TypeScript
-    # Analyse once per landing, in the merge group, not again on every PR
-    # push. Skipped by `if`, the required context reports success on the PR,
-    # as build-ios-verification does when its classifier says irrelevant; the
-    # merge group then runs it for real. Dependency review still runs on PRs.
-    # The pull_request_target branches kept in the checkout refs, TRAP switch
-    # and stale-baseline mode below are inert behind this `if`; they keep a
-    # run under that event safe should the `if` ever be dropped.
-    if: ${{ github.event_name != 'pull_request_target' }}
+    needs: gate-change
+    # Analyse once per landing, in the merge group, rather than again on every
+    # PR push; an ordinary pull request reports this required context skipped,
+    # as build-ios-verification does. On pull_request_target it still runs
+    # unless gate-change succeeded AND answered analyse=false, so a failed,
+    # timed-out or silent classifier means a real analysis. `!cancelled()`
+    # rather than `always()`: in a cancelled run a not-yet-started job ends
+    # cancelled (which does not satisfy the required context) instead of
+    # starting a 10-minute analysis nobody will read. merge_group, schedule
+    # and dispatch always analyse; gate-change is skipped there.
+    # The pull_request_target branches in the checkout refs, TRAP switch and
+    # stale-baseline mode below apply to that PR-level run.
+    if: ${{ !cancelled() && (github.event_name != 'pull_request_target' || needs.gate-change.result != 'success' || needs.gate-change.outputs.analyse != 'false') }}
     runs-on: ubuntu-22.04
     # A successful security-extended run took 10m55; retain bounded headroom
     # for post-analysis normalization and base-policy enforcement.
@@ -100,10 +159,10 @@ jobs:
       # TRAP caching: the scheduled and dispatched runs on main upload the
       # default-branch cache; merge_group only restores it, because CodeQL
       # uploads TRAP caches only from the default branch and a queue ref is
-      # not it. The pull_request_target guard is defense in depth behind the
-      # job-level `if`: under that event GITHUB_REF is the base branch, so a
-      # run there would upload a cache built from the candidate (only
-      # GitHub's read-only token stopped it in run 35824349214).
+      # not it. It stays off for the PR-level run: under pull_request_target
+      # GITHUB_REF is the base branch, so CodeQL would upload a cache built
+      # from the candidate (only GitHub's read-only token stopped it in run
+      # 35824349214).
       - name: Initialize CodeQL
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
@@ -139,10 +198,10 @@ jobs:
             exit 1
           fi
           node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-normalize.mjs" --input="${SARIF_FILES[0]}" --output="$CODEQL_NORMALIZED_SARIF"
-          # A merge group reads the baseline from the BASE checkout, so an
-          # entry its candidate removes is invisible here; warn instead of
-          # failing or the baseline could never shrink through a green gate.
-          # The daily run on main enforces.
+          # Pull requests and merge groups read the baseline from the BASE
+          # checkout, so an entry the candidate removes is invisible here;
+          # warn instead of failing or the baseline could never shrink
+          # through a green gate. The daily run on main enforces.
           STALE_BASELINE_MODE=fail
           if [ "$GITHUB_EVENT_NAME" = "pull_request_target" ] || [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then
             STALE_BASELINE_MODE=warn

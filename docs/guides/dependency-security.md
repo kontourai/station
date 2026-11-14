@@ -458,7 +458,12 @@ runs on a disposable GitHub-hosted runner and deliberately uses
 `upload: never`: this repository does **not** claim that GitHub ingests or
 displays the result. The analysis runs once per landing, on the merge-group
 candidate; on pull-request events its required context reports skipped while
-dependency review still runs. A daily schedule (`11 9 * * *` UTC) and manual
+dependency review still runs. A merge group runs its candidate's own workflow
+files, so a pull request whose merge-base diff touches `.github/` also gets
+the base-defined analysis on the pull request, before it can be queued. A
+small `gate-change` job decides that with Git plumbing only (no candidate
+file is checked out or run), and any classification failure runs the
+analysis. A daily schedule (`11 9 * * *` UTC) and manual
 dispatch analyse `main` and warm its TRAP cache; a red scheduled run opens
 **Main pipeline red: PR: Security analysis** through `main-health.yml`.
 
