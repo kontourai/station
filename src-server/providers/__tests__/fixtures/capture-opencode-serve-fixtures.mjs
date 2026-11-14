@@ -828,6 +828,23 @@ async function permissionScenario(rec, decision) {
 S['permission-allow'] = (rec) => permissionScenario(rec, 'once');
 S['permission-reject'] = (rec) => permissionScenario(rec, 'reject');
 
+// An approval saved with `always`: what `GET /api/permission/saved` lists
+// afterwards, beside the agent rules it is evaluated after. Run last: the
+// saved approval stays in the project and would change later scenarios.
+S['permission-saved'] = async (rec) => {
+  const A = await rec.tap('A');
+  const s = await createSession(rec, 'permission-saved');
+  await rec.api('POST', `/api/session/${s}/prompt`, { text: 'DO_BASH please' });
+  const asked = await A.waitFor(is('permission.asked', s));
+  await rec.api('POST', `/api/session/${s}/permission/${asked.data.id}/reply`, {
+    decision: 'always',
+  });
+  await A.waitFor(is('permission.replied', s));
+  await settled(A, s);
+  await rec.api('GET', '/api/permission/saved');
+  await rec.api('GET', '/api/agent/build');
+};
+
 S.question = async (rec) => {
   const A = await rec.tap('A');
   const s = await createSession(rec, 'question');
@@ -944,6 +961,13 @@ S.reconnect = async (rec) => {
   A.close();
   await sleep(2000);
   const B = await rec.tap('B');
+  // What a client re-reads on reconnect while the turn still runs: status,
+  // history so far, pending asks and forms, the inbox (PLAN A.4).
+  await rec.api('GET', '/api/session/active');
+  await rec.api('GET', `/api/session/${s}/message?order=asc`);
+  await rec.api('GET', `/api/session/${s}/permission`);
+  await rec.api('GET', `/api/session/${s}/form`);
+  await rec.api('GET', `/api/session/${s}/inbox`);
   await B.waitFor(is('session.execution.succeeded', s), 30_000);
   await rec.api('GET', `/api/session/${s}`);
   await rec.api('GET', `/api/session/${s}/message?order=asc`);
@@ -1155,6 +1179,7 @@ const ORDER = [
   'catalog',
   'crossload',
   'debug-agents',
+  'permission-saved',
 ];
 
 // ---------------------------------------------------------------- main

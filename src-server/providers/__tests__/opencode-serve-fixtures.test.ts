@@ -45,6 +45,7 @@ describe('OpenCode serve captures', () => {
         'mcp',
         'permission-allow',
         'permission-reject',
+        'permission-saved',
         'question',
         'reconnect',
         'revert',
