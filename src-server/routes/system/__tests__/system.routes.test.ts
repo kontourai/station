@@ -254,7 +254,6 @@ describe('System Routes', () => {
       getConnections: async () => [],
       nativeEnabled: () => true,
     });
-    openCode.getPrerequisites = async () => [];
     const readiness = await resolveExternalEngineReadiness(
       [openCode as never],
       undefined,

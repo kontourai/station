@@ -581,10 +581,9 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
       producer: 'engine-subagent',
       reporterThreadId: 'thread-1',
     });
-    expect((child[0]?.delta as { running: unknown[] }).running).toHaveLength(1);
-    expect(
-      (child[0]?.delta as { running: unknown[] }).running[0],
-    ).toMatchObject({
+    const running = (child[0]!.delta as { running: unknown[] }).running;
+    expect(running).toHaveLength(1);
+    expect(running[0]).toMatchObject({
       producer: 'engine-subagent',
       childId: 'ses_e28e4e140ffemsWOeVxszItzHu',
       title: 'child probe',

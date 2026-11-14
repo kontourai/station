@@ -626,7 +626,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       this.warn(
         input.threadId,
         OPENCODE_NATIVE_UNSUPPORTED_SETTING,
-        'Station runs this OpenCode chat over ACP: its effort setting is not available on OpenCode\'s own server.',
+        "Station runs this OpenCode chat over ACP: its effort setting is not available on OpenCode's own server.",
       );
     const lease = plan
       ? await this.verifiedLease(plan, input.threadId)

@@ -842,9 +842,9 @@ describe('execution utils', () => {
     expect(preferredChatRuntime([openCode, managed] as any)?.id).toBe(
       'bedrock',
     );
-    expect(preferredChatRuntime([openCode, managed] as any, 'opencode')?.id).toBe(
-      'bedrock',
-    );
+    expect(
+      preferredChatRuntime([openCode, managed] as any, 'opencode')?.id,
+    ).toBe('bedrock');
   });
 
   test('resolves provider-managed execution for project-scoped chat', () => {

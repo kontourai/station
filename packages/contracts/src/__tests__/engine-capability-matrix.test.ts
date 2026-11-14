@@ -230,7 +230,7 @@ describe('engine capability matrix', () => {
     expect(
       resolveEngineCapabilityMatrix('opencode', {
         type: 'acp',
-        config: { engineId: 'opencode', provider: 'opencode' },
+        config: { engineId: 'opencode' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.opencode);
     expect(

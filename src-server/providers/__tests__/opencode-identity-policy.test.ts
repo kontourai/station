@@ -116,17 +116,20 @@ describe('managed policy over OpenCode (ruling R5′)', () => {
       { instances: { opencode: { locked: true, binaryPath: '/x/opencode' } } },
       'limits.engines.instances.opencode',
     ],
-  ])('a policy naming opencode is refused as on the base: %j', (engines, path) => {
-    const parsed = parseManagedPolicyDocument({
-      schemaVersion: 1,
-      organization: 'Acme',
-      limits: { engines },
-    });
-    expect(parsed.ok).toBe(false);
-    expect(parsed.ok ? [] : parsed.problems).toEqual(
-      expect.arrayContaining([expect.objectContaining({ path })]),
-    );
-  });
+  ])(
+    'a policy naming opencode is refused as on the base: %j',
+    (engines, path) => {
+      const parsed = parseManagedPolicyDocument({
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: { engines },
+      });
+      expect(parsed.ok).toBe(false);
+      expect(parsed.ok ? [] : parsed.problems).toEqual(
+        expect.arrayContaining([expect.objectContaining({ path })]),
+      );
+    },
+  );
 
   // [allowed list, OpenCode and every other ACP engine may run]
   const cases: Array<[string[] | undefined, boolean]> = [
@@ -244,7 +247,7 @@ describe('managed policy over OpenCode (ruling R5′)', () => {
     },
   );
 
-  test('a native start resolves the acp entry\'s pinned binary', async () => {
+  test("a native start resolves the acp entry's pinned binary", async () => {
     install({
       allowed: ['acp'],
       instances: { acp: { locked: true, binaryPath: '/pinned/opencode' } },

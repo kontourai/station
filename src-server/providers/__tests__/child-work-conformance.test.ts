@@ -36,11 +36,11 @@ import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
 import { GROK_LIVE_CAPTURE } from '../../../src-shared/extension-notification-bindings.js';
 import { STATION_UNMAPPED_SUBAGENT_ENGINES } from '../../services/orchestration/child-work-projection.js';
-import { mapAcpExtensionNotification } from '../adapters/acp-adapter-events.js';
 import type { ProviderAdapterShape } from '../adapter-shape.js';
+import { mapAcpExtensionNotification } from '../adapters/acp-adapter-events.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
-import { OpenCodeAdapter } from '../adapters/opencode-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
+import { OpenCodeAdapter } from '../adapters/opencode-adapter.js';
 import {
   CLAUDE_TASK_CAPTURES,
   replayClaudeTaskCapture,
