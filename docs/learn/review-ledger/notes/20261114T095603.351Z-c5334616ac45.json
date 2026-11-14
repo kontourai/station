@@ -1,0 +1,7 @@
+{
+  "revision": "19cb1e33c0c8d86a6188645118318902f0ba505d",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Scoped review of the child-transcript media catalog addition at 19cb1e33c0c8. The new four captures are associated only with Read Child Conversations in Getting started. Compared the full Starter Work-associated capture objects with base a7017a3e515c: its four existing figures, digests, captions, evidence and document links are byte-equivalent data. Read the guide first-task and evidence boundaries; the added child-reader paragraph does not change its linked first-task section, launch, readiness, dispatch, receipts or retained qualification limits. No Starter Work implementation changed in this slice, so no prose edit or new live Starter qualification is claimed.","inputs":["docs/guides/starter-work.md","docs/learn/media.json"]}
+  ]
+}

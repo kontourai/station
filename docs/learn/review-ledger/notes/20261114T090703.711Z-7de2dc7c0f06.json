@@ -1,0 +1,7 @@
+{
+  "revision": "dfcae4c7cd8b905b57dc11ecd1642ab7736c10d2",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Scoped review of the Read Child Conversations addition at dfcae4c7cd8b. Read the transcript mapper and its real mounted consumer: absent or empty text gets an unavailable-text marker in both joined and unkeyed results; it does not prove an empty tool output. Nonempty text, error labels, truncation and identity joining retain their behavior. The original-main controls fail the two new cases with eleven controls passing; the committed negative control reproduces those same failures, byte-exact restoration passes all thirteen. Browser fixture typing and policy checks pass. All seven child-chat journey cases pass, including the new visible marker, navigation and touch targets. Opened all six canonical gallery PNGs at 390/412/1440 widths in both themes; these nonempty-text layout controls are unchanged against baseline. Synthetic browser fixtures do not qualify live engines, native shells or physical devices. The rest of this guide is unchanged by this slice.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/activity-retirement.test.ts","src-ui/src/workspace-panes/agents/childTranscriptMessages.ts","tests/child-transcript-chat.spec.ts"]}
+  ]
+}

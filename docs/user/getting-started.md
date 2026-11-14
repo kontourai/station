@@ -1161,6 +1161,9 @@ choose an ancestor to return without losing its draft or reading position.
 Escape returns one level. On a phone, use the back button or swipe from the
 left edge. Engine transcripts are read only and refresh while running.
 
+If a tool result has no recorded text, the reader says **Text output unavailable.**
+This does not mean the tool produced no output.
+
 Use **Home** or the inbox to find work. Notification and session links open
 that session in Chat, including attached records and sessions whose Agent
 was deleted. Older Activity links still work: a session link opens its reader,

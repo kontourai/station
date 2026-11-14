@@ -1,0 +1,15 @@
+{
+  "path": "docs/learn/media/child-tool-text-before-1440-light.png",
+
+  "sources": [
+    "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts",
+
+    "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+
+    "src-ui/src/index.css",
+
+    "tests/child-transcript-chat.spec.ts"
+  ],
+
+  "reviewNotes": []
+}
