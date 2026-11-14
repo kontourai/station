@@ -452,6 +452,37 @@ describe('runtime warning notifications', () => {
     activeChatsStore.removeChat(thread);
   });
 
+  // A new engine session in place of the conversation is the chat's fact
+  // too: from here the engine does not hold what the transcript shows.
+  test('the ACP session-started-fresh warning is a transcript notice, not a toast', () => {
+    const code = 'acp.session-started-fresh';
+    const message =
+      'Gemini CLI could not reload this conversation (Gemini CLI reloads a conversation only with a saved sign-in, and this connection signs in with an API key), so Station started a new Gemini CLI session. Earlier messages are still shown here, but Gemini CLI does not have them.';
+    const thread = `acp-posture-${code}`;
+    activeChatsStore.removeChat(thread);
+    activeChatsStore.initChat(thread, {
+      agentSlug: 'gemini',
+      agentName: 'Gemini CLI',
+      title: 'Gemini chat',
+    });
+    handleOrchestrationEvent('http://localhost', {
+      provider: 'acp' as const,
+      threadId: thread,
+      createdAt: '2026-11-14T10:00:00.000Z',
+      method: 'runtime.warning' as const,
+      severity: 'warning' as const,
+      message,
+      code,
+    });
+    expect(
+      (activeChatsStore.getSnapshot()[thread].ephemeralMessages ?? []).filter(
+        (notice) => notice.content === message,
+      ),
+    ).toMatchObject([{ role: 'system', ephemeral: true }]);
+    expect(toastStore.getSnapshot()).toEqual([]);
+    activeChatsStore.removeChat(thread);
+  });
+
   // An in-place rewind is drawn by the transcript projection from the stored
   // event (a marker, and the hidden turns marked rewound): no toast, and no
   // second notice beside the marker.

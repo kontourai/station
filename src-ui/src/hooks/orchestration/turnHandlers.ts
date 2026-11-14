@@ -4,6 +4,7 @@ import {
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   ACP_SESSION_REWOUND_CODE,
   ACP_SESSION_REWOUND_LATE_CODE,
+  ACP_SESSION_STARTED_FRESH_CODE,
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
   ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
@@ -830,6 +831,9 @@ const SESSION_POSTURE_WARNING_CODES: ReadonlySet<string> = new Set([
   // The engine runs its own default agent rather than the one this chat was
   // started with: part of the conversation, not a passing toast.
   ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
+  // The engine could not reload this conversation and runs a new session:
+  // what it holds differs from the transcript from here on.
+  ACP_SESSION_STARTED_FRESH_CODE,
 ]);
 
 /**
