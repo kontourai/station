@@ -4,14 +4,23 @@
  * admitted only after `validateACPEngineDescriptor` accepts them.
  */
 
+import { isDeepStrictEqual } from 'node:util';
 import {
   type ACPConnectionRegistryEntry,
   type ACPEngineAuthDescriptor,
+  normalizeACPArgs,
   validateACPEngineDescriptor,
 } from '@kontourai/station-contracts/acp';
+import { argvDelegatesTo } from '@kontourai/station-contracts/engine-credential-provider';
+import {
+  MANAGED_RUNTIME_SCRIPT_TOKEN,
+  managedRuntimeInstallIdOf,
+} from '@kontourai/station-contracts/managed-engine-install';
 import type { IACPConnectionRegistryProvider } from '../../providers/provider-interfaces.js';
 import { listProviders } from '../../providers/registries/registry.js';
 import { createLogger } from '../../utils/logger.js';
+import { managedRuntimeInstalls } from '../engines/managed-runtime-installs.js';
+import { REVIEWED_ENGINE_CREDENTIAL_BINDINGS } from './acp-inbound-extension-policy.js';
 
 const logger = createLogger({ name: 'acp-engine-descriptors' });
 
@@ -109,6 +118,10 @@ function refusalReasons(
   // that engine's name). It can still list engines under its own ids.
   if (entry.launchEnv !== undefined)
     errors.push('launchEnv is only accepted from built-in entries');
+  // A managed runtime is code Station downloaded and runs; only a reviewed
+  // built-in pin may name one.
+  if (entry.managedRuntime !== undefined)
+    errors.push('managedRuntime is only accepted from built-in entries');
   if (builtinIds.has(entry.id))
     errors.push(`id '${entry.id}' belongs to a built-in engine`);
   return errors;
@@ -182,23 +195,64 @@ function executableName(command: string, platform: string): string {
 }
 
 /**
+ * The built-in managed-runtime entry a connection runs, keyed by its install
+ * id (`station-managed:<installId>`), never by the runtime's executable
+ * name: two managed engines can both run `node`.
+ */
+export function managedRuntimeEntryFor(connection: {
+  command: string;
+}): ACPConnectionRegistryEntry | undefined {
+  const installId = managedRuntimeInstallIdOf(connection.command);
+  if (!installId) return undefined;
+  return listValidatedACPRegistryEntries({ detect: false }).find(
+    ({ entry, builtin }) =>
+      builtin &&
+      entry.managedRuntime?.installId === installId &&
+      entry.command === connection.command,
+  )?.entry;
+}
+
+/**
+ * The built-in entry whose descriptor fields apply to a connection: a
+ * managed-runtime connection's own entry, else the first built-in (that is
+ * not a managed runtime) launching the same executable name.
+ */
+function descriptorEntryFor(
+  connection: { command: string },
+  platform: string,
+  has: (entry: ACPConnectionRegistryEntry) => boolean,
+): ACPConnectionRegistryEntry | undefined {
+  if (managedRuntimeInstallIdOf(connection.command)) {
+    const entry = managedRuntimeEntryFor(connection);
+    return entry && has(entry) ? entry : undefined;
+  }
+  const name = executableName(connection.command, platform);
+  return listValidatedACPRegistryEntries({ detect: false }).find(
+    ({ entry, builtin }) =>
+      builtin &&
+      !entry.managedRuntime &&
+      has(entry) &&
+      executableName(entry.command, platform) === name,
+  )?.entry;
+}
+
+/**
  * The built-in descriptor environment for a connection's executable. Keyed on
  * the executable name rather than the connection id: the variables describe
  * the program (an auto-updater, a keychain prompt), so a custom connection
- * running the same program, by name or by full path, needs them as well.
+ * running the same program, by name or by full path, needs them as well. A
+ * managed-runtime connection is keyed on its install id instead.
  */
 export function registryLaunchEnvFor(
   connection: { command: string },
   platform: string = process.platform,
 ): Record<string, string> | undefined {
-  const name = executableName(connection.command, platform);
-  const match = listValidatedACPRegistryEntries({ detect: false }).find(
-    ({ entry, builtin }) =>
-      builtin &&
-      entry.launchEnv &&
-      executableName(entry.command, platform) === name,
+  const entry = descriptorEntryFor(
+    connection,
+    platform,
+    (candidate) => candidate.launchEnv !== undefined,
   );
-  return match?.entry.launchEnv ? { ...match.entry.launchEnv } : undefined;
+  return entry?.launchEnv ? { ...entry.launchEnv } : undefined;
 }
 
 /**
@@ -210,14 +264,12 @@ export function registryAuthFor(
   connection: { command: string },
   platform: string = process.platform,
 ): { command: string; auth: ACPEngineAuthDescriptor } | undefined {
-  const name = executableName(connection.command, platform);
-  const match = listValidatedACPRegistryEntries({ detect: false }).find(
-    ({ entry, builtin }) =>
-      builtin && entry.auth && executableName(entry.command, platform) === name,
+  const entry = descriptorEntryFor(
+    connection,
+    platform,
+    (candidate) => candidate.auth !== undefined,
   );
-  return match?.entry.auth
-    ? { command: match.entry.command, auth: match.entry.auth }
-    : undefined;
+  return entry?.auth ? { command: entry.command, auth: entry.auth } : undefined;
 }
 
 /** Whether `argv0` names the same program as `command`, by executable name. */
@@ -227,4 +279,128 @@ export function namesSameExecutable(
   platform: string = process.platform,
 ): boolean {
   return executableName(argv0, platform) === executableName(command, platform);
+}
+
+/**
+ * How a connection's process is launched, as far as an engine-credential
+ * binding needs to know (`AcpCredentialLaunchFacts`). Derived from the
+ * connection and the validated built-in table only, never from a caller's
+ * claim:
+ *
+ * - A managed-runtime connection launches its built-in entry's
+ *   `managedRuntime.argv` (the `{script}` token stands for the installed
+ *   entry script), and nothing else: {@link resolveManagedRuntimeLaunch}
+ *   refuses extra arguments.
+ * - Any other connection is a built-in launch only when a built-in entry
+ *   names exactly its command and arguments.
+ */
+export function engineLaunchFactsFor(connection: {
+  command: string;
+  args?: readonly string[];
+}): { builtinDescriptor: boolean; argv: readonly string[] } {
+  const managed = managedRuntimeEntryFor(connection);
+  if (managed?.managedRuntime)
+    return {
+      builtinDescriptor: managedArgsAccepted(managed, connection.args),
+      argv: [...managed.managedRuntime.argv],
+    };
+  const args = normalizeACPArgs([...(connection.args ?? [])]);
+  const builtin =
+    !managedRuntimeInstallIdOf(connection.command) &&
+    listValidatedACPRegistryEntries({ detect: false }).some(
+      ({ entry, builtin }) =>
+        builtin &&
+        !entry.managedRuntime &&
+        entry.command === connection.command &&
+        isDeepStrictEqual(normalizeACPArgs(entry.args ?? []), args),
+    );
+  return { builtinDescriptor: builtin, argv: args };
+}
+
+function managedArgsAccepted(
+  entry: ACPConnectionRegistryEntry,
+  args: readonly string[] | undefined,
+): boolean {
+  const given = normalizeACPArgs([...(args ?? [])]);
+  return (
+    given.length === 0 ||
+    isDeepStrictEqual(given, normalizeACPArgs(entry.args ?? []))
+  );
+}
+
+/**
+ * Whether Station owns this connection's engine sign-in: a built-in launch
+ * that delegates its credential to the host through a reviewed binding (the
+ * Kiro bundle). Such a connection is signed in from Station's engine
+ * host-auth vault, not by the engine.
+ */
+export function stationOwnsEngineSignIn(connection: {
+  command: string;
+  args?: readonly string[];
+}): boolean {
+  const facts = engineLaunchFactsFor(connection);
+  return (
+    facts.builtinDescriptor &&
+    REVIEWED_ENGINE_CREDENTIAL_BINDINGS.some(
+      (binding) =>
+        binding.wire.protocol === 'acp' &&
+        argvDelegatesTo(facts.argv, binding.delegationArgv),
+    )
+  );
+}
+
+/** A managed engine that is not installed (or not installable here) yet. */
+export class ManagedRuntimeNotInstalledError extends Error {
+  constructor(
+    readonly installId: string,
+    engineName: string,
+  ) {
+    super(
+      `${engineName} isn't installed yet. Install it from the engine's sign-in panel in Connections.`,
+    );
+    this.name = 'ManagedRuntimeNotInstalledError';
+  }
+}
+
+/** A managed engine connection carrying arguments of its own. */
+class ManagedRuntimeLaunchRefusedError extends Error {
+  constructor(engineName: string, reason: string) {
+    super(`${engineName} cannot be launched: ${reason}.`);
+    this.name = 'ManagedRuntimeLaunchRefusedError';
+  }
+}
+
+/**
+ * The program and arguments a managed-runtime connection runs: the
+ * install's runtime and the built-in entry's argv with `{script}` replaced.
+ * Undefined for any other connection. Throws when the install is missing or
+ * the connection adds arguments of its own.
+ */
+export function resolveManagedRuntimeLaunch(connection: {
+  command: string;
+  args?: readonly string[];
+}): { command: string; args: string[]; installId: string } | undefined {
+  const installId = managedRuntimeInstallIdOf(connection.command);
+  if (!installId) return undefined;
+  const entry = managedRuntimeEntryFor(connection);
+  if (!entry?.managedRuntime)
+    throw new ManagedRuntimeLaunchRefusedError(
+      connection.command,
+      'no built-in engine names this managed runtime',
+    );
+  if (!managedArgsAccepted(entry, connection.args))
+    throw new ManagedRuntimeLaunchRefusedError(
+      entry.name,
+      'a managed engine runs only with the arguments Station pins for it',
+    );
+  const installed = managedRuntimeInstalls()?.installed(installId);
+  if (!installed)
+    throw new ManagedRuntimeNotInstalledError(installId, entry.name);
+  return {
+    command: installed.runtime,
+    args: entry.managedRuntime.argv.map((arg) =>
+      arg === MANAGED_RUNTIME_SCRIPT_TOKEN ? installed.script : arg,
+    ),
+    installId,
+  };
 }

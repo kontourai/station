@@ -1,0 +1,7 @@
+{
+  "revision": "1c249eec27300e9057925878365f300c210eab54",
+
+  "notes": [
+    {"path":"packages/cli/README.md","note":"Links to the CLI reference; its backup mentions do not enumerate excluded home roots, so the engines/ exclusion addition in cli.md leaves it accurate.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
+  ]
+}

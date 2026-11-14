@@ -2995,10 +2995,56 @@ Unknown tuples have no application semantics, though bounded diagnostics and
 the [replay observer](../../src-ui/src/hooks/orchestration/replay/observe.ts)
 can report their absence.
 
-The `_kiro` v3 spelling remains unbound because it has not been observed (a
-source comment names the gap; no exported record does); it does not inherit
-`_kiro.dev` behavior. The table carries no promotion metadata: a tuple's
-binding says nothing about which canonical event, if any, should replace it.
+The `_kiro` v3 spelling never inherits `_kiro.dev` behavior. Its tuples, and
+every other engine-to-client Kiro extension (requests and
+`session_info_update._meta.kiro` kinds included), are rows of the exported
+`ENGINE_EXTENSION_BINDINGS`: each names its exact wire shape, its basis
+(`declared`, `client-announced` or `undeclared-engine`), what it was observed
+against (the scrubbed kiro-cli 2.35.0 capture in
+`src-server/services/acp/__tests__/fixtures/`, or a kirodotdev/kirocrew
+fixture path) and its consumer. A row's notification tuple binds only once
+`ENGINE_EXTENSION_CONSUMERS` marks its consumer implemented, and never over a
+tuple the table above already binds. Today eleven bind: Kiro v2's
+`mcp/server_initialized` and `mcp/server_init_failure` (`engine-mcp.status`)
+and `metadata` (`usage.context-percent`), v3's `_kiro/mcp/status`
+(`engine-mcp.status`), and seven v3 notifications bound as `acp.host-chrome`. The notification table carries no promotion
+metadata: a tuple's binding says nothing about which canonical event, if any,
+should replace it. The `child-work` consumer is implemented in
+[`acp-child-work.ts`](../../src-server/providers/adapters/acp-child-work.ts):
+kiro-cli's `subagent/list_update` keeps its host-chrome notification row while
+its engine row reads the roster into `child-work.updated`, and a `tool_call`
+whose `_meta.kiro.kind` is `agent-subtask` is read the same way. An ACP
+engine whose handshake names neither reporter publishes `not-reported` at
+session start. The matrix cell's `perConnection` reason is what
+`child-work-projection.ts` and the Agents pane fall back to for an ACP
+session with no report seen in this process.
+
+The transcript projection also draws an in-place engine rewind (a
+`runtime.warning` with `ACP_SESSION_REWOUND_CODE`) as a marker row and marks
+the turns it hid `rewound`, and a rewind the engine applied late
+(`ACP_SESSION_REWOUND_LATE_CODE`) as a marker row that marks no turn; the UI
+handler neither toasts them nor adds a notice. [`SessionRewind`](../../src-ui/src/components/chat/SessionRewind.tsx)
+offers "Rewind conversation to here" on a user turn of the live session only
+while `GET /api/orchestration/sessions/:threadId/continuity` says its engine
+rewinds in place.
+
+Engines Station installs and signs in itself have two owners.
+[`services/engines/managed-install.ts`](../../src-server/services/engines/managed-install.ts)
+installs a reviewed pin with consent (the manifest digest first, then each
+artifact, entry names and the unpacked tree) under
+`<STATION_HOME>/engines/<installId>/<version>/`, and `ACPProcess` resolves a
+`station-managed:<installId>` command to it at launch (the ACP adapter's
+readiness reads the same install, and the connection inspector takes an
+engine Station signs in as ready only when that readiness has no required
+row missing).
+[`services/engine-host-auth/`](../../src-server/services/engine-host-auth/service.ts)
+holds the vault (`security/engine-host-auth.json`), the issuer, the
+`_kiro/secret/*` store and the Kiro sign-ins (the device-code flow, and the
+Google/GitHub portal flow with its loopback callback in
+[`kiro-oidc/social.ts`](../../src-server/services/engine-host-auth/kiro-oidc/social.ts)), and
+`installEngineHostAuthResponders` registers the reviewed responders on a
+session or probe registry. Its import graph never reaches Station's own
+principals; launch facts are injected at bootstrap.
 
 [Exact-set tests](../../src-shared/__tests__/extension-notification-bindings.test.ts),
 ACP mapper tests and UI handler tests check lookup and current handling.
@@ -5740,7 +5786,8 @@ itself. Internal credentials do not become human Pane authority.
 `/api/browser-agent` and `/api/live-surfaces` on personal hosts.
 `chromium-acquisition.ts` prefers installed browsers, otherwise requires
 operator consent before fetching a pinned archive with size/SHA-256 and path
-checks. `hosts/chromium-server-host.ts` launches through `spawnOwnedChild`, with
+checks, shared with managed engine installs through
+[`services/infra/pinned-artifact.ts`](../../src-server/services/infra/pinned-artifact.ts). `hosts/chromium-server-host.ts` launches through `spawnOwnedChild`, with
 an allowlisted environment, a private CDP pipe and the profile's egress proxy.
 `egress-policy.ts` refuses known Station listeners and ordinary DNS names that
 resolve to private addresses. Operator profiles otherwise have broad reach;

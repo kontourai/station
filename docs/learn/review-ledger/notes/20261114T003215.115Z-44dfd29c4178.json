@@ -1,0 +1,7 @@
+{
+  "revision": "1952ab395a82abcf7e8d54ef366319899b01cdc2",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"The binding test now pins child-work as an implemented consumer (acp-child-work.ts) with the v2 roster keeping its host-chrome row, which is what the module map already says; no claim changed.","inputs":["docs/architecture/module-map.md","src-shared/__tests__/extension-notification-bindings.test.ts"]}
+  ]
+}

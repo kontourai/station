@@ -696,6 +696,10 @@ export const PROVIDER_MUSE = 'muse';
  *   `session/request_permission` calls, and the server admits it there
  *   (`approvalKnobSupported`). Any other ACP engine decides which calls ask
  *   itself, so the option stays unsupported and the adapter refuses it too.
+ *   `modelOptions.effort` is applied through the session's config option
+ *   whose `category` is `thought_level`, and only when the fresh session
+ *   advertises one; a session without one (Kiro KAS 2.35 advertises none)
+ *   refuses it rather than dropping it.
  * - `ollama`/`bedrock`: read only `modelOptions.systemPrompt` — system-prompt
  *   passthrough is explicitly excluded from archive#978's scope, so it is
  *   NOT added to either provider's support list; a caller-supplied
@@ -723,7 +727,7 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
       'fastMode',
       'serviceTier',
     ],
-    [PROVIDER_ACP]: ['mode'],
+    [PROVIDER_ACP]: ['mode', 'effort'],
     [PROVIDER_OLLAMA]: [],
     [PROVIDER_BEDROCK]: [],
     // #2452: `muse-adapter.ts` reads `approvalMode` (`readApprovalMode`) at
@@ -829,6 +833,84 @@ export const APPROVAL_ESCALATION_REQUIRES_RESTART_CODE =
  * true`, so the composer chip does not show the pick as applied.
  */
 export const ACP_APPROVAL_TAKEOVER_FAILED_CODE = 'acp-approval-takeover-failed';
+
+/**
+ * `RuntimeWarningEvent.code` an engine session publishes after it rewound
+ * its context in place to before a turn (`rewindSession`): those turns stay
+ * in the transcript but are hidden from the engine. `details.beforeTurnId`
+ * names the chosen turn, `details.hiddenTurnIds` every turn it hid (the
+ * chosen one included), and `details.affectedFileCount` how many files the
+ * engine said it restored, when it said.
+ */
+export const ACP_SESSION_REWOUND_CODE = 'acp.session-rewound';
+
+/**
+ * `RuntimeWarningEvent.code` an engine session publishes when a rewind that
+ * outlived its deadline was applied by the engine after a later turn started:
+ * the transcript cannot say which turns the engine now hides, so none is
+ * marked rewound. `details.beforeTurnId` names the rewind's chosen turn. (A
+ * late rewind with no turn since is published as `ACP_SESSION_REWOUND_CODE`.)
+ */
+export const ACP_SESSION_REWOUND_LATE_CODE = 'acp.session-rewound-late';
+
+/** Bound on the restored paths a rewind outcome carries; the count is exact. */
+export const SESSION_REWIND_AFFECTED_PATHS_MAX = 50;
+
+/**
+ * Why a rewind was refused before anything reached the engine.
+ * - `unsupported`: this session's engine declared no in-place rewind.
+ * - `not-live`: no engine process holds this session now.
+ * - `turn-running`: a turn is running; stop it first.
+ * - `send-preparing`: a message is being sent and its turn is not running
+ *   yet; try again once it is.
+ * - `rewind-pending`: an earlier rewind is still with the engine (on time,
+ *   or past its deadline and not yet answered).
+ * - `unknown-turn`: the engine never reported an id for that turn in this
+ *   process (an older turn, one from before a restart, one Station no
+ *   longer keeps, or one an earlier rewind already hid).
+ */
+export type SessionRewindRefusalReason =
+  | 'unsupported'
+  | 'not-live'
+  | 'turn-running'
+  | 'send-preparing'
+  | 'rewind-pending'
+  | 'unknown-turn';
+
+/**
+ * The outcome of rewinding a live session's engine context to before a
+ * turn. `rewound.affectedFiles` is present only when the engine reported
+ * which files it restored (`paths` is at most
+ * {@link SESSION_REWIND_AFFECTED_PATHS_MAX}; `count` is the engine's).
+ * `failed` is the engine's own refusal or error.
+ */
+export type SessionRewindOutcome =
+  | {
+      kind: 'rewound';
+      beforeTurnId: string;
+      hiddenTurnIds: string[];
+      affectedFiles?: { count: number; paths: string[] };
+    }
+  | { kind: 'refused'; reason: SessionRewindRefusalReason }
+  | { kind: 'failed'; message: string };
+
+/**
+ * A session's continuity as its live engine process declared it. `live:
+ * false` means no engine process holds the session, so nothing is offered.
+ */
+export interface SessionLiveContinuity {
+  live: boolean;
+  rewind: 'in-place' | 'none';
+  fork: 'native' | 'none';
+}
+
+/**
+ * `RuntimeWarningEvent.code` an ACP engine session publishes when the
+ * Station agent it was started for could not be applied to the engine, so
+ * the engine runs its own default agent instead.
+ */
+export const ACP_AGENT_PROJECTION_UNAPPLIED_CODE =
+  'acp.agent-projection-unapplied';
 
 /** A provider explicitly disproved the exact native binding being resumed. */
 export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
@@ -1002,7 +1084,9 @@ export const MUSE_SERVE_STOP_UNCONFIRMED_CODE = 'muse-serve-stop-unconfirmed';
  * turn it opened on its own (a provider-triggered turn, see
  * `PROVIDER_TURN_TRIGGER`). Accepting it would fold the message into a reply
  * the user did not ask for. Retryable: the same send succeeds once that turn
- * closes, so clients keep it queued and send it then.
+ * closes, so clients keep it queued and send it then. Also the code of a send
+ * refused while the engine rewinds its context in place (`rewindSession`):
+ * the same busy-until-it-ends refusal, with its own message.
  */
 export const PROVIDER_TURN_IN_PROGRESS_CODE = 'provider_turn_in_progress';
 
@@ -1020,6 +1104,16 @@ export const PROVIDER_SESSION_STARTING_CODE = 'provider_session_starting';
  * Kind `auth`: not retryable until the user signs in with the engine.
  */
 export const ENGINE_SIGN_IN_REQUIRED_CODE = 'engine-sign-in-required';
+
+/**
+ * A start asked for a credential profile other than `default` on a connection
+ * whose engine sign-in Station owns (the Kiro bundle). Station keeps one
+ * sign-in per such connection, under its default profile, so the start is
+ * refused before anything is launched rather than answered with another
+ * profile's token.
+ */
+export const ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE =
+  'engine-credential-profile-unsupported';
 
 /**
  * Refusal code for a send whose session's engine start failed while the send

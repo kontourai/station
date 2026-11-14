@@ -27,10 +27,12 @@ import {
   runCliCommand,
 } from '../../providers/auth/cli-auth.js';
 import { engineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
+import { engineHostAuth } from '../engine-host-auth/service.js';
 import {
   namesSameExecutable,
   registryAuthFor,
   registryLaunchEnvFor,
+  stationOwnsEngineSignIn,
 } from './acp-engine-descriptors.js';
 import { engineCredentialEnvFor } from './engine-credentials.js';
 
@@ -156,6 +158,26 @@ export function resetEngineAuthStatus(): void {
   commandResults.clear();
   inFlight.clear();
   engineEvidence.clear();
+}
+
+/**
+ * Whether an engine's own last words before it stopped are its vendor's
+ * documented signed-out text: the descriptor's `statusRule.signedOutText`,
+ * the same fragments its status command is read by. Kiro CLI signed out
+ * refuses to start with "Not logged in. … run `kiro-cli login` first." on
+ * stderr rather than an ACP `auth_required`, so this is the only refusal it
+ * gives. An engine with no declared text never matches.
+ */
+export function stderrSaysSignedOut(
+  connection: ConnectionLike,
+  line: string | undefined,
+): boolean {
+  if (!line) return false;
+  const fragments = registryAuthFor(connection)?.auth.statusRule?.signedOutText;
+  const lower = line.toLowerCase();
+  return (fragments ?? []).some((fragment) =>
+    lower.includes(fragment.toLowerCase()),
+  );
 }
 
 /** The engine refused a chat because it needs a sign-in. */
@@ -298,6 +320,22 @@ export async function engineSignInStatus(
   connection: ConnectionLike,
   options: { refresh?: boolean; commandOnly?: boolean } = {},
 ): Promise<EngineSignInStatus> {
+  // An engine Station signs in itself: its status is the vault's, read
+  // without running anything.
+  if (stationOwnsEngineSignIn(connection)) {
+    const vault = engineHostAuth()?.status({
+      connectionId: connection.id,
+      credentialProfileRef: 'default',
+    });
+    if (!vault || vault.state === 'unknown')
+      return { state: 'unknown', source: 'none', checkable: false };
+    return {
+      state: vault.state === 'signed-in' ? 'authenticated' : 'unauthenticated',
+      source: 'station-vault',
+      observedAt: new Date(now()).toISOString(),
+      checkable: false,
+    };
+  }
   const checkable = engineStatusCheckable(connection);
   const fromCommand = checkable
     ? await commandObservation(connection, options.refresh === true)

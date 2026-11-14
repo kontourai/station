@@ -1,0 +1,7 @@
+{
+  "revision": "5c3a844955ef18e877ffbf88e37d904204c04010",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added the two ACP runtime-warning codes to the inventory guard's named out-of-scope categories, matching the new exclusions in provider-failure-inventory.test.ts.","inputs":["docs/reference/contracts.md","scripts/__tests__/provider-failure-inventory.test.ts"]}
+  ]
+}

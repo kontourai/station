@@ -1,0 +1,7 @@
+{
+  "revision": "86eb350aab7717090b7910cdd15b2ac753821714",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Checked the pre-update backup restore claims against the home-root registry change: engines/ is a re-acquirable external root like media-tools; the restore and schema-file claims are unchanged.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

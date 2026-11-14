@@ -1,0 +1,7 @@
+{
+  "revision": "5c3a844955ef18e877ffbf88e37d904204c04010",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"path-read-pin-boundary.test.ts gained eight Kiro suites in UNREPORTED_PATH_READING_SUITES (temp-dir and fixtures reads); the guide's description of the pin scan and its reviewed exception list still holds.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}
