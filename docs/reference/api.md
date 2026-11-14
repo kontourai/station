@@ -1107,7 +1107,8 @@ reacted. The stored message row is never rewritten.
   type's signature (a prefix check, not a full image decode). Each uploader may hold 1280 files in a room. Deleting a message
   releases its files, and each upload first releases that uploader's unsent
   files older than a day. A release deletes the bytes no other file names,
-  under one store-wide lock that every upload also holds, across processes;
+  under one store-wide lock that every upload and every message naming files
+  also holds, across processes, with access re-checked once it is held;
   the store never evicts by age or size. Live data is bounded per binding,
   not across the store: one uploader in one room holds at most 1280 files of
   up to 5 MiB (6.25 GiB), unsent uploads included until their day is up.

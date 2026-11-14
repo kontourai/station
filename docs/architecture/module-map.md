@@ -3682,8 +3682,10 @@ message's person author may edit or delete it, and Agent messages are never
 edited. Message files are stored by `ProjectRoomAttachments` (over the
 `RoomAttachments` store Task rooms use) under a binding of Station, Project
 incarnation, room and uploader. Deleting a message releases its files, and an
-upload first releases its uploader's day-old unsent files. Uploads and
-releases hold one store-wide cross-process file lock; a release deletes only
+upload first releases its uploader's day-old unsent files. Uploads, releases
+and messages naming files hold one store-wide cross-process file lock (the
+yielding form, taken before the request's authority check so access revoked
+while waiting refuses); a release deletes only
 bytes no binding names, and the store never evicts by age or size, so
 referenced bytes are never lost. Task rooms keep age and size retention
 (#4947). Persisted records are validated
