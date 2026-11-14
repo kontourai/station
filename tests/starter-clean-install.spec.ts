@@ -1,7 +1,6 @@
 import type { Server } from 'node:http';
 import type { RunSummary } from '@kontourai/station-contracts/runs';
 import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
-import type { StarterScheduledCheckObservation } from '@kontourai/station-contracts/starter-work';
 import { expect, test } from './helpers/authenticated-request';
 import {
   closeFixtureServer,
@@ -12,13 +11,12 @@ import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 const MODEL = 'station-clean-install:latest';
 const USER_MESSAGE = 'Confirm this clean Station can complete real work.';
 const FIXTURE_REPLY = 'Clean-install Station work completed.';
-const STARTER_JOB = 'station-starter-check';
 
 type ApiEnvelope<T> = { success: boolean; data: T };
 
 test.use({ actionTimeout: 20_000 });
 
-test('fresh Station completes real Work and opts into the developer Scheduler check', async ({
+test('fresh Station completes real Work', async ({
   authenticatedRequest,
   baseURL,
   page,
@@ -219,120 +217,8 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
       ]),
     });
 
-    await page.getByRole('button', { name: 'Home', exact: true }).click();
-    const starter = page.getByRole('region', {
-      name: 'Run a scheduled readiness check',
-    });
-    await expect(starter).toHaveCount(0);
-    // Settings is reached through the sidebar footer's account menu.
-    await page.getByRole('button', { name: /^Profile and settings:/ }).click();
-    await page.getByRole('menuitem', { name: 'Open settings' }).click();
-    // Developer tools live on Settings' Advanced page (#3143).
-    await page.getByRole('link', { name: 'Advanced', exact: true }).click();
-    const developerTools = page.getByRole('switch', {
-      name: 'Enable developer tools',
-    });
-    await expect(developerTools).not.toBeChecked();
-    await developerTools.check();
-    await expect(developerTools).toBeChecked();
-    await page.getByRole('button', { name: 'Home', exact: true }).click();
-    await expect(starter).toBeVisible();
-    await starter.getByRole('button', { name: 'Run check' }).click();
-    await expect
-      .poll(() => new URL(page.url()).pathname, { timeout: 30_000 })
-      .toBe('/automations');
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('run'))
-      .toMatch(/^schedule:built-in:station-starter-check:/);
-    const exactRunId = new URL(page.url()).searchParams.get('run');
-    expect(exactRunId).toBeTruthy();
-
-    await expect
-      .poll(async () => {
-        const run = await readData<RunSummary>(
-          `/api/runs/${encodeURIComponent(exactRunId!)}`,
-        );
-        return {
-          runId: run.runId,
-          source: run.source,
-          sourceId: run.sourceId,
-          status: run.status,
-        };
-      })
-      .toEqual({
-        runId: exactRunId,
-        source: 'schedule',
-        sourceId: STARTER_JOB,
-        status: 'completed',
-      });
-
-    const observation = await readData<StarterScheduledCheckObservation>(
-      '/api/starter-work/run-scheduled-check/observation',
-    );
-    expect(observation).toMatchObject({
-      starterId: 'run-scheduled-check',
-      receipt: { id: exactRunId, owner: 'scheduler-run' },
-      href: `/schedule?run=${encodeURIComponent(exactRunId!)}`,
-      completion: { state: 'completed' },
-      evidence: { state: 'NOT_VERIFIED' },
-    });
-    const jobs = await readData<SchedulerJob[]>('/scheduler/jobs');
-    expect(jobs).toEqual([
-      expect.objectContaining({
-        name: STARTER_JOB,
-        provider: 'built-in',
-        agent: 'station',
-        enabled: false,
-        retryCount: 0,
-        schedule: { kind: 'every', everyMs: 86_400_000 },
-      }),
-    ]);
-    await expect.poll(() => chatRequests.length).toBe(2);
-    expect(chatRequests[1]).toMatchObject({
-      model: MODEL,
-      messages: expect.arrayContaining([
-        expect.objectContaining({
-          role: 'user',
-          content: expect.stringMatching(
-            /current readiness[\s\S]*Do not change configuration or Work/,
-          ),
-        }),
-      ]),
-    });
-
-    await page.getByRole('button', { name: 'Home', exact: true }).click();
-    await page.reload();
-    const completedStarter = page.getByRole('region', {
-      name: 'Run a scheduled readiness check',
-    });
-    await expect(completedStarter).toContainText(
-      'evidence input, not a gate verdict',
-    );
-    await completedStarter
-      .getByRole('button', { name: 'Open scheduled check' })
-      .click();
-    expect(new URL(page.url()).searchParams.get('run')).toBe(exactRunId);
-
-    const focusedRun = page.locator(`[data-run-id="${exactRunId}"]`);
-    await expect(focusedRun).toBeFocused({ timeout: 20_000 });
-    await expect(
-      focusedRun.getByText('Completed', { exact: true }),
-    ).toBeVisible();
-    await expect(focusedRun.getByText(/Passed|Verified/i)).toHaveCount(0);
-    await focusedRun.getByRole('button', { name: 'Output' }).click();
-    const output = page.getByRole('dialog', {
-      name: `${STARTER_JOB} — Run Output`,
-    });
-    await expect(output).toContainText(FIXTURE_REPLY);
-    await expect(
-      output.getByText(/Passed|Verified|gate satisfied/i),
-    ).toHaveCount(0);
-
     await expect(readData<unknown[]>('/api/projects')).resolves.toEqual([]);
     await expect(readData<unknown[]>('/api/tasks')).resolves.toEqual([]);
-    await expect(
-      readData<RunSummary[]>('/api/runs?source=schedule'),
-    ).resolves.toHaveLength(1);
   } finally {
     await closeFixtureServer(ollamaServer);
   }

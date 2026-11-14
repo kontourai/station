@@ -276,8 +276,8 @@ from its icon without opening the keyboard on Inbox entry. The dock header
 owns New chat. This Inbox replaces the title-triggered Chats and tasks sheet
 and shares the desktop Inbox's scope and history preferences. It stays mounted
 behind a conversation, retaining its search and list position.
-The project picker retains [PickerCreateAction](../../src-ui/src/components/PickerCreateAction.tsx)
-for its 52px add button. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
+Project choice belongs to the start composer on phone and desktop; the dock
+header has no project picker, including while empty or showing Inbox. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
 across the desktop inbox, the collapsed dock bar (icon only) and
 the open, empty dock. The mobile bar composes the same conversation-plus glyph
 with its toolbar button styles. Both forms retain a 44px minimum target and

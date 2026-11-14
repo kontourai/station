@@ -41,6 +41,7 @@ import {
   validateCommonPayload,
   validateReleaseManifestPayloadV2,
 } from '../packages/shared/src/release-manifest.mjs';
+import { parseReleaseTag } from './lib/release-tag.mjs';
 
 const RELEASE = '(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)';
 // Schema v1 (stable/preview with a macOS cask) keeps its original grammar.
@@ -245,6 +246,28 @@ function requiredTargets(targets, allowPartial) {
 }
 
 /**
+ * The release the assets are staged under: `v<version>`, or a Stable
+ * candidate's own tag `v<version>-rc.N` (#4929). The payload still names
+ * `v<version>`, the version its bytes carry; only the URLs move.
+ */
+function assetLocationTag({ version, channel, locationTag }) {
+  const releaseTag = `v${version}`;
+  if (locationTag === undefined || locationTag === releaseTag)
+    return releaseTag;
+  let parsed;
+  try {
+    parsed = parseReleaseTag(locationTag);
+  } catch {
+    parsed = undefined;
+  }
+  if (channel !== 'stable' || parsed?.baseVersion !== version)
+    throw new Error(
+      `--location-tag ${locationTag} is not a ${channel} release of ${version}`,
+    );
+  return locationTag;
+}
+
+/**
  * A schema v2 payload built from the descriptors the portable archive build
  * writes beside each archive (`<archive>.json`), so no digest or size is ever
  * typed by hand. `baseUrl` must be the versioned release-asset directory: a
@@ -257,6 +280,7 @@ function assemblePayload({
   channel,
   sourceSha,
   baseUrl,
+  locationTag,
   nodeVersion,
   launcherProtocolMin,
   launcherProtocolMax,
@@ -264,17 +288,18 @@ function assemblePayload({
   targets,
 }) {
   const releaseTag = `v${version}`;
+  const assetTag = assetLocationTag({ version, channel, locationTag });
   if (!isHttpsArtifactUrl(baseUrl) || !baseUrl.endsWith('/'))
     throw new Error(
       '--base-url must be a canonical HTTPS URL ending in a slash, with no userinfo, query or fragment',
     );
   const segments = new URL(baseUrl).pathname.split('/');
   if (
-    !segments.includes(releaseTag) ||
+    !segments.includes(assetTag) ||
     segments.some((segment) => segment.toLowerCase() === 'latest')
   )
     throw new Error(
-      `--base-url must name the versioned release ${releaseTag}, not a rolling pointer`,
+      `--base-url must name the versioned release ${assetTag}, not a rolling pointer`,
     );
   if (!NODE_VERSION.test(nodeVersion))
     throw new Error('--node-version must be MAJOR.MINOR.PATCH');
@@ -450,6 +475,7 @@ try {
       channel: option('--channel'),
       sourceSha: option('--source-sha'),
       baseUrl: option('--base-url'),
+      locationTag: optionalOption('--location-tag'),
       nodeVersion: pinnedNodeVersion,
       launcherProtocolMin: parsePositiveInteger(
         '--launcher-protocol-min',

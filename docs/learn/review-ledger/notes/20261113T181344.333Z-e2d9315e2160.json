@@ -1,0 +1,15 @@
+{
+  "revision": "6f2cda997b31a5069189e329ebb203641f0060e2",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Bounded round-5 review: traced default detected artwork, explicit No icon through picker, form submit, recovery schema and service persistence; traced Home hidden default versus selectable All work and route-persistent device setting. Existing icon and Inbox instructions remain accurate. No provider, device or release claim added.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/InboxScopeFilter.tsx","src-ui/src/components/modals/NewProjectModalContent.tsx","src-ui/src/hooks/useNewProjectModalState.ts","src-ui/src/hooks/useProjectCreationRecovery.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Bounded round-5 review: optional iconDisabled is retained alongside the existing immutable recovery draft. Start intent, selected starter and Task dispatch ownership remain as documented; icon suppression changes display only.","inputs":["docs/guides/starter-work.md","src-ui/src/components/modals/NewProjectModalContent.tsx","src-ui/src/hooks/useNewProjectModalState.ts","src-ui/src/hooks/useProjectCreationRecovery.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Bounded round-5 review: creation form now supplies existing iconDisabled contract and recovery retains it. Service already spreads the field; display discovery respects it. Project display metadata and update semantics remain accurate; no route or authorization contract changed.","inputs":["docs/reference/api.md","src-ui/src/hooks/useProjectCreationRecovery.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Bounded round-5 review of New Project acquisition callers: adding iconDisabled to draft and recovery does not alter acquisition identity, URL, directory, authorization or retry controls described in repository onboarding. Existing explanation remains accurate.","inputs":["docs/guides/connections.md","src-ui/src/components/modals/NewProjectModalContent.tsx","src-ui/src/hooks/useProjectCreationRecovery.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Bounded round-5 review: new-project icon suppression and retained draft flag do not select execution bindings or change portable identity, resource attachment, acquisition or manifest ownership. Current onboarding note and historical migration inventory remain accurate within their stated scope.","inputs":["docs/design/portable-project-identity.md","src-ui/src/components/modals/NewProjectModalContent.tsx","src-ui/src/hooks/useNewProjectModalState.ts"]}
+  ]
+}

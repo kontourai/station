@@ -1,0 +1,7 @@
+{
+  "revision": "dddf171abf2b31b6c4bfd44a9eaee1f68e297c8c",
+
+  "notes": [
+    {"path":"docs/reference/product-laws.md","note":"Reviewed the final unique mobile fault-injection observation name against the manifest and ChatDockMobileHeader test. This preserves the no-header-project-picker law and its real caller; the runner requires exactly one structured test result. Historical capture evidence and runtime limits are unchanged.","inputs":["docs/reference/product-laws.md"]}
+  ]
+}

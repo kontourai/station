@@ -287,7 +287,7 @@ export function useChatDockViewModel({
    *    chat on the direct `/chat` path, which never starts one). With
    *    nothing to report, the project's binding is the best statement
    *    available and matches the previous behaviour exactly;
-   * 3. failing that, `ChatDockProjectContext`'s "~ (defaults to home)" —
+   * 3. failing that, the home-folder fallback —
    *    still correct as a statement about what an unbound chat gets, and
    *    still only reached when nothing better is known.
    *

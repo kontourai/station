@@ -26,6 +26,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { MobileInboxPanel } from '../components/chat-dock/MobileInboxPanel';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 
+// Focus restoration is isolated from the host's project catalogue query.
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
+}));
+
 const tasks: HomeWorkItem[] = [
   {
     id: 'chat:one',

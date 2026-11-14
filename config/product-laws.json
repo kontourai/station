@@ -99,7 +99,7 @@
     {
       "id": "station.mobile-context.primary-actions",
       "family": "mobile-context",
-      "invariant": "Conversation switching stays direct in the mobile header. Project choice belongs to starting a chat; an active conversation keeps its binding when a Project is opened.",
+      "invariant": "Conversation switching stays direct in the mobile header. The active chat header does not offer a Project picker; Project choice belongs to starting a chat.",
       "module": "Mobile chat dock header",
       "interface": "ChatDockMobileHeader",
       "remediationOwner": "station#1540",
@@ -118,7 +118,7 @@
       "faultInjection": {
         "kind": "vitest-file",
         "testFile": "src-ui/src/__tests__/ChatDockMobileHeader.test.tsx",
-        "selector": "opening a project preserves the active conversation binding"
+        "selector": "keeps project choice out of the unresolved header"
       }
     }
   ]

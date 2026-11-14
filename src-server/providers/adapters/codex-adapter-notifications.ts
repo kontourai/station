@@ -1,7 +1,9 @@
 import crypto from 'node:crypto';
-import type {
-  ProviderRuntimeEvent as CanonicalRuntimeEvent,
-  ProviderRuntimeErrorEvent,
+import {
+  type ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ENGINE_MCP_ERROR_MAX_CHARS,
+  ENGINE_MCP_SERVER_NAME_MAX_CHARS,
+  type ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
@@ -316,6 +318,35 @@ export function handleCodexNotification(
       );
       return;
     }
+    case 'model/rerouted': {
+      // v2 `ModelReroutedNotification` (codex 0.167 app-server schema).
+      const reroute = codexModelReroute(record, notification.params);
+      if (!reroute) return;
+      publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: nowIso(),
+        method: 'model.rerouted',
+        ...reroute,
+      });
+      return;
+    }
+    case 'mcpServer/startupStatus/updated': {
+      // v2 `McpServerStatusUpdatedNotification`: one server per notice.
+      const server = codexMcpServerStatus(record, notification.params);
+      if (!server) return;
+      publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: nowIso(),
+        method: 'engine-mcp.status',
+        servers: [server],
+        complete: false,
+      });
+      return;
+    }
     case 'account/rateLimits/updated': {
       // #3157: the reset a usage-limit failure resumes at.
       observeCodexRateLimits(record, notification.params);
@@ -575,6 +606,101 @@ export function handleCodexNotification(
     default:
       return;
   }
+}
+
+/** A Codex model id: one token, at most 200 characters. */
+const CODEX_MODEL_ID = /^[A-Za-z0-9._:/@-]{1,200}$/;
+const CODEX_MCP_SERVER_NAME_MAX_CHARS = ENGINE_MCP_SERVER_NAME_MAX_CHARS;
+const CODEX_MCP_ERROR_MAX_CHARS = ENGINE_MCP_ERROR_MAX_CHARS;
+
+/**
+ * `model/rerouted` → `model.rerouted`. Codex names the turn and thread it
+ * rerouted; a thread other than the session's own is a subagent's, so the
+ * reroute is attributed to that child. The only reason Codex 0.167 defines
+ * (`highRiskCyberActivity`) is neither a refusal nor an availability
+ * fallback, so it reads `other`. Codex does not say the new model sticks,
+ * so the scope is `turn` and the session's model is left as it was.
+ */
+function codexModelReroute(
+  record: CodexSessionRecord,
+  params: unknown,
+): Pick<
+  Extract<CanonicalRuntimeEvent, { method: 'model.rerouted' }>,
+  'fromModel' | 'toModel' | 'trigger' | 'scope' | 'childWorkId' | 'turnId'
+> | null {
+  if (!isRecord(params)) return null;
+  const fromModel = extractString(params.fromModel);
+  const toModel = extractString(params.toModel);
+  if (
+    !fromModel ||
+    !toModel ||
+    !CODEX_MODEL_ID.test(fromModel) ||
+    !CODEX_MODEL_ID.test(toModel)
+  )
+    return null;
+  const threadId = extractString(params.threadId);
+  const childWorkId =
+    threadId && threadId !== record.codexThreadId ? threadId : undefined;
+  const turnId = extractString(params.turnId);
+  return {
+    fromModel,
+    toModel,
+    trigger: 'other',
+    scope: 'turn',
+    ...(childWorkId ? { childWorkId } : {}),
+    ...(turnId && !childWorkId ? { turnId } : {}),
+  };
+}
+
+const CODEX_MCP_STATES: Readonly<
+  Record<string, 'starting' | 'ready' | 'failed'>
+> = {
+  starting: 'starting',
+  ready: 'ready',
+  failed: 'failed',
+  cancelled: 'failed',
+};
+
+/**
+ * `mcpServer/startupStatus/updated` → one `engine-mcp.status` server. A
+ * `reauthenticationRequired` failure reads `needs-auth`; a cancelled start
+ * reads `failed`. A notice naming another thread is not this session's.
+ * Codex reads its MCP servers from its own config (Station's passthrough
+ * included), so the scope is `engine-config`.
+ */
+function codexMcpServerStatus(
+  record: CodexSessionRecord,
+  params: unknown,
+):
+  | Extract<
+      CanonicalRuntimeEvent,
+      { method: 'engine-mcp.status' }
+    >['servers'][number]
+  | null {
+  if (!isRecord(params)) return null;
+  const threadId = extractString(params.threadId);
+  if (threadId && threadId !== record.codexThreadId) return null;
+  const name = boundedLine(plainLine(extractString(params.name) ?? ''));
+  if (!name || name.length > CODEX_MCP_SERVER_NAME_MAX_CHARS) return null;
+  const status = extractString(params.status);
+  const reported = status ? CODEX_MCP_STATES[status] : undefined;
+  if (!reported) return null;
+  const state =
+    reported === 'failed' && params.failureReason === 'reauthenticationRequired'
+      ? 'needs-auth'
+      : reported;
+  const rawError = extractString(params.error);
+  const error = rawError
+    ? boundedLine(plainLine(rawError)).slice(0, CODEX_MCP_ERROR_MAX_CHARS)
+    : status === 'cancelled'
+      ? 'Startup cancelled'
+      : '';
+  return {
+    name,
+    state,
+    ...(error ? { error } : {}),
+    scope: 'engine-config',
+  };
 }
 
 function handleCodexItemStarted(

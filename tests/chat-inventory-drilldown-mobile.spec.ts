@@ -258,9 +258,15 @@ test.describe('Chat inventory item drill-down on a phone', () => {
           expect(action.y + action.height).toBeLessThanOrEqual(
             headerBox.y + headerBox.height + 0.5,
           );
-          expect(action.x).toBeGreaterThanOrEqual(
-            titleBox.x + titleBox.width - 0.5,
-          );
+          // Chat actions lead the title; New chat trails it.
+          if (action === actionBoxes[0])
+            expect(action.x + action.width).toBeLessThanOrEqual(
+              titleBox.x + 0.5,
+            );
+          else
+            expect(action.x).toBeGreaterThanOrEqual(
+              titleBox.x + titleBox.width - 0.5,
+            );
           // One row: level with the title, not stacked above or below it.
           expect(
             Math.abs(

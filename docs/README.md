@@ -77,6 +77,7 @@ clearly mark the stale document.
 
 - **[Walkthroughs](guides/walkthroughs.md)** — Project imports, Task Browser and Device clips, authorized reads, limits and media dependencies.
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
+- **[Confined native model-channel lab](guides/native-model-channel-lab.md)** — opt-in kernel/channel prerequisite, owned cleanup and explicit authority limits.
 - **[Feature previews](guides/feature-previews.md)** — ship unfinished capabilities off by default, gate every entry point, and keep the offered-preview user table in sync.
 - **[Starter Work](guides/starter-work.md)** — how first-use actions bind to real Tasks, Sessions, approvals, and Scheduler receipts, including recovery.
 - **[Local speech and media tools](guides/local-speech.md)** — consented tool downloads, local transcription, limits and platform evidence.

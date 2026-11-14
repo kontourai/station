@@ -2393,284 +2393,6 @@ button:hover {
   }
 }
 
-/* Project context breadcrumb between tabs and body */
-.chat-dock__project-context {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  font-size: var(--k-text-sm);
-  color: var(--text-muted);
-  background: color-mix(in srgb, var(--accent-primary) 4%, var(--bg-primary));
-  border-bottom: 1px solid var(--border-primary);
-}
-/* archive#793: the badge is now a real button that always opens the project
-   switcher — button-reset so it keeps the prior text-only look, plus a
-   hover/focus affordance a plain link previously carried via its `--link`
-   modifier (removed: every badge is activatable now, not just some). */
-/* #1552 D3: a CHIP, in the body font, with a folder glyph.
- *
- * It was monospace at weight 600 with an underline-on-hover — a plain-text
- * status segment, which was right when it shared a row with a visible directory
- * path (#1536 F removed that) and wrong afterwards: it left the dock header
- * with two type families and made the project read as a fragment of a path
- * rather than as the named thing you can change. The glyph carries "project",
- * the bordered chip carries "this is a control", and the path — the reason the
- * monospace family was ever here — is the `title`.
- *
- * The accent colour this rule's predecessor removed stays removed: bound or
- * unbound, the chip is neutral, because a colour that never changes encodes no
- * state. */
-.chat-dock__project-badge {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 2px var(--space-3);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: var(--k-text-sm);
-  font-weight: 500;
-}
-.chat-dock__project-badge:hover,
-.chat-dock__project-badge:focus-visible {
-  border-color: var(--accent-border);
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-}
-.chat-dock__project-badge-glyph {
-  flex: 0 0 auto;
-  color: var(--text-tertiary);
-}
-.chat-dock__project-badge-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* No project bound: the glyph alone, and a square target for it. There is no
-   label to hold the box open, so it gets its own width. */
-.chat-dock__project-badge--unbound {
-  justify-content: center;
-  padding: 2px;
-  min-width: 22px;
-}
-.chat-dock__project-badge-clear {
-  flex-shrink: 0;
-  border: none;
-  border-radius: 3px;
-  padding: 0 4px;
-  background: none;
-  color: var(--text-muted);
-  font-size: var(--k-text-sm);
-  line-height: 1.4;
-  cursor: pointer;
-}
-.chat-dock__project-badge-clear:hover,
-.chat-dock__project-badge-clear:focus-visible {
-  color: var(--text-primary);
-  background: var(--bg-tertiary);
-}
-/* #1536 F: the start-truncated directory segment (parent + accent leaf, its
-   bidi isolate for #304, and the `HomeFolderLabel` fallback) is gone from this
-   row. It was the widest thing in the dock header and it left the conversation
-   title beside it about one character on a 110-character worktree path. The
-   path is the project badge's `title` and the More menu's "Copy folder path";
-   the coding-layout link the leaf carried is that menu's "Open in Coding".
-   `.new-chat-modal__context-dir--fallback` still names the retired
-   `--fallback` rule in a comment: that surface keeps its own visible path. */
-.chat-dock__project-context > .git-tooltip-anchor {
-  min-width: 0;
-  margin-left: auto;
-}
-
-/* archive#793: shared desktop-popover/mobile-sheet body for the project switcher
-   (ChatDockProjectSwitcherSheet), opened from the desktop badge above or the
-   mobile header's own trigger. Reuses the composer-popover-overlay/panel and
-   responsive-dialog-header shell classes for chrome (chat/chat.css) —
-   only the switcher's own list/row/action geometry lives here. */
-.chat-dock__project-switcher-panel {
-  display: flex;
-  flex-direction: column;
-  max-height: min(480px, 70vh);
-}
-.chat-dock__project-switcher-list {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: var(--space-2);
-  gap: 2px;
-  list-style: none;
-  overflow-y: auto;
-}
-/* archive#3319 revision of the archive#793 presentation: the row IS the Continue
-   action; Open demotes to a right-aligned icon. Both stay real, separately
-   tabbable buttons on every row (D5's substance). */
-.chat-dock__project-switcher-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 2px;
-  border-radius: var(--radius-md);
-}
-.chat-dock__project-switcher-row:hover,
-.chat-dock__project-switcher-row:focus-within {
-  background: var(--bg-hover);
-}
-.chat-dock__project-switcher-row.is-current {
-  padding: 1px;
-  border: 1px solid var(--accent-border);
-  background: var(--bg-selected);
-}
-.chat-dock__project-switcher-switch {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--k-space-3);
-  min-width: 0;
-  min-height: 44px;
-  justify-content: center;
-  padding: var(--space-1) var(--space-2);
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-primary);
-  text-align: left;
-  cursor: pointer;
-}
-.chat-dock__project-switcher-icon {
-  display: flex;
-  width: 28px;
-  align-items: center;
-  justify-content: center;
-}
-.chat-dock__project-switcher-accent {
-  width: 3px;
-  height: 22px;
-  border-radius: var(--radius-pill);
-}
-.chat-dock__project-switcher-name {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  max-width: 100%;
-  color: var(--text-primary);
-  font-weight: 600;
-}
-.chat-dock__project-switcher-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* Decorative only (aria-hidden in the component) — the row it flags never
-   disables either action; see D5 in the kontourai-station-793 plan. */
-.chat-dock__project-switcher-cue {
-  display: flex;
-  width: 20px;
-  height: 20px;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-secondary);
-}
-.chat-dock__project-switcher-panel {
-  position: relative;
-}
-.chat-dock__project-switcher-help {
-  position: absolute;
-  right: var(--k-space-4);
-  bottom: calc(52px + var(--k-space-3) * 2 + var(--k-space-2));
-  left: var(--k-space-4);
-  margin: 0;
-  padding: var(--k-space-3);
-  border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-overlay);
-  background: var(--bg-secondary);
-  box-shadow: var(--k-elevation-overlay);
-  color: var(--text-primary);
-  font-size: var(--k-text-md);
-  line-height: var(--k-leading-normal);
-  pointer-events: none;
-}
-.chat-dock__project-switcher-current {
-  display: flex;
-  width: 20px;
-  height: 20px;
-  align-items: center;
-  justify-content: center;
-  color: var(--k-action);
-}
-/* Row action wrapper — its `-actions` suffix is also what
-   scripts/responsive-surface-ratchet.mjs discovers for the action-surface
-   inventory, and what the mobile 44px floor at index.css's shared
-   `[class$="-actions"]` rule targets automatically. Holds only the demoted
-   Open icon since the #3319 revision (the row itself is Continue). */
-.chat-dock__project-switcher-actions {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-}
-.chat-dock__project-switcher-open {
-  display: inline-flex;
-  min-width: 44px;
-  min-height: 44px;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.chat-dock__project-switcher-open:hover,
-.chat-dock__project-switcher-open:focus-visible {
-  border-color: var(--border-secondary);
-  background: var(--bg-tertiary);
-  color: var(--accent-primary);
-}
-
-/* archive#3319: the icon-only Open fits beside the name at every width, so the
-   phone layout no longer stacks full-width action rows — one grid, name
-   truncates, 44px targets guaranteed by the buttons' own minimums. */
-.chat-dock__context-actions {
-  display: flex;
-  gap: 4px;
-  margin-left: auto;
-}
-
-.chat-dock__project-context
-  > .git-tooltip-anchor
-  + .chat-dock__context-actions {
-  margin-left: 0;
-}
-
-.chat-dock__context-actions button {
-  min-height: 28px;
-  padding: 4px 8px;
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  background: var(--bg-primary);
-  color: var(--text-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.chat-dock__context-actions button:hover,
-.chat-dock__context-actions button:focus-visible,
-.chat-dock__context-actions button.is-active {
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
-  outline: none;
-}
-
 .chat-dock__workspace {
   display: flex;
   flex: 1;
@@ -6457,22 +6179,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     padding-inline: calc(var(--k-space-1) + var(--k-space-4));
   }
 
-  .chat-dock__project-switcher-switch {
-    min-height: 64px;
-    padding: var(--k-space-3);
-    font-size: var(--k-text-lg);
-  }
-
-  .chat-dock__project-switcher-label {
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
-
-  .chat-dock__project-switcher-current {
-    text-transform: none;
-    letter-spacing: normal;
-  }
-
   .responsive-surface-actions {
     min-width: 0;
     max-width: 100%;
@@ -6746,37 +6452,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     padding-bottom: calc(var(--space-2) + var(--safe-bottom));
   }
 
-  .chat-dock__project-switcher-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  /* Contain the project-context row: the action buttons get their own
-     full-width scrollable line instead of forcing the whole row (and the
-     dock) past the viewport edge. */
-  .chat-dock__project-context {
-    min-width: 0;
-    max-width: 100%;
-    flex-wrap: wrap;
-    overflow-x: hidden;
-  }
-
-  .chat-dock__project-context > .git-tooltip-anchor {
-    display: none;
-  }
-
-  .chat-dock__context-actions {
-    flex: 1 1 100%;
-    min-width: 0;
-    margin-left: 0;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
-  }
-  .chat-dock__context-actions::-webkit-scrollbar {
-    display: none;
-  }
-
-  .chat-dock__context-actions button,
   .active-work-frame__file {
     min-height: 44px;
   }
@@ -9072,14 +8747,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   .chat-dock__mobile-header {
     padding: var(--space-1) 8px;
   }
-
-  /* #4391's size control is a third 44px leading slot: with it the bar's
-     44px floors no longer fit, and the title overlapped Switch project. A
-     phone chat already opens full screen and Chat actions keeps Full screen,
-     so this slot gives way too. */
-  .chat-dock__mobile-header .chat-dock__mobile-extent {
-    display: none;
-  }
 }
 
 /* touch-action does not inherit: a drag-passthrough control (the identity
@@ -9224,9 +8891,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 }
 
-/* Project above, chat name below — the hierarchy reads parent → child, and it
-   is what the old standalone project-context row used to carry. */
-.chat-dock__mobile-project,
+/* Conversation title and optional Agent/Station attribution. */
 .chat-dock__mobile-identity {
   flex: 1 1 auto;
   display: flex;
@@ -9254,11 +8919,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   min-width: 0;
 }
 
-.chat-dock__mobile-project {
-  flex: 1 1 0;
-  min-width: 44px;
-}
-
 .chat-dock__mobile-identity {
   justify-content: flex-start;
   min-width: 80px;
@@ -9269,7 +8929,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   justify-self: end;
 }
 
-.chat-dock__mobile-project-lines,
 .chat-dock__mobile-identity-lines {
   display: flex;
   flex: 0 1 auto;
@@ -9289,7 +8948,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   background: var(--bg-hover);
 }
 
-.chat-dock__mobile-project-caption,
 .chat-dock__mobile-eyebrow {
   max-width: 100%;
   overflow: hidden;
@@ -9302,7 +8960,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   white-space: nowrap;
 }
 
-.chat-dock__mobile-project-name,
 .chat-dock__mobile-title {
   display: flex;
   align-items: center;
@@ -9313,16 +8970,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   font-size: var(--text-15);
   font-weight: 600;
   line-height: 1.2;
-}
-
-.chat-dock__mobile-project-name {
-  display: block;
-}
-
-.chat-dock__mobile-project-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .chat-dock__mobile-title-text {

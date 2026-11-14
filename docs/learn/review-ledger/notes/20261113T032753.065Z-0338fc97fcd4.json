@@ -1,0 +1,7 @@
+{
+  "revision": "4d7e73da5c3984b99cce783e4738be0503e924c3",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Removed Home starter offers and their deleted source citations; reviewed retained server compatibility and derived project display identity.","inputs":["docs/guides/starter-work.md","src-server/services/starter-work/__tests__/starter-registry.test.ts","src-server/services/starter-work/starter-registry.ts","src-ui/src/components/home/StarterInspectionCards.tsx","src-ui/src/components/home/StarterScheduledCheckCard.tsx","src-ui/src/components/home/StarterWorkCard.tsx","src-ui/src/views/HomeView.tsx"]}
+  ]
+}

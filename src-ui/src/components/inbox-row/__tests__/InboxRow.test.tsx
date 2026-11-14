@@ -508,7 +508,7 @@ describe('the chip line exists only when a chip does', () => {
         chip.textContent,
       ]),
     ).toEqual([
-      ['remote', 'home-media'],
+      ['remote', 'Station: home-media'],
       ['woke', 'Woke from snooze'],
     ]);
     // #4266: no full-line "Unsent draft" chip. A pencil on the meta line,
@@ -525,6 +525,36 @@ describe('the chip line exists only when a chip does', () => {
     expect(screen.queryByTestId('inbox-row-draft-marker')).toBeNull();
   });
 
+  it('shows peer Station provenance from work facts with a project mark', () => {
+    const row = rowFor();
+    renderRow({
+      ...row,
+      facts: {
+        ...row.facts!,
+        station: { id: 'peer-1', label: 'Build Station' },
+      },
+    });
+    expect(screen.getByText('Station: Build Station')).toBeTruthy();
+    expect(document.querySelector('.project-icon')).not.toBeNull();
+  });
+
+  it('does not borrow host artwork or colour for a peer-bound chat with the same project slug', () => {
+    const row = rowFor();
+    renderRow(
+      {
+        ...row,
+        facts: {
+          ...row.facts!,
+          station: { id: 'peer', label: 'Peer Station' },
+        },
+      },
+      { projectIcon: '🚀', projectAccent: '#ff8800' },
+    );
+    expect(document.querySelector('.project-icon--icon')).toBeNull();
+    expect(document.querySelector('.project-icon--initials')).not.toBeNull();
+    expect(document.querySelector('[data-project-icon="dot"]')).toBeNull();
+  });
+
   it('the chip derivation, fact by fact', () => {
     expect(inboxRowChips({})).toEqual([]);
     expect(inboxRowChips({ receivedAgentMessage: true })).toEqual([
@@ -532,7 +562,7 @@ describe('the chip line exists only when a chip does', () => {
     ]);
     expect(inboxRowChips({}, { isWoken: false })).toEqual([]);
     expect(inboxRowChips({ environmentLabel: 'box' })).toEqual([
-      { kind: 'remote', label: 'box' },
+      { kind: 'remote', label: 'Station: box' },
     ]);
   });
 });

@@ -1,0 +1,7 @@
+{
+  "revision": "51148f8cce30a112cddc7d29ca2bf42221fa169f",
+
+  "notes": [
+    {"path":"docs/guides/store-entry.md","note":"Added the minor 0-999 / patch 0-99 refusal to the tag-overlay build-number bullet, checked against taggedStoreIdentity in scripts/lib/native-release-config.mjs and its pinned test; the rc/final base-version paragraph is unchanged and still accurate.","inputs":["docs/guides/store-entry.md","scripts/lib/native-release-config.mjs"]}
+  ]
+}

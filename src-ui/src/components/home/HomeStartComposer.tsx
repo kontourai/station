@@ -516,6 +516,17 @@ export function HomeStartComposer({
         accent: isGlobal ? undefined : accents.get(context),
         icon: isGlobal ? undefined : icons.get(context),
         folder: workspaceHintText(workspaceHint),
+        folderTitle:
+          'path' in workspaceHint
+            ? [
+                workspaceHint.kind === 'project'
+                  ? workspaceHint.repositoryRemote
+                  : undefined,
+                workspaceHint.path,
+              ]
+                .filter(Boolean)
+                .join(' · ')
+            : undefined,
       };
   const noAgentToOffer = !agent && !defaultSelection?.missingPreferredAgentSlug;
   const canStart =

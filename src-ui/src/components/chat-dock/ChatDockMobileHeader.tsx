@@ -4,12 +4,10 @@ import type {
   RefObject,
 } from 'react';
 import { useContext, useId, useRef, useState } from 'react';
-import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { Button } from '../Button';
 import {
   ArrowDownGlyph,
   ExpandGlyph,
-  FolderGlyph,
   InboxGlyph,
   MenuGlyph,
   NewChatGlyph,
@@ -21,7 +19,6 @@ import '../NewChatAction.css';
 import './ChatDockHeader.css';
 import type { ContextPercentageSource } from '../conversation-stats/ContextPercentage';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
-import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
 import { MobileDockHeaderLeadingContext } from './MobileDockHeaderLeading';
 import { MobileSheetPending } from './MobileSheetPending';
 
@@ -105,14 +102,6 @@ export interface ChatDockMobileOverflowActions {
   conversationStats?: ContextPercentageSource & { onOpen: () => void };
 }
 
-export interface ChatDockMobileProjectSwitcher {
-  projectSlug: string;
-  projectName: string;
-  projects: ProjectMetadata[];
-  onOpenProject: (projectSlug: string) => void;
-  onSwitchProject: (projectSlug: string, projectName: string) => void;
-}
-
 export interface ChatDockMobileDockToggle {
   state: 'collapsed' | 'open';
   onExpand: () => void;
@@ -144,7 +133,6 @@ interface ChatDockMobileHeaderProps {
   sessionProjectMismatchLabel?: string | null;
   agentIdentity: { name: string; slug: string; icon?: string } | null;
   projectScope?: { name: string; onClear: () => void };
-  projectSwitcher: ChatDockMobileProjectSwitcher | null;
   activeCount: number;
   unreadCount: number;
   inboxTriggerRef: RefObject<HTMLButtonElement | null>;
@@ -170,7 +158,6 @@ export function ChatDockMobileHeader({
   sessionProjectMismatchLabel,
   agentIdentity,
   projectScope,
-  projectSwitcher,
   activeCount,
   unreadCount,
   inboxTriggerRef,
@@ -186,8 +173,6 @@ export function ChatDockMobileHeader({
   const childTrail = useChildChatTrail();
   const hostLeading = useContext(MobileDockHeaderLeadingContext);
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
-  const [isProjectOpen, setIsProjectOpen] = useState(false);
-  const projectTriggerRef = useRef<HTMLButtonElement>(null);
   const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
   const activityDescriptionId = useId();
   const collapsedExtent =
@@ -225,92 +210,56 @@ export function ChatDockMobileHeader({
           >
             <MenuGlyph />
           </button>
-        ) : dockToggle ? (
+        ) : dockToggle && !collapsedExtent ? (
           <button
             type="button"
             className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
             aria-label={
-              collapsedExtent
-                ? 'Full screen chat'
-                : dockToggle.state === 'collapsed'
-                  ? 'Expand chat'
-                  : 'Collapse chat'
+              dockToggle.state === 'collapsed' ? 'Expand chat' : 'Collapse chat'
             }
             data-no-dock-drag=""
             onClick={
-              collapsedExtent
-                ? collapsedExtent.onToggle
-                : dockToggle.state === 'collapsed'
-                  ? dockToggle.onExpand
-                  : dockToggle.onCollapse
+              dockToggle.state === 'collapsed'
+                ? dockToggle.onExpand
+                : dockToggle.onCollapse
             }
           >
-            {collapsedExtent ? <ExpandGlyph /> : <ArrowDownGlyph />}
+            <ArrowDownGlyph />
           </button>
         ) : null}
-        {extentToggle && !collapsedExtent && (
+        {hasConversation || childTrail || showConnection ? (
           <button
+            ref={chatActionsTriggerRef}
             type="button"
-            className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-extent"
-            aria-label={
-              extentToggle.maximized ? 'Restore chat size' : 'Full screen chat'
+            className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
+            aria-haspopup="dialog"
+            aria-expanded={isOverflowOpen}
+            aria-label="Chat actions"
+            aria-describedby={
+              activitySummary ? activityDescriptionId : undefined
             }
             title={
-              extentToggle.maximized ? 'Restore chat size' : 'Full screen chat'
+              activitySummary ? `Chat actions — ${activitySummary}` : undefined
             }
             data-no-dock-drag=""
-            onClick={extentToggle.onToggle}
+            onClick={() => setIsOverflowOpen((open) => !open)}
           >
-            {extentToggle.maximized ? <RestoreGlyph /> : <ExpandGlyph />}
+            <span aria-hidden="true">⋯</span>
+            {activitySummary && (
+              <>
+                <span
+                  className="chat-dock__mobile-activity-dot"
+                  aria-hidden="true"
+                />
+                <span id={activityDescriptionId} className="sr-only">
+                  {activitySummary}
+                </span>
+              </>
+            )}
           </button>
-        )}
-        {projectSwitcher && !agentIdentity && !childTrail && (
-          <button
-            ref={projectTriggerRef}
-            type="button"
-            className="chat-dock__mobile-project"
-            // The name repeats the words on screen, caption included, so a
-            // spoken command matching the visible label reaches this control
-            // (WCAG 2.5.3); the icon-only width keeps the same name.
-            aria-label={`Switch project — New chats, ${projectSwitcher.projectName}`}
-            aria-haspopup="dialog"
-            aria-expanded={isProjectOpen}
-            data-dock-drag-passthrough=""
-            onClick={() => setIsProjectOpen(true)}
-          >
-            {/* Too narrow for words (a long chat title takes the bar), the
-                control shows only its glyph; its aria-label still names the
-                project. The CSS container query decides which shows. */}
-            <span
-              className="chat-dock__mobile-project-glyph"
-              aria-hidden="true"
-            >
-              <FolderGlyph />
-            </span>
-            <span className="chat-dock__mobile-project-lines">
-              <span
-                className="chat-dock__mobile-project-caption"
-                aria-hidden="true"
-              >
-                New chats
-              </span>{' '}
-              <span className="chat-dock__mobile-project-name">
-                {projectSwitcher.projectName}
-              </span>
-            </span>
-          </button>
-        )}
+        ) : null}
       </div>
-      {isProjectOpen && projectSwitcher && (
-        <ProjectSwitcherOverlay
-          anchorRef={projectTriggerRef}
-          boundProjectSlug={projectSwitcher.projectSlug}
-          projects={projectSwitcher.projects}
-          onOpenProject={projectSwitcher.onOpenProject}
-          onSwitchProject={projectSwitcher.onSwitchProject}
-          onClose={() => setIsProjectOpen(false)}
-        />
-      )}
+
       <div className="chat-dock__mobile-identity" data-dock-drag-passthrough="">
         {hasConversation || !inboxActive ? (
           <Button
@@ -347,37 +296,22 @@ export function ChatDockMobileHeader({
         </span>
       </div>
       <div className="chat-dock__mobile-actions">
-        {hasConversation || childTrail || showConnection ? (
+        {extentToggle && (
           <button
-            ref={chatActionsTriggerRef}
             type="button"
-            className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
-            aria-haspopup="dialog"
-            aria-expanded={isOverflowOpen}
-            aria-label="Chat actions"
-            aria-describedby={
-              activitySummary ? activityDescriptionId : undefined
+            className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-extent"
+            aria-label={
+              extentToggle.maximized ? 'Restore chat size' : 'Full screen chat'
             }
             title={
-              activitySummary ? `Chat actions — ${activitySummary}` : undefined
+              extentToggle.maximized ? 'Restore chat size' : 'Full screen chat'
             }
             data-no-dock-drag=""
-            onClick={() => setIsOverflowOpen((open) => !open)}
+            onClick={extentToggle.onToggle}
           >
-            <span aria-hidden="true">⋯</span>
-            {activitySummary && (
-              <>
-                <span
-                  className="chat-dock__mobile-activity-dot"
-                  aria-hidden="true"
-                />
-                <span id={activityDescriptionId} className="sr-only">
-                  {activitySummary}
-                </span>
-              </>
-            )}
+            {extentToggle.maximized ? <RestoreGlyph /> : <ExpandGlyph />}
           </button>
-        ) : null}
+        )}
         <button
           type="button"
           className="app-toolbar__icon-btn new-chat-action new-chat-action--icon chat-dock__mobile-header-icon chat-dock__mobile-new"

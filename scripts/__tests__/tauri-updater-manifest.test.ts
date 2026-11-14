@@ -289,6 +289,21 @@ describe('the Tauri updater manifest (station#575)', () => {
     ).toMatchObject({ regresses: true });
   });
 
+  test.each(['0.1.4-preview.1', '0.1.4-rc.1'])(
+    'refuses a suffixed %s tagged-feed version',
+    (version) => {
+      const directory = tempDir('station-updater-order-');
+      const candidatePath = join(directory, 'candidate.json');
+      const currentPath = join(directory, 'current.json');
+      writeFileSync(candidatePath, JSON.stringify({ version }));
+      writeFileSync(currentPath, JSON.stringify({ version: '0.1.3' }));
+
+      expect(() =>
+        assertUpdaterManifestNotRegressing({ candidatePath, currentPath }),
+      ).toThrow(/is not a stable release version/);
+    },
+  );
+
   test('readUpdaterSignatureFile converts a missing file into the teaching-message form, not a raw ENOENT (station#575 L4)', () => {
     expect(() =>
       readUpdaterSignatureFile('/nonexistent/station-signature.sig'),

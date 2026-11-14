@@ -647,6 +647,32 @@ describe('active chat state helpers', () => {
       });
     });
 
+    test('a system error marker never names the chat', () => {
+      const marker =
+        "[SYSTEM_EVENT] [CHAT_ERROR:model_not_advertised] ACP model option unavailable: connection 'kiro-kas' did not advertise a model configuration option or model list for this session.";
+      expect(
+        assignConversationIdState(
+          fresh({
+            messages: [
+              { role: 'user', content: marker },
+            ] as ChatUIState['messages'],
+          }),
+          'c',
+        ).title,
+      ).toBe('New chat');
+      expect(
+        assignConversationIdState(
+          fresh({
+            messages: [
+              { role: 'user', content: marker },
+              { role: 'user', content: 'Fix the dock header' },
+            ] as ChatUIState['messages'],
+          }),
+          'c',
+        ).title,
+      ).toBe('Fix the dock header');
+    });
+
     test('keeps an existing title, an already-assigned conversation, and a low-content-only chat untitled', () => {
       const messages = [
         { role: 'user', content: 'Fix the dock header' },

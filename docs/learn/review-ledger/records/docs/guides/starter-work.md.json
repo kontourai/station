@@ -84,12 +84,6 @@
 
     "src-ui/src/components/header/useHeaderViewModel.ts",
 
-    "src-ui/src/components/home/StarterInspectionCards.tsx",
-
-    "src-ui/src/components/home/StarterScheduledCheckCard.tsx",
-
-    "src-ui/src/components/home/StarterWorkCard.tsx",
-
     "src-ui/src/components/ProjectTaskBoard.tsx",
 
     "src-ui/src/components/session-detail/AttachedSessionDetail.tsx",

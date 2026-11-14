@@ -22,6 +22,7 @@ export type ProjectForm = Pick<
   ProjectConfig,
   | 'name'
   | 'icon'
+  | 'iconDisabled'
   | 'description'
   | 'defaultAgent'
   | 'defaultModel'

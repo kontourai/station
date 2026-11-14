@@ -541,6 +541,39 @@ describe('approval inbox notifications', () => {
     expect(notifications[0].body).toBe('Lab Engine asked a question.');
   });
 
+  test('an engine link offers no Allow, which would say a link nobody showed was opened', async () => {
+    // The ACP adapter's shape for Kiro's `_kiro/openExternalUrl`.
+    await emit('orchestration:event', {
+      event: {
+        createdAt: new Date().toISOString(),
+        eventId: 'evt-link',
+        method: 'request.opened',
+        payload: {
+          inputRequest: {
+            schema: 'station.input-request/v1',
+            source: 'harness:kiro',
+            requester: 'Kiro',
+            message: 'Sign in to the docs MCP server',
+            body: {
+              kind: 'url',
+              url: 'https://auth.example.com/authorize?x=1',
+              purpose: 'mcp-sign-in',
+            },
+          },
+        },
+        provider: 'acp',
+        requestId: 'req-link',
+        requestType: 'approval',
+        threadId: 'thread-link',
+        title: 'Kiro wants you to sign in',
+      },
+    });
+
+    const [notification] = await notificationService.list();
+    expect(notification.actions ?? []).toEqual([]);
+    expect(notification.body).toBe('Kiro wants you to sign in.');
+  });
+
   test('a plan review is worded as a plan review, for the engine that sent it', async () => {
     await emit('orchestration:event', {
       event: {

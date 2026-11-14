@@ -65,13 +65,21 @@ export function compareRingVersions(ring, left, right) {
 
 /**
  * The versioned release, its asset base URL, and the ring's rolling manifest,
- * all from scripts/lib/public-release-locations.mjs.
+ * all from scripts/lib/public-release-locations.mjs. The release is
+ * `v<version>` unless the caller names the tag the bytes are staged under
+ * (`locationTag`, a release candidate's own tag, #4929); the caller owns
+ * checking that tag against the version.
  */
-export function publicationLocations(ring, repository, version) {
+export function publicationLocations(
+  ring,
+  repository,
+  version,
+  { locationTag } = {},
+) {
   const base = releaseBaseUrl(repository);
   parseRingVersion(ring, version);
   const { rollingTag, manifestAsset } = manifestPointer(ring);
-  const releaseTag = `v${version}`;
+  const releaseTag = locationTag ?? `v${version}`;
   return {
     releaseTag,
     baseUrl: `${base}${releaseTag}/`,

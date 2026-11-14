@@ -327,6 +327,72 @@ describe('the one BASE_URL every public manifest location derives from', () => {
     ]);
   });
 
+  it('stages a release candidate under its own tag while naming its base version (#4929)', () => {
+    const candidate = runNode('scripts/portable-release-publication.mjs', [
+      'locations',
+      '--ring',
+      'stable',
+      '--repository',
+      REPOSITORY,
+      '--version',
+      '1.2.3',
+      '--tag',
+      'v1.2.3-rc.4',
+    ]);
+    expect(candidate.status, candidate.stderr).toBe(0);
+    expect(candidate.stdout.split('\n')).toEqual([
+      'release_tag=v1.2.3-rc.4',
+      `base_url=${PUBLIC_RELEASE_BASE_URL}v1.2.3-rc.4/`,
+      // The rolling pointer is the ring's; staging never moves it.
+      'rolling_tag=portable-stable',
+      'manifest_asset=station-portable-stable-manifest.json',
+      `versioned_manifest_url=${PUBLIC_RELEASE_BASE_URL}v1.2.3-rc.4/station-portable-stable-manifest.json`,
+      `rolling_manifest_url=${PUBLIC_RELEASE_BASE_URL}portable-stable/station-portable-stable-manifest.json`,
+      '',
+    ]);
+    for (const [ring, version, tag, message] of [
+      [
+        'stable',
+        '1.2.3',
+        'v1.2.4-rc.1',
+        'is not a stable release of version 1.2.3',
+      ],
+      [
+        'stable',
+        '1.2.3',
+        'v1.2.3-preview.4',
+        'is not a vX.Y.Z or vX.Y.Z-rc.N release tag',
+      ],
+      [
+        'stable',
+        '1.2.3',
+        'v1.2.3-rc.99',
+        'a release candidate is numbered 1-98',
+      ],
+      [
+        'preview',
+        '1.2.3-preview.4',
+        'v1.2.3-rc.4',
+        'is not a preview release of version',
+      ],
+    ] as const) {
+      const refused = runNode('scripts/portable-release-publication.mjs', [
+        'locations',
+        '--ring',
+        ring,
+        '--repository',
+        REPOSITORY,
+        '--version',
+        version,
+        '--tag',
+        tag,
+      ]);
+      expect(refused.status, tag).toBe(1);
+      expect(refused.stderr, tag).toContain(message);
+      expect(refused.stdout, tag).toBe('');
+    }
+  });
+
   it('reads one launcher protocol range for every ring', () => {
     expect(PORTABLE_LAUNCHER_PROTOCOL).toEqual({ min: 1, max: 1 });
     expect(NIGHTLY_LAUNCHER_PROTOCOL).toBe(PORTABLE_LAUNCHER_PROTOCOL);
@@ -385,8 +451,12 @@ describe('stable and preview versions under the shared verifier grammar', () => 
   });
 });
 
-/** Assembles through the real assembler, as the release workflow does. */
-function assemblePayload(ring: 'stable' | 'preview', version: string) {
+/** Runs the real assembler, as the release workflow does. */
+function runAssemble(
+  ring: 'stable' | 'preview',
+  version: string,
+  { locationTag }: { locationTag?: string } = {},
+) {
   const archives = writeArchiveTree(ring, version);
   const output = join(freshDir('payload'), 'payload.json');
   const result = runNode('scripts/ecosystem-manifest.mjs', [
@@ -400,7 +470,11 @@ function assemblePayload(ring: 'stable' | 'preview', version: string) {
     '--source-sha',
     SHA,
     '--base-url',
-    publicationLocations(ring, REPOSITORY, version).baseUrl,
+    // The URL directory follows the location tag, as `locations --tag`
+    // names it in release.yml.
+    locationTag === undefined
+      ? publicationLocations(ring, REPOSITORY, version).baseUrl
+      : `${PUBLIC_RELEASE_BASE_URL}${locationTag}/`,
     '--node-version',
     NODE_VERSION,
     '--launcher-protocol-min',
@@ -411,7 +485,14 @@ function assemblePayload(ring: 'stable' | 'preview', version: string) {
     '2026-09-29T01:00:00.000Z',
     '--output',
     output,
+    ...(locationTag === undefined ? [] : ['--location-tag', locationTag]),
   ]);
+  return { archives, output, result };
+}
+
+/** Assembles through the real assembler, as the release workflow does. */
+function assemblePayload(ring: 'stable' | 'preview', version: string) {
+  const { archives, output, result } = runAssemble(ring, version);
   expect(result.status, result.stderr).toBe(0);
   return {
     archives,
@@ -896,6 +977,77 @@ describe('publication checks for stable and preview', () => {
       'is not a preview version',
     );
   });
+
+  it("assembles a candidate's payload at the candidate's release and binds it there (#4929)", () => {
+    const { output, result } = runAssemble('stable', '1.2.3', {
+      locationTag: 'v1.2.3-rc.4',
+    });
+    expect(result.status, result.stderr).toBe(0);
+    const payload = JSON.parse(readFileSync(output, 'utf8'));
+    // Identity is the base version; only the URLs name the candidate.
+    expect(payload).toMatchObject({
+      channel: 'stable',
+      version: '1.2.3',
+      releaseTag: 'v1.2.3',
+    });
+    for (const artifact of payload.artifacts)
+      expect(artifact.url).toBe(
+        `${PUBLIC_RELEASE_BASE_URL}v1.2.3-rc.4/${artifact.name}`,
+      );
+    const expected = {
+      repository: REPOSITORY,
+      version: '1.2.3',
+      sourceSha: SHA,
+    };
+    expect(
+      assertReleasePayload('stable', payload, {
+        ...expected,
+        tag: 'v1.2.3-rc.4',
+      }),
+    ).toBe(payload);
+    // Checked against the final release or another candidate, it is moved.
+    expect(() => assertReleasePayload('stable', payload, expected)).toThrow(
+      'url',
+    );
+    expect(() =>
+      assertReleasePayload('stable', payload, {
+        ...expected,
+        tag: 'v1.2.3-rc.5',
+      }),
+    ).toThrow('url');
+    expect(() =>
+      assertReleasePayload('stable', payload, {
+        ...expected,
+        tag: 'v1.2.4-rc.4',
+      }),
+    ).toThrow('is not a stable release of version 1.2.3');
+
+    for (const [ring, version, locationTag, message] of [
+      [
+        'stable',
+        '1.2.3',
+        'v1.2.4-rc.4',
+        '--location-tag v1.2.4-rc.4 is not a stable release of 1.2.3',
+      ],
+      [
+        'stable',
+        '1.2.3',
+        'v1.2.3-preview.4',
+        '--location-tag v1.2.3-preview.4 is not a stable release of 1.2.3',
+      ],
+      [
+        'preview',
+        '1.2.3-preview.4',
+        'v1.2.3-rc.4',
+        'is not a preview release of 1.2.3-preview.4',
+      ],
+    ] as const) {
+      const refused = runAssemble(ring, version, { locationTag });
+      expect(refused.result.status, locationTag).toBe(1);
+      expect(refused.result.stderr, locationTag).toContain(message);
+      expect(existsSync(refused.output), locationTag).toBe(false);
+    }
+  });
 });
 
 describe('release.yml builds and dry-runs the host stream on every tag', () => {
@@ -968,22 +1120,54 @@ describe('release.yml builds and dry-runs the host stream on every tag', () => {
   });
 
   describe.skipIf(process.platform === 'win32')('its shell steps', () => {
+    /** The real `locations` step's GITHUB_OUTPUT, as a map. */
+    function runLocationsStep(env: Record<string, string>) {
+      const output = join(freshDir('locations'), 'github-output');
+      writeFileSync(output, '');
+      const located = runStep(
+        namedStep(
+          manifest,
+          'Name the versioned release and the rolling manifest',
+        ).run ?? '',
+        { cwd: repoRoot, env: { ...env, GITHUB_OUTPUT: output } },
+      );
+      return {
+        located,
+        outputs: Object.fromEntries(
+          readFileSync(output, 'utf8')
+            .split('\n')
+            .filter(Boolean)
+            .map((line) => [
+              line.slice(0, line.indexOf('=')),
+              line.slice(line.indexOf('=') + 1),
+            ]),
+        ),
+      };
+    }
+
     function runReleaseSteps(
       ring: 'stable' | 'preview',
       version: string,
+      tag: string,
       shim?: string,
     ) {
       // shim: a nodeShim() directory, or undefined for the real node.
       const runnerTemp = freshDir('runner');
       // download-artifact lays the station-server-* artifacts out here.
       writeArchiveTree(ring, version, join(runnerTemp, 'archives'));
-      const env: Record<string, string> = {
+      const base: Record<string, string> = {
         RUNNER_TEMP: runnerTemp,
         RELEASE_RING: ring,
         RELEASE_VERSION: version,
         RELEASE_SHA: SHA,
+        RELEASE_TAG: tag,
         GITHUB_REPOSITORY: REPOSITORY,
-        BASE_URL: publicationLocations(ring, REPOSITORY, version).baseUrl,
+      };
+      const { located, outputs } = runLocationsStep(base);
+      expect(located.status, located.stderr).toBe(0);
+      const env: Record<string, string> = {
+        ...base,
+        BASE_URL: outputs.base_url,
       };
       const assembled = runStep(
         namedStep(
@@ -1008,12 +1192,14 @@ describe('release.yml builds and dry-runs the host stream on every tag', () => {
       return { runnerTemp, signed };
     }
 
-    it('assembles, dry-run signs and verifies a stable and a preview payload', () => {
-      for (const [ring, version] of [
-        ['stable', '1.2.3'],
-        ['preview', '1.2.3-preview.4'],
+    it('assembles, dry-run signs and verifies a final and a release-candidate payload', () => {
+      for (const [ring, version, tag] of [
+        ['stable', '1.2.3', 'v1.2.3'],
+        // A candidate's bytes carry the base version and Stable ring; its
+        // archives are downloaded from the candidate's own release (#4929).
+        ['stable', '1.2.3', 'v1.2.3-rc.4'],
       ] as const) {
-        const { runnerTemp, signed } = runReleaseSteps(ring, version);
+        const { runnerTemp, signed } = runReleaseSteps(ring, version, tag);
         expect(signed.status, signed.stderr).toBe(0);
         expect(signed.stdout).toContain(
           `verified ${version} (${RELEASE_DRY_RUN_KEY_ID})`,
@@ -1032,11 +1218,33 @@ describe('release.yml builds and dry-runs the host stream on every tag', () => {
           nodeVersion: NODE_VERSION,
         });
         expect(payload.artifacts).toHaveLength(PORTABLE_SERVER_TARGETS.length);
+        for (const artifact of payload.artifacts)
+          expect(artifact.url).toBe(
+            `${PUBLIC_RELEASE_BASE_URL}${tag}/${artifact.name}`,
+          );
       }
     });
 
+    it('refuses to name a location for a retired preview tag', () => {
+      const { located } = runLocationsStep({
+        RELEASE_RING: 'stable',
+        RELEASE_VERSION: '1.2.3',
+        RELEASE_TAG: 'v1.2.3-preview.4',
+        GITHUB_REPOSITORY: REPOSITORY,
+      });
+      expect(located.status).toBe(1);
+      expect(located.stderr).toContain(
+        'is not a vX.Y.Z or vX.Y.Z-rc.N release tag',
+      );
+    });
+
     it('fails the dry run if the throwaway envelope ever verifies against the pinned table', () => {
-      const { signed } = runReleaseSteps('stable', '1.2.3', nodeShim());
+      const { signed } = runReleaseSteps(
+        'stable',
+        '1.2.3',
+        'v1.2.3',
+        nodeShim(),
+      );
       expect(signed.status).toBe(1);
       expect(signed.stderr).toContain(
         'the dry-run manifest verified against the pinned key table',
@@ -1044,7 +1252,12 @@ describe('release.yml builds and dry-runs the host stream on every tag', () => {
     });
 
     it('fails the dry run when the pinned-key check fails for any other reason', () => {
-      const { signed } = runReleaseSteps('stable', '1.2.3', nodeShim('wrong'));
+      const { signed } = runReleaseSteps(
+        'stable',
+        '1.2.3',
+        'v1.2.3',
+        nodeShim('wrong'),
+      );
       expect(signed.status).toBe(1);
       expect(signed.stderr).toContain(
         'the pinned-key check refused the dry-run manifest for an unexpected reason:',

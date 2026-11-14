@@ -21,6 +21,7 @@ import {
   handleChildWorkUpdatedEvent,
   observeChildWorkLifecycle,
 } from './childWorkHandlers';
+import { handleEngineMcpStatusEvent } from './engineMcpHandlers';
 import { handleExtensionNotificationEvent } from './extensionHandlers';
 import {
   handleFlowGateVerdictEvent,
@@ -444,6 +445,14 @@ function dispatchProjectedOrchestrationEvent(
       return;
     case 'content.host-images':
       handleHostImagesEvent(event, station);
+      return;
+    case 'engine-mcp.status':
+      handleEngineMcpStatusEvent(event, station);
+      return;
+    // The transcript projection renders a reroute as a marker line from the
+    // durable event (`modelReroutedMarkerText`), like `transcript.marker`
+    // tuples; a live row here would show it twice.
+    case 'model.rerouted':
       return;
     default: {
       const _exhaustive: never = event;

@@ -8,6 +8,7 @@ import { type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { Readable, Writable } from 'node:stream';
+import { isDeepStrictEqual } from 'node:util';
 import {
   type ClientContext,
   type ContentBlock,
@@ -40,6 +41,94 @@ import { errorMessage } from '../../utils/error-message.js';
 import { forceKillProcess, spawnOwnedChild } from '../infra/process-utils.js';
 import { createACPClientApp } from './acp-bridge-client.js';
 import type { ACPClientCallbacks } from './acp-bridge-types.js';
+import { resolveManagedRuntimeLaunch } from './acp-engine-descriptors.js';
+import { REVIEWED_ENGINE_SECRET_BINDINGS } from './acp-inbound-extension-policy.js';
+
+/**
+ * A client capability flag Station announces at `initialize` under
+ * `clientCapabilities._meta.<namespace>.<flag>`. An engine that sees one
+ * sends the requests it promises; if nothing answers them it may read the
+ * silence as consent (Kiro's agent service reads any unanswered
+ * `_kiro/userInput` as "yes"). So a flag is announced only while every
+ * method in `requires` has a handler.
+ */
+export interface AcpAnnouncedClientMetaFlag {
+  readonly namespace: string;
+  readonly flag: string;
+  readonly requires: readonly string[];
+  readonly evidence: string;
+}
+
+const ACP_ANNOUNCED_CLIENT_META_FLAGS: readonly AcpAnnouncedClientMetaFlag[] =
+  Object.freeze([
+    Object.freeze({
+      namespace: 'kiro',
+      flag: 'userInput',
+      requires: Object.freeze(['_kiro/userInput']),
+      evidence:
+        'kirocrew acp/types.py KAS_CLIENT_CAPABILITIES and test/test_acp_user_input.py',
+    }),
+    Object.freeze({
+      namespace: 'kiro',
+      flag: 'openExternalUrl',
+      requires: Object.freeze(['_kiro/openExternalUrl']),
+      evidence:
+        'kirocrew acp/types.py KAS_CLIENT_CAPABILITIES and test/fixtures/acp_frames/kas/open-external-url-live.jsonl',
+    }),
+    ...REVIEWED_ENGINE_SECRET_BINDINGS.map((binding) =>
+      Object.freeze({
+        namespace: binding.announce.metaNamespace,
+        flag: binding.announce.flag,
+        requires: Object.freeze(Object.values(binding.methods)),
+        evidence: binding.evidence,
+      }),
+    ),
+  ]);
+
+type AcpBaseClientCapabilities = NonNullable<
+  ACPProcessOptions['clientCapabilities']
+>;
+
+/**
+ * What `initialize` announces: the base capabilities, plus each
+ * {@link ACP_ANNOUNCED_CLIENT_META_FLAGS} entry whose methods all answer, plus
+ * `elicitation` with the modes the client's handler takes. A `_meta` or
+ * `elicitation` with nothing in it is left out.
+ */
+function announcedAcpClientCapabilities(
+  base: AcpBaseClientCapabilities,
+  client: Pick<
+    ACPClientCallbacks,
+    'answersExtensionMethod' | 'createElicitation'
+  >,
+): AcpBaseClientCapabilities & {
+  _meta?: Record<string, Record<string, true>>;
+  elicitation?: { form?: Record<string, never>; url?: Record<string, never> };
+} {
+  const meta: Record<string, Record<string, true>> = {};
+  const answers = client.answersExtensionMethod;
+  if (answers) {
+    for (const {
+      namespace,
+      flag,
+      requires,
+    } of ACP_ANNOUNCED_CLIENT_META_FLAGS) {
+      if (requires.length === 0 || !requires.every((method) => answers(method)))
+        continue;
+      meta[namespace] = { ...meta[namespace], [flag]: true };
+    }
+  }
+  const modes = client.createElicitation?.modes;
+  const elicitation = {
+    ...(modes?.form ? { form: {} } : {}),
+    ...(modes?.url ? { url: {} } : {}),
+  };
+  return {
+    ...base,
+    ...(Object.keys(meta).length > 0 ? { _meta: meta } : {}),
+    ...(Object.keys(elicitation).length > 0 ? { elicitation } : {}),
+  };
+}
 
 /**
  * archive#3441 MEDIUM-2: the identity probe `survivesCleanup()` and
@@ -54,6 +143,18 @@ export type AsyncProcessIdentityProbe = (
   pid: number,
 ) => Promise<ExactProcessIdentityProbe>;
 
+/** What {@link ACPProcess.start} actually spawned, for the client it builds. */
+export interface ACPSpawnedLaunch {
+  /**
+   * A managed policy's pin replaced the command or arguments this connection
+   * resolves to (for a managed engine, the installed runtime and its pinned
+   * argv). Host-auth responders derive their launch facts from the
+   * connection, so they no longer describe this process: a client must not
+   * install credential or secret responders for it.
+   */
+  readonly launchReplacedByPolicy: boolean;
+}
+
 export interface ACPProcessOptions {
   /**
    * #4520: the connection this process runs, when the caller has it, so a
@@ -63,8 +164,11 @@ export interface ACPProcessOptions {
   command: string;
   args?: string[];
   cwd: string;
-  /** Factory for the Client callbacks — called during connection setup */
-  createClient: () => ACPClientCallbacks;
+  /**
+   * Factory for the Client callbacks — called during connection setup, after
+   * the spawn, with what was actually launched.
+   */
+  createClient: (launch: ACPSpawnedLaunch) => ACPClientCallbacks;
   /**
    * Capabilities Station truthfully offers to this ACP peer. Interactive
    * sessions use the managed filesystem and terminal bridge by default;
@@ -108,6 +212,8 @@ export interface ACPProcessOptions {
    * short-lived sign-in process sets it, to show links the engine prints.
    */
   onStderr?: (text: string) => void;
+  /** Called once the piped stderr has ended (only with `onStderr`). */
+  onStderrEnd?: () => void;
   terminateProcess?: (proc: ChildProcess) => Promise<void>;
   resolveCommand?: (command: string) => Promise<string | null>;
   /**
@@ -428,11 +534,23 @@ export class ACPProcess extends EventEmitter {
     // #4520: a managed policy's pinned binary and arguments. A locked pin
     // replaces the connection's own; this is every ACP launch (sessions,
     // availability probes and sign-in all start an ACPProcess).
-    const pinned = managedEngineLaunch(
-      'acp',
-      { command: this.opts.command, args: this.opts.args || [], env: {} },
-      'user',
-    );
+    // A built-in managed-runtime connection (`station-managed:<installId>`)
+    // runs the installed runtime with its descriptor's argv; any other
+    // command is unchanged. Throws, before anything is spawned, when the
+    // install is missing.
+    const managed = resolveManagedRuntimeLaunch({
+      command: this.opts.command,
+      args: this.opts.args,
+    });
+    const resolved = managed
+      ? { command: managed.command, args: managed.args, env: {} }
+      : { command: this.opts.command, args: this.opts.args || [], env: {} };
+    const pinned = managedEngineLaunch('acp', resolved, 'user');
+    const spawnedLaunch: ACPSpawnedLaunch = {
+      launchReplacedByPolicy:
+        pinned.command !== resolved.command ||
+        !isDeepStrictEqual([...pinned.args], [...resolved.args]),
+    };
     const bin = await this.findCommand(pinned.command);
     if (this.destroyed) throw new Error('ACPProcess already destroyed');
     if (!bin) throw new ACPCommandNotFoundError(pinned.command);
@@ -482,6 +600,8 @@ export class ACPProcess extends EventEmitter {
       proc.stderr?.setEncoding('utf8');
       proc.stderr?.on('data', (chunk: string) => onStderr(chunk));
       proc.stderr?.on('error', () => undefined);
+      const onStderrEnd = this.opts.onStderrEnd;
+      if (onStderrEnd) proc.stderr?.once('close', () => onStderrEnd());
     }
     // Kept independently of `proc`, which destroy() nulls: this is the only
     // thing left to ask the kernel about afterwards (archive#3422).
@@ -541,17 +661,19 @@ export class ACPProcess extends EventEmitter {
     ) as ReadableStream<Uint8Array>;
     const acpStream = ndJsonStream(input, output);
 
-    this.connection = createACPClientApp(this.opts.createClient()).connect(
-      acpStream,
-    ).agent;
+    const client = this.opts.createClient(spawnedLaunch);
+    this.connection = createACPClientApp(client).connect(acpStream).agent;
 
     this._initResult = (await Promise.race([
       this.connection.request(methods.agent.initialize, {
         protocolVersion: PROTOCOL_VERSION,
-        clientCapabilities: this.opts.clientCapabilities ?? {
-          fs: { readTextFile: true, writeTextFile: true },
-          terminal: true,
-        },
+        clientCapabilities: announcedAcpClientCapabilities(
+          this.opts.clientCapabilities ?? {
+            fs: { readTextFile: true, writeTextFile: true },
+            terminal: true,
+          },
+          client,
+        ),
         clientInfo: { name: 'station', version: '1.0.0' },
       }),
       spawnFailed,
@@ -618,15 +740,21 @@ export class ACPProcess extends EventEmitter {
     await this.connection.request(methods.agent.authenticate, { methodId });
   }
 
-  /** Create a new ACP session. */
+  /**
+   * Create a new ACP session. `meta` becomes the request's `_meta` (an
+   * engine's documented session options, such as Kiro's
+   * `{ kiro: { customAgents } }`); absent, no `_meta` is sent.
+   */
   async newSession(
     cwd: string,
     mcpServers: McpServer[] = [],
+    meta?: Record<string, unknown>,
   ): Promise<SessionResult> {
     if (!this.connection) throw new Error('ACPProcess not started');
     const result = (await this.connection.request(methods.agent.session.new, {
       cwd,
       mcpServers,
+      ...(meta ? { _meta: meta } : {}),
     })) as SessionResult;
     this._sessionId = result.sessionId;
     return result;
@@ -636,17 +764,21 @@ export class ACPProcess extends EventEmitter {
    * Load an existing session by ID. The response carries the same `modes`
    * and `configOptions` a `session/new` would, so a caller reattaching to a
    * session it created earlier observes the same capability evidence.
+   * `meta` is sent as `_meta`, as on {@link newSession}: an engine that reads
+   * session options there needs them again on load.
    */
   async loadSession(
     sessionId: string,
     cwd: string,
     mcpServers: McpServer[] = [],
+    meta?: Record<string, unknown>,
   ): Promise<Omit<SessionResult, 'sessionId'>> {
     if (!this.connection) throw new Error('ACPProcess not started');
     const result = (await this.connection.request(methods.agent.session.load, {
       sessionId,
       cwd,
       mcpServers,
+      ...(meta ? { _meta: meta } : {}),
     })) as Omit<SessionResult, 'sessionId'> | undefined;
     this._sessionId = sessionId;
     return result ?? {};
@@ -679,6 +811,30 @@ export class ACPProcess extends EventEmitter {
     if (!this.connection) throw new Error('ACPProcess not started');
     await this.connection.request(methods.agent.session.delete, { sessionId });
     if (this._sessionId === sessionId) this._sessionId = null;
+  }
+
+  /**
+   * Fork a stored session into a new one (`session/fork`, gated on
+   * `sessionCapabilities.fork`). `meta` carries the engine's fork point, such
+   * as Kiro's `{ kiro: { messageId } }`. The current session is unchanged;
+   * the caller loads the new one in a process of its own.
+   */
+  async forkSession(
+    sessionId: string,
+    cwd: string,
+    mcpServers: McpServer[] = [],
+    meta?: Record<string, unknown>,
+  ): Promise<{ sessionId: string }> {
+    if (!this.connection) throw new Error('ACPProcess not started');
+    const result = (await this.connection.request(methods.agent.session.fork, {
+      sessionId,
+      cwd,
+      mcpServers,
+      ...(meta ? { _meta: meta } : {}),
+    })) as { sessionId?: unknown } | undefined;
+    if (typeof result?.sessionId !== 'string' || !result.sessionId)
+      throw new Error('session/fork answered without a session id');
+    return { sessionId: result.sessionId };
   }
 
   /** Set the active mode for the current session. */

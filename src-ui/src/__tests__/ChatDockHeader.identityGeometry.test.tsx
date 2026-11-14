@@ -40,10 +40,6 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../../');
 const INDEX_CSS_PATH = resolve(HERE, '../index.css');
-const PROJECT_CONTEXT_CSS_PATH = resolve(
-  HERE,
-  '../components/chat-dock/ChatDockProjectContext.css',
-);
 const NEW_CHAT_ACTION_CSS_PATH = resolve(
   HERE,
   '../components/NewChatAction.css',
@@ -89,7 +85,6 @@ vi.mock('../components/icons/AgentIcon', () => ({
 
 import { ChatDockActiveIdentity } from '../components/chat-dock/ChatDockActiveIdentity';
 import { ChatDockMobileHeader } from '../components/chat-dock/ChatDockMobileHeader';
-import { ChatDockProjectContext } from '../components/chat-dock/ChatDockProjectContext';
 import { ChatDockWorkspaceActions } from '../components/chat-dock/ChatDockWorkspaceControls';
 import { StartModelPicker } from '../components/chat-start/StartMenus';
 
@@ -102,38 +97,34 @@ const session = {
   messages: [],
 } as never;
 
-function renderHeaderMarkup(): string {
+function renderHeaderMarkup(state = 'active'): string {
   const { container, unmount } = render(
     <div className="chat-dock chat-dock--bottom">
       <div className="chat-dock__header">
         <div className="chat-dock__title">
           <div className="chat-dock__header-identity">
-            <ChatDockActiveIdentity
-              session={session}
-              agent={
-                {
-                  slug: 'claude',
-                  name: 'Claude Code',
-                  engineId: 'claude',
-                } as never
-              }
-              modelLabel="Opus 5"
-              onClose={() => {}}
-            />
+            {state === 'active' ? (
+              <ChatDockActiveIdentity
+                session={session}
+                agent={
+                  {
+                    slug: 'claude',
+                    name: 'Claude Code',
+                    engineId: 'claude',
+                  } as never
+                }
+                modelLabel="Opus 5"
+                onClose={() => {}}
+              />
+            ) : (
+              <span>{state === 'inbox' ? 'Inbox' : 'New chat'}</span>
+            )}
           </div>
           <span className="chat-dock__title-spacer" />
         </div>
         <div className="chat-dock__header-actions">
           <div className="chat-dock__new-split">
             <ChatDockWorkspaceActions onNewChat={() => {}} />
-            <ChatDockProjectContext
-              projectSlug="demo"
-              projectName="A Rather Long Demo Project Name"
-              workingDirectory="/Users/me/dev/github/kontourai/demo-project"
-              projects={[]}
-              onSelectProject={() => {}}
-              onSwitchProject={() => {}}
-            />
           </div>
           <button type="button" className="chat-dock__more-btn">
             ⋯
@@ -153,8 +144,8 @@ function buildFixtureHtml(
   ownerFirst: boolean,
 ): string {
   const cssPaths = ownerFirst
-    ? [NEW_CHAT_ACTION_CSS_PATH, PROJECT_CONTEXT_CSS_PATH, INDEX_CSS_PATH]
-    : [INDEX_CSS_PATH, NEW_CHAT_ACTION_CSS_PATH, PROJECT_CONTEXT_CSS_PATH];
+    ? [NEW_CHAT_ACTION_CSS_PATH, INDEX_CSS_PATH]
+    : [INDEX_CSS_PATH, NEW_CHAT_ACTION_CSS_PATH];
   const css = [
     ...cssPaths,
     resolve(HERE, '../components/chat/chat.css'),
@@ -227,9 +218,6 @@ describe.skipIf(!chromiumAvailable).each([
             '.chat-dock__active-identity-engine',
             '.chat-dock__active-identity-title',
             '.chat-dock__new-split',
-            '.chat-dock__project-context',
-            '.chat-dock__project-badge',
-            '.chat-dock__project-badge-name',
           ].map((selector) => {
             const element = document.querySelector(selector);
             if (!element) throw new Error(`missing ${selector}`);
@@ -282,24 +270,6 @@ describe.skipIf(!chromiumAvailable).each([
               `${selector} ${scrollWidth}>${clientWidth} overflow-x:${overflowX}`,
           ),
         ).toEqual([]);
-      },
-    );
-
-    test.each(WIDTHS)(
-      'the destination project name stays on one line inside the split at %ipx',
-      async (width) => {
-        const measurements = await measure(width);
-        const find = (selector: string) => {
-          const entry = measurements.find((m) => m.selector === selector);
-          if (!entry) throw new Error(`missing ${selector}`);
-          return entry;
-        };
-        const name = find('.chat-dock__project-badge-name');
-        const split = find('.chat-dock__new-split');
-        // A wrapped second line at least doubles the box height.
-        expect(name.clientHeight).toBeLessThan(name.lineHeight * 1.8);
-        expect(name.left).toBeGreaterThanOrEqual(split.left - 1);
-        expect(name.right).toBeLessThanOrEqual(split.right + 1);
       },
     );
 
@@ -383,28 +353,29 @@ describe.skipIf(!chromiumAvailable).each(['dark', 'light'])(
       await browser?.close();
     });
 
-    test.each([320, 390, 1440])(
-      'chat bar controls fit at %ipx',
-      async (width) => {
+    test.each(
+      [320, 390, 412, 1440].flatMap((width) =>
+        ['empty', 'inbox', 'active'].map((state) => ({ width, state })),
+      ),
+    )(
+      'chat bar controls fit at $width px ($state)',
+      async ({ width, state }) => {
         fixtureViewport.width = width;
         let markup: string;
         if (width < 769) {
           const view = render(
             <div className="chat-dock chat-dock--bottom">
               <ChatDockMobileHeader
-                inboxActive
-                hasConversation={false}
+                inboxActive={state === 'inbox'}
+                hasConversation={state === 'active'}
                 showDrawerToggle={false}
-                showConnection={false}
-                sessionTitle="Inbox"
-                agentIdentity={null}
-                projectSwitcher={{
-                  projectSlug: 'station',
-                  projectName: 'Station',
-                  projects: [],
-                  onOpenProject: () => {},
-                  onSwitchProject: () => {},
-                }}
+                showConnection={true}
+                sessionTitle={
+                  state === 'active' ? 'Review the implementation' : 'New chat'
+                }
+                agentIdentity={
+                  state === 'active' ? { name: 'Agent', slug: 'agent' } : null
+                }
                 activeCount={0}
                 unreadCount={0}
                 inboxTriggerRef={createRef<HTMLButtonElement>()}
@@ -437,7 +408,7 @@ describe.skipIf(!chromiumAvailable).each(['dark', 'light'])(
           );
           markup = view.container.innerHTML;
           view.unmount();
-        } else markup = renderHeaderMarkup();
+        } else markup = renderHeaderMarkup(state);
         fixtureViewport.width = 1440;
         const page = await browser.newPage({
           viewport: { width, height: 300 },
@@ -450,6 +421,13 @@ describe.skipIf(!chromiumAvailable).each(['dark', 'light'])(
             ),
           );
           const header = page.locator('.chat-dock__header');
+          expect(
+            await header
+              .getByRole('button', {
+                name: /Switch project|New chats:|Choose a project/,
+              })
+              .count(),
+          ).toBe(0);
           if (width < 769) {
             const maximize = page.getByRole('button', {
               name: 'Full screen chat',
@@ -470,7 +448,7 @@ describe.skipIf(!chromiumAvailable).each(['dark', 'light'])(
             ).toBe(true);
           }
           await header.screenshot({
-            path: resolve(captures, `chat-bar-${width}-${theme}.png`),
+            path: resolve(captures, `chat-bar-${width}-${theme}-${state}.png`),
           });
         } finally {
           await page.close();

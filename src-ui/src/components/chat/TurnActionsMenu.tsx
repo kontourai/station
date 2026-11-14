@@ -361,6 +361,12 @@ export interface UserMessageActionsMenuProps {
    */
   onDiscardUnsent?: () => void;
   /**
+   * Rewind the live engine's context to before this message
+   * (`SessionRewind`). Present only where the session's engine declares an
+   * in-place rewind and this turn can be its point.
+   */
+  onRewindToHere?: () => void;
+  /**
    * A durable authored input that can be pinned to a Task. Listed here, like
    * an answer's "Add to Task", instead of as a standing button on every
    * user bubble. Not used inline: the phone sheet lists its own Task row.
@@ -388,6 +394,7 @@ export function UserMessageActionsMenu({
   onNewChatFromMessage,
   onEditAndResend,
   onDiscardUnsent,
+  onRewindToHere,
   taskTarget,
   inline = false,
   handleRef,
@@ -410,6 +417,7 @@ export function UserMessageActionsMenu({
     (onEditAndResend ? 1 : 0) +
     (canFork ? 1 : 0) +
     (newChatFromMessage ? 1 : 0) +
+    (onRewindToHere ? 1 : 0) +
     (onDiscardUnsent ? 1 : 0);
   const { position, place } = useFixedMenuPlacement(triggerRef, open, {
     ...TURN_MENU_PLACEMENT,
@@ -480,6 +488,12 @@ export function UserMessageActionsMenu({
           item('New chat from this message', () => {
             close();
             newChatFromMessage();
+          })}
+        {onRewindToHere &&
+          item('Rewind conversation to here', () => {
+            close();
+            closeSheet();
+            onRewindToHere();
           })}
         {onDiscardUnsent &&
           item(

@@ -40,11 +40,13 @@
         "docs/design/orchestration-decomposition-map.md",
         "docs/guides/agent-configuration.md",
         "docs/guides/acp.md",
+        "docs/guides/native-model-channel-lab.md",
         "docs/user/workspace-checkpoints.md",
         "docs/design/terminal.md"
       ],
       "modules": [
         "Durable Station Agent",
+        "NativeModelStdioChannel",
         "StationOrchestrationInstructions",
         "SessionQueryModule",
         "SessionGoalModule",

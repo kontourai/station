@@ -1,6 +1,6 @@
 # How Starter Work connects first steps to real work
 
-Starter Work is the small set of first-use actions offered by Home and the
+Starter Work is the small set of first-use actions used by Project Tasks and the
 attached-session view. Each action points to an ordinary Task, Session,
 approval, review receipt, or Scheduler run. It does not create another work
 system or treat completing a tutorial as proof that work passed a gate.
@@ -28,13 +28,11 @@ See the [application walkthrough](../learn/walkthroughs.md#projects-and-tasks) f
 
 ## Start Your First Task
 
-When Home offers **Start your first task**, it appears only after the durable
-first-run decision is completed and Station has confirmed a real Project. The
-action opens that Project's guided Starter, retaining its focused title entry
-and saved launch identity. This separate onboarding path does not create a
-second Task type. General **New Task** entry points instead
+Open a Project to create a Task. General **New Task** entry points
 [shape an idea in chat](../reference/station-docs.md#tasks-and-the-task-workspace)
 and wait for proposal acceptance without dispatching implementation work.
+Existing guided Starter links retain their focused title entry and saved launch
+identity; they do not create a second Task type.
 Submitting the guided Starter calls the Starter launch API with a saved operation identity. The server checks readiness,
 creates or retrieves the exact Task idempotently, binds it to the Starter,
 then requests the ordinary Task dispatcher once. If the initial readiness check reports the Agent as deferred or
@@ -153,49 +151,18 @@ If Station cannot read the one-time correlation state, it starts no
 continuation; retry after that read recovers instead of guessing an owner path.
 
 
-## Inspect Approval And Review Evidence
+## Home and existing starter receipts
 
-After first run, Home shows inspection cards when **Developer tools** is enabled
-on this Device. An inspection action becomes available when Station identifies a
-real approval notification or independent-review receipt. The
-approval action opens that exact Notifications row without approving or
-denying it. The review action opens the exact Project and receipt tuple in
-that Project's Review layout at `/projects/<slug>/layouts/review?receipt=...`.
-Another Project's receipt with the same ID is never substituted. Older
-`/review-queue?receipt=...&project=...` links redirect there; the global
-`/review-queue` page itself was retired in favour of the per-Project layout,
-and a link that names no Project opens Notifications instead.
+Home no longer offers first-task, approval inspection, review inspection, or
+scheduled readiness cards. Create Tasks from a Project, inspect approvals in
+Notifications, inspect review evidence in the Project's Review layout, and
+manage scheduled jobs in Automations. Task creation remains available even if
+its one-time starter correlation is already bound.
 
-These are one-time Starter correlations, not completion checkboxes. Response
-loss reuses a deterministic operation identity, reopening a bound card keeps
-the original target, and every later observation reads Approval Inbox or
-ReviewEvidence again. Owner observations distinguish missing, stale, unavailable
-and `NOT_VERIFIED` states. The current Home card has no distinct label for a
-`stale` observation. A reviewed receipt is evidence input only and does not
-by itself satisfy a gate.
-
-
-## Run A Scheduled Readiness Check
-
-After first run, with **Developer tools** enabled on this Device, Home can create
-the canonical disabled `station-starter-check` job and run it once through the
-Scheduler. The job stays disabled unless you explicitly
-enable its daily schedule. Station binds the exact Scheduler run before the
-Agent can be invoked, so a lost response or retry opens the same receipt and
-never starts another check. If Station restarts after binding but before the
-Agent begins, **Resume exact check** reuses the operation identity stored in
-that binding; it does not create a replacement run. Failed or indeterminate
-checks offer **Inspect receipt**, not automatic retry. A completed check proves
-execution only; read
-its findings and decide what to do rather than treating completion as a passed
-gate.
-
-For example, open a repository as a Project, create a Task named “Update the
-documentation,” and choose a ready External agent. That work's first execution
-is a Session. Reopen the Task later to see its files, evidence, and receipts
-together. For a one-off question that does not need that durable history, use a
-direct chat instead.
-
+The starter catalog offers Task creation and attached-session continuation.
+Existing inspection and scheduled-check bindings and endpoints remain readable
+for compatibility; removing a Home offer does not erase a receipt or disable a
+job someone already created.
 
 ## Follow the implementation
 
@@ -213,3 +180,40 @@ These tests cover local state, caller behavior, and failure handling with test
 dependencies. They do not prove a live engine completed useful work or a
 particular device displayed it. Follow the exact Task, Session, or Scheduler
 receipt for that evidence.
+
+## Inspect Approval And Review Evidence
+
+Open approvals in Notifications and review receipts in the Project's Review
+layout. These replace the retired Home inspection cards. Opening a record does
+not decide an approval or establish that a gate passed. Existing exact-target
+starter bindings remain readable. Exact review links use
+`/projects/<slug>/layouts/review?receipt=...`.
+
+## Run A Scheduled Readiness Check
+
+Create and inspect jobs in Automations. Home no longer creates the disabled
+`station-starter-check` job. Existing jobs and their Scheduler receipts remain
+available; removing the Home card does not enable, disable or restart them.
+
+## Project display identity
+
+Operator Project list and detail reads return detected repository artwork as
+`derivedIcon`, separate from the saved `icon`. Shared display controls use it
+only when there is no saved icon and detection is enabled. Settings labels it
+as detected; choosing **No icon** saves `iconDisabled` and suppresses detection.
+Choosing an icon enables display again. Detection requires a repository root
+(including a worktree with a `.git` file), stops at the first valid image under
+12 KiB, and caches decoded candidates by real path, size and modification time.
+The explicit picker retains the larger stored-icon bound and multiple choices.
+Discovery includes bounded shallow `*/public`, `apps/*/public`, and
+`packages/*/public` paths. SVG remains unsupported.
+
+Workspace labels use `repositoryDisplay`, the portable manifest's primary Git
+resource, including Projects added by path. With no manifest, verified acquisition
+metadata remains a compatibility fallback. GitHub labels omit `github.com/`;
+other hosts remain visible. Tooltips retain the full remote and folder.
+These labels do not match Projects across Stations or change delegation by slug.
+
+An unchosen Inbox scope follows the current Project page and uses its display
+name. Outside Project pages it includes all work. Explicit scope choices,
+including **All work**, remain selected across navigation.

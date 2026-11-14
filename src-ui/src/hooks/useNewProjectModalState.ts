@@ -154,6 +154,7 @@ export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
     draft.setStartIntent(pending.startIntent ?? 'workspace');
     draft.setNameTouched(true);
     draft.setIcon(pending.draft.icon ?? '');
+    draft.setIconDisabled(pending.draft.iconDisabled ?? false);
     draft.setDescription(pending.draft.description ?? '');
     draft.setDirectory(pending.draft.workingDirectory ?? '');
     draft.setDefaultEnvironment(

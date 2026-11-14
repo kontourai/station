@@ -20,10 +20,6 @@
 
     "src-ui/src/lib/foregroundMessageDispatch.ts",
 
-    "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
-
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx",
-
     "src-ui/src/components/PickerCreateAction.tsx",
 
     "src-ui/src/components/PickerCreateAction.css",
@@ -81,8 +77,6 @@
     "src-ui/src/components/NewChatAction.tsx",
 
     "src-ui/src/components/modals/NewChatModal.tsx",
-
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.css",
 
     "src-ui/src/components/badges/EngineApprovalDisclosureChip.tsx",
 
