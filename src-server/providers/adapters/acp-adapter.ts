@@ -3645,7 +3645,8 @@ export class AcpAdapter implements ProviderAdapterShape {
         ...(record.activePromptText !== undefined
           ? { promptText: record.activePromptText }
           : {}),
-        startedAt: record.enginePromptStarts?.get(messageId) ?? Date.now(),
+        // Recorded on the prompt's first notice, so this is when it started.
+        startedAt: Date.now(),
       });
       if (record.turnMessages.length > ACP_TURN_MESSAGES_MAX)
         record.turnMessages.splice(

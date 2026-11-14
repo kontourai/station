@@ -1287,6 +1287,49 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
     return { session, turns, listed };
   }
 
+  test('a slash command with no point cannot itself be rewound to, even with turns after it', async () => {
+    const { session, turns } = await threeTurns();
+    const slash = await grokTurn(
+      session,
+      '/compact',
+      'prompt-3',
+      (times[2] ?? 0) + 60_000,
+    );
+    const after = await grokTurn(
+      session,
+      prompts[0]!,
+      'prompt-4',
+      (times[2] ?? 0) + 120_000,
+    );
+    const listed = (points as { rewind_points: Record<string, unknown>[] })
+      .rewind_points;
+    answerLive(session, {
+      '_x.ai/rewind/points': [
+        {
+          rewind_points: [
+            ...listed,
+            {
+              ...listed[0],
+              prompt_index: 4,
+              created_at: new Date(
+                (times[2] ?? 0) + 120_000 + NOTICE_BEFORE_POINT_MS,
+              ).toISOString(),
+            },
+          ],
+        },
+      ],
+    });
+    expect(
+      await session.adapter.rewindSession(session.threadId, slash),
+    ).toEqual({
+      kind: 'failed',
+      message: expect.stringContaining('do not line up'),
+    });
+    expect(session.proc.extMethodCalls).toHaveLength(1);
+    expect(turns.length + [after].length).toBe(4);
+    await session.stop();
+  });
+
   test("an engine clock two seconds behind Station's leaves a turn without a point, so nothing is rewound", async () => {
     const at = [times[0]!, times[0]! + 4_000, times[0]! + 8_000];
     const { session, turns, listed } = await ambientTurns(
