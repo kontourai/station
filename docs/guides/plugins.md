@@ -65,10 +65,14 @@ state meanwhile. Against a Station that accepts the connection and then hangs,
 that is about 50 seconds before a tab reports **Extensions could not load**,
 with a **Retry** button; a Station that is down refuses at once, and the three
 reads finish in about 2 seconds. A refused read (4xx) is not retried. After
-that, while the connection stays healthy, each completed health probe (every
-10 seconds) re-reads an inventory that failed for one of those passing
-reasons, on the 1st, 2nd, 4th and 8th probe and every 8th after, so a Station
-that recovers heals the page without a reload.
+that, while the connection stays healthy, completed health probes (every 10
+seconds, for a probed Station and for the desktop app's own managed Station
+alike) re-read an inventory that failed for one of those passing reasons. The
+re-read runs on the 1st, 3rd, 7th and 15th probe after the failure and every
+8th after that; probes during a re-read do not count. It runs in the
+background: the tab keeps showing **Extensions could not load** and **Retry**
+until a re-read succeeds, then shows the plugin. Pressing **Retry** during a
+background re-read shows its progress rather than starting another.
 See the [registry](../../src-ui/src/core/PluginRegistry.ts).
 
 The capability is a per-launch 256-bit secret checked in constant time. It

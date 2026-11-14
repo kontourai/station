@@ -284,8 +284,13 @@ export class PluginRegistry {
   private inventoryRetryable = false;
   /** Healthy probes still to skip before the next inventory re-read. */
   private healthyProbesToSkip = 0;
-  /** Probes skipped after the next re-read; doubles up to a ceiling. */
-  private healthyProbeBackoff = 0;
+  /** Probes skipped after the next re-read; grows up to a ceiling. */
+  private healthyProbeBackoff = 1;
+  /**
+   * The connection generation of the in-flight load when it is a background
+   * re-read the person has not asked to watch; otherwise undefined.
+   */
+  private backgroundReloadGeneration: number | undefined;
   private loadListeners = new Set<() => void>();
   private loadStatus: PluginRegistryLoadStatus = {
     state: 'loading',
@@ -370,7 +375,16 @@ export class PluginRegistry {
     }
 
     try {
-      const inventory = await this.readInventory(apiBase, signal);
+      let inventory: Awaited<ReturnType<PluginRegistry['readInventory']>>;
+      try {
+        inventory = await this.readInventory(apiBase, signal);
+      } catch (e) {
+        log.api('[PluginRegistry] Failed to read the plugin inventory:', e);
+        this.failure = 'registry-unavailable';
+        // Only a read that failed may succeed later; an abort is a new load's.
+        this.inventoryRetryable = !signal.aborted;
+        return 'degraded';
+      }
       if ('refusedStatus' in inventory) {
         this.failure = 'registry-unavailable';
         this.inventoryRetryable = inventory.refusedStatus >= 500;
@@ -420,9 +434,11 @@ export class PluginRegistry {
       if (!allBundlesLoaded) this.failure = 'bundle-load-failure';
       return allBundlesLoaded ? 'ready' : 'degraded';
     } catch (e) {
+      // The inventory was read; something after it threw, possibly with some
+      // plugins already registered. Re-reading would not change that, so this
+      // is not retryable.
       log.api('[PluginRegistry] Failed to initialize:', e);
       this.failure = 'registry-unavailable';
-      this.inventoryRetryable = !signal.aborted;
       return 'degraded';
     } finally {
       for (const link of document.head.querySelectorAll(
@@ -466,10 +482,13 @@ export class PluginRegistry {
 
   /**
    * Called on each healthy connection probe. While the inventory is
-   * unavailable for a reason that may pass, re-reads it on the 1st, 2nd, 4th
-   * and 8th probe and then every 8th, so a Station that recovers heals this page
-   * without a reload. A refused read, a load in flight, or any other state
-   * does nothing.
+   * unavailable for a reason that may pass, re-reads it in the background on
+   * the 1st, 3rd, 7th, 15th probe and then every 8th, so a Station that
+   * recovers heals this page without a reload. Probes during a re-read do not
+   * count, so against a Station that hangs, re-reads never run back to back.
+   * The page keeps showing the failure (and its Retry) until a re-read
+   * succeeds. A refused read, a load in flight, or any other state does
+   * nothing.
    */
   retryUnavailableInventory(): void {
     // Every load clears the flag before its first await, so this also refuses
@@ -484,12 +503,12 @@ export class PluginRegistry {
       this.healthyProbeBackoff * 2 + 1,
       HEALTHY_PROBE_BACKOFF_CEILING,
     );
-    void this.reload();
+    void this.startReload(true);
   }
 
   private resetHealthyProbeBackoff(): void {
     this.healthyProbesToSkip = 0;
-    this.healthyProbeBackoff = 0;
+    this.healthyProbeBackoff = 1;
   }
 
   private registerIsolatedPlugin(pluginMeta: any, generation: number): boolean {
@@ -994,33 +1013,57 @@ export class PluginRegistry {
   /** Reload — re-fetch plugin list and load any new bundles */
   reload(): Promise<PluginRegistrySettledLoadState> {
     if (this.reloadInFlight) {
-      this.reloadQueued = true;
+      // Retry pressed during a background re-read for this same connection
+      // joins it and shows its progress, instead of queueing a second read.
+      if (this.backgroundReloadGeneration === this.apiBaseGeneration) {
+        this.backgroundReloadGeneration = undefined;
+        this.setLoadStatus('loading');
+      } else {
+        this.reloadQueued = true;
+      }
       return this.reloadInFlight;
     }
-    const operation = this.drainReloads();
+    return this.startReload(false);
+  }
+
+  private startReload(
+    background: boolean,
+  ): Promise<PluginRegistrySettledLoadState> {
+    this.backgroundReloadGeneration = background
+      ? this.apiBaseGeneration
+      : undefined;
+    const operation = this.drainReloads(background);
     this.reloadInFlight = operation;
-    void operation.then(
-      () => {
-        if (this.reloadInFlight === operation) this.reloadInFlight = undefined;
-      },
-      () => {
-        if (this.reloadInFlight === operation) this.reloadInFlight = undefined;
-      },
-    );
+    const settle = () => {
+      if (this.reloadInFlight !== operation) return;
+      this.reloadInFlight = undefined;
+      this.backgroundReloadGeneration = undefined;
+    };
+    void operation.then(settle, settle);
     return operation;
   }
 
-  private async drainReloads(): Promise<PluginRegistrySettledLoadState> {
+  private async drainReloads(
+    background: boolean,
+  ): Promise<PluginRegistrySettledLoadState> {
     let loadState: PluginRegistrySettledLoadState = 'ready';
+    let quiet = background;
     do {
       this.reloadQueued = false;
-      loadState = await this.performReload();
+      loadState = await this.performReload(quiet);
+      quiet = false;
     } while (this.reloadQueued);
     return loadState;
   }
 
-  private async performReload(): Promise<PluginRegistrySettledLoadState> {
-    this.setLoadStatus('loading');
+  /**
+   * A background pass leaves the settled status (a failure and its Retry) on
+   * screen until it finishes; an unchanged result notifies nobody.
+   */
+  private async performReload(
+    background = false,
+  ): Promise<PluginRegistrySettledLoadState> {
+    if (!background) this.setLoadStatus('loading');
     this.disposePlugins();
     this.layouts.clear();
     this.pluginMeta.clear();

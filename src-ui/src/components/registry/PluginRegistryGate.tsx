@@ -33,10 +33,14 @@ export function PluginRegistryBootstrap() {
   const { navigate } = useNavigation();
   const { apiBase } = useApiBase();
   const { activeConnection } = useConnections();
-  const { status: connectionStatus, checking } = useConnectionStatus({
+  const { status: connectionStatus } = useConnectionStatus({
     checkHealth: checkServerHealth,
     probeEndpoint: probeServerConnection,
     pollInterval: 10_000,
+    // A healthy probe completing is the cue to re-read an inventory that
+    // could not be read while the connection stayed up; the registry decides
+    // whether and how often.
+    onHealthyProbe: () => pluginRegistry.retryUnavailableInventory(),
   });
   const queryClient = useQueryClient();
   const loadStatus = useSyncExternalStore(
@@ -110,17 +114,6 @@ export function PluginRegistryBootstrap() {
       else void pluginRegistry.reload();
     }
   }, [connectionStatus, loadStatus]);
-
-  // A healthy probe finishing is the cue to re-read an inventory that could
-  // not be read while the connection stayed up; the registry decides whether
-  // and how often (`retryUnavailableInventory`).
-  const probing = useRef(checking);
-  useEffect(() => {
-    const probeFinished = probing.current && !checking;
-    probing.current = checking;
-    if (probeFinished && connectionStatus === 'connected')
-      pluginRegistry.retryUnavailableInventory();
-  }, [checking, connectionStatus]);
 
   const notifiedIncident = useRef<string | null>(null);
   useEffect(() => {

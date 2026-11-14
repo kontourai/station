@@ -538,6 +538,80 @@ describe('useConnectionStatus', () => {
     ).toBe(true);
   });
 
+  it('cues onHealthyProbe once per completed healthy probe on a probed endpoint, never for a failed one', async () => {
+    const outcomes = [true, true, false, true];
+    let calls = 0;
+    const checkHealth = vi.fn(() => {
+      const outcome = outcomes[calls];
+      calls += 1;
+      // After the scripted runs, a probe never completes, so the count is final.
+      return outcome === undefined
+        ? new Promise<boolean>(() => {})
+        : Promise.resolve(outcome);
+    });
+    const onHealthyProbe = vi.fn();
+    const store = storeWithUrl('http://probe-cue-server:3141');
+
+    const { result, unmount } = renderHook(
+      () =>
+        useConnectionStatus({
+          checkHealth,
+          pollInterval: POLL,
+          onHealthyProbe,
+        }),
+      { wrapper: wrapper(store) },
+    );
+
+    await waitFor(() => expect(result.current.completedProbes).toBe(4), {
+      timeout: 3000,
+    });
+    await waitFor(() => expect(onHealthyProbe).toHaveBeenCalledTimes(3));
+    unmount();
+  });
+
+  it('cues onHealthyProbe once per completed run on a managed-loopback endpoint, whose runs publish checking true and false in one pass', async () => {
+    const checkHealth = vi.fn().mockResolvedValue(false);
+    const onHealthyProbe = vi.fn();
+    const store = new ConnectionStore({ storage: memoryAdapter() });
+
+    const { result, unmount } = renderHook(
+      () =>
+        useConnectionStatus({
+          checkHealth,
+          pollInterval: POLL,
+          onHealthyProbe,
+        }),
+      {
+        wrapper: ({ children }: { children: React.ReactNode }) => (
+          <ConnectionsProvider
+            store={store}
+            defaultUrl="http://localhost:3141"
+            seedDefault={false}
+            injectedConnection={{
+              id: 'managed-loopback-cue',
+              name: 'Station on this device',
+              url: 'http://127.0.0.1:3143',
+              source: 'managed-loopback',
+            }}
+          >
+            {children}
+          </ConnectionsProvider>
+        ),
+      },
+    );
+
+    await waitFor(
+      () => expect(result.current.completedProbes).toBeGreaterThanOrEqual(4),
+      { timeout: 3000 },
+    );
+    unmount();
+    // Unmounted, so no further run can land between these two reads.
+    expect(onHealthyProbe.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(onHealthyProbe.mock.calls.length).toBe(
+      result.current.completedProbes,
+    );
+  });
+
   // station#1286: a native shell page (e.g. Tauri's tauri://localhost) must
   // not be misclassified as a secure https: page and reject a plain-HTTP
   // LAN station as mixed-content before ever probing it.

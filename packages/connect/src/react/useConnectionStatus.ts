@@ -22,6 +22,11 @@ export interface UseConnectionStatusOptions {
   ) => Promise<ConnectionHealthCheckResult>;
   /** Healthy poll interval in ms (default: 10_000). Failures use bounded backoff. */
   pollInterval?: number;
+  /**
+   * Called once for each probe run that completes with the connection
+   * healthy, after this consumer mounted; never for a failed or aborted run.
+   */
+  onHealthyProbe?: () => void;
 }
 
 export interface ConnectionStatusResult {
@@ -50,6 +55,8 @@ export interface ConnectionStatusResult {
   routes: ReadonlyArray<ConnectionRouteResult>;
   /** When the last check finished (epoch ms); null until one has. */
   checkedAt: number | null;
+  /** Completed probe runs on this connection's coordinator. */
+  completedProbes: number;
   recheck: () => void;
 }
 
@@ -96,6 +103,7 @@ export function useConnectionStatus({
   checkHealth,
   probeEndpoint,
   pollInterval = 10_000,
+  onHealthyProbe,
 }: UseConnectionStatusOptions): ConnectionStatusResult {
   const {
     apiBase,
@@ -274,6 +282,15 @@ export function useConnectionStatus({
       entry.coordinator.trigger();
     }
   }, [key, authority, entry]);
+
+  const onHealthyProbeRef = useRef(onHealthyProbe);
+  onHealthyProbeRef.current = onHealthyProbe;
+  const seenProbesRef = useRef(snapshot.completedProbes);
+  useEffect(() => {
+    if (seenProbesRef.current === snapshot.completedProbes) return;
+    seenProbesRef.current = snapshot.completedProbes;
+    if (snapshot.status === 'connected') onHealthyProbeRef.current?.();
+  }, [snapshot.completedProbes, snapshot.status]);
 
   return { ...snapshot, recheck: entry.coordinator.trigger };
 }
