@@ -513,7 +513,7 @@ describe('AcpAdapter', () => {
   });
 
   describe('a Qwen Code subagent whose prompt ends first', () => {
-    const [parentCall, nestedCall, progressNote, , parentResult] =
+    const [parentCall, nestedCall, progressNote, nestedResult, parentResult] =
       QWEN_SUBAGENT_FRAMES;
 
     async function qwenTurn(threadId: string) {
@@ -567,6 +567,41 @@ describe('AcpAdapter', () => {
         status: 'cancelled',
       });
       expect(deltas[2]).toMatchObject({ running: [] });
+      await adapter.stopAll();
+    });
+
+    test("Qwen's late answers to the cancel neither revive nor re-settle an interrupted subagent", async () => {
+      // The reviewer's probe: session updates are not quarantined after an
+      // interrupt, and Qwen answers the cancel by ending the subagent's own
+      // call and then the Agent call, both after Station settled the child.
+      const { adapter, proc, iterator, turn } = await qwenTurn(
+        'thread-qwen-late-frames',
+      );
+      await proc.client.sessionUpdate(parentCall!.params as any);
+      await proc.client.sessionUpdate(nestedCall!.params as any);
+      await adapter.interruptTurn('thread-qwen-late-frames', turn.turnId);
+      const atInterrupt = await childWorkUntil(iterator, 'turn.aborted');
+      expect(atInterrupt.map((delta) => delta.kind)).toEqual([
+        'snapshot',
+        'settle',
+        'snapshot',
+      ]);
+      const lateSubagentCallEnd = structuredClone(nestedResult!.params);
+      (lateSubagentCallEnd.update as { status: string }).status = 'failed';
+      const lateAgentCallEnd = structuredClone(parentResult!.params);
+      (lateAgentCallEnd.update as { status: string }).status = 'failed';
+      await proc.client.sessionUpdate(lateSubagentCallEnd as any);
+      await proc.client.sessionUpdate(lateAgentCallEnd as any);
+      const after: CanonicalRuntimeEvent[] = [];
+      for (;;) {
+        const event = await nextEventOrTimeout(iterator, 200);
+        if (event === 'TIMED_OUT') break;
+        after.push(event);
+      }
+      // No running snapshot of the settled child, and no second settle.
+      expect(
+        after.filter((event) => event.method === 'child-work.updated'),
+      ).toEqual([]);
       await adapter.stopAll();
     });
 

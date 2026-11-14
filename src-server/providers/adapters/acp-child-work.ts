@@ -39,6 +39,14 @@ export interface AcpChildWorkState {
    */
   acpNestedSubagents?: Map<string, ChildWorkItem>;
   /**
+   * Nested subagents already settled, by the Agent call they ran in. A frame
+   * the engine sends after Station settled one (its answers to a cancel
+   * arrive after the interrupt settled the child) names it again; without
+   * this it would list a settled child as running and settle it twice.
+   * Bounded like `acpSettledSubagents` (oldest out).
+   */
+  acpSettledNestedSubagents?: Set<string>;
+  /**
    * Roster children already settled, so a repeated roster does not settle
    * them again. Bounded (oldest out): a child evicted past the bound is
    * settled again if a later roster still restates it, which the fold
@@ -399,7 +407,7 @@ export function publishAcpNestedSubagentFrame(
   const id =
     childId(meta.parentToolCallId) ??
     (meta.subagentProgress === true ? childId(update.toolCallId) : undefined);
-  if (!id) return;
+  if (!id || ctx.state.acpSettledNestedSubagents?.has(id)) return;
   const roster = (ctx.state.acpNestedSubagents ??= new Map());
   if (roster.has(id)) return;
   if (roster.size >= CHILD_WORK_ITEMS_MAX_PER_REPORTER) {
@@ -421,9 +429,21 @@ export function publishAcpNestedSubagentFrame(
   publishSnapshot(ctx, [...roster.values()]);
 }
 
+/** Remember a settled nested subagent so a late frame cannot revive it. */
+function rememberSettledNestedSubagent(
+  ctx: AcpChildWorkContext,
+  id: string,
+): void {
+  const settled = (ctx.state!.acpSettledNestedSubagents ??= new Set());
+  settled.add(id);
+  if (settled.size > CHILD_WORK_SETTLED_IDS_MAX)
+    settled.delete(settled.values().next().value as string);
+}
+
 /**
  * A `tool_call_update` that ends the Agent call a listed Qwen subagent runs
- * in ends that subagent with the call's own outcome.
+ * in ends that subagent with the call's own outcome. A child already
+ * settled is not in the roster, so a late result settles nothing.
  */
 export function settleAcpNestedSubagent(
   update: Record<string, unknown>,
@@ -436,6 +456,7 @@ export function settleAcpNestedSubagent(
   const status = childStatus(update.status);
   if (status.running) return;
   roster.delete(id);
+  rememberSettledNestedSubagent(ctx, id);
   ctx.state?.acpSubagentBoundWarned?.delete('nested-tool-call');
   publishSettle(ctx, item, status.status);
   publishSnapshot(ctx, [...roster.values()]);
@@ -462,7 +483,10 @@ export function settleAcpNestedSubagentsAtPromptEnd(
       item.parent.turnId === ctx.activeTurnId,
   );
   if (ended.length === 0) return;
-  for (const item of ended) roster.delete(item.childId);
+  for (const item of ended) {
+    roster.delete(item.childId);
+    rememberSettledNestedSubagent(ctx, item.childId);
+  }
   ctx.state?.acpSubagentBoundWarned?.delete('nested-tool-call');
   for (const item of ended) publishSettle(ctx, item, status);
   publishSnapshot(ctx, [...roster.values()]);
