@@ -179,7 +179,10 @@ describe('OpenCodeServeClient requests', () => {
       ),
     ).toBe(
       JSON.stringify({
-        options: { headers: { authorization: 'x' }, accessToken: '[redacted]' },
+        options: {
+          headers: { authorization: '[redacted]' },
+          accessToken: '[redacted]',
+        },
         settings: {
           clientSecret: '[redacted]',
           password: '[redacted]',
@@ -188,6 +191,64 @@ describe('OpenCodeServeClient requests', () => {
         token: 'top-level ids are not settings',
       }),
     );
+  });
+
+  test('credential headers are redacted wherever a headers object appears', () => {
+    const redacted = redactOpenCodeSecrets({
+      data: [
+        {
+          settings: {
+            headers: {
+              Authorization: 'Bearer sk-live-1',
+              'x-api-key': 'k1',
+              'Api-Key': 'k2',
+              Cookie: 'sid=c1',
+              'Proxy-Authorization': 'Basic p1',
+              'X-Session-Token': 't1',
+              'x-client-secret': 's1',
+              'x-request-source': 'station',
+            },
+          },
+        },
+        { model: { headers: { authorization: 'Bearer outside-holder' } } },
+      ],
+    });
+    const text = JSON.stringify(redacted);
+    for (const secret of [
+      'sk-live-1',
+      'k1',
+      'k2',
+      'sid=c1',
+      'p1',
+      't1',
+      's1',
+      'outside-holder',
+    ])
+      expect(text).not.toContain(secret);
+    expect(text).toContain('"x-request-source":"station"');
+    expect(text).toContain('"Authorization":"[redacted]"');
+  });
+
+  test('URLs lose their userinfo and secret-like query values', () => {
+    const redacted = redactOpenCodeSecrets({
+      settings: {
+        baseURL: 'https://user:hunter2@llm.example/v1?api_key=k9&region=eu',
+      },
+      endpoint: 'https://llm.example/v1?token=t9&sig=s9&code=c9&x=1',
+      plain: 'https://llm.example/v1?region=eu',
+      text: 'not a url: user:hunter2@host',
+    }) as Record<string, any>;
+    const text = JSON.stringify(redacted);
+    for (const secret of ['hunter2@llm', 'k9', 't9', 's9', 'c9'])
+      expect(text).not.toContain(secret);
+    expect(redacted.settings.baseURL).toBe(
+      'https://llm.example/v1?api_key=redacted&region=eu',
+    );
+    expect(redacted.endpoint).toBe(
+      'https://llm.example/v1?token=redacted&sig=redacted&code=redacted&x=1',
+    );
+    expect(redacted.plain).toBe('https://llm.example/v1?region=eu');
+    expect(redacted.text).toBe('not a url: user:hunter2@host');
   });
 
   test('a request with no answer times out by default', async () => {
@@ -226,23 +287,51 @@ describe('OpenCodeServeClient requests', () => {
     );
   });
 
-  test('a non-2xx answer throws with its status and body', async () => {
+  test('a non-2xx answer throws with its status and never its body', async () => {
     const client = new OpenCodeServeClient({
       baseUrl: BASE,
       password: 'p',
       fetch: fetchSpy(() =>
-        Response.json({ name: 'PermissionNotFoundError' }, { status: 404 }),
+        Response.json(
+          { name: 'PermissionNotFoundError', apiKey: 'sk-leaked-in-body' },
+          { status: 404 },
+        ),
       ) as never,
     });
-    await expect(
-      client.request('POST', '/api/session/s/permission/p/reply', {
+    const error = await client
+      .request('POST', '/api/session/s/permission/p/reply', {
         decision: 'once',
-      }),
-    ).rejects.toMatchObject({
+      })
+      .then(
+        () => undefined,
+        (caught: unknown) => caught,
+      );
+    expect(error).toMatchObject({
       constructor: OpenCodeServeHttpError,
       status: 404,
-      body: { name: 'PermissionNotFoundError' },
     });
+    expect(JSON.stringify(error)).not.toContain('sk-leaked-in-body');
+    expect(String((error as Error).message)).not.toContain('sk-leaked');
+    expect(error).not.toHaveProperty('body');
+  });
+
+  test('a refused event feed throws without its body', async () => {
+    const client = new OpenCodeServeClient({
+      baseUrl: BASE,
+      password: 'p',
+      fetch: fetchSpy(
+        () => new Response('token=sk-feed-body', { status: 500 }),
+      ) as never,
+    });
+    const error = await (async () => {
+      for await (const _ of client.events()) return undefined;
+    })().then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(error).toMatchObject({ constructor: OpenCodeServeHttpError });
+    expect(JSON.stringify(error)).not.toContain('sk-feed-body');
+    expect(error).not.toHaveProperty('body');
   });
 
   test('only a loopback http origin is accepted', () => {
@@ -281,6 +370,36 @@ describe('OpenCodeServeClient events', () => {
     expect(seen[0]).toBe('server.connected');
     expect(seen).toContain('session.execution.succeeded');
     expect(seen).toHaveLength(frames.length);
+  });
+
+  test('event payloads are redacted before they are yielded', async () => {
+    const event = {
+      type: 'model.updated',
+      data: {
+        settings: { apiKey: 'sk-event-key' },
+        headers: { Authorization: 'Bearer sk-event-bearer' },
+        baseURL: 'https://u:sk-event-pw@llm.example/v1?key=sk-event-q',
+      },
+    };
+    const client = new OpenCodeServeClient({
+      baseUrl: BASE,
+      password: 'p',
+      fetch: fetchSpy(
+        () => new Response(openStream([`data: ${JSON.stringify(event)}\n\n`])),
+      ) as never,
+    });
+    const controller = new AbortController();
+    const seen: unknown[] = [];
+    for await (const yielded of client.events({ signal: controller.signal })) {
+      seen.push(yielded);
+      controller.abort();
+    }
+    expect(seen).toHaveLength(1);
+    expect(JSON.stringify(seen)).not.toContain('sk-event');
+    expect(seen[0]).toMatchObject({
+      type: 'model.updated',
+      data: { settings: { apiKey: '[redacted]' } },
+    });
   });
 
   test('a frame split across chunks is read whole', async () => {

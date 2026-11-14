@@ -198,12 +198,15 @@ export class OpenCodeServeDeniedPathError extends Error {
   }
 }
 
+/**
+ * A non-2xx answer. It keeps no response body: a body can echo a request's
+ * or the server's secrets, and nothing Station does depends on it.
+ */
 export class OpenCodeServeHttpError extends Error {
   constructor(
     readonly method: string,
     readonly path: string,
     readonly status: number,
-    readonly body: unknown,
   ) {
     super(`OpenCode answered ${method} ${path} with ${status}`);
     this.name = 'OpenCodeServeHttpError';
@@ -272,19 +275,62 @@ export function assertOpenCodeServePathAllowed(
     throw new OpenCodeServeDeniedPathError(path, `unlisted ${method}`);
 }
 
-const SECRET_KEY = /api[-_]?key|token|secret|password|credential/i;
+const SECRET_KEY =
+  /api[-_]?key|token|secret|password|credential|authorization|cookie/i;
 const SECRET_HOLDERS = new Set(['settings', 'options']);
+/** A header whose value is a credential. */
+const SECRET_HEADER =
+  /^(authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key)$|token|secret|key|auth|password|credential/i;
+/** A query parameter whose value is a credential. */
+const SECRET_QUERY_PARAM =
+  /key|token|secret|password|credential|auth|sig(nature)?$|^code$/i;
+const ABSOLUTE_URL = /^[a-z][a-z0-9+.-]*:\/\//i;
 
 /**
- * A copy of `value` with every string under a `settings` or `options`
- * object whose key reads like a secret replaced by `[redacted]`. OpenCode
- * answers `GET /api/model` with each model's provider settings, including a
- * config-file `apiKey` in plain text; Station never needs it.
+ * `value` without the credentials a URL can carry: its userinfo is dropped
+ * and each secret-like query parameter's value is replaced. Any other
+ * string is returned as it is.
+ */
+function redactUrl(value: string): string {
+  if (!ABSOLUTE_URL.test(value)) return value;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return value;
+  }
+  let changed = false;
+  if (url.username || url.password) {
+    url.username = '';
+    url.password = '';
+    changed = true;
+  }
+  for (const name of new Set(url.searchParams.keys()))
+    if (SECRET_QUERY_PARAM.test(name)) {
+      url.searchParams.set(name, 'redacted');
+      changed = true;
+    }
+  return changed ? url.toString() : value;
+}
+
+/**
+ * A copy of `value` without the secrets OpenCode can echo, applied to every
+ * response body and every event of its feed:
+ *
+ * - every string under a `settings` or `options` object whose key reads
+ *   like a secret (OpenCode answers `GET /api/model` with each model's
+ *   provider settings, a config-file `apiKey` in plain text included);
+ * - every credential-like entry of a `headers` object, anywhere;
+ * - the userinfo and secret-like query parameters of any URL string (a
+ *   provider `baseURL`).
+ *
+ * Station never needs any of them.
  */
 export function redactOpenCodeSecrets(
   value: unknown,
   inHolder = false,
 ): unknown {
+  if (typeof value === 'string') return redactUrl(value);
   if (Array.isArray(value))
     return value.map((item) => redactOpenCodeSecrets(item, false));
   if (value === null || typeof value !== 'object') return value;
@@ -292,6 +338,20 @@ export function redactOpenCodeSecrets(
   for (const [key, child] of Object.entries(value)) {
     if (inHolder && SECRET_KEY.test(key) && typeof child === 'string')
       out[key] = '[redacted]';
+    else if (
+      key.toLowerCase() === 'headers' &&
+      child !== null &&
+      typeof child === 'object' &&
+      !Array.isArray(child)
+    )
+      out[key] = Object.fromEntries(
+        Object.entries(child).map(([name, header]) => [
+          name,
+          SECRET_HEADER.test(name)
+            ? '[redacted]'
+            : redactOpenCodeSecrets(header, false),
+        ]),
+      );
     else
       out[key] = redactOpenCodeSecrets(
         child,
@@ -378,7 +438,7 @@ export class OpenCodeServeClient {
       }
     }
     if (!response.ok)
-      throw new OpenCodeServeHttpError(method, path, response.status, parsed);
+      throw new OpenCodeServeHttpError(method, path, response.status);
     return redactOpenCodeSecrets(parsed) as T;
   }
 
@@ -431,8 +491,8 @@ export class OpenCodeServeClient {
         clearTimeout(connectTimer);
       }
       if (!response.ok || !response.body) {
-        const text = await response.text().catch(() => '');
-        throw new OpenCodeServeHttpError('GET', path, response.status, text);
+        await response.body?.cancel().catch(() => undefined);
+        throw new OpenCodeServeHttpError('GET', path, response.status);
       }
       try {
         yield* readOpenCodeEventStream(response.body, {
@@ -493,7 +553,7 @@ export async function* readOpenCodeEventStream(
           typeof event === 'object' &&
           typeof (event as { type?: unknown }).type === 'string'
         )
-          yield event as OpenCodeServeEvent;
+          yield redactOpenCodeSecrets(event) as OpenCodeServeEvent;
       }
     }
   } finally {
