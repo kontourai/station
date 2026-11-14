@@ -92,7 +92,7 @@ lacks.
 | get | `GET …/sessions/{id}` | `GET /agents/tasks/{id}` | agent, then its latest run |
 | list | `first`/`after` pages | `page`/`per_page` | `limit`/`cursor` |
 | follow-up | `POST …/messages` (steers) | none | follow-up run; `delivery: "steer"` when busy |
-| messages | `GET …/messages?after=` | none | each finished run's `result`, from the runs list |
+| messages | `GET …/messages?after=` | none | each finished run's `result`, from the runs list (`limit=100`, followed by `nextCursor` until a stored run) |
 | cancel | `DELETE …/sessions/{id}` (terminate) | none | cancel the latest run |
 | usage | ACUs; USD overage (Teams) | AI credits or premium requests, per session | tokens (`/usage`) |
 | outputs | `pull_requests[].pr_url` | pull request by id only (`pull:<id>`) | `git.branches[].prUrl` |
@@ -125,10 +125,11 @@ refusal sends nothing:
    acknowledgement stops counting when the statement's version changes.
 4. **The credential**, kept only in the engine host-auth vault
    ([engine credential provider](engine-credential-provider.md)) in one bucket
-   per connection:
-   - Connection ids carry a `remote-task-` prefix, which an ACP connection id
-     may not take, so no ACP connection can name the bucket. Removing a remote
-     task connection deletes only its own key.
+   per connection, in its own family (`remote-task-credential`):
+   - Removing an engine connection of the same id never reaches that family,
+     even for an ACP connection loaded from disk or imported. The HTTP schema
+     also refuses an ACP id with the `remote-task-` prefix. Removing a remote
+     task connection removes only its own bucket.
    - A token shorter than 16 characters is refused, so redaction by exact
      match is reliable.
    - The value reaches a binding only as the auth header for one call.
@@ -166,14 +167,16 @@ vendor's refusal in the vendor's own words.
   disk is spent unseen. Repeated reads never shorten the cadence.
 - **When polling stops.** The tracker also stops polling a task that is
   finished, idle or waiting for the person, and polls again after the next
-  follow-up, cancel or sync. A task already finished and settled at the last
-  sync is not paged again. A vendor's end-of-stream answer on a finished task
-  (Cursor's `409 agent_archived`, Devin's `410`) ends paging instead of
-  failing the sync.
+  follow-up, cancel or sync. A finished task is not paged again once a sync
+  paged its current state (status and update time) to the end; a page that
+  failed is retried on the next sync. Devin's `410` on a finished session's
+  messages ends paging instead of failing the sync. Cursor's runs list stays
+  readable for an archived agent.
 - **What is retried.** Only failures that resolve on their own: a rate
   limit, an unreachable vendor, and the preview or policy turned off, which
-  rechecks at the ceiling. Anything else stops polling until a client touches
-  the task again: no acknowledgement or credential, a connection that is gone,
+  rechecks at the ceiling. Anything else stops polling until a client writes
+  to or syncs the task again (a read does not restart it): no acknowledgement
+  or credential, a connection that is gone,
   an answer or a stored file Station cannot handle, or an unexpected error.
 - **Offline.** While Station is offline the task keeps running at the
   vendor. After a restart nothing polls until a client reads a task, and that
@@ -239,4 +242,5 @@ undocumented:
 - whether Devin's `end_cursor` is null on a last page. Station keeps the last
   cursor Devin issued, so at worst one page is re-read per poll;
 - whether Cursor's runs list carries each finished run's `result`. When an
-  entry leaves it out, Station reads that run, up to five per poll.
+  entry leaves it out, Station reads that run, five per call and never one
+  already stored, and pages again before the task settles.
