@@ -8,7 +8,15 @@
  * that drifts from the SDK's wire shape fails the typecheck. No test here
  * spawns a process or reaches a Copilot service.
  */
-import { readFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type {
   MessageOptions,
   ModelInfo,
@@ -22,7 +30,10 @@ import type { ProviderRuntimeEvent } from '@kontourai/station-contracts/runtime-
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import { describe, expect, test } from 'vitest';
 import { SessionStartRefusedError } from '../adapter-shape.js';
-import { CopilotSdkAdapter } from '../adapters/copilot-sdk-adapter.js';
+import {
+  CopilotSdkAdapter,
+  resolveCopilotCliLaunchPath,
+} from '../adapters/copilot-sdk-adapter.js';
 import type {
   CopilotHistoryRewindRequest,
   CopilotHistoryRewindResult,
@@ -833,6 +844,29 @@ describe('Copilot SDK adapter: rewind', () => {
       kind: 'failed',
       message: 'Copilot could not rewind (files-rolled-back): disk full.',
     });
+  });
+});
+
+describe('Copilot SDK adapter: which CLI file the SDK is given', () => {
+  test('maps an npm .cmd shim to the package loader beside it, or to nothing', () => {
+    const prefix = mkdtempSync(join(tmpdir(), 'copilot-cli-shim-'));
+    try {
+      const shim = join(prefix, 'copilot.cmd');
+      writeFileSync(shim, '@echo off\r\n');
+      // No package beside the shim: nothing the SDK could spawn.
+      expect(resolveCopilotCliLaunchPath(shim)).toBeNull();
+      const pkg = join(prefix, 'node_modules', '@github', 'copilot');
+      mkdirSync(pkg, { recursive: true });
+      writeFileSync(join(pkg, 'npm-loader.js'), '');
+      expect(resolveCopilotCliLaunchPath(shim)).toBe(
+        join(pkg, 'npm-loader.js'),
+      );
+      // An executable is handed over as found.
+      const exe = join(prefix, 'copilot.exe');
+      expect(resolveCopilotCliLaunchPath(exe)).toBe(exe);
+    } finally {
+      rmSync(prefix, { recursive: true, force: true });
+    }
   });
 });
 

@@ -118,7 +118,7 @@ function bounded(text: string): string {
     : text;
 }
 
-export interface CopilotPermissionView {
+interface CopilotPermissionView {
   title: string;
   toolName: string;
   toolKind: EngineToolKind;

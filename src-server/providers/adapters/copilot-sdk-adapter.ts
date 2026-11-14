@@ -117,17 +117,16 @@ import {
 } from './copilot-sdk-port.js';
 import { nativeResumeBindingKey } from './native-resume-binding.js';
 
-export const COPILOT_SDK_PREVIEW_ID = 'copilot-sdk-engine';
 const COPILOT_SDK_DISPLAY_NAME = 'GitHub Copilot (SDK)';
 const PREVIEW_DISABLED_MESSAGE =
   'Turn on GitHub Copilot through the Copilot SDK in Settings → Advanced → Feature previews.';
 
 /** How long an interrupt waits for the runtime's own `session.idle`. */
-export const COPILOT_SDK_INTERRUPT_SETTLE_MS = 10_000;
+const COPILOT_SDK_INTERRUPT_SETTLE_MS = 10_000;
 /** How long a model catalogue read may spend starting a runtime. */
 const MODEL_CATALOG_TTL_MS = 5 * 60_000;
 
-export const COPILOT_SDK_MODEL_LAUNCH: ModelLaunchCapabilities = {
+const COPILOT_SDK_MODEL_LAUNCH: ModelLaunchCapabilities = {
   defaultAtStart: 'engine-selected',
   omissionAtResume: 'retain-session-model',
   omissionPerTurn: 'retain-session-model',
@@ -138,7 +137,7 @@ export const COPILOT_SDK_MODEL_LAUNCH: ModelLaunchCapabilities = {
 
 type CopilotLogger = Pick<Logger, 'warn' | 'info'>;
 
-export interface CopilotSdkAdapterOptions {
+interface CopilotSdkAdapterOptions {
   /** The `copilot-sdk-engine` preview; selected at every entry point. */
   preview: FeaturePreviewSelector;
   clientFactory?: CopilotSdkClientFactory;

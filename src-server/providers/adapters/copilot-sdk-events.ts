@@ -38,7 +38,7 @@ export type CopilotEventBody = DistributiveOmit<
   'eventId' | 'provider' | 'threadId' | 'createdAt'
 >;
 
-export const COPILOT_TOOL_OUTPUT_MAX_CHARS = 64_000;
+const COPILOT_TOOL_OUTPUT_MAX_CHARS = 64_000;
 
 function boundedText(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
@@ -86,7 +86,7 @@ function rerouteTrigger(
   return 'other';
 }
 
-export interface CopilotTranslatorContext {
+interface CopilotTranslatorContext {
   threadId: string;
   /** Station's id for the turn now running, if any. */
   turnId: string | undefined;
