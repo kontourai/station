@@ -1037,7 +1037,10 @@ real-socket and retention suites, typing into cmd.exe on ConPTY, their cases
 built on POSIX job control POSIX-only; and the agent-run and script-runner
 suite with the launch builder's cases: package managers' batch shims run
 through cmd.exe, and an approved command reaches cmd with its quotes as shown
-(#3994). [`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs)
+(#3994). The floor also runs `release.yml`'s Windows Authenticode observation
+step under real pwsh against an unsigned MSI, a PE signed at test time with a
+throwaway untrusted certificate, that PE tampered, and a publisher-signed PE
+(#3591; skipped off Windows). [`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs)
 runs each terminal process suite in a Vitest invocation of its own after the
 other files, so a forked worker that dies (the fault tracked in #4626) hides no
 other suite's results; every invocation runs, and any failure fails the floor
