@@ -2525,6 +2525,57 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     ).toEqual([grandchild, child]);
   });
 
+  test("a child's own child, created while the feed is live, is tracked: its ask is decided on its agent's rules", async () => {
+    const GRANDCHILD = 'ses_grandchild';
+    const h = await setup({
+      scenario: 'subagent',
+      rewrite: (record) => {
+        if (record.kind !== 'sse' || record.event?.data?.sessionID !== CHILD)
+          return record;
+        if (record.event.type === 'session.step.started')
+          return {
+            ...record,
+            event: {
+              ...record.event,
+              type: 'session.created',
+              data: {
+                sessionID: GRANDCHILD,
+                parentID: CHILD,
+                agent: 'plan',
+                title: 'grandchild',
+              },
+            },
+          };
+        if (record.event.type === 'session.text.started')
+          return {
+            ...record,
+            event: {
+              ...record.event,
+              type: 'permission.asked',
+              data: {
+                id: 'per_grandchild',
+                sessionID: GRANDCHILD,
+                action: 'edit',
+                resources: ['notes.txt'],
+                save: ['*'],
+              },
+            },
+          };
+        return record;
+      },
+      respond: childGovernance({
+        build: [],
+        general: [],
+        plan: [{ action: 'edit', resource: '*', effect: 'deny' }],
+      }),
+    });
+    await h.start({ approvalMode: 'auto' });
+    await h.turn('DO_TASK now');
+    await h.waitFor(() => repliesTo(h, GRANDCHILD).length === 1);
+    expect(repliesTo(h, GRANDCHILD)).toEqual([{ decision: 'reject' }]);
+    expect(h.replay.made('GET', '/api/agent/plan')).toHaveLength(1);
+  });
+
   test("a child that switches agent has its asks decided on the new agent's rules", async () => {
     const h = await setup({
       scenario: 'subagent',
