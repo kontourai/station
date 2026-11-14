@@ -277,8 +277,9 @@ export class PluginRegistry {
   private failedPluginNames: string[] = [];
   private failure: PluginRegistryFailure | undefined;
   /**
-   * Whether the last `registry-unavailable` came from a read that may succeed
-   * later (timeout, transport failure, 5xx), not a refusal or an abort.
+   * Set only when the settled load failed `registry-unavailable` on a read
+   * that may succeed later (timeout, transport failure, 5xx), not on a
+   * refusal or an abort.
    */
   private inventoryRetryable = false;
   /** Healthy probes still to skip before the next inventory re-read. */
@@ -471,13 +472,9 @@ export class PluginRegistry {
    * does nothing.
    */
   retryUnavailableInventory(): void {
-    // A load in flight reports no failure, so this also refuses to start one
-    // beside it.
-    if (
-      this.loadStatus.failure !== 'registry-unavailable' ||
-      !this.inventoryRetryable
-    )
-      return;
+    // Every load clears the flag before its first await, so this also refuses
+    // to start a re-read beside a load in flight.
+    if (!this.inventoryRetryable) return;
     if (this.healthyProbesToSkip > 0) {
       this.healthyProbesToSkip -= 1;
       return;
