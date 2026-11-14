@@ -36,6 +36,7 @@
     "scripts/lib/floor-worker-exits.mjs",
     "scripts/lib/telemetry-station-child.mjs",
     "scripts/lib/vitest-error-reporter.mjs",
+    "scripts/vitest-failure-reporter.mjs",
     "src-server/services/orchestration/attached-session-path-child.ts",
     "src-server/services/plugins/plugin-draft-build-child.ts",
     "src-ui/src/boot.ts",

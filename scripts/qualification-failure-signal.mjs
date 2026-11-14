@@ -97,7 +97,7 @@ export function loadKnownFailures(root = process.cwd()) {
 }
 
 /** Exact identity: file, every title, and project when either names one. */
-export function sameTest(entry, test) {
+function sameTest(entry, test) {
   return (
     entry.file === test.file &&
     entry.titlePath.length === test.titlePath.length &&
@@ -106,7 +106,7 @@ export function sameTest(entry, test) {
   );
 }
 
-export function testLabel(test) {
+function testLabel(test) {
   return `${test.project ? `[${test.project}] ` : ''}${test.file} > ${test.titlePath.join(' > ')}`;
 }
 

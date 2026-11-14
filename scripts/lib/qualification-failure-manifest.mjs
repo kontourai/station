@@ -6,8 +6,8 @@
 // once. The consumer re-derives `explained` from the data rather than trusting
 // the producer's flag.
 
-export const MANIFEST_SCHEMA_VERSION = 1;
-export const JOB_MANIFEST_KIND = 'station.qualification-job-manifest';
+const MANIFEST_SCHEMA_VERSION = 1;
+const JOB_MANIFEST_KIND = 'station.qualification-job-manifest';
 /** The file name a job writes into its manifest directory. */
 export const JOB_MANIFEST_FILE = 'job-manifest.json';
 /** Environment variable naming the directory a job's manifest goes to. */
@@ -70,7 +70,7 @@ export function groupExplained(group) {
  * explained only when it passed: a failed build or static phase names no
  * test, so it can never be a known failure.
  */
-export function phaseExplained(phase) {
+function phaseExplained(phase) {
   if (phase.error !== null) return false;
   if (!phase.corpus) return phase.exitStatus === 0;
   if (phase.groups.length === 0 || !phase.groups.every(groupExplained))
