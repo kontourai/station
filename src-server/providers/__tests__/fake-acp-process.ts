@@ -60,6 +60,20 @@ export class FakeAcpProcess {
 
   constructor(readonly opts: ACPProcessOptions) {}
 
+  /**
+   * `ACPProcess.spawnedEnvHas`: the host environment, the connection's
+   * launch environment and its credential environment, layered as the real
+   * spawn does (managed pins are covered by the real-process test).
+   */
+  spawnedEnvHas(name: string): boolean {
+    const env: Record<string, string | undefined> = {
+      ...process.env,
+      ...this.opts.launchEnv,
+      ...this.opts.credentialEnv?.(),
+    };
+    return typeof env[name] === 'string' && env[name]!.length > 0;
+  }
+
   async start() {
     if (this.startError) throw this.startError;
     this.client = this.opts.createClient({ launchReplacedByPolicy: false });

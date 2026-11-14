@@ -74,13 +74,25 @@ const managedWorkspaceHome = mkdtempSync(
 );
 afterAll(() => rmSync(managedWorkspaceHome, { recursive: true, force: true }));
 
+import {
+  EngineCredentials,
+  registerEngineCredentials,
+} from '../../services/acp/engine-credentials.js';
 import { NO_PERSON_INTENT } from '../../services/approvals/guardian-conversation.js';
 import { acpResumeSessions } from '../../telemetry/metrics.js';
+import { BUILTIN_ACP_ENGINES } from '../llm/builtin-acp-engines.js';
+import {
+  clearAll as clearProviderRegistries,
+  registerACPConnectionRegistryProvider,
+} from '../registries/registry.js';
 import { FakeAcpProcess } from './fake-acp-process.js';
 import {
   QWEN_SUBAGENT_FRAMES,
   QWEN_SUBAGENT_PARENT_CALL_ID,
 } from './fixtures/qwen-code-subagent-frames.js';
+
+/** Station homes for engine credential stores (cleaned after each test). */
+const makeCredentialHome = trackTempDirs();
 
 function createConnections(
   overrides: Partial<ACPConnectionConfig>[] = [],
@@ -3490,6 +3502,61 @@ describe('AcpAdapter', () => {
       expect(message).toContain('choose its Gemini API key sign-in once');
       expect(message).not.toContain('signs in with an API key');
       await adapter.stopAll();
+    });
+
+    test('a GEMINI_API_KEY stored in Station is the key that lets Gemini start fresh', async () => {
+      // The usual way a key arrives: saved on the connection, not in the
+      // host environment. The real descriptor lookup and credential store
+      // supply it to the engine's environment.
+      vi.stubEnv('GEMINI_API_KEY', '');
+      registerACPConnectionRegistryProvider(
+        {
+          listAvailable: () =>
+            BUILTIN_ACP_ENGINES.map((entry) => ({ ...entry })),
+        },
+        'builtin-acp-connections',
+        true,
+      );
+      const credentials = new EngineCredentials(
+        makeCredentialHome('station-gemini-credentials-'),
+      );
+      await credentials.set('kiro', 'GEMINI_API_KEY', 'stored-gemini-key', [
+        'GEMINI_API_KEY',
+      ]);
+      registerEngineCredentials(credentials);
+      try {
+        const { adapter, processes } = createAdapter({
+          loadSessionCapability: true,
+          connectionOverrides: [
+            { id: 'kiro', command: 'gemini', args: ['--acp'] },
+          ],
+          onProcess: (proc) => {
+            asGemini(proc);
+            proc.loadSessionError = geminiNoSavedSignIn();
+          },
+        });
+        await expect(
+          adapter.startSession({
+            ...resumeKiroCursor('thread-gemini-stored-key'),
+            resumeCursor: {
+              acpSessionId: 'native-gemini',
+              connectionId: 'kiro',
+              connectionFingerprint: acpConnectionFingerprint(
+                acpExecutionIdentity({
+                  command: 'gemini',
+                  args: ['--acp'],
+                  effectiveCwd: '/tmp/project',
+                }),
+              ),
+            },
+          }),
+        ).resolves.toMatchObject({ threadId: 'thread-gemini-stored-key' });
+        expect(processes[0].newSessionCalls).toBe(1);
+        await adapter.stopAll();
+      } finally {
+        registerEngineCredentials(null);
+        clearProviderRegistries();
+      }
     });
 
     test('Gemini CLI with no API key fails the resume instead of starting fresh', async () => {

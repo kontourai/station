@@ -2140,10 +2140,10 @@ export class AcpAdapter implements ProviderAdapterShape {
             startedFresh = acpReattachRefusalStartsNewSession(
               acpProcess.initResult,
               error,
-              // The connection's stored credential, or the host environment
-              // the engine process inherits.
-              (name) =>
-                !!engineCredentialEnvFor(config)?.[name] || !!process.env[name],
+              // What the engine process actually received, after the
+              // connection's stored credential, the host environment and
+              // any locked managed pin (acp-process.ts spawnedEnvHas).
+              (name) => acpProcess.spawnedEnvHas(name),
             );
             if (!startedFresh) throw error;
             acpResumeSessions.add(1, {
