@@ -530,8 +530,9 @@ export class ProjectService {
       operation: 'create',
       project: project.slug || project.id,
     });
-    // Readers never see a field a lock hides, the create response included.
-    return withoutLockedProjectOverrides(project);
+    // Readers never see a field a lock hides, the create response included,
+    // and every response names the same repository a later read would.
+    return this.withRepositoryDisplay(withoutLockedProjectOverrides(project));
   }
 
   async createAttachedProject(
@@ -552,8 +553,9 @@ export class ProjectService {
       operation: 'create',
       project: project.slug || project.id,
     });
-    // Readers never see a field a lock hides, the create response included.
-    return withoutLockedProjectOverrides(project);
+    // Readers never see a field a lock hides, the create response included,
+    // and every response names the same repository a later read would.
+    return this.withRepositoryDisplay(withoutLockedProjectOverrides(project));
   }
 
   private async prepareProjectConfig(
@@ -719,7 +721,7 @@ export class ProjectService {
     await revision.replace(updated);
     projectOps.add(1, { operation: 'update', project: slug });
     // The response is a read: it hides what `getProject` hides (#4517).
-    return withoutLockedProjectOverrides(updated);
+    return this.withRepositoryDisplay(withoutLockedProjectOverrides(updated));
   }
 
   async deleteProject(slug: string): Promise<void> {

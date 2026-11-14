@@ -307,6 +307,8 @@ describe('ProjectService', () => {
     expect(existsSync(sidecar)).toBe(true);
     const record = JSON.parse(readFileSync(sidecar, 'utf-8'));
     expect(project.repositorySource).toBeUndefined();
+    // The create response names the repository a later read would.
+    expect(project.repositoryDisplay).toBe('github.com/kontourai/station');
     expect(svc.listProjects()[0].repositoryDisplay).toBe(
       'github.com/kontourai/station',
     );
