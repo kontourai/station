@@ -4304,10 +4304,13 @@ export class OrchestrationService {
       const persistedMetadata = this.readLatestSessionStartMetadata(
         input.threadId,
       );
-      // The recorded binding goes back with the cursor unless this retry
-      // moves to another credential profile, which by design changes it.
+      // An adapter that requires its recorded binding gets it back with the
+      // cursor, unless this retry moves to another credential profile, which
+      // by design changes it. Other adapters keep their own resume rules.
       const recordedBindingKey =
-        existing.resumeCursor !== undefined && !input.credentialProfileRef
+        existing.resumeCursor !== undefined &&
+        !input.credentialProfileRef &&
+        adapter.metadata.continuity?.recoveryBinding === 'required'
           ? this.readRecordedNativeResumeBindingKey(input.threadId)
           : undefined;
       let startInput: ProviderSessionStartInput = {

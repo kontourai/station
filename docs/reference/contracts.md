@@ -787,12 +787,16 @@ response identity. A match emits server-owned `nativeResumeIdentity: matched`
 metadata. A queued prompt, requested cursor, or process start does not establish
 a match. An exact-resume identity mismatch stops that activation; it does not
 silently claim a fresh thread has continued the original one.
-Restart recovery (`startRecoveredOrchestrationSession`) and a credential retry
-that keeps its credential profile pass the binding the session's start
-recorded on `session.started` as `ProviderSessionStartInput.nativeResumeBindingKey`,
-so an adapter can refuse to resume under a different engine home or profile.
-A retry that moves to another profile passes none, since the profile is part
-of the binding.
+`ProviderContinuityCapabilities.recoveryBinding: 'required'` is an adapter
+opt-in for an adapter that refuses a resume without its recorded binding (the
+Copilot SDK engine). For it alone, restart recovery
+(`startRecoveredOrchestrationSession`) and a credential retry that keeps its
+credential profile pass the key the session's start recorded on
+`session.started` as `ProviderSessionStartInput.nativeResumeBindingKey`. A
+retry that moves to another profile passes none, since the profile is part of
+the binding. Adapters without the opt-in (Claude, Codex) keep their own resume
+rules, because their recorded key can change legitimately: another engine
+home, a deliberate profile switch, or a key an older build computed.
 `nativeReturn: 'same-binding'` additionally permits an explicit Agent handoff
 back to an earlier native thread in this Conversation. Station requires the
 same Agent, Environment, connection, working directory and opaque configuration

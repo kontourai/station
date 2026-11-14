@@ -1796,9 +1796,9 @@ export interface RecoveredSessionStartOptions {
    * The native resume binding the session's latest start recorded
    * (`NATIVE_RESUME_BINDING_METADATA_KEY` on its `session.started`), which
    * `readSessionStartMetadata` strips as a reserved key. A recovery that
-   * resumes a native session hands it back as `nativeResumeBindingKey`, so an
-   * adapter can refuse to resume under a different engine home or profile,
-   * as a live continuation does. `undefined` when none was recorded.
+   * resumes a native session on an adapter declaring
+   * `continuity.recoveryBinding: 'required'` hands it back as
+   * `nativeResumeBindingKey`. `undefined` when none was recorded.
    */
   readNativeResumeBindingKey?: (threadId: string) => string | undefined;
   /**
@@ -1860,8 +1860,12 @@ export async function startRecoveredOrchestrationSession(options: {
     // Metadata reads can fail for one damaged persisted event. Keep them
     // inside this session's boundary so the caller sees one typed failure.
     const recoveredMetadata = deps.readSessionStartMetadata?.(session.threadId);
+    // Only an adapter that requires its recorded binding gets it back: for
+    // the others a key that changed legitimately (engine home, a deliberate
+    // profile switch, an older key scheme) must not start refusing recovery.
     const recordedBindingKey =
-      session.resumeCursor !== undefined
+      session.resumeCursor !== undefined &&
+      adapter.metadata?.continuity?.recoveryBinding === 'required'
         ? deps.readNativeResumeBindingKey?.(session.threadId)
         : undefined;
     let startInput: ProviderSessionStartInput = {

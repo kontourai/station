@@ -35,6 +35,15 @@ export interface ProviderContinuityCapabilities {
   resumeIdentity?: 'require-match';
   /** Resume a prior Session only within its recorded engine-home/profile binding. */
   nativeReturn?: 'same-binding';
+  /**
+   * Opt-in: this adapter refuses a resume without the binding key its start
+   * recorded, so restart recovery and a credential retry that keeps its
+   * profile pass that key as `ProviderSessionStartInput.nativeResumeBindingKey`.
+   * Absent: recovery passes none and the adapter keeps its own resume rules
+   * (a recorded key can legitimately change with the engine home, a profile
+   * switch or an older key scheme).
+   */
+  recoveryBinding?: 'required';
 }
 
 /** Current delivery fidelity, not a promise that an interrupted effect is replayable. */

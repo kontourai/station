@@ -71,11 +71,11 @@ platform packages were not opened, and none is installed either way.
   refused while it runs. A resume needs the binding key recorded at the
   session's start (`nativeResumeBindingKey` over `COPILOT_HOME`, stamped on
   `session.started` with the start metadata); a cursor without one, or with
-  another home's, is refused. Restart recovery and a credential retry that
-  keeps its profile hand the recorded key back to the start, for every native
-  engine (`startRecoveredOrchestrationSession`'s `readNativeResumeBindingKey`),
-  so an adapter can refuse a resume under a different engine home, as a live
-  continuation already could. A session whose runtime
+  another home's, is refused. The adapter declares
+  `continuity.recoveryBinding: 'required'`, so restart recovery and a
+  credential retry that keeps its profile hand the recorded key back to the
+  start (`startRecoveredOrchestrationSession`'s `readNativeResumeBindingKey`).
+  Engines without the opt-in (Claude, Codex) recover exactly as before. A session whose runtime
   does not report `permissionMode: 'manual'` applied is refused, since a
   resume can restore another mode. On resume, the persisted `user.message`
   events (each carries the `clientTurnId` Station sent) restore the rewind

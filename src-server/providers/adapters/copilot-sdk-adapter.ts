@@ -282,6 +282,8 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
       fork: 'none',
       rewind: 'in-place',
       nativeReturn: 'same-binding',
+      // `preflightStart` refuses a resume without its recorded binding.
+      recoveryBinding: 'required',
     },
     modelLaunch: COPILOT_SDK_MODEL_LAUNCH,
     approvalAcknowledgement: 'in-process',
