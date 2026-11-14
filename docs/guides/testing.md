@@ -2507,6 +2507,65 @@ disagreed on it; and the list holds at most 5 entries.
 when the fix lands, or renew it in a reviewed change with fresh same-commit
 evidence. Renewal is a deliberate decision, never an automatic extension.
 
+### Known qualification failures
+
+Main qualification classifies a red run from **failure manifests** the test
+runners write, never from job logs. In hosted qualification
+(`STATION_QUALIFICATION_MANIFEST_DIR` set) the Vitest corpus runner, the
+full-regression phase driver and the e2e suite runner each write a
+manifest ([schema and rule](../../scripts/lib/qualification-failure-manifest.mjs))
+listing every failed test identity, every failure the runner itself saw,
+and whether the job's exit is fully explained by those tests. Failed jobs
+upload it as `qualification-manifest-*`.
+
+[`config/qualification-known-failures.json`](../../config/qualification-known-failures.json)
+lists standing failures that already have an owner issue. The rules, plainly:
+
+- **Nothing is skipped.** Every listed test still runs and still fails its
+  run; the run stays red and release qualification stays blocked.
+- **Exact test identities only.** An entry is one `file`, its full
+  `titlePath`, an optional Playwright `project`, and the `issue`. Matching
+  is exact: no file, pattern, phase or job entries, no suffix stripping, no
+  case folding. The list holds at most 20 entries.
+- **An entry counts only while its issue is open.** A closed, unreadable
+  or pull-request number does not count, so a fixed test that regresses
+  alerts again.
+- **Anything not explicitly explained alerts.** A failed job needs a valid
+  manifest for that exact run, attempt and source that the runner marked
+  explained and that re-derives as explained: only named tests failed, the
+  runner's own failure counts reconcile, no file failed to load, no
+  unhandled or out-of-test error, no process left alive, no output limit,
+  deadline or cancellation, no unreadable report. A failed build or static
+  phase, a setup-step failure, a cancelled or timed-out job, a missing or
+  foreign manifest, and an unreadable list or issue all alert.
+
+Also unexplained: any file that failed other than through a named test (a
+load error or a failing or timed-out hook), the same test identity reported
+twice, and a failed job whose failed steps are anything but its one test
+phase step (a later setup, install or upload step that also failed).
+Flaky tests that pass on a retry are not failures, which matches the
+runners' own verdict.
+
+Two limits are inherent to identity matching. When two tests share a file
+and full title path and one fails, the list cannot tell which. And a listed
+test that starts failing for a new reason (its own `afterEach`, or under
+Playwright a new `beforeAll` in its describe, which is reported as that
+test failing) looks exactly like its known failure.
+
+With the manifest gate on, Vitest's JSON reporter prints one extra line per
+group, `JSON report written to <path>`; nothing that reads runner output
+matches it. With the gate unset, the runners' arguments, output and exit
+status are unchanged.
+
+[`scripts/qualification-failure-signal.mjs`](../../scripts/qualification-failure-signal.mjs)
+applies these rules for the repair tracker and the health watchdog.
+It runs in **report mode** unless the repository variable
+`STATION_QUALIFICATION_SIGNAL` is exactly `enforce` (no surrounding space,
+lower case): the classification is
+written into both trackers and the step summary, and no tracker decision
+changes. No historical run has a manifest, so enforcement waits until the
+classification has been compared with a human reading of real runs.
+
 ### Opt-in load reliability evidence
 
 `npm run test:load-reliability` is deliberately dry by default. It prints the

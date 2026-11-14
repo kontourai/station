@@ -607,6 +607,9 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
   'scripts/__tests__/verification-coordinator.test.ts': TEMP_VIA_FIXTURE,
   // Walks fixture homes that `buildSourceHome()` creates under trackTempDirs.
   'scripts/__tests__/seed-dev-home.test.ts': TEMP_VIA_FIXTURE,
+  // Lists the trackTempDirs scratch directory a producer CLI ran in, to
+  // prove it wrote no manifest there.
+  'scripts/__tests__/qualification-failure-manifest.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/ci-event-environment.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/promotion-full-regression-workflow.test.ts':

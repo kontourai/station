@@ -5,8 +5,17 @@ import {
   execFileSync,
   spawn,
 } from 'node:child_process';
-import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { stripVTControlCharacters } from 'node:util';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
@@ -16,7 +25,14 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from './lib/owned-process.mjs';
+import {
+  clipText,
+  groupExplained,
+  MANIFEST_BOUNDS,
+  manifestDirectoryFromEnv,
+} from './lib/qualification-failure-manifest.mjs';
 import { FULL_REGRESSION_PHASES } from './verification-lanes.mjs';
+import { FAILURE_REPORT_ENV } from './vitest-failure-reporter.mjs';
 import {
   discoverVitestResourceGroups,
   ORDINARY_MAX_WORKERS,
@@ -306,7 +322,7 @@ export function coverageSliceArguments(reportsDirectory) {
 /**
  * @param {{ name: string; maxWorkers: number; noFileParallelism?: boolean; shard?: string }} group
  * @param {readonly string[]} files
- * @param {{ root?: string; ordinaryExcludes?: readonly string[]; coverageDirectory?: string }} [options]
+ * @param {{ root?: string; ordinaryExcludes?: readonly string[]; coverageDirectory?: string; failureReportJson?: string; env?: NodeJS.ProcessEnv }} [options]
  */
 export function buildVitestCommand(
   group,
@@ -315,6 +331,11 @@ export function buildVitestCommand(
     root = process.cwd(),
     ordinaryExcludes = ordinaryVitestExcludes(),
     coverageDirectory,
+    // Set only when a qualification failure manifest is requested: adds
+    // Vitest's own JSON reporter (writing to this file, not the terminal)
+    // and the failure-identity reporter beside the group's usual reporters.
+    failureReportJson,
+    env = process.env,
   } = {},
 ) {
   if (!Array.isArray(files) || files.length === 0) {
@@ -328,6 +349,14 @@ export function buildVitestCommand(
       ? []
       : coverageSliceArguments(coverageDirectory)),
   ];
+  const manifestReporters =
+    failureReportJson === undefined
+      ? []
+      : [
+          '--reporter=json',
+          `--outputFile.json=${failureReportJson}`,
+          `--reporter=${resolve(root, 'scripts/vitest-failure-reporter.mjs')}`,
+        ];
   if (group.name === 'ordinary') {
     if (!ORDINARY_SHARD_DESCRIPTORS.some(({ shard }) => shard === group.shard))
       throw new Error(
@@ -337,11 +366,24 @@ export function buildVitestCommand(
       ...command,
       '--reporter=default',
       `--reporter=${resolve(root, 'scripts/vitest-inflight-reporter.mjs')}`,
+      ...manifestReporters,
       ...ordinaryExcludes.map((pattern) => `--exclude=${pattern}`),
       `--shard=${group.shard}`,
       ...(group.noFileParallelism ? ['--no-file-parallelism'] : []),
     ];
   }
+  // A --reporter flag replaces Vitest's defaults. When the manifest adds
+  // reporters to a group that names none, keep the defaults Vitest would
+  // otherwise choose (default, plus github-actions inside GitHub Actions).
+  const defaultReporters =
+    manifestReporters.length === 0
+      ? []
+      : [
+          '--reporter=default',
+          ...(env.GITHUB_ACTIONS === 'true'
+            ? ['--reporter=github-actions']
+            : []),
+        ];
   return [
     ...command,
     ...(group.name === 'process-exclusive'
@@ -349,7 +391,8 @@ export function buildVitestCommand(
           '--reporter=default',
           `--reporter=${resolve(root, 'scripts/vitest-inflight-reporter.mjs')}`,
         ]
-      : []),
+      : defaultReporters),
+    ...manifestReporters,
     ...files,
     ...(group.noFileParallelism ? ['--no-file-parallelism'] : []),
   ];
@@ -464,7 +507,7 @@ function terminalFailure(name, reason, { cancelled = false } = {}) {
 }
 
 /** Run one owned process group and retain bounded diagnostics for receipts. */
-export async function runVitestGroup(
+async function runVitestGroupOnce(
   group,
   files,
   {
@@ -477,6 +520,8 @@ export async function runVitestGroup(
     signal,
     coverageDirectory,
     ordinaryExcludes,
+    failureReportJson,
+    extraEnv = {},
   } = {},
 ) {
   const resultName = group.resultName ?? group.name;
@@ -489,6 +534,7 @@ export async function runVitestGroup(
   const args = buildVitestCommand(group, files, {
     root,
     coverageDirectory,
+    failureReportJson,
     ...(ordinaryExcludes ? { ordinaryExcludes } : {}),
   });
   const label = `Vitest corpus ${resultName}`;
@@ -496,7 +542,11 @@ export async function runVitestGroup(
   try {
     execution = execute(process.execPath, args, spawnProcess, label, {
       cwd: root,
-      env: { ...process.env, STATION_VITEST_CORPUS_GROUP: group.name },
+      env: {
+        ...process.env,
+        ...extraEnv,
+        STATION_VITEST_CORPUS_GROUP: group.name,
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
@@ -611,6 +661,208 @@ export async function runVitestGroup(
   }
 }
 
+function readReport(path) {
+  let text;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch {
+    return { missing: true };
+  }
+  try {
+    return { value: JSON.parse(text) };
+  } catch (error) {
+    return { invalid: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** Classify the corpus runner's own failure of a group, not its tests. */
+function runnerErrorKind(result) {
+  const error = result.error ?? '';
+  if (
+    result.cleanup?.settled === false ||
+    /process tree (?:remained|alive)/.test(error)
+  )
+    return 'process-tree-alive';
+  if (result.outputTruncated || /output exceeded/.test(error))
+    return 'output-limit';
+  if (result.cancelled || /\bcancelled\b/.test(result.error ?? ''))
+    return 'cancelled';
+  return 'runner-error';
+}
+
+/**
+ * The failure-manifest entry for one group invocation. Test identities come
+ * from the failure reporter; the counts they are reconciled against come
+ * from Vitest's own JSON reporter, a separate implementation. Everything the
+ * runner itself saw go wrong is a runner error, which leaves the group
+ * unexplained.
+ */
+export function vitestGroupManifest(
+  result,
+  { failureReport, jsonReport, setupError = null },
+) {
+  const runnerErrors = [];
+  const fail = (kind, message) =>
+    runnerErrors.push({ kind, message: clipText(message) });
+  if (setupError) fail('failure-reporter-unavailable', setupError);
+  if (result.error) fail(runnerErrorKind(result), result.error);
+  if (
+    result.status !== null &&
+    result.status !== undefined &&
+    result.status !== 0 &&
+    result.status !== 1
+  )
+    fail(
+      'unexpected-exit-status',
+      `Vitest exited with status ${result.status}`,
+    );
+  const failures = readReport(failureReport);
+  const json = readReport(jsonReport);
+  if (failures.missing)
+    fail(
+      'failure-report-missing',
+      'the failure-identity reporter wrote no report',
+    );
+  if (failures.invalid !== undefined)
+    fail('failure-report-invalid', failures.invalid);
+  if (json.missing)
+    fail('json-report-missing', 'the Vitest JSON reporter wrote no report');
+  if (json.invalid !== undefined) fail('json-report-invalid', json.invalid);
+  const report = failures.value ?? {};
+  if (failures.value && report.reporterError !== undefined)
+    fail('failure-reporter-error', report.reporterError);
+  else if (
+    failures.value &&
+    report.reason !== 'passed' &&
+    report.reason !== 'failed'
+  )
+    fail('run-interrupted', `Vitest ended its run as ${report.reason}`);
+  const valid = (list) => (Array.isArray(list) ? list : []);
+  let failedTests = valid(report.failedTests).map((test) => ({
+    file: clipText(test.file),
+    titlePath: valid(test.titlePath)
+      .slice(0, MANIFEST_BOUNDS.titlePathDepth)
+      .map(clipText),
+  }));
+  if (failedTests.length > MANIFEST_BOUNDS.failedTestsPerGroup) {
+    fail(
+      'failed-tests-over-bound',
+      `${failedTests.length} failed tests exceed the manifest bound`,
+    );
+    failedTests = failedTests.slice(0, MANIFEST_BOUNDS.failedTestsPerGroup);
+  }
+  let failedFiles = valid(report.failedFiles).map((file) => ({
+    file: clipText(file.file),
+    reason: file.reason === 'load' ? 'load' : 'suite',
+  }));
+  if (failedFiles.length > MANIFEST_BOUNDS.failedFilesPerGroup) {
+    fail(
+      'failed-files-over-bound',
+      `${failedFiles.length} failed files exceed the manifest bound`,
+    );
+    failedFiles = failedFiles.slice(0, MANIFEST_BOUNDS.failedFilesPerGroup);
+  }
+  const counts = {
+    reporterFailedTests: Number.isSafeInteger(json.value?.numFailedTests)
+      ? json.value.numFailedTests
+      : null,
+    reporterFailedFiles: Array.isArray(json.value?.testResults)
+      ? json.value.testResults.filter((entry) => entry?.status === 'failed')
+          .length
+      : null,
+    unhandledErrors: Number.isSafeInteger(report.unhandledErrors)
+      ? report.unhandledErrors
+      : null,
+  };
+  const group = {
+    group: clipText(result.name),
+    exitStatus: Number.isSafeInteger(result.status) ? result.status : null,
+    signal: result.signal ? clipText(result.signal) : null,
+    failedTests,
+    failedFiles,
+    runnerErrors: runnerErrors.slice(0, MANIFEST_BOUNDS.runnerErrorsPerGroup),
+    counts,
+    explained: false,
+  };
+  group.explained = groupExplained(group);
+  return group;
+}
+
+/**
+ * Run one group, and when a manifest directory is given, write its manifest
+ * entry there whatever happens. Vitest's reports go to a temporary directory
+ * outside the workspace, so the phase driver's workspace check is unaffected.
+ */
+export async function runVitestGroup(group, files, options = {}) {
+  const { manifestDirectory, ...rest } = options;
+  if (!manifestDirectory) return runVitestGroupOnce(group, files, rest);
+  // The manifest is evidence about a run and must never change one: if its
+  // machinery fails, the group runs and reports exactly as it would without
+  // it, and the missing or unexplained entry makes the job alert.
+  let reports;
+  try {
+    reports = mkdtempSync(resolve(tmpdir(), 'station-vitest-manifest-'));
+  } catch (error) {
+    process.stderr.write(
+      `[vitest-corpus] failure manifest unavailable: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return runVitestGroupOnce(group, files, rest);
+  }
+  const failureReport = resolve(reports, 'failures.json');
+  const jsonReport = resolve(reports, 'vitest.json');
+  // A reporter Vitest cannot load fails the whole run, so load it here
+  // first. If it cannot be loaded the group runs exactly as with the gate
+  // off and its entry records why, which leaves it unexplained.
+  let setupError = null;
+  try {
+    const reporter = await import(
+      pathToFileURL(
+        resolve(
+          rest.root ?? process.cwd(),
+          'scripts/vitest-failure-reporter.mjs',
+        ),
+      ).href
+    );
+    if (typeof reporter.default !== 'function')
+      throw new Error('the failure reporter has no default export');
+  } catch (error) {
+    setupError = error instanceof Error ? error.message : String(error);
+  }
+  let result;
+  try {
+    result = setupError
+      ? await runVitestGroupOnce(group, files, rest)
+      : await runVitestGroupOnce(group, files, {
+          ...rest,
+          failureReportJson: jsonReport,
+          extraEnv: { [FAILURE_REPORT_ENV]: failureReport },
+        });
+    return result;
+  } catch (error) {
+    result = terminalFailure(group.resultName ?? group.name, error);
+    throw error;
+  } finally {
+    try {
+      const entry = vitestGroupManifest(result, {
+        failureReport,
+        jsonReport,
+        setupError,
+      });
+      mkdirSync(manifestDirectory, { recursive: true });
+      writeFileSync(
+        resolve(manifestDirectory, `${basename(entry.group)}.json`),
+        `${JSON.stringify(entry, null, 2)}\n`,
+      );
+    } catch (error) {
+      process.stderr.write(
+        `[vitest-corpus] could not write the failure manifest: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+    } finally {
+      rmSync(reports, { recursive: true, force: true });
+    }
+  }
+}
+
 export function emitResult(result, { diagnosticDirectory } = {}) {
   // FAIL is a claim about the tests. A cancelled group made no such claim: it
   // was killed by the coordinator's deadline or a signal, so its suite never
@@ -722,6 +974,9 @@ export async function runVitestCorpus({
   quarantine = QUARANTINED_VITEST_FILES,
   now = new Date(),
   reportExclusions = reportQuarantineExclusions,
+  // Where each group writes its qualification failure-manifest entry; unset
+  // outside hosted qualification, where no manifest is written.
+  manifestDirectory,
 } = {}) {
   if (coverageRoot !== undefined && platform === 'win32')
     throw new Error('Vitest corpus coverage is not supported on Windows');
@@ -845,6 +1100,7 @@ export async function runVitestCorpus({
           : await runGroup(descriptor, files, {
               root,
               signal: groupController?.signal ?? signal,
+              ...(manifestDirectory ? { manifestDirectory } : {}),
               ...(coverageRoot === undefined
                 ? {}
                 : {
@@ -958,6 +1214,7 @@ async function main() {
     const result = await runVitestCorpus({
       ...options,
       signal: controller.signal,
+      manifestDirectory: manifestDirectoryFromEnv(),
       onResult: (group) =>
         emitResult(group, {
           diagnosticDirectory: resolve(
