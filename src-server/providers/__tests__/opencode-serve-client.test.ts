@@ -134,6 +134,9 @@ describe('OpenCodeServeClient requests', () => {
     '/api/agent/%61gent',
     '/api/agent/a%2',
     '/api/agent/%',
+    // Double-encoded: decodes to another escape (`%2F`).
+    '/api/agent/%252F',
+    '/api/agent/a%2525b',
     // `%` in a fixed segment or the query.
     '/api/%61gent/build',
     '/api/session/ses_1/messag%65',
@@ -215,7 +218,7 @@ describe('OpenCodeServeClient requests', () => {
         redactOpenCodeSecrets({
           options: { headers: { authorization: 'x' }, accessToken: 't' },
           settings: { clientSecret: 's', password: 'p', name: 'kept' },
-          token: 'top-level ids are not settings',
+          id: 'kept',
         }),
       ),
     ).toBe(
@@ -229,7 +232,7 @@ describe('OpenCodeServeClient requests', () => {
           password: '[redacted]',
           name: 'kept',
         },
-        token: 'top-level ids are not settings',
+        id: 'kept',
       }),
     );
   });
@@ -266,7 +269,8 @@ describe('OpenCodeServeClient requests', () => {
       'outside-holder',
     ])
       expect(text).not.toContain(secret);
-    expect(text).toContain('"x-request-source":"station"');
+    // Every header value of a configuration is withheld, named or not.
+    expect(text).toContain('"x-request-source":"[redacted]"');
     expect(text).toContain('"Authorization":"[redacted]"');
   });
 
@@ -290,6 +294,111 @@ describe('OpenCodeServeClient requests', () => {
     );
     expect(redacted.plain).toBe('https://llm.example/v1?region=eu');
     expect(redacted.text).toBe('not a url: user:hunter2@host');
+  });
+
+  test('a top-level apiKey, provider env and MCP environment and headers are redacted in configuration', async () => {
+    const client = new OpenCodeServeClient({
+      baseUrl: BASE,
+      password: 'p',
+      fetch: fetchSpy(() =>
+        Response.json({
+          data: [
+            {
+              name: 'remote',
+              apiKey: 'sk-top-level',
+              env: { OPENAI_API_KEY: 'sk-env' },
+              config: {
+                type: 'remote',
+                url: 'https://mcp.example/v1?token=sk-url&region=eu',
+                headers: { 'X-Station-Session': 'sk-header' },
+              },
+            },
+            {
+              name: 'local',
+              config: {
+                type: 'local',
+                command: ['node', 'server.mjs'],
+                environment: { GITHUB_PAT: 'sk-environment' },
+              },
+            },
+          ],
+        }),
+      ) as never,
+    });
+    const answer = await client.request('GET', '/api/mcp');
+    const text = JSON.stringify(answer);
+    for (const secret of [
+      'sk-top-level',
+      'sk-env',
+      'sk-url',
+      'sk-header',
+      'sk-environment',
+    ])
+      expect(text).not.toContain(secret);
+    expect(text).toContain('"command":["node","server.mjs"]');
+    expect(text).toContain('region=eu');
+  });
+
+  /** The round-3 reviewer's example: a URL with `keyword=` opening prose. */
+  const PROSE =
+    'https://docs.example.com/search?keyword=retry\n\nThat page explains the token, author and code settings.';
+
+  test('conversation history passes through byte-identical, whatever URLs it holds', async () => {
+    const body = {
+      data: [
+        {
+          id: 'msg_1',
+          type: 'assistant',
+          content: [
+            { type: 'text', text: PROSE },
+            { type: 'tool', input: { url: 'https://x.example/?token=t1' } },
+          ],
+        },
+      ],
+      cursor: { previous: null, next: null },
+    };
+    const client = new OpenCodeServeClient({
+      baseUrl: BASE,
+      password: 'p',
+      fetch: fetchSpy(() => Response.json(body)) as never,
+    });
+    const answer = await client.request(
+      'GET',
+      '/api/session/ses_1/message?order=desc&limit=100',
+    );
+    expect(answer).toEqual(body);
+  });
+
+  test('a session text event passes through byte-identical; a configuration event is redacted', async () => {
+    const text = {
+      type: 'session.text.ended',
+      data: { sessionID: 'ses_1', text: PROSE },
+    };
+    const config = {
+      type: 'mcp.status.changed',
+      data: { headers: { Authorization: 'Bearer sk-feed' } },
+    };
+    const client = new OpenCodeServeClient({
+      baseUrl: BASE,
+      password: 'p',
+      fetch: fetchSpy(
+        () =>
+          new Response(
+            openStream([
+              `data: ${JSON.stringify(text)}\n\n`,
+              `data: ${JSON.stringify(config)}\n\n`,
+            ]),
+          ),
+      ) as never,
+    });
+    const controller = new AbortController();
+    const seen: unknown[] = [];
+    for await (const yielded of client.events({ signal: controller.signal })) {
+      seen.push(yielded);
+      if (seen.length === 2) controller.abort();
+    }
+    expect(seen[0]).toEqual(text);
+    expect(JSON.stringify(seen[1])).not.toContain('sk-feed');
   });
 
   test('a request with no answer times out by default', async () => {

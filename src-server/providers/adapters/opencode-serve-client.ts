@@ -14,9 +14,12 @@
  *   (credentials, sign-in, pairing, client tokens, PTY connect tokens,
  *   config writes) is checked first, so a route added to the table by
  *   mistake still cannot reach them. Refusals happen before any network I/O.
- * - Redaction: `GET /api/model` carries config-file provider keys in
- *   `settings.apiKey`; every answer is redacted before it leaves the client
- *   ({@link redactOpenCodeSecrets}).
+ * - Redaction: configuration answers carry secrets (`GET /api/model` a
+ *   config-file provider key in `settings.apiKey`, `GET /api/mcp` a server's
+ *   headers and environment). Those answers, and feed events of the
+ *   configuration types, are redacted before they leave the client
+ *   ({@link redactOpenCodeSecrets}). Conversation content (messages, text,
+ *   tool input and output, asks) is never rewritten.
  * - Events: `GET /api/event` is one global SSE feed, live only (no ids, no
  *   replay). The server sends a `: heartbeat` comment about every 15s, so a
  *   feed silent past the bound is treated as gone.
@@ -241,6 +244,9 @@ function encodedParamSegmentAllowed(segment: string): boolean {
   }
   if (!decoded || decoded === '.' || decoded === '..') return false;
   if (/[/\\\0]/.test(decoded)) return false;
+  // A value that decodes to another escape (`%252F` is `%2F`) could be
+  // decoded again on the way; no OpenCode id or agent name holds `%`.
+  if (decoded.includes('%')) return false;
   return encodeURIComponent(decoded) === segment;
 }
 
@@ -267,7 +273,7 @@ export function assertOpenCodeServePathAllowed(
   method: OpenCodeServeMethod,
   path: string,
   routes: readonly OpenCodeServeRoute[] = OPENCODE_NATIVE_ROUTES,
-): void {
+): OpenCodeServeRoute {
   if (!path.startsWith('/'))
     throw new OpenCodeServeDeniedPathError(path, 'non-relative path');
   // `%` is not refused here: only a declared route parameter may carry it
@@ -291,30 +297,45 @@ export function assertOpenCodeServePathAllowed(
   }
   if (!QUERY.test(query))
     throw new OpenCodeServeDeniedPathError(path, 'unexpected query');
-  if (
-    !routes.some(
-      (route) =>
-        route.method === method && templateMatches(route.template, segments),
-    )
-  )
+  const route = routes.find(
+    (candidate) =>
+      candidate.method === method &&
+      templateMatches(candidate.template, segments),
+  );
+  if (!route)
     throw new OpenCodeServeDeniedPathError(path, `unlisted ${method}`);
+  return route;
 }
 
+/** A configuration key whose string value is a credential. */
 const SECRET_KEY =
-  /api[-_]?key|token|secret|password|credential|authorization|cookie/i;
-const SECRET_HOLDERS = new Set(['settings', 'options']);
-/** A header whose value is a credential. */
-const SECRET_HEADER =
-  /^(authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key)$|token|secret|key|auth|password|credential/i;
-/** A query parameter whose value is a credential. */
-const SECRET_QUERY_PARAM =
-  /key|token|secret|password|credential|auth|sig(nature)?$|^code$/i;
-const ABSOLUTE_URL = /^[a-z][a-z0-9+.-]*:\/\//i;
+  /^(api[-_]?key|apikey|token|access[-_]?token|refresh[-_]?token|id[-_]?token|secret|client[-_]?secret|password|credentials?|authorization|cookie|bearer)$/i;
+/** Configuration maps whose every value may be a credential. */
+const SECRET_MAPS = new Set(['headers', 'env', 'environment']);
+/** Query parameter names whose value is a credential, matched exactly. */
+const SECRET_QUERY_PARAMS = new Set([
+  'key',
+  'api_key',
+  'api-key',
+  'apikey',
+  'token',
+  'access_token',
+  'refresh_token',
+  'id_token',
+  'secret',
+  'client_secret',
+  'password',
+  'auth',
+  'signature',
+  'sig',
+  'code',
+]);
+const ABSOLUTE_URL = /^[a-z][a-z0-9+.-]*:\/\/\S*$/i;
 
 /**
  * `value` without the credentials a URL can carry: its userinfo is dropped
- * and each secret-like query parameter's value is replaced. Any other
- * string is returned as it is.
+ * and each credential query parameter's value is replaced. Only a string
+ * that is a URL and nothing else is touched.
  */
 function redactUrl(value: string): string {
   if (!ABSOLUTE_URL.test(value)) return value;
@@ -331,7 +352,7 @@ function redactUrl(value: string): string {
     changed = true;
   }
   for (const name of new Set(url.searchParams.keys()))
-    if (SECRET_QUERY_PARAM.test(name)) {
+    if (SECRET_QUERY_PARAMS.has(name.toLowerCase())) {
       url.searchParams.set(name, 'redacted');
       changed = true;
     }
@@ -339,51 +360,44 @@ function redactUrl(value: string): string {
 }
 
 /**
- * A copy of `value` without the secrets OpenCode can echo, applied to every
- * response body and every event of its feed:
- *
- * - every string under a `settings` or `options` object whose key reads
- *   like a secret (OpenCode answers `GET /api/model` with each model's
- *   provider settings, a config-file `apiKey` in plain text included);
- * - every credential-like entry of a `headers` object, anywhere;
- * - the userinfo and secret-like query parameters of any URL string (a
- *   provider `baseURL`).
- *
- * Station never needs any of them.
+ * A copy of a configuration value (a provider, model or MCP server's
+ * settings) without the secrets it can hold: a credential-named key's
+ * string, wherever it sits (`apiKey` at any depth); every value of a
+ * `headers`, `env` or `environment` map; and the userinfo and credential
+ * query parameters of a URL string. Station needs none of them.
  */
-export function redactOpenCodeSecrets(
-  value: unknown,
-  inHolder = false,
-): unknown {
+export function redactOpenCodeSecrets(value: unknown): unknown {
   if (typeof value === 'string') return redactUrl(value);
-  if (Array.isArray(value))
-    return value.map((item) => redactOpenCodeSecrets(item, false));
+  if (Array.isArray(value)) return value.map(redactOpenCodeSecrets);
   if (value === null || typeof value !== 'object') return value;
   const out: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) {
-    if (inHolder && SECRET_KEY.test(key) && typeof child === 'string')
+    if (SECRET_KEY.test(key) && typeof child === 'string')
       out[key] = '[redacted]';
     else if (
-      key.toLowerCase() === 'headers' &&
+      SECRET_MAPS.has(key.toLowerCase()) &&
       child !== null &&
       typeof child === 'object' &&
       !Array.isArray(child)
     )
       out[key] = Object.fromEntries(
-        Object.entries(child).map(([name, header]) => [
-          name,
-          SECRET_HEADER.test(name)
-            ? '[redacted]'
-            : redactOpenCodeSecrets(header, false),
-        ]),
+        Object.keys(child).map((name) => [name, '[redacted]']),
       );
-    else
-      out[key] = redactOpenCodeSecrets(
-        child,
-        SECRET_HOLDERS.has(key) || (inHolder && typeof child === 'object'),
-      );
+    else out[key] = redactOpenCodeSecrets(child);
   }
   return out;
+}
+
+/** The answers that carry configuration, and so are redacted. */
+const CONFIG_OPERATIONS = new Set(['model.list', 'mcp.list', 'agent.get']);
+/** Feed events of these families carry configuration; others are content. */
+const CONFIG_EVENT = /^(config|credential|integration|mcp|model|provider)\./;
+
+/** A feed event as the client yields it: configuration redacted, content as sent. */
+function redactOpenCodeEvent(event: OpenCodeServeEvent): OpenCodeServeEvent {
+  return CONFIG_EVENT.test(event.type)
+    ? (redactOpenCodeSecrets(event) as OpenCodeServeEvent)
+    : event;
 }
 
 function assertLoopback(baseUrl: string): URL {
@@ -435,7 +449,7 @@ export class OpenCodeServeClient {
     body?: unknown,
     options: { signal?: AbortSignal; timeoutMs?: number } = {},
   ): Promise<T> {
-    assertOpenCodeServePathAllowed(method, path);
+    const route = assertOpenCodeServePathAllowed(method, path);
     const timeout = AbortSignal.timeout(
       options.timeoutMs ?? OPENCODE_REQUEST_TIMEOUT_MS,
     );
@@ -464,7 +478,11 @@ export class OpenCodeServeClient {
     }
     if (!response.ok)
       throw new OpenCodeServeHttpError(method, path, response.status);
-    return redactOpenCodeSecrets(parsed) as T;
+    return (
+      route.operationId && CONFIG_OPERATIONS.has(route.operationId)
+        ? redactOpenCodeSecrets(parsed)
+        : parsed
+    ) as T;
   }
 
   /**
@@ -578,7 +596,7 @@ export async function* readOpenCodeEventStream(
           typeof event === 'object' &&
           typeof (event as { type?: unknown }).type === 'string'
         )
-          yield redactOpenCodeSecrets(event) as OpenCodeServeEvent;
+          yield redactOpenCodeEvent(event as OpenCodeServeEvent);
       }
     }
   } finally {
