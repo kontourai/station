@@ -1,0 +1,45 @@
+{
+  "revision": "e6cd190357a82b7242785ee662fc81d2931d543f",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["CONTEXT-MAP.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"CONTEXT.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["CONTEXT.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"README.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["README.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["docs/conformance/tool-policy-delivery.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/contexts/extension-ecosystem/CONTEXT.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["docs/contexts/extension-ecosystem/CONTEXT.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["docs/design/agent-engine-unification.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["docs/design/chat-composer.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["docs/design/placement.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["docs/design/session-tape-replay.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/glossary.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["docs/glossary.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["docs/guides/agent-configuration.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["docs/guides/connections.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["docs/guides/self-configuring-agent.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["docs/reference/api.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["docs/reference/cli.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["docs/reference/contracts.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["docs/reference/sdk.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["docs/reference/station-docs.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["docs/user/getting-started.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Rechecked after the matrix change was reformatted (the copilot-sdk evidence string's quotes only, from Biome): same text, no cell or signal changed, and this document does not describe Copilot SDK subagent reporting; accurate.","inputs":["examples/self-configuring-agent/README.md","packages/contracts/src/engine-capability-matrix.ts"]}
+  ]
+}
