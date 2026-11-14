@@ -383,10 +383,12 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       verdict = checked.verified
         ? { verified: true }
         : { verified: false, reason: checked.reason };
+      // Only a document read is a verdict on the binary; a failed read is
+      // not kept, and the next start asks again.
+      this.verdicts.set(key, verdict);
     } catch (error) {
       verdict = { verified: false, reason: errorMessage(error) };
     }
-    this.verdicts.set(key, verdict);
     if (verdict.verified) return lease;
     lease.discard();
     this.publish({
