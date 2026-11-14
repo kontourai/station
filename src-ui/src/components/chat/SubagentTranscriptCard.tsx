@@ -21,6 +21,11 @@ import {
 import { parseEpochMs } from '../../utils/parseEpochMs';
 import { Button } from '../Button';
 import {
+  childChatTarget,
+  useChildChatNavigation,
+} from '../chat-dock/ChildChatNavigationContext';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
+import {
   ArrowDownGlyph,
   ArrowRightGlyph,
   CheckGlyph,
@@ -28,7 +33,6 @@ import {
   TerminalGlyph,
   WarningGlyph,
 } from '../icons/Glyph';
-import { LazyBoundary } from '../LazyBoundary';
 import { ChildWorkActivity } from './ChildWorkActivity';
 import { ChildWorkIdentity } from './ChildWorkIdentity';
 import { ChildWorkInstructionPanel } from './ChildWorkInstructionPanel';
@@ -41,11 +45,6 @@ import {
 import './SubagentTranscriptCard.css';
 
 /** One card at each reported spawn anchor; never borrow facts from the parent. */
-
-const loadChildWorkTranscript = () =>
-  import('../../workspace-panes/agents/ChildWorkTranscript').then((module) => ({
-    default: module.ChildWorkTranscript,
-  }));
 
 const LIST_ITEM = /^(?:[-*+]|\d+[.)])\s+/;
 
@@ -120,9 +119,9 @@ export function SubagentTranscriptCard({
   const isAgent = workKind === 'agent';
   const command = isAgent ? undefined : commandOf(call);
   const [expanded, setExpanded] = useState(false);
-  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const openChild = useChildChatNavigation();
+  const connection = useOptionalConversationConnection();
   const detailId = useId();
-  const transcriptId = useId();
   const running = item.status === 'running';
   const startedAtMs = parseEpochMs(item.startedAt);
   const endedAtMs = parseEpochMs(item.endedAt);
@@ -258,7 +257,6 @@ export function SubagentTranscriptCard({
               running={running}
               name={title}
               historyAvailable={!!item.transcript}
-              transcriptOpen={transcriptOpen}
             />
           )}
           {summary ? (
@@ -281,49 +279,27 @@ export function SubagentTranscriptCard({
               characters.
             </p>
           )}
-          {(usage.length > 0 || item.transcript) && (
+          {(usage.length > 0 ||
+            item.transcript ||
+            item.producer === 'station-delegate') && (
             <div className="subagent-card__actions">
               {usage.length > 0 && (
                 <p className="subagent-card__note">{usage.join(' · ')}</p>
               )}
-              {item.transcript && (
+              {(item.transcript || item.producer === 'station-delegate') && (
                 <Button
                   size="sm"
                   className="tap-target"
                   variant="ghost"
-                  aria-expanded={transcriptOpen}
-                  aria-controls={transcriptOpen ? transcriptId : undefined}
-                  onClick={() => setTranscriptOpen((current) => !current)}
+                  disabled={!openChild || !connection}
+                  onClick={() =>
+                    connection && openChild?.(childChatTarget(item, connection))
+                  }
                 >
-                  {transcriptOpen ? 'Hide transcript' : 'View transcript'}
+                  Open chat
                 </Button>
               )}
             </div>
-          )}
-          {item.transcript && transcriptOpen && (
-            <LazyBoundary
-              load={loadChildWorkTranscript}
-              componentProps={{
-                id: transcriptId,
-                threadId: item.reporterThreadId,
-                childId: item.childId,
-                running,
-                revision: JSON.stringify([
-                  item.status,
-                  item.progress,
-                  item.usage,
-                ]),
-              }}
-              pending={null}
-              unavailable={(retry) => (
-                <p className="subagent-card__note" role="alert">
-                  Could not load the transcript viewer.{' '}
-                  <Button size="sm" className="tap-target" onClick={retry}>
-                    Retry
-                  </Button>
-                </p>
-              )}
-            />
           )}
         </div>
       )}

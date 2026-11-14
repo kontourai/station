@@ -9,7 +9,7 @@
  * prompted turn is not promoted to a conversation, so its durable id is its
  * client session id (`activeChatDurableId`) and `serializeActiveChats` never
  * persists it — a reload of that URL is a guaranteed 404. The dock's cold
- * lookup then revealed Activity for that id, which placed and showed the
+ * lookup then revealed Chat for that id, which placed and showed the
  * `right` region the user had never opened, with skeleton rows for a session
  * that does not exist.
  *
@@ -75,7 +75,7 @@ beforeEach(() => {
   fetchConversationById.mockReset();
   openConversation.mockReset();
   // The owning agent is gone, so the opener refuses — the only branch that
-  // still reveals Activity once the lookup has produced a record.
+  // still reveals Chat once the lookup has produced a record.
   openConversation.mockResolvedValue(false);
   localStorage.clear();
   deviceSettingsStore.reloadFromStorage();
@@ -144,18 +144,14 @@ describe('a reload carrying a chat pointer nothing can resolve', () => {
     expect(
       new URLSearchParams(window.location.search).get('maximize'),
     ).toBeNull();
-    expect(model?.regions.right).toMatchObject({
-      panes: [],
-      occupant: null,
+    expect(model?.regions.bottom).toMatchObject({
+      panes: ['chat'],
+      occupant: 'chat',
       visible: false,
     });
     expect(model?.regions.left.occupant).toBeNull();
-    // Activity is placed nowhere at all, not merely hidden in `right`.
-    expect(
-      Object.values(model?.regions ?? {}).some(
-        (region) => region.occupant === 'activity',
-      ),
-    ).toBe(false);
+    // Chat is placed nowhere at all, not merely hidden in `right`.
+    expect(Boolean(model?.surfaceIntents.chat)).toBe(false);
   });
 
   // #1582 M1: the same URL, the same code path, and the opposite outcome —
@@ -164,7 +160,7 @@ describe('a reload carrying a chat pointer nothing can resolve', () => {
   // the conversations route's `{success:false}` 500 arrived here as a miss and
   // this region stayed shut on a REAL conversation's pointer, which archive#1284
   // exists to prevent.
-  test('a lookup that fails rather than misses keeps the Activity reveal', async () => {
+  test('a lookup that fails rather than misses keeps the Chat reveal', async () => {
     setUrl('/?chat=claude%3A1788672912443&dock=open');
     fetchConversationById.mockRejectedValue(
       Object.assign(new Error('Conversation lookup exploded'), { status: 500 }),
@@ -173,15 +169,15 @@ describe('a reload carrying a chat pointer nothing can resolve', () => {
     await mountReload();
 
     await waitFor(() =>
-      expect(model?.regions.right).toMatchObject({
-        panes: ['activity'],
-        occupant: 'activity',
+      expect(model?.regions.bottom).toMatchObject({
+        panes: ['chat'],
+        occupant: 'chat',
         visible: true,
       }),
     );
   });
 
-  test('still reveals Activity when the conversation exists but cannot be opened', async () => {
+  test('still reveals Chat when the conversation exists but cannot be opened', async () => {
     // The archive#801/#1284 case this fix deliberately keeps: the lookup
     // returns a record, so there is a real session behind the id.
     setUrl('/?chat=orphaned-conversation&dock=open');
@@ -194,9 +190,9 @@ describe('a reload carrying a chat pointer nothing can resolve', () => {
     await mountReload();
 
     await waitFor(() =>
-      expect(model?.regions.right).toMatchObject({
-        panes: ['activity'],
-        occupant: 'activity',
+      expect(model?.regions.bottom).toMatchObject({
+        panes: ['chat'],
+        occupant: 'chat',
         visible: true,
       }),
     );

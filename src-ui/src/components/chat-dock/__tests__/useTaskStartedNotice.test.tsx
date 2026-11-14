@@ -35,7 +35,7 @@ test('a remote start names its Station and opens its task in Activity', () => {
   expect(showSurface).not.toHaveBeenCalled();
   act(() => open!.onClick());
   expect(beforeNavigate).toHaveBeenCalledTimes(1);
-  expect(showSurface).toHaveBeenCalledWith('activity', {
+  expect(showSurface).toHaveBeenCalledWith('chat', {
     session: 'session:remote',
   });
 });

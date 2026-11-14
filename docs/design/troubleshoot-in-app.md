@@ -159,7 +159,12 @@ The request and response types are in
   `$STATION_ROOT` that `station triage` writes to, so a run belongs to the
   Station that prepared it and an isolated instance keeps its runs to itself. The context records the Station name, environment id, version,
   channel, stamped source revision, platform, the doctor summary, server-log
-  availability, the caller's role and surface, and the seed.
+  availability, the caller's role and surface, and the seed. When the seed
+  names a conversation that this Station's event store does not hold (one
+  opened from a paired Station), the ambient seed also says so and tells the
+  assistant to ask which Station ran it, because this Station's doctor, logs
+  and monitoring do not cover it. Without an event store it says nothing
+  either way.
 - **Response.** The run id, `agentId: 'station'`, the ambient seed (at most
   3,600 characters, under the 4,000-character ambient limit), the opening
   message, display facts and the CLI command.

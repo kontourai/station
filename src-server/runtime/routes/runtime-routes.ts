@@ -4325,6 +4325,11 @@ export function configureRuntimeRoutes(
             environmentId: async () =>
               (await context.environmentSecurityService.getPublicHandshake())
                 .environmentId ?? null,
+            // Says when the seeded conversation is not stored here (a paired
+            // Station's conversation), as scheduled conversation runs check.
+            ...(context.orchestrationEventStore
+              ? { conversations: context.orchestrationEventStore }
+              : {}),
           },
         ),
         ...(context.readConfinementPreflight

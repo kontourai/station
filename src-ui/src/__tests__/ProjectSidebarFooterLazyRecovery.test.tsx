@@ -51,6 +51,10 @@ vi.mock('../contexts/useShowSurface', () => ({
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { name: 'Ada Lovelace' } }),
 }));
+// Updates has its own suite; this one only exercises Customize recovery.
+vi.mock('../components/updates/UpdatesControl', () => ({
+  UpdatesControl: () => null,
+}));
 
 import { ProjectSidebarFooter } from '../components/project-sidebar/ProjectSidebarFooter';
 

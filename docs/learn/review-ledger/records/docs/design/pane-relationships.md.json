@@ -28,20 +28,6 @@
 
     "src-ui/src/components/project-sidebar/SidebarAccountControl.tsx",
 
-    "src-ui/src/views/SessionsView.tsx",
-
-    "src-ui/src/views/activity/openActivityReview.ts",
-
-    "src-ui/src/contexts/ActivityReviewContext.tsx",
-
-    "src-ui/src/workspace-panes/activityReviewPane.ts",
-
-    "src-ui/src/workspace-panes/RegionActivityReviewPane.tsx",
-
-    "src-ui/src/views/activity/__tests__/ActivityReview.test.tsx",
-
-    "tests/activity-related-review.spec.ts",
-
     "src-ui/src/components/SplitPaneLayout.tsx",
 
     "src-ui/src/components/session-detail/SessionDetail.tsx",
@@ -52,8 +38,6 @@
 
     "src-ui/src/hooks/useMutableSessionDetailState.ts",
 
-    "src-ui/src/app-shell/ActivityRegionShell.tsx",
-
     "src-ui/src/workspace-panes/RegionPaneHost.tsx",
 
     "src-ui/src/components/chat-dock/ImportedConversationPane.tsx",
@@ -63,10 +47,6 @@
     "src-ui/src/contexts/open-chats-store.ts",
 
     "src-ui/src/lib/attached-continuation-handoff.ts",
-
-    "src-ui/src/__tests__/ActivityReview.lifecycle.test.tsx",
-
-    "src-ui/src/__tests__/ActivityReview.chatExit.test.tsx",
 
     "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
 
@@ -84,7 +64,9 @@
 
     "src-ui/src/contexts/openRelatedOccurrence.ts",
 
-    "tests/helpers/related-pane-upgrade.ts"
+    "tests/helpers/related-pane-upgrade.ts",
+
+    "src-ui/src/components/conversation/ConversationReader.tsx"
   ],
 
   "checks": []

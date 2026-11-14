@@ -369,12 +369,12 @@ describe('PairedDevicesPanel', () => {
     expect(notice.textContent).toContain(
       '[Fix the build](https://evil.example) conversation:reset-1 (was its full-access decision)',
     );
-    // The title opens the session in Activity; it is text, never markup.
+    // The title opens the session in Chat; it is text, never markup.
     const open = screen.getByRole('link', {
       name: '[Fix the build](https://evil.example)',
     });
     expect(open.getAttribute('href')).toBe(
-      '/?surface=activity&session=session-reset-1',
+      '/?surface=chat&session=session-reset-1',
     );
     expect(notice.textContent).toContain(
       'Untitled conversation [x](https://evil.example), because of the Station’s default approval mode',
