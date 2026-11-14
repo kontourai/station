@@ -363,7 +363,7 @@ test('exact replay rejects unusable winners before historical source access and 
       'changed replay intent must not probe winner health',
     );
 
-    writeFileSync(winner, winnerBytes);
+    writeFileSync(winner, winnerBytes, { mode: 0o600 });
     writeFileSync(locator, '{}');
     sourceReads = 0;
     await assert.rejects(finalizeFixture(f), {
@@ -391,7 +391,7 @@ test('exact replay rejects unusable winners before historical source access and 
     syncBuiltinESMExports();
     noEffects.restore();
     writeFileSync(locator, locatorBytes);
-    writeFileSync(winner, winnerBytes);
+    writeFileSync(winner, winnerBytes, { mode: 0o600 });
   }
 }, 60_000);
 
@@ -435,7 +435,7 @@ test('winner preflight keeps closing request authority and never supplies contro
       assert.equal(rejectedLoadReached, true);
     } finally {
       rejecting.mockRestore();
-      writeFileSync(winner, winnerBytes);
+      writeFileSync(winner, winnerBytes, { mode: 0o600 });
     }
 
     let winnerRemoved = false;
@@ -456,11 +456,11 @@ test('winner preflight keeps closing request authority and never supplies contro
       assert.equal(winnerRemoved, true);
     } finally {
       changing.mockRestore();
-      writeFileSync(winner, winnerBytes);
+      writeFileSync(winner, winnerBytes, { mode: 0o600 });
     }
     noEffects();
   } finally {
     noEffects.restore();
-    writeFileSync(winner, winnerBytes);
+    writeFileSync(winner, winnerBytes, { mode: 0o600 });
   }
 }, 60_000);

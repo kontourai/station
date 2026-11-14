@@ -609,7 +609,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
         { code: 'rounds_continuation_winner_unavailable' },
       );
     } finally {
-      writeFileSync(winnerPath, winnerBytes);
+      writeFileSync(winnerPath, winnerBytes, { mode: 0o600 });
     }
     phase('missing-winner-refusal');
     unlinkSync(winnerPath);
@@ -631,7 +631,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
         { code: 'rounds_continuation_winner_unavailable' },
       );
     } finally {
-      writeFileSync(winnerPath, winnerBytes);
+      writeFileSync(winnerPath, winnerBytes, { mode: 0o600 });
     }
     phase('corrupt-source-refusal');
     const locatorPath = join(
@@ -659,7 +659,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       );
       assert.deepEqual(readFileSync(winnerPath), winnerBytes);
     } finally {
-      writeFileSync(locatorPath, locatorBytes);
+      writeFileSync(locatorPath, locatorBytes, { mode: 0o600 });
     }
     phase('missing-source-refusal');
     unlinkSync(locatorPath);
@@ -681,7 +681,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
         { code: 'flow_location_unavailable' },
       );
     } finally {
-      writeFileSync(locatorPath, locatorBytes);
+      writeFileSync(locatorPath, locatorBytes, { mode: 0o600 });
     }
     phase('revoked-credential-refusal');
     h.f.environment.devicePairing.revokeDevice(
