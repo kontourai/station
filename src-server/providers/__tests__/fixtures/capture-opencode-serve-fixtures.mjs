@@ -567,7 +567,7 @@ function prepareWorkspace() {
         'user.email=fixture@example.invalid',
         ...gitArgs,
       ],
-      { cwd: PROJ, env: engineEnv(), encoding: 'utf8' },
+      { cwd: PROJ, env: engineEnv(), encoding: 'utf8', windowsHide: true },
     );
     if (result.status !== 0)
       throw new Error(`git ${gitArgs.join(' ')}: ${result.stderr}`);
@@ -1311,6 +1311,7 @@ S['debug-agents'] = async (rec) => {
     ['debug', 'agent', 'build'],
   ]) {
     const result = spawnSync(BIN, cliArgs, {
+      windowsHide: true,
       cwd: PROJ,
       env: engineEnv(),
       encoding: 'utf8',
@@ -1864,6 +1865,7 @@ const PLAIN_ONLY = new Set(['plan-deny']);
 
 function version() {
   const result = spawnSync(BIN, ['--version'], {
+    windowsHide: true,
     env: engineEnv(),
     encoding: 'utf8',
     timeout: 20_000,

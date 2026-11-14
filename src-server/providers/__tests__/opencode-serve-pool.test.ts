@@ -375,6 +375,7 @@ describe('OpenCodeServePool', () => {
           env: { PATH: options.env.PATH },
           stdio: ['pipe', 'pipe', 'ignore'],
           detached: true,
+          windowsHide: true,
         });
         proc.stdout!.on('data', (chunk) => {
           seen.push(...chunk.toString().split('\n').filter(Boolean));

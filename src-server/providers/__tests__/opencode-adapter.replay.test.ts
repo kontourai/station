@@ -2744,14 +2744,12 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     open.push({
       stop: async () => rmSync(dir, { recursive: true, force: true }),
     });
-    execFileSync('git', ['init', '-q', dir]);
-    execFileSync('git', [
-      '-C',
-      dir,
-      'config',
-      'core.hooksPath',
-      '.hooks-custom',
-    ]);
+    execFileSync('git', ['init', '-q', dir], { windowsHide: true });
+    execFileSync(
+      'git',
+      ['-C', dir, 'config', 'core.hooksPath', '.hooks-custom'],
+      { windowsHide: true },
+    );
     return dir;
   }
 
