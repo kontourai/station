@@ -490,6 +490,50 @@ describe('orchestration-session-state', () => {
     );
   });
 
+  test('startRecoveredOrchestrationSession hands a resumed native session its recorded binding key', async () => {
+    const startSession = vi.fn(async (input: { threadId: string }) => ({
+      provider: 'codex',
+      threadId: input.threadId,
+      status: 'ready' as const,
+      createdAt: '2026-11-14T00:00:00.000Z',
+      updatedAt: '2026-11-14T00:00:00.000Z',
+    }));
+    const adapter = {
+      provider: 'codex',
+      startSession,
+    } as unknown as ProviderAdapterShape;
+    const readNativeResumeBindingKey = vi.fn(() => 'b'.repeat(64));
+    const session = (resumeCursor?: unknown): ProviderSession => ({
+      provider: 'codex',
+      threadId: resumeCursor ? 'resumed' : 'fresh',
+      status: 'ready',
+      ...(resumeCursor ? { resumeCursor } : {}),
+      createdAt: '2026-11-14T00:00:00.000Z',
+      updatedAt: '2026-11-14T00:00:00.000Z',
+    });
+
+    await startRecovered({
+      session: session({ codexThreadId: 'native-1' }),
+      adapter,
+      options: { readNativeResumeBindingKey },
+    });
+    await startRecovered({
+      session: session(),
+      adapter,
+      options: { readNativeResumeBindingKey },
+    });
+
+    expect(startSession.mock.calls[0]![0]).toMatchObject({
+      threadId: 'resumed',
+      nativeResumeBindingKey: 'b'.repeat(64),
+    });
+    // Nothing to resume, so no binding to check.
+    expect(startSession.mock.calls[1]![0]).not.toHaveProperty(
+      'nativeResumeBindingKey',
+    );
+    expect(readNativeResumeBindingKey).toHaveBeenCalledTimes(1);
+  });
+
   test('scopes recovery readiness to the persisted external connection', async () => {
     const adapter = {
       provider: 'acp',

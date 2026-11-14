@@ -1793,6 +1793,15 @@ export interface RecoveredSessionStartOptions {
     threadId: string,
   ) => Record<string, unknown> | undefined;
   /**
+   * The native resume binding the session's latest start recorded
+   * (`NATIVE_RESUME_BINDING_METADATA_KEY` on its `session.started`), which
+   * `readSessionStartMetadata` strips as a reserved key. A recovery that
+   * resumes a native session hands it back as `nativeResumeBindingKey`, so an
+   * adapter can refuse to resume under a different engine home or profile,
+   * as a live continuation does. `undefined` when none was recorded.
+   */
+  readNativeResumeBindingKey?: (threadId: string) => string | undefined;
+  /**
    * archive#1011: re-settle the recovered session's working directory the same way a
    * live start does (project binding → `cwd`). Recovery otherwise replays
    * only the `cwd` persisted at start, so a session created before that
@@ -1851,12 +1860,19 @@ export async function startRecoveredOrchestrationSession(options: {
     // Metadata reads can fail for one damaged persisted event. Keep them
     // inside this session's boundary so the caller sees one typed failure.
     const recoveredMetadata = deps.readSessionStartMetadata?.(session.threadId);
+    const recordedBindingKey =
+      session.resumeCursor !== undefined
+        ? deps.readNativeResumeBindingKey?.(session.threadId)
+        : undefined;
     let startInput: ProviderSessionStartInput = {
       threadId: session.threadId,
       provider: session.provider,
       ...(deps.prepareModelLaunch ? {} : { modelId: session.model }),
       cwd: session.cwd,
       resumeCursor: session.resumeCursor,
+      ...(recordedBindingKey
+        ? { nativeResumeBindingKey: recordedBindingKey }
+        : {}),
       persistSession: session.persistSession,
       ...(tenantExecutionContext
         ? {
