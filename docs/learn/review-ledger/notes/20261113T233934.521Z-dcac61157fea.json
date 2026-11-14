@@ -1,0 +1,7 @@
+{
+  "revision": "caba0d9037cd3058dd7c8665384ecbf797ce3642",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Checked against the main-push dedupe: ci.yml classify adds a push-only fail-open merge-queue verdict step (scripts/ci-merge-group-verdict.mjs) and actionlint-gate admits its exact GH_TOKEN step; docs-kit.yml drops its push trigger; vitest manifest classifies the new child-process test. This document makes no claim about main-push PR: CI work, docs-kit triggers or the classify job token, so it remains accurate.","inputs":[".veritas/README.md",".github/workflows/ci.yml","docs/guides/documentation.md"]}
+  ]
+}
