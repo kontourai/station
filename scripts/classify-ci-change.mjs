@@ -69,7 +69,11 @@ const DEPENDENCY_FILES = new Set([
  * - the generic tooling the job executes (dependency install, bundle budget,
  *   vite plugins, shared script libraries). Every Linux lane runs these on
  *   each PR, so a break shows there first; what only iOS adds is the native
- *   flag they are called with (e.g. `uiAssetDelivery({ precompress: false })`).
+ *   flag they are called with. Two native-path consequences, named so they
+ *   are not mistaken for pre-landing coverage: `scripts/vite-ui-assets.ts`
+ *   (its `precompress: false` native branch) and
+ *   `scripts/lib/desktop-build-manifest.mjs` (which the native manifest
+ *   writers import) build only after landing.
  * classify-ci-change.test.ts derives both lists from the job's run steps
  * (through npm scripts and the static import graph) and from the UI's
  * imports, so a newly reached file fails the test until it is classified.
