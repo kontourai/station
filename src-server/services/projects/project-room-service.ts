@@ -21,6 +21,10 @@ import type {
 } from '@kontourai/station-contracts/project-room-browser';
 import { createLogger } from '../../utils/logger.js';
 import { ProjectRoomRefusal, ProjectRoomStore } from './project-room-store.js';
+import {
+  ProjectRoomFilesUnavailable,
+  type ReclaimOutcome,
+} from './task-room-attachments.js';
 
 const logger = createLogger({ name: 'project-room-service' });
 /**
@@ -83,14 +87,17 @@ export interface ProjectRoomAttachmentPort {
     binding: readonly string[],
     attachments: ProjectRoomAttachment[],
   ): unknown;
-  /** Gives up these files, and deletes bytes no other file names. */
-  release(binding: readonly string[], ids: readonly string[]): void;
+  /**
+   * Gives up these files, and deletes bytes no other file names; `blocked`
+   * when the store could not prove its references and nothing changed.
+   */
+  release(binding: readonly string[], ids: readonly string[]): ReclaimOutcome;
   /** Releases files no standing message needs (`ProjectRoomAttachments.sweep`). */
   sweep(
     binding: readonly string[],
     unsentBefore: number,
     links: (ids: string[]) => { standing: Set<string>; linked: Set<string> },
-  ): void;
+  ): ReclaimOutcome;
 }
 /**
  * A file belongs to the person who uploaded it, in one room of one Project
@@ -138,7 +145,11 @@ export class ProjectRoomService {
     if (!this.attachments) throw new ProjectRoomRefusal('not_found');
     try {
       return run(this.attachments);
-    } catch {
+    } catch (error) {
+      // A store that cannot prove its references takes no new files; any
+      // other byte-store failure is the caller's input.
+      if (error instanceof ProjectRoomFilesUnavailable)
+        throw new ProjectRoomRefusal('files_unavailable');
       throw new ProjectRoomRefusal('invalid');
     }
   }
@@ -463,10 +474,14 @@ export class ProjectRoomService {
             const files = this.store.messageFiles(scope, messageId, channelId);
             if (files.ids.length)
               try {
-                this.attachments.release(
+                const outcome = this.attachments.release(
                   attachmentBinding(scope, files.roomId, files.author),
                   files.ids,
                 );
+                if (outcome === 'blocked')
+                  logger.warn(
+                    'Project room file records could not be read; nothing was reclaimed and new attachments are refused',
+                  );
               } catch (error) {
                 logger.warn(
                   'Project room files of a deleted message were kept',
@@ -505,11 +520,15 @@ export class ProjectRoomService {
           // a deleted message's files and old unsent uploads.
           if (this.attachments)
             try {
-              this.attachments.sweep(
+              const outcome = this.attachments.sweep(
                 binding,
                 Date.now() - PROJECT_ROOM_UNSENT_FILE_TTL_MS,
                 (ids) => this.store.attachmentLinks(roomId, ids),
               );
+              if (outcome === 'blocked')
+                logger.warn(
+                  'Project room file records could not be read; nothing was reclaimed and new attachments are refused',
+                );
             } catch (error) {
               logger.warn('Project room upload sweep did not finish', {
                 error: error instanceof Error ? error.message : String(error),

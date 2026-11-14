@@ -2277,3 +2277,61 @@ test('a kept row past the re-read span that changes later is not shown stale: it
   await new Promise((resolve) => setTimeout(resolve, 300));
   expect(screen.queryByText('Kept 1')).toBeNull();
 });
+
+test('a held earlier read never replaces a newer tombstone, from whichever history source it comes (#4852 review)', async () => {
+  messages = Array.from({ length: 25 }, (_, i) =>
+    storedMessage(i + 1, `Held ${i + 1}`),
+  );
+  const first = messages[0]!;
+  const { client } = mount();
+  await screen.findByText('Held 1');
+  const original = globalThis.fetch;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let heldStarted = false,
+    heldReturned = false,
+    zeroReads = 0;
+  vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
+    const url = new URL(input);
+    if (
+      url.pathname.endsWith('/messages') &&
+      Number(url.searchParams.get('after')) === 0 &&
+      ++zeroReads === 2 &&
+      !heldStarted
+    ) {
+      heldStarted = true;
+      const response = await original(input, init);
+      await held;
+      heldReturned = true;
+      return response;
+    }
+    return original(input, init);
+  });
+  try {
+    messages.push(storedMessage(26, 'Held 26'));
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['project-room'] });
+    });
+    await waitFor(() => expect(heldStarted).toBe(true));
+    messages[0] = { ...first, text: '', deletedAt: at };
+    // A second real room change re-reads retained history while the first
+    // immediate query has not yet produced its initial data.
+    act(() => {
+      void client.invalidateQueries({ queryKey: ['project-room'] });
+    });
+    await screen.findByText('Message deleted');
+    expect(screen.queryByText('Held 1')).toBeNull();
+    await act(async () => {
+      release();
+      await held;
+    });
+    await waitFor(() => expect(heldReturned).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(screen.queryByText('Held 1')).toBeNull();
+    expect(screen.getByText('Message deleted')).toBeTruthy();
+  } finally {
+    release();
+  }
+});

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import {
+  PROJECT_ROOM_FILES_UNAVAILABLE_CODE,
   PROJECT_ROOM_FORBIDDEN_CODE,
   PROJECT_ROOM_LIMITS,
   parseProjectRoomChannel,
@@ -1589,3 +1590,227 @@ test('viewers cannot react, edit, delete or upload, and a file is read only thro
   const original = await h.request('bob', `/attachments/${fileId}`);
   expect(original.status).toBe(200);
 });
+
+/** The store's own tuple-to-directory mapping, so a test never guesses. */
+async function bindingDirectory(root: string, binding: readonly string[]) {
+  const { createHash } = await import('node:crypto');
+  return join(
+    root,
+    'bindings',
+    createHash('sha256').update(JSON.stringify(binding)).digest('hex'),
+  );
+}
+async function blobCount(root: string) {
+  const { existsSync, readdirSync } = await import('node:fs');
+  const blobs = join(root, 'blobs');
+  return existsSync(blobs)
+    ? readdirSync(blobs).flatMap((prefix) => readdirSync(join(blobs, prefix)))
+        .length
+    : 0;
+}
+/** One of bob's uploads, whose record a test then damages. */
+async function bobsRecord(
+  h: Awaited<ReturnType<typeof harness>>,
+  f: Awaited<ReturnType<typeof aliceFiles>>,
+) {
+  const b = await h.discover('bob');
+  const [file] = (await data(
+    await h.request('bob', '/attachments', 'POST', {
+      ...guard(b),
+      attachments: [png('interrupted.png')],
+    }),
+  )) as { id: string }[];
+  const directory = await bindingDirectory(f.root, [
+    ...f.binding.slice(0, -1),
+    b.actor.id,
+  ]);
+  return { file: file!, path: join(directory, `${file!.id}.json`) };
+}
+/** Alice's file's blob path, through her computed binding directory. */
+async function aliceBlob(
+  f: Awaited<ReturnType<typeof aliceFiles>>,
+  id: string,
+) {
+  const { readFileSync } = await import('node:fs');
+  const directory = await bindingDirectory(f.root, f.binding);
+  const { blobRef } = JSON.parse(
+    readFileSync(join(directory, `${id}.json`), 'utf8'),
+  ) as { blobRef: string };
+  const digest = blobRef.slice('sha256-'.length);
+  return join(f.root, 'blobs', digest.slice(0, 2), digest);
+}
+const unavailable = async (response: Response) => {
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({
+    error: { code: PROJECT_ROOM_FILES_UNAVAILABLE_CODE },
+  });
+};
+
+test('message files: a record whose reference is unknown stops reclamation and new uploads, and only that (#4852)', async () => {
+  const { existsSync, readFileSync, writeFileSync, rmSync } = await import(
+    'node:fs'
+  );
+  const h = await harness();
+  const f = await aliceFiles(h);
+  // A standing message keeps its file throughout.
+  const [kept] = (await f.upload(pngVariant('kept.png', 'kept'))) as {
+    id: string;
+  }[];
+  await f.send([kept]);
+  const damaged = await bobsRecord(h, f);
+  writeFileSync(damaged.path, '{');
+  const blobsBefore = await blobCount(f.root);
+  const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
+    id: string;
+  }[];
+  const deleted = await f.send([gone]);
+  // The delete commits; its release cannot prove references, so it deletes
+  // nothing and keeps the released record.
+  expect(await f.remove(deleted.messageId)).toBe(200);
+  const aliceDirectory = await bindingDirectory(f.root, f.binding);
+  expect(existsSync(join(aliceDirectory, `${gone!.id}.json`))).toBe(true);
+  expect(await blobCount(f.root)).toBe(blobsBefore + 1);
+  expect(readFileSync(damaged.path, 'utf8')).toBe('{');
+  const marker = join(f.root, 'reclamation-blocked.json');
+  expect(
+    (
+      JSON.parse(readFileSync(marker, 'utf8')) as {
+        records: { path: string }[];
+      }
+    ).records[0]!.path,
+  ).toBe(damaged.path);
+  // New attachments are refused; text, reads and downloads keep working.
+  await unavailable(
+    await h.request('alice', '/attachments', 'POST', {
+      ...guard(f.a),
+      attachments: [pngVariant('more.png', 'more')],
+    }),
+  );
+  expect(await blobCount(f.root)).toBe(blobsBefore + 1);
+  const text = await h.request('alice', '/messages', 'POST', {
+    ...guard(f.a),
+    intentId: randomUUID(),
+    text: 'Text still sends.',
+  });
+  expect(text.status).toBe(200);
+  expect((await h.request('bob', `/attachments/${kept!.id}`)).status).toBe(200);
+  // The operator removes the damaged record: the next upload re-checks,
+  // clears the block, and the kept release is reclaimed by its sweep.
+  rmSync(damaged.path);
+  const [after] = (await f.upload(pngVariant('after.png', 'after'))) as {
+    id: string;
+  }[];
+  expect(after).toBeTruthy();
+  expect(existsSync(marker)).toBe(false);
+  expect(existsSync(join(aliceDirectory, `${gone!.id}.json`))).toBe(false);
+  expect((await h.request('bob', `/attachments/${kept!.id}`)).status).toBe(200);
+});
+
+test('message files: one damaged record cannot turn upload-delete cycles into unbounded bytes (#4852 review, six cycles)', async () => {
+  const { writeFileSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const damaged = await bobsRecord(h, f);
+  writeFileSync(damaged.path, '{');
+  const statuses: (number | string)[] = [];
+  for (let n = 0; n < 6; n++) {
+    const uploaded = await f.upload(
+      pngVariant(`cycle-${n}.png`, `distinct-${n}`),
+    );
+    if (!Array.isArray(uploaded)) {
+      statuses.push(uploaded);
+      continue;
+    }
+    statuses.push('stored');
+    const message = await f.send([uploaded[0]]);
+    expect(await f.remove(message.messageId)).toBe(200);
+  }
+  // The first cycle's release finds the damaged record and stops; every
+  // later upload is refused, so bytes stay bounded: bob's interrupted upload
+  // and the first cycle's file, both kept rather than deleted unproven.
+  expect(statuses).toEqual(['stored', 503, 503, 503, 503, 503]);
+  expect(await blobCount(f.root)).toBe(2);
+});
+
+test('message files: a damaged record whose reference is recoverable keeps its bytes, and other files still reclaim (#4852)', async () => {
+  const { existsSync, readFileSync, writeFileSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const damaged = await bobsRecord(h, f);
+  const { blobRef } = JSON.parse(readFileSync(damaged.path, 'utf8')) as {
+    blobRef: string;
+  };
+  const digest = blobRef.slice('sha256-'.length);
+  const bobsBlob = join(f.root, 'blobs', digest.slice(0, 2), digest);
+  // Torn after the reference: unparseable, but the reference is there.
+  writeFileSync(damaged.path, `{"blobRef":"${blobRef}","attachment":{"na`);
+  // Alice deletes a message that names the same bytes, and another with
+  // bytes nothing else names.
+  const [same] = (await f.upload(png('interrupted.png'))) as { id: string }[];
+  const [own] = (await f.upload(pngVariant('own.png', 'own'))) as {
+    id: string;
+  }[];
+  const ownBlob = await aliceBlob(f, own!.id);
+  expect(await aliceBlob(f, same!.id)).toBe(bobsBlob);
+  expect(await f.remove((await f.send([same])).messageId)).toBe(200);
+  expect(await f.remove((await f.send([own])).messageId)).toBe(200);
+  expect(existsSync(bobsBlob)).toBe(true);
+  expect(existsSync(ownBlob)).toBe(false);
+  expect(existsSync(join(f.root, 'reclamation-blocked.json'))).toBe(false);
+  expect(Array.isArray(await f.upload(pngVariant('next.png', 'next')))).toBe(
+    true,
+  );
+});
+
+test('message files: a record that cannot be read at all (EISDIR) fails closed (#4852)', async () => {
+  const { mkdirSync, rmSync, existsSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const damaged = await bobsRecord(h, f);
+  rmSync(damaged.path);
+  mkdirSync(damaged.path);
+  const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
+    id: string;
+  }[];
+  const blob = await aliceBlob(f, gone!.id);
+  expect(await f.remove((await f.send([gone])).messageId)).toBe(200);
+  expect(existsSync(blob)).toBe(true);
+  await unavailable(
+    await h.request('alice', '/attachments', 'POST', {
+      ...guard(f.a),
+      attachments: [pngVariant('more.png', 'more')],
+    }),
+  );
+});
+
+test.skipIf(process.getuid?.() === 0)(
+  'message files: a record the Station may not read (EACCES) fails closed, and recovers once readable (#4852)',
+  async () => {
+    const { chmodSync, existsSync } = await import('node:fs');
+    const h = await harness();
+    const f = await aliceFiles(h);
+    const damaged = await bobsRecord(h, f);
+    chmodSync(damaged.path, 0o000);
+    try {
+      const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
+        id: string;
+      }[];
+      const blob = await aliceBlob(f, gone!.id);
+      expect(await f.remove((await f.send([gone])).messageId)).toBe(200);
+      expect(existsSync(blob)).toBe(true);
+      await unavailable(
+        await h.request('alice', '/attachments', 'POST', {
+          ...guard(f.a),
+          attachments: [pngVariant('more.png', 'more')],
+        }),
+      );
+      chmodSync(damaged.path, 0o600);
+      expect(
+        Array.isArray(await f.upload(pngVariant('after.png', 'after'))),
+      ).toBe(true);
+      expect(existsSync(blob)).toBe(false);
+    } finally {
+      chmodSync(damaged.path, 0o600);
+    }
+  },
+);

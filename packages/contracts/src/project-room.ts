@@ -46,6 +46,15 @@ export const PROJECT_ROOM_PROJECT_NOT_FOUND_CODE =
  */
 export const PROJECT_ROOM_FORBIDDEN_CODE = 'project_room_forbidden';
 /**
+ * The 503 code a Project room answers to a new attachment while its file store
+ * cannot prove which stored bytes are still referenced: a file record could
+ * not be read (#4852). Nothing is deleted until an operator repairs or removes
+ * that record; text messages, reading and downloading existing files keep
+ * working.
+ */
+export const PROJECT_ROOM_FILES_UNAVAILABLE_CODE =
+  'project_room_files_unavailable';
+/**
  * A named channel in a Project. Each channel is one room: `channelId` is that
  * room's `roomId`, which keys its messages, shared note and Agent requests.
  */

@@ -49,7 +49,9 @@ export class ProjectRoomRefusal extends Error {
       | 'duplicate'
       | 'archived'
       /** Only a message's own person author may edit or delete it. */
-      | 'forbidden',
+      | 'forbidden'
+      /** The room's file store cannot prove its references (#4852). */
+      | 'files_unavailable',
   ) {
     super(`Project room ${code}`);
   }

@@ -156,6 +156,19 @@ async function readProjectRoomWindow(
     'Project room history exceeded its window budget.',
   );
 }
+/**
+ * One order for every Project-room history read, taken when the read starts:
+ * the live windows, the retained re-read and the immediate span read all draw
+ * from it (#4852 review). A caller keeps, per message, the number of the read
+ * that last set it and never lets a read that started earlier replace it, so
+ * a slow older response cannot bring back text a newer read already
+ * replaced. A change both reads missed arrives with the next live event.
+ */
+let historyReads = 0;
+function nextHistoryRead() {
+  historyReads += 1;
+  return historyReads;
+}
 /** Messages with `after` < seq <= `end`. */
 export interface ProjectRoomHistorySpan {
   after: number;
@@ -204,7 +217,7 @@ export function useProjectRoomRetainedHistory(
     staleTime: Number.POSITIVE_INFINITY,
     // Rows were current when shown: nothing is read until the room changes.
     // A room that is not open holds no data at all, even an empty list.
-    initialData: roomId ? { messages: [] } : undefined,
+    initialData: roomId ? { messages: [], readSeq: 0 } : undefined,
     initialDataUpdatedAt: 0,
     queryFn: ({ signal }) =>
       readProjectRoomSpan(
@@ -274,10 +287,12 @@ async function readProjectRoomSpan(
   signal: AbortSignal,
   channelId: string | undefined,
 ) {
+  const readSeq = nextHistoryRead();
   const messages: Awaited<
     ReturnType<typeof readProjectRoomWindow>
   >['messages'] = [];
-  if (!roomId || !wanted || wanted.end <= wanted.after) return { messages };
+  if (!roomId || !wanted || wanted.end <= wanted.after)
+    return { messages, readSeq };
   const floor = Math.max(
     wanted.after,
     wanted.end - PROJECT_ROOM_RETAINED_REREAD_MESSAGES,
@@ -293,7 +308,7 @@ async function readProjectRoomSpan(
     );
     messages.unshift(...window.messages);
   }
-  return { messages };
+  return { messages, readSeq };
 }
 /**
  * One room's discovery, history, sends, note and live stream. Without
@@ -344,15 +359,18 @@ export function useProjectRoom(
     retry: false,
     gcTime: 0,
     initialPageParam: { after: tailAfter, end: tailAfter + 25 },
-    queryFn: ({ pageParam, signal }) =>
-      readProjectRoomWindow(
+    queryFn: async ({ pageParam, signal }) => {
+      const readSeq = nextHistoryRead();
+      const page = await readProjectRoomWindow(
         scope,
         slug,
         { projectId, roomId: roomId! },
         pageParam,
         signal,
         channelId,
-      ),
+      );
+      return { ...page, readSeq };
+    },
     getNextPageParam: (_last, _pages, { after }) =>
       after > 0 ? { after: Math.max(0, after - 25), end: after } : undefined,
     maxPages: PROJECT_ROOM_HISTORY_MAX_PAGES,

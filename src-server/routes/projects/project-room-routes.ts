@@ -105,9 +105,11 @@ export function createProjectRoomRoutes(
               ? 404
               : error.code === 'capacity'
                 ? 429
-                : // `forbidden` too: a 403 here means access changed, and
-                  // clients stop the whole room on it.
-                  409,
+                : error.code === 'files_unavailable'
+                  ? 503
+                  : // `forbidden` too: a 403 here means access changed, and
+                    // clients stop the whole room on it.
+                    409,
         );
       if (error instanceof ProjectMembershipRefusal)
         return c.json({ error: { code: 'project_room_access_changed' } }, 403);

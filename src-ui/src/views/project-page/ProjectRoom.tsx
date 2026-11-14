@@ -307,6 +307,8 @@ function useFillPageHeight(
 }
 const ROOM_MIN_HEIGHT_PX = 320;
 
+/** One history read: its messages, and its place in the SDK read order. */
+type HistoryRead = { messages: RoomMessage[]; readSeq: number };
 type RoomMessage = NonNullable<
   ReturnType<typeof useProjectRoom>['history']['data']
 >['pages'][number]['messages'][number];
@@ -327,38 +329,51 @@ type RoomMessage = NonNullable<
  */
 function useRoomMessages(
   roomId: string | undefined,
-  fetched: RoomMessage[],
-  reread: { messages: RoomMessage[]; at: number },
-  recheck: { messages: RoomMessage[]; at: number },
+  pages: HistoryRead[],
+  reread: HistoryRead | undefined,
+  recheck: HistoryRead | undefined,
 ) {
   const retained = useRef<{
     roomId?: string;
     byId: Map<string, RoomMessage>;
-    rereadAt?: number;
-    recheckAt?: number;
+    /** The SDK read order of the read that last set each row. */
+    readById: Map<string, number>;
+    rereadSeq?: number;
+    recheckSeq?: number;
     live: Set<string>;
     unloaded?: boolean;
-  }>({ byId: new Map(), live: new Set() });
+  }>({ byId: new Map(), readById: new Map(), live: new Set() });
   const [, rerender] = useReducer((count: number) => count + 1, 0);
   if (retained.current.roomId !== roomId)
     retained.current = {
       roomId,
       byId: new Map(),
-      rereadAt: reread.at,
-      recheckAt: recheck.at,
+      readById: new Map(),
+      rereadSeq: reread?.readSeq,
+      recheckSeq: recheck?.readSeq,
       live: new Set(),
     };
-  for (const source of [
-    { read: reread, key: 'rereadAt' as const },
-    { read: recheck, key: 'recheckAt' as const },
-  ])
-    if (retained.current[source.key] !== source.read.at) {
-      retained.current[source.key] = source.read.at;
-      for (const message of source.read.messages)
+  // A read that started earlier never replaces what a later one set, from
+  // whichever source either came (#4852 review).
+  const put = (read: HistoryRead) => {
+    for (const message of read.messages)
+      if (
+        (retained.current.readById.get(message.messageId) ?? 0) <= read.readSeq
+      ) {
         retained.current.byId.set(message.messageId, message);
+        retained.current.readById.set(message.messageId, read.readSeq);
+      }
+  };
+  for (const source of [
+    { read: reread, key: 'rereadSeq' as const },
+    { read: recheck, key: 'recheckSeq' as const },
+  ])
+    if (source.read && retained.current[source.key] !== source.read.readSeq) {
+      retained.current[source.key] = source.read.readSeq;
+      put(source.read);
     }
-  for (const message of fetched)
-    retained.current.byId.set(message.messageId, message);
+  for (const page of pages) put(page);
+  const fetched = pages.flatMap((page) => page.messages);
   if (fetched.length) {
     const refreshable =
       Math.min(...fetched.map((message) => message.seq)) -
@@ -367,6 +382,7 @@ function useRoomMessages(
     for (const [id, message] of retained.current.byId)
       if (message.seq <= refreshable) {
         retained.current.byId.delete(id);
+        retained.current.readById.delete(id);
         retained.current.unloaded = true;
       }
   }
@@ -860,8 +876,8 @@ function ProjectRoomSession({
     discoveredActor.current = actorId;
   }, [actorId, storageKey, setDraft]);
   const shownRoomId = room.stopped ? undefined : view?.roomId;
-  const fetchedMessages =
-    room.history.data?.pages.flatMap((page) => page.messages) ?? [];
+  const liveReads = room.history.data?.pages ?? [];
+  const fetchedMessages = liveReads.flatMap((page) => page.messages);
   // Asked when the room changes (a live event or a mutation), for the rows
   // shown at the last render.
   const olderShown = useRef<{ after: number; end: number }>(undefined);
@@ -888,12 +904,7 @@ function ProjectRoomSession({
     unloaded: earlierUnloaded,
     left,
     acknowledgeUnloaded,
-  } = useRoomMessages(
-    shownRoomId,
-    fetchedMessages,
-    { messages: reread.data?.messages ?? [], at: reread.dataUpdatedAt },
-    { messages: recheck.data?.messages ?? [], at: recheck.dataUpdatedAt },
-  );
+  } = useRoomMessages(shownRoomId, liveReads, reread.data, recheck.data);
   olderShown.current = retainedSpan(messages, fetchedMessages);
   const leftAfter = left?.after;
   const leftEnd = left?.end;
