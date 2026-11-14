@@ -656,6 +656,7 @@ test.each([
             { tag_name: 'v0.1.11-rc.4', draft: true },
             { tag_name: 'v0.1.10' },
           ]);
+        if (url.includes('/tags?')) return Response.json([]);
         if (url.includes(`/commits/${prior}`))
           return Response.json({ sha: previous });
         if (url.endsWith('/generate-notes')) {

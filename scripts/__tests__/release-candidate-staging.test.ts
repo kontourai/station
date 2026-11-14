@@ -649,6 +649,7 @@ if (args[1] === 'create') {
       preload,
       `globalThis.fetch = async (url) => {
   if (url.includes('/releases?')) return Response.json([{tag_name: 'v0.1.10'}]);
+  if (url.includes('/tags?')) return Response.json([]);
   if (url.includes('/commits/v0.1.10')) return Response.json({sha: '${'b'.repeat(40)}'});
   if (url.endsWith('/generate-notes')) return Response.json({body: ${JSON.stringify('## What Changed\n* Candidate changelog fixture')}});
   throw new Error('Unexpected GitHub request: ' + url);
