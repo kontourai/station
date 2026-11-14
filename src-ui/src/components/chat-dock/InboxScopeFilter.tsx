@@ -100,17 +100,11 @@ export function useInboxScope(
         : routeProject
           ? `project:${JSON.stringify(['station:local', routeProject])}`
           : 'all';
-    // Following the page follows the project on every Station, so opening a
-    // row (which lands on its project page) never hides that row's own work.
-    const followedProject =
-      inboxScope === INBOX_SCOPE_CURRENT_PROJECT ? routeProject : undefined;
     const matches = (item: HomeWorkItem) =>
       scope === 'all' ||
-      (followedProject
-        ? item.projectSlug === followedProject
-        : scope.startsWith('project:')
-          ? projectKey(item) === scope
-          : stationById.get(item.id) === scope);
+      (scope.startsWith('project:')
+        ? projectKey(item) === scope
+        : stationById.get(item.id) === scope);
     const filtered = items.filter(matches);
     const snoozed = readSnoozes(now, namespace);
     const hiddenAttention = visible.filter(

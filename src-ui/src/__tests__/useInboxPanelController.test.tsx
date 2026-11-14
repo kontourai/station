@@ -42,6 +42,7 @@ beforeEach(() => {
   localStorage.clear();
   deviceSettingsStore.reloadFromStorage();
   window.history.replaceState(null, '', '/');
+  navigationStore.navigate('/');
 });
 afterEach(() => {
   clients.splice(0).forEach((client) => client.clear());
@@ -80,8 +81,9 @@ function Harness({
     authority,
     activeChatSessionId: null,
     openChatSessionIds: [],
+    // Focusing a chat sets ?chat= on the current page, as useChatDockActions does.
     onFocusChat: (id: string) =>
-      navigationStore.navigate('/projects/workshop', { chat: id }),
+      navigationStore.navigate(window.location.pathname, { chat: id }),
     onOpenConversation: (...args: Parameters<Open>) => {
       if (bindDuringOpen)
         setRows((current) =>
@@ -213,6 +215,23 @@ test('mobile search focuses when mounted and never steals a later keyboard selec
   expect(open.mock.calls[0]?.[0]).toBe('first');
 });
 
+test("following the project page keeps another Station's same-slug project out", () => {
+  // A peer slug names that Station's project, not the one on screen.
+  navigationStore.navigate('/projects/workshop');
+  mount(
+    'desktop',
+    vi.fn<Open>(async () => true),
+  );
+  expect(
+    screen.getByRole('button', { name: 'Second selection, Workshop' }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole('button', {
+      name: 'First selection, Workshop, Station: Receiver Station',
+    }),
+  ).toBeNull();
+});
+
 test('mobile restores focus when the host closes Inbox while opening its reader', async () => {
   mount(
     'mobile',
@@ -250,7 +269,9 @@ for (const layout of ['desktop', 'mobile'] as const) {
           new Promise<Awaited<ReturnType<Open>>>((resolve) => {
             resolves.set(id, () => {
               if (activation?.isCurrent?.() && activation.beforeFocus?.()) {
-                navigationStore.navigate('/projects/workshop', { chat: id });
+                navigationStore.navigate(window.location.pathname, {
+                  chat: id,
+                });
                 resolve(true);
               } else resolve('cancelled');
             });
