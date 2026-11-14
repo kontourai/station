@@ -2249,7 +2249,11 @@ validates the plan, exact candidate SHA and base, including its explicit
 coverage deferrals. The required aggregate accepts only successful diff,
 plan and `fast-checks` jobs plus an exact `integration-ready=true` output.
 Missing, invalid, foreign, cancelled or unavailable evidence blocks integration;
-it does not start an expensive fallback corpus. An old candidate without the
+it does not start an expensive fallback corpus. The required
+`Source verification policy` status for the queue head is published from
+inside the merge-group run once `fast-checks` settles; the post-run lifecycle
+reconcile recomputes the same verdict from the same jobs and stays the
+recovery publisher, so it no longer has to wait for a runner after the run. An old candidate without the
 validation CLI must integrate current main before it can supply that evidence.
 
 Hosted plans retain concrete mapped tests and related discovery from other

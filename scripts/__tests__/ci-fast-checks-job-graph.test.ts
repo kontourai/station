@@ -571,6 +571,81 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     expect(needsOf(readJobs()['pr-title'])).toEqual([]);
   });
 
+  // The required `Source verification policy` status for a queue head is
+  // published from inside the merge-group run once fast-checks settles,
+  // instead of only by the post-run workflow_run reconcile, which waited for
+  // a runner after the whole run (up to 8.4 minutes on the last context).
+  test.each(['success', 'failure', 'cancelled'] as const)(
+    'a merge group publishes its source status in-run after a fast-checks %s, on the queue head',
+    (outcome) => {
+      const state = simulate(
+        jobs,
+        { ...sameRepositoryPr, event: 'merge_group' },
+        {
+          outcomes: { 'fast-checks': outcome },
+          outputs: { 'fast-checks-plan': { legacy: 'false' } },
+        },
+      );
+      expect(state.results.get('fast-checks')).toBe(outcome);
+      expect(state.results.get('source-policy')).toBe('success');
+      const call = jobs['source-policy'] as Job & {
+        with?: Record<string, string>;
+      };
+      expect(call.uses).toBe('./.github/workflows/source-verification-policy.yml');
+      const queueHead = 'd'.repeat(40);
+      const github: Record<string, unknown> = {
+        sha: queueHead,
+        event: { merge_group: { head_sha: queueHead, base_sha: 'e'.repeat(40) } },
+      };
+      expect(
+        evaluate(
+          String(call.with?.source_sha)
+            .replace(/^\$\{\{\s*/, '')
+            .replace(/\s*\}\}$/, ''),
+          ([head, ...rest]) => {
+            if (head !== 'github') throw new Error(`unmodelled ${head}`);
+            let value: unknown = github;
+            for (const key of rest)
+              value = (value as Record<string, unknown>)?.[key];
+            return value;
+          },
+          {},
+        ),
+      ).toBe(queueHead);
+    },
+  );
+
+  test('a cancelled merge-group run spends no publisher runner, while a cancelled PR run still publishes', () => {
+    const cancel = {
+      before: ['classify', 'pr-admission', 'actionlint-artifact', ...PARTS],
+      running: ['fast-checks'],
+    };
+    const queue = simulate(
+      jobs,
+      { ...sameRepositoryPr, event: 'merge_group' },
+      { cancel, outputs: { 'fast-checks-plan': { legacy: 'false' } } },
+    );
+    expect(queue.results.get('fast-checks')).toBe('cancelled');
+    expect(queue.results.get('source-policy')).toBe('skipped');
+    const pr = simulate(jobs, sameRepositoryPr, {
+      cancel,
+      outputs: { 'fast-checks-plan': { legacy: 'false' } },
+    });
+    expect(pr.results.get('source-policy')).toBe('success');
+  });
+
+  test('pushes and dispatches still publish no source status', () => {
+    for (const event of ['push', 'workflow_dispatch'])
+      expect(
+        simulate(
+          jobs,
+          { ...sameRepositoryPr, event },
+          { outputs: { classify: { heavy: 'true' } } },
+        ).results.get('source-policy'),
+        event,
+      ).toBe('skipped');
+  });
+
   test('base retarget keeps the complete source graph', () => {
     const state = simulate(
       readJobs(),

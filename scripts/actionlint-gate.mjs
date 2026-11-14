@@ -2781,13 +2781,18 @@ function actionlintArtifactFindings(file, jobs) {
   return findings;
 }
 
+/**
+ * The reviewed `source-policy` caller: source-changing PR events and merge
+ * groups (published in-run on the queue head), `statuses: write` only for the
+ * local callee, which reads policy from the base.
+ */
 function isExactSourcePolicyCall(job) {
   if (!job) return false;
   return (
     createHash('sha256')
       .update(JSON.stringify(canonicalValue(job)))
       .digest('hex') ===
-    'bb2c01de5e28347090a7b638e4b1a46f379c07e93ab053b8d82aca79c1234378'
+    '42a0b27e5e912470a42f2f005a69b7018f801ff57107efa9ccfc1fdbfc8bf5da'
   );
 }
 

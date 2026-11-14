@@ -796,7 +796,14 @@ The isolated [source-policy workflow](../../.github/workflows/source-verificatio
 also receives `statuses:write`. It checks out trusted policy, never candidate
 code, and publishes only `Source verification policy` from existing GitHub run
 and job evidence. `PR: CI` calls it after core source checks and before optional
-delivery work for source-changing PR events. Lifecycle reconciliation handles
+delivery work for source-changing PR events, and after `fast-checks` on merge
+groups, where it publishes on the queue head and checks out policy from the
+queue base. Both run the same verdict over the run's own completed source
+jobs, so a later lifecycle reconcile republishes the same state rather than
+replacing it. As with every merge-group job, including the title publisher,
+the merge-group workflow definition is the queued candidate's own; only the
+script comes from the base, and the main-branch lifecycle reconcile remains
+the recovery publisher. Lifecycle reconciliation handles
 requested and completed source runs: a requested run or attempt publishes
 pending and completion publishes its verdict, so a start event would only
 republish pending. Metadata request events allocate no publisher, while

@@ -816,14 +816,20 @@ jobs:
         if: ${{ steps.verify.outputs.provisional == 'true' }}
         run: echo "fast-checks deferred ci-fast/test-full; full regression is deferred to main and release qualification"
 
+  # Merge groups publish in-run too: the post-run workflow_run reconcile
+  # waited for a runner after the whole run and was often the last required
+  # context. That reconcile stays the recovery publisher; both read the same
+  # completed job results, and the callee reads policy from the queue base.
+  # A cancelled queue run (the queue rebuilt) is never merged, so it spends
+  # no runner here; the reconcile still records its verdict.
   source-policy:
     name: Publish source admission
     needs: [fast-checks, fork-smoke]
-    if: ${{ always() && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) }}
+    if: ${{ always() && (github.event_name == 'merge_group' && !cancelled() || github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base)) }}
     permissions: { contents: read, actions: read, statuses: write }
     uses: ./.github/workflows/source-verification-policy.yml
     with:
-      source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      source_sha: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
 
   delivery-plan:
     name: Plan affected delivery checks

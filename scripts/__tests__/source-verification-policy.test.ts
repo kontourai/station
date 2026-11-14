@@ -1,5 +1,7 @@
+import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { fileURLToPath } from 'node:url';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -79,6 +81,7 @@ function fixture() {
     runs: structuredClone([run]) as Run[],
     jobs: new Map<number, Job[]>([[10, structuredClone(jobs)]]),
     posts: [] as Array<{ state: string }>,
+    postPaths: [] as string[],
     comparison: { status: 'ahead', merge_base_commit: { sha: base } },
     comparisons: new Map<
       string,
@@ -100,14 +103,14 @@ function fixture() {
       'utf8',
     ),
   };
-  const execute = async (eventName = 'workflow_dispatch', dryRun = false) => {
-    vi.spyOn(console, 'log').mockImplementation(() => {});
+  const serve = async <T>(use: (apiUrl: string) => Promise<T>) => {
     const handle = async (url: string, options: RequestInit) => {
       const parsed = new URL(url);
       const path = parsed.pathname.replace('/repos/kontourai/station/', '');
       const json = (value: unknown) =>
         new Response(JSON.stringify(value), { status: 200 });
       if (options.method === 'POST') {
+        state.postPaths.push(path);
         state.posts.push(JSON.parse(String(options.body)));
         return json({});
       }
@@ -186,7 +189,17 @@ function fixture() {
       const address = server.address();
       if (!address || typeof address === 'string')
         throw new Error('Missing fixture address');
-      return await reconcileSourceVerification({
+      return await use(`http://127.0.0.1:${address.port}`);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  };
+  const execute = async (eventName = 'workflow_dispatch', dryRun = false) => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    return serve((apiUrl) =>
+      reconcileSourceVerification({
         repository: 'kontourai/station',
         sourceSha: head,
         callerRunId: 10,
@@ -194,14 +207,52 @@ function fixture() {
         eventName,
         event: { workflow_run: { id: 10, head_sha: head } },
         token: 'fixture',
-        apiUrl: `http://127.0.0.1:${address.port}`,
-      });
-    } finally {
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      );
-    }
+        apiUrl,
+      }),
+    );
   };
+  /**
+   * The publisher exactly as the reusable workflow's step starts it: the
+   * script's own entry point, with the environment GitHub gives a called
+   * workflow (the caller's event name and run id) plus the step's env.
+   */
+  const executeCli = (env: Record<string, string>) =>
+    serve(
+      (apiUrl) =>
+        new Promise<{ status: number | null; stderr: string }>(
+          (resolve, reject) => {
+            const child = spawn(
+              process.execPath,
+              [
+                fileURLToPath(
+                  new URL('../source-verification-policy.mjs', import.meta.url),
+                ),
+              ],
+              {
+                env: {
+                  PATH: process.env.PATH ?? '',
+                  GITHUB_REPOSITORY: 'kontourai/station',
+                  GITHUB_API_URL: apiUrl,
+                  GH_TOKEN: 'fixture',
+                  ...env,
+                },
+                stdio: ['ignore', 'ignore', 'pipe'],
+                windowsHide: true,
+              },
+            );
+            let stderr = '';
+            child.stderr.on('data', (chunk) => {
+              stderr += chunk;
+            });
+            const timer = setTimeout(() => child.kill(), 20_000);
+            child.on('error', reject);
+            child.on('close', (status) => {
+              clearTimeout(timer);
+              resolve({ status, stderr });
+            });
+          },
+        ),
+    );
   const newer = (conclusion: string) => {
     state.runs.unshift({
       ...structuredClone(run),
@@ -218,7 +269,7 @@ function fixture() {
         : jobs.map((job) => ({ ...job, conclusion })),
     );
   };
-  return { state, execute, newer };
+  return { state, execute, executeCli, newer };
 }
 
 describe('source verification reconciler API boundary', () => {
@@ -404,6 +455,83 @@ describe('source verification reconciler API boundary', () => {
     expect((await execute()).state).toBe('success');
     state.runs[0].head_branch = 'feature';
     expect((await execute()).state).toBe('pending');
+  });
+  // The in-run merge-group publisher: ci.yml's source-policy job calls the
+  // reusable workflow from inside the still-running merge-group run, so
+  // GitHub hands the script the caller's event name (merge_group) and run id,
+  // and the step passes the queue head as SOURCE_SHA.
+  const mergeGroupRun = (state: ReturnType<typeof fixture>['state']) => {
+    state.owners = [];
+    Object.assign(state.runs[0], {
+      event: 'merge_group',
+      head_branch: `gh-readonly-queue/main/pr-42-${base}`,
+      status: 'in_progress',
+      conclusion: null,
+    });
+  };
+  const inRunEnv = {
+    GITHUB_EVENT_NAME: 'merge_group',
+    GITHUB_RUN_ID: '10',
+    SOURCE_SHA: head,
+  };
+  test('a merge-group caller publishes its own completed proof on the queue head while its run is still in progress', async () => {
+    const { state, executeCli } = fixture();
+    mergeGroupRun(state);
+    const result = await executeCli(inRunEnv);
+    expect(result.status, result.stderr).toBe(0);
+    expect(state.postPaths).toEqual([`statuses/${head}`]);
+    expect(state.posts).toEqual([
+      {
+        context: 'Source verification policy',
+        state: 'success',
+        description: 'All exact-owner source proofs succeeded',
+      },
+    ]);
+  });
+  test.each([
+    ['in_progress', 'pending'],
+    ['failure', 'failure'],
+    ['cancelled', 'failure'],
+  ] as const)(
+    'a merge-group caller whose aggregate is %s publishes %s, never success',
+    async (outcome, expected) => {
+      const { state, executeCli } = fixture();
+      mergeGroupRun(state);
+      const aggregate = state.jobs.get(10)![2];
+      if (outcome === 'in_progress')
+        Object.assign(aggregate, { status: 'in_progress', conclusion: null });
+      else aggregate.conclusion = outcome;
+      const result = await executeCli(inRunEnv);
+      expect(result.status, result.stderr).toBe(0);
+      expect(state.postPaths).toEqual([`statuses/${head}`]);
+      expect(state.posts.map((post) => post.state)).toEqual([expected]);
+    },
+  );
+  test('a merge-group caller cannot publish for a head its own run did not build', async () => {
+    const { state, executeCli } = fixture();
+    mergeGroupRun(state);
+    state.runs[0].head_sha = advanced;
+    const result = await executeCli(inRunEnv);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('Untrusted triggering run');
+    expect(state.posts.map((post) => post.state)).toEqual(['pending']);
+  });
+  test('the in-run merge-group verdict and the later lifecycle reconciles agree, so neither resets the other', async () => {
+    const { state, execute, executeCli } = fixture();
+    mergeGroupRun(state);
+    expect((await executeCli(inRunEnv)).status).toBe(0);
+    // A late `requested` reconcile reads the same completed proof jobs.
+    expect((await execute('workflow_run')).state).toBe('success');
+    // `completed` arrives after the run's tail (title, Merge-queue
+    // regression) finished; the proof jobs and so the verdict are unchanged.
+    Object.assign(state.runs[0], { status: 'completed', conclusion: 'success' });
+    expect((await execute('workflow_run')).state).toBe('success');
+    expect(state.postPaths).toEqual(Array(3).fill(`statuses/${head}`));
+    expect(state.posts.map((post) => post.state)).toEqual([
+      'success',
+      'success',
+      'success',
+    ]);
   });
   test('source completion caller publishes before unrelated optional workflow jobs finish', async () => {
     const { state, execute } = fixture();
