@@ -1548,6 +1548,71 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
     await session.stop();
   });
 
+  test('a restated prompt that is not the latest one Grok ran does not date the next turn', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const ambient = '[Timezone: America/Denver]';
+    const base = times[0]!;
+    const session = await startGrokSession();
+    await grokTurn(session, `${ambient}\nfirst`, 'p-0', base);
+    // A wake runs, then Grok names the first prompt again before the next.
+    vi.setSystemTime(base + 1_000);
+    await session.agent.notify('_x.ai/queue/changed', {
+      sessionId: session.sessionId,
+      entries: [],
+      runningPromptId: 'notifications-1',
+    });
+    await session.agent.notify('_x.ai/session_notification', {
+      sessionId: session.sessionId,
+      update: {
+        sessionUpdate: 'turn_completed',
+        prompt_id: 'notifications-1',
+        stop_reason: 'end_turn',
+      },
+    });
+    await settle();
+    const turn = await session.adapter.sendTurn({
+      threadId: session.threadId,
+      input: `${ambient}\nsecond`,
+    });
+    for (const [running, at] of [
+      ['p-0', base + 1_500],
+      ['p-1', base + 4_000],
+    ] as const) {
+      vi.setSystemTime(at);
+      await session.agent.notify('_x.ai/queue/changed', {
+        sessionId: session.sessionId,
+        entries: [],
+        runningPromptId: running,
+      });
+      await settle();
+    }
+    session.proc.resolvePrompt('end_turn');
+    await settle();
+    const [live] = (points as { rewind_points: Record<string, unknown>[] })
+      .rewind_points;
+    answerLive(session, {
+      '_x.ai/rewind/points': [
+        {
+          rewind_points: [
+            [0, base],
+            [2, base + 4_000],
+          ].map(([index, at]) => ({
+            ...live,
+            prompt_index: index,
+            prompt_preview: ambient,
+            created_at: new Date(at! + NOTICE_BEFORE_POINT_MS).toISOString(),
+          })),
+        },
+      ],
+      '_x.ai/rewind/execute': [preview, commit],
+    });
+    expect(
+      await session.adapter.rewindSession(session.threadId, turn.turnId),
+    ).toMatchObject({ kind: 'rewound', hiddenTurnIds: [turn.turnId] });
+    expect(session.proc.extMethodCalls[1]?.params.targetPromptIndex).toBe(2);
+    await session.stop();
+  });
+
   test('a busy monitor waking Grok thousands of times between turns does not stop rewinds', async () => {
     // 20 turns, each followed by 120 wakes: 2,400 prompts Grok has run.
     vi.useFakeTimers({ toFake: ['Date'] });
