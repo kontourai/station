@@ -11,17 +11,20 @@
  *
  * - create/resume: `createSession` / `resumeSession`; the resume cursor is
  *   `{ copilotSessionId }`, scoped by `nativeResumeBindingKey` to the
- *   runtime's configuration home.
- * - turns: `send({ mode: 'enqueue', clientTurnId })`; a turn ends on
- *   `session.idle` (or `session.error`).
+ *   runtime's configuration home. A session whose runtime did not apply
+ *   `permissionMode: 'manual'` is refused.
+ * - turns: `send({ mode: 'enqueue', clientTurnId })`; a turn ends on the
+ *   `session.idle` after its own `user.message`, or on a root
+ *   `session.error` for its message (the SDK's own `sendAndWait` matching).
  * - steer: `send({ mode: 'immediate' })` into the running turn.
  * - interrupt: `abort()`, confirmed by the turn's own `session.idle`.
  * - approvals: `onPermissionRequest` → `request.opened` / `respondToRequest`
- *   (`copilot-sdk-approval.ts`).
+ *   (`copilot-sdk-approval.ts`); the mode is derived again on every turn.
  * - rewind: `session.history.rewind` at the turn's `user.message` event id,
  *   restoring captured files (`enableFileChangeTracking`).
  * - subagents, usage, MCP status, reroutes: `copilot-sdk-events.ts`.
  * - MCP reconnect: `session.mcp.restartServer`.
+ * - runtime death: the connection watch settles the turn and ends the session.
  *
  * Every entry point that starts work selects the preview again, so turning
  * it off stops new sessions and new turns at once. Stop, interrupt and
@@ -44,6 +47,7 @@ import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-
 import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
 import {
   ACP_SESSION_REWOUND_CODE,
+  type ApprovalMode,
   type ModelLaunchCapabilities,
   NATIVE_RESUME_BINDING_METADATA_KEY,
   PROVIDER_COPILOT_SDK,
@@ -51,17 +55,17 @@ import {
   SESSION_REWIND_AFFECTED_PATHS_MAX,
   type SessionLiveContinuity,
   type SessionRewindOutcome,
+  type StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
   FEATURE_PREVIEW_DISABLED_CODE,
   SESSION_RECOVERY_FAILED_CODE,
+  SESSION_START_IN_FLIGHT_CODE,
 } from '@kontourai/station-contracts/provider-failure';
 import type { ProviderRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import {
   assertEngineAllowedByManagedPolicy,
-  managedEngineBinaryPath,
-  managedEngineLaunch,
   managedEnginePrerequisites,
 } from '../../security/managed-engine-limits.js';
 import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
@@ -100,9 +104,11 @@ import {
 import {
   type CopilotAppliedApprovalMode,
   copilotAppliedApprovalMode,
+  copilotManagedApprovalRequired,
   copilotModeAllows,
   copilotPermissionResult,
   copilotPermissionView,
+  copilotRealPath,
   copilotSessionGrantKey,
 } from './copilot-sdk-approval.js';
 import {
@@ -112,6 +118,7 @@ import {
 import {
   type CopilotSdkClientFactory,
   type CopilotSdkClientPort,
+  type CopilotSdkLaunch,
   type CopilotSdkSessionPort,
   createCopilotSdkClient,
 } from './copilot-sdk-port.js';
@@ -123,8 +130,10 @@ const PREVIEW_DISABLED_MESSAGE =
 
 /** How long an interrupt waits for the runtime's own `session.idle`. */
 const COPILOT_SDK_INTERRUPT_SETTLE_MS = 10_000;
-/** How long a model catalogue read may spend starting a runtime. */
+/** How long a model catalogue read is reused. */
 const MODEL_CATALOG_TTL_MS = 5 * 60_000;
+/** Restored file paths a failed rewind's message names. */
+const REWIND_FAILURE_PATHS_SHOWN = 5;
 
 const COPILOT_SDK_MODEL_LAUNCH: ModelLaunchCapabilities = {
   defaultAtStart: 'engine-selected',
@@ -167,11 +176,16 @@ function readResumeCursor(value: unknown): CopilotResumeCursor | undefined {
 
 interface PendingPermission {
   request: PermissionRequest;
+  managed: boolean;
   resolve: (result: PermissionRequestResult) => void;
 }
 
 interface ActiveTurn {
   turnId: string;
+  /** The runtime echoed this turn's `user.message` (its `clientTurnId`). */
+  consumed: boolean;
+  /** That `user.message`'s `messageId`, which `session.error` names. */
+  messageId?: string;
   settled: Promise<void>;
   settle: () => void;
 }
@@ -181,6 +195,11 @@ interface CopilotSessionRecord {
   client: CopilotSdkClientPort;
   copilot: CopilotSdkSessionPort;
   cwd: string;
+  /** The working directory's real path; approvals compare against it. */
+  realCwd: string;
+  /** The mode the last turn (or the start) asked for, before confinement. */
+  requestedMode: ApprovalMode | undefined;
+  /** The mode answering requests now (`copilotAppliedApprovalMode`). */
   mode: CopilotAppliedApprovalMode;
   grants: Set<string>;
   translator: CopilotSdkEventTranslator;
@@ -190,8 +209,8 @@ interface CopilotSessionRecord {
   rewindPoints: Map<string, string>;
   turnOrder: string[];
   rewinding: boolean;
-  /** Events that arrived before the session record existed. */
-  early: SessionEvent[] | null;
+  stopWatch: () => void;
+  ended: boolean;
 }
 
 /**
@@ -211,9 +230,12 @@ export function resolveCopilotCliLaunchPath(found: string): string | null {
   return existsSync(entry) ? entry : null;
 }
 
+/**
+ * The Copilot CLI on PATH. A managed policy cannot pin this engine's binary:
+ * its engine ids (`managed-policy-engines.ts`) do not name `copilot-sdk`.
+ */
 function defaultResolveCliPath(): string | null {
-  const found =
-    managedEngineBinaryPath(PROVIDER_COPILOT_SDK) ?? findCliBinary('copilot');
+  const found = findCliBinary('copilot');
   return found ? resolveCopilotCliLaunchPath(found) : null;
 }
 
@@ -249,6 +271,8 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
 
   private readonly events = new AsyncEventQueue<ProviderRuntimeEvent>();
   private readonly sessions = new Map<string, CopilotSessionRecord>();
+  /** Threads whose start is between its first check and its record. */
+  private readonly starting = new Set<string>();
   private readonly clientFactory: CopilotSdkClientFactory;
   private readonly resolveCliPath: () => string | null;
   private readonly env: NodeJS.ProcessEnv;
@@ -301,6 +325,30 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
     );
   }
 
+  /**
+   * How one runtime starts: the CLI, Station's child environment (the
+   * process environment, so the runtime also reads `GH_TOKEN`, `GITHUB_TOKEN`
+   * and `COPILOT_*` from it, as the person's own CLI would), and a TMPDIR.
+   */
+  private runtimeLaunch(
+    cliPath: string,
+    cwd: string,
+    tmpDir: string | undefined,
+  ): CopilotSdkLaunch {
+    const env = Object.fromEntries(
+      Object.entries(
+        childProcessEnvironment({
+          ...this.env,
+          PATH: resolveAugmentedPathSync(),
+          TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
+        } as Record<string, string | undefined>),
+      ).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string',
+      ),
+    );
+    return { cliPath, args: [], env, cwd };
+  }
+
   async getPrerequisites(options?: {
     signal?: AbortSignal;
   }): Promise<Prerequisite[]> {
@@ -341,16 +389,23 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
     });
   }
 
+  /**
+   * A resume must name the configuration home its session was recorded
+   * under. A cursor without a recorded binding key (none was stored, or it
+   * did not survive) cannot be shown to belong here, so it is refused rather
+   * than resumed unchecked.
+   */
   async preflightStart(input: ProviderSessionStartInput): Promise<void> {
     this.refuseStartUnlessEnabled();
     assertEngineAllowedByManagedPolicy(PROVIDER_COPILOT_SDK);
     if (
       input.resumeCursor !== undefined &&
-      input.nativeResumeBindingKey !== undefined &&
       input.nativeResumeBindingKey !== this.bindingKey()
     ) {
       throw new SessionStartRefusedError(
-        'This Copilot session was recorded under a different Copilot configuration home.',
+        input.nativeResumeBindingKey === undefined
+          ? 'This Copilot session has no recorded configuration home, so Station cannot resume it safely.'
+          : 'This Copilot session was recorded under a different Copilot configuration home.',
         SESSION_RECOVERY_FAILED_CODE,
       );
     }
@@ -367,48 +422,41 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
+    const threadId = input.threadId;
+    if (this.sessions.has(threadId))
+      throw new Error(`Copilot SDK session already exists: ${threadId}`);
+    if (this.starting.has(threadId))
+      throw new SessionStartRefusedError(
+        'This Copilot session is already starting.',
+        SESSION_START_IN_FLIGHT_CODE,
+      );
+    this.starting.add(threadId);
+    try {
+      return await this.startSessionOnce(input);
+    } finally {
+      this.starting.delete(threadId);
+    }
+  }
+
+  private async startSessionOnce(
+    input: ProviderSessionStartInput,
+  ): Promise<ProviderSession> {
     await this.preflightStart(input);
-    if (this.sessions.has(input.threadId))
-      throw new Error(`Copilot SDK session already exists: ${input.threadId}`);
+    const threadId = input.threadId;
     const cliPath = this.resolveCliPath();
     if (!cliPath)
       throw new Error(
         'The GitHub Copilot CLI is not installed or not on PATH. Install it and run `copilot login`.',
       );
     const cwd = input.cwd ?? process.cwd();
+    const realCwd = copilotRealPath(cwd, cwd) ?? cwd;
     // The session's own TMPDIR, as for every Station-launched engine.
-    const sessionTmpDir = engineSessionTmpDir(input.threadId);
-    const launch = managedEngineLaunch(
-      PROVIDER_COPILOT_SDK,
-      {
-        command: cliPath,
-        args: [],
-        env: {
-          ...this.env,
-          PATH: resolveAugmentedPathSync(),
-          TMPDIR: sessionTmpDir ?? ensureEngineSpawnTmpDir(),
-        } as Record<string, string | undefined>,
-      },
-      'station',
+    const sessionTmpDir = engineSessionTmpDir(threadId);
+    const client = await this.clientFactory(
+      this.runtimeLaunch(cliPath, cwd, sessionTmpDir),
     );
-    const env = Object.fromEntries(
-      Object.entries(childProcessEnvironment(launch.env)).filter(
-        (entry): entry is [string, string] => typeof entry[1] === 'string',
-      ),
-    );
-    const client = await this.clientFactory({
-      cliPath: launch.command,
-      args: launch.args,
-      env,
-      cwd,
-    });
-    const threadId = input.threadId;
-    const mode = copilotAppliedApprovalMode(
-      readApprovalMode(input.modelOptions),
-      input.confinement,
-    );
-    const translator = new CopilotSdkEventTranslator();
-    const pending = new Map<string, PendingPermission>();
+    const requestedMode = readApprovalMode(input.modelOptions);
+    const mode = copilotAppliedApprovalMode(requestedMode, input.confinement);
     // Filled once the session exists; events before that are held.
     let record: CopilotSessionRecord | undefined;
     const early: SessionEvent[] = [];
@@ -427,15 +475,43 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
         }
         this.onSessionEvent(record, event);
       },
-      onPermissionRequest: (request: PermissionRequest) =>
-        this.onPermissionRequest(threadId, () => record, request),
+      onPermissionRequest: (
+        request: PermissionRequest,
+        invocation: { promptRequest?: unknown },
+      ) => this.onPermissionRequest(() => record, request, invocation),
     } satisfies Partial<SessionConfig> & Partial<ResumeSessionConfig>;
+    const cursor = readResumeCursor(input.resumeCursor);
     let copilot: CopilotSdkSessionPort;
+    const rewindPoints = new Map<string, string>();
+    const turnOrder: string[] = [];
     try {
-      const cursor = readResumeCursor(input.resumeCursor);
       copilot = cursor
         ? await client.resumeSession(cursor.copilotSessionId, sessionConfig)
         : await client.createSession(sessionConfig);
+      // A resumed session restores its own mode: refuse unless the runtime
+      // reports `manual` applied, so its own automatic approvals never
+      // answer for Station.
+      const applied = copilot.permissionModeResult;
+      if (!applied?.success || applied.mode !== 'manual')
+        throw new SessionStartRefusedError(
+          `Copilot did not apply manual approvals to this session (${
+            applied
+              ? `it runs ${applied.mode}`
+              : 'it reported no permission mode'
+          }), so Station will not run it.`,
+          SESSION_RECOVERY_FAILED_CODE,
+        );
+      // Rewind points survive a resume: the persisted `user.message` events
+      // still carry the `clientTurnId` each Station turn sent.
+      if (cursor)
+        for (const event of await copilot.getEvents()) {
+          if (event.type !== 'user.message') continue;
+          const turnId = event.data.clientTurnId;
+          if (turnId && !rewindPoints.has(turnId)) {
+            rewindPoints.set(turnId, event.id);
+            turnOrder.push(turnId);
+          }
+        }
     } catch (error) {
       await client.stop();
       throw error;
@@ -444,7 +520,7 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
     const resumeCursor: CopilotResumeCursor = {
       copilotSessionId: copilot.sessionId,
     };
-    record = {
+    const created: CopilotSessionRecord = {
       session: {
         provider: this.provider,
         threadId,
@@ -458,16 +534,23 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
       client,
       copilot,
       cwd,
+      realCwd,
+      requestedMode,
       mode,
       grants: new Set(),
-      translator,
-      pending,
-      rewindPoints: new Map(),
-      turnOrder: [],
+      translator: new CopilotSdkEventTranslator(),
+      pending: new Map(),
+      rewindPoints,
+      turnOrder,
       rewinding: false,
-      early: null,
+      stopWatch: () => undefined,
+      ended: false,
     };
-    this.sessions.set(threadId, record);
+    record = created;
+    this.sessions.set(threadId, created);
+    created.stopWatch = client.watchConnection((error) =>
+      this.onRuntimeLost(created, error),
+    );
     commitEngineLaunch(
       threadId,
       sessionTmpDir ? { own: sessionTmpDir } : undefined,
@@ -486,14 +569,34 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
         approvalMode: mode,
       },
     });
-    for (const event of early) this.onSessionEvent(record, event);
-    return record.session;
+    for (const event of early) this.onSessionEvent(created, event);
+    return created.session;
   }
 
   private requireRecord(threadId: string): CopilotSessionRecord {
     const record = this.sessions.get(threadId);
     if (!record) throw new Error(`No Copilot SDK session: ${threadId}`);
     return record;
+  }
+
+  /**
+   * The mode a turn runs under, derived again from what the turn carries:
+   * its own approval mode (or the last one asked for) and its confinement.
+   * A turn without a confinement is not a `host` session, so full access
+   * that was granted to one is withdrawn rather than carried over.
+   */
+  private applyTurnMode(
+    record: CopilotSessionRecord,
+    modelOptions: Record<string, unknown> | undefined,
+    confinement: StationConfinement | undefined,
+  ): void {
+    record.requestedMode =
+      readApprovalMode(modelOptions) ?? record.requestedMode;
+    const next = copilotAppliedApprovalMode(record.requestedMode, confinement);
+    if (next === record.mode) return;
+    record.mode = next;
+    // A narrower mode also drops the grants a person gave under the wider one.
+    if (next !== 'never') record.grants.clear();
   }
 
   async sendTurn(
@@ -513,18 +616,20 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
         'Attachments are not supported on the Copilot SDK engine yet.',
         'input_unsupported',
       );
+    this.applyTurnMode(record, input.modelOptions, input.confinement);
     const turnId = this.newId();
     let settle!: () => void;
     const settled = new Promise<void>((resolve) => {
       settle = resolve;
     });
-    record.activeTurn = { turnId, settled, settle };
+    record.activeTurn = { turnId, consumed: false, settled, settle };
     record.session = { ...record.session, status: 'running' };
     this.publish(input.threadId, turnId, {
       method: 'turn.started',
       turnId,
       prompt: input.displayInput ?? input.input,
       ...(input.clientTurnId ? { clientTurnId: input.clientTurnId } : {}),
+      metadata: { approvalMode: record.mode },
     });
     const prompt = input.ambientContext
       ? `${input.ambientContext}\n\n${input.input}`
@@ -550,6 +655,11 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
     };
   }
 
+  /**
+   * Steering joins the running turn under that turn's mode: the steer
+   * carries no posture of its own, and orchestration refuses a steer across
+   * a confinement change (`confinement-changed`).
+   */
   async steerTurn(
     threadId: string,
     input: string,
@@ -581,7 +691,13 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
     if (turnId && turnId !== active.turnId)
       return { outcome: 'target-mismatch', activeTurnId: active.turnId };
     this.declineOpenRequests(record);
-    await record.copilot.abort();
+    try {
+      await record.copilot.abort();
+    } catch (error) {
+      // A runtime that cannot take the abort is gone: nothing is running.
+      this.onRuntimeLost(record, error);
+      return { outcome: 'cancelled', turnId: active.turnId };
+    }
     const confirmed = await Promise.race([
       active.settled.then(() => true),
       new Promise<boolean>((resolve) => {
@@ -594,51 +710,137 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
       : { outcome: 'termination-unconfirmed', turnId: active.turnId };
   }
 
+  /**
+   * The runtime stopped answering (its process died or its pipe closed): the
+   * running turn ends aborted, open requests are answered, and the session
+   * ends. A later start resumes it from its cursor.
+   */
+  private onRuntimeLost(record: CopilotSessionRecord, error: unknown): void {
+    if (record.ended) return;
+    record.ended = true;
+    record.stopWatch();
+    const threadId = record.session.threadId;
+    if (this.sessions.get(threadId) === record) this.sessions.delete(threadId);
+    this.declineOpenRequests(record);
+    const active = record.activeTurn;
+    if (active)
+      this.settleTurn(record, {
+        method: 'turn.aborted',
+        turnId: active.turnId,
+        reason: 'The Copilot runtime stopped.',
+      });
+    this.options.logger?.warn('Copilot runtime connection lost', {
+      threadId,
+      error: errorMessage(error),
+    });
+    void record.client.stop();
+    this.publish(threadId, undefined, {
+      method: 'session.exited',
+      sessionId: record.copilot.sessionId,
+      reason: 'The Copilot runtime stopped.',
+    });
+  }
+
   private onSessionEvent(
     record: CopilotSessionRecord,
     event: SessionEvent,
   ): void {
+    if (record.ended) return;
     const threadId = record.session.threadId;
-    const turnId = record.activeTurn?.turnId;
+    const active = record.activeTurn;
+    const turnId = active?.turnId;
     if (event.type === 'user.message') {
       const clientTurnId = event.data.clientTurnId;
       if (clientTurnId && !record.rewindPoints.has(clientTurnId)) {
         record.rewindPoints.set(clientTurnId, event.id);
         record.turnOrder.push(clientTurnId);
       }
+      if (active && clientTurnId === active.turnId && !event.agentId) {
+        active.consumed = true;
+        active.messageId = event.data.messageId;
+      }
       return;
     }
-    for (const body of record.translator.translate(event, { threadId, turnId }))
+    for (const body of record.translator.translate(event, {
+      threadId,
+      turnId,
+    }))
       this.publish(threadId, turnId, body);
-    if (event.type === 'session.error' && turnId) {
-      this.publish(threadId, turnId, {
-        method: 'runtime.error',
-        ...providerFailureForCode(undefined),
-        severity: 'error',
-        message: event.data.message,
-        code: 'copilot_sdk_session_error',
-        details: {
-          errorType: event.data.errorType,
-          ...(event.data.statusCode !== undefined
-            ? { statusCode: event.data.statusCode }
-            : {}),
-        },
-      });
-      this.settleTurn(record, {
-        method: 'turn.aborted',
-        turnId,
-        reason: event.data.message,
-      });
+    if (event.type === 'session.error') {
+      this.onSessionError(record, event);
       return;
     }
-    if (event.type === 'session.idle' && turnId) {
+    // Only the idle after this turn's own message ends it: an idle left over
+    // from an earlier run must not complete a turn that has not started.
+    if (
+      event.type === 'session.idle' &&
+      active?.consumed &&
+      event.data.mode !== 'autopilot'
+    ) {
       this.settleTurn(
         record,
         event.data.aborted
-          ? { method: 'turn.aborted', turnId, reason: 'Interrupted.' }
-          : { method: 'turn.completed', turnId, finishReason: 'stop' },
+          ? {
+              method: 'turn.aborted',
+              turnId: active.turnId,
+              reason: 'Interrupted.',
+            }
+          : {
+              method: 'turn.completed',
+              turnId: active.turnId,
+              finishReason: 'stop',
+            },
       );
     }
+  }
+
+  /**
+   * A subagent's error belongs to the subagent (its own failure arrives as
+   * `subagent.failed`). A root error the runtime can recover from
+   * (`eligibleForAutoSwitch`, for example a rate limit) is a warning. Any
+   * other root error is reported; it ends the turn only when it is for this
+   * turn's message, as the SDK's own `sendAndWait` reads it.
+   */
+  private onSessionError(
+    record: CopilotSessionRecord,
+    event: Extract<SessionEvent, { type: 'session.error' }>,
+  ): void {
+    if (event.agentId) return;
+    const threadId = record.session.threadId;
+    const active = record.activeTurn;
+    const details = {
+      errorType: event.data.errorType,
+      ...(event.data.statusCode !== undefined
+        ? { statusCode: event.data.statusCode }
+        : {}),
+    };
+    if (event.data.eligibleForAutoSwitch) {
+      this.publish(threadId, active?.turnId, {
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: 'copilot_sdk_session_error_recoverable',
+        message: event.data.message,
+        details,
+      });
+      return;
+    }
+    this.publish(threadId, active?.turnId, {
+      method: 'runtime.error',
+      ...providerFailureForCode(undefined),
+      severity: 'error',
+      message: event.data.message,
+      code: 'copilot_sdk_session_error',
+      details,
+    });
+    if (!active) return;
+    const origin = event.data.originatingMessageId;
+    const forThisTurn = origin ? origin === active.messageId : active.consumed;
+    if (forThisTurn)
+      this.settleTurn(record, {
+        method: 'turn.aborted',
+        turnId: active.turnId,
+        reason: event.data.message,
+      });
   }
 
   private settleTurn(
@@ -664,19 +866,27 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
   }
 
   private onPermissionRequest(
-    threadId: string,
     current: () => CopilotSessionRecord | undefined,
     request: PermissionRequest,
+    invocation: { promptRequest?: unknown } | undefined,
   ): Promise<PermissionRequestResult> | PermissionRequestResult {
     const record = current();
-    if (!record) return { kind: 'user-not-available' };
-    if (copilotModeAllows(record.mode, request, record.cwd, record.grants))
+    if (!record || record.ended) return { kind: 'user-not-available' };
+    const managed = copilotManagedApprovalRequired(request, invocation);
+    if (
+      copilotModeAllows(
+        record.mode,
+        request,
+        { realCwd: record.realCwd, grants: record.grants },
+        managed,
+      )
+    )
       return { kind: 'approve-once' };
     const requestId = this.newId();
     const view = copilotPermissionView(request);
     return new Promise<PermissionRequestResult>((resolve) => {
-      record.pending.set(requestId, { request, resolve });
-      this.publish(threadId, record.activeTurn?.turnId, {
+      record.pending.set(requestId, { request, managed, resolve });
+      this.publish(record.session.threadId, record.activeTurn?.turnId, {
         method: 'request.opened',
         requestId,
         requestType: 'approval',
@@ -687,6 +897,7 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
           toolKind: view.toolKind,
           toolInput: view.toolInput,
           ...(request.toolCallId ? { toolCallId: request.toolCallId } : {}),
+          ...(managed ? { managedApprovalRequired: true } : {}),
         },
       });
     });
@@ -702,7 +913,11 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
     if (!pending) throw new Error(`No open Copilot request: ${requestId}`);
     record.pending.delete(requestId);
     if (decision === 'acceptForSession') {
-      const key = copilotSessionGrantKey(pending.request);
+      const key = copilotSessionGrantKey(
+        pending.request,
+        record.realCwd,
+        pending.managed,
+      );
       if (key) record.grants.add(key);
     }
     pending.resolve(copilotPermissionResult(decision));
@@ -737,7 +952,7 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
   sessionContinuity(threadId: string): SessionLiveContinuity {
     return {
       live: this.sessions.has(threadId),
-      rewind: 'in-place',
+      rewind: this.previewEnabled() ? 'in-place' : 'none',
       fork: 'none',
     };
   }
@@ -746,6 +961,8 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
     threadId: string,
     turnId: string,
   ): Promise<SessionRewindOutcome> {
+    if (!this.previewEnabled())
+      return { kind: 'refused', reason: 'unsupported' };
     const record = this.sessions.get(threadId);
     if (!record) return { kind: 'refused', reason: 'not-live' };
     if (record.rewinding) return { kind: 'refused', reason: 'rewind-pending' };
@@ -760,6 +977,7 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
         eventId,
         mode: 'conversation-and-files',
       });
+      const restored = result.restoredFiles;
       switch (result.outcome) {
         case 'session-busy':
           return { kind: 'refused', reason: 'turn-running' };
@@ -772,13 +990,10 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
           for (const hidden of hiddenTurnIds)
             record.rewindPoints.delete(hidden);
           const affectedFiles =
-            result.restoredFiles.length > 0
+            restored.length > 0
               ? {
-                  count: result.restoredFiles.length,
-                  paths: result.restoredFiles.slice(
-                    0,
-                    SESSION_REWIND_AFFECTED_PATHS_MAX,
-                  ),
+                  count: restored.length,
+                  paths: restored.slice(0, SESSION_REWIND_AFFECTED_PATHS_MAX),
                 }
               : undefined;
           this.publish(threadId, undefined, {
@@ -801,16 +1016,26 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
             ...(affectedFiles ? { affectedFiles } : {}),
           };
         }
-        default:
+        default: {
           // files-rolled-back, rollback-incomplete, truncation-failed,
           // file-change-tracking-disabled: the runtime's own refusal or a
-          // partial failure, reported as it gave it.
+          // partial failure, reported as it gave it. Files it restored
+          // before failing are named, since they did change.
+          const files =
+            restored.length > 0
+              ? ` It had already restored ${restored.length} file(s): ${restored
+                  .slice(0, REWIND_FAILURE_PATHS_SHOWN)
+                  .join(', ')}${
+                  restored.length > REWIND_FAILURE_PATHS_SHOWN ? ', …' : ''
+                }.`
+              : '';
           return {
             kind: 'failed',
             message: `Copilot could not rewind (${result.outcome})${
               result.error ? `: ${result.error}` : ''
-            }.`,
+            }.${files}`,
           };
+        }
       }
     } catch (error) {
       return { kind: 'failed', message: errorMessage(error) };
@@ -824,6 +1049,8 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
     serverName: string,
     options: { startOAuth: boolean },
   ): Promise<EngineCommandOutcome> {
+    if (!this.previewEnabled())
+      return { kind: 'failed', message: PREVIEW_DISABLED_MESSAGE };
     const record = this.sessions.get(threadId);
     if (!record)
       return { kind: 'failed', message: 'The session is not running.' };
@@ -869,19 +1096,11 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
       const cliPath = this.resolveCliPath();
       if (!cliPath) return [];
       signal?.throwIfAborted();
-      const client = await this.clientFactory({
-        cliPath,
-        args: [],
-        env: Object.fromEntries(
-          Object.entries(
-            childProcessEnvironment({
-              ...this.env,
-              PATH: resolveAugmentedPathSync(),
-            } as Record<string, string | undefined>),
-          ).filter((e): e is [string, string] => typeof e[1] === 'string'),
-        ),
-        cwd: homedir(),
-      });
+      const cwd = homedir();
+      // The same launch as a session's, with Station's shared engine TMPDIR.
+      const client = await this.clientFactory(
+        this.runtimeLaunch(cliPath, cwd, undefined),
+      );
       try {
         models = await client.listModels();
       } finally {
@@ -896,6 +1115,8 @@ export class CopilotSdkAdapter implements ProviderAdapterShape {
     const record = this.sessions.get(threadId);
     if (!record) return;
     this.sessions.delete(threadId);
+    record.ended = true;
+    record.stopWatch();
     this.declineOpenRequests(record);
     const active = record.activeTurn;
     if (active) {

@@ -1,18 +1,21 @@
 /**
  * The Copilot SDK adapter driven through a fake of the SDK interface it uses
  * (`copilot-sdk-port.ts`). The fake calls the same `SessionConfig` callbacks
- * the real SDK calls (`onEvent`, `onPermissionRequest`), and every event and
- * request below is typed as the SDK's own `SessionEvent` / `PermissionRequest`
- * from `@github/copilot-sdk` 1.0.32 (`dist/generated/session-events.d.ts`;
- * github/copilot-sdk `nodejs/src/generated/session-events.ts`), so a fixture
- * that drifts from the SDK's wire shape fails the typecheck. No test here
- * spawns a process or reaches a Copilot service.
+ * the real SDK calls (`onEvent`, and `onPermissionRequest` with its second
+ * `invocation` argument), and every event and request below is typed as the
+ * SDK's own `SessionEvent` / `PermissionRequest` from `@github/copilot-sdk`
+ * 1.0.32 (`dist/generated/session-events.d.ts`; github/copilot-sdk
+ * `nodejs/src/generated/session-events.ts`), so a fixture that drifts from the
+ * SDK's wire shape fails the typecheck. No test here spawns a process or
+ * reaches a Copilot service. The working directory is a real temporary
+ * directory, so the symlink cases exercise real `realpath` resolution.
  */
 import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -28,7 +31,7 @@ import type {
 } from '@github/copilot-sdk';
 import type { ProviderRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
 import { SessionStartRefusedError } from '../adapter-shape.js';
 import {
   CopilotSdkAdapter,
@@ -37,12 +40,28 @@ import {
 import type {
   CopilotHistoryRewindRequest,
   CopilotHistoryRewindResult,
+  CopilotPermissionModeResult,
   CopilotSdkClientPort,
   CopilotSdkLaunch,
   CopilotSdkSessionPort,
 } from '../adapters/copilot-sdk-port.js';
+import { nativeResumeBindingKey } from '../adapters/native-resume-binding.js';
 
-const CWD = process.platform === 'win32' ? 'C:\\work\\repo' : '/work/repo';
+const ROOT = mkdtempSync(join(tmpdir(), 'copilot-sdk-adapter-'));
+const CWD = join(ROOT, 'repo');
+const OUTSIDE = join(ROOT, 'outside');
+mkdirSync(join(CWD, 'src'), { recursive: true });
+mkdirSync(OUTSIDE, { recursive: true });
+writeFileSync(join(OUTSIDE, 'secret'), 'secret');
+// A directory link inside the working directory that leads outside it. A
+// junction needs no extra privilege on Windows.
+symlinkSync(OUTSIDE, join(CWD, 'link'), 'junction');
+const COPILOT_HOME = join(ROOT, 'copilot-home');
+const BINDING = nativeResumeBindingKey('copilot-sdk', COPILOT_HOME, null);
+
+afterAll(() => {
+  rmSync(ROOT, { recursive: true, force: true });
+});
 
 type AnyConfig = SessionConfig | ResumeSessionConfig;
 
@@ -51,7 +70,13 @@ class FakeCopilotSession implements CopilotSdkSessionPort {
   readonly rewinds: CopilotHistoryRewindRequest[] = [];
   readonly restarted: string[] = [];
   aborts = 0;
+  abortFails = false;
   disconnected = false;
+  permissionModeResult: CopilotPermissionModeResult = {
+    success: true,
+    mode: 'manual',
+  };
+  persisted: SessionEvent[] = [];
   rewindResult: CopilotHistoryRewindResult = {
     outcome: 'success',
     eventsRemoved: 4,
@@ -70,10 +95,16 @@ class FakeCopilotSession implements CopilotSdkSessionPort {
     this.config.onEvent?.(event);
   }
 
-  /** Raises a permission request the way the SDK's handler is called. */
-  ask(request: PermissionRequest): Promise<PermissionRequestResult> {
+  /** Raises a permission request the way the SDK calls its handler. */
+  ask(
+    request: PermissionRequest,
+    invocation: { promptRequest?: unknown } = {},
+  ): Promise<PermissionRequestResult> {
     return Promise.resolve(
-      this.config.onPermissionRequest!(request, { sessionId: this.sessionId }),
+      this.config.onPermissionRequest!(request, {
+        sessionId: this.sessionId,
+        ...invocation,
+      } as never),
     ) as Promise<PermissionRequestResult>;
   }
 
@@ -82,12 +113,16 @@ class FakeCopilotSession implements CopilotSdkSessionPort {
     return `evt-${this.eventSeq}`;
   }
 
+  async getEvents(): Promise<SessionEvent[]> {
+    return this.persisted;
+  }
   async send(options: MessageOptions): Promise<string> {
     this.sends.push(options);
     return `msg-${this.sends.length}`;
   }
   async abort(): Promise<void> {
     this.aborts += 1;
+    if (this.abortFails) throw new Error('Connection is closed.');
   }
   async disconnect(): Promise<void> {
     this.disconnected = true;
@@ -106,14 +141,27 @@ class FakeCopilotSession implements CopilotSdkSessionPort {
 class FakeCopilotClient implements CopilotSdkClientPort {
   readonly created: FakeCopilotSession[] = [];
   readonly resumed: Array<{ id: string; session: FakeCopilotSession }> = [];
-  stopped = false;
+  stopped = 0;
   /** Events the runtime emits while `createSession`/`resumeSession` runs. */
   duringStart: SessionEvent[] = [];
+  /** Shapes each new session before it is returned. */
+  prepare: (session: FakeCopilotSession) => void = () => undefined;
   models: ModelInfo[] = [];
+  private onLost?: (error: unknown) => void;
 
-  async createSession(config: SessionConfig): Promise<CopilotSdkSessionPort> {
-    const session = new FakeCopilotSession('copilot-session-1', config);
+  /** The runtime process dies: the connection watch reports it. */
+  loseConnection(): void {
+    this.onLost?.(new Error('Connection is closed.'));
+  }
+
+  private open(id: string, config: AnyConfig): FakeCopilotSession {
+    const session = new FakeCopilotSession(id, config);
+    this.prepare(session);
     for (const event of this.duringStart) session.emit(event);
+    return session;
+  }
+  async createSession(config: SessionConfig): Promise<CopilotSdkSessionPort> {
+    const session = this.open('copilot-session-1', config);
     this.created.push(session);
     return session;
   }
@@ -121,16 +169,21 @@ class FakeCopilotClient implements CopilotSdkClientPort {
     id: string,
     config: ResumeSessionConfig,
   ): Promise<CopilotSdkSessionPort> {
-    const session = new FakeCopilotSession(id, config);
-    for (const event of this.duringStart) session.emit(event);
+    const session = this.open(id, config);
     this.resumed.push({ id, session });
     return session;
   }
   async listModels(): Promise<ModelInfo[]> {
     return this.models;
   }
+  watchConnection(onLost: (error: unknown) => void): () => void {
+    this.onLost = onLost;
+    return () => {
+      this.onLost = undefined;
+    };
+  }
   async stop(): Promise<Error[]> {
-    this.stopped = true;
+    this.stopped += 1;
     return [];
   }
 }
@@ -146,19 +199,31 @@ function previewSwitch(initial: boolean) {
   };
 }
 
-function harness(options: { enabled?: boolean } = {}) {
+function harness(
+  options: {
+    enabled?: boolean;
+    env?: NodeJS.ProcessEnv;
+    clientFactory?: (launch: CopilotSdkLaunch) => Promise<CopilotSdkClientPort>;
+  } = {},
+) {
   const preview = previewSwitch(options.enabled ?? true);
   const client = new FakeCopilotClient();
   const launches: CopilotSdkLaunch[] = [];
   let id = 0;
   const adapter = new CopilotSdkAdapter({
     preview: preview.selector,
-    clientFactory: async (launch) => {
-      launches.push(launch);
-      return client;
-    },
+    clientFactory:
+      options.clientFactory ??
+      (async (launch) => {
+        launches.push(launch);
+        return client;
+      }),
     resolveCliPath: () => '/opt/copilot/bin/copilot',
-    env: { COPILOT_HOME: '/home/someone/.copilot', PATH: '/usr/bin' },
+    env: options.env ?? {
+      COPILOT_HOME,
+      PATH: '/usr/bin',
+      GH_TOKEN: 'gh-token-for-test',
+    },
     newId: () => `id-${++id}`,
     interruptSettleMs: 20,
   });
@@ -184,7 +249,7 @@ function userMessage(
     id: session.nextEventId(),
     parentId: null,
     timestamp: at(1),
-    data: { content, clientTurnId },
+    data: { content, clientTurnId, messageId: `m-${clientTurnId}` },
   };
 }
 
@@ -199,23 +264,110 @@ function idle(session: FakeCopilotSession, aborted = false): SessionEvent {
   };
 }
 
-async function startedTurn(h: ReturnType<typeof harness>, prompt = 'hello') {
+function sessionError(
+  session: FakeCopilotSession,
+  data: Partial<Extract<SessionEvent, { type: 'session.error' }>['data']> = {},
+  agentId?: string,
+): SessionEvent {
+  return {
+    type: 'session.error',
+    id: session.nextEventId(),
+    parentId: null,
+    timestamp: at(3),
+    ...(agentId ? { agentId } : {}),
+    data: { errorType: 'model', message: 'Model call failed.', ...data },
+  };
+}
+
+type Harness = ReturnType<typeof harness>;
+
+async function start(
+  h: Harness,
+  extra: Partial<Parameters<CopilotSdkAdapter['startSession']>[0]> = {},
+) {
   await h.adapter.startSession({
     threadId: 'thread-1',
     provider: 'copilot-sdk',
     cwd: CWD,
+    ...extra,
   });
-  const session = h.client.created[0]!;
+  return h.client.created.at(-1) ?? h.client.resumed.at(-1)!.session;
+}
+
+async function sendAndEcho(
+  h: Harness,
+  session: FakeCopilotSession,
+  prompt = 'hello',
+  extra: Partial<Parameters<CopilotSdkAdapter['sendTurn']>[0]> = {},
+) {
   const turn = await h.adapter.sendTurn({
     threadId: 'thread-1',
     input: prompt,
+    ...extra,
   });
   session.emit(userMessage(session, turn.turnId, prompt));
-  return { session, turnId: turn.turnId };
+  return turn.turnId;
+}
+
+async function startedTurn(h: Harness, prompt = 'hello') {
+  const session = await start(h);
+  const turnId = await sendAndEcho(h, session, prompt);
+  return { session, turnId };
 }
 
 const methods = (events: ProviderRuntimeEvent[]) =>
   events.map((event) => event.method);
+
+const opened = (h: Harness) =>
+  h.events.filter((e) => e.method === 'request.opened') as Array<
+    ProviderRuntimeEvent & {
+      requestId: string;
+      payload: Record<string, unknown>;
+    }
+  >;
+
+const shell: PermissionRequest = {
+  kind: 'shell',
+  canOfferSessionApproval: true,
+  commands: [],
+  fullCommandText: 'rm -rf /',
+  hasWriteFileRedirection: false,
+  intention: 'Remove everything',
+  possiblePaths: [],
+  possibleUrls: [],
+  toolCallId: 'call-9',
+};
+
+function read(path: string, resolvedPath?: string): PermissionRequest {
+  return {
+    kind: 'read',
+    intention: 'Read it',
+    path,
+    ...(resolvedPath ? { resolvedPath } : {}),
+  };
+}
+
+function write(
+  fileName: string,
+  resolvedPath: string | undefined,
+  editPaths: string[] = [],
+): PermissionRequest {
+  return {
+    kind: 'write',
+    canOfferSessionApproval: true,
+    diff: '+x',
+    fileName,
+    intention: 'Edit',
+    ...(resolvedPath ? { resolvedPath } : {}),
+    ...(editPaths.length
+      ? {
+          fileEdits: editPaths.map((path) => ({
+            after: { path, content: 'x' },
+          })) as never,
+        }
+      : {}),
+  };
+}
 
 describe('Copilot SDK adapter: Feature Preview gate', () => {
   test('refuses a start while the preview is off and launches nothing', async () => {
@@ -235,32 +387,55 @@ describe('Copilot SDK adapter: Feature Preview gate', () => {
     expect(prerequisites).toEqual([
       expect.objectContaining({ id: 'copilot-sdk-preview', status: 'missing' }),
     ]);
+  });
+
+  test('lists no models and launches no runtime while the preview is off', async () => {
+    const h = harness({ enabled: false });
+    h.client.models = [{ id: 'gpt-5', name: 'GPT-5' } as ModelInfo];
     expect(await h.adapter.listModels()).toEqual([]);
+    expect(h.launches).toHaveLength(0);
+    h.preview.state.enabled = true;
+    expect(await h.adapter.listModels()).toEqual([
+      { id: 'gpt-5', name: 'GPT-5', originalId: 'gpt-5' },
+    ]);
+    expect(h.launches).toHaveLength(1);
+    expect(h.client.stopped).toBe(1);
   });
 
   test('a choice changed after composition applies to the next operation', async () => {
     const h = harness({ enabled: false });
     await expect(
       h.adapter.startSession({
-        threadId: 't',
+        threadId: 'thread-1',
         provider: 'copilot-sdk',
         cwd: CWD,
       }),
     ).rejects.toBeInstanceOf(SessionStartRefusedError);
     h.preview.state.enabled = true;
-    await h.adapter.startSession({
-      threadId: 't',
-      provider: 'copilot-sdk',
-      cwd: CWD,
-    });
-    expect(h.launches).toHaveLength(1);
+    const session = await start(h);
+    const turnId = await sendAndEcho(h, session);
     h.preview.state.enabled = false;
     await expect(
-      h.adapter.sendTurn({ threadId: 't', input: 'more' }),
+      h.adapter.steerTurn('thread-1', 'more', turnId),
     ).rejects.toMatchObject({ kind: 'unavailable' });
+    expect(session.sends).toHaveLength(1);
+    session.emit(idle(session));
+    await expect(
+      h.adapter.sendTurn({ threadId: 'thread-1', input: 'more' }),
+    ).rejects.toMatchObject({ kind: 'unavailable' });
+    await expect(h.adapter.rewindSession('thread-1', turnId)).resolves.toEqual({
+      kind: 'refused',
+      reason: 'unsupported',
+    });
+    await expect(
+      h.adapter.reconnectMcpServer('thread-1', 'github', { startOAuth: false }),
+    ).resolves.toMatchObject({ kind: 'failed' });
+    expect(session.rewinds).toHaveLength(0);
+    expect(session.restarted).toHaveLength(0);
+    expect(h.adapter.sessionContinuity('thread-1').rewind).toBe('none');
     // Stopping stays available so nothing is stranded.
-    await h.adapter.stopSession('t');
-    expect(h.client.stopped).toBe(true);
+    await h.adapter.stopSession('thread-1');
+    expect(h.client.stopped).toBe(1);
   });
 });
 
@@ -276,7 +451,15 @@ describe('Copilot SDK adapter: session create and resume', () => {
     expect(h.launches[0]).toMatchObject({
       cliPath: '/opt/copilot/bin/copilot',
       cwd: CWD,
+      args: [],
     });
+    // The runtime gets Station's child environment, the person's own
+    // variables included, and a TMPDIR of Station's.
+    expect(h.launches[0]!.env).toMatchObject({
+      GH_TOKEN: 'gh-token-for-test',
+      COPILOT_HOME,
+    });
+    expect(h.launches[0]!.env.TMPDIR).toBeTruthy();
     const config = h.client.created[0]!.config as SessionConfig;
     expect(config).toMatchObject({
       workingDirectory: CWD,
@@ -294,21 +477,31 @@ describe('Copilot SDK adapter: session create and resume', () => {
     const configured = h.events.find((e) => e.method === 'session.configured');
     expect(configured).toMatchObject({
       sessionId: 'copilot-session-1',
-      metadata: { approvalMode: 'ask' },
+      metadata: { approvalMode: 'ask', nativeResumeBindingKey: BINDING },
     });
-    expect(
-      (configured as { metadata: Record<string, unknown> }).metadata
-        .nativeResumeBindingKey,
-    ).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  test('resumes the session its cursor names', async () => {
+  test('binds a resume to the runtime configuration home in COPILOT_HOME', async () => {
+    const other = harness({
+      env: { COPILOT_HOME: join(ROOT, 'another-home'), PATH: '/usr/bin' },
+    });
+    await expect(
+      other.adapter.startSession({
+        threadId: 'thread-1',
+        provider: 'copilot-sdk',
+        cwd: CWD,
+        resumeCursor: { copilotSessionId: 'earlier-session' },
+        nativeResumeBindingKey: BINDING,
+      }),
+    ).rejects.toMatchObject({ code: 'session_recovery_failed' });
+    expect(other.launches).toHaveLength(0);
+  });
+
+  test('resumes the session its cursor names under the same home', async () => {
     const h = harness();
-    await h.adapter.startSession({
-      threadId: 'thread-1',
-      provider: 'copilot-sdk',
-      cwd: CWD,
+    await start(h, {
       resumeCursor: { copilotSessionId: 'earlier-session' },
+      nativeResumeBindingKey: BINDING,
     });
     expect(h.client.created).toHaveLength(0);
     expect(h.client.resumed.map((entry) => entry.id)).toEqual([
@@ -316,18 +509,65 @@ describe('Copilot SDK adapter: session create and resume', () => {
     ]);
   });
 
-  test('refuses a resume recorded under another configuration home', async () => {
+  test('refuses a resume whose cursor has no recorded binding key', async () => {
     const h = harness();
+    await expect(
+      start(h, { resumeCursor: { copilotSessionId: 'earlier-session' } }),
+    ).rejects.toMatchObject({ code: 'session_recovery_failed' });
+    expect(h.launches).toHaveLength(0);
+  });
+
+  test('refuses a session whose runtime did not apply manual approvals', async () => {
+    const h = harness();
+    h.client.prepare = (session) => {
+      session.permissionModeResult = { success: true, mode: 'allow-all' };
+    };
+    await expect(
+      start(h, {
+        resumeCursor: { copilotSessionId: 'earlier-session' },
+        nativeResumeBindingKey: BINDING,
+      }),
+    ).rejects.toMatchObject({
+      name: 'SessionStartRefusedError',
+      message: expect.stringContaining('allow-all'),
+    });
+    expect(h.client.stopped).toBe(1);
+    expect(await h.adapter.hasSession('thread-1')).toBe(false);
+    h.client.prepare = (session) => {
+      session.permissionModeResult = undefined;
+    };
+    await expect(start(h)).rejects.toBeInstanceOf(SessionStartRefusedError);
+  });
+
+  test('a second start for the same thread while one runs launches nothing', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const client = new FakeCopilotClient();
+    let launched = 0;
+    const h = harness({
+      clientFactory: async () => {
+        launched += 1;
+        await gate;
+        return client;
+      },
+    });
+    const first = h.adapter.startSession({
+      threadId: 'thread-1',
+      provider: 'copilot-sdk',
+      cwd: CWD,
+    });
     await expect(
       h.adapter.startSession({
         threadId: 'thread-1',
         provider: 'copilot-sdk',
         cwd: CWD,
-        resumeCursor: { copilotSessionId: 'earlier-session' },
-        nativeResumeBindingKey: '0'.repeat(64),
       }),
-    ).rejects.toMatchObject({ code: 'session_recovery_failed' });
-    expect(h.launches).toHaveLength(0);
+    ).rejects.toMatchObject({ code: 'session_start_in_flight' });
+    release();
+    await first;
+    expect(launched).toBe(1);
   });
 
   test('replays events the runtime sent while a resume was still connecting', async () => {
@@ -347,11 +587,9 @@ describe('Copilot SDK adapter: session create and resume', () => {
         },
       },
     ];
-    await h.adapter.startSession({
-      threadId: 'thread-1',
-      provider: 'copilot-sdk',
-      cwd: CWD,
+    await start(h, {
       resumeCursor: { copilotSessionId: 'earlier-session' },
+      nativeResumeBindingKey: BINDING,
     });
     await h.settle();
     expect(methods(h.events)).toEqual([
@@ -370,7 +608,7 @@ describe('Copilot SDK adapter: session create and resume', () => {
 });
 
 describe('Copilot SDK adapter: turns', () => {
-  test('streams text, a tool call and usage, and completes on session.idle', async () => {
+  test('streams text, a tool call and usage, and completes on its own session.idle', async () => {
     const h = harness();
     const { session, turnId } = await startedTurn(h, 'list the files');
     expect(session.sends).toEqual([
@@ -476,16 +714,16 @@ describe('Copilot SDK adapter: turns', () => {
     });
   });
 
-  test('a session.error ends the turn with an error', async () => {
+  test("a root session.error for the turn's message ends that turn", async () => {
     const h = harness();
     const { session, turnId } = await startedTurn(h);
-    session.emit({
-      type: 'session.error',
-      id: session.nextEventId(),
-      parentId: null,
-      timestamp: at(3),
-      data: { errorType: 'authentication', message: 'Not signed in.' },
-    });
+    session.emit(
+      sessionError(session, {
+        errorType: 'authentication',
+        message: 'Not signed in.',
+        originatingMessageId: `m-${turnId}`,
+      }),
+    );
     await h.settle();
     const turnEvents = h.events.filter((e) => e.turnId === turnId);
     expect(methods(turnEvents)).toEqual([
@@ -494,6 +732,55 @@ describe('Copilot SDK adapter: turns', () => {
       'turn.aborted',
     ]);
     expect(turnEvents[1]).toMatchObject({ message: 'Not signed in.' });
+  });
+
+  test("a subagent's error neither ends the turn nor lets a later idle complete the next one", async () => {
+    const h = harness();
+    const { session, turnId } = await startedTurn(h);
+    session.emit(sessionError(session, {}, 'sub-1'));
+    await h.settle();
+    expect(h.adapter.hasOpenEngineWork('thread-1')).toBe(true);
+    session.emit(idle(session));
+    await h.settle();
+    expect(methods(h.events.filter((e) => e.turnId === turnId))).toEqual([
+      'turn.started',
+      'turn.completed',
+    ]);
+    // A stale idle that arrives before the next turn's own message does not
+    // complete the next turn.
+    const next = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'again',
+    });
+    session.emit(idle(session));
+    await h.settle();
+    expect(h.adapter.hasOpenEngineWork('thread-1')).toBe(true);
+    session.emit(userMessage(session, next.turnId, 'again'));
+    session.emit(idle(session));
+    await h.settle();
+    expect(methods(h.events.filter((e) => e.turnId === next.turnId))).toEqual([
+      'turn.started',
+      'turn.completed',
+    ]);
+  });
+
+  test('a recoverable root error is a warning and the turn runs on', async () => {
+    const h = harness();
+    const { session, turnId } = await startedTurn(h);
+    session.emit(
+      sessionError(session, {
+        errorType: 'rate_limit',
+        message: 'Rate limited.',
+        eligibleForAutoSwitch: true,
+        originatingMessageId: `m-${turnId}`,
+      }),
+    );
+    await h.settle();
+    expect(methods(h.events.filter((e) => e.turnId === turnId))).toEqual([
+      'turn.started',
+      'runtime.warning',
+    ]);
+    expect(h.adapter.hasOpenEngineWork('thread-1')).toBe(true);
   });
 
   test('steers into the running turn and refuses a turn that ended', async () => {
@@ -538,36 +825,59 @@ describe('Copilot SDK adapter: turns', () => {
   });
 });
 
-describe('Copilot SDK adapter: approvals', () => {
-  const shell: PermissionRequest = {
-    kind: 'shell',
-    canOfferSessionApproval: true,
-    commands: [],
-    fullCommandText: 'npm test',
-    hasWriteFileRedirection: false,
-    intention: 'Run the tests',
-    possiblePaths: [],
-    possibleUrls: [],
-    toolCallId: 'call-9',
-  };
+describe('Copilot SDK adapter: runtime death', () => {
+  test('a lost runtime aborts the running turn, answers requests and ends the session', async () => {
+    const h = harness();
+    const { session, turnId } = await startedTurn(h);
+    const answer = session.ask(shell);
+    h.client.loseConnection();
+    await expect(answer).resolves.toEqual({ kind: 'user-not-available' });
+    await h.settle();
+    expect(methods(h.events.filter((e) => e.turnId === turnId))).toEqual([
+      'turn.started',
+      'request.opened',
+      'request.resolved',
+      'turn.aborted',
+    ]);
+    expect(h.events.at(-1)).toMatchObject({ method: 'session.exited' });
+    expect(await h.adapter.hasSession('thread-1')).toBe(false);
+    expect(h.client.stopped).toBe(1);
+    await expect(h.adapter.interruptTurn('thread-1', turnId)).resolves.toEqual({
+      outcome: 'no-active-turn',
+    });
+  });
 
+  test('an interrupt on a dead connection ends the turn instead of hanging', async () => {
+    const h = harness();
+    const { session, turnId } = await startedTurn(h);
+    session.abortFails = true;
+    await expect(h.adapter.interruptTurn('thread-1', turnId)).resolves.toEqual({
+      outcome: 'cancelled',
+      turnId,
+    });
+    await h.settle();
+    expect(h.events.some((e) => e.method === 'turn.aborted')).toBe(true);
+    expect(h.events.at(-1)).toMatchObject({ method: 'session.exited' });
+  });
+});
+
+describe('Copilot SDK adapter: approvals', () => {
   test('a person allows a command: request.opened, then approve-once', async () => {
     const h = harness();
     const { session } = await startedTurn(h);
     const answer = session.ask(shell);
     await h.settle();
-    const opened = h.events.find((e) => e.method === 'request.opened');
-    expect(opened).toMatchObject({
+    expect(opened(h)[0]).toMatchObject({
       requestType: 'approval',
       title: 'Run a command',
       payload: {
         toolName: 'shell',
-        toolInput: { command: 'npm test', intention: 'Run the tests' },
+        toolInput: { command: 'rm -rf /', intention: 'Remove everything' },
       },
     });
     await h.adapter.respondToRequest(
       'thread-1',
-      (opened as { requestId: string }).requestId,
+      opened(h)[0]!.requestId,
       'accept',
     );
     await expect(answer).resolves.toEqual({ kind: 'approve-once' });
@@ -584,10 +894,11 @@ describe('Copilot SDK adapter: approvals', () => {
     const { session } = await startedTurn(h);
     const answer = session.ask(shell);
     await h.settle();
-    const opened = h.events.find((e) => e.method === 'request.opened') as {
-      requestId: string;
-    };
-    await h.adapter.respondToRequest('thread-1', opened.requestId, 'decline');
+    await h.adapter.respondToRequest(
+      'thread-1',
+      opened(h)[0]!.requestId,
+      'decline',
+    );
     await expect(answer).resolves.toEqual({ kind: 'reject' });
   });
 
@@ -596,63 +907,133 @@ describe('Copilot SDK adapter: approvals', () => {
     const { session } = await startedTurn(h);
     const first = session.ask(shell);
     await h.settle();
-    const opened = h.events.find((e) => e.method === 'request.opened') as {
-      requestId: string;
-    };
     await h.adapter.respondToRequest(
       'thread-1',
-      opened.requestId,
+      opened(h)[0]!.requestId,
       'acceptForSession',
     );
     await expect(first).resolves.toEqual({ kind: 'approve-once' });
     await expect(session.ask(shell)).resolves.toEqual({ kind: 'approve-once' });
     // A different command is not covered by that grant.
-    void session.ask({ ...shell, fullCommandText: 'rm -rf build' });
+    void session.ask({ ...shell, fullCommandText: 'git push' });
     await h.settle();
-    expect(h.events.filter((e) => e.method === 'request.opened')).toHaveLength(
-      2,
-    );
+    expect(opened(h)).toHaveLength(2);
   });
 
-  test('auto mode allows a write inside the working directory only', async () => {
+  test('ask mode allows a resolved read inside the directory and asks for a write there', async () => {
     const h = harness();
-    await h.adapter.startSession({
-      threadId: 'thread-1',
-      provider: 'copilot-sdk',
-      cwd: CWD,
+    const session = await start(h);
+    await expect(
+      session.ask(read('src/a.ts', join(CWD, 'src', 'a.ts'))),
+    ).resolves.toEqual({ kind: 'approve-once' });
+    void session.ask(write('src/a.ts', join(CWD, 'src', 'a.ts')));
+    await h.settle();
+    expect(opened(h)).toHaveLength(1);
+  });
+
+  test('a read or write through a link that leads outside asks a person', async () => {
+    const h = harness();
+    const session = await start(h, {
       modelOptions: { approvalMode: 'auto' },
     });
-    const session = h.client.created[0]!;
-    const write = (fileName: string): PermissionRequest => ({
-      kind: 'write',
-      canOfferSessionApproval: true,
-      diff: '+x',
-      fileName,
-      intention: 'Edit',
-    });
-    await expect(session.ask(write('src/a.ts'))).resolves.toEqual({
-      kind: 'approve-once',
-    });
-    void session.ask(write('../outside.ts'));
+    // The runtime's own path for the file, not yet resolved through the link.
+    void session.ask(read('link/secret', join(CWD, 'link', 'secret')));
+    void session.ask(write('link/evil.ts', join(CWD, 'link', 'evil.ts')));
     await h.settle();
-    expect(h.events.filter((e) => e.method === 'request.opened')).toHaveLength(
-      1,
-    );
+    expect(opened(h)).toHaveLength(2);
   });
 
-  test('full access outside a host session still asks before a command', async () => {
+  test('a read or write without the runtime-resolved path asks a person', async () => {
     const h = harness();
-    await h.adapter.startSession({
-      threadId: 'thread-1',
-      provider: 'copilot-sdk',
-      cwd: CWD,
-      modelOptions: { approvalMode: 'never' },
-      confinement: 'workspace',
+    const session = await start(h, {
+      modelOptions: { approvalMode: 'auto' },
     });
-    const session = h.client.created[0]!;
-    void session.ask(shell);
+    void session.ask(read('src/a.ts'));
+    void session.ask(write('src/a.ts', undefined));
     await h.settle();
-    expect(h.events.some((e) => e.method === 'request.opened')).toBe(true);
+    expect(opened(h)).toHaveLength(2);
+  });
+
+  test('a write whose edits reach outside the directory asks a person', async () => {
+    const h = harness();
+    const session = await start(h, {
+      modelOptions: { approvalMode: 'auto' },
+    });
+    await expect(
+      session.ask(
+        write('src/a.ts', join(CWD, 'src', 'a.ts'), [join(CWD, 'src', 'b.ts')]),
+      ),
+    ).resolves.toEqual({ kind: 'approve-once' });
+    void session.ask(
+      write('src/a.ts', join(CWD, 'src', 'a.ts'), [join(OUTSIDE, 'c.ts')]),
+    );
+    await h.settle();
+    expect(opened(h)).toHaveLength(1);
+  });
+
+  test('a write granted for the session stays inside the working directory', async () => {
+    const h = harness();
+    const session = await start(h);
+    const first = session.ask(write('src/a.ts', join(CWD, 'src', 'a.ts')));
+    await h.settle();
+    await h.adapter.respondToRequest(
+      'thread-1',
+      opened(h)[0]!.requestId,
+      'acceptForSession',
+    );
+    await expect(first).resolves.toEqual({ kind: 'approve-once' });
+    await expect(
+      session.ask(write('src/b.ts', join(CWD, 'src', 'b.ts'))),
+    ).resolves.toEqual({ kind: 'approve-once' });
+    void session.ask(write('../outside/x.ts', join(OUTSIDE, 'x.ts')));
+    await h.settle();
+    expect(opened(h)).toHaveLength(2);
+  });
+
+  test('a read granted for the session covers that directory only', async () => {
+    const h = harness();
+    const session = await start(h);
+    const first = session.ask(read('secret', join(OUTSIDE, 'secret')));
+    await h.settle();
+    await h.adapter.respondToRequest(
+      'thread-1',
+      opened(h)[0]!.requestId,
+      'acceptForSession',
+    );
+    await expect(first).resolves.toEqual({ kind: 'approve-once' });
+    await expect(
+      session.ask(read('other', join(OUTSIDE, 'other'))),
+    ).resolves.toEqual({ kind: 'approve-once' });
+    void session.ask(read('elsewhere', join(ROOT, 'elsewhere')));
+    await h.settle();
+    expect(opened(h)).toHaveLength(2);
+  });
+
+  test('a managed request goes to a person in every mode and never records a grant', async () => {
+    const h = harness();
+    const session = await start(h, {
+      modelOptions: { approvalMode: 'never' },
+      confinement: 'host',
+    });
+    const managedShell = { ...shell, managedApprovalRequired: true };
+    const first = session.ask(managedShell);
+    await h.settle();
+    expect(opened(h)[0]!.payload).toMatchObject({
+      managedApprovalRequired: true,
+    });
+    await h.adapter.respondToRequest(
+      'thread-1',
+      opened(h)[0]!.requestId,
+      'acceptForSession',
+    );
+    await expect(first).resolves.toEqual({ kind: 'approve-once' });
+    void session.ask(managedShell);
+    // The derived prompt's marker counts too, for an otherwise-allowed read.
+    void session.ask(read('src/a.ts', join(CWD, 'src', 'a.ts')), {
+      promptRequest: { kind: 'read', managedApprovalRequired: true },
+    });
+    await h.settle();
+    expect(opened(h)).toHaveLength(3);
   });
 
   test('stopping the session answers its open requests', async () => {
@@ -662,7 +1043,65 @@ describe('Copilot SDK adapter: approvals', () => {
     await h.adapter.stopSession('thread-1');
     await expect(answer).resolves.toEqual({ kind: 'user-not-available' });
     expect(session.disconnected).toBe(true);
-    expect(h.client.stopped).toBe(true);
+    expect(h.client.stopped).toBe(1);
+  });
+});
+
+describe('Copilot SDK adapter: approval mode per turn', () => {
+  test('a turn that revokes full access asks before the next command', async () => {
+    const h = harness();
+    const session = await start(h, {
+      modelOptions: { approvalMode: 'never' },
+      confinement: 'host',
+    });
+    // Orchestration sends the standing confinement on every turn.
+    const first = await sendAndEcho(h, session, 'one', {
+      confinement: 'host',
+    });
+    await expect(session.ask(shell)).resolves.toEqual({
+      kind: 'approve-once',
+    });
+    session.emit(idle(session));
+    // The orchestrator's revocation: the next turn runs as Ask, confined.
+    const second = await sendAndEcho(h, session, 'two', {
+      modelOptions: { approvalMode: 'ask' },
+      confinement: 'workspace',
+    });
+    void session.ask(shell);
+    await h.settle();
+    expect(opened(h)).toHaveLength(1);
+    const started = (turnId: string) =>
+      h.events.find(
+        (e) => e.method === 'turn.started' && e.turnId === turnId,
+      ) as { metadata?: Record<string, unknown> };
+    expect(started(first).metadata).toEqual({ approvalMode: 'never' });
+    expect(started(second).metadata).toEqual({ approvalMode: 'ask' });
+  });
+
+  test('losing host confinement alone withdraws full access', async () => {
+    const h = harness();
+    const session = await start(h, {
+      modelOptions: { approvalMode: 'never' },
+      confinement: 'host',
+    });
+    await sendAndEcho(h, session, 'one', { confinement: 'workspace' });
+    void session.ask(shell);
+    await h.settle();
+    expect(opened(h)).toHaveLength(1);
+  });
+
+  test('a turn that grants full access in a host session stops asking', async () => {
+    const h = harness();
+    const session = await start(h);
+    await sendAndEcho(h, session, 'one', {
+      modelOptions: { approvalMode: 'never' },
+      confinement: 'host',
+    });
+    await expect(session.ask(shell)).resolves.toEqual({
+      kind: 'approve-once',
+    });
+    await h.settle();
+    expect(opened(h)).toHaveLength(0);
   });
 });
 
@@ -780,16 +1219,12 @@ describe('Copilot SDK adapter: subagents', () => {
 });
 
 describe('Copilot SDK adapter: rewind', () => {
-  async function twoTurns(h: ReturnType<typeof harness>) {
+  async function twoTurns(h: Harness) {
     const { session, turnId: first } = await startedTurn(h, 'one');
     session.emit(idle(session));
-    const second = await h.adapter.sendTurn({
-      threadId: 'thread-1',
-      input: 'two',
-    });
-    session.emit(userMessage(session, second.turnId, 'two'));
+    const second = await sendAndEcho(h, session, 'two');
     session.emit(idle(session));
-    return { session, first, second: second.turnId };
+    return { session, first, second };
   }
 
   test('rewinds to before a turn at its user.message event and restores files', async () => {
@@ -798,7 +1233,7 @@ describe('Copilot SDK adapter: rewind', () => {
     session.rewindResult = {
       outcome: 'success',
       eventsRemoved: 6,
-      restoredFiles: [`${CWD}/src/a.ts`],
+      restoredFiles: [join(CWD, 'src', 'a.ts')],
       skippedFiles: [],
     };
     const outcome = await h.adapter.rewindSession('thread-1', first);
@@ -810,7 +1245,7 @@ describe('Copilot SDK adapter: rewind', () => {
       kind: 'rewound',
       beforeTurnId: first,
       hiddenTurnIds: [first, second],
-      affectedFiles: { count: 1, paths: [`${CWD}/src/a.ts`] },
+      affectedFiles: { count: 1, paths: [join(CWD, 'src', 'a.ts')] },
     });
     await h.settle();
     expect(h.events.at(-1)).toMatchObject({
@@ -825,7 +1260,7 @@ describe('Copilot SDK adapter: rewind', () => {
     });
   });
 
-  test('refuses while a turn runs, and reports the runtime refusing', async () => {
+  test('refuses while a turn runs, and names files restored before a failure', async () => {
     const h = harness();
     const { session, turnId } = await startedTurn(h);
     await expect(h.adapter.rewindSession('thread-1', turnId)).resolves.toEqual({
@@ -835,15 +1270,40 @@ describe('Copilot SDK adapter: rewind', () => {
     expect(session.rewinds).toHaveLength(0);
     session.emit(idle(session));
     session.rewindResult = {
-      outcome: 'files-rolled-back',
-      restoredFiles: [],
+      outcome: 'truncation-failed',
+      restoredFiles: [join(CWD, 'src', 'a.ts')],
       skippedFiles: [],
       error: 'disk full',
     };
     await expect(h.adapter.rewindSession('thread-1', turnId)).resolves.toEqual({
       kind: 'failed',
-      message: 'Copilot could not rewind (files-rolled-back): disk full.',
+      message: `Copilot could not rewind (truncation-failed): disk full. It had already restored 1 file(s): ${join(CWD, 'src', 'a.ts')}.`,
     });
+  });
+
+  test('a resumed session can rewind to a turn from before the resume', async () => {
+    const h = harness();
+    h.client.prepare = (session) => {
+      session.persisted = [
+        {
+          type: 'user.message',
+          id: 'persisted-evt',
+          parentId: null,
+          timestamp: at(1),
+          data: { content: 'earlier', clientTurnId: 'earlier-turn' },
+        },
+      ];
+    };
+    const session = await start(h, {
+      resumeCursor: { copilotSessionId: 'earlier-session' },
+      nativeResumeBindingKey: BINDING,
+    });
+    await expect(
+      h.adapter.rewindSession('thread-1', 'earlier-turn'),
+    ).resolves.toMatchObject({ kind: 'rewound', beforeTurnId: 'earlier-turn' });
+    expect(session.rewinds).toEqual([
+      { eventId: 'persisted-evt', mode: 'conversation-and-files' },
+    ]);
   });
 });
 
@@ -851,14 +1311,14 @@ describe('Copilot SDK adapter: which CLI file the SDK is given', () => {
   test('maps an npm .cmd shim to the package loader beside it, or to nothing', () => {
     const prefix = mkdtempSync(join(tmpdir(), 'copilot-cli-shim-'));
     try {
-      const shim = join(prefix, 'copilot.cmd');
-      writeFileSync(shim, '@echo off\r\n');
+      const shimFile = join(prefix, 'copilot.cmd');
+      writeFileSync(shimFile, '@echo off\r\n');
       // No package beside the shim: nothing the SDK could spawn.
-      expect(resolveCopilotCliLaunchPath(shim)).toBeNull();
+      expect(resolveCopilotCliLaunchPath(shimFile)).toBeNull();
       const pkg = join(prefix, 'node_modules', '@github', 'copilot');
       mkdirSync(pkg, { recursive: true });
       writeFileSync(join(pkg, 'npm-loader.js'), '');
-      expect(resolveCopilotCliLaunchPath(shim)).toBe(
+      expect(resolveCopilotCliLaunchPath(shimFile)).toBe(
         join(pkg, 'npm-loader.js'),
       );
       // An executable is handed over as found.
@@ -867,31 +1327,6 @@ describe('Copilot SDK adapter: which CLI file the SDK is given', () => {
     } finally {
       rmSync(prefix, { recursive: true, force: true });
     }
-  });
-});
-
-// Registration is a plain array entry and a preview bind in runtime
-// composition; an omission is silent everywhere except here.
-describe('Copilot SDK adapter: registration', () => {
-  const read = (path: string) =>
-    readFileSync(new URL(path, import.meta.url), 'utf8');
-
-  test('the runtime registers the adapter and binds its preview', () => {
-    const initialize = read('../../runtime/bootstrap/runtime-initialize.ts');
-    const registration = initialize.match(
-      /registerProviderAdapters\(\s*\[([\s\S]*?)\]/,
-    );
-    expect(registration).not.toBeNull();
-    expect(registration![1].split(',').map((entry) => entry.trim())).toContain(
-      'copilotSdkAdapter',
-    );
-    const runtime = read('../../runtime/bootstrap/station-runtime.ts');
-    expect(runtime).toMatch(
-      /this\.copilotSdkPreview = this\.featurePreviews\.bind\(\{\s*id: 'copilot-sdk-engine'/,
-    );
-    expect(runtime).toMatch(
-      /id: 'copilot-sdk',\s*cli: 'copilot',\s*allowed: \(\) => this\.copilotSdkAdapter\.previewEnabled\(\)/,
-    );
   });
 });
 
@@ -932,5 +1367,23 @@ describe('Copilot SDK adapter: MCP status and reroutes', () => {
         scope: 'session',
       }),
     ]);
+  });
+});
+
+// Kept beside the runtime test below: the registration array is plain data,
+// so an omission is silent except here.
+describe('Copilot SDK adapter: registration', () => {
+  test('the runtime registers the adapter', () => {
+    const initialize = readFileSync(
+      new URL('../../runtime/bootstrap/runtime-initialize.ts', import.meta.url),
+      'utf8',
+    );
+    const registration = initialize.match(
+      /registerProviderAdapters\(\s*\[([\s\S]*?)\]/,
+    );
+    expect(registration).not.toBeNull();
+    expect(registration![1].split(',').map((entry) => entry.trim())).toContain(
+      'copilotSdkAdapter',
+    );
   });
 });

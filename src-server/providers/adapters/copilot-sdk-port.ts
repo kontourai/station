@@ -23,6 +23,7 @@ import type {
   ModelInfo,
   ResumeSessionConfig,
   SessionConfig,
+  SessionEvent,
 } from '@github/copilot-sdk';
 
 export type CopilotHistoryRewindRequest = Parameters<
@@ -31,10 +32,23 @@ export type CopilotHistoryRewindRequest = Parameters<
 export type CopilotHistoryRewindResult = Awaited<
   ReturnType<CopilotSession['rpc']['history']['rewind']>
 >;
+/** `{ success, mode }`: whether the requested `permissionMode` applied. */
+export type CopilotPermissionModeResult =
+  CopilotSession['permissionModeResult'];
+
+/** How often a live runtime's connection is checked with `ping()`. */
+export const COPILOT_CONNECTION_CHECK_MS = 5_000;
 
 /** One live Copilot session, as the adapter uses it. */
 export interface CopilotSdkSessionPort {
   readonly sessionId: string;
+  /**
+   * The outcome of the `permissionMode` requested at create or resume, as
+   * the runtime reported it; `undefined` when it reported none.
+   */
+  readonly permissionModeResult: CopilotPermissionModeResult;
+  /** The session's persisted events (ephemeral ones such as usage excluded). */
+  getEvents(): Promise<SessionEvent[]>;
   /** Resolves with the submitted user message's id once the runtime admits it. */
   send(options: MessageOptions): Promise<string>;
   abort(): Promise<void>;
@@ -56,6 +70,13 @@ export interface CopilotSdkClientPort {
     config: ResumeSessionConfig,
   ): Promise<CopilotSdkSessionPort>;
   listModels(): Promise<ModelInfo[]>;
+  /**
+   * Calls `onLost` once when the runtime connection stops answering (its
+   * process died or its pipe closed). The SDK has no public disconnect
+   * event, so this checks `ping()` every {@link COPILOT_CONNECTION_CHECK_MS}.
+   * Returns a function that stops the watch.
+   */
+  watchConnection(onLost: (error: unknown) => void): () => void;
   /** Ends the runtime process. Never throws; errors are returned. */
   stop(): Promise<Error[]>;
 }
@@ -81,6 +102,10 @@ function sessionPort(session: CopilotSession): CopilotSdkSessionPort {
     get sessionId() {
       return session.sessionId;
     },
+    get permissionModeResult() {
+      return session.permissionModeResult;
+    },
+    getEvents: () => session.getEvents(),
     send: (options) => session.send(options),
     abort: () => session.abort(),
     disconnect: () => session.disconnect(),
@@ -97,6 +122,31 @@ function clientPort(client: CopilotClient): CopilotSdkClientPort {
     resumeSession: async (sessionId, config) =>
       sessionPort(await client.resumeSession(sessionId, config)),
     listModels: () => client.listModels(),
+    watchConnection: (onLost) => {
+      let stopped = false;
+      let checking = false;
+      const timer = setInterval(() => {
+        if (stopped || checking) return;
+        checking = true;
+        client.ping().then(
+          () => {
+            checking = false;
+          },
+          (error: unknown) => {
+            checking = false;
+            if (stopped) return;
+            stopped = true;
+            clearInterval(timer);
+            onLost(error);
+          },
+        );
+      }, COPILOT_CONNECTION_CHECK_MS);
+      timer.unref?.();
+      return () => {
+        stopped = true;
+        clearInterval(timer);
+      };
+    },
     stop: async () => {
       try {
         return await client.stop();
