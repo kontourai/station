@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import changelog from '../changeset-changelog.mjs';
@@ -13,7 +12,6 @@ import {
   entryPaths,
   fixture,
   git,
-  gitEnv,
   record_,
   run,
   scoped,
@@ -554,11 +552,10 @@ describe('release versioning in the documentation freshness gate', () => {
     commit(f.root, 'review the released packages');
     git(f.root, ['switch', '-qc', 'release']);
     const release = () => {
-      const result = spawnSync(
-        process.execPath,
-        [join(scripts, '..', 'node_modules/@changesets/cli/bin.js'), 'version'],
-        { cwd: f.root, env: gitEnv(), encoding: 'utf8', windowsHide: true },
-      );
+      // The real CLI, through the fixture's node runner.
+      const result = run(f.root, '../node_modules/@changesets/cli/bin.js', [
+        'version',
+      ]);
       expect(result.status, result.stderr).toBe(0);
     };
     return { ...f, release };
