@@ -5836,6 +5836,8 @@ function describeDirectStart(record: InstanceStateRecord): string {
  * back or was refused.
  */
 export async function restart(opts: StopOptions = {}): Promise<void> {
+  // Refuse before asking the supervisor to drain the healthy generation.
+  loadInstalledManagedPolicyChecked();
   const record = findRunningTarget(opts, 'restart');
   if (!record.supervised) {
     throw new Error(

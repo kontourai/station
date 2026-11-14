@@ -390,6 +390,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4516: boots the source Station with injected managed policies (refused
   // and accepted) and runs `station policy show` against it; private homes.
   'src-server/__tests__/managed-policy-startup.process.test.ts',
+  // Real supervisor handoff through the CLI's policy preflight, in a private home.
+  'packages/cli/src/__tests__/lifecycle-restart-policy.test.ts',
   // #4521: boots the source Station with every capability switch off and
   // drives its routes over HTTP; private homes, ephemeral ports.
   'src-server/__tests__/managed-capability-switches.process.test.ts',

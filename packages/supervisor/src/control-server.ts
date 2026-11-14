@@ -63,7 +63,7 @@ export interface ControlHandlers {
   handoff(
     request: HandoffOptions,
     onProgress: (phase: HandoffPhase, generation: number) => void,
-  ): Promise<HandoffOutcomeResult>;
+  ): Promise<HandoffOutcomeResult & { afterReply?: () => void }>;
   stop(drainDeadlineMs?: number): void;
   subscribe(listener: (event: SupervisorEvent) => void): () => void;
 }
@@ -90,10 +90,20 @@ export interface ControlServerOptions {
  * Ends a refused connection and destroys it once the reply is flushed, or
  * after a short bound if the peer never reads, so it cannot hold a slot.
  */
-function closeAfterReply(socket: Socket): void {
-  const timer = setTimeout(() => socket.destroy(), REFUSED_CLOSE_TIMEOUT_MS);
+function closeAfterReply(socket: Socket, afterReply?: () => void): void {
+  let settled = false;
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    afterReply?.();
+  };
+  const timer = setTimeout(() => {
+    socket.destroy();
+    finish();
+  }, REFUSED_CLOSE_TIMEOUT_MS);
   timer.unref();
-  socket.once('close', () => clearTimeout(timer));
+  socket.once('close', finish);
   socket.end(() => socket.destroy());
 }
 
@@ -580,7 +590,15 @@ export class ControlServer {
             send({ type: 'handoff.progress', id, phase, generation }),
           )
           .then(
-            (result) => send({ type: 'handoff.result', id, ...result }),
+            (result) => {
+              const {
+                afterReply,
+                terminalStartupRefusal: _terminalStartupRefusal,
+                ...reply
+              } = result;
+              send({ type: 'handoff.result', id, ...reply });
+              if (afterReply) closeAfterReply(socket, afterReply);
+            },
             (cause: unknown) =>
               send({
                 type: 'handoff.result',

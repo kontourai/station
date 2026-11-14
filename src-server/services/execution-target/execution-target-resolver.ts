@@ -37,7 +37,10 @@ import {
   type WorkspaceIsolationMode,
 } from '@kontourai/station-contracts/workspace-isolation';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
-import { managedEngineRefusalWithReason } from '../../security/managed-engine-limits.js';
+import {
+  managedEngineRefusalFor,
+  managedEngineRefusalWithReason,
+} from '../../security/managed-engine-limits.js';
 import {
   canonicalPath,
   isCanonicalPathWithin,
@@ -702,6 +705,10 @@ export async function resolveExecutionTarget(
       access,
       resolvedEngineConnectionId,
     );
+    if (access.kind === 'current' && connection.kind === 'agent') {
+      const refusal = managedEngineRefusalFor(connectionProvider(connection));
+      if (refusal) throw refusal;
+    }
     assertConnectionReady(connection);
     provider = connectionProvider(connection);
   } else {

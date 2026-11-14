@@ -997,6 +997,13 @@ not retry; restarting cannot fix it. `station start` checks the policy the
 way `station policy check` does before it starts anything: it prints the same
 line and exits `1` without starting a server or the UI, so nothing listens
 while the policy is unusable.
+A supervised server generation uses exit code `78` for an unusable managed
+policy or a home that requires reset. The supervisor retains the refusal line
+and stops after that first attempt; ordinary crashes still use its retry budget.
+`station restart` checks the installed policy before asking the supervisor to
+drain the running generation. If that check refuses, the current generation
+continues serving. The policy can change after this read; the new generation
+still performs its own startup validation and fails closed.
 Fix or remove the policy, then start Station again.
 
 ## What clients see

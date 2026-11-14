@@ -320,7 +320,15 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
         workloads: workloads.status(),
         workloadHost: { available: workloads.available },
       }),
-      handoff: (request, onProgress) => manager.handoff(request, onProgress),
+      handoff: async (request, onProgress) => {
+        const { terminalStartupRefusal, ...result } = await manager.handoff(
+          request,
+          onProgress,
+        );
+        return terminalStartupRefusal
+          ? { ...result, afterReply: () => void shutdown(1) }
+          : result;
+      },
       stop: (drainDeadlineMs) => void stopAndExit(drainDeadlineMs),
       subscribe: (listener) => {
         subscribers.add(listener);
