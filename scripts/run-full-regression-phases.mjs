@@ -8,7 +8,7 @@
  * qualification never does. The local full:regression coordinator is unchanged.
  */
 import { execFileSync, spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -20,6 +20,16 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from './lib/owned-process.mjs';
+import {
+  clipText,
+  JOB_LABEL_ENV,
+  JOB_MANIFEST_FILE,
+  JOB_MANIFEST_KIND,
+  jobExplained,
+  MANIFEST_DIR_ENV,
+  MANIFEST_SCHEMA_VERSION,
+  phaseExplained,
+} from './lib/qualification-failure-manifest.mjs';
 import {
   collectWorkspaceProvenance,
   digestVerificationDependencies,
@@ -199,6 +209,7 @@ export async function runPhaseProcess(
     cwd = repoRoot,
     signal = /** @type {AbortSignal | undefined} */ (undefined),
     spawnProcess = spawn,
+    extraEnv = {},
     // Where the child's bytes are forwarded. Tests pass their own sinks: a
     // child's raw bytes written into a Vitest worker's stdout become the
     // Vitest run's output, and a deliberately invalid UTF-8 child then makes
@@ -214,9 +225,12 @@ export async function runPhaseProcess(
   // The canonical lane binds STATION_VERIFICATION_HISTORY_REF to the request's
   // HEAD, so history-reading tests (commit-message corpora) inspect the
   // candidate rather than origin/main. The binding overwrites inheritance.
-  const env = bindVerificationRequestEnvironment(process.env, {
-    headSha: git(['rev-parse', 'HEAD'], cwd).toString('utf8').trim(),
-  });
+  const env = {
+    ...bindVerificationRequestEnvironment(process.env, {
+      headSha: git(['rev-parse', 'HEAD'], cwd).toString('utf8').trim(),
+    }),
+    ...extraEnv,
+  };
   const execution = executeOwnedProcess(command, args, spawnProcess, label, {
     cwd,
     env,
@@ -281,6 +295,70 @@ export async function runPhaseProcess(
 }
 
 /**
+ * The group manifest entries a phase's corpus runner wrote. An unreadable
+ * entry is reported as a phase error, which leaves the phase unexplained.
+ */
+export function readPhaseGroups(directory) {
+  let names;
+  try {
+    names = readdirSync(directory).filter((name) => name.endsWith('.json'));
+  } catch {
+    return { groups: [], errors: [] };
+  }
+  const groups = [];
+  const errors = [];
+  for (const name of names.sort()) {
+    try {
+      groups.push(JSON.parse(readFileSync(resolve(directory, name), 'utf8')));
+    } catch (error) {
+      errors.push(
+        `group manifest ${name} is unreadable: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  return { groups, errors };
+}
+
+/**
+ * The job's failure manifest: every planned phase, in order, with its own
+ * verdict and its corpus groups. A phase that never ran is listed with an
+ * error, and `complete` is false unless every planned phase reported.
+ */
+export function phaseJobManifest(plan, results, phaseGroups, identity) {
+  const phases = plan.map((step) => {
+    const result = results.find((entry) => entry.id === step.id);
+    const collected = phaseGroups.get(step.id) ?? { groups: [], errors: [] };
+    const errors = [
+      ...(result ? (result.error ? [result.error] : []) : ['not run']),
+      ...collected.errors,
+    ];
+    const phase = {
+      phase: step.id,
+      exitStatus: result?.status ?? null,
+      error: errors.length ? clipText(errors.join('; ')) : null,
+      corpus: step.id.startsWith(CORPUS_PHASE_PREFIX),
+      groups: collected.groups,
+      explained: false,
+    };
+    phase.explained = phaseExplained(phase);
+    return phase;
+  });
+  const manifest = {
+    schemaVersion: MANIFEST_SCHEMA_VERSION,
+    kind: JOB_MANIFEST_KIND,
+    producer: 'full-regression-phases',
+    ...identity,
+    complete:
+      results.length === plan.length &&
+      plan.every((step) => results.some((entry) => entry.id === step.id)),
+    phases,
+    explained: false,
+  };
+  manifest.explained = jobExplained(manifest);
+  return manifest;
+}
+
+/**
  * Run every planned phase in order, continuing past failures. A phase passes
  * only on exit status 0 with no runner error; a cancellation stops the plan
  * and marks the remaining phases as not run, which is also a failure.
@@ -296,6 +374,10 @@ export async function runFullRegressionPhases(
     log = (line) => {
       process.stdout.write(`${line}\n`);
     },
+    // Set in hosted qualification: each corpus phase writes its group
+    // manifests under <directory>/groups/<phase>, outside the workspace.
+    manifestDirectory,
+    phaseGroups = new Map(),
   } = {},
 ) {
   const results = [];
@@ -317,7 +399,18 @@ export async function runFullRegressionPhases(
     let outcome;
     try {
       const before = snapshot(cwd);
-      outcome = await runPhase(step, { signal, cwd });
+      const groupDirectory = manifestDirectory
+        ? resolve(manifestDirectory, 'groups', step.id)
+        : null;
+      outcome = await runPhase(step, {
+        signal,
+        cwd,
+        ...(groupDirectory
+          ? { extraEnv: { [MANIFEST_DIR_ENV]: groupDirectory } }
+          : {}),
+      });
+      if (groupDirectory)
+        phaseGroups.set(step.id, readPhaseGroups(groupDirectory));
       const changes = workspaceChanges(before, snapshot(cwd));
       if (changes.length > 0)
         outcome = {
@@ -362,18 +455,51 @@ export async function runFullRegressionPhases(
   };
 }
 
+/** Write the job manifest; called from the driver's `finally`. */
+export function writeJobManifest(
+  directory,
+  plan,
+  results,
+  phaseGroups,
+  { cwd = repoRoot, env = process.env } = {},
+) {
+  let sourceSha = '';
+  try {
+    sourceSha = git(['rev-parse', 'HEAD'], cwd).toString('utf8').trim();
+  } catch {}
+  const manifest = phaseJobManifest(plan, results, phaseGroups, {
+    jobLabel: clipText(env[JOB_LABEL_ENV] ?? ''),
+    sourceSha,
+    runId: String(env.GITHUB_RUN_ID ?? ''),
+    runAttempt: String(env.GITHUB_RUN_ATTEMPT ?? ''),
+  });
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(
+    resolve(directory, JOB_MANIFEST_FILE),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+  );
+  return manifest;
+}
+
 async function main() {
   const controller = new AbortController();
   const unregister = ['SIGINT', 'SIGTERM'].map((name) =>
     registerProcessSignal(name, () => controller.abort(name)),
   );
+  const manifestDirectory = process.env[MANIFEST_DIR_ENV] || undefined;
+  let plan = [];
+  let results = [];
+  const phaseGroups = new Map();
   try {
-    const plan = resolveFullRegressionPhasePlan(
+    plan = resolveFullRegressionPhasePlan(
       parseFullRegressionPhaseArguments(process.argv.slice(2)),
     );
     const result = await runFullRegressionPhases(plan, {
       signal: controller.signal,
+      manifestDirectory,
+      phaseGroups,
     });
+    results = result.results;
     process.exitCode = result.passed ? 0 : 1;
   } catch (error) {
     process.stderr.write(
@@ -382,6 +508,14 @@ async function main() {
     process.exitCode = 2;
   } finally {
     for (const remove of unregister) remove();
+    if (manifestDirectory)
+      try {
+        writeJobManifest(manifestDirectory, plan, results, phaseGroups);
+      } catch (error) {
+        process.stderr.write(
+          `[full-regression-phases] could not write the failure manifest: ${error instanceof Error ? error.message : String(error)}\n`,
+        );
+      }
   }
 }
 
