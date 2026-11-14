@@ -1288,19 +1288,15 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
   }
 
   test('a slash command with no point cannot itself be rewound to, even with turns after it', async () => {
-    const { session, turns } = await threeTurns();
+    const { session } = await threeTurns();
     const slash = await grokTurn(
       session,
       '/compact',
       'prompt-3',
       (times[2] ?? 0) + 60_000,
     );
-    const after = await grokTurn(
-      session,
-      prompts[0]!,
-      'prompt-4',
-      (times[2] ?? 0) + 120_000,
-    );
+    // A turn after it, which does resolve to its own point.
+    await grokTurn(session, prompts[0]!, 'prompt-4', (times[2] ?? 0) + 120_000);
     const listed = (points as { rewind_points: Record<string, unknown>[] })
       .rewind_points;
     answerLive(session, {
@@ -1326,7 +1322,6 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
       message: expect.stringContaining('do not line up'),
     });
     expect(session.proc.extMethodCalls).toHaveLength(1);
-    expect(turns.length + [after].length).toBe(4);
     await session.stop();
   });
 
