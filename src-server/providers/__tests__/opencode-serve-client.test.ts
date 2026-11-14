@@ -106,6 +106,44 @@ describe('OpenCodeServeClient requests', () => {
     },
   );
 
+  test.each(['my agent', 'a:b', 'a+b', 'ünï'])(
+    'an agent named %j is sent percent-encoded in its route parameter',
+    async (name) => {
+      const fetch = fetchSpy();
+      const client = new OpenCodeServeClient({
+        baseUrl: BASE,
+        password: 'p',
+        fetch: fetch as never,
+      });
+      const path = `/api/agent/${encodeURIComponent(name)}`;
+      expect(path).toContain('%');
+      await expect(client.request('GET', path)).resolves.toEqual({ data: 1 });
+      expect(fetch.mock.calls[0]![0]).toBe(`${BASE}${path}`);
+    },
+  );
+
+  test.each([
+    // Decodes to more than one segment, or to path structure.
+    '/api/agent/a%2Fb',
+    '/api/agent/a%5Cb',
+    '/api/agent/%2E',
+    '/api/agent/%2e%2e',
+    '/api/agent/a%00b',
+    // Not the form encodeURIComponent writes (an alternative spelling).
+    '/api/agent/my%20Agent%3a',
+    '/api/agent/%61gent',
+    '/api/agent/a%2',
+    '/api/agent/%',
+    // `%` in a fixed segment or the query.
+    '/api/%61gent/build',
+    '/api/session/ses_1/messag%65',
+    '/api/session/ses_1/message?after=a%20b',
+  ])('%s is refused: %% only inside a route parameter', (path) => {
+    expect(() => assertOpenCodeServePathAllowed('GET', path)).toThrow(
+      OpenCodeServeDeniedPathError,
+    );
+  });
+
   test('a listed route with another method is refused', async () => {
     const fetch = fetchSpy();
     const client = new OpenCodeServeClient({

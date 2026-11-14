@@ -225,13 +225,35 @@ const PARAM_SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9_.~-]*$/;
 /** The only query strings the transport sends. */
 const QUERY = /^[A-Za-z0-9_.=&-]*$/;
 
+/**
+ * A percent-encoded parameter segment (an agent named `my agent` is sent as
+ * `my%20agent`). Accepted only where it decodes to one segment that is not
+ * `.` or `..` and holds no `/`, `\` or NUL, and only in the exact form
+ * `encodeURIComponent` writes, so no alternative spelling of a value (and
+ * no encoded path structure) reaches a router that might normalise it.
+ */
+function encodedParamSegmentAllowed(segment: string): boolean {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(segment);
+  } catch {
+    return false;
+  }
+  if (!decoded || decoded === '.' || decoded === '..') return false;
+  if (/[/\\\0]/.test(decoded)) return false;
+  return encodeURIComponent(decoded) === segment;
+}
+
 function templateMatches(template: string, segments: string[]): boolean {
   const parts = template.split('/');
   if (parts.length !== segments.length) return false;
   return parts.every((part, index) => {
     const segment = segments[index] as string;
     if (part.startsWith('{') && part.endsWith('}'))
-      return PARAM_SEGMENT.test(segment);
+      return segment.includes('%')
+        ? encodedParamSegmentAllowed(segment)
+        : PARAM_SEGMENT.test(segment);
+    // A fixed segment matches only itself, so `%` never reaches one.
     return part === segment;
   });
 }
@@ -248,7 +270,10 @@ export function assertOpenCodeServePathAllowed(
 ): void {
   if (!path.startsWith('/'))
     throw new OpenCodeServeDeniedPathError(path, 'non-relative path');
-  if (/[%;\\#]|\/\//.test(path))
+  // `%` is not refused here: only a declared route parameter may carry it
+  // (`encodedParamSegmentAllowed`); every fixed segment and the query refuse
+  // it.
+  if (/[;\\#]|\/\//.test(path))
     throw new OpenCodeServeDeniedPathError(path, 'ambiguous path');
   const queryAt = path.indexOf('?');
   const pathname = queryAt < 0 ? path : path.slice(0, queryAt);
