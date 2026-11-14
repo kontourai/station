@@ -1351,6 +1351,7 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
   test('two turns sent at once: the second is refused as busy before it applies anything', async () => {
     const h = await setup({ scenario: 'mode-switch' });
     await h.start({ approvalMode: 'never' }, { confinement: 'host' });
+    const from = h.replay.requests.length;
     const first = h.turn('DO_BASH ask', { approvalMode: 'ask' });
     const second = h.turn('DO_BASH ask', { approvalMode: 'ask' });
     await expect(second).rejects.toMatchObject({
@@ -1358,6 +1359,13 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
       kind: 'busy',
     });
     await first;
+    // The second read nothing: refused before its settings were looked at
+    // (the moment its busy mark is set, before any await).
+    expect(
+      h.replay.requests
+        .slice(from)
+        .filter((request) => request.path === '/api/agent/build'),
+    ).toHaveLength(1);
     expect(h.replay.made('PATCH', '/api/session/:id')).toHaveLength(1);
     expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(1);
   });
