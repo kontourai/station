@@ -1107,7 +1107,7 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
     await session.stop();
   });
 
-  test('a turn whose text is not the point the count lands on rewinds nothing', async () => {
+  test('a turn whose text is not its point's preview rewinds nothing', async () => {
     const { session, turns } = await threeTurns([
       prompts[0]!,
       'a different request',
