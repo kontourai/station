@@ -567,7 +567,13 @@ No public release is created merely by merging a normal PR. Package-version
 PR maintenance runs on main pushes except those changing only the generated
 `docs/reference/deploy-ledger.json` and `docs/reference/deploy-ledger.md` outputs.
 Those receipt updates do not change the package release plan; regenerating the
-version PR would replace its scoped review notes and formatting corrections.
+version PR would replace any review notes added to it. Its generated output
+needs none: `npm run version-packages` writes changelogs through
+[`changeset-changelog.mjs`](../../scripts/changeset-changelog.mjs), which drops
+upstream's trailing whitespace, and the review ledger's
+[release-versioning contract](documentation-review-ledger.md#generated-release-records-and-removed-notes)
+accepts the version bumps and the changelog sections built from consumed notes.
+A record that cites a version value still needs a note.
 Mixed pushes and every other changed path still trigger maintenance. Manual
 package publication remains available and requires exact-source qualification.
 The separately authorized published

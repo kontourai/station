@@ -385,5 +385,23 @@ Any existing check claim needs an explicit reviewed reclassification first.
 The review records absence, not release consumption or publication.
 The README, current guides, malformed records and missing behavioral dependencies
 are still errors. Catch-up reporting keeps these lifecycle states separate from
-claims that need source review. New generated owners need their own reviewed
-contract and refusal tests; `kind: generated` alone never exempts a file.
+claims that need source review.
+
+The version PR's own output has a second contract,
+[`release-versioning-review.mjs`](../../scripts/lib/release-versioning-review.mjs),
+which the scoped check and the history replay apply to each change unit (a
+PR's merge base..HEAD, or one landed commit). It applies only when the unit
+deletes at least one `.changeset/*.md` note, and to committed bytes only. A
+whole-file `package.json` citation needs no note when the manifest's only
+edits are its `version` and dependency ranges moved, with the same `^`, `~` or
+exact operator, to the new version of another package bumped in that unit. A
+`historical` record's own `CHANGELOG.md` needs no note when the change adds exactly
+one `## <version>` section, for its sibling manifest's new version, above the
+unchanged older entries, and every entry in it is a consumed note's summary
+under that note's bump type or a dependency-update line naming bumped packages
+at their new versions. Any other edit, a value citation such as
+`package.json#/version` or a dependency range, an uncommitted edit, and every other
+document still need a note. The contract proves that the text came from the
+consumed notes, not that those notes are accurate or that anything was published.
+New generated owners need their own reviewed contract and refusal tests;
+`kind: generated` alone never exempts a file.
