@@ -3098,6 +3098,356 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     expect(policy.calls).toEqual([]);
     expect(replies(h)).toEqual([]);
   });
+
+  /** The governed capture with its shell calls (`call_8`, ...) renamed and re-asked. */
+  const shellCallAs =
+    (name: string, ask: Partial<{ action: string; messageID: string }> = {}) =>
+    (record: OpenCodeReplayRecord): OpenCodeReplayRecord => {
+      if (record.kind !== 'sse' || !record.event?.data) return record;
+      const data = record.event.data;
+      if (
+        record.event.type === 'session.tool.input.started' &&
+        data.id === 'call_8'
+      )
+        return {
+          ...record,
+          event: { ...record.event, data: { ...data, name } },
+        };
+      if (record.event.type === 'permission.asked' && data.action === 'shell') {
+        const source = data.source as Record<string, unknown>;
+        return {
+          ...record,
+          event: {
+            ...record.event,
+            data: {
+              ...data,
+              ...(ask.action
+                ? { action: ask.action, resources: ['*'], save: ['*'] }
+                : {}),
+              source: {
+                ...source,
+                ...(ask.messageID ? { messageID: ask.messageID } : {}),
+              },
+            },
+          },
+        };
+      }
+      return record;
+    };
+
+  test("an Agent's Station tool policy that throws while evaluating denies the ask, with the reason", async () => {
+    const policy = stagedPolicy(() => {
+      throw new Error('evaluator broke');
+    });
+    const h = await setup(
+      { scenario: 'permission-allow' },
+      { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
+    );
+    await h.start(undefined, { agent: AGENT });
+    await h.turn('DO_BASH please');
+    await h.waitFor(() => replies(h).length === 1);
+    expect(replies(h)).toEqual([
+      {
+        decision: 'reject',
+        message:
+          'Station pre-tool policy failed; tool execution was denied: evaluator broke',
+      },
+    ]);
+    expect(policy.calls).toHaveLength(1);
+    expect(opened(h.events)).toEqual([]);
+  });
+
+  test("an Agent's Station tool policy that throws before returning a promise denies the ask too", async () => {
+    const h = await setup(
+      { scenario: 'permission-allow' },
+      {
+        acp: {
+          // Not an async function: it throws where it is called.
+          resolvePreToolPolicy: async () =>
+            (() => {
+              throw new Error('thrown at once');
+            }) as unknown as Awaited<
+              ReturnType<NonNullable<AcpAdapterOptions['resolvePreToolPolicy']>>
+            >,
+        },
+      },
+    );
+    await h.start(undefined, { agent: AGENT });
+    await h.turn('DO_BASH please');
+    await h.waitFor(() => replies(h).length === 1);
+    expect(replies(h)).toEqual([
+      {
+        decision: 'reject',
+        message:
+          'Station pre-tool policy failed; tool execution was denied: thrown at once',
+      },
+    ]);
+  });
+
+  test("an Agent's Station tool policy allow does not answer a tool named as a person's request (an MCP tool `exit_plan_mode`): the person is asked", async () => {
+    const policy = stagedPolicy(() => ({ behavior: 'allow' }));
+    // An MCP tool's action is its `<server>_<tool>` name (2.3.0 `tool/mcp.ts`).
+    const h = await setup(
+      {
+        scenario: 'governed',
+        rewrite: shellCallAs('exit_plan_mode', { action: 'exit_plan_mode' }),
+      },
+      { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
+    );
+    await h.start({ approvalMode: 'auto' }, { agent: AGENT });
+    const edit = await h.turn('DO_EDIT one');
+    await h.waitFor(completedFor(edit.turnId));
+    const call = await h.turn('DO_BASH two');
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.opened' && event.turnId === call.turnId,
+      ),
+    ).toMatchObject({ payload: { toolName: 'exit_plan_mode' } });
+    expect(policy.calls.map((entry) => entry.tool.toolName)).toEqual([
+      'edit',
+      'exit_plan_mode',
+    ]);
+    // Only the edit was answered.
+    expect(replies(h)).toEqual([{ decision: 'once' }]);
+  });
+
+  test("a Code Mode call's nested shell ask, which names the `execute` call's id, is not decided as `execute`: the person answers it", async () => {
+    const policy = stagedPolicy(() => ({ behavior: 'allow' }));
+    // Code Mode runs a nested call under the `execute` call's own id and
+    // message (2.3.0 `codemode/tool.ts`): the shell ask names `call_8`.
+    const h = await setup(
+      { scenario: 'governed', rewrite: shellCallAs('execute') },
+      { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
+    );
+    await h.start({ approvalMode: 'auto' }, { agent: AGENT });
+    const edit = await h.turn('DO_EDIT one');
+    await h.waitFor(completedFor(edit.turnId));
+    const call = await h.turn('DO_BASH two');
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.opened' && event.turnId === call.turnId,
+      ),
+    ).toMatchObject({ payload: { toolName: 'shell', toolCallId: 'call_8' } });
+    expect(policy.calls.map((entry) => entry.tool.toolName)).toEqual(['edit']);
+    expect(replies(h)).toEqual([{ decision: 'once' }]);
+  });
+
+  test("an ask whose message is not its tool call's is not decided as that tool: the person answers it", async () => {
+    const policy = stagedPolicy(() => ({ behavior: 'allow' }));
+    const h = await setup(
+      {
+        scenario: 'governed',
+        rewrite: shellCallAs('shell', {
+          messageID: 'msg_1d83abad8001vg1Gj6Mam1e54u',
+        }),
+      },
+      { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
+    );
+    await h.start({ approvalMode: 'auto' }, { agent: AGENT });
+    const edit = await h.turn('DO_EDIT one');
+    await h.waitFor(completedFor(edit.turnId));
+    const call = await h.turn('DO_BASH two');
+    await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === call.turnId,
+    );
+    expect(policy.calls.map((entry) => entry.tool.toolName)).toEqual(['edit']);
+  });
+
+  /** Every reply POST fails with 500 `times` times, then succeeds. */
+  const repliesFail = (times: number) => {
+    let failed = 0;
+    return (request: { method: string; path: string }) => {
+      if (request.method !== 'POST' || !request.path.endsWith('/reply'))
+        return undefined;
+      if (failed >= times) return { status: 204 };
+      failed += 1;
+      return { status: 500, body: { error: 'reply broke' } };
+    };
+  };
+  const interrupts = (h: { replay: OpenCodeServeReplay }) =>
+    h.replay.made('POST', '/api/session/:id/interrupt');
+  /**
+   * The scenario's feed from its first ask on left out: OpenCode holds an
+   * ask it was not answered (the replay would otherwise go on once the
+   * failed reply was counted).
+   */
+  const heldAtFirstAsk = (scenario: string) => {
+    const ask = loadOpenCodeFixture(scenario).find(
+      (record) =>
+        record.kind === 'sse' && record.event?.type === 'permission.asked',
+    );
+    if (!ask) throw new Error(`${scenario} recorded no ask`);
+    return (record: OpenCodeReplayRecord) =>
+      record.kind === 'sse' && record.t > ask.t;
+  };
+
+  test("a policy deny OpenCode will not take, twice, stops the turn with the policy's reason and puts nothing to the person", async () => {
+    const policy = stagedPolicy(() => ({
+      behavior: 'deny',
+      denial: { allowed: false, reason: 'shell is not for reviewers' },
+    }));
+    const h = await setup(
+      {
+        scenario: 'permission-allow',
+        omit: heldAtFirstAsk('permission-allow'),
+        respond: repliesFail(2),
+      },
+      { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
+    );
+    await h.start(undefined, { agent: AGENT });
+    const { turnId } = await h.turn('DO_BASH please');
+    const failure = await h.waitFor(
+      (event) => event.method === 'runtime.error' && event.turnId === turnId,
+    );
+    expect(String(failure.message)).toContain('shell is not for reviewers');
+    expect(String(failure.message)).toContain('stopped the turn');
+    // Sent, then once more.
+    expect(replies(h)).toEqual([
+      { decision: 'reject', message: 'shell is not for reviewers' },
+      { decision: 'reject', message: 'shell is not for reviewers' },
+    ]);
+    await h.waitFor(() => interrupts(h).length > 0);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(opened(h.events)).toEqual([]);
+  });
+
+  test('a rejection OpenCode refuses once is sent once more, and the turn goes on', async () => {
+    const policy = stagedPolicy(() => ({
+      behavior: 'deny',
+      denial: { allowed: false, reason: 'shell is not for reviewers' },
+    }));
+    const h = await setup(
+      { scenario: 'permission-allow', respond: repliesFail(1) },
+      { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
+    );
+    await h.start(undefined, { agent: AGENT });
+    const { turnId } = await h.turn('DO_BASH please');
+    await h.waitFor(completedFor(turnId));
+    expect(replies(h)).toHaveLength(2);
+    expect(
+      h.events.filter((event) => event.method === 'runtime.error'),
+    ).toEqual([]);
+    expect(interrupts(h)).toEqual([]);
+    expect(opened(h.events)).toEqual([]);
+  });
+
+  test("an agent's kept deny OpenCode will not take stops the turn instead of asking the person", async () => {
+    const h = await setup({
+      scenario: 'plan-deny',
+      omit: heldAtFirstAsk('plan-deny'),
+      respond: repliesFail(2),
+    });
+    await h.start({ approvalMode: 'auto', mode: 'plan' });
+    const { turnId } = await h.turn('DO_EDIT plan');
+    const failure = await h.waitFor(
+      (event) => event.method === 'runtime.error' && event.turnId === turnId,
+    );
+    expect(String(failure.message)).toContain("agent's own rules deny it");
+    await h.waitFor(() => interrupts(h).length > 0);
+    expect(opened(h.events)).toEqual([]);
+  });
+
+  test('a #4828 rejection OpenCode will not take stops the turn instead of asking the person', async () => {
+    const read = ledger(['thread-1']);
+    const h = await setup(
+      {
+        scenario: 'governed',
+        rewrite: editOf('AGENTS.md'),
+        omit: heldAtFirstAsk('governed'),
+        respond: repliesFail(2),
+      },
+      { acp: { untrustedContentLedger: read.ledger } },
+    );
+    await h.start({ approvalMode: 'auto' });
+    const edit = await h.turn('DO_EDIT one');
+    const failure = await h.waitFor(
+      (event) =>
+        event.method === 'runtime.error' && event.turnId === edit.turnId,
+    );
+    expect(String(failure.message)).toContain('untrusted content');
+    expect(opened(h.events)).toEqual([]);
+  });
+
+  const DENY_APPROVALS = {
+    connectionId: 'opencode',
+    delegation: {
+      parentConversationId: 'parent-conversation',
+      denyApprovals: true,
+    },
+  };
+  const DELEGATED_DENIAL =
+    'requires approval, and delegated child sessions cannot grant approvals.';
+
+  test('a delegated session that may not grant approvals rejects an ask the person would answer, with the delegated denial', async () => {
+    const h = await setup({ scenario: 'governed' });
+    await h.start({ approvalMode: 'auto' }, { metadata: DENY_APPROVALS });
+    const edit = await h.turn('DO_EDIT one');
+    await h.waitFor(completedFor(edit.turnId));
+    const shell = await h.turn('DO_BASH two');
+    await h.waitFor(completedFor(shell.turnId));
+    // Auto answered the edit (the mode comes first, as on ACP); the shell
+    // ask, a person's under Auto, is rejected: nobody may answer it.
+    const answered = replies(h) as Array<{
+      decision: string;
+      message?: string;
+    }>;
+    expect(answered[0]).toEqual({ decision: 'once' });
+    expect(answered[1]).toMatchObject({ decision: 'reject' });
+    expect(answered[1]?.message).toContain(DELEGATED_DENIAL);
+    expect(opened(h.events)).toEqual([]);
+  });
+
+  test('in a delegated session that may not grant approvals, an ask whose tool OpenCode did not name is rejected, not left waiting', async () => {
+    const policy = stagedPolicy(() => ({ behavior: 'allow' }));
+    const h = await setup(
+      {
+        scenario: 'governed',
+        rewrite: (record) =>
+          record.kind === 'sse' &&
+          record.event?.type === 'permission.asked' &&
+          record.event.data?.action === 'edit'
+            ? {
+                ...record,
+                event: {
+                  ...record.event,
+                  data: { ...record.event.data, source: undefined },
+                },
+              }
+            : record,
+      },
+      { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
+    );
+    await h.start(
+      { approvalMode: 'auto' },
+      { agent: AGENT, metadata: DENY_APPROVALS },
+    );
+    const edit = await h.turn('DO_EDIT one');
+    await h.waitFor(completedFor(edit.turnId));
+    expect(policy.calls).toEqual([]);
+    expect(replies(h)).toEqual([
+      {
+        decision: 'reject',
+        message: expect.stringContaining(DELEGATED_DENIAL),
+      },
+    ]);
+    expect(opened(h.events)).toEqual([]);
+  });
+
+  test('a delegated session that may not grant approvals cancels a question instead of showing it', async () => {
+    const h = await setup({ scenario: 'question' });
+    await h.start(undefined, { metadata: DENY_APPROVALS });
+    await h.turn('DO_QUESTION now');
+    await h.waitFor(
+      () => h.replay.made('DELETE', '/api/session/:id/form/:id').length === 1,
+    );
+    expect(opened(h.events)).toEqual([]);
+    expect(
+      h.events.find((event) => event.method === 'runtime.warning'),
+    ).toMatchObject({ message: expect.stringContaining('delegated session') });
+  });
 });
 
 describe('OpenCodeAdapter native reconnect re-reads (2.3.0 replay)', () => {
@@ -3279,16 +3629,88 @@ describe('OpenCodeAdapter native reconnect re-reads (2.3.0 replay)', () => {
     });
   });
 
-  test('a known child that ran neither before the gap nor now is not searched for children of its own', async () => {
+  test('a known child idle before and after the gap, resumed by its parent during it, is searched: the grandchild it started has its ask put to the person', async () => {
+    // 2.3.0's subagent tool continues an existing child (`sessionID`,
+    // `tool/plugin/subagent.ts`): during the gap the root resumed the idle
+    // child, which started a grandchild and went idle again. The shapes are
+    // the subagent-gap capture's session list and server-wide ask list.
+    const ROOT = 'ses_e2457ce8dffe98Zg4A032fhyKD';
+    const GRANDCHILD = 'ses_e2457grandchildResumedGap1';
+    const recordedRead = (path: string) =>
+      loadOpenCodeFixture('subagent-gap').find(
+        (record) =>
+          record.kind === 'http' &&
+          record.method === 'GET' &&
+          record.path === path,
+      )?.response as { data: Array<Record<string, unknown>> } & Record<
+        string,
+        unknown
+      >;
+    const childList = recordedRead(
+      '/api/session?parentID=ses_e2457d93fffePapS74J3pyI8Op',
+    );
+    const grandchildList = recordedRead(
+      '/api/session?parentID=ses_e2457d6cbffeKPErxR4cV0kdaq',
+    );
+    const asks = recordedRead('/api/permission/request');
+    const ask = { ...asks.data[0]!, sessionID: GRANDCHILD } as {
+      id: string;
+      sessionID: string;
+    };
+    const location = { directory: '/replay/proj' };
     const h = await setup(
       {
         scenario: 'move-gap',
-        respond: listsChild(),
         rewrite: childOnFirstFeed({
           'vcs.branch.updated': 'session.created',
           'agent.updated': 'session.execution.started',
           'command.updated': 'session.execution.succeeded',
         }),
+        respond: (request) => {
+          if (request.method !== 'GET') return governance(request);
+          const parent = new URL(request.path, 'http://x').searchParams.get(
+            'parentID',
+          );
+          if (request.path.startsWith('/api/session?')) {
+            const data =
+              parent === ROOT
+                ? [
+                    {
+                      ...childList.data[0]!,
+                      id: KNOWN_CHILD,
+                      parentID: ROOT,
+                      location,
+                    },
+                  ]
+                : parent === KNOWN_CHILD
+                  ? [
+                      {
+                        ...grandchildList.data[0]!,
+                        id: GRANDCHILD,
+                        parentID: KNOWN_CHILD,
+                        location,
+                      },
+                    ]
+                  : [];
+            return {
+              status: 200,
+              body: { data, cursor: { previous: null, next: null } },
+            };
+          }
+          if (request.path === '/api/session/active')
+            return {
+              status: 200,
+              body: {
+                data: {
+                  [ROOT]: { type: 'running' },
+                  [GRANDCHILD]: { type: 'running' },
+                },
+              },
+            };
+          if (request.path === '/api/permission/request')
+            return { status: 200, body: { ...asks, data: [ask] } };
+          return governance(request);
+        },
       },
       { findProjectCode: async () => [] },
     );
@@ -3296,19 +3718,25 @@ describe('OpenCodeAdapter native reconnect re-reads (2.3.0 replay)', () => {
     const first = await h.turn('DO_MOVE sub-gap');
     await h.waitFor(completedFor(first.turnId));
     await h.turn('DO_BASH moved');
-    await h.waitFor(
-      (event) =>
-        event.method === 'request.opened' && event.requestId === MOVE_GAP_ASK,
-      10_000,
-    );
-    await h.waitFor(() => h.replay.made('GET', '/api/session').length > 0);
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.opened' && event.requestId === ask.id,
+        10_000,
+      ),
+    ).toMatchObject({
+      payload: {
+        rawInput: { action: 'shell', resources: ['echo grandchild'] },
+        childWork: { childId: GRANDCHILD },
+      },
+    });
     expect(
       h.replay
         .made('GET', '/api/session')
         .map((request) =>
           new URL(request.path, 'http://x').searchParams.get('parentID'),
         ),
-    ).toEqual(['ses_e2457ce8dffe98Zg4A032fhyKD']);
+    ).toEqual([ROOT, KNOWN_CHILD, GRANDCHILD]);
   });
 
   test('a descendant walk past its bound stops there and says so', async () => {
@@ -3541,6 +3969,125 @@ describe('OpenCodeAdapter native reconnect re-reads (2.3.0 replay)', () => {
         (event) =>
           event.method === 'runtime.warning' &&
           String(event.message).includes('could not re-read'),
+      ),
+    ).toBeDefined();
+  });
+
+  test("a failed read of the session's own ask list is reported on its own, and its descendants' asks are still reopened", async () => {
+    const h = await setup({
+      scenario: 'subagent-gap',
+      respond: (request) =>
+        request.method === 'GET' &&
+        /^\/api\/session\/ses_[^/]+\/permission$/.test(request.path)
+          ? { status: 500, body: { error: 'unavailable' } }
+          : undefined,
+    });
+    await h.start();
+    await h.turn('DO_TASK_DEEP now');
+    expect(
+      await h.waitFor((event) => event.method === 'request.opened', 10_000),
+    ).toMatchObject({ requestId: 'per_1dba8297f001zUwv37vXdrSGqE' });
+    const warnings = h.events.filter(
+      (event) =>
+        event.method === 'runtime.warning' &&
+        String(event.message).includes('could not re-read'),
+    );
+    expect(warnings.map((event) => event.message)).toEqual([
+      expect.stringContaining(
+        'the pending permission requests of this session',
+      ),
+    ]);
+  });
+
+  test("a failed lookup of one child's children is reported, and its sibling's grandchild still has its ask reopened", async () => {
+    // The capture's lookups by parent; the replay matches them on the path
+    // alone (no query), so each is answered here.
+    const lookups = new Map(
+      loadOpenCodeFixture('subagent-gap').flatMap((record) =>
+        record.kind === 'http' &&
+        record.method === 'GET' &&
+        record.path?.startsWith('/api/session?parentID=')
+          ? [
+              [
+                new URL(record.path, 'http://x').searchParams.get('parentID'),
+                record.response as { data: Array<Record<string, unknown>> },
+              ] as const,
+            ]
+          : [],
+      ),
+    );
+    const ROOT = 'ses_e2457d93fffePapS74J3pyI8Op';
+    const SIBLING = 'ses_e2457siblingSiblingSibling';
+    const h = await setup({
+      scenario: 'subagent-gap',
+      respond: (request) => {
+        if (
+          request.method !== 'GET' ||
+          !request.path.startsWith('/api/session?')
+        )
+          return undefined;
+        const parent = new URL(request.path, 'http://x').searchParams.get(
+          'parentID',
+        );
+        if (parent === SIBLING)
+          return { status: 500, body: { error: 'unavailable' } };
+        const recorded = lookups.get(parent) ?? { data: [] };
+        if (parent !== ROOT) return { status: 200, body: recorded };
+        return {
+          status: 200,
+          body: {
+            ...recorded,
+            data: [
+              { ...recorded.data[0]!, id: SIBLING, title: 'sibling' },
+              ...recorded.data,
+            ],
+          },
+        };
+      },
+    });
+    await h.start();
+    await h.turn('DO_TASK_DEEP now');
+    expect(
+      await h.waitFor((event) => event.method === 'request.opened', 10_000),
+    ).toMatchObject({ requestId: 'per_1dba8297f001zUwv37vXdrSGqE' });
+    expect(
+      h.events.find(
+        (event) =>
+          event.method === 'runtime.warning' &&
+          String(event.message).includes(`the subagent sessions of ${SIBLING}`),
+      ),
+    ).toBeDefined();
+  });
+
+  test("a failed read of one descendant's own ask list is reported, and the next descendant's own list is still read", async () => {
+    const { rewrite, ask } = gapDescendantsIn('/replay/elsewhere');
+    const CHILD_OF_ROOT = 'ses_e2457d6cbffeKPErxR4cV0kdaq';
+    const h = await setup({
+      scenario: 'subagent-gap',
+      rewrite,
+      respond: (request) => {
+        if (request.method !== 'GET') return undefined;
+        if (request.path === '/api/permission/request')
+          return { status: 200, body: { data: [] } };
+        if (request.path === `/api/session/${CHILD_OF_ROOT}/permission`)
+          return { status: 500, body: { error: 'unavailable' } };
+        if (request.path === `/api/session/${ask.sessionID}/permission`)
+          return { status: 200, body: { data: [ask] } };
+        return undefined;
+      },
+    });
+    await h.start();
+    await h.turn('DO_TASK_DEEP now');
+    expect(
+      await h.waitFor((event) => event.method === 'request.opened', 10_000),
+    ).toMatchObject({ requestId: ask.id });
+    expect(
+      h.events.find(
+        (event) =>
+          event.method === 'runtime.warning' &&
+          String(event.message).includes(
+            `the pending permission requests of subagent session ${CHILD_OF_ROOT}`,
+          ),
       ),
     ).toBeDefined();
   });

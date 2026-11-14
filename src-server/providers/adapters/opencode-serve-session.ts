@@ -56,7 +56,10 @@ import {
 } from '@kontourai/station-shared/input-request';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { toolRequestNeedsPerson } from '@kontourai/station-shared/tool-request-preview';
-import type { PreToolPolicyDecision } from '../../runtime/agents/pre-tool-policy.js';
+import {
+  delegatedApprovalDenial,
+  type PreToolPolicyDecision,
+} from '../../runtime/agents/pre-tool-policy.js';
 import {
   type OpenCodeNativeRule,
   openCodeGrantCovers,
@@ -122,6 +125,39 @@ const HISTORY_PAGE = 100;
 const HISTORY_PAGES_MAX = 20;
 /** Descendant sessions a reconnect looks up, at most (`GET /api/session?parentID=`). */
 const DESCENDANTS_MAX = 200;
+
+/**
+ * The permission actions a 2.3.0 tool asks for other than its own name
+ * (`core/src/tool/plugin/*.ts`, `core/src/file-access.ts`). A tool asks for
+ * its own name (shell, glob, grep, webfetch, websearch, subagent, skill,
+ * todowrite, question; an MCP tool's `<server>_<tool>` is both its name and
+ * its action, `core/src/tool/mcp.ts`); a file-touching tool also asks
+ * `external_directory` (`FileAccess.authorizeExternal`), a file change
+ * `edit`, a read of a skill `skill`, and image generation `webfetch`.
+ */
+const OPENCODE_TOOL_ACTIONS: Readonly<Record<string, readonly string[]>> = {
+  shell: ['external_directory'],
+  read: ['external_directory', 'skill'],
+  glob: ['external_directory'],
+  grep: ['external_directory'],
+  edit: ['edit', 'external_directory'],
+  write: ['edit', 'external_directory'],
+  patch: ['edit', 'external_directory'],
+  experimental_image_generate: ['webfetch', 'external_directory'],
+  opencode_worktree_remove: ['edit', 'external_directory'],
+};
+
+/**
+ * Whether an ask for `action` can come from the tool `toolName` (OpenCode's
+ * name for it), so the ask may be decided as that tool's. Anything else is
+ * a tool Station cannot name for the ask, whose ask goes to the person.
+ */
+export function openCodeAskFitsTool(toolName: string, action: string): boolean {
+  if (action === toolName) return true;
+  return Object.hasOwn(OPENCODE_TOOL_ACTIONS, toolName)
+    ? (OPENCODE_TOOL_ACTIONS[toolName] as readonly string[]).includes(action)
+    : false;
+}
 
 /**
  * An answer to a request OpenCode no longer holds: its execution ended (an
@@ -229,6 +265,13 @@ export interface OpenCodeNativeSessionDeps {
    * OpenCode's own ACP layer names it (`toolCall.name`: the tool part's
    * name); see {@link OpenCodeNativeSession.decideAsk}.
    */
+  /**
+   * A delegated session whose delegation may not grant approvals
+   * (`delegation.denyApprovals`): nobody can answer its asks or questions,
+   * so one that would go to a person is declined at once, as the ACP
+   * adapter declines it (`requestPermission`, `askPersonFor`).
+   */
+  readonly denyApprovals?: boolean;
   readonly preToolPolicy?: (tool: {
     readonly toolName: string;
     readonly toolCallId: string;
@@ -316,6 +359,8 @@ interface NativeAsk {
   readonly resources: readonly string[];
   readonly save: readonly string[];
   readonly toolCallId: string | undefined;
+  /** The message of the tool call that asked (`source.messageID`). */
+  readonly messageId: string | undefined;
   /** The files an edit ask names in its metadata (`metadata.files[].file`). */
   readonly files: readonly string[];
   /** The ask's own metadata, the tool's arguments when its input is not known. */
@@ -410,6 +455,11 @@ export class OpenCodeNativeSession {
     string,
     Promise<readonly OpenCodeNativeRule[] | undefined>
   >();
+  /**
+   * Asks Station had to reject and OpenCode would not take: their turn was
+   * stopped instead, and a re-list never shows them to a person.
+   */
+  private readonly refusedAsks = new Set<string>();
   /** Requests closed unanswered (their execution ended), oldest first. */
   private readonly closedRequests = new Set<string>();
   private readonly steers = new Map<string, PendingSteer>();
@@ -991,32 +1041,41 @@ export class OpenCodeNativeSession {
     }
   }
 
-  /** Re-read what a feed gap hid (PLAN A.4). Best effort; never fatal. */
+  /**
+   * Re-read what a feed gap hid (PLAN A.4). Best effort; never fatal. Each
+   * read stands on its own: one that fails is reported in a warning of its
+   * own, and the others still run. What needs a failed read (which sessions
+   * run, for a child's or the turn's outcome and a steer's delivery) is
+   * left as it was.
+   */
   private async reconcile(): Promise<void> {
     const client = this.deps.client;
     const base = `/api/session/${this.sessionId}`;
-    try {
+    let activeSessions: Record<string, unknown> | undefined;
+    await this.reread('which sessions are running', async () => {
       const active = await client.request<{ data?: unknown }>(
         'GET',
         '/api/session/active',
       );
-      const activeSessions = ownRecord(active?.data) ?? {};
-      const running = Object.hasOwn(activeSessions, this.sessionId);
-      const history = await this.readHistory();
+      activeSessions = ownRecord(active?.data) ?? {};
+    });
+    const running =
+      activeSessions === undefined
+        ? undefined
+        : Object.hasOwn(activeSessions, this.sessionId);
+    let history: unknown[] | undefined;
+    await this.reread('the session history', async () => {
+      history = await this.readHistory();
       this.adoptStartedDuringGap(history);
       this.catchUpText(history);
-      // What runs under this session is read on its own: a failure there
-      // is reported, and the session's own turn is still caught up.
-      let treeError: unknown;
-      try {
-        await this.reconcileTree(activeSessions);
-      } catch (error) {
-        treeError = error;
-      }
+    });
+    await this.reconcileTree(activeSessions);
+    await this.reread('the inbox', async () => {
       const inbox = await client.request<{ data?: unknown }>(
         'GET',
         `${base}/inbox`,
       );
+      if (running === undefined) return;
       const queued = new Set(
         (ownArray(inbox?.data) ?? []).flatMap((item) => {
           const id = readString(ownRecord(item)?.id);
@@ -1029,15 +1088,21 @@ export class OpenCodeNativeSession {
         if (running) this.onSteerDelivered(inboxId);
         else void this.withdrawSteer(inboxId);
       }
-      const turn = this.turn;
-      if (!running && turn && !turn.settled && turn.executing)
-        this.settleFromHistory(turn, history);
-      if (treeError !== undefined) throw treeError;
+    });
+    const turn = this.turn;
+    if (running === false && history && turn && !turn.settled && turn.executing)
+      this.settleFromHistory(turn, history);
+  }
+
+  /** One of a reconnect's reads; a failure is reported and goes no further. */
+  private async reread(what: string, read: () => Promise<void>): Promise<void> {
+    try {
+      await read();
     } catch (error) {
       this.emit({
         method: 'runtime.warning',
         severity: 'warning',
-        message: `Station reconnected to OpenCode but could not re-read the session: ${redactSecrets(errorMessage(error))}`,
+        message: `Station reconnected to OpenCode but could not re-read ${what}: ${redactSecrets(errorMessage(error))}`,
       });
     }
   }
@@ -1046,92 +1111,116 @@ export class OpenCodeNativeSession {
    * The pending asks and forms of this session and every descendant, and
    * the descendants themselves. This session's are read from its own lists
    * (`GET /api/session/{id}/permission`, `/form`), which follow it wherever
-   * it moved, before and whatever the descendant lookup does: a failed
-   * lookup is reported, and this session's asks are still reopened. A
-   * descendant's are read from the server-wide lists, which hold only the
-   * server's launch directory's (`move-gap` capture), each kept only when
-   * it is from this tree (a server may run other sessions); a descendant
-   * in another directory is read from its own lists.
+   * it moved. A descendant's are read from the server-wide lists, which hold
+   * only the server's launch directory's (`move-gap` capture), each kept
+   * only when it is from this tree (a server may run other sessions); a
+   * descendant in another directory is read from its own lists. Every list
+   * and every descendant lookup is read on its own ({@link reread}).
    */
   private async reconcileTree(
-    activeSessions: Record<string, unknown>,
+    activeSessions: Record<string, unknown> | undefined,
   ): Promise<void> {
-    await this.relistOwn(this.sessionId);
+    await this.relistOwn(this.sessionId, 'this session');
     await this.reconcileDescendants(activeSessions);
     if (this.children.size === 0) return;
     const client = this.deps.client;
     const descendant = (sessionId: unknown) =>
       typeof sessionId === 'string' && this.children.has(sessionId);
-    const permissions = await client.request<{ data?: unknown }>(
-      'GET',
-      '/api/permission/request',
+    await this.reread(
+      "its subagents' pending permission requests",
+      async () => {
+        const permissions = await client.request<{ data?: unknown }>(
+          'GET',
+          '/api/permission/request',
+        );
+        for (const item of ownArray(permissions?.data) ?? []) {
+          const ask = ownRecord(item);
+          if (ask && descendant(ask.sessionID)) this.onPermissionAsked(ask);
+        }
+      },
     );
-    for (const item of ownArray(permissions?.data) ?? []) {
-      const ask = ownRecord(item);
-      if (ask && descendant(ask.sessionID)) this.onPermissionAsked(ask);
-    }
-    const forms = await client.request<{ data?: unknown }>('GET', '/api/form');
-    for (const item of ownArray(forms?.data) ?? []) {
-      if (descendant(ownRecord(item)?.sessionID)) this.onFormCreated(item);
-    }
+    await this.reread("its subagents' pending questions", async () => {
+      const forms = await client.request<{ data?: unknown }>(
+        'GET',
+        '/api/form',
+      );
+      for (const item of ownArray(forms?.data) ?? []) {
+        if (descendant(ownRecord(item)?.sessionID)) this.onFormCreated(item);
+      }
+    });
     const real = (directory: string) =>
       isAbsolute(directory) ? realish(directory) : directory;
     const server = real(this.deps.serverDirectory ?? this.startDirectory);
     for (const child of [...this.children.values()]) {
       if (child.directory && real(child.directory) !== server)
-        await this.relistOwn(child.childId);
+        await this.relistOwn(
+          child.childId,
+          `subagent session ${child.childId}`,
+        );
     }
   }
 
-  /** One session's pending asks and forms, from its own lists. */
-  private async relistOwn(sessionId: string): Promise<void> {
+  /** One session's pending asks and forms, from its own lists, each read on its own. */
+  private async relistOwn(sessionId: string, label: string): Promise<void> {
     const client = this.deps.client;
     const base = `/api/session/${sessionId}`;
-    const permissions = await client.request<{ data?: unknown }>(
-      'GET',
-      `${base}/permission`,
+    await this.reread(
+      `the pending permission requests of ${label}`,
+      async () => {
+        const permissions = await client.request<{ data?: unknown }>(
+          'GET',
+          `${base}/permission`,
+        );
+        for (const item of ownArray(permissions?.data) ?? []) {
+          const ask = ownRecord(item);
+          if (ask && ask.sessionID === sessionId) this.onPermissionAsked(ask);
+        }
+      },
     );
-    for (const item of ownArray(permissions?.data) ?? []) {
-      const ask = ownRecord(item);
-      if (ask && ask.sessionID === sessionId) this.onPermissionAsked(ask);
-    }
-    const forms = await client.request<{ data?: unknown }>(
-      'GET',
-      `${base}/form`,
-    );
-    for (const item of ownArray(forms?.data) ?? []) {
-      if (ownRecord(item)?.sessionID === sessionId) this.onFormCreated(item);
-    }
+    await this.reread(`the pending questions of ${label}`, async () => {
+      const forms = await client.request<{ data?: unknown }>(
+        'GET',
+        `${base}/form`,
+      );
+      for (const item of ownArray(forms?.data) ?? []) {
+        if (ownRecord(item)?.sessionID === sessionId) this.onFormCreated(item);
+      }
+    });
   }
 
   /**
    * Descendants a feed gap hid (PLAN A.4): children, and their children,
    * looked up by `parentID` from this session down, at most
    * {@link DESCENDANTS_MAX} in all (a warning says when more were left
-   * out). A descendant known before the gap that ran neither then nor now
-   * started nothing during it, so its own children are not looked up.
-   * Each one's agent and directory are refreshed; one running now is
-   * reported running, and one reported running that has since ended is
-   * settled with the outcome OpenCode kept for it.
+   * out). Every descendant is looked up, one idle before and after the gap
+   * too: its parent may have resumed it during the gap (2.3.0's subagent
+   * tool continues an existing child, `tool/plugin/subagent.ts`), and it may
+   * have started a child of its own and gone idle again. A failed lookup is
+   * reported and the walk goes on without that descendant's children. Each
+   * one's agent and directory are refreshed; when which sessions run is
+   * known, one running now is reported running, and one reported running
+   * that has since ended is settled with the outcome OpenCode kept for it.
    */
   private async reconcileDescendants(
-    activeSessions: Record<string, unknown>,
+    activeSessions: Record<string, unknown> | undefined,
   ): Promise<void> {
     const queue = [this.sessionId];
     const seen = new Set(queue);
-    const knownBefore = new Set(this.children.keys());
     const listed: Array<{ child: ChildSession; outcome?: string }> = [];
     let truncated = false;
     while (queue.length > 0 && !truncated) {
       const parentId = queue.shift() as string;
-      const known = knownBefore.has(parentId)
-        ? this.children.get(parentId)
-        : undefined;
-      if (known && !known.running && !Object.hasOwn(activeSessions, parentId))
-        continue;
-      const answer = await this.deps.client.request<{ data?: unknown }>(
-        'GET',
-        `/api/session?parentID=${encodeURIComponent(parentId)}&limit=${DESCENDANTS_MAX + 1}`,
+      let answer: { data?: unknown } | undefined;
+      await this.reread(
+        parentId === this.sessionId
+          ? 'its subagent sessions'
+          : `the subagent sessions of ${parentId}`,
+        async () => {
+          answer = await this.deps.client.request<{ data?: unknown }>(
+            'GET',
+            `/api/session?parentID=${encodeURIComponent(parentId)}&limit=${DESCENDANTS_MAX + 1}`,
+          );
+        },
       );
       for (const item of ownArray(answer?.data) ?? []) {
         const info = ownRecord(item);
@@ -1155,6 +1244,7 @@ export class OpenCodeNativeSession {
         severity: 'warning',
         message: `Station re-read the first ${DESCENDANTS_MAX} subagent sessions of this ${this.deps.engineName} chat after reconnecting; the others are not reported and their pending requests are not shown.`,
       });
+    if (!activeSessions) return;
     for (const { child, outcome } of listed) {
       const runningNow = Object.hasOwn(activeSessions, child.childId);
       if (runningNow && !child.running) this.markChildRunning(child);
@@ -1955,7 +2045,8 @@ export class OpenCodeNativeSession {
       !sessionId ||
       !action ||
       this.requests.has(nativeId) ||
-      this.autoAnswering.has(nativeId)
+      this.autoAnswering.has(nativeId) ||
+      this.refusedAsks.has(nativeId)
     )
       return;
     const resources = (ownArray(data.resources) ?? []).filter(
@@ -1970,6 +2061,7 @@ export class OpenCodeNativeSession {
         (item): item is string => typeof item === 'string',
       ),
       toolCallId: readString(ownRecord(data.source)?.id),
+      messageId: readString(ownRecord(data.source)?.messageID),
       files: (ownArray(ownRecord(data.metadata)?.files) ?? []).flatMap(
         (entry) => {
           const file = readString(ownRecord(entry)?.file);
@@ -1992,7 +2084,10 @@ export class OpenCodeNativeSession {
         .then((read) => {
           this.autoAnswering.delete(nativeId);
           if (this.stopped || this.requests.has(nativeId)) return;
-          if (read) this.answerAutomatically(ask, 'reject');
+          if (read)
+            this.answerAutomatically(ask, 'reject', {
+              why: 'this conversation read untrusted content, and the change is to an agent-instruction or git-hook file (#4828)',
+            });
           else this.routeAsk(ask);
         });
       return;
@@ -2069,11 +2164,15 @@ export class OpenCodeNativeSession {
    *    to a person (`toolRequestNeedsPerson`) or one the configuration-edit
    *    guard gives a person (`openCodeNativeAskNeedsPerson`), as ACP's
    *    `needsPerson` holds it back; its required ask goes to the person;
-   *    anything else goes on. An ask whose tool OpenCode did not name is one
-   *    the policy cannot be asked about: it goes to the person (ACP, given
-   *    no tool name, skips the policy and lets a grant or the mode answer);
+   *    anything else goes on. An evaluator that throws denies. An ask whose
+   *    tool OpenCode did not name, or that does not fit the tool recorded
+   *    for its call ({@link askingTool}), is one the policy cannot be asked
+   *    about: it goes to the person (ACP, given no tool name, skips the
+   *    policy and lets a grant or the mode answer);
    * 3. a session grant or the mode, never for an OpenCode configuration
-   *    edit below full access (`openCodeNativeAskAnswer`), else the person.
+   *    edit below full access (`openCodeNativeAskAnswer`), else the person,
+   *    or, in a delegated session that may not grant approvals, a rejection
+   *    ({@link toPerson}).
    */
   private decideAsk(
     ask: NativeAsk,
@@ -2082,7 +2181,9 @@ export class OpenCodeNativeSession {
   ): void {
     const request = { action: ask.action, resources: ask.resources };
     if (agentRules && openCodeNativeStationRejects(agentRules, request)) {
-      this.answerAutomatically(ask, 'reject');
+      this.answerAutomatically(ask, 'reject', {
+        why: "the asking agent's own rules deny it",
+      });
       return;
     }
     // OpenCode names a write relative to the asking session's directory.
@@ -2101,7 +2202,7 @@ export class OpenCodeNativeSession {
             ),
             configNeedsPerson,
           });
-      if (decided === 'person') this.openPermission(ask);
+      if (decided === 'person') this.toPerson(ask);
       else this.answerAutomatically(ask, decided);
     };
     const policy = this.deps.preToolPolicy;
@@ -2109,20 +2210,23 @@ export class OpenCodeNativeSession {
       answer(options.personOnly === true);
       return;
     }
-    const tool = ask.toolCallId
-      ? this.askTools.get(askToolKey(ask.sessionId, ask.toolCallId))
-      : undefined;
+    const tool = this.askingTool(ask);
     if (!tool?.name || !ask.toolCallId) {
       answer(true);
       return;
     }
     const toolName = tool.name;
+    const toolCallId = ask.toolCallId;
     this.autoAnswering.add(ask.nativeId);
-    void policy({
-      toolName,
-      toolCallId: ask.toolCallId,
-      toolArgs: tool.input ?? ask.metadata ?? {},
-    })
+    // An evaluator that throws, at once or later, denies.
+    void Promise.resolve()
+      .then(() =>
+        policy({
+          toolName,
+          toolCallId,
+          toolArgs: tool.input ?? ask.metadata ?? {},
+        }),
+      )
       .catch(
         (error: unknown): PreToolPolicyDecision => ({
           behavior: 'deny',
@@ -2136,7 +2240,10 @@ export class OpenCodeNativeSession {
         this.autoAnswering.delete(ask.nativeId);
         if (this.stopped || this.requests.has(ask.nativeId)) return;
         if (decision.behavior === 'deny') {
-          this.answerAutomatically(ask, 'reject', decision.denial.reason);
+          this.answerAutomatically(ask, 'reject', {
+            message: decision.denial.reason,
+            why: decision.denial.reason,
+          });
           return;
         }
         const needsPerson =
@@ -2162,8 +2269,29 @@ export class OpenCodeNativeSession {
    */
   private readonly askTools = new Map<
     string,
-    { name?: string; input?: unknown }
+    { name?: string; input?: unknown; messageId?: string }
   >();
+
+  /**
+   * The tool an ask came from, as {@link askTools} recorded it for the
+   * ask's session and call id, only when the ask fits that tool: its action
+   * is one the tool asks for ({@link openCodeAskFitsTool}) and, when both
+   * name one, its message is the tool call's. Code Mode runs its nested
+   * calls under the `execute` call's own id and message (2.3.0
+   * `codemode/tool.ts`), so a nested shell ask names the `execute` call; it
+   * is treated as a tool OpenCode did not name.
+   */
+  private askingTool(
+    ask: NativeAsk,
+  ): { name?: string; input?: unknown } | undefined {
+    if (!ask.toolCallId) return undefined;
+    const tool = this.askTools.get(askToolKey(ask.sessionId, ask.toolCallId));
+    if (!tool?.name || !openCodeAskFitsTool(tool.name, ask.action))
+      return undefined;
+    if (tool.messageId && ask.messageId && tool.messageId !== ask.messageId)
+      return undefined;
+    return tool;
+  }
   private noteAskTool(
     type: string,
     data: Record<string, unknown>,
@@ -2177,6 +2305,8 @@ export class OpenCodeNativeSession {
       return;
     }
     const known = this.askTools.get(key) ?? {};
+    const messageId = readString(data.assistantMessageID);
+    if (messageId) known.messageId = messageId;
     if (type === 'session.tool.input.started') {
       const name = readString(data.name);
       if (name) known.name = name;
@@ -2191,22 +2321,39 @@ export class OpenCodeNativeSession {
   }
 
   /**
-   * Answer an ask for the person (`once` or `reject`). One OpenCode will not
-   * take is put to the person, unless it is gone already.
+   * Answer an ask for the person (`once` or `reject`). A 404 means it is
+   * gone already (its execution ended). A `once` OpenCode will not take is
+   * put to the person (the safe direction). A `reject` it will not take is
+   * sent once more; failing again, the ask is never put to a person who
+   * could allow it: the turn is stopped instead ({@link failClosed}).
    */
   private answerAutomatically(
     ask: NativeAsk,
     answer: 'once' | 'reject',
-    /** A rejection's reason, which OpenCode gives the model as feedback. */
-    message?: string,
+    options: {
+      /** A rejection's reason, which OpenCode gives the model as feedback. */
+      message?: string;
+      /** Why Station rejects it, for the error if the rejection fails. */
+      why?: string;
+    } = {},
   ): void {
     this.autoAnswering.add(ask.nativeId);
-    void this.deps.client
-      .request(
+    const send = () =>
+      this.deps.client.request(
         'POST',
         `/api/session/${ask.sessionId}/permission/${ask.nativeId}/reply`,
-        { decision: answer, ...(message ? { message } : {}) },
-      )
+        {
+          decision: answer,
+          ...(options.message ? { message: options.message } : {}),
+        },
+      );
+    const gone = (error: unknown) =>
+      error instanceof OpenCodeServeHttpError && error.status === 404;
+    void send()
+      .catch((error: unknown) => {
+        if (answer !== 'reject' || gone(error) || this.stopped) throw error;
+        return send();
+      })
       .then(
         () => {
           this.autoAnswering.delete(ask.nativeId);
@@ -2214,16 +2361,82 @@ export class OpenCodeNativeSession {
         (error: unknown) => {
           this.autoAnswering.delete(ask.nativeId);
           // Gone already (its execution ended): nothing waits on it.
-          if (error instanceof OpenCodeServeHttpError && error.status === 404)
-            return;
+          if (gone(error)) return;
           if (this.stopped || this.requests.has(ask.nativeId)) return;
+          if (answer === 'reject') {
+            this.failClosed(ask, error, options.why);
+            return;
+          }
           // Still pending in OpenCode, and nobody would see it: the person
           // answers it instead.
-          this.openPermission(ask, {
-            autoAnswerFailed: `Station could not ${answer === 'reject' ? 'reject' : 'allow'} this automatically: ${errorMessage(error)}`,
+          this.toPerson(ask, {
+            autoAnswerFailed: `Station could not allow this automatically: ${errorMessage(error)}`,
           });
         },
       );
+  }
+
+  /**
+   * An ask Station must reject that OpenCode would not take: it stays
+   * pending there, so the turn that asked is stopped (its execution, and
+   * the asking descendant's, interrupted, which drops the ask) and ends
+   * with a `runtime.error` saying why. It is never shown to a person, and
+   * a later re-list does not reopen it.
+   */
+  private failClosed(
+    ask: NativeAsk,
+    error: unknown,
+    why: string | undefined,
+  ): void {
+    this.refusedAsks.add(ask.nativeId);
+    if (this.refusedAsks.size > CLOSED_REQUESTS_MAX) {
+      const oldest = this.refusedAsks.values().next().value;
+      if (oldest !== undefined) this.refusedAsks.delete(oldest);
+    }
+    const message = `Station had to reject ${this.deps.engineName}'s request to ${ask.action}${why ? ` (${redactSecrets(why).slice(0, 1000)})` : ''}, but ${this.deps.engineName} did not take the rejection (${redactSecrets(errorMessage(error))}), so Station stopped the turn.`;
+    const interrupt = (sessionId: string) =>
+      this.deps.client
+        .request('POST', `/api/session/${sessionId}/interrupt`, undefined, {
+          timeoutMs: STOP_REQUEST_MS,
+        })
+        .catch(() => undefined);
+    if (ask.sessionId !== this.sessionId) void interrupt(ask.sessionId);
+    void interrupt(this.sessionId);
+    const turn = this.turn ?? this.pendingStart;
+    if (turn && !turn.settled) {
+      turn.stopRequested = true;
+      this.closeOpenTools(turn);
+      this.settle(turn, { method: 'runtime.error', message });
+      return;
+    }
+    this.emit({
+      method: 'runtime.error',
+      ...providerFailure('provider_error'),
+      severity: 'error',
+      code: ENGINE_TURN_FAILED_CODE,
+      message,
+    });
+  }
+
+  /**
+   * An ask only a person can answer now. In a delegated session that may
+   * not grant approvals nobody can, so it is rejected at once, as the ACP
+   * adapter declines it (`requestPermission`, after the policy, a grant and
+   * the mode), with the denial the staged evaluator gives such a session.
+   */
+  private toPerson(
+    ask: NativeAsk,
+    note: { autoAnswerFailed?: string } = {},
+  ): void {
+    if (this.deps.denyApprovals) {
+      const reason = delegatedApprovalDenial(
+        this.askingTool(ask)?.name ?? ask.action,
+        'external',
+      ).denial.reason;
+      this.answerAutomatically(ask, 'reject', { message: reason, why: reason });
+      return;
+    }
+    this.openPermission(ask, note);
   }
 
   /** Show an ask to the person as an approval request. */
@@ -2291,7 +2504,7 @@ export class OpenCodeNativeSession {
     const sessionId = readString(form?.sessionID);
     if (!form || !nativeId || !sessionId || this.requests.has(nativeId)) return;
     const mapped = openCodeFormRequest(form, this.deps.engineName);
-    if (!mapped) {
+    if (!mapped || this.deps.denyApprovals) {
       // Station cannot show it faithfully: decline it rather than guess.
       void this.deps.client
         .request('DELETE', `/api/session/${sessionId}/form/${nativeId}`)
@@ -2299,7 +2512,9 @@ export class OpenCodeNativeSession {
       this.emit({
         method: 'runtime.warning',
         severity: 'warning',
-        message: `${this.deps.engineName} asked a question Station cannot show, so it was cancelled.`,
+        message: mapped
+          ? `${this.deps.engineName} asked a question, but nobody can answer this delegated session's questions, so it was cancelled.`
+          : `${this.deps.engineName} asked a question Station cannot show, so it was cancelled.`,
         ...this.turnRef(),
       });
       return;

@@ -1105,6 +1105,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
           }),
         ),
       ...(preToolPolicy ? { preToolPolicy } : {}),
+      // As the ACP adapter reads it (`record.delegation?.denyApprovals`).
+      ...(delegation?.denyApprovals ? { denyApprovals: true } : {}),
       onMoved: (move) => onMoved(move),
       ...(this.options.reconnectFirstMs
         ? { reconnectFirstMs: this.options.reconnectFirstMs }
