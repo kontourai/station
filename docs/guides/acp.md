@@ -128,13 +128,27 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    `gemini-cli`) creates sessions with its saved sign-in method, or with the
    API key when none is saved, but reloads them only with a saved method: a
    key-only connection gets `Authentication required` (-32000) on
-   `session/load`. Station then starts a new Gemini session and says so in
-   the conversation (`acp.session-started-fresh`, counted `started-fresh`).
-   It never calls `authenticate` to switch Gemini to the key. The same
-   refusal follows a saved Google sign-in that failed to refresh, and
-   authenticating would clear that login and change the person's own Gemini
-   CLI settings. A new session uses the saved method when there is one, so a
-   broken sign-in still fails the start.
+   `session/load`. When the connection has a `GEMINI_API_KEY` (stored in
+   Station or inherited from the host environment) and Gemini refuses
+   exactly that way, Station starts a new Gemini session and says so in the
+   conversation (`acp.session-started-fresh`, counted `started-fresh`). The
+   notice names the fix: choose Gemini's API key sign-in once, after which
+   Gemini can reload conversations. A connection without the key can only be
+   on a saved Google sign-in, so the same refusal there (for example a
+   passing Google token-refresh failure) fails the resume and keeps the
+   conversation's pointer. With both a key and a Google sign-in Station
+   cannot tell the two causes apart, and the notice says a passing Google
+   sign-in failure is possible. Station never calls `authenticate` to switch
+   Gemini to the key: authenticating would clear a saved Google login and
+   change the person's own Gemini CLI settings. A new session uses the saved
+   method when there is one, so a broken sign-in still fails the start.
+   The new engine session holds none of the conversation, including what its
+   first turn delivered. Orchestration therefore treats the notice as a new
+   start of the engine's context: the next turn carries the Agent's authored
+   prompt, Station's instructions and any Task brief again, once
+   (`turnStartedSinceEngineContextBegan`). The approval-floor relaunch has no
+   such fallback: a key-only Gemini session refused there keeps its old
+   engine process and the switch fails visibly.
    On `session/load`, ACP has the agent replay the whole conversation as
    `session/update` notifications before it answers. Station already stored
    that history, so while the session reattaches the adapter does not publish
