@@ -1,0 +1,7 @@
+{
+  "revision": "2a598b444266e80e5106ec751b8f9ada0ce2af6d",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed merged background-task footer wording and current child chat journey against retained dock controls, shared tool result rows and legacy notification redirects. Browser fixture screenshots establish presentation and navigation, not physical provider or device qualification.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/activity-retirement.test.ts","src-ui/src/__tests__/child-transcript-navigation.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChildChatNavigation.tsx","src-ui/src/components/chat-dock/ChildChatNavigationContext.ts","src-ui/src/components/conversation/SessionReaderBinding.tsx","src-ui/src/views/home/HomeSurface.tsx","src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx","src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"]}
+  ]
+}

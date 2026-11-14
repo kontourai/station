@@ -810,6 +810,10 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'packages/shared/src/__tests__/turn-provenance-ref-slot-producers.test.ts',
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
   'scripts/__tests__/classify-ci-change.scan.test.ts',
+  // Its iOS coverage tests walk src-ui and every package the UI bundle can
+  // import, so a new import that no iOS build covers fails on the pull
+  // request that adds it. No import edge connects those sources to the test.
+  'scripts/__tests__/classify-ci-change.test.ts',
   'scripts/__tests__/content-integrity-gate.scan.test.ts',
   // Scans source trees for coordinator product names outside their copy owner.
   'scripts/__tests__/coordinator-product-names.test.ts',
@@ -862,7 +866,6 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'src-server/services/orchestration/__tests__/orchestration-service.scan.test.ts',
   'src-server/services/orchestration/__tests__/orchestration-source-invariants.test.ts',
   'src-server/services/plugins/__tests__/reserved-plugin-identities.test.ts',
-  'src-ui/src/__tests__/activity-surface-single-mounter.test.ts',
   'src-ui/src/__tests__/board-surface-single-mounter.test.ts',
   'src-ui/src/__tests__/connection-host-copy.test.ts',
   'src-ui/src/__tests__/copy-affordance-cascade.test.ts',
@@ -1428,10 +1431,8 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     'src-ui/src/components/session-detail/**',
     'src-ui/src/components/status/**',
     'src-ui/src/views/home/**',
-    'src-ui/src/views/activity/**',
     'src-ui/src/views/sessions/**',
     'src-ui/src/views/project-page/**',
-    'src-ui/src/views/SessionsView.tsx',
     'src-ui/src/views/HomeView.tsx',
     'src-ui/src/components/flow/WorkflowPlanPanel.tsx',
     'src-ui/src/components/chat/PendingApprovalStrip.tsx',

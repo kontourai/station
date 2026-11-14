@@ -358,7 +358,7 @@ describe('another agent’s message in the recipient’s transcript (#3419)', ()
       return found!;
     });
     expect(link.getAttribute('href')).toBe(
-      `/?surface=activity&session=${SENDER_THREAD}&messageSession=${SENDER_THREAD}&messageDirection=sent&messageRequest=request-key-1`,
+      `/?surface=chat&session=${SENDER_THREAD}&messageSession=${SENDER_THREAD}&messageDirection=sent&messageRequest=request-key-1`,
     );
     expect(link.getAttribute('aria-label')).toBe(
       'Open Fix login, the Session that sent this message',
@@ -369,7 +369,7 @@ describe('another agent’s message in the recipient’s transcript (#3419)', ()
       .mockImplementation(() => {});
     fireEvent.click(link);
     expect(navigate).toHaveBeenCalledWith(
-      `/?surface=activity&session=${SENDER_THREAD}&messageSession=${SENDER_THREAD}&messageDirection=sent&messageRequest=request-key-1`,
+      `/?surface=chat&session=${SENDER_THREAD}&messageSession=${SENDER_THREAD}&messageDirection=sent&messageRequest=request-key-1`,
     );
     expect(focus).not.toHaveBeenCalled();
     // Exact anchors keep opening the durable Activity record even for an open chat.
@@ -499,7 +499,7 @@ describe('the sending call in the sender’s transcript (#3419)', () => {
       );
       expect(
         row.querySelector('a.agent-outgoing__link')?.getAttribute('href'),
-      ).toContain('/?surface=activity&session=other-recipient');
+      ).toContain('/?surface=chat&session=other-recipient');
     }
     expect(
       new URL(rows[0]!.querySelector('a')!.href).searchParams.get(

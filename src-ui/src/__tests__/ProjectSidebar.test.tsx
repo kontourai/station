@@ -445,7 +445,7 @@ describe('ProjectSidebar panel order (#2059)', () => {
     // The header is above the body and is its own control, so it anchors the
     // order rather than joining the row list.
     expect(screen.getByRole('button', { name: 'Station home' })).toBeTruthy();
-    expect(panelRowLabels()).toEqual(['Home', 'Activity', 'Station', 'Ferry']);
+    expect(panelRowLabels()).toEqual(['Home', 'Station', 'Ferry']);
   });
 
   test('keeps individual customization destinations out of the panel', () => {
@@ -794,7 +794,6 @@ describe('a project wears the same colour everywhere', () => {
         remoteUnavailable={[]}
         remoteAuthenticationRequired={[]}
         onOpen={vi.fn()}
-        onViewActivity={vi.fn()}
         onRetry={vi.fn()}
       />
     );

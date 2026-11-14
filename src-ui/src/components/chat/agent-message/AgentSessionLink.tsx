@@ -3,16 +3,7 @@ import type { MouseEvent, ReactNode } from 'react';
 import { navigationStore } from '../../../contexts/navigation-store';
 import { openChatsStore } from '../../../contexts/open-chats-store';
 
-/**
- * A link to another Session, in the transcript's own words. It is a real
- * anchor (copyable, openable in a new tab) whose plain click opens the Session:
- * in the dock when it is already an open chat, else in Activity through the
- * canonical deep link (`/?surface=activity&session=<id>`), which reads any
- * Session Station knows.
- *
- * A request key addresses its exact recorded send or received message.
- * Anchored links open Activity, whose transcript pages to that record.
- */
+/** A copyable Session link. Chat reads records and retains bounded exact-message anchors. */
 export function AgentSessionLink({
   sessionId,
   requestKey,

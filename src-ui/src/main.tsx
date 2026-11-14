@@ -56,7 +56,6 @@ import { NotificationContainer } from './components/notifications/NotificationCo
 import { StartupHandoff } from './components/StartupHandoff';
 import { UndoableActionShortcut } from './components/undo/UndoableActionShortcut';
 import { ActiveChatsProvider } from './contexts/ActiveChatsContext';
-import { ActivityReviewProvider } from './contexts/ActivityReviewContext';
 import { AnalyticsProvider } from './contexts/AnalyticsContext';
 import { ApiBaseProvider } from './contexts/ApiBaseContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -370,18 +369,16 @@ function renderApp(): void {
                                                         >
                                                           <RegionModelProvider>
                                                             <PaneRelationsProvider>
-                                                              <ActivityReviewProvider>
-                                                                <BrandingThemeBridge />
-                                                                <WorkClaimsProvider>
-                                                                  <ConversationWorkStateProvider>
-                                                                    <InboxDismissUndo>
-                                                                      <UndoableActionShortcut>
-                                                                        <App />
-                                                                      </UndoableActionShortcut>
-                                                                    </InboxDismissUndo>
-                                                                  </ConversationWorkStateProvider>
-                                                                </WorkClaimsProvider>
-                                                              </ActivityReviewProvider>
+                                                              <BrandingThemeBridge />
+                                                              <WorkClaimsProvider>
+                                                                <ConversationWorkStateProvider>
+                                                                  <InboxDismissUndo>
+                                                                    <UndoableActionShortcut>
+                                                                      <App />
+                                                                    </UndoableActionShortcut>
+                                                                  </InboxDismissUndo>
+                                                                </ConversationWorkStateProvider>
+                                                              </WorkClaimsProvider>
                                                             </PaneRelationsProvider>
                                                           </RegionModelProvider>
                                                           <NotificationContainer />

@@ -1,0 +1,7 @@
+{
+  "revision": "1ca703234a93e6a39bfe1374500ce785b3ec6cb4",
+
+  "notes": [
+    {"path":"CLAUDE.md","note":"Imports AGENTS.md unchanged; the AGENTS.md landing paragraph edit adds no claim to this file and its Veritas governance block is untouched.","inputs":["CLAUDE.md","AGENTS.md"]}
+  ]
+}

@@ -221,6 +221,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',
   'packages/cli/src/__tests__/passive-cli.test.ts',
   'scripts/__tests__/server-scenario.test.ts',
+  // Builds and starts an isolated Station on free ports, runs the bundled
+  // Claude engine against a loopback stub, and owns detached process trees.
+  'scripts/__tests__/station-weight.end-to-end.process.test.ts',
+  // Detached and double-forked node children, a CPU-burning worker, git
+  // fixtures and the runner's gate as a child process.
+  'scripts/__tests__/station-weight.process.test.ts',
   // Real IPC child observes the native histogram at reset acknowledgement and blocks for 80ms.
   'scripts/__tests__/server-scenario-probe.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
@@ -707,6 +713,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // paths' EXIT STATUS and printed verdicts are proven, not just the pure
   // evaluation functions.
   'scripts/__tests__/codeql-sarif-policy.cli.test.ts',
+  // Runs the security-analysis gate-change job's real bash/git script as a
+  // child process against throwaway fixture repositories (partial fetch,
+  // merge base, .github/ diff). Single-shot spawns, no wall-clock assertion.
+  'scripts/__tests__/security-analysis-gate-change.test.ts',
   // station#1312: same shape again — the issue-lifecycle module graph is
   // loaded in fresh node children, one entry module per case, because only a
   // cold import proves the graph has no evaluation-order cycle; in-process
@@ -1726,7 +1736,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // jsdom, then launch a real Chromium to lay that DOM out against index.css —
   // whether the dock body scrolls inside the shell, and whether a collapsed
   // bottom dock is its bar alone. A rule-text scan could not see an override.
-  'src-ui/src/app-shell/__tests__/ActivityRegionShell.dock-body.test.tsx',
+  // Renders the actual child chat DOM in Chromium at desktop and phone widths.
+  'src-ui/src/__tests__/child-transcript-navigation.test.tsx',
   'src-ui/src/app-shell/__tests__/CollapsedRegionDockBody.test.tsx',
   // Runs the full-regression phase driver CLI and real npm children, including
   // one it must kill at a deadline.

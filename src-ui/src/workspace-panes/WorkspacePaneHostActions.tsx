@@ -113,13 +113,13 @@ function PackageHostActions({
         authority.isCurrent,
       );
       if (!opened && authority.isCurrent())
-        showSurface('activity', {
+        showSurface('chat', {
           session: created.sessionId,
           focus: 'evidence',
         });
     } catch {
       if (authority.isCurrent())
-        showSurface('activity', {
+        showSurface('chat', {
           session: created.sessionId,
           focus: 'evidence',
         });
@@ -207,7 +207,7 @@ function PackageHostActions({
             <Button
               onClick={() => {
                 if (authority?.isCurrent())
-                  showSurface('activity', {
+                  showSurface('chat', {
                     session: result.sessionId,
                     focus: 'evidence',
                   });
