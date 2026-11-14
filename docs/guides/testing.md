@@ -845,9 +845,18 @@ source proof remains pending; failed or cancelled source proof remains non-passi
 rollout is described in [releasing](releasing.md#qualification-cadence-and-evidence-reuse).
 
 PR source computation has repository-wide FIFO ceilings: at most two statics
-jobs and three affected-test shard jobs run across all PRs. Statics use two
-buckets. Shards use two shared buckets plus a third for odd-numbered shards of
-PRs whose numbers end in 0, 1 or 2; larger plans retain every shard. Waiting jobs consume no runner. Different-head
+jobs and five affected-test shard jobs run across all PRs. Statics use two
+buckets by PR number parity. Shards use five shared buckets: the PR number's
+last digit mod 5 plus the shard index, mod 5 (the table is in `ci.yml`), so one
+PR's shards never share a bucket and every plan's first shard spreads across all
+five; larger plans retain every shard. The release-bot PR (head
+`changeset-release/main` from this repository, opened by
+`station-automation[bot]`) is re-pushed on every main push, so its shard and
+statics jobs share one dedicated `ci-pr-release-bot` slot and never enter the
+shared buckets; supersession cancels its older heads as for any PR. A job holds
+its bucket while it waits for a runner. Waiting jobs consume no runner. `pull_request_target` reads these
+groups from the base branch, so a bucket change applies to PR runs created
+after it lands. Different-head
 supersession still cancels obsolete source runs, including native FIFO
 `pending` waiters, after rechecking the live PR head and run attempt. A normal
 cancellation request is followed to its observed state. If the same obsolete
@@ -861,7 +870,7 @@ next `PR: CI` event for the branch tries again. Ambiguous job metadata,
 changed identities and any other API failure still fail the controller;
 cancellation never becomes source PASS. Same-head
 duplicates wait rather than cancelling another run's proof. Merge-group, push and manual
-diagnostic jobs use separate source-specific groups. These five PR computation
+diagnostic jobs use separate source-specific groups. These eight PR computation
 slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 
@@ -2173,7 +2182,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |
 | `verify-e2e-full` | `npm run verify:e2e:full` | diagnostic full E2E | product, first-run, starter-clean-install, smoke-live, extended, screenshot, Android buckets | full E2E | diagnostic | E2E spec→bucket assignment |
 
-`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
+`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. `conduit:conformance:check`, `examples:conformance`, `product-version:check`, two package import boundaries and `gate:test-import-existence` joined on 2026-11-13 for the same reason: each ran only in full qualification, and a stale generated conformance artifact kept main qualification red for about six days. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
 
 `full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:
 - `browser-prerequisite` — 20-unit host reservation; 1-minute execution deadline.

@@ -627,6 +627,9 @@ describe.runIf(process.platform !== 'win32')(
       for (const path of [
         'merge-queue-dequeue.mjs',
         'qualification-evidence.mjs',
+        // The trusted checkout is the whole tree at workflow_sha, so the
+        // fixture carries the helper's full local import closure.
+        'lib/bounded-capture.mjs',
         'lib/module-entry.mjs',
       ]) {
         writeFileSync(

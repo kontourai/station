@@ -92,8 +92,8 @@ export const ORDINARY_SHARD_DESCRIPTORS = Object.freeze(
 );
 
 /**
- * The process-heavy group can be split across machines (the merge-queue
- * regression workflow runs it on two hosted runners). Each slice keeps the
+ * The process-heavy group can be split across machines (full qualification
+ * runs it as three hosted matrix legs). Each slice keeps the
  * group's own per-machine worker bound; only the file list is partitioned.
  * The canonical `full:regression` never passes a shard and still runs the
  * whole group in one invocation.

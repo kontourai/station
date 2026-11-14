@@ -1,6 +1,17 @@
 {
   "version": 2,
-  "exceptions": [],
+  "exceptions": [
+    {
+      "scope": "root",
+      "package": "zod",
+      "advisory": "GHSA-mrhx-c7xc-m3w5",
+      "severity": "high",
+      "owner": "station-maintainers",
+      "reason": "zod 3.25.76 is the newest 3.x release and none is patched; the advisory's first patched version is 4.6.6. It is installed for @gitlab/gitlab-ai-provider 3.6.1 (required by @voltagent/core at ^3.1.1; its latest release still declares zod 3), @voltagent/a2a-server 2.0.3 (its latest release), autoevals 0.0.131 (pinned by @voltagent/scorers 2.1.0) and zod-from-json-schema 0.0.5, which @voltagent/core installs under the alias zod-from-json-schema-v3. Removing it needs upstream VoltAgent and GitLab provider releases; forcing zod 4 on these consumers changes their runtime contract and needs its own compatibility review. Owner-approved risk acceptance for this exact identity until 2026-12-13; this does not claim the path is unreachable or fixed.",
+      "trackingIssue": "https://github.com/kontourai/station/issues/4210",
+      "expires": "2026-12-13"
+    }
+  ],
   "residuals": [
     {
       "scope": "root",
@@ -13,7 +24,7 @@
       "disposition": "Production-reachable through @voltagent/core@2.10.0 -> @opentelemetry/exporter-trace-otlp-http@0.203.0, which pins this exact OpenTelemetry core version. The latest published @voltagent/core still uses the 0.203 exporter line; no compatible upstream remediation is published. Owner-approved 30-day risk acceptance for this exact moderate identity; this does not claim the path is unreachable or fixed.",
       "controls": "Station's independently managed OpenTelemetry graph resolves 2.10.0, but that does not mitigate VoltAgent's distinct production graph. Do not force a version override across the upstream OpenTelemetry package set's exact pins. Reassess this reachable baggage-propagation path on upstream release.",
       "trackingUrl": "https://github.com/kontourai/station/issues/3510",
-      "expires": "2026-11-07",
+      "expires": "2026-12-13",
       "recheckTrigger": "Run npm run audit:policy after every VoltAgent or OpenTelemetry update and remove this exact residual when a compatible upstream package set resolves core to 2.8.0 or newer."
     },
     {
@@ -27,7 +38,7 @@
       "disposition": "Production-reachable through @voltagent/core@2.10.0 -> @voltagent/logger@2.0.2 -> @opentelemetry/exporter-logs-otlp-http@0.204.0, which pins this exact OpenTelemetry core version. The latest published VoltAgent packages still use the 0.204 logger exporter line; no compatible upstream remediation is published. Owner-approved 30-day risk acceptance for this exact moderate identity; this does not claim the path is unreachable or fixed.",
       "controls": "Station's independently managed OpenTelemetry graph resolves 2.10.0, but that does not mitigate VoltAgent's distinct production graph. Do not force a version override across the upstream OpenTelemetry package set's exact pins. Reassess this reachable baggage-propagation path on upstream release.",
       "trackingUrl": "https://github.com/kontourai/station/issues/3510",
-      "expires": "2026-11-07",
+      "expires": "2026-12-13",
       "recheckTrigger": "Run npm run audit:policy after every VoltAgent or OpenTelemetry update and remove this exact residual when a compatible upstream package set resolves core to 2.8.0 or newer."
     },
     {
@@ -41,7 +52,7 @@
       "disposition": "Production-reachable through @voltagent/core@2.10.0 -> uuid@9.0.1. The latest published @voltagent/core still declares uuid ^9.0.1, and no patched 9.x version exists; the advisory's first patched release is 11.1.1. Owner-approved 30-day risk acceptance for this exact moderate identity; this does not claim the path is unreachable or fixed.",
       "controls": "Station generates its security-sensitive identifiers through Node crypto and does not rely on VoltAgent's nested uuid package for pairing or credential secrets.",
       "trackingUrl": "https://github.com/kontourai/station/issues/3510",
-      "expires": "2026-11-07",
+      "expires": "2026-12-13",
       "recheckTrigger": "Run npm run audit:policy after every VoltAgent core update and remove this exact residual when VoltAgent publishes a compatible uuid remediation."
     }
   ],

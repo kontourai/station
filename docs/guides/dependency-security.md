@@ -87,6 +87,23 @@ the legacy Zod 3 dependency paths tracked in
 bound unconstrained input. The advisory floor still evaluates the complete
 candidate graph under its existing policy.
 
+Zod 3.25.76 itself is blocked by
+[GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) (high).
+No 3.x release is patched; the first patched version is 4.6.6. Four packages
+keep it installed: `@gitlab/gitlab-ai-provider` 3.6.1 (which `@voltagent/core`
+requires at `^3.1.1`; the provider's latest release still declares Zod 3),
+`@voltagent/a2a-server` 2.0.3 (its latest release), `autoevals` 0.0.131
+(pinned by `@voltagent/scorers` 2.1.0; newer `autoevals` releases accept Zod 4)
+and `zod-from-json-schema` 0.0.5, which `@voltagent/core` installs under the
+alias `zod-from-json-schema-v3` beside the Zod 4 line of the same package.
+Removing Zod 3 therefore needs upstream VoltAgent and GitLab provider
+releases. The owner approved one exact exception for `root` / `zod` / that
+advisory on 2026-11-14, through **2026-12-13**, tracked by #4210. It accepts
+the risk; it does not claim the path is unreachable or fixed. The alternative,
+forcing Zod 4 on these consumers, changes their runtime contract and needs its
+own compatibility review. Remove the exception when the upstream releases drop
+Zod 3.
+
 ## RSA signature verification (2026-10 backport, 2026-11 release)
 
 [GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv) lets an
@@ -755,11 +772,12 @@ VoltAgent update currently removes these resolutions. The three exact residuals
 in [`dependency-advisory-exceptions.json`](../../scripts/dependency-advisory-exceptions.json)
 carried an owner-approved, 30-day risk acceptance through **2026-11-07**, tracked
 by [issue #3510](https://github.com/kontourai/station/issues/3510). Their
-GHSA severity remains **moderate**. That acceptance has expired and was not
-renewed, so the floor fails on these records until the owner decides; the
-2026-11 recheck found no compatible upstream release. The issue's P1 label
-prioritizes removing the blocker and closing the residuals, not reclassifying
-those advisories.
+GHSA severity remains **moderate**. That acceptance expired, and the floor
+failed on these records from 2026-11-07 until the owner renewed all three,
+unchanged, on 2026-11-14 through **2026-12-13**; the 2026-11 recheck found no
+compatible upstream release (`@voltagent/core` 2.11.1 keeps the same pins).
+The issue's P1 label prioritizes removing the blocker and closing the
+residuals, not reclassifying those advisories.
 This acceptance does not claim the paths are unreachable or fixed. Remove each
 record as soon as its compatible upstream remediation lands, and run
 `npm run audit:policy` after VoltAgent or OpenTelemetry updates. Station's own
