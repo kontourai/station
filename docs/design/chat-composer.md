@@ -421,8 +421,8 @@ Recent work and the inbox provide the work list.
 Home's Recent work rows use a recorded Directory label when no Project label
 is available and a working folder is known. For a Project, the decorative mark
 before its name is its chosen icon, or, without one, a dot in its sidebar colour
-(the name stays plain text); a row read from another Station draws no mark,
-since its slug names that Station's Project. The hover card's Project row
+(the name stays plain text). A row read from another Station uses neutral
+initials, never this Station's icon or colour, since the Project belongs there. The hover card's Project row
 repeats that mark, and its Git section reads the row's local session folder, as
 in the dock.
 The shared New chat action remains directly reachable in mobile chrome and
