@@ -753,11 +753,6 @@ export class ACPProcess extends EventEmitter {
   }
 
   /**
-   * Create a new ACP session. `meta` becomes the request's `_meta` (an
-   * engine's documented session options, such as Kiro's
-   * `{ kiro: { customAgents } }`); absent, no `_meta` is sent.
-   */
-  /**
    * Whether the engine process was started with `name` set to a non-empty
    * value, as it actually received it: a locked managed pin that empties a
    * variable wins over the connection's stored credential. `false` before
@@ -767,6 +762,11 @@ export class ACPProcess extends EventEmitter {
     return this.spawnedEnvNames?.has(foldEnvName(name)) ?? false;
   }
 
+  /**
+   * Create a new ACP session. `meta` becomes the request's `_meta` (an
+   * engine's documented session options, such as Kiro's
+   * `{ kiro: { customAgents } }`); absent, no `_meta` is sent.
+   */
   async newSession(
     cwd: string,
     mcpServers: McpServer[] = [],

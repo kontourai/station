@@ -3608,6 +3608,25 @@ describe('AcpAdapter', () => {
       }
     });
 
+    test("a key in Station's environment that the engine did not receive does not start fresh", async () => {
+      // A locked managed pin can empty GEMINI_API_KEY in the launched
+      // engine's environment while Station's own process.env still has it.
+      // What decides is what the engine received (ACPProcess.spawnedEnvHas).
+      withGeminiKey();
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          asGemini(proc);
+          proc.loadSessionError = geminiNoSavedSignIn();
+          proc.spawnedEnvHas = () => false;
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-gemini-pinned-empty')),
+      ).rejects.toThrow('Authentication required');
+      expect(processes[0].newSessionCalls).toBe(0);
+    });
+
     test('Gemini CLI with no API key fails the resume instead of starting fresh', async () => {
       // Without GEMINI_API_KEY the connection can only be on a saved Google
       // sign-in, so the refusal is that sign-in failing, perhaps only for

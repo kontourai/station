@@ -406,6 +406,27 @@ describe('chat-host-images through OrchestrationService', () => {
       input: { threadId: 'thread-images-fresh', input: 'again' },
     });
     expect(adapter.turns[1].ambientContext ?? '').toContain(instruction);
+    // Once: the turn after that has started under the new engine session.
+    adapter.events.push({
+      provider: 'codex',
+      threadId: 'thread-images-fresh',
+      turnId: 'turn-images-fresh-second',
+      eventId: 'thread-images-fresh-second-start',
+      createdAt: new Date().toISOString(),
+      method: 'turn.started',
+    });
+    await waitUntil(
+      () =>
+        store
+          .listEvents('thread-images-fresh')
+          .filter((event) => event.method === 'turn.started').length === 2 ||
+        undefined,
+    );
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'thread-images-fresh', input: 'once more' },
+    });
+    expect(adapter.turns[2].ambientContext ?? '').not.toContain(instruction);
   });
 
   test('preview off: nothing is read or stored, and the agent is not told', async () => {
