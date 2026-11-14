@@ -1,7 +1,9 @@
 /**
  * The `opencode serve` processes Station's native OpenCode transport runs:
- * one per (connection, real working directory, launch environment), shared
- * by every session with that key, stopped once unused for a while.
+ * one per (connection, binary identity, real working directory, launch
+ * environment), shared by every session with that key, stopped once unused
+ * for a while. The binary identity is its real path, size and mtime, so an
+ * upgraded or edited binary never reuses a server the old one started.
  *
  * Each server is started the way OpenCode starts its own private one
  * (`cli/src/services/standalone.ts`):
@@ -24,7 +26,7 @@
  */
 import type { ChildProcess } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { realpath } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import { spawnOwnedChild } from '../../services/infra/process-utils.js';
 import {
   OpenCodeServeClient,
@@ -91,10 +93,14 @@ interface ServerEntry {
 export interface OpenCodeServePoolOptions {
   spawn?: Spawn;
   realpath?: (path: string) => Promise<string>;
+  /** Size and mtime of the binary's real path, for the pool key. */
+  stat?: (path: string) => Promise<{ size: number; mtimeMs: number }>;
   /** Asked before every spawn: the Feature Preview gate. A `false` refuses. */
   allowSpawn?: () => boolean;
   idleStopMs?: number;
   readyTimeoutMs?: number;
+  /** Each step of stdin close, SIGTERM, SIGKILL waits this long. */
+  stopGraceMs?: number;
   fetch?: typeof fetch;
 }
 
@@ -116,24 +122,35 @@ export class OpenCodeServePool {
   private readonly servers = new Map<string, ServerEntry>();
   private readonly spawn: Spawn;
   private readonly realpath: (path: string) => Promise<string>;
+  private readonly stat: (
+    path: string,
+  ) => Promise<{ size: number; mtimeMs: number }>;
   private readonly idleStopMs: number;
   private readonly readyTimeoutMs: number;
+  private readonly stopGraceMs: number;
   private closed = false;
 
   constructor(private readonly options: OpenCodeServePoolOptions = {}) {
     this.spawn = options.spawn ?? spawnOwnedChild;
     this.realpath = options.realpath ?? realpath;
+    this.stat = options.stat ?? stat;
     this.idleStopMs = options.idleStopMs ?? OPENCODE_SERVE_IDLE_STOP_MS;
     this.readyTimeoutMs =
       options.readyTimeoutMs ?? OPENCODE_SERVE_READY_TIMEOUT_MS;
+    this.stopGraceMs = options.stopGraceMs ?? STOP_GRACE_MS;
   }
 
   /** A lease on the server for this key, starting one if none runs. */
   async acquire(input: OpenCodeServeAcquireInput): Promise<OpenCodeServeLease> {
     if (this.closed) throw new OpenCodeServeStartError('The pool is closed.');
     const cwd = await this.realpath(input.cwd);
+    const binary = await this.realpath(input.binary);
+    const { size, mtimeMs } = await this.stat(binary);
+    // stopAll may have run while the paths resolved.
+    if (this.closed) throw new OpenCodeServeStartError('The pool is closed.');
     const key = JSON.stringify([
       input.connectionId,
+      [binary, size, mtimeMs],
       cwd,
       envDigest(input.env, input.tmpDir),
     ]);
@@ -159,6 +176,12 @@ export class OpenCodeServePool {
       throw error;
     }
     const held = entry;
+    if (this.closed) {
+      // stopAll ran while the server started: it is stopped, not handed out.
+      held.refs = Math.max(0, held.refs - 1);
+      await this.stop(held);
+      throw new OpenCodeServeStartError('The pool is closed.');
+    }
     let released = false;
     return {
       ...started,
@@ -195,28 +218,57 @@ export class OpenCodeServePool {
     for (const name of STRIPPED_ENV) delete env[name];
     env.OPENCODE_PASSWORD = password;
     env.TMPDIR = input.tmpDir;
-    const { proc, release } = this.spawn(
-      input.binary,
-      ['serve', '--stdio', '--hostname', '127.0.0.1', '--port', '0'],
-      { cwd, env, stdio: ['pipe', 'pipe', 'ignore'] },
-    );
     let markExited!: () => void;
     const exited = new Promise<void>((resolve) => {
       markExited = resolve;
     });
-    const started = this.ready(proc, password, cwd).catch(
-      async (error: unknown) => {
-        await this.stop(entry);
-        throw error;
-      },
-    );
-    started.catch(() => undefined);
-    const entry: ServerEntry = { key, refs: 0, proc, release, exited, started };
-    proc.once('exit', () => {
+    let spawned: ReturnType<Spawn>;
+    try {
+      spawned = this.spawn(
+        input.binary,
+        ['serve', '--stdio', '--hostname', '127.0.0.1', '--port', '0'],
+        { cwd, env, stdio: ['pipe', 'pipe', 'ignore'] },
+      );
+    } catch (error) {
+      markExited();
+      const failed = Promise.reject(spawnFailure(error));
+      failed.catch(() => undefined);
+      const entry: ServerEntry = { key, refs: 0, exited, started: failed };
+      queueMicrotask(() => {
+        if (this.servers.get(key) === entry) this.servers.delete(key);
+      });
+      return entry;
+    }
+    const { proc, release } = spawned;
+    let spawnError: Error | undefined;
+    let gone = false;
+    const settle = () => {
+      if (gone) return;
+      gone = true;
       release();
       if (this.servers.get(key) === entry) this.servers.delete(key);
       markExited();
+    };
+    // A spawn that fails (ENOENT, EACCES) emits 'error' and never 'exit'.
+    const failedToSpawn = new Promise<never>((_, reject) => {
+      proc.once('error', (error) => {
+        if (proc.pid !== undefined && !gone && proc.exitCode === null) return;
+        spawnError = spawnFailure(error);
+        settle();
+        reject(spawnError);
+      });
     });
+    failedToSpawn.catch(() => undefined);
+    const started = Promise.race([
+      this.ready(proc, password, cwd),
+      failedToSpawn,
+    ]).catch(async (error: unknown) => {
+      if (!spawnError) await this.stop(entry);
+      throw spawnError ?? error;
+    });
+    started.catch(() => undefined);
+    const entry: ServerEntry = { key, refs: 0, proc, release, exited, started };
+    proc.once('exit', settle);
     proc.on('error', () => undefined);
     return entry;
   }
@@ -273,14 +325,22 @@ export class OpenCodeServePool {
       const proc = entry.proc;
       if (!proc || proc.exitCode !== null || proc.signalCode !== null) return;
       proc.stdin?.end();
-      if (await settlesWithin(entry.exited, STOP_GRACE_MS)) return;
+      if (await settlesWithin(entry.exited, this.stopGraceMs)) return;
       signalGroup(proc, 'SIGTERM');
-      if (await settlesWithin(entry.exited, STOP_GRACE_MS)) return;
+      if (await settlesWithin(entry.exited, this.stopGraceMs)) return;
       signalGroup(proc, 'SIGKILL');
-      await settlesWithin(entry.exited, STOP_GRACE_MS);
+      await settlesWithin(entry.exited, this.stopGraceMs);
     })();
     return entry.stopping;
   }
+}
+
+function spawnFailure(error: unknown): OpenCodeServeStartError {
+  const code = (error as { code?: unknown } | null)?.code;
+  const message = error instanceof Error ? error.message : String(error);
+  return new OpenCodeServeStartError(
+    `OpenCode serve could not be started${typeof code === 'string' ? ` (${code})` : ''}: ${message}`,
+  );
 }
 
 function signalGroup(proc: ChildProcess, signal: NodeJS.Signals): void {
@@ -326,6 +386,7 @@ function readReadyLine(proc: ChildProcess, timeoutMs: number): Promise<string> {
       clearTimeout(timer);
       stdout.off('data', onData);
       proc.off('exit', onExit);
+      proc.off('error', onError);
       if (error) reject(error);
       else resolve(url as string);
     };
@@ -360,6 +421,7 @@ function readReadyLine(proc: ChildProcess, timeoutMs: number): Promise<string> {
           `OpenCode serve exited (${code ?? 'signal'}) before it was ready.`,
         ),
       );
+    const onError = (error: Error) => finish(spawnFailure(error));
     const timer = setTimeout(
       () =>
         finish(
@@ -371,5 +433,6 @@ function readReadyLine(proc: ChildProcess, timeoutMs: number): Promise<string> {
     );
     stdout.on('data', onData);
     proc.once('exit', onExit);
+    proc.once('error', onError);
   });
 }

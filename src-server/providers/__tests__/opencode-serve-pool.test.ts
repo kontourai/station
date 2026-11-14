@@ -1,3 +1,4 @@
+import { spawn as spawnChild } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -50,8 +51,10 @@ function harness(options: Partial<OpenCodeServePoolOptions> = {}) {
     const status = infoAnswers.shift() ?? 200;
     return Response.json({ version: '2.3.0' }, { status });
   });
+  const binaries = new Map<string, { size: number; mtimeMs: number }>();
   const pool = new OpenCodeServePool({
     realpath: async (path) => path.replace(/^\/tmp\//, '/private/tmp/'),
+    stat: async (path) => binaries.get(path) ?? { size: 1, mtimeMs: 1 },
     fetch: fetch as never,
     idleStopMs: 20,
     spawn: ((command: string, args: string[], spawnOptions: any) => {
@@ -75,6 +78,7 @@ function harness(options: Partial<OpenCodeServePoolOptions> = {}) {
   return {
     pool,
     spawned,
+    binaries,
     infoAuth,
     fetch,
     setInfoAnswers: (answers: number[]) => {
@@ -226,4 +230,130 @@ describe('OpenCodeServePool', () => {
     await h.pool.acquire(input());
     expect(h.spawned).toHaveLength(1);
   });
+
+  test('a changed binary never reuses the server the old one started', async () => {
+    const h = harness();
+    active = h.pool;
+    await h.pool.acquire(input());
+    h.binaries.set('/opt/bin/opencode', { size: 1, mtimeMs: 2 });
+    await h.pool.acquire(input());
+    h.binaries.set('/opt/bin/opencode', { size: 2, mtimeMs: 2 });
+    await h.pool.acquire(input());
+    expect(h.spawned).toHaveLength(3);
+    // Same identity again: shared.
+    await h.pool.acquire(input());
+    expect(h.spawned).toHaveLength(3);
+  });
+
+  test('a spawn that fails reports its error at once and settles exited', async () => {
+    let proc: EventEmitter & { stdout: PassThrough; pid?: number } =
+      undefined as never;
+    const pool = new OpenCodeServePool({
+      realpath: async (path) => path,
+      stat: async () => ({ size: 1, mtimeMs: 1 }),
+      readyTimeoutMs: 60_000,
+      spawn: (() => {
+        proc = Object.assign(new EventEmitter(), {
+          stdout: new PassThrough(),
+          stdin: new PassThrough(),
+          pid: undefined,
+          exitCode: null,
+          signalCode: null,
+        });
+        setImmediate(() =>
+          proc.emit(
+            'error',
+            Object.assign(new Error('spawn opencode ENOENT'), {
+              code: 'ENOENT',
+            }),
+          ),
+        );
+        return { proc: proc as never, release: () => undefined };
+      }) as never,
+    });
+    const started = Date.now();
+    await expect(pool.acquire(input())).rejects.toThrow(
+      /could not be started \(ENOENT\)/,
+    );
+    expect(Date.now() - started).toBeLessThan(5_000);
+    await pool.stopAll();
+  }, 10_000);
+
+  test('a spawn that throws reports its error at once', async () => {
+    const pool = new OpenCodeServePool({
+      realpath: async (path) => path,
+      stat: async () => ({ size: 1, mtimeMs: 1 }),
+      spawn: (() => {
+        throw Object.assign(new Error('spawn EACCES'), { code: 'EACCES' });
+      }) as never,
+    });
+    await expect(pool.acquire(input())).rejects.toThrow(/\(EACCES\)/);
+  });
+
+  test('stopAll during an acquire stops what that acquire started', async () => {
+    let resolvePath!: (path: string) => void;
+    const h = harness({
+      realpath: (path) =>
+        path === '/tmp/project'
+          ? new Promise<string>((resolve) => {
+              resolvePath = resolve;
+            })
+          : Promise.resolve(path),
+    });
+    const pending = h.pool.acquire(input());
+    await new Promise((resolve) => setImmediate(resolve));
+    await h.pool.stopAll();
+    resolvePath('/private/tmp/project');
+    await expect(pending).rejects.toThrow(/closed/);
+    expect(h.spawned).toHaveLength(0);
+
+    // Closed while the server was starting: it is stopped, not handed out.
+    const late = harness();
+    const acquiring = late.pool.acquire(input());
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(late.spawned).toHaveLength(1);
+    await late.pool.stopAll();
+    await expect(acquiring).rejects.toThrow(/closed|not ready|exited/);
+    expect(late.spawned[0]?.proc.exitCode).toBe(0);
+  });
+
+  test('a server ignoring stdin close and SIGTERM is killed', async () => {
+    // A real child in its own group that ignores SIGTERM and stdin EOF.
+    const script = [
+      "process.on('SIGTERM', () => process.stdout.write('term\\n'));",
+      'process.stdin.resume();',
+      "process.stdin.on('end', () => process.stdout.write('eof\\n'));",
+      "process.stdout.write(JSON.stringify({ url: 'http://127.0.0.1:47999' }) + '\\n');",
+      'setInterval(() => {}, 1000);',
+    ].join('\n');
+    const seen: string[] = [];
+    let exit: { code: number | null; signal: string | null } | undefined;
+    const pool = new OpenCodeServePool({
+      realpath: async (path) => path,
+      stat: async () => ({ size: 1, mtimeMs: 1 }),
+      stopGraceMs: 300,
+      fetch: (async () => Response.json({ version: '2.3.0' })) as never,
+      spawn: ((_command: string, _args: string[], options: any) => {
+        const proc = spawnChild(process.execPath, ['-e', script], {
+          cwd: process.cwd(),
+          env: { PATH: options.env.PATH },
+          stdio: ['pipe', 'pipe', 'ignore'],
+          detached: true,
+        });
+        proc.stdout!.on('data', (chunk) => {
+          seen.push(...chunk.toString().split('\n').filter(Boolean));
+        });
+        proc.once('exit', (code, signal) => {
+          exit = { code, signal };
+        });
+        return { proc, release: () => undefined };
+      }) as never,
+    });
+    const lease = await pool.acquire(input({ cwd: process.cwd() }));
+    lease.discard();
+    await lease.exited;
+    expect(seen).toContain('eof');
+    expect(seen).toContain('term');
+    expect(exit).toEqual({ code: null, signal: 'SIGKILL' });
+  }, 10_000);
 });
