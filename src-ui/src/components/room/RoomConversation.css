@@ -43,6 +43,14 @@
   margin-block-end: var(--k-space-2);
 }
 
+.room-conversation__older-note {
+  align-self: center;
+  margin: 0 0 var(--k-space-2);
+  color: var(--k-text-muted);
+  font: var(--k-text-sm) / var(--room-line) var(--k-font-ui);
+  text-align: center;
+}
+
 .room-conversation__list {
   min-width: 0;
 }

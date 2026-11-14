@@ -318,8 +318,10 @@ type RoomMessage = NonNullable<
  * Rows kept from a window the room has moved past are owned by no history
  * query, so `reread` brings them up to date (#4797): each new read of that
  * span is applied once, and the live windows always win over it. A kept row
- * older than the re-read span is retired rather than shown stale; an open
- * thread whose root is retired seeks it again from the live history.
+ * older than the re-read span is retired rather than shown stale, and
+ * `unloaded` says so until the reader loads earlier messages again; an open
+ * thread whose root is retired seeks it again from the live history, within
+ * the windows a room keeps (#4855).
  */
 function useRoomMessages(
   roomId: string | undefined,
@@ -330,6 +332,7 @@ function useRoomMessages(
     roomId?: string;
     byId: Map<string, RoomMessage>;
     rereadAt?: number;
+    unloaded?: boolean;
   }>({ byId: new Map() });
   if (retained.current.roomId !== roomId)
     retained.current = { roomId, byId: new Map(), rereadAt: reread.at };
@@ -346,9 +349,19 @@ function useRoomMessages(
       1 -
       PROJECT_ROOM_RETAINED_REREAD_MESSAGES;
     for (const [id, message] of retained.current.byId)
-      if (message.seq <= refreshable) retained.current.byId.delete(id);
+      if (message.seq <= refreshable) {
+        retained.current.byId.delete(id);
+        retained.current.unloaded = true;
+      }
   }
-  return [...retained.current.byId.values()].sort((a, b) => a.seq - b.seq);
+  return {
+    messages: [...retained.current.byId.values()].sort((a, b) => a.seq - b.seq),
+    unloaded: !!retained.current.unloaded,
+    /** The reader asked for earlier messages: the unloaded notice is done. */
+    acknowledgeUnloaded: () => {
+      retained.current.unloaded = false;
+    },
+  };
 }
 /**
  * The shown rows older than every live history window: the span the retained
@@ -828,7 +841,11 @@ function ProjectRoomSession({
     shownRoomId,
     () => olderShown.current,
   );
-  const messages = useRoomMessages(shownRoomId, fetchedMessages, {
+  const {
+    messages,
+    unloaded: earlierUnloaded,
+    acknowledgeUnloaded,
+  } = useRoomMessages(shownRoomId, fetchedMessages, {
     messages: reread.data?.messages ?? [],
     at: reread.dataUpdatedAt,
   });
@@ -864,6 +881,18 @@ function ProjectRoomSession({
     !threadRootLoaded &&
     !!room.history.hasNextPage &&
     historyPages >= PROJECT_ROOM_HISTORY_MAX_PAGES;
+  // Paging back stops where the seek does: a page past the bound would drop
+  // the newest window while its rows stayed on screen with nothing to
+  // refresh them. Both limits are said, never silent.
+  const olderInHistory = variant === 'full' && !!room.history.hasNextPage;
+  const olderLoadable =
+    olderInHistory && historyPages < PROJECT_ROOM_HISTORY_MAX_PAGES;
+  const olderNote =
+    olderInHistory && !olderLoadable
+      ? `This view keeps the latest ${PROJECT_ROOM_RETAINED_REREAD_MESSAGES} messages.`
+      : earlierUnloaded && olderLoadable
+        ? 'Earlier messages were unloaded to keep this view current.'
+        : undefined;
   const awaitingThreadRoot =
     !!threadRoot &&
     !threadRootLoaded &&
@@ -1682,9 +1711,11 @@ function ProjectRoomSession({
                   />
                 )
               }
-              hasOlder={variant === 'full' && !!room.history.hasNextPage}
+              hasOlder={olderLoadable}
+              olderNote={olderNote}
               loadingOlder={room.history.isFetchingNextPage}
               onLoadOlder={() => {
+                acknowledgeUnloaded();
                 void room.history.fetchNextPage();
               }}
             />

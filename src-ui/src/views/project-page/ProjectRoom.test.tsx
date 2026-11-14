@@ -1969,9 +1969,164 @@ test('a kept row the re-read can still reach shows a live delete: 500 newer mess
 
 test('a kept row past the re-read span is never left showing deleted text: 501 newer messages (#4852)', async () => {
   await deleteKeptThreadRoot(501);
-  // Either the thread sought its root again from live history (a tombstone),
-  // or the stale row was retired; the deleted text is never on screen.
-  await waitFor(() => expect(screen.queryByText('Original 1')).toBeNull());
-  await new Promise((resolve) => setTimeout(resolve, 200));
+  // The stale root is retired; the thread seeks it within the windows a room
+  // keeps, cannot reach it, and says so. The deleted text never shows.
+  await screen.findByText(
+    'This thread is too far back to open here.',
+    {},
+    { timeout: 10_000 },
+  );
   expect(screen.queryByText('Original 1')).toBeNull();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(
+    screen.getByText('This thread is too far back to open here.'),
+  ).toBeTruthy();
+  expect(screen.queryByText('Original 1')).toBeNull();
+});
+
+test('an open thread whose kept root the re-read can reach stays open as the tail moves: 480 newer messages (#4852)', async () => {
+  messages = Array.from({ length: 25 }, (_, i) =>
+    storedMessage(i + 1, `Original ${i + 1}`),
+  );
+  const root = messages[0]!;
+  const reads = watchHistoryReads();
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <ProjectRoom
+        slug="team"
+        projectId="project"
+        requestScope={requestScope}
+        routeChannel={{ id: undefined }}
+        thread={{ rootId: root.messageId as string, open: () => {} }}
+      />
+    </QueryClientProvider>,
+  );
+  await screen.findByText('Original 1');
+  messages.push(
+    ...Array.from({ length: 480 }, (_, i) =>
+      storedMessage(i + 26, `New ${i + 26}`),
+    ),
+  );
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['project-room'] });
+  });
+  await waitFor(() =>
+    expect(
+      client
+        .getQueryCache()
+        .getAll()
+        .some(
+          (query) =>
+            query.queryKey.at(-1) === 480 && query.state.status === 'success',
+        ),
+    ).toBe(true),
+  );
+  // The root was kept, not retired: no seek paged back for it, the thread
+  // stayed open, and a later delete still reaches it. A retired root would
+  // start a seek as soon as the new tail settles, so let that happen first.
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const seeks = reads.filter((after) => after > 0 && after < 480);
+  expect(seeks).toEqual([]);
+  expect(screen.getByText('Original 1')).toBeTruthy();
+  expect(screen.getByRole('textbox', { name: 'Reply in thread' })).toBeTruthy();
+  expect(
+    screen.queryByText('This thread is too far back to open here.'),
+  ).toBeNull();
+  messages[0] = { ...root, text: '', deletedAt: at };
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['project-room'] });
+  });
+  await screen.findByText('Message deleted');
+  expect(screen.queryByText('Original 1')).toBeNull();
+});
+
+/** Hundreds of rows mount the transcript virtualizer, which jsdom lacks. */
+function stubResizeObserver() {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+}
+
+test('paging back stops at the windows a room keeps and says so, without dropping the newest rows (#4852)', async () => {
+  messages = Array.from({ length: 520 }, (_, index) =>
+    storedMessage(index + 1, `Paged ${index + 1}`),
+  );
+  stubResizeObserver();
+  const { client } = mount();
+  await screen.findByText('Paged 520');
+  // Rows are virtualized, so the loaded windows are read from the history.
+  const windows = () => {
+    const history = client
+      .getQueryCache()
+      .getAll()
+      .find(
+        (query) =>
+          query.queryKey.includes('history') &&
+          Array.isArray(
+            (query.state.data as { pages?: unknown[] } | undefined)?.pages,
+          ),
+      );
+    return (
+      (
+        history?.state.data as
+          | { pages: { messages: { seq: number }[] }[] }
+          | undefined
+      )?.pages ?? []
+    );
+  };
+  for (let page = 1; page < 20; page++) {
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Load earlier messages' }),
+    );
+    await waitFor(() => expect(windows()).toHaveLength(page + 1));
+  }
+  await screen.findByText('This view keeps the latest 500 messages.');
+  expect(
+    screen.queryByRole('button', { name: 'Load earlier messages' }),
+  ).toBeNull();
+  // The newest window is still loaded (nothing was dropped to make room),
+  // and the oldest loaded message is the 500th from the newest.
+  const loaded = windows();
+  expect(loaded).toHaveLength(20);
+  expect(loaded[0]!.messages.at(-1)!.seq).toBe(520);
+  expect(loaded.at(-1)!.messages[0]!.seq).toBe(21);
+});
+
+test('rows the room unloads to stay current are announced, and Load earlier brings history back (#4852)', async () => {
+  stubResizeObserver();
+  messages = Array.from({ length: 25 }, (_, i) =>
+    storedMessage(i + 1, `Original ${i + 1}`),
+  );
+  const { client } = mount();
+  await screen.findByText('Original 1');
+  messages.push(
+    ...Array.from({ length: 501 }, (_, i) =>
+      storedMessage(i + 26, `New ${i + 26}`),
+    ),
+  );
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['project-room'] });
+  });
+  await screen.findByText(
+    'Earlier messages were unloaded to keep this view current.',
+  );
+  expect(screen.queryByText('Original 1')).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Load earlier messages' }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByText(
+        'Earlier messages were unloaded to keep this view current.',
+      ),
+    ).toBeNull(),
+  );
 });

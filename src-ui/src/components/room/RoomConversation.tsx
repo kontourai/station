@@ -404,6 +404,7 @@ export function RoomConversation({
   status,
   empty,
   hasOlder = false,
+  olderNote,
   loadingOlder = false,
   onLoadOlder,
   trailing,
@@ -421,6 +422,11 @@ export function RoomConversation({
   /** Shown when there are no rows and nothing is loading. */
   empty?: ReactNode;
   hasOlder?: boolean;
+  /**
+   * Why the list starts where it does when earlier history exists but is not
+   * all here (a kept-history limit, or rows unloaded), shown at the top.
+   */
+  olderNote?: string;
   loadingOlder?: boolean;
   onLoadOlder?(): void;
   /** Live rows after the history, such as a working agent. */
@@ -663,6 +669,11 @@ export function RoomConversation({
           ref={content}
           className={`room-conversation__content${!rows.length && !loading ? ' room-conversation__content--empty' : ''}`}
         >
+          {olderNote && (
+            <p className="room-conversation__older-note" role="note">
+              {olderNote}
+            </p>
+          )}
           {hasOlder && onLoadOlder && (
             <Button
               variant="ghost"
