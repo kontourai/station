@@ -505,6 +505,26 @@ overrides:
       expect(() => validateInstalledRemediationGraph(root)).toThrow(
         'expected ^14.0.5',
       );
+      // An override may only move glob forward: "any" or a lower major is
+      // refused even when the installed copy satisfies it.
+      put('node_modules/glob', {
+        name: 'glob',
+        version: '7.2.3',
+        dependencies: { minimatch: '^11.0.0' },
+      });
+      workspace('  cacache@21>glob: "*"\n');
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'override * is below declared ^13.0.0',
+      );
+      put('node_modules/glob', {
+        name: 'glob',
+        version: '12.0.0',
+        dependencies: { minimatch: '^11.0.0' },
+      });
+      workspace('  cacache@21>glob: ^12.0.0\n');
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'override ^12.0.0 is below declared ^13.0.0',
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

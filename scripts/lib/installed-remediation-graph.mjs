@@ -98,6 +98,18 @@ export function validateInstalledRemediationGraph(root) {
           : cacacheGlob && Object.hasOwn(workspace.overrides, cacacheGlob)
             ? workspace.overrides[cacacheGlob]
             : declared;
+      // An override may move a child forward, never back or to "any": its
+      // lowest admitted version must be at or above the declared range's major.
+      if (
+        range !== declared &&
+        semver.validRange(range) &&
+        semver.validRange(declared) &&
+        semver.minVersion(range).major < semver.minVersion(declared).major
+      ) {
+        throw new Error(
+          `Invalid installed dependency: ${parent.name}@${parent.version} -> ${name}@${child.version}; override ${range} is below declared ${declared}`,
+        );
+      }
       if (
         child.name !== name ||
         !semver.validRange(range) ||
