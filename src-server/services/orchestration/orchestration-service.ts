@@ -9288,13 +9288,7 @@ export class OrchestrationService {
             this.threadProviders.get(submittedInput.threadId) ??
             current?.session.provider;
           if (turnEngine !== undefined)
-            assertEngineAllowedByManagedPolicy(
-              turnEngine,
-              this.managedPolicyConnectionOf(
-                submittedInput.threadId,
-                turnEngine,
-              ),
-            );
+            assertEngineAllowedByManagedPolicy(turnEngine);
           let engineMaterialized = false;
           const adapter = await resolveOrchestrationAdapterForThread({
             threadId: submittedInput.threadId,
@@ -14265,43 +14259,13 @@ export class OrchestrationService {
     }
   }
 
-  /**
-   * R5: the connection a managed-policy check is about, so an `acp` thread
-   * on an OpenCode connection is governed as an `opencode` one would be.
-   * OpenCode is the engine whose approval rules Station sets
-   * (`acpApprovalControl` is `station`).
-   */
-  private managedPolicyConnectionOf(
-    threadId: string | undefined,
-    provider: EngineId,
-    connectionId?: string,
-  ): { id: string; runsOpenCode: boolean } | undefined {
-    if (!isAcpFamilyEngine(provider)) return undefined;
-    const id =
-      connectionId ??
-      (threadId
-        ? (this.sessionConnectionIds.get(threadId) ??
-          this.readLatestSessionStartMetadata(threadId)?.connectionId)
-        : undefined);
-    if (typeof id !== 'string' || !id) return undefined;
-    return {
-      id,
-      runsOpenCode:
-        id === 'opencode' ||
-        this.options.acpApprovalControl?.(id) === 'station',
-    };
-  }
-
   private async assertAdapterReady(
     adapter: ProviderAdapterShape,
     connectionId?: string,
   ): Promise<void> {
     // #4520: every engine start (new, recovered or child work) passes here;
     // an engine the managed policy does not allow starts nothing.
-    assertEngineAllowedByManagedPolicy(
-      adapter.provider,
-      this.managedPolicyConnectionOf(undefined, adapter.provider, connectionId),
-    );
+    assertEngineAllowedByManagedPolicy(adapter.provider);
     const prerequisites = await this.readPrerequisites(adapter, connectionId);
     const readiness = resolveRuntimeAdapterReadiness({
       adapter,

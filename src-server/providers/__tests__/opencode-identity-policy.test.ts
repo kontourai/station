@@ -4,9 +4,11 @@
  * - #3355: `OpenCodeAdapter` runs saved ACP connection records, so it never
  *   reserves the ACP `opencode` connection id, whether its Feature Preview is
  *   on or off; it claims a connection for new chats only while it is on.
- * - Ruling R5: an `acp` policy entry keeps governing OpenCode, for allow and
- *   deny, unless the policy names `opencode`; and which provider an OpenCode
- *   chat runs on (the preview) never changes the answer.
+ * - Ruling R5′: the policy's `acp` entry alone governs OpenCode, for allow,
+ *   deny and launch pins, on either provider (`acp`, `opencode`) and either
+ *   transport, preview on or off. A policy cannot name `opencode`: it is
+ *   refused exactly as on the base (an unknown engine id), because whether
+ *   a connection runs OpenCode is read from user-controlled fields.
  */
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
@@ -18,6 +20,9 @@ import {
   assertEngineAllowedByManagedPolicy,
   engineAllowedByManagedPolicy,
   installManagedEngineLimits,
+  managedEngineLaunch,
+  managedEnginePin,
+  managedEngineRefusalFor,
 } from '../../security/managed-engine-limits.js';
 import {
   acpConnectionRuntimeAdapter,
@@ -47,17 +52,21 @@ const KIRO: ACPConnectionConfig = {
 
 afterEach(() => installManagedEngineLimits(null));
 
-function installAllowed(allowed: string[] | undefined) {
+function install(engines: Record<string, unknown>) {
   const parsed = parseManagedPolicyDocument({
     schemaVersion: 1,
     organization: 'Acme',
-    limits: { engines: allowed ? { allowed } : {} },
+    limits: { engines },
   });
   if (!parsed.ok) throw new Error(JSON.stringify(parsed.problems));
   installManagedEngineLimits({
     document: parsed.document,
     summary: summarizeManagedPolicy(parsed.document),
   });
+}
+
+function installAllowed(allowed: string[] | undefined) {
+  install(allowed ? { allowed } : {});
 }
 
 function adapter(preview: { on: boolean }, overrides = {}) {
@@ -99,51 +108,114 @@ describe('OpenCodeAdapter identity (#3355)', () => {
   });
 });
 
-describe('managed policy over OpenCode (ruling R5)', () => {
-  // [allowed list, OpenCode may run, Kiro (another ACP engine) may run]
-  const cases: Array<[string[] | undefined, boolean, boolean]> = [
-    [undefined, true, true],
-    [['acp'], true, true],
-    [['claude'], false, false],
-    [['opencode'], true, false],
-    [['claude', 'opencode'], true, false],
-    [['acp', 'opencode'], true, true],
-    [['acp', 'claude'], true, true],
+describe('managed policy over OpenCode (ruling R5′)', () => {
+  test.each([
+    [{ allowed: ['opencode'] }, 'limits.engines.allowed[0]'],
+    [{ allowed: ['acp', 'opencode'] }, 'limits.engines.allowed[1]'],
+    [
+      { instances: { opencode: { locked: true, binaryPath: '/x/opencode' } } },
+      'limits.engines.instances.opencode',
+    ],
+  ])('a policy naming opencode is refused as on the base: %j', (engines, path) => {
+    const parsed = parseManagedPolicyDocument({
+      schemaVersion: 1,
+      organization: 'Acme',
+      limits: { engines },
+    });
+    expect(parsed.ok).toBe(false);
+    expect(parsed.ok ? [] : parsed.problems).toEqual(
+      expect.arrayContaining([expect.objectContaining({ path })]),
+    );
+  });
+
+  // [allowed list, OpenCode and every other ACP engine may run]
+  const cases: Array<[string[] | undefined, boolean]> = [
+    [undefined, true],
+    [['acp'], true],
+    [['claude'], false],
+    [['acp', 'claude'], true],
+    [['codex', 'muse'], false],
   ];
 
   test.each(cases)(
-    'allowed %j: OpenCode %s, Kiro %s, whichever provider runs OpenCode',
-    (allowed, openCodeRuns, kiroRuns) => {
+    'allowed %j: the acp entry answers for both providers (%s)',
+    (allowed, runs) => {
       installAllowed(allowed);
       // Preview on: a new OpenCode chat runs on `opencode`.
-      expect(engineAllowedByManagedPolicy('opencode', OPENCODE)).toBe(
-        openCodeRuns,
-      );
-      expect(engineAllowedByManagedPolicy('opencode')).toBe(openCodeRuns);
+      expect(engineAllowedByManagedPolicy('opencode')).toBe(runs);
       // Preview off, or a chat from before: the same connection on `acp`.
-      expect(engineAllowedByManagedPolicy('acp', OPENCODE)).toBe(openCodeRuns);
-      expect(engineAllowedByManagedPolicy('acp', CUSTOM_OPENCODE)).toBe(
-        openCodeRuns,
+      expect(engineAllowedByManagedPolicy('acp')).toBe(runs);
+      for (const engine of ['acp', 'opencode'])
+        for (const connection of [OPENCODE, CUSTOM_OPENCODE, KIRO]) {
+          const assertion = () =>
+            assertEngineAllowedByManagedPolicy(engine, connection);
+          if (runs) expect(assertion).not.toThrow();
+          else
+            expect(assertion).toThrow(
+              expect.objectContaining({
+                code: 'managed-policy-engine-refused',
+                message: expect.stringContaining('acp is not allowed'),
+              }),
+            );
+        }
+      expect(managedEngineRefusalFor('opencode')?.message).toBe(
+        managedEngineRefusalFor('acp')?.message,
       );
-      expect(
-        engineAllowedByManagedPolicy('acp', { id: 'x', runsOpenCode: true }),
-      ).toBe(openCodeRuns);
-      // Another ACP engine never reads the `opencode` entry.
-      expect(engineAllowedByManagedPolicy('acp', KIRO)).toBe(kiroRuns);
-      const assertion = () =>
-        assertEngineAllowedByManagedPolicy('acp', OPENCODE);
-      if (openCodeRuns) expect(assertion).not.toThrow();
-      else
-        expect(assertion).toThrow(
-          expect.objectContaining({ code: 'managed-policy-engine-refused' }),
-        );
     },
   );
+
+  test('the acp pin is the opencode pin', () => {
+    install({
+      instances: {
+        acp: {
+          locked: true,
+          binaryPath: '/pinned/opencode',
+          environment: { HTTPS_PROXY: 'http://proxy' },
+        },
+      },
+    });
+    expect(managedEnginePin('opencode')).toEqual(managedEnginePin('acp'));
+    expect(
+      managedEngineLaunch(
+        'opencode',
+        { command: 'opencode', args: [], env: {} },
+        'user',
+      ),
+    ).toEqual({
+      command: '/pinned/opencode',
+      args: [],
+      env: { HTTPS_PROXY: 'http://proxy' },
+    });
+  });
+
+  function nativeStart(
+    preview: { on: boolean },
+    acquire: ReturnType<typeof vi.fn>,
+    findBinary: (command: string) => Promise<string | null> = async () =>
+      OPENCODE.command,
+  ) {
+    const openCode = adapter(preview, {
+      pool: { acquire, stopAll: async () => undefined },
+      versionProbe: {
+        probe: async () => ({ major: 2, minor: 3, patch: 0, text: '2.3.0' }),
+      },
+      findBinary,
+      binaryIdentity: async () => 'id',
+      launchEnv: async () => ({ TMPDIR: '/tmp/x' }),
+    });
+    return openCode.startSession({
+      provider: 'opencode',
+      threadId: 't1',
+      cwd: '/tmp',
+      metadata: { connectionId: 'opencode' },
+    });
+  }
 
   test.each([
     [['claude'], false],
     [['acp'], true],
-    [['claude', 'opencode'], true],
+    [['acp', 'claude'], true],
+    [['codex'], false],
   ] as const)(
     'a native start under allowed %j runs: %s',
     async (allowed, runs) => {
@@ -151,29 +223,7 @@ describe('managed policy over OpenCode (ruling R5)', () => {
       const acquire = vi.fn(async () => {
         throw new Error('pool reached');
       });
-      const openCode = adapter(
-        { on: true },
-        {
-          pool: { acquire, stopAll: async () => undefined },
-          versionProbe: {
-            probe: async () => ({
-              major: 2,
-              minor: 3,
-              patch: 0,
-              text: '2.3.0',
-            }),
-          },
-          findBinary: async () => OPENCODE.command,
-          binaryIdentity: async () => 'id',
-          launchEnv: async () => ({ TMPDIR: '/tmp/x' }),
-        },
-      );
-      const start = openCode.startSession({
-        provider: 'opencode',
-        threadId: 't1',
-        cwd: '/tmp',
-        metadata: { connectionId: 'opencode' },
-      });
+      const start = nativeStart({ on: true }, acquire);
       if (runs) {
         // The policy let it reach the pool; a server that does not start
         // falls back to ACP (this stub's inner adapter cannot start one).
@@ -193,4 +243,20 @@ describe('managed policy over OpenCode (ruling R5)', () => {
       }
     },
   );
+
+  test('a native start resolves the acp entry\'s pinned binary', async () => {
+    install({
+      allowed: ['acp'],
+      instances: { acp: { locked: true, binaryPath: '/pinned/opencode' } },
+    });
+    const findBinary = vi.fn(async (command: string) => command);
+    const acquire = vi.fn(async () => {
+      throw new Error('pool reached');
+    });
+    await nativeStart({ on: true }, acquire, findBinary).catch(() => undefined);
+    expect(findBinary).toHaveBeenCalledWith('/pinned/opencode');
+    expect(acquire).toHaveBeenCalledWith(
+      expect.objectContaining({ binary: '/pinned/opencode' }),
+    );
+  });
 });

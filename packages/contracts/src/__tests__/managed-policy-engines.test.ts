@@ -11,11 +11,9 @@ import {
   summarizeManagedPolicy,
 } from '../managed-policy.js';
 import {
-  engineLimitProblems,
   isAbsoluteManagedBinaryPath,
   MANAGED_POLICY_ENGINE_IDS,
   managedEngineAllowed,
-  managedPolicyEngineFor,
 } from '../managed-policy-engines.js';
 
 const base = { schemaVersion: 1, organization: 'Acme' } as const;
@@ -232,49 +230,6 @@ describe('engine predicates', () => {
   test('without an allow list every engine, a plugin engine included, may run', () => {
     expect(managedEngineAllowed(undefined, 'some-plugin-engine')).toBe(true);
     expect(managedEngineAllowed({}, 'codex')).toBe(true);
-  });
-
-  test('OpenCode reads its opencode entry only where the policy names one (R5)', () => {
-    // Not named: `acp` governs it, allow and deny alike.
-    expect(managedPolicyEngineFor({ allowed: ['acp'] }, 'opencode')).toBe(
-      'acp',
-    );
-    expect(managedPolicyEngineFor({ allowed: ['claude'] }, 'opencode')).toBe(
-      'acp',
-    );
-    expect(managedPolicyEngineFor(undefined, 'opencode')).toBe('acp');
-    expect(managedPolicyEngineFor({ allowed: ['acp'] }, 'acp', true)).toBe(
-      'acp',
-    );
-    // Named: `opencode` governs OpenCode on either provider.
-    expect(managedPolicyEngineFor({ allowed: ['opencode'] }, 'opencode')).toBe(
-      'opencode',
-    );
-    expect(managedPolicyEngineFor({ allowed: ['opencode'] }, 'acp', true)).toBe(
-      'opencode',
-    );
-    // Another ACP engine is always `acp`; other engines are themselves.
-    expect(managedPolicyEngineFor({ allowed: ['opencode'] }, 'acp')).toBe(
-      'acp',
-    );
-    expect(managedPolicyEngineFor({ allowed: ['opencode'] }, 'codex')).toBe(
-      'codex',
-    );
-  });
-
-  test('a policy cannot pin an opencode launch apart from acp', () => {
-    expect(
-      engineLimitProblems({
-        engines: {
-          instances: { opencode: { locked: true, binaryPath: '/x' } },
-        },
-      }),
-    ).toEqual([
-      expect.objectContaining({ path: 'limits.engines.instances.opencode' }),
-    ]);
-    expect(engineLimitProblems({ engines: { allowed: ['opencode'] } })).toEqual(
-      [],
-    );
   });
 
   test('an allow list admits only the engines it lists', () => {

@@ -362,7 +362,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     config: ACPConnectionConfig,
   ): Promise<NativePlan | undefined> {
     if (!this.nativeEnabled()) return undefined;
-    // R5: the policy governing this connection, whichever transport runs it.
+    // R5′: the policy's `acp` entry governs this connection, whichever
+    // transport runs it (`managedPolicyEngineId` maps `opencode` to `acp`).
     assertEngineAllowedByManagedPolicy(this.provider, config);
     // A managed policy pins OpenCode's launch through its `acp` entry: the
     // binary and environment apply to `serve` as they do to `acp`. Pinned
