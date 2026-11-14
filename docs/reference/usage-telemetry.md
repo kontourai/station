@@ -590,6 +590,9 @@ An engine turn reached a terminal outcome.
 | `engine` | `station`, `acp`, `bedrock`, `claude`, `codex`, `muse`, `ollama`, `other` |
 | `outcome` | `completed`, `aborted`, `failed` |
 
+A turn on the `opencode` engine reports `acp`, as OpenCode chats did before
+that engine existed (`terminalEngineFamily`).
+
 ## `pane_opened`
 
 A public pane or a custom pane was opened.
