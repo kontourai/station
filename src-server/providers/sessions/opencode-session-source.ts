@@ -293,14 +293,22 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
   }
 
   /**
-   * Station runs OpenCode itself as an ACP connection (provider `acp`), and
-   * those runs land in this same store under the ACP session id. Naming that
-   * id keeps the follower from importing Station's own session a second time.
+   * Station runs OpenCode itself, and those runs land in this same store:
+   * as an ACP connection (provider `acp`, under the ACP session id), or as
+   * the `opencode` engine, whose cursor (`OpenCodeResumeCursor`,
+   * `kind: 'opencode'`) names the OpenCode session id over either of its
+   * transports (the ACP session id is the same id). Naming that id keeps the
+   * follower from importing Station's own session a second time.
    */
   ownedNativeSessionId(session: {
     provider: string;
     resumeCursor?: unknown;
   }): string | undefined {
+    if (
+      isRecord(session.resumeCursor) &&
+      session.resumeCursor.kind === 'opencode'
+    )
+      return boundedId(session.resumeCursor.sessionId);
     if (session.provider !== 'acp' || !isRecord(session.resumeCursor)) {
       return undefined;
     }

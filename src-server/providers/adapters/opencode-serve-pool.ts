@@ -64,6 +64,11 @@ export interface OpenCodeServeLease {
   readonly exited: Promise<void>;
   /** Give the lease back; the server stops once unused past the idle bound. */
   release(): void;
+  /**
+   * Give the lease back and stop the server at once if no other lease holds
+   * it: for a server Station will not use (its API was not verified).
+   */
+  discard(): void;
 }
 
 type Spawn = typeof spawnOwnedChild;
@@ -162,6 +167,12 @@ export class OpenCodeServePool {
         if (released) return;
         released = true;
         this.releaseRef(held);
+      },
+      discard: () => {
+        if (released) return;
+        released = true;
+        held.refs = Math.max(0, held.refs - 1);
+        if (held.refs === 0) void this.stop(held);
       },
     };
   }
