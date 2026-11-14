@@ -1,7 +1,0 @@
-{
-  "revision": "d5e3c3757b2dfb3fd2d38d801292f5c5a3bbfed6",
-
-  "notes": [
-    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the gallery screen additions in screenshots.spec.ts; telemetry consent screens unchanged.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
-  ]
-}

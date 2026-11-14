@@ -44,8 +44,6 @@
 
     "src-server/runtime/streaming/types.ts",
 
-    "src-server/security/pairing-route-scopes.ts",
-
     "src-server/services/approvals/approval-registry.ts",
 
     "src-server/services/orchestration/event-bus.ts",
@@ -94,10 +92,6 @@
 
     "packages/shared/package.json#/exports",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "src-ui/src/hooks/useServerEvents.ts",
 
     "packages/sdk/src/query-domains/workspaceConnections.ts",
@@ -120,7 +114,17 @@
 
     "src-ui/src/components/ActionRow.tsx",
 
-    "src-ui/src/components/ActionRow.css"
+    "src-ui/src/components/ActionRow.css",
+
+    "package.json#/dependencies/@tanstack~1react-query",
+
+    "package.json#/dependencies/@kontourai~1ui",
+
+    "packages/sdk/package.json#/name",
+
+    "packages/connect/package.json#/name",
+
+    "pnpm-lock.yaml#/packages/@kontourai~1ui@1.20.1"
   ],
 
   "checks": [

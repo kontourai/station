@@ -166,7 +166,8 @@ reports have a 120-second lease. The client renews a focused report every 60
 seconds while there was input in the last two minutes or the document shows a
 chat whose turn is running; the second reason renews at most 60 times (one
 hour) since the last input or window focus, counted per document across all
-of its chats and turns, not per turn. There are caps of 32 documents per device,
+of its chats and turns, not per turn. Hiding or unloading a document reports
+`hidden` once, and a document that never reported sends nothing. There are caps of 32 documents per device,
 32 operator tabs, and 256 device streams overall. A document beyond a cap does
 not qualify as live.
 

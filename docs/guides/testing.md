@@ -327,7 +327,9 @@ The old queue ref must be absent or point elsewhere. Complete job inventories an
 fence each normal cancellation; an active old ref, changed owner or attempt,
 unknown runner metadata or API failure prevents it. This path can normally
 cancel an assigned runner doing obsolete work, but never force-cancels. A 202
-is a request, not terminal settlement. It does not cancel unrelated workflow
+is a request, not terminal settlement. A 409 refusal, here and when retiring a
+merged PR's optional delivery runs, cancels nothing and is reported as a
+warning; the pass continues. It does not cancel unrelated workflow
 families or replace any regression result with success.
 
 For the one-candidate throughput trial and its before/after measurements, use
@@ -339,7 +341,17 @@ higher delivery throughput.
 every six hours while that outcome issue remains open. It installs no project
 dependencies and starts no tests, retries, cancellations or merges. Its six-hour
 observation windows end two hours behind the cadence boundary; unfinished or
-unattributed work remains explicitly incomplete and fails the report job.
+unattributed work remains explicitly incomplete. A window that is incomplete
+only because work was still running (unfinished jobs, which also lack runner
+attribution) is recorded with a warning annotation and does not fail the
+report job. Work unfinished more than six hours after it was created, or a
+run with no jobs that old, is reported as stuck in its own warning rather
+than as running; it does not fail the job either, because it is not a
+throughput measurement. A read GitHub answers with a 5xx is retried up to
+three attempts with a short backoff (the `--record` write is not); any
+collection failure that remains (an API error, a pagination cap, an
+unresolved PR or merge base, finished work without runner attribution, or an
+unavailable ledger) still fails it.
 Snapshots are retained for 30 days. This reporting does not establish a speedup,
 close the issue automatically or replace manual-intervention outcome review.
 
@@ -349,6 +361,28 @@ with a concurrent force-push. Existing per-SHA concurrency groups remain in
 place to prevent delayed events from cancelling newer-head checks (#1445).
 The sweep checks out only the workflow's trusted revision and installs no
 dependencies. Its owner is `scripts/pr-ci-supersession.mjs`.
+
+The merge queue fast-forwards main to the candidate it tested, so a queue
+landing's push would repeat the merge-group verdict on the same SHA. On a
+main push, `PR: CI` still runs its classifier, then
+`scripts/ci-merge-group-verdict.mjs` skips the heavy lane only when the newest
+merge-group run for that exact SHA succeeded, its queue base equals the push's
+`before`, and its `fast-checks` and `Merge-queue regression` jobs succeeded.
+Direct or admin pushes, pushes carrying several queue entries, and any API
+error or unexpected response keep the classifier's full lane. Every answer an
+ordinary push cannot produce (a failed, refused or unreadable lookup, a
+truncated listing, an unrecognized queue branch, a missing or duplicated
+required job) also raises a warning annotation, so a condition that repeats on
+every push cannot end the saving unnoticed; the `classify` job declares
+`actions: read` for it rather than relying on the repository being public. The push run
+still concludes, so `Main: Qualify landed repair` and the dogfood reconcile,
+which read a successful push run for the exact main SHA, keep working.
+`PR: Docs kit` has no push trigger: its merge-group run is a superset of a
+push run and nothing consumes a main-push result; the next merge-group run
+checks the whole corpus, including any commit that reached main outside the
+queue. `PR: Secret scan` keeps its push trigger: it has no merge-group run,
+it is the only scan of main's own history (including bot ledger commits that
+bypass the queue), and `Main: Health` tracks its main-push result.
 
 The sidebar names below describe the primary trigger or delivery family.
 `PR:` checks can also run on main pushes or a main schedule; `Main:` qualification runs after main
@@ -367,7 +401,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 
 | Workflow file | Previous sidebar name | Sidebar name | When it runs |
 | --- | --- | --- | --- |
-| [`pr-ci-supersession.yml`](../../.github/workflows/pr-ci-supersession.yml) | — | **Repo: Superseded PR checks** | after `PR: CI` is requested; same-repository main-target PR merged close. |
+| [`pr-ci-supersession.yml`](../../.github/workflows/pr-ci-supersession.yml) | — | **Repo: Superseded PR checks** | after a source `PR: CI` run is requested (metadata-only runs skip at job level); same-repository main-target PR merged close. |
 | [`add-to-project.yml`](../../.github/workflows/add-to-project.yml) | Add issue to org project | **Repo: Add to project** | issue events: opened, reopened, closed. |
 | [`agent-context-budget.yml`](../../.github/workflows/agent-context-budget.yml) | — | **PR: Agent context budget** | PR events, including label changes. |
 | [`android-test.yml`](../../.github/workflows/android-test.yml) | Android Tests | **Main: Android tests** | after `Main: Android build`; manual dispatch. |
@@ -377,8 +411,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`build-ios.yml`](../../.github/workflows/build-ios.yml) | Build iOS verification artifact | **PR: iOS build** | PR events (build skipped for drafts and the release PR); merge queue; main pushes (classifier-filtered: UI-only landings); manual dispatch. |
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
 | [`ci-throughput-health.yml`](../../.github/workflows/ci-throughput-health.yml) | — | **Repo: CI throughput health** | UTC schedule: `41 */6 * * *`; manual dispatch; reports only while #3101 is open. |
-| [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes; manual dispatch. |
-| [`codex-pr-review.yml`](../../.github/workflows/codex-pr-review.yml) | Advisory PR review | **PR: Advisory review** | after `PR: Secret scan`. |
+| [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes (heavy lane skipped when the merge queue already verified that exact SHA and base); manual dispatch. |
 | [`container-smoke.yml`](../../.github/workflows/container-smoke.yml) | Container smoke | **Main: Container smoke** | main pushes; manual dispatch. |
 | [`dated-todo-sweep.yml`](../../.github/workflows/dated-todo-sweep.yml) | Dated TODO sweep | **Repo: Dated TODO sweep** | UTC schedule: `41 4 * * 1`; manual dispatch. |
 | [`dependency-advisory.yml`](../../.github/workflows/dependency-advisory.yml) | Scheduled dependency advisory floor | **Repo: Dependency advisory** | UTC schedule: `23 2,8,14,20 * * *`; manual dispatch. |
@@ -386,7 +419,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`desktop-clean-checkout.yml`](../../.github/workflows/desktop-clean-checkout.yml) | Desktop clean-checkout build | **PR: Desktop clean checkout** | reused by `Delivery validation`; manual dispatch. |
 | [`desktop-rust.yml`](../../.github/workflows/desktop-rust.yml) | Desktop Rust tests | **PR: Desktop Rust** | reused by `Delivery validation`; manual dispatch. |
 | [`docs-freshness-sweep.yml`](../../.github/workflows/docs-freshness-sweep.yml) | Documentation freshness sweep | **Repo: Docs freshness sweep** | UTC schedule: `37 5 * * *`; manual dispatch. |
-| [`docs-kit.yml`](../../.github/workflows/docs-kit.yml) | Main: Docs kit | **PR: Docs kit** | PR events; merge queue; main pushes; manual dispatch. |
+| [`docs-kit.yml`](../../.github/workflows/docs-kit.yml) | Main: Docs kit | **PR: Docs kit** | PR events; merge queue; manual dispatch. |
 | [`ecosystem-packaging.yml`](../../.github/workflows/ecosystem-packaging.yml) | Ecosystem packaging dry-run | **PR: Ecosystem packaging** | reused by `Delivery validation`; manual dispatch. |
 | [`fresh-home-walkthrough.yml`](../../.github/workflows/fresh-home-walkthrough.yml) | Fresh-home walkthrough | **Nightly: Fresh-home walkthrough** | UTC schedule: `0 10 * * *`; manual dispatch. |
 | [`full-regression.yml`](../../.github/workflows/full-regression.yml) | Hosted full regression | **Main: Full qualification** | reused by `Main: Publish packages`, `Main: Qualification`, `PR: CI`, `Release: Publish`, `Release: Stage`. |
@@ -395,9 +428,9 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`interactive-workspace-performance.yml`](../../.github/workflows/interactive-workspace-performance.yml) | Interactive Workspace Performance | **Tool: Interactive workspace performance** | manual dispatch. |
 | [`internal-testflight.yml`](../../.github/workflows/internal-testflight.yml) | Internal iOS TestFlight cohort | **Release: Internal TestFlight cohort** | manual dispatch. |
 | [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
-| [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new issue comments. |
+| [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new comments on issues (pull-request comments skip at job level). |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
-| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`. |
+| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`, `Repo: Docs freshness sweep`, `Repo: CI throughput health`, filtered to runs on `main`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | main pushes (source qualification only); UTC schedule: `17 */6 * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic (manual): Merge integration** | manual full-corpus diagnosis, never a required check; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
@@ -413,7 +446,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`pr-duplicate-sweep.yml`](../../.github/workflows/pr-duplicate-sweep.yml) | PR duplicate sweep | **Repo: Duplicate sweep** | UTC schedule: `27 */6 * * *`; manual dispatch. |
 | [`publish-packages.yml`](../../.github/workflows/publish-packages.yml) | Publish Packages | **Main: Publish packages** | main pushes; manual dispatch. |
 | [`publish-release.yml`](../../.github/workflows/publish-release.yml) | Publish Station release | **Release: Publish** | manual dispatch. |
-| [`qualification-after-repair.yml`](../../.github/workflows/qualification-after-repair.yml) | Qualify landed repair | **Main: Qualify landed repair** | after `PR: CI`. |
+| [`qualification-after-repair.yml`](../../.github/workflows/qualification-after-repair.yml) | Qualify landed repair | **Main: Qualify landed repair** | after `PR: CI` runs on `main`. |
 | [`qualification-repair.yml`](../../.github/workflows/qualification-repair.yml) | Qualification repair | **Main: Qualification repair** | after `Main: Qualification`; manual dispatch. |
 | [`recover-terminal-capacity-owner.yml`](../../.github/workflows/recover-terminal-capacity-owner.yml) | Recover terminal physical-host capacity owner | **Tool: Recover terminal capacity owner** | manual dispatch. |
 | [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Beta/Stable TestFlight. |
@@ -438,7 +471,6 @@ workflow is obsolete. Disabled state was checked through the Actions REST API.
 | Candidate | Reason / decision needed |
 | --- | --- |
 | `Tool: CI extended` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
-| `PR: Advisory review` | Disabled manually; review admission/cost before any re-enable (slice I). |
 | `Main: Full qualification` | Zero runs in the dated seven-day inventory; confirm continued need at its callers. |
 | `Tool: Interactive workspace performance` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
 | `Release: Internal TestFlight cohort` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
@@ -671,6 +703,18 @@ suites that import that package by name are selected (#3149). A version bump
 changes no source file, and both files escalate, so these explicit targets are
 what such a diff runs. Transitive lockfile changes are not followed, and a
 package imported by more than 16 suites defers them to `test-full`.
+A test-runtime environment package is the exception to both the sibling scope
+and that limit (#4631): when a manifest or the lockfile importers change the
+version of the package behind a Vitest environment (`jsdom` for the
+`@vitest-environment jsdom` docblock, by Vitest's own environment-to-package
+rule, with the root config's `test.environment` as the default), every suite
+running in that environment is selected, so the hosted plan runs the whole
+jsdom corpus in fast-checks and the merge queue instead of deferring it. The
+manifest edits' own `ci-fast` and global-rerun `test-full` deferrals remain
+and stay provisional. Vitest itself is not in that set: a Vitest bump affects
+every suite, which stays the full corpus `test-full` owns. The scan refuses a
+root config whose environment it cannot read exactly (a computed value,
+`environmentMatchGlobs`, `projects`).
 A workspace `package.json` must not reach related discovery: Vitest's default
 `forceRerunTriggers` match every `package.json`, so a hosted checkout selects
 the whole corpus and overruns the shard budget, while a checkout under a
@@ -768,18 +812,32 @@ source proof remains pending; failed or cancelled source proof remains non-passi
 rollout is described in [releasing](releasing.md#qualification-cadence-and-evidence-reuse).
 
 PR source computation has repository-wide FIFO ceilings: at most two statics
-jobs and three affected-test shard jobs run across all PRs. Statics use two
-buckets. Shards use two shared buckets plus a third for odd-numbered shards of
-PRs whose numbers end in 0, 1 or 2; larger plans retain every shard. Waiting jobs consume no runner. Different-head
+jobs and five affected-test shard jobs run across all PRs. Statics use two
+buckets by PR number parity. Shards use five shared buckets: the PR number's
+last digit mod 5 plus the shard index, mod 5 (the table is in `ci.yml`), so one
+PR's shards never share a bucket and every plan's first shard spreads across all
+five; larger plans retain every shard. The release-bot PR (head
+`changeset-release/main` from this repository, opened by
+`station-automation[bot]`) is re-pushed on every main push, so its shard and
+statics jobs share one dedicated `ci-pr-release-bot` slot and never enter the
+shared buckets; supersession cancels its older heads as for any PR. A job holds
+its bucket while it waits for a runner. Waiting jobs consume no runner. `pull_request_target` reads these
+groups from the base branch, so a bucket change applies to PR runs created
+after it lands. Different-head
 supersession still cancels obsolete source runs, including native FIFO
 `pending` waiters, after rechecking the live PR head and run attempt. A normal
 cancellation request is followed to its observed state. If the same obsolete
 attempt still waits after a bounded settlement check, the controller may issue
 one force-cancel after revalidating the PR and run identities and confirming
-that no unfinished job has an assigned runner. Missing terminal confirmation
-fails the controller; cancellation never becomes source PASS. Same-head
+that no unfinished job has an assigned runner. A run that does not settle in
+the pass (an assigned runner has not yet acted on the cancellation, GitHub
+refuses it with HTTP 409, or a force-cancel is not yet terminal) is reported
+as a warning, and the pass continues to the branch's other obsolete runs; the
+next `PR: CI` event for the branch tries again. Ambiguous job metadata,
+changed identities and any other API failure still fail the controller;
+cancellation never becomes source PASS. Same-head
 duplicates wait rather than cancelling another run's proof. Merge-group, push and manual
-diagnostic jobs use separate source-specific groups. These five PR computation
+diagnostic jobs use separate source-specific groups. These eight PR computation
 slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 
@@ -1069,7 +1127,10 @@ real-socket and retention suites, typing into cmd.exe on ConPTY, their cases
 built on POSIX job control POSIX-only; and the agent-run and script-runner
 suite with the launch builder's cases: package managers' batch shims run
 through cmd.exe, and an approved command reaches cmd with its quotes as shown
-(#3994). [`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs)
+(#3994). The floor also runs `release.yml`'s Windows Authenticode observation
+step under real pwsh against an unsigned MSI, a PE signed at test time with a
+throwaway untrusted certificate, that PE tampered, and a publisher-signed PE
+(#3591; skipped off Windows). [`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs)
 runs each terminal process suite in a Vitest invocation of its own after the
 other files, so a forked worker that dies (the fault tracked in #4626) hides no
 other suite's results; every invocation runs, and any failure fails the floor
@@ -1434,7 +1495,12 @@ archive in legacy lists, DEB822 sources, and the hosted runner mirror list.
 The official Ubuntu security archive also uses HTTPS with the same host and
 path. Suites, components, signing keys, and mirror priorities remain intact. APT
 index retrieval must succeed before installing the required compiler or zsh
-package; an unavailable index stops the bootstrap. The Gallery renderer image
+package; an unavailable index stops the bootstrap. The zsh preflight in
+`fast-checks-shard` and full regression runs that bootstrap up to three times,
+sleeping 10 then 20 seconds, because transient
+`Temporary failure resolving 'archive.ubuntu.com'` errors failed every shard of
+two merge groups; after the third failure the step exits with that attempt's
+apt status and error. The Gallery renderer image
 remains pinned by digest.
 Each caller stages that helper from the immutable workflow-definition commit
 into `RUNNER_TEMP`, independently of the application checkout. Older PR heads
@@ -2083,7 +2149,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |
 | `verify-e2e-full` | `npm run verify:e2e:full` | diagnostic full E2E | product, first-run, starter-clean-install, smoke-live, extended, screenshot, Android buckets | full E2E | diagnostic | E2E spec→bucket assignment |
 
-`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
+`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. `conduit:conformance:check`, `examples:conformance`, `product-version:check`, two package import boundaries and `gate:test-import-existence` joined on 2026-11-13 for the same reason: each ran only in full qualification, and a stale generated conformance artifact kept main qualification red for about six days. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
 
 `full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:
 - `browser-prerequisite` — 20-unit host reservation; 1-minute execution deadline.
@@ -2238,7 +2304,11 @@ changing fleet labels or adding a capacity-leased workflow.
 
 The `PR: CI` workflow owns the legacy required context
 `Merge-queue regression` for ruleset compatibility. It checks the combined
-candidate diff and the incident-owner integration pause. The separately required
+candidate diff (`git diff --check`) and the incident-owner integration pause.
+`ci:fast` runs the same whitespace check on a pull request through
+[`diff-whitespace-gate.mjs`](../../scripts/diff-whitespace-gate.mjs), judging
+only the lines the change adds since `STATION_CI_FAST_BASE`, so whitespace
+already on the base cannot fail it. The separately required
 `fast-checks` owns affected tests, fixed invariants, all typecheck lanes and
 critical browser smoke; security and relevant platform checks remain required.
 
@@ -2252,7 +2322,15 @@ validates the plan, exact candidate SHA and base, including its explicit
 coverage deferrals. The required aggregate accepts only successful diff,
 plan and `fast-checks` jobs plus an exact `integration-ready=true` output.
 Missing, invalid, foreign, cancelled or unavailable evidence blocks integration;
-it does not start an expensive fallback corpus. An old candidate without the
+it does not start an expensive fallback corpus. The required
+`Source verification policy` status for the queue head is published from
+inside the merge-group run once `fast-checks` settles; the post-run lifecycle
+reconcile recomputes the same verdict from the same jobs and stays the
+recovery publisher, so it no longer has to wait for a runner after the run.
+Merge groups skip the `Exact full-diff classification` job, as pull requests
+do: every queue job is admitted by its `merge_group` clause, so the
+classifier's output was unread there and its runner hop delayed every later
+job. Pushes and manual dispatches still classify. An old candidate without the
 validation CLI must integrate current main before it can supply that evidence.
 
 Hosted plans retain concrete mapped tests and related discovery from other
@@ -2786,16 +2864,21 @@ verification policy` context reconciles it, and the ruleset lists required
 contexts. `fast-checks-plan`
 computes the affected-test selection once; `fast-checks-shard` runs it as one
 to four deterministic round-robin slices. `FAST_CHECKS_FILES_PER_SHARD` in
-`scripts/lib/fast-checks-shards.mjs` sets the initial threshold at 40 files:
-1–40 use one job, 41–80 two, 81–120 three, and 121+ four. With
+`scripts/lib/fast-checks-shards.mjs` sets the threshold at 100 files:
+1–100 use one job, 101–200 two, 201–300 three, and 301+ four. It was 40
+until hosted runs showed medium plans over-split: a 145-file plan used four
+runners for two to three minutes of tests each behind ~two minutes of setup. With
 `STATION_FAST_CHECKS_SKIP_EMPTY_SHARDS=true`, an empty plan allocates no shard
 runner. The aggregate independently validates that the exact-head plan is empty
 and requires successful plan/statics jobs; it does not fabricate an execution
 receipt. Without that compatibility opt-in, empty plans retain the old shard path. The planner knows
-file count, not test duration. This is a tunable proxy, justified by #3101's
-2026-10-01 sample: 1.4 minutes of setup for 0.2 minutes of tests per shard
-(86% setup) while the 20-job pool was saturated. Hosted runs must establish
-the actual savings and whether this threshold needs tuning. The matrix creates
+file count, not test duration; the repository keeps no per-file durations.
+This is a tunable proxy, first justified by #3101's 2026-10-01 sample (1.4
+minutes of setup for 0.2 minutes of tests per shard while the 20-job pool was
+saturated) and raised from hosted runs of 2026-11-12/13, where shards of
+70–100 files took 4.4–9 minutes, inside the merge-group statics job's
+11.5–17. Plans above 300 files are unchanged. Hosted runs must establish the
+actual savings. The matrix creates
 only planned legs; omitted legs need no receipt and cannot keep the aggregate
 pending. The workflow opts in with `STATION_FAST_CHECKS_ADAPTIVE_SHARDS=true`.
 Without that handshake, a new planner retains four shards for the old base

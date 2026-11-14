@@ -1,7 +1,0 @@
-{
-  "revision": "f4d2b52f2e5ad7e1280dd8cf76b2b4177277ebe6",
-
-  "notes": [
-    {"path":"deployment/telemetry/README.md","note":"Rewrapped the connector-network paragraph; wording unchanged from the product-ingress review.","inputs":["deployment/telemetry/README.md"]}
-  ]
-}

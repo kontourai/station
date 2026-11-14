@@ -13,15 +13,23 @@ import { isRecord } from '../../utils/is-record.js';
  * Native channels (`_session/steer`, `_x.ai/interject`, Goose's run steer)
  * are additive: the in-flight `session/prompt` keeps running. A run steer
  * names the run it joins, which the engine announced in `_meta`; with no
- * run announced it is not sent. The cancel + re-prompt fallback
- * cancels that prompt and re-prompts on the same Station turn id —
- * interruptive, but still a steer (same turn), not a queued follow-up.
+ * run announced it is not sent. `prompt-handoff` is additive too: the
+ * engine takes a second `session/prompt` sent mid-turn as a steer, answers
+ * the first one at once, and carries the running work on under the second,
+ * so Station moves the turn's settlement to it without cancelling. The
+ * cancel + re-prompt fallback cancels that prompt and re-prompts on the
+ * same Station turn id — interruptive, but still a steer (same turn), not a
+ * queued follow-up.
  */
 export type AcpSteerChannel =
   | 'session-steer'
   | 'interject'
   | 'run-steer'
+  | 'prompt-handoff'
   | 'cancel-reprompt';
+
+/** Channels that call an extension method. */
+type AcpSteerMethodChannel = 'session-steer' | 'interject' | 'run-steer';
 
 /**
  * Where an engine names its running prompt: `_meta.<namespace>.<key>` on a
@@ -41,7 +49,7 @@ export interface AcpSteerState {
 }
 
 const NATIVE_STEER_METHODS: ReadonlyArray<{
-  channel: Exclude<AcpSteerChannel, 'cancel-reprompt'>;
+  channel: AcpSteerMethodChannel;
   method: string;
 }> = [
   { channel: 'session-steer', method: '_session/steer' },
@@ -95,6 +103,18 @@ const ACP_UNDECLARED_STEER_ENGINES: ReadonlyArray<{
     observed: 'kiro-cli 2.33.0 `--v3 acp`',
   },
   {
+    // A core `session/prompt`, not an extension, so nothing is declared.
+    // Google's ACP guide (antigravity.google/docs/ide/extensions/acp):
+    // "Sending a prompt mid-turn steers the current turn." Recorded live on
+    // Antigravity CLI 1.5.8 (2026-11-13): the first prompt answered
+    // `end_turn` as the second arrived, and the running tool completed and
+    // the reply followed the steer under the second prompt.
+    identity: { agentInfoName: 'Antigravity ACP Server' },
+    channel: 'prompt-handoff',
+    methods: [],
+    observed: 'Antigravity CLI 1.5.8 `agy acp`',
+  },
+  {
     // Grok sends no agentInfo. `x.ai/interject`, tried second as before this
     // table, answered -32601 on 1.0.50; a miss degrades to cancel + re-prompt.
     identity: { initializeMetaFlag: 'grokShell' },
@@ -122,7 +142,7 @@ const ACP_UNDECLARED_STEER_ENGINES: ReadonlyArray<{
 
 export interface AcpSteerSelection {
   channel: AcpSteerChannel;
-  /** Extension methods to try in order; empty for cancel + re-prompt. */
+  /** Extension methods to try in order; empty for prompt hand-off and cancel + re-prompt. */
   methods: readonly string[];
   basis: 'declared' | 'undeclared-engine' | 'none';
   /** The method that takes back unread steers, where the engine has one. */
@@ -238,7 +258,7 @@ export function isAcpInvalidParams(error: unknown): boolean {
 }
 
 export function acpSteerParams(
-  channel: Exclude<AcpSteerChannel, 'cancel-reprompt'>,
+  channel: AcpSteerMethodChannel,
   sessionId: string,
   input: string,
   activeRunId?: string,

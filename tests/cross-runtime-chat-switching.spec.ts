@@ -11,7 +11,6 @@ import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import { test } from './helpers/fixture-audit';
-import { pressAndHold } from './helpers/long-press';
 import {
   emitMockOrchestrationEvent,
   installMockOrchestrationConversationEventWindow,
@@ -19,6 +18,7 @@ import {
   installMockOrchestrationSse,
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 type ExecutionRequest = {
@@ -1022,9 +1022,11 @@ async function openNewChatDraft(page: Page) {
 /** Opens the draft's project-scoped Agent list. */
 async function openNewChatModal(page: Page) {
   await openNewChatDraft(page);
-  await dockComposer(page)
-    .getByRole('button', { name: /^Agent:/ })
-    .click();
+  await (
+    await runSetupControl(dockComposer(page), (panel) =>
+      panel.getByRole('button', { name: /^Agent:/ }),
+    )
+  ).click();
   const agents = page.getByRole('dialog', { name: 'Choose agent' });
   await expect(agents).toBeVisible();
   return agents;
@@ -1086,6 +1088,10 @@ async function selectInventoryConversation(
   }: { title: string; runtimeName: string; project?: string },
 ) {
   const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
+  // This journey reads conversations across Projects; the Inbox otherwise follows the page.
+  await chatList
+    .getByRole('combobox', { name: 'Inbox scope' })
+    .selectOption({ label: 'All work' });
   await openConversationHistoryFromInbox(page, chatList);
   await page
     .locator('.conversation-history .session-item__content', {
@@ -1141,6 +1147,7 @@ async function submitExactTurn({
   executionRequests: ExecutionRequest[];
 }) {
   const requestsBeforeSubmit = executionRequests.length;
+  await closeRunSetup(textarea);
   await textarea.fill(path.prompt);
   await send.click();
   await expect
@@ -1496,6 +1503,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     await alphaAgents.press('Escape');
     await expect(alphaAgents).toHaveCount(0);
 
+    await closeRunSetup(page);
     await dockComposer(page)
       .getByRole('button', { name: /^Project: / })
       .click();
@@ -1510,9 +1518,11 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       }),
     ).toBeVisible();
 
-    await dockComposer(page)
-      .getByRole('button', { name: /^Agent:/ })
-      .click();
+    await (
+      await runSetupControl(dockComposer(page), (panel) =>
+        panel.getByRole('button', { name: /^Agent:/ }),
+      )
+    ).click();
     const betaAgents = page.getByRole('dialog', { name: 'Choose agent' });
     await expect(
       betaAgents
@@ -1540,10 +1550,13 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       .filter({ has: page.getByText('Codex Runtime', { exact: true }) })
       .click();
     await expect(
-      dockComposer(page).getByRole('button', {
-        name: /^Agent: Codex Runtime(?: · [^,]+)?$/,
-      }),
+      await runSetupControl(dockComposer(page), (panel) =>
+        panel.getByRole('button', {
+          name: /^Agent: Codex Runtime(?: · [^,]+)?$/,
+        }),
+      ),
     ).toBeVisible();
+    await closeRunSetup(page);
     await page
       .getByRole('region', { name: 'New chat', exact: true })
       .press('Escape');
@@ -1666,7 +1679,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
   });
 });
 
-/** Project selection before starting a chat, and the retained mobile switcher. */
+/** Project selection before starting a chat, on every screen. */
 test.describe('chat-dock project selection (kontourai/station#793)', () => {
   test('desktop start-composer Project choice preserves existing chats without starting one', async ({
     page,
@@ -1734,6 +1747,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
         exact: true,
       }),
     ).toBeVisible();
+    await closeRunSetup(page);
     await draft.press('Escape');
     await expect(draft).toHaveCount(0);
     expect(new URL(page.url()).searchParams.get('chat')).toBe(activeBefore);
@@ -1787,7 +1801,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
   });
 
   for (const width of [320, 390, 412]) {
-    test(`mobile primary project switcher opens an edge sheet at ${width}x844 with touch-safe actions`, async ({
+    test(`mobile start composer owns project choice at ${width}x844 with touch-safe actions`, async ({
       page,
     }, testInfo) => {
       const executionRequests: ExecutionRequest[] = [];
@@ -1795,63 +1809,9 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
       await page.setViewportSize({ width, height: 844 });
       await page.goto('/projects/alpha?dock=open');
 
-      // With no active chat, the retained Projects sheet navigates and chooses defaults.
-      const trigger = page.getByRole('button', {
-        name: 'Switch project — New chats, Alpha Project',
-      });
-      await expect(trigger).toBeVisible();
-      await expect(trigger).toContainText('Alpha Project');
-      const triggerBox = await trigger.boundingBox();
-      expect(triggerBox?.width ?? 0).toBeGreaterThanOrEqual(
-        MIN_TOUCH_TARGET_PX,
-      );
-      expect(triggerBox?.height ?? 0).toBeGreaterThanOrEqual(
-        MIN_TOUCH_TARGET_PX,
-      );
-      await trigger.click();
-      const projects = page.getByRole('dialog', {
-        name: 'Projects',
-        exact: true,
-      });
-      await expect(projects).toBeVisible();
       await expect(
-        page.locator('.responsive-surface-overlay[data-anchored]'),
+        page.getByRole('button', { name: /^Switch project/ }),
       ).toHaveCount(0);
-      const controls = projects.getByRole('button');
-      expect(await controls.count()).toBeGreaterThan(0);
-      for (let index = 0; index < (await controls.count()); index += 1) {
-        const box = await controls.nth(index).boundingBox();
-        expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-      }
-      const release = await pressAndHold(
-        page,
-        projects.getByRole('button', { name: 'Switch to Beta Project' }),
-      );
-      await release();
-      await expect(projects).toBeVisible();
-      await expect(trigger).toContainText('Alpha Project');
-      await expect(projects.getByRole('tooltip')).toContainText(
-        'Existing chats keep their original project.',
-      );
-      await projects.getByRole('button', { name: 'Open Beta Project' }).click();
-      await expect(page).toHaveURL(/\/projects\/beta/);
-      await expect(projects).toBeHidden();
-      await expect(page.locator('.chat-dock')).toHaveClass(/is-collapsed/);
-      await page
-        .getByRole('button', {
-          name: 'Switch project — New chats, Beta Project',
-        })
-        .click();
-      await projects
-        .getByRole('button', { name: 'New project', exact: true })
-        .click();
-      await expect(page).toHaveURL(/\/projects\/new/);
-      await expect(projects).toBeHidden();
-      await expect(page.locator('.new-project-modal')).toBeVisible();
-      await page
-        .getByRole('button', { name: 'Close new project', exact: true })
-        .click();
-
       // Discover existing chats, then measure the active phone header and start composer.
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.goto('/projects/alpha?dock=open');
@@ -1946,6 +1906,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
           exact: true,
         }),
       ).toBeVisible();
+      await closeRunSetup(page);
       await draft.press('Escape');
       await expect(draft).toHaveCount(0);
       expect(new URL(page.url()).searchParams.get('chat')).toBe(activeBefore);

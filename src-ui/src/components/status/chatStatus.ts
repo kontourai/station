@@ -1,4 +1,5 @@
 import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
+import { SESSION_STATUS_WORDS } from '@kontourai/station-contracts/session-attention';
 import type { ChatActivityHint } from '../../contexts/active-chats-state';
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
 import { retryActivityLabel } from '../../utils/chat-activity';
@@ -9,6 +10,7 @@ import { receivedDeliveryLabel } from '../chat/deliveryLabels';
 import type { LiveStatusGlyphKind, LiveStatusTone } from './LiveStatusGlyph';
 
 export type ChatStatusKind =
+  | 'answer'
   | 'approval'
   | 'blocked'
   | 'reconnecting'
@@ -45,6 +47,7 @@ export interface ChatStatusInput {
   resyncPending?: boolean;
   /** This chat's open approval requests. */
   approvalCount: number;
+  inputCount?: number;
   stream?: ChatStreamStatus;
   turnLive: boolean;
   /** Paused for the user with no approval behind it (needs input). */
@@ -124,12 +127,22 @@ export function deriveChatStatus(
       kind: 'approval',
       tone: 'attention',
       glyph: 'approval',
-      label: 'Needs approval',
+      label: SESSION_STATUS_WORDS.approval,
       count: input.approvalCount > 1 ? input.approvalCount : undefined,
       details: [],
       action: 'reveal-approval',
     };
   }
+  if ((input.inputCount ?? 0) > 0)
+    return {
+      kind: 'answer',
+      tone: 'attention',
+      glyph: 'attention',
+      label: SESSION_STATUS_WORDS.answer,
+      count: input.inputCount! > 1 ? input.inputCount : undefined,
+      details: [],
+      action: 'reveal-approval',
+    };
   if (stream?.kind === 'restored') {
     return {
       kind: 'restored',
@@ -140,7 +153,22 @@ export function deriveChatStatus(
       action: undefined,
     };
   }
-  if (!input.turnLive) return undefined;
+  if (!input.turnLive) {
+    const children = activity?.runningChildWork;
+    if (!children) return undefined;
+    return {
+      kind: 'working',
+      tone: 'active',
+      glyph: 'working',
+      label:
+        children.count > 0
+          ? `${children.count} background task${children.count === 1 ? '' : 's'} running`
+          : 'Waiting for background reply',
+      clockFrom: parseEpochMs(children.oldestStartedAt),
+      details: [],
+      action: undefined,
+    };
+  }
 
   const clockFrom = activity
     ? openTurnStartedAtMs(activity)

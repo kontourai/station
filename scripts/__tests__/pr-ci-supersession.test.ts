@@ -1,9 +1,10 @@
 import { execFile } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 
@@ -40,6 +41,9 @@ async function exercise({
   headChangesAfterCancel = false,
   attemptChangesAfterCancel = false,
   activeRunner = false,
+  activeRunnerRuns = undefined as number[] | undefined,
+  refusedCancellations = [] as number[],
+  refusalStatus = 409,
   headChangesDuringJobs = false,
   badJob = undefined as Record<string, unknown> | undefined,
 } = {}) {
@@ -83,18 +87,20 @@ async function exercise({
       );
     } else if (/\/actions\/runs\/\d+\/jobs$/.test(url.pathname)) {
       jobsRead = true;
-      const jobs: Record<string, unknown>[] = activeRunner
-        ? [
-            {
-              id: 10,
-              run_id: Number(url.pathname.split('/').at(-2)),
-              run_attempt: 1,
-              head_sha: old,
-              status: 'in_progress',
-              runner_id: 123,
-            },
-          ]
-        : [];
+      const runId = Number(url.pathname.split('/').at(-2));
+      const jobs: Record<string, unknown>[] =
+        activeRunner || activeRunnerRuns?.includes(runId)
+          ? [
+              {
+                id: 10,
+                run_id: Number(url.pathname.split('/').at(-2)),
+                run_attempt: 1,
+                head_sha: old,
+                status: 'in_progress',
+                runner_id: 123,
+              },
+            ]
+          : [];
       if (badJob)
         jobs.push({
           id: 11,
@@ -106,7 +112,15 @@ async function exercise({
       res.end(JSON.stringify({ total_count: jobs.length, jobs }));
     } else if (/\/actions\/runs\/\d+\/cancel$/.test(url.pathname)) {
       expect(req.method).toBe('POST');
-      cancelled.push(Number(url.pathname.split('/').at(-2)));
+      const runId = Number(url.pathname.split('/').at(-2));
+      // GitHub's answer for a run it will not cancel (observed on runs stuck
+      // queued with no jobs); nothing is cancelled.
+      if (refusedCancellations.includes(runId)) {
+        res.writeHead(refusalStatus);
+        res.end('{"message":"Cannot cancel this workflow run."}');
+        return;
+      }
+      cancelled.push(runId);
       res.writeHead(202);
       res.end();
     } else if (/\/actions\/runs\/\d+\/force-cancel$/.test(url.pathname)) {
@@ -151,8 +165,9 @@ async function exercise({
     }),
   );
   let code = 0;
+  let stdout = '';
   try {
-    await exec(process.execPath, [script], {
+    ({ stdout } = await exec(process.execPath, [script], {
       windowsHide: true,
       env: {
         PATH: process.env.PATH ?? '',
@@ -160,16 +175,21 @@ async function exercise({
         GITHUB_REPOSITORY: repository,
         GITHUB_API_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
       },
-    });
+    }));
   } catch (error) {
     code = (error as { code: number }).code;
+    stdout = (error as { stdout: string }).stdout;
   } finally {
     await new Promise<void>((ok, reject) =>
       server.close((error) => (error ? reject(error) : ok())),
     );
   }
+  lastStdout = stdout;
   return { code, cancelled, forced };
 }
+// The previous exercise's stdout, kept out of the result so the many exact
+// `{ code, cancelled, forced }` assertions stay as they are.
+let lastStdout = '';
 
 describe('obsolete PR CI cancellation through the GitHub API', () => {
   it.each(['in_progress', 'queued', 'pending'])(
@@ -241,6 +261,8 @@ describe('obsolete PR CI cancellation through the GitHub API', () => {
     ).toEqual({ code: 0, cancelled: [1], forced: [] });
   });
 
+  // A requested cancellation that a runner has not yet acted on is reported,
+  // not fatal: the run was not forced, and the next event retries it.
   it('does not force-cancel while an assigned runner is still unfinished', async () => {
     expect(
       await exercise({
@@ -248,7 +270,57 @@ describe('obsolete PR CI cancellation through the GitHub API', () => {
         cancellationStalls: true,
         activeRunner: true,
       }),
-    ).toEqual({ code: 1, cancelled: [1], forced: [] });
+    ).toEqual({ code: 0, cancelled: [1], forced: [] });
+    expect(lastStdout).toContain(
+      '::warning::Obsolete run 1 still has an assigned runner; force-cancel refused',
+    );
+    expect(lastStdout).toContain('1 obsolete run(s) not yet terminal');
+  });
+
+  // Real shapes from failed passes on 2026-11-11/12: one run that will not
+  // settle (an assigned runner, a 409 refusal) used to end the pass before
+  // later obsolete runs were reached.
+  it.each([
+    { name: 'assigned runner', world: { activeRunnerRuns: [1] } },
+    { name: 'HTTP 409', world: { refusedCancellations: [1] } },
+  ])(
+    'still cancels later obsolete runs after one does not settle ($name)',
+    async ({ world }) => {
+      const result = await exercise({
+        runs: [
+          run(1, { status: 'pending' }),
+          run(9, {
+            status: 'pending',
+            path: '.github/workflows/build-ios.yml',
+          }),
+        ],
+        cancellationStalls: true,
+        ...world,
+      });
+      expect(result.code).toBe(0);
+      expect(result.cancelled).toContain(9);
+      expect(result.forced).toEqual([9]);
+      expect(lastStdout).toMatch(/::warning::.*run 1\b/);
+      expect(lastStdout).toContain('1 obsolete run(s) not yet terminal');
+    },
+  );
+
+  // Any other refusal is not a cancellation in flight and stays fatal
+  // (HTTP 502 on this request was also seen in the failed passes).
+  it('still fails when a cancellation request fails for another reason', async () => {
+    expect(
+      await exercise({
+        runs: [
+          run(1, { status: 'pending' }),
+          run(9, {
+            status: 'pending',
+            path: '.github/workflows/build-ios.yml',
+          }),
+        ],
+        refusedCancellations: [1],
+        refusalStatus: 502,
+      }),
+    ).toEqual({ code: 1, cancelled: [], forced: [] });
   });
 
   it.each([null, 0])(
@@ -281,14 +353,17 @@ describe('obsolete PR CI cancellation through the GitHub API', () => {
     },
   );
 
-  it('fails when force-cancel still has no terminal result', async () => {
+  it('reports, without failing, a force-cancel that is not yet terminal', async () => {
     expect(
       await exercise({
         runs: [run(1, { status: 'pending' })],
         cancellationStalls: true,
         forceStalls: true,
       }),
-    ).toEqual({ code: 1, cancelled: [1], forced: [1] });
+    ).toEqual({ code: 0, cancelled: [1], forced: [1] });
+    expect(lastStdout).toContain(
+      '::warning::Force cancellation of obsolete run 1 is not terminal',
+    );
   });
 
   it('refuses cancellation when the live-head read fails', async () => {
@@ -403,6 +478,7 @@ function mergedWorld() {
     truncated: false,
     failedRead: false,
     sharedAtEffect: false,
+    refuseCancel: false,
   };
 }
 async function exerciseMerged(world = mergedWorld()) {
@@ -444,6 +520,11 @@ async function exerciseMerged(world = mergedWorld()) {
       value = { total_count: 1, workflow_runs: [world.run] };
     else if (path === `actions/runs/${holder.id}/cancel`) {
       expect(req.method).toBe('POST');
+      if (world.refuseCancel) {
+        res.writeHead(409);
+        res.end('{"message":"Cannot cancel this workflow run."}');
+        return;
+      }
       cancelled.push(holder.id);
       res.writeHead(202);
       res.end();
@@ -507,6 +588,20 @@ async function exerciseMerged(world = mergedWorld()) {
 }
 
 describe('merged optional-tail retirement through the real GitHub HTTP boundary', () => {
+  // The close event is one-shot: failing on a 409 retries nothing and would
+  // stop the pass before any later holder run.
+  it('warns and continues when GitHub refuses to cancel a holder (HTTP 409)', async () => {
+    const result = await exerciseMerged({
+      ...mergedWorld(),
+      refuseCancel: true,
+    });
+    expect(result.code).toBe(0);
+    expect(result.cancelled).toEqual([]);
+    expect(result.stdout).toContain(
+      `::warning::GitHub refused cancellation of run ${holder.id} (HTTP 409)`,
+    );
+    expect(result.stdout).not.toContain('Requested cancellation');
+  });
   it('retires the new-topology optional holder without a fabricated deleted corpus job', async () => {
     const result = await exerciseMerged();
     expect(result.code).toBe(0);
@@ -686,6 +781,7 @@ async function replacedGroup(
     queueNumberMismatch?: boolean;
     queueUnmergeable?: boolean;
     oldRefDisplaced?: boolean;
+    refuseCancel?: boolean;
   } = {},
 ) {
   const candidateBase = 'e'.repeat(40);
@@ -855,6 +951,11 @@ async function replacedGroup(
       };
     } else if (path === 'actions/runs/1/cancel') {
       expect(req.method).toBe('POST');
+      if (options.refuseCancel) {
+        res.writeHead(409);
+        res.end('{"message":"Cannot cancel this workflow run."}');
+        return;
+      }
       cancelled.push(1);
       res.writeHead(202);
       res.end();
@@ -870,8 +971,9 @@ async function replacedGroup(
   const event = join(makeTempDir('merge-group-supersession-'), 'event.json');
   writeFileSync(event, JSON.stringify({ workflow_run: replacement }));
   let code = 0;
+  lastGroupStdout = '';
   try {
-    await exec(process.execPath, [script], {
+    ({ stdout: lastGroupStdout } = await exec(process.execPath, [script], {
       windowsHide: true,
       env: {
         PATH: process.env.PATH ?? '',
@@ -879,7 +981,7 @@ async function replacedGroup(
         GITHUB_REPOSITORY: repository,
         GITHUB_API_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
       },
-    });
+    }));
   } catch (error) {
     code = (error as { code: number }).code;
   } finally {
@@ -891,6 +993,8 @@ async function replacedGroup(
     expect(displacedResponses).toBeGreaterThan(0);
   return { code, cancelled };
 }
+// The last replacedGroup run's stdout, kept out of its exact result shape.
+let lastGroupStdout = '';
 
 describe('replaced merge candidate retirement through the GitHub API', () => {
   it.each([{}, { oldRef: true, oldRefDisplaced: true }])(
@@ -919,6 +1023,16 @@ describe('replaced merge candidate retirement through the GitHub API', () => {
       expect(await replacedGroup(options)).toEqual({ code: 0, cancelled: [] });
     },
   );
+  // Nothing was cancelled, and the next queue event for this PR retries it.
+  it('warns and continues when GitHub refuses the cancellation (HTTP 409)', async () => {
+    expect(await replacedGroup({ refuseCancel: true })).toEqual({
+      code: 0,
+      cancelled: [],
+    });
+    expect(lastGroupStdout).toContain(
+      '0 normal cancellation request(s), 1 refused (HTTP 409)',
+    );
+  });
   it.each([
     { badJobs: true },
     { refError: true },
@@ -927,5 +1041,105 @@ describe('replaced merge candidate retirement through the GitHub API', () => {
     { queueHttpStatus: 503 },
   ])('fails closed on ambiguous evidence: %j', async (options) => {
     expect(await replacedGroup(options)).toEqual({ code: 1, cancelled: [] });
+  });
+});
+
+/**
+ * Evaluates a GitHub Actions expression made only of `github.*` properties,
+ * string and boolean literals, ==, !=, !, &&, || and parentheses. Anything
+ * else is refused so a richer expression fails loudly instead of evaluating
+ * wrongly. && and || return operand values, as GitHub's do.
+ */
+function evaluateGithubExpression(
+  expression: string,
+  github: Record<string, unknown>,
+) {
+  const body = expression.trim().replace(/^\$\{\{([\s\S]*)\}\}$/, '$1');
+  const stripped = body
+    .replace(/'[^']*'/g, '')
+    .replace(/github(?:\.[A-Za-z_]+)+/g, '')
+    .replace(/\b(?:true|false)\b/g, '')
+    .replace(/==|!=|&&|\|\||[!()\s]/g, '');
+  if (stripped) throw new Error(`unsupported expression syntax: ${stripped}`);
+  const js = body
+    .replace(
+      /github((?:\.[A-Za-z_]+)+)/g,
+      (_m, path: string) => `github${path.replaceAll('.', '?.')}`,
+    )
+    .replace(/==/g, '===')
+    .replace(/!===/g, '!==');
+  return new Function('github', `return (${js});`)(github) as unknown;
+}
+
+describe('supersession controller admission', () => {
+  const read = (name: string) =>
+    load(
+      readFileSync(
+        resolve(import.meta.dirname, '../../.github/workflows', name),
+        'utf8',
+      ),
+      { schema: JSON_SCHEMA },
+    ) as {
+      'run-name'?: string;
+      jobs: Record<string, { if?: string }>;
+    };
+  const ci = read('ci.yml');
+  const guard = read('pr-ci-supersession.yml').jobs['cancel-obsolete'].if;
+  if (!ci['run-name'] || !guard) throw new Error('Missing workflow guards');
+  const pullRequest = {
+    head: { repo: { full_name: repository } },
+    merged: false,
+  };
+  // The triggering run's display_title is ci.yml's own run-name evaluated
+  // for the PR event that started it, so this follows the real producer.
+  const ciRun = (action: string, changes: Record<string, unknown> = {}) => ({
+    event: 'pull_request_target',
+    head_repository: { full_name: repository },
+    display_title: evaluateGithubExpression(ci['run-name']!, {
+      event_name: 'pull_request_target',
+      event: { action, changes, pull_request: pullRequest },
+    }),
+  });
+  const admits = (workflowRun: Record<string, unknown>) =>
+    evaluateGithubExpression(guard, {
+      event_name: 'workflow_run',
+      repository,
+      event: { action: 'requested', workflow_run: workflowRun },
+    });
+
+  it('allocates no runner for a metadata-only PR: CI run', () => {
+    const metadata = ciRun('edited', { title: { from: 'old' } });
+    expect(metadata.display_title).toBe('PR metadata');
+    expect(admits(metadata)).toBe(false);
+  });
+
+  it.each([
+    ['a base retarget', ciRun('edited', { base: { ref: { from: 'next' } } })],
+    ['a pushed head', ciRun('synchronize')],
+    ['an opened PR', ciRun('opened')],
+    [
+      'a merge-queue candidate',
+      {
+        event: 'merge_group',
+        head_repository: { full_name: repository },
+        display_title: 'Source verification',
+      },
+    ],
+  ])('still retires obsolete work after %s', (_label, run) => {
+    expect(run.display_title).toBe('Source verification');
+    expect(admits(run)).toBe(true);
+  });
+
+  it('still retires merged optional delivery on a merged close', () => {
+    expect(
+      evaluateGithubExpression(guard, {
+        event_name: 'pull_request_target',
+        repository,
+        event: {
+          action: 'closed',
+          pull_request: { ...pullRequest, merged: true },
+        },
+      }),
+    ).toBe(true);
   });
 });

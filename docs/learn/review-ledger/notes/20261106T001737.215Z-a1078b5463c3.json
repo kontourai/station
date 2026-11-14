@@ -1,7 +1,0 @@
-{
-  "revision": "2c87ba3b1e0cd7d1ed71fa028cd9b30607e6bc5f",
-
-  "notes": [
-    {"path":"docs/design/chat-composer.md","note":"No toolbar connection-chip claims; the chat.css change adds only the phone .app-toolbar__conn-notice overlay rule.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/chat.css"]}
-  ]
-}

@@ -13,6 +13,13 @@ have exclusive private directories; an uncertain create response stays
 unconfirmed rather than licensing another worker. Removal requires the captured
 daemon, exact container/image identity and private ownership label.
 
+The same live owner can recover a lost create reply for cleanup. A name only
+locates a candidate: the original daemon, image and private nonce must match
+before the full container ID is retained and removed. An absent or foreign name
+remains unconfirmed. A failed close can be retried, but retirement never permits
+another start or connection. Successful cleanup does not make the failed start
+successful.
+
 The namespace has no network, host bind mounts, Docker socket or added
 capabilities. Its root filesystem is read-only; staging and the native home use
 private tmpfs mounts. It has a 512 MiB memory/swap limit, one CPU and 64 PIDs.
@@ -66,6 +73,35 @@ Codex uses a local catalog for the synthetic `station-channel-fixture` model;
 that metadata describes this fixture, not an upstream model or entitlement.
 The fixture supplies synthetic Messages/Responses replies and never calls a
 real model provider.
+
+### Create-only lifecycle controls
+
+Use the captured executable and Unix endpoint above, and select an existing
+local immutable image ID. This lab neither pulls an image nor starts a worker,
+native engine or model:
+
+```sh
+export CHILD_WORK_DOCKER_IMAGE_ID='sha256:<full-local-image-id>'
+export CHILD_WORK_NATIVE_LAB_SOURCE_HEAD="$(git rev-parse HEAD)"
+STATION_HEAVY_CHECK_SLOTS=1 npm run lab:native-container-lifecycle -- --run-real-local-lab
+```
+
+The controls hold a real create reply during cancellation, lose a reply after
+Docker creates the resource, put a separately owned foreign nonce at the
+original name, and remove a fixture before the original owner discovers it.
+Cleanup uses recorded Docker reply IDs and daemon/image/nonce checks. A missing
+name does not establish release. The owner must not create twice, start a worker
+or disclose a connection after retirement.
+
+At `62e5301dd2da`, cancellation passes but lost-reply cleanup fails with
+`native_container_creation_unconfirmed`; test-owned fallback cleanup settles.
+At `d7b558f07495`, all four controls pass with zero model requests and no fixture
+cleanup failures. Removing the recovery nonce check fails the actual foreign
+identity assertion; byte-exact restoration passes all four controls and the six
+existing channel process cases. Scripts typing and read-only lint also pass.
+These are same-live-controller cleanup controls. Controller-death reconstruction,
+lost removal replies, paid native authority and general cleanup recovery remain
+unqualified.
 
 ## Evidence and limits
 

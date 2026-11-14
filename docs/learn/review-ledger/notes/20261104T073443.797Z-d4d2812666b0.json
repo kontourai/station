@@ -1,7 +1,0 @@
-{
-  "revision": "5f5cfa5eb717b4b39738cb4fb04e9bd533135157",
-
-  "notes": [
-    {"path":"docs/design/settings-architecture.md","note":"Reviewed account preference feedback against AccountPreferencesSection and unchanged AccountPreferencesProvider, DeviceSettingsContext and device-store authority. The section now reports initial read failures as loading failures with Retry loading preferences, removes duplicated sync-failure narration and uses compact ErrorState; mutation and conflict feedback retain Reload saved preferences. No provider, account/device authority, pending queue, saved values or persistence change. Existing architecture says loading and save failure are separate; this view repair makes that claim accurate without prose changes. Intended actual-section/provider/real QueryClient test failed before repair on save-blaming initial load alert, then sixteen tests passed through disabled controls, fresh read recovery, restored saved value, two GET/zero PATCH and unchanged device record, plus existing save failure/offline/conflict controls. No browser focus, narrow-screen, native or provider execution proof is claimed; recovery focus behavior remains unchanged and requires actual browser qualification. Compatible loading copy and canonical recovery feedback are one coherent human outcome, not separate cosmetic changes.","inputs":["docs/design/settings-architecture.md","src-ui/src/views/settings/AccountPreferencesSection.tsx"]}
-  ]
-}

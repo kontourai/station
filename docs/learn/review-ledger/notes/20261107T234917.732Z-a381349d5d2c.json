@@ -1,7 +1,0 @@
-{
-  "revision": "80d74e20fbfb565fdca115a07d24de5da3b518d2",
-
-  "notes": [
-    {"path":"docs/design/motion.md","note":"Re-reviewed screenshots.spec.ts after the gallery screen change; the reduced-motion screens and the documented Reduced choice are unchanged.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]}
-  ]
-}

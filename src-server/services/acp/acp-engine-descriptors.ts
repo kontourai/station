@@ -8,6 +8,7 @@ import { isDeepStrictEqual } from 'node:util';
 import {
   type ACPConnectionRegistryEntry,
   type ACPEngineAuthDescriptor,
+  type ACPEngineMinimumVersion,
   normalizeACPArgs,
   validateACPEngineDescriptor,
 } from '@kontourai/station-contracts/acp';
@@ -122,6 +123,9 @@ function refusalReasons(
   // built-in pin may name one.
   if (entry.managedRuntime !== undefined)
     errors.push('managedRuntime is only accepted from built-in entries');
+  // Its version command is a program Station runs, like a status command.
+  if (entry.minimumVersion !== undefined)
+    errors.push('minimumVersion is only accepted from built-in entries');
   if (builtinIds.has(entry.id))
     errors.push(`id '${entry.id}' belongs to a built-in engine`);
   return errors;
@@ -270,6 +274,25 @@ export function registryAuthFor(
     (candidate) => candidate.auth !== undefined,
   );
   return entry?.auth ? { command: entry.command, auth: entry.auth } : undefined;
+}
+
+/**
+ * The built-in version floor for a connection's executable, keyed like
+ * {@link registryAuthFor}. Built-in only: its version command is a program
+ * Station runs on its own.
+ */
+export function registryMinimumVersionFor(
+  connection: { command: string },
+  platform: string = process.platform,
+): { command: string; minimumVersion: ACPEngineMinimumVersion } | undefined {
+  const entry = descriptorEntryFor(
+    connection,
+    platform,
+    (candidate) => candidate.minimumVersion !== undefined,
+  );
+  return entry?.minimumVersion
+    ? { command: entry.command, minimumVersion: entry.minimumVersion }
+    : undefined;
 }
 
 /** Whether `argv0` names the same program as `command`, by executable name. */

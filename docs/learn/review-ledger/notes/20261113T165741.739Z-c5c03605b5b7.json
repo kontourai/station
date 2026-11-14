@@ -1,7 +1,0 @@
-{
-  "revision": "c0e9033cf978223cc60c246674fcec91e9eab5a7",
-
-  "notes": [
-    {"path":"README.md","note":"README only links to docs/guides/nightly.md; the guide edit refined two release-notes sentences (fixed fallback reason, quota-gated rate-limit wait). No README claim changes.","inputs":["README.md","docs/guides/nightly.md"]}
-  ]
-}

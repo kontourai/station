@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/design/offline-outbound-queue.md","note":"#4517 managed settings. Changed: config.ts: PUT /config/app refuses a locked managed setting first (403 managed_setting_locked), GET /config/app returns managed values with managed provenance, log-level and first-run map the refusal to 403. The log-level queue mechanics are unchanged; a locked logLevel makes the revisioned save answer 403, which the queue reports like any refusal.","inputs":["docs/design/offline-outbound-queue.md","src-server/routes/system/config.ts"]}
-  ]
-}

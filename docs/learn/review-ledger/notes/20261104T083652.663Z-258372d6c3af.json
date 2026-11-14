@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/reference/cli.md","note":"#4517 managed settings. Changed: install-registry.ts: station registry <url> refuses a locked registryUrl; portability-io.ts: import refuses a change to a locked setting. Cited docs edited: docs/reference/cli.md. Updated policy check (per-entry lines, composite structure checked at startup), config set --offline lock refusal, and the config get provenance note. policy show and other commands unaffected.","inputs":["docs/reference/cli.md","packages/cli/src/commands/install-registry.ts","packages/cli/src/commands/portability-io.ts"]}
-  ]
-}

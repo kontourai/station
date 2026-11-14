@@ -201,7 +201,6 @@ import {
   chatModelLabel,
   effectiveChatModelId,
   inboxPanelMounts,
-  resolveDockBadgeProjectName,
   resolveNewChatModalDefaultProjectSlug,
   resolveSessionProjectMismatchLabel,
   routeToOpenChatsCollection,
@@ -1469,30 +1468,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // immutable project) still wins when active — it is a stronger, explicit
   // statement of "only this project's chats" than the dock's ambient memory.
   const dockProjectSlug = scopedProjectSlug ?? dockChromeProjectSlug;
-  // station#4525 review HIGH-2/MED-1: the badge names the BOUND project
-  // (`resolveDockBadgeProjectName`, shared by the desktop and mobile
-  // triggers so the two can never disagree) — but the session's own
-  // git/coding-layout facts are NOT gated on it (see the JSX below: they read
-  // straight off `gitStatus`/`sessionCodingLayout`, exactly as
-  // pre-station#4525, unconditionally).
-  //
-  // The desktop badge is New's destination now and carries no session fact;
-  // the mobile header still pairs the bound name with the session's own
-  // project (`sessionProjectMismatchLabel`), so both derivations read the one
-  // `sessionSourceProjectSlug`.
   const sessionSourceProjectSlug = activeSession?.projectSlug;
-  const dockBadgeProjectName = resolveDockBadgeProjectName({
-    scopedProjectSlug,
-    dockProjectSlug,
-    sessionProjectSlug: sessionSourceProjectSlug,
-    sessionProjectName,
-    projects,
-  });
-  // station#4525 review MED-1 (owner design ruling): non-null only when the
-  // chat actually on screen belongs to a DIFFERENT project than the bound
-  // badge — the muted lead-in the facts row shows so the header never
-  // implies the visible transcript belongs to the badge's project, without
-  // suppressing (HIGH-2) the facts themselves.
   const sessionProjectMismatchLabel = resolveSessionProjectMismatchLabel({
     scopedProjectSlug,
     dockProjectSlug,
@@ -1876,23 +1852,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [hasImmutableProjectScope, layoutSlug, projectSlug, setLayout],
   );
-  const handleSelectProject = useCallback(
-    (projectSlug: string) => {
-      if (routeToScopedChatProject(projectSlug)) return;
-      // #3319: the opened project otherwise lands BEHIND the dock — collapse
-      // (never close: the session survives on the collapsed bar) so the
-      // destination is visible. Supersedes the maximized-only restore this
-      // path used to ride; fullscreen placement has no ambient dock geometry.
-      if (!isFullscreenPlacement) applyDockSnap('collapsed');
-      setProject(projectSlug);
-    },
-    [
-      applyDockSnap,
-      isFullscreenPlacement,
-      routeToScopedChatProject,
-      setProject,
-    ],
-  );
   const handleOpenLayout = useCallback(
     (projectSlug: string, layoutSlug: string) => {
       collapseDockForNavigation();
@@ -2025,25 +1984,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         ]
       : []),
   ];
-  // station#4524: the project switcher's row action switches the dock's own
-  // project context directly — no navigation, no chat creation. Previously
-  // ("Continue in <project>") it silently opened the New Chat modal, which
-  // is exactly the coupling #4524 reported: picking a project should not by
-  // itself start or open a chat. Mirrors `handleSelectProject`'s fullscreen
-  // routing guard so a project-scoped layout's picker still navigates
-  // exactly as before; outside that immutable scope (the ambient dock,
-  // where both #4524 and #4525 live) it only ever rebinds the shell's
-  // `chrome.activeProjectSlug` — the New Chat modal's own project step
-  // (`activeProjectSlug` passed to `ChatDockModalStack` below) already
-  // defaults to that same binding, so starting a chat afterward lands in
-  // the just-picked project without this handler creating one itself.
-  const handleSwitchProject = useCallback(
-    (projectSlug: string) => {
-      if (routeToScopedChatProject(projectSlug)) return;
-      setActiveProjectSlug(projectSlug);
-    },
-    [routeToScopedChatProject, setActiveProjectSlug],
-  );
   const handleToggleActiveWorkPanel = useCallback(
     (panel: ActiveWorkPanel) =>
       setActiveWorkPanel((current) => (current === panel ? null : panel)),
@@ -3748,26 +3688,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         }
                       : null
                   }
-                  // station#1803 (part 3): always populated, project bound or
-                  // not — mirrors the desktop project-context row's fix. A
-                  // no-project chat gets "No project" as the switcher's current
-                  // value and stays reachable via the same trigger, rather than
-                  // losing the affordance entirely.
                   sessionProjectMismatchLabel={
                     showNewChatModal
                       ? undefined
                       : visibleSessionProjectMismatchLabel
-                  }
-                  projectSwitcher={
-                    showNewChatModal
-                      ? null
-                      : {
-                          projectSlug: dockProjectSlug ?? '',
-                          projectName: dockBadgeProjectName ?? 'No project',
-                          projects,
-                          onOpenProject: handleSelectProject,
-                          onSwitchProject: handleSwitchProject,
-                        }
                   }
                   projectScope={
                     scopedProjectSlug && !hasImmutableProjectScope

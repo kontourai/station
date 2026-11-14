@@ -34,6 +34,7 @@ import {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
+import { GROK_LIVE_CAPTURE } from '../../../src-shared/extension-notification-bindings.js';
 import { STATION_UNMAPPED_SUBAGENT_ENGINES } from '../../services/orchestration/child-work-projection.js';
 import {
   type AcpMapperContext,
@@ -260,6 +261,68 @@ async function replayMuseServeCaptures(): Promise<CanonicalRuntimeEvent[]> {
 }
 
 /**
+ * ACP: the REAL grok 1.0.77 captures (`GROK_LIVE_CAPTURE`), replayed through the ACP mapper's own extension routing with one
+ * session store per capture. Another session's frames (a subagent's own
+ * session streams on the same connection) are dropped, as the adapter does.
+ * The union is checked, not each capture alone: each scenario exercises a
+ * different kind of child (a command, a subagent, a monitor).
+ */
+const GROK_CHILD_WORK_CAPTURES = [
+  'background-bash-interject',
+  'background-subagent',
+  'monitor-wake-turns',
+] as const;
+
+function replayGrokCapture(capture: string): CanonicalRuntimeEvent[] {
+  const frames = readFileSync(
+    new URL(`../../../${GROK_LIVE_CAPTURE}`, import.meta.url),
+    'utf8',
+  )
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+    .filter((entry) => entry.capture === capture && entry.dir === 'E->C')
+    .map(
+      (entry) => entry.msg as { method?: string; id?: unknown; params?: any },
+    );
+  const own = frames.find((msg) => typeof msg.params?.sessionId === 'string')
+    ?.params.sessionId;
+  const events: CanonicalRuntimeEvent[] = [];
+  const ctx = {
+    provider: 'acp',
+    session: { threadId: `thread-acp-${capture}` },
+    publish: (event: CanonicalRuntimeEvent) => events.push(event),
+    // A Grok session: its handshake (`grokShell`) names both Grok wires.
+    state: {
+      acpSubagentWires: new Set(['background-task', 'subagent-lifecycle']),
+    },
+  } as unknown as Parameters<typeof mapAcpExtensionNotification>[2];
+  for (const msg of frames) {
+    if (!msg.method || msg.id !== undefined || msg.method === 'session/update')
+      continue;
+    const sessionId = msg.params?.sessionId;
+    if (typeof sessionId === 'string' && sessionId !== own) continue;
+    mapAcpExtensionNotification(msg.method, msg.params ?? {}, ctx);
+  }
+  return events;
+}
+
+async function replayAcpGrokCaptures(): Promise<CanonicalRuntimeEvent[]> {
+  return GROK_CHILD_WORK_CAPTURES.flatMap(replayGrokCapture);
+}
+
+/**
+ * ACP sessions report different signals by engine, so the cell's signals are
+ * the union. The per-format test (each format alone delivers every declared
+ * signal) runs on Grok's captures, the one reporter that delivers them all;
+ * Kiro's and Qwen Code's formats are held to the lifecycle they carry by
+ * their own test.
+ */
+const ACP_FORMATS = {
+  'grok 1.0.77 background tasks and subagents': replayAcpGrokCaptures,
+};
+
+/**
  * ACP: Kiro's two subagent wires, replayed through the ACP mapper exactly as
  * the adapter routes them. The frames are the kirocrew test vectors in
  * `kiro-extension-golden-frames.jsonl` (no live subagent capture exists: the
@@ -310,7 +373,7 @@ function replayAcpFrames(
   return events;
 }
 
-const ACP_FORMATS = {
+const ACP_LIFECYCLE_FORMATS = {
   'kiro-cli subagent/list_update': async () => {
     const [roster] = acpGoldenFrames().filter(
       (frame) => frame.method === '_kiro.dev/subagent/list_update',
@@ -331,11 +394,11 @@ const ACP_FORMATS = {
     replayAcpFrames(QWEN_SUBAGENT_FRAMES, ['nested-tool-call']),
 };
 
-async function replayAcpKiroSubagents(): Promise<CanonicalRuntimeEvent[]> {
+async function replayAcpLifecycleSubagents(): Promise<CanonicalRuntimeEvent[]> {
   return [
-    ...(await ACP_FORMATS['kiro-cli subagent/list_update']()),
-    ...(await ACP_FORMATS['Kiro agent service agent-subtask']()),
-    ...(await ACP_FORMATS['Qwen Code nested tool call']()),
+    ...(await ACP_LIFECYCLE_FORMATS['kiro-cli subagent/list_update']()),
+    ...(await ACP_LIFECYCLE_FORMATS['Kiro agent service agent-subtask']()),
+    ...(await ACP_LIFECYCLE_FORMATS['Qwen Code nested tool call']()),
   ];
 }
 
@@ -391,7 +454,13 @@ const DRIVERS: Record<string, Driver> = {
   muse: {
     run: replayMuseServeCaptures,
   },
-  acp: { run: replayAcpKiroSubagents, formats: ACP_FORMATS },
+  acp: {
+    run: async () => [
+      ...(await replayAcpLifecycleSubagents()),
+      ...(await replayAcpGrokCaptures()),
+    ],
+    formats: ACP_FORMATS,
+  },
 };
 
 /**
@@ -675,6 +744,13 @@ describe('#2456 child-work conformance tripwire', () => {
         expect(observed.has(signal as SubagentSignal)).toBe(true);
       });
     }
+  }
+
+  for (const [format, run] of Object.entries(ACP_LIFECYCLE_FORMATS)) {
+    test(`acp (${format}): this lifecycle-only format alone delivers lifecycle`, async () => {
+      const observed = observedSignals(childWorkDeltas(await run()));
+      expect([...observed]).toEqual(['lifecycle']);
+    });
   }
 
   test('#2452 muse exec fallback: real exec output emits no child work, only its not-reported view', async () => {

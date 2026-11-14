@@ -1,7 +1,0 @@
-{
-  "revision": "3b4a4999a792c499bbefefb62abbaef35ebcbf17",
-
-  "notes": [
-    {"path":"docs/design/approval-posture-server-ordered.md","note":"bubblewrap.ts changed only by making MIN_BUBBLEWRAP_VERSION module-private (no caller outside it); the design's statement of the 0.8.0 minimum and its named refusal still matches bubblewrapVersionRefusal.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/security/confinement/bubblewrap.ts"]}
-  ]
-}

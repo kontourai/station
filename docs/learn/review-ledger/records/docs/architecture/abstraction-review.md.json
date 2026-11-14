@@ -12,8 +12,6 @@
   "sources": [
     "docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md",
 
-    "docs/architecture/module-map.md",
-
     "docs/design/orchestration-decomposition-map.md",
 
     "docs/guides/commands.md",

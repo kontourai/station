@@ -1,7 +1,0 @@
-{
-  "revision": "077d0073395c046c079ebc5ff51971e5fa0d24b9",
-
-  "notes": [
-    {"path":"docs/learn/media/shared-task-document.png","note":"Scoped review for the shared room list and composer change (#4790, #4791, #4793). The capture shows the Task Plan tab (Brief, Goal, Done when, Decisions, Blockers); the changed sources render the Conversation tab, the presence rail avatar shape and room-only CSS. Nothing in this image is drawn by them, so the capture is still current.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/views/TaskWorkspaceView.css","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx","src-ui/src/workspace-panes/ProjectTaskRoomPresence.tsx"]}
-  ]
-}

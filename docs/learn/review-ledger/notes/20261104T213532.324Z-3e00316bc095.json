@@ -1,7 +1,0 @@
-{
-  "revision": "4e705a1dceb4e99448faf8b7b7ea62f22f31b51c",
-
-  "notes": [
-    {"path":"docs/testing/browser-smoke.md","note":"Added terminal-mobile-keyboard to the PR smoke journey table and the count (nine), matching PR_BROWSER_SMOKE_CONTRACT.journeys in tests/e2e-manifest.mjs.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]}
-  ]
-}

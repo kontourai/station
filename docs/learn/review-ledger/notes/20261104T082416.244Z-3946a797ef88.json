@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/design/settings-architecture.md","note":"#4517 managed settings. Changed: config.ts: offline config set refuses a locked setting; config get prints a managed provenance note; settings-registry.ts: provenance gains source 'managed' with locked, organization and supportUrl; settings-effective.ts: the resolver adds managed lock and default layers; config.ts: PUT /config/app refuses a locked managed setting first (403 managed_setting_locked), GET /config/app returns managed values with managed provenance, log-level and first-run map the refusal to 403; SettingRowStatus.tsx: rows show a Managed by badge and Get help link. Cited docs edited: docs/design/settings-architecture.md, docs/reference/config.md. Updated the managed policy tier (overlay, write refusal, project masking, device scope), the resolver chain and the provenance vocabulary with the #1557 rule.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md","packages/cli/src/commands/config.ts","packages/contracts/src/settings-registry.ts","src-server/domain/settings-effective.ts","src-server/routes/system/config.ts","src-ui/src/views/settings/SettingRowStatus.tsx"]}
-  ]
-}

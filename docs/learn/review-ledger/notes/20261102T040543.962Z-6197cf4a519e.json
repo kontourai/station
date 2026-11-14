@@ -1,7 +1,0 @@
-{
-  "revision": "86fcdc55ba35a9730f1bba26be190cea615f9a6b",
-
-  "notes": [
-    {"path":"docs/user/settings.md","note":"Checked Browser artifacts preview label and default behavior against runtime binding and the Browser guide; recording remains outside this increment.","inputs":["docs/user/settings.md"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "6d24a3afcdae185bf6a3c83de81d231783f95cc8",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Reviewed the new StationOrchestrationInstructions section and index row against station-orchestration-instructions.ts (byte caps, assurance by engine, delegated-child section), and re-read the session-resolver, Claude adapter and request-delegation mentions. The resolver paragraph about capturing tool defaults is still accurate; the instructions are composed separately and described in the new section.","inputs":["docs/architecture/module-map.md","src-server/providers/adapters/claude-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

@@ -60,9 +60,11 @@ function readFileAsDataUrl(file: File): Promise<string> {
 export interface ProjectIconPickerProps {
   /** The project's name, for the preview of the current choice. */
   name: string;
-  /** The chosen icon; `''` is no icon. */
+  /** The stored choice; `''` clears it. Only iconDisabled suppresses detection. */
   value: string;
-  onChange: (icon: string) => void;
+  onChange: (icon: string, disabled?: boolean) => void;
+  onUseDetected?: () => void;
+  iconDisabled?: boolean;
   /** Artwork discovered in the project's folder (`useProjectIconCandidatesQuery`). */
   candidates: readonly ProjectIconCandidate[];
   /** True while discovery is reading the folder. */
@@ -87,6 +89,8 @@ export function ProjectIconPicker({
   candidates,
   fetching,
   idPrefix,
+  onUseDetected,
+  iconDisabled,
 }: ProjectIconPickerProps) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -97,9 +101,9 @@ export function ProjectIconPicker({
     (candidate) => candidate.dataUrl === value,
   );
   const glyphProblem = isImage ? undefined : projectIconInputProblem(value);
-  const choose = (icon: string) => {
+  const choose = (icon: string, disabled = false) => {
     setUploadError(null);
-    onChange(icon);
+    onChange(icon, disabled);
   };
 
   async function upload(file: File) {
@@ -131,18 +135,30 @@ export function ProjectIconPicker({
           <span id={hintId}>
             {fetching
               ? 'Looking for artwork in the project folder…'
-              : 'Optional. Without one, Station shows the project’s colour or initials.'}
+              : candidates.length > 0
+                ? 'Choose artwork, an emoji, or No icon.'
+                : 'Optional. Without one, Station shows the project’s colour or initials.'}
           </span>
         </div>
         <button
           type="button"
           className="editor-btn editor-btn--small project-icon-picker__none"
-          aria-pressed={value === ''}
-          onClick={() => choose('')}
+          aria-pressed={value === '' && iconDisabled === true}
+          onClick={() => choose('', true)}
         >
           No icon
         </button>
       </div>
+      {onUseDetected && candidates.length > 0 && (
+        <button
+          type="button"
+          className="editor-btn editor-btn--small"
+          aria-pressed={value === '' && !iconDisabled}
+          onClick={onUseDetected}
+        >
+          Use detected icon
+        </button>
+      )}
       <fieldset
         className="project-icon-picker__artwork-list"
         aria-label="Artwork"

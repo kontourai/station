@@ -1,9 +1,0 @@
-{
-  "revision": "0f901126d1f0404c9923740be24f655c4c08955d",
-
-  "notes": [
-    {"path":"docs/guides/agent-efficiency.md","note":"Its input docs/user/settings.md changed only the Houston link in the coordinator-session row to an absolute GitHub URL; this guide's link to the Feature previews section and its claims are unaffected.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md"]},
-
-    {"path":"docs/guides/feature-previews.md","note":"Its input docs/user/settings.md changed only the Houston link in the coordinator-session row to an absolute GitHub URL; this guide's references to the settings table remain true.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]}
-  ]
-}

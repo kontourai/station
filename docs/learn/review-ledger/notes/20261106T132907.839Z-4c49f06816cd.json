@@ -1,7 +1,0 @@
-{
-  "revision": "ccc0cf51a46f01aaeeaa60931d2f12912519a572",
-
-  "notes": [
-    {"path":"docs/user/personal-boards.md","note":"Re-reviewed the supported literal-name role queries after targeted formatter line wrapping. This follow-up changes whitespace only after removal of unsupported exact properties. Name matching, assertions, production, guards and lifecycle are unchanged; no cast or suppression was added. UI typecheck and nine mounted owner tests passed for the semantic repair; the first readiness correctly refused format drift, and read-only lint now passes. User prose remains accurate; prior gallery/runtime evidence keeps its scope.","inputs":["docs/user/personal-boards.md","src-ui/src/views/apps/__tests__/AppsLibrary.test.tsx"]}
-  ]
-}

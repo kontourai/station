@@ -1,7 +1,0 @@
-{
-  "revision": "8ea264868b13d178784927fd53eb5880d6c51ab4",
-
-  "notes": [
-    {"path":"scripts/AGENTS.md","note":"Re-read 'Reuse scripts/lib/owned-process.mjs for process-tree ownership and bounded output' against owned-process.mjs at this change: station-weight still reuses it, now through the opt-in forceTerminate({ onlyWhileLeaderUnreaped }) for a timeout; the default API other callers use is unchanged. No prose change needed.","inputs":["scripts/AGENTS.md","scripts/lib/owned-process.mjs"]}
-  ]
-}

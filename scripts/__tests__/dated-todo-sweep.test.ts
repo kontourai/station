@@ -99,7 +99,8 @@ function runUpsert({
   mkdirSync(bin, { recursive: true });
   writeFileSync(
     join(root, 'numbers.txt'),
-    existing.map((number) => `${number}\n`).join(''),
+    // The search answers `number<TAB>author` per same-titled issue.
+    existing.map((number) => `${number}\tgithub-actions[bot]\n`).join(''),
   );
   writeFileSync(
     join(bin, 'gh'),

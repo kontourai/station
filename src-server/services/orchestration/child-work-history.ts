@@ -4,6 +4,7 @@ import {
   childWorkDeltaFromLegacyClaudeTaskNotification,
   childWorkForReporter,
   childWorkSettleFromItem,
+  clearChildWorkNotReported,
   createEmptyChildWorkRegistry,
   forgetChildWorkReporter,
 } from '@kontourai/station-contracts/child-work';
@@ -16,6 +17,8 @@ export function settledChildWorkFromHistory(
 ): {
   settlements: Array<Extract<ChildWorkDelta, { kind: 'settle' }>>;
   lastReportAt?: string;
+  /** The session's own statement that it reports no child work, if it made one. */
+  notReported?: string;
 } {
   let historical = createEmptyChildWorkRegistry();
   let lastReportAt: string | undefined;
@@ -29,6 +32,7 @@ export function settledChildWorkFromHistory(
     }
     if (event.method === 'session.started') {
       exited = false;
+      historical = clearChildWorkNotReported(historical, threadId);
       continue;
     }
     if (exited) continue;
@@ -52,5 +56,10 @@ export function settledChildWorkFromHistory(
     const settle = childWorkSettleFromItem(item);
     if (settle) settlements.push(settle);
   }
-  return { settlements, ...(lastReportAt ? { lastReportAt } : {}) };
+  const notReported = historical.notReported[threadId];
+  return {
+    settlements,
+    ...(lastReportAt ? { lastReportAt } : {}),
+    ...(notReported !== undefined ? { notReported } : {}),
+  };
 }

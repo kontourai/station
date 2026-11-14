@@ -1,7 +1,0 @@
-{
-  "revision": "d5e3c3757b2dfb3fd2d38d801292f5c5a3bbfed6",
-
-  "notes": [
-    {"path":"docs/design/settings-architecture.md","note":"Added Customize > Appearance > Display (density, motion) as account preferences in the appearance sibling file; the first-paint cache and held appearance now include density and motion (appearance-cache.ts, device-settings-store.ts, account-preferences.ts).","inputs":["docs/design/settings-architecture.md","packages/contracts/src/account-preferences.ts","src-server/services/identity/account-preferences.ts","src-ui/src/lib/device-settings-store.ts","src-ui/src/pages/AppearancePage.tsx"]}
-  ]
-}

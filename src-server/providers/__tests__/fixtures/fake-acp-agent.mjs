@@ -30,8 +30,15 @@
 //                        config option, which arrives that many ms later in
 //                        a `config_option_update` (an engine whose model list
 //                        loads after it answers)
+//   promptResponse       fields merged into every session/prompt answer
+//                        beside `stopReason` (a recorded engine's `usage`)
 //   requestDelaysMs      { "<core method>": ms } for session/set_mode and
 //                        session/set_config_option: answer that much later
+//   refuseConfigOptions  config ids whose session/set_config_option is
+//                        refused with an internal error (an engine that will
+//                        not take a value it listed)
+//   exitOnConfigOptions  config ids whose session/set_config_option ends
+//                        the process unanswered
 //   --prompt-steps <path>  a JSON step list replacing the default turn. Extra
 //                        step kinds: `client-request` {method, params},
 //                        `user-message-id` (a Kiro `user_message_id_assigned`
@@ -43,7 +50,11 @@
 // `delayMs` before answering, or `exitAfterMs` to exit with it unanswered })
 // and recorded as
 // `{ extMethod, params }`; any other is refused -32601. `session/load`,
-// `session/fork` and `session/delete` are answered and recorded too.
+// `session/fork` and `session/delete` are answered and recorded too, and so
+// is `session/resume` when the profile's initialize advertises
+// `sessionCapabilities.resume` (refused -32601 otherwise, as before). Load and
+// resume answer with the session's shape (`sessionNew` with the modes and
+// config values set since), as a recorded engine does.
 //
 // Sign-in:
 //   --record-env <NAME>          record NAME's value in this process's
@@ -188,7 +199,10 @@ async function runStep(step, sessionId, client) {
     case 'plan':
       return update({ sessionUpdate: 'plan', entries: step.entries });
     case 'notification':
-      return client.notify(step.method, step.params ?? {});
+      return client.notify(
+        step.method,
+        withSessionId(step.params ?? {}, sessionId),
+      );
     case 'client-request':
       return clientRequest(client, 'prompt', step, sessionId);
     case 'user-message-id':
@@ -358,6 +372,14 @@ const app = acp
     });
     return sessionShape(params.sessionId);
   })
+  .onRequest('session/resume', ({ params }) => {
+    if (
+      profile.initialize?.agentCapabilities?.sessionCapabilities?.resume == null
+    )
+      throw acp.RequestError.methodNotFound('session/resume');
+    record({ method: 'session/resume', sessionId: params.sessionId });
+    return { sessionId: params.sessionId, ...sessionShape(params.sessionId) };
+  })
   .onRequest('session/fork', ({ params }) => {
     record({
       method: 'session/fork',
@@ -379,6 +401,15 @@ const app = acp
   .onRequest('session/set_config_option', async ({ params }) => {
     record({ method: 'session/set_config_option', configId: params.configId });
     await requestDelay('session/set_config_option');
+    if (profile.exitOnConfigOptions?.includes(params.configId)) {
+      setTimeout(() => process.exit(0), 0);
+      return new Promise(() => {});
+    }
+    if (profile.refuseConfigOptions?.includes(params.configId))
+      throw acp.RequestError.internalError(
+        undefined,
+        `refused ${params.configId}`,
+      );
     state.config.set(`${params.sessionId}\0${params.configId}`, params.value);
     return {
       configOptions: sessionShape(params.sessionId).configOptions ?? [],
@@ -389,7 +420,7 @@ const app = acp
     if (fail === 'auth-required-on-prompt') throw authRequired();
     for (const step of promptSteps ?? defaultSteps())
       await runStep(step, params.sessionId, client);
-    return { stopReason: 'end_turn' };
+    return { stopReason: 'end_turn', ...(profile.promptResponse ?? {}) };
   })
   .onRequest('*', async ({ method, params }) => {
     record({ extMethod: method, params });

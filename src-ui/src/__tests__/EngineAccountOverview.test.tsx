@@ -374,7 +374,7 @@ test.each([
       fireEvent.change(limit, {
         target: {
           value: screen
-            .getByRole('option', { name: 'Primary · 1d' })
+            .getByRole('option', { name: 'Primary · 24h' })
             .getAttribute('value'),
         },
       });
