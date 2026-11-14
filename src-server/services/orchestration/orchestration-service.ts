@@ -483,6 +483,7 @@ import {
   PEER_PENDING_REQUEST_METADATA_KEY,
   persistReadModelSession,
   type RecoveredSessionStartOptions,
+  recordedResumeBindingForStart,
   recoverOrchestrationSessions,
   resolveOrchestrationAdapterForThread,
   startRecoveredOrchestrationSession,
@@ -4304,15 +4305,14 @@ export class OrchestrationService {
       const persistedMetadata = this.readLatestSessionStartMetadata(
         input.threadId,
       );
-      // An adapter that requires its recorded binding gets it back with the
-      // cursor, unless this retry moves to another credential profile, which
-      // by design changes it. Other adapters keep their own resume rules.
-      const recordedBindingKey =
-        existing.resumeCursor !== undefined &&
-        !input.credentialProfileRef &&
-        adapter.metadata.continuity?.recoveryBinding === 'required'
-          ? this.readRecordedNativeResumeBindingKey(input.threadId)
-          : undefined;
+      // The same rule as restart recovery; a retry that names a credential
+      // profile switches to it.
+      const recordedBindingKey = recordedResumeBindingForStart(
+        adapter,
+        existing.resumeCursor,
+        Boolean(input.credentialProfileRef),
+        () => this.readRecordedNativeResumeBindingKey(input.threadId),
+      );
       let startInput: ProviderSessionStartInput = {
         threadId: input.threadId,
         provider: adapter.provider,

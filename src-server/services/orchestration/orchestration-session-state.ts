@@ -1837,6 +1837,28 @@ export interface RecoveredSessionStartOptions {
 }
 
 /**
+ * The recorded native resume binding a start that resumes a session carries,
+ * shared by restart recovery and the credential-profile retry. Only an
+ * adapter declaring `continuity.recoveryBinding: 'required'` gets it, only
+ * with a cursor to resume, and never when the start switches to another
+ * credential profile, which changes the binding by design. Every other
+ * adapter (Claude, Codex) gets none: its recorded key can change
+ * legitimately (engine home, a deliberate profile switch, an older key
+ * scheme), and passing it would refuse a resume that works today.
+ */
+export function recordedResumeBindingForStart(
+  adapter: Pick<ProviderAdapterShape, 'metadata'>,
+  resumeCursor: unknown,
+  switchesCredentialProfile: boolean,
+  readRecorded: () => string | undefined,
+): string | undefined {
+  if (resumeCursor === undefined || switchesCredentialProfile) return undefined;
+  if (adapter.metadata?.continuity?.recoveryBinding !== 'required')
+    return undefined;
+  return readRecorded();
+}
+
+/**
  * archive#3476: start the engine for ONE already-restored session, using the
  * exact input a boot recovery pass used to build.
  *
@@ -1860,14 +1882,12 @@ export async function startRecoveredOrchestrationSession(options: {
     // Metadata reads can fail for one damaged persisted event. Keep them
     // inside this session's boundary so the caller sees one typed failure.
     const recoveredMetadata = deps.readSessionStartMetadata?.(session.threadId);
-    // Only an adapter that requires its recorded binding gets it back: for
-    // the others a key that changed legitimately (engine home, a deliberate
-    // profile switch, an older key scheme) must not start refusing recovery.
-    const recordedBindingKey =
-      session.resumeCursor !== undefined &&
-      adapter.metadata?.continuity?.recoveryBinding === 'required'
-        ? deps.readNativeResumeBindingKey?.(session.threadId)
-        : undefined;
+    const recordedBindingKey = recordedResumeBindingForStart(
+      adapter,
+      session.resumeCursor,
+      false,
+      () => deps.readNativeResumeBindingKey?.(session.threadId),
+    );
     let startInput: ProviderSessionStartInput = {
       threadId: session.threadId,
       provider: session.provider,

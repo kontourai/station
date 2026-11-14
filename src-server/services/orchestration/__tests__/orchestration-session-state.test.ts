@@ -19,6 +19,7 @@ import {
   buildOrchestrationSessionSummary,
   projectOrchestrationEventToReadModel,
   type RecoveredSessionStartOptions,
+  recordedResumeBindingForStart,
   recoverOrchestrationSessions,
   resolveOrchestrationAdapterForThread,
   SESSION_RECOVERY_FAILED_CODE,
@@ -558,6 +559,53 @@ describe('orchestration-session-state', () => {
       'nativeResumeBindingKey',
     );
     expect(readNativeResumeBindingKey).toHaveBeenCalledTimes(1);
+  });
+
+  // The rule the credential-profile retry
+  // (`restartCredentialProfileProviderSession`) applies through this same
+  // helper. A silent revert that handed Claude its recorded key would break
+  // Claude's credential retries, since Claude refuses a mismatched key.
+  test('a credential retry passes the recorded binding only to an opted-in adapter keeping its profile', () => {
+    const adapter = (recoveryBinding?: 'required') =>
+      ({
+        metadata: {
+          continuity: {
+            resume: 'same-session',
+            fork: 'none',
+            rewind: 'none',
+            ...(recoveryBinding ? { recoveryBinding } : {}),
+          },
+        },
+      }) as unknown as Pick<ProviderAdapterShape, 'metadata'>;
+    const recorded = 'c'.repeat(64);
+    const read = vi.fn(() => recorded);
+    const cursor = { copilotSessionId: 'native-1' };
+
+    // Copilot-style, keeping its profile: gets the key.
+    expect(
+      recordedResumeBindingForStart(adapter('required'), cursor, false, read),
+    ).toBe(recorded);
+    // The same adapter switching to another profile: none.
+    expect(
+      recordedResumeBindingForStart(adapter('required'), cursor, true, read),
+    ).toBeUndefined();
+    // Claude (no opt-in), with or without a switch: never.
+    expect(
+      recordedResumeBindingForStart(adapter(), cursor, false, read),
+    ).toBeUndefined();
+    expect(
+      recordedResumeBindingForStart(adapter(), cursor, true, read),
+    ).toBeUndefined();
+    // Nothing to resume: none, and nothing is read.
+    expect(
+      recordedResumeBindingForStart(
+        adapter('required'),
+        undefined,
+        false,
+        read,
+      ),
+    ).toBeUndefined();
+    expect(read).toHaveBeenCalledTimes(1);
   });
 
   test('scopes recovery readiness to the persisted external connection', async () => {
