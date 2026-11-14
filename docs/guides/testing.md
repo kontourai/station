@@ -2766,16 +2766,21 @@ verification policy` context reconciles it, and the ruleset lists required
 contexts. `fast-checks-plan`
 computes the affected-test selection once; `fast-checks-shard` runs it as one
 to four deterministic round-robin slices. `FAST_CHECKS_FILES_PER_SHARD` in
-`scripts/lib/fast-checks-shards.mjs` sets the initial threshold at 40 files:
-1–40 use one job, 41–80 two, 81–120 three, and 121+ four. With
+`scripts/lib/fast-checks-shards.mjs` sets the threshold at 100 files:
+1–100 use one job, 101–200 two, 201–300 three, and 301+ four. It was 40
+until hosted runs showed medium plans over-split: a 145-file plan used four
+runners for two to three minutes of tests each behind ~two minutes of setup. With
 `STATION_FAST_CHECKS_SKIP_EMPTY_SHARDS=true`, an empty plan allocates no shard
 runner. The aggregate independently validates that the exact-head plan is empty
 and requires successful plan/statics jobs; it does not fabricate an execution
 receipt. Without that compatibility opt-in, empty plans retain the old shard path. The planner knows
-file count, not test duration. This is a tunable proxy, justified by #3101's
-2026-10-01 sample: 1.4 minutes of setup for 0.2 minutes of tests per shard
-(86% setup) while the 20-job pool was saturated. Hosted runs must establish
-the actual savings and whether this threshold needs tuning. The matrix creates
+file count, not test duration; the repository keeps no per-file durations.
+This is a tunable proxy, first justified by #3101's 2026-10-01 sample (1.4
+minutes of setup for 0.2 minutes of tests per shard while the 20-job pool was
+saturated) and raised from hosted runs of 2026-11-12/13, where shards of
+70–100 files took 4.4–9 minutes, inside the merge-group statics job's
+11.5–17. Plans above 300 files are unchanged. Hosted runs must establish the
+actual savings. The matrix creates
 only planned legs; omitted legs need no receipt and cannot keep the aggregate
 pending. The workflow opts in with `STATION_FAST_CHECKS_ADAPTIVE_SHARDS=true`.
 Without that handshake, a new planner retains four shards for the old base
