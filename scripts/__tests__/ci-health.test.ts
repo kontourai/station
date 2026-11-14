@@ -1299,11 +1299,36 @@ else {
       expect(snapshot).toMatchObject({
         incomplete: true,
         unfinishedOnly: true,
+        stuck: { jobs: 0, runs: 0, afterHours: 6 },
         reasons: ['window includes 1 unfinished jobs'],
       });
       expect(result.stderr).toContain(
         '::warning title=CI health window incomplete::window includes 1 unfinished jobs',
       );
+      expect(result.stderr).not.toContain('stuck');
+      expect(result.status).toBe(0);
+    });
+
+    // Not excused as running work: its own warning, and it is not counted as
+    // unfinished. It does not fail the run (not a throughput measurement).
+    it.each([
+      [
+        'stuck',
+        'window includes 1 jobs unfinished for more than 6 hours (stuck)',
+      ],
+      [
+        'stuckRun',
+        'window includes 1 runs with no jobs, unfinished for more than 6 hours (stuck)',
+      ],
+    ])('reports %s work separately from running work', (mode, reason) => {
+      const result = setup()(mode, { createdHoursAgo: 7 });
+      const snapshot = JSON.parse(result.stdout);
+      expect(snapshot.reasons).toEqual([reason]);
+      expect(snapshot.unfinishedOnly).toBe(true);
+      expect(result.stderr).toContain(
+        `::warning title=CI health stuck work::${reason}; this is stuck work, not work still running`,
+      );
+      expect(result.stderr).not.toContain('still running at the window end');
       expect(result.status).toBe(0);
     });
 

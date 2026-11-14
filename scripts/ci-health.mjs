@@ -845,15 +845,55 @@ export function qualificationMetrics(runs, jobs) {
     ).length,
   };
 }
+/**
+ * Work unfinished this long after it was created is stuck, not running. No
+ * job here may run longer than 125 minutes (the largest timeout-minutes in
+ * .github/workflows) and the merge queue gives up after 120, so six hours
+ * leaves well over three hours of queue wait before anything is called
+ * stuck. A scheduled window ends two hours behind collection and spans six,
+ * so its oldest work is eight hours old: work created in a window's first two
+ * hours and still unfinished is reported.
+ */
+export const STUCK_AFTER_HOURS = 6;
+const STUCK = ' (stuck)';
 export function buildSnapshot(data, options) {
   const capacity = capacityMetrics(data.jobs, options.until, options.since);
   const reasons = [...data.reasons];
+  const collected = time(data.collectedAt ?? options.until);
+  const stale = (item) =>
+    collected - time(item.created_at) > STUCK_AFTER_HOURS * 60 * minute;
+  const stuckJobs = data.jobs.filter(
+    (job) =>
+      job.conclusion == null &&
+      time(job.created_at) < time(options.until) &&
+      stale(job),
+  ).length;
+  // A run can sit queued with no jobs at all (seen on 2026-11-11); it never
+  // reaches the job counts, so it is counted here.
+  const runKeys = new Set(data.jobs.map((job) => job.health_run_key));
+  const stuckRuns = (data.runs ?? []).filter(
+    (run) =>
+      run.status !== 'completed' &&
+      !runKeys.has(`${run.id}:${run.run_attempt}`) &&
+      stale(run),
+  ).length;
   if (capacity.unattributed)
     reasons.push(
       `window includes ${capacity.unattributed} jobs with unavailable runner attribution`,
     );
-  if (capacity.unfinished)
-    reasons.push(`window includes ${capacity.unfinished} unfinished jobs`);
+  // Stuck jobs are reported below, not as unfinished (still running) work.
+  if (capacity.unfinished > stuckJobs)
+    reasons.push(
+      `window includes ${capacity.unfinished - stuckJobs} unfinished jobs`,
+    );
+  if (stuckJobs)
+    reasons.push(
+      `window includes ${stuckJobs} jobs unfinished for more than ${STUCK_AFTER_HOURS} hours${STUCK}`,
+    );
+  if (stuckRuns)
+    reasons.push(
+      `window includes ${stuckRuns} runs with no jobs, unfinished for more than ${STUCK_AFTER_HOURS} hours${STUCK}`,
+    );
   return {
     schema: 'station-ci-health/v1',
     repo: options.repo,
@@ -862,12 +902,13 @@ export function buildSnapshot(data, options) {
     collectedAt: data.collectedAt ?? options.until,
     incomplete: reasons.length > 0,
     // Incomplete only because work in the window had not finished (an
-    // unfinished job has no runner attribution yet either). The next window
-    // measures that work; nothing failed to be collected.
+    // unfinished job has no runner attribution yet either), whether still
+    // running or stuck. Nothing failed to be collected.
     unfinishedOnly:
       data.reasons.length === 0 &&
-      capacity.unfinished > 0 &&
+      (capacity.unfinished > 0 || stuckRuns > 0) &&
       capacity.unattributed === capacity.unattributedUnfinished,
+    stuck: { jobs: stuckJobs, runs: stuckRuns, afterHours: STUCK_AFTER_HOURS },
     reasons,
     listingCapHits: data.capHits,
     mergeQueue: mergeMetrics(
@@ -1091,11 +1132,23 @@ async function main() {
   // merge base, unavailable ledger) fails the run. A window that is
   // incomplete only because work was still running is reported but does not:
   // the scheduled run would otherwise be red for a measurement gap.
-  if (snapshot.incomplete && snapshot.unfinishedOnly)
-    console.error(
-      `::warning title=CI health window incomplete::${snapshot.reasons.join('; ')} (still running at the window end; not a collection failure)`,
+  // Stuck work gets its own warning and is not described as still running.
+  // It does not fail the run: it is not a throughput measurement, and its
+  // owner is whoever clears the stuck run.
+  if (snapshot.incomplete && snapshot.unfinishedOnly) {
+    const stuck = snapshot.reasons.filter((reason) => reason.endsWith(STUCK));
+    const running = snapshot.reasons.filter(
+      (reason) => !reason.endsWith(STUCK),
     );
-  else if (snapshot.incomplete) process.exitCode = 1;
+    if (stuck.length)
+      console.error(
+        `::warning title=CI health stuck work::${stuck.join('; ')}; this is stuck work, not work still running`,
+      );
+    if (running.length)
+      console.error(
+        `::warning title=CI health window incomplete::${running.join('; ')} (still running at the window end; not a collection failure)`,
+      );
+  } else if (snapshot.incomplete) process.exitCode = 1;
 }
 if (invokedDirectly(import.meta.url))
   main().catch((error) => {
