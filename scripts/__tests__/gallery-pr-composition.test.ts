@@ -38,6 +38,11 @@ const ATTRIBUTION = stepRun((step) => step.id === 'attribution', 'attribution');
 const VERDICT = stepRun((step) => step.name === 'Gallery verdict', 'verdict');
 
 const makeTempDir = trackTempDirs();
+// What the composition step records for the attribution step.
+const NODE_ON_PATH = execFileSync('bash', ['-c', 'command -v node'], {
+  encoding: 'utf8',
+  windowsHide: true,
+}).trim();
 const ENV = {
   ...process.env,
   GIT_AUTHOR_NAME: 't',
@@ -152,9 +157,7 @@ describe('PR Gallery composes the head with the current base (#4898)', () => {
     expect(existsSync(join(pr.root, 'from-main.txt'))).toBe(true);
     // Not upstream's moving branch tip.
     expect(existsSync(join(pr.root, 'later.txt'))).toBe(false);
-    expect(result.output).toBe(
-      `base=${upstream.base}\nnode=${execFileSync('bash', ['-c', 'command -v node'], { encoding: 'utf8' }).trim()}\n`,
-    );
+    expect(result.output).toBe(`base=${upstream.base}\nnode=${NODE_ON_PATH}\n`);
     expect(result.summary).toContain(`merged into main at ${upstream.base}`);
   });
 
@@ -171,9 +174,7 @@ describe('PR Gallery composes the head with the current base (#4898)', () => {
     });
     expect(result.status, result.out).toBe(0);
     expect(pr.git('rev-parse', 'HEAD')).toBe(head);
-    expect(result.output).toBe(
-      `base=${upstream.base}\nnode=${execFileSync('bash', ['-c', 'command -v node'], { encoding: 'utf8' }).trim()}\n`,
-    );
+    expect(result.output).toBe(`base=${upstream.base}\nnode=${NODE_ON_PATH}\n`);
   });
 
   it('fails on a conflict, names the file, and leaves no merge in progress', () => {

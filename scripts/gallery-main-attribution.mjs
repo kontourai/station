@@ -143,7 +143,7 @@ export function normaliseFailureDetail(detail) {
 }
 
 /** A judge failure reduced to what compare matches on. */
-export function failureKey({ screen, identity, detail }) {
+function failureKey({ screen, identity, detail }) {
   return {
     screen,
     identity,
@@ -160,7 +160,7 @@ const key = ({ screen, identity, signature }) =>
  * Why a composed capture cannot support an excuse, or null when it is a
  * complete full run: every declared screen recorded, no targeted selection.
  */
-export function incompleteCapture(capture) {
+function incompleteCapture(capture) {
   if (capture.selection !== null)
     return `the capture is a targeted run (selection: ${JSON.stringify(capture.selection)})`;
   if (
