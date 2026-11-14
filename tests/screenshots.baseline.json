@@ -161,7 +161,7 @@
       "name": "desktop-conversation-resync",
       "width": 1440,
       "height": 900,
-      "sha256": "8df7d323e6aba801fd9ab84f993bb864cac314e20753abf157654612f95aeb42"
+      "sha256": "77de0b0b5b26973551b1b3cbdb8fe56240f8303f0a6b1097cb33694456d316ea"
     },
     {
       "name": "detected-project-desktop",
@@ -185,7 +185,7 @@
       "name": "home",
       "width": 1440,
       "height": 900,
-      "sha256": "2eb0149fbce4692f4481c1cee9bdd8e5304d5c261bb2c973e50323abe25f3089"
+      "sha256": "d6fa793158f6236e5e4cdd4361abb7d643f5957c9da07a8de1bc1658576ccbab"
     },
     {
       "name": "inventory-drilldown-older-host-dark-desktop",
@@ -293,7 +293,7 @@
       "name": "mobile-home",
       "width": 390,
       "height": 844,
-      "sha256": "a26177013bad0b4a315ab58a2763176707efab90352e857a72c5dc84b61a44dc"
+      "sha256": "2eb7895c94c69da9f4486e8c309b1b4f9ecf5d4bcf015ce8f9c9870ab2081b0f"
     },
     {
       "name": "mobile-http-consent-320",
@@ -353,37 +353,37 @@
       "name": "new-chat-dark-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "734335e8d0c5acc3ddb76120db8482fc08ad9d83c9bda67307075e8ed4a20e0b"
+      "sha256": "3417e55f0b73dedb7a2a31a73f93f87d76ff107b52a329769d9f2944ceac43fe"
     },
     {
       "name": "new-chat-dark-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "9f8b3fa0b600704017d46dc4cf741cc496327a77d120b36072d8543cf0f61299"
+      "sha256": "89527575778d525c072e05f8073222d8d70729257cfdf684e518e9931c8b9fb9"
     },
     {
       "name": "new-chat-dark-phone",
       "width": 412,
       "height": 915,
-      "sha256": "59883c34686f6f0f16b7dcc1a3849f4c214b43a3483a5038ca7e2c9c11111fbd"
+      "sha256": "a9d7911284bd9b17390d350f9fb3536990cd90e7f51fabe58725a23a5ed2da9b"
     },
     {
       "name": "new-chat-light-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "8597831ad634eec6e47eaed54ce37558e174291798e38e988b25d3c008545621"
+      "sha256": "6be08c7471517746c13ecba3087ffa94c01ce440eca376d8e5bd9d3b159523ec"
     },
     {
       "name": "new-chat-light-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "04588ea62f72ef4550d043b42c7a4be2e895c960063e23607ab554d4e1751655"
+      "sha256": "1e53d0e5a6a4b9a646ffba3f010e7c1517b78b87c9d25805e974f96141d74656"
     },
     {
       "name": "new-chat-light-phone",
       "width": 412,
       "height": 915,
-      "sha256": "c72705f2028421699eaf4f32e2e46a9a02edc2ccf1740fb5cadd6f87d4af447e"
+      "sha256": "cdfa3fb163ee64a420924f546d7408c64dd45c521fe2e3357e81fe992e9d2fa4"
     },
     {
       "name": "overlay-add-job-modal",
