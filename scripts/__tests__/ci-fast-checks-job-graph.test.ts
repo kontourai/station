@@ -591,11 +591,15 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       const call = jobs['source-policy'] as Job & {
         with?: Record<string, string>;
       };
-      expect(call.uses).toBe('./.github/workflows/source-verification-policy.yml');
+      expect(call.uses).toBe(
+        './.github/workflows/source-verification-policy.yml',
+      );
       const queueHead = 'd'.repeat(40);
       const github: Record<string, unknown> = {
         sha: queueHead,
-        event: { merge_group: { head_sha: queueHead, base_sha: 'e'.repeat(40) } },
+        event: {
+          merge_group: { head_sha: queueHead, base_sha: 'e'.repeat(40) },
+        },
       };
       expect(
         evaluate(

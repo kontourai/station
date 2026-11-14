@@ -524,7 +524,10 @@ describe('source verification reconciler API boundary', () => {
     expect((await execute('workflow_run')).state).toBe('success');
     // `completed` arrives after the run's tail (title, Merge-queue
     // regression) finished; the proof jobs and so the verdict are unchanged.
-    Object.assign(state.runs[0], { status: 'completed', conclusion: 'success' });
+    Object.assign(state.runs[0], {
+      status: 'completed',
+      conclusion: 'success',
+    });
     expect((await execute('workflow_run')).state).toBe('success');
     expect(state.postPaths).toEqual(Array(3).fill(`statuses/${head}`));
     expect(state.posts.map((post) => post.state)).toEqual([
