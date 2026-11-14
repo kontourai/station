@@ -145,6 +145,16 @@ for (const viewport of [
     }, testInfo) => {
       await page.setViewportSize(viewport);
       await seed(page);
+      await page.route('**/api/me/preferences', (route) =>
+        route.request().method() === 'GET'
+          ? route.fulfill({
+              json: {
+                success: true,
+                data: { schemaVersion: 1, values: { theme } },
+              },
+            })
+          : rejectUnexpectedFixtureRequest(route),
+      );
       await page.addInitScript(
         (value) =>
           localStorage.setItem(
@@ -156,6 +166,7 @@ for (const viewport of [
       const childUrl = `/?dock=open&chat=${parent}&surface=chat&session=${parent}&child=child-review&childTitle=Review+files`;
       await page.goto(childUrl);
       await dismissSetupLauncher(page);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       const log = page.getByRole('log', { name: 'Conversation transcript' });
       const trail = page.getByRole('navigation', { name: 'Chat breadcrumb' });
       await expect(trail).toContainText('Review files');
