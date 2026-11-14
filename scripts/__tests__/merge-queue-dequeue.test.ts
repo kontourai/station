@@ -463,7 +463,30 @@ describe.runIf(process.platform !== 'win32')(
         number: 7,
         head: { ref: 'feature', repo: { full_name: 'owner/repo' } },
       };
+      const otherPr = {
+        number: 8,
+        head: { ref: 'other-feature', repo: { full_name: 'owner/repo' } },
+      };
       const events: Record<string, Record<string, unknown>> = {
+        labelB: {
+          event_name: 'pull_request_target',
+          event: {
+            action: 'labeled',
+            label: { name: 'station-autoland' },
+            pull_request: otherPr,
+          },
+        },
+        greenCiB: {
+          event_name: 'workflow_run',
+          event: {
+            workflow_run: {
+              conclusion: 'success',
+              event: 'pull_request_target',
+              head_branch: 'other-feature',
+              head_repository: { full_name: 'owner/repo' },
+            },
+          },
+        },
         label: {
           event_name: 'pull_request_target',
           event: {
@@ -568,6 +591,18 @@ describe.runIf(process.platform !== 'win32')(
         ),
       );
       expect(workflow.jobs.arm.concurrency?.['cancel-in-progress']).toBe(false);
+      // Another PR's arm events neither displace this PR's pending arm run
+      // nor queue behind it: the key separates PRs.
+      for (const other of ['labelB', 'greenCiB'])
+        expect(replay(['label', 'greenCi', other])).toEqual([
+          'label',
+          'greenCi',
+          other,
+        ]);
+      const group = (name: string) =>
+        interpolate(workflow.jobs.arm.concurrency?.group ?? '', context(name));
+      expect(group('labelB')).not.toBe(group('label'));
+      expect(group('greenCiB')).toBe(group('labelB'));
     });
 
     it('loads the trusted workflow helper when a PR event base predates that helper', async () => {
