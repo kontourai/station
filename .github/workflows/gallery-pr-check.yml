@@ -43,15 +43,32 @@ name: "PR: Gallery"
 # gallery-relevant commits land between their last capture and their merge
 # group (median 1.2 h, p90 8.2 h). Pushing again (or merging main) re-runs it.
 #
+# A re-run of a job keeps the original event's `github.sha`, so it composes
+# with main as it was then; a new push (or a reopened PR) refreshes it.
+#
 # A red capture is then attributed ("Check whether main already fails the
 # same screens"): the failing screens are captured again on the bare base
 # from a worktree of it, judged by scripts/gallery-main-attribution.mjs and
-# the judge from that base. If every failure (screen plus finding identity)
-# also fails on main, the job passes with a warning naming main's commit, so
-# a break already on main does not turn every unrelated PR red. Anything
-# else, including an attribution that could not run, stays red. Capture and
-# assertions therefore record their outcome (continue-on-error) and the last
-# step, "Gallery verdict", is the one place the job's result is decided.
+# the judge from that base. If every failure also fails on main the same way
+# (screen, finding identity, and for a screen that did not render its
+# normalised error), the capture was complete, and the screens that did
+# render pass the comparison's integrity checks, the job passes with a
+# warning naming main's commit, so a break already on main does not turn
+# every unrelated PR red. Anything else, including an attribution that could
+# not run, stays red. Capture and assertions therefore record their outcome
+# (continue-on-error) and the last step, "Gallery verdict", is the one place
+# the job's result is decided.
+#
+# The base's judge is authoritative for an honest PR. It is NOT a security
+# boundary: by the time it runs, the candidate's own code (its install and
+# capture) has run on this runner and could have shimmed `node` or set
+# NODE_OPTIONS through GITHUB_PATH/GITHUB_ENV, left a process behind, or
+# planted objects in the shared .git. A malicious PR could already forge its
+# own green through its own spec, so this gives an attacker nothing new;
+# nothing downstream may trust the Gallery conclusion, which is why it is not
+# a required check. The cheap hardening below (no replace refs, a verified
+# clean base checkout, node by the absolute path resolved before any
+# candidate code ran) keeps an honest PR's accidents out, nothing more.
 #
 # The capture does NOT run on merge-queue candidates. Gallery is not a
 # required ruleset context, so a merge-group verdict could never stop a
@@ -306,6 +323,13 @@ jobs:
             fi
           fi
           echo "base=${BASE_SHA}" >> "$GITHUB_OUTPUT"
+          # Resolved before any candidate code runs, for the attribution step.
+          node_bin=$(command -v node)
+          if [[ "$node_bin" != /* ]]; then
+            echo "::error title=Gallery composition::Cannot resolve node to an absolute path."
+            exit 1
+          fi
+          echo "node=${node_bin}" >> "$GITHUB_OUTPUT"
           printf 'Captured the pull request head %s merged into main at %s (composed %s).\n' \
             "$HEAD_SHA" "$BASE_SHA" "$(git rev-parse HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
 
@@ -362,11 +386,13 @@ jobs:
         run: node scripts/gallery-ui-findings.mjs check --summary="$GITHUB_STEP_SUMMARY"
 
       # Only after a screen-level failure, and never after an integrity
-      # failure of the comparison. Everything that decides runs from a
-      # worktree of the base commit (the attribution script and its judge),
-      # so the candidate supplies only the composed capture and its own
-      # allowlist. Every path that cannot decide answers `pr`, which keeps the
-      # job red; the step itself failing does too.
+      # failure of the comparison. The attribution script and its judge come
+      # from a worktree of the base commit, checked out without replace refs
+      # and verified clean, and run with the node resolved before candidate
+      # code ran. That keeps the rule out of an honest PR's reach; it is not
+      # a boundary against a malicious one (see the header). Every path that
+      # cannot decide answers `pr`, which keeps the job red; the step itself
+      # failing does too.
       - id: attribution
         name: Check whether main already fails the same screens
         if: "!cancelled() && steps.compose.outcome == 'success' && steps.diff.outcome != 'failure' && (steps.capture.outcome == 'failure' || steps.assertions.outcome == 'failure')"
@@ -374,20 +400,25 @@ jobs:
         env:
           BASE_SHA: ${{ steps.compose.outputs.base }}
           CAPTURE: ${{ steps.capture.outcome }}
+          NODE_BIN: ${{ steps.compose.outputs.node }}
         run: |
           set -euo pipefail
           decide() {
             echo "verdict=$1" >> "$GITHUB_OUTPUT"
             exit 0
           }
+          export GIT_NO_REPLACE_OBJECTS=1
           base_root="$RUNNER_TEMP/gallery-base"
-          if ! git worktree add --detach "$base_root" "$BASE_SHA"; then
-            echo "::warning::Cannot check out main at ${BASE_SHA}; the failure is not attributed."
+          if [[ "$NODE_BIN" != /* ]] ||
+            ! git -c core.useReplaceRefs=false worktree add --detach "$base_root" "$BASE_SHA" ||
+            [[ "$(git -C "$base_root" rev-parse HEAD)" != "$BASE_SHA" ]] ||
+            [[ -n "$(git -C "$base_root" status --porcelain --untracked-files=all)" ]]; then
+            echo "::warning::Cannot check out a clean copy of main at ${BASE_SHA}; the failure is not attributed."
             decide pr
           fi
           attribution="$base_root/scripts/gallery-main-attribution.mjs"
           plan="$RUNNER_TEMP/gallery-attribution-plan.json"
-          if ! decision=$(node "$attribution" plan --gallery=gallery \
+          if ! decision=$("$NODE_BIN" "$attribution" plan --gallery=gallery \
               --allowlist=tests/gallery-ui-findings.allowlist.json \
               --base-root="$base_root" --out="$plan"); then
             echo "::warning::The attribution plan failed; the failure is not attributed."
@@ -409,7 +440,7 @@ jobs:
               npm run dependencies:ci &&
               npm run test:e2e:screenshot -- --screens="$screens"
           ) || echo "The base install or capture exited non-zero."
-          if ! result=$(node "$attribution" compare --plan="$plan" \
+          if ! result=$("$NODE_BIN" "$attribution" compare --plan="$plan" \
               --base-root="$base_root" --base-sha="$BASE_SHA" \
               --summary="$GITHUB_STEP_SUMMARY"); then
             echo "::warning::The attribution comparison failed; the failure is not attributed."
@@ -421,7 +452,7 @@ jobs:
           # still runs the comparison (integrity and the pixel report) over
           # every screen that rendered. The excused screens are not compared.
           if [[ "$CAPTURE" == failure ]]; then
-            passing=$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).passing.join(","))' "$plan")
+            passing=$("$NODE_BIN" -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).passing.join(","))' "$plan")
             if [[ -z "$passing" ]] || ! npm run screenshot:diff -- --report-only \
                 --screens="$passing" --summary="$GITHUB_STEP_SUMMARY"; then
               echo "::error title=Gallery comparison::The screens that rendered did not pass the comparison's integrity checks, so the failure is not excused."

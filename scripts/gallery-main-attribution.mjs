@@ -28,9 +28,12 @@
 //
 // Both judge with the copy of scripts/gallery-ui-findings.mjs that sits next
 // to this file. The workflow runs this file from a worktree of the base
-// commit, so the candidate's tree supplies the captures and its own
-// allowlist but never the rule that excuses them. Exit 2 is a usage or input
-// error, never a verdict; the workflow treats it as `verdict=pr`.
+// commit, so for an honest pull request the candidate's tree supplies the
+// captures and its own allowlist but not the rule that excuses them. That is
+// not a security boundary: the candidate's code has already run on the same
+// runner, and the PR Gallery conclusion is not trusted by anything (see
+// gallery-pr-check.yml). Exit 2 is a usage or input error, never a verdict;
+// the workflow treats it as `verdict=pr`.
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { judge, readAllowlist } from './gallery-ui-findings.mjs';

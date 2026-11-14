@@ -152,7 +152,9 @@ describe('PR Gallery composes the head with the current base (#4898)', () => {
     expect(existsSync(join(pr.root, 'from-main.txt'))).toBe(true);
     // Not upstream's moving branch tip.
     expect(existsSync(join(pr.root, 'later.txt'))).toBe(false);
-    expect(result.output).toBe(`base=${upstream.base}\n`);
+    expect(result.output).toBe(
+      `base=${upstream.base}\nnode=${execFileSync('bash', ['-c', 'command -v node'], { encoding: 'utf8' }).trim()}\n`,
+    );
     expect(result.summary).toContain(`merged into main at ${upstream.base}`);
   });
 
@@ -169,7 +171,9 @@ describe('PR Gallery composes the head with the current base (#4898)', () => {
     });
     expect(result.status, result.out).toBe(0);
     expect(pr.git('rev-parse', 'HEAD')).toBe(head);
-    expect(result.output).toBe(`base=${upstream.base}\n`);
+    expect(result.output).toBe(
+      `base=${upstream.base}\nnode=${execFileSync('bash', ['-c', 'command -v node'], { encoding: 'utf8' }).trim()}\n`,
+    );
   });
 
   it('fails on a conflict, names the file, and leaves no merge in progress', () => {
@@ -430,11 +434,13 @@ function attributionFixture({
   composedManifest,
   capture = 'failure',
   diffStatus = 0,
+  nodeBin = process.execPath,
 }: {
   composed: unknown[];
   composedManifest?: string;
   capture?: string;
   diffStatus?: number;
+  nodeBin?: string;
   baseCapture: string | null;
   baseScreens?: string[];
   baseAllowlist?: Record<string, string[]>;
@@ -504,7 +510,7 @@ function attributionFixture({
     const result = runStep(
       ATTRIBUTION,
       root,
-      { BASE_SHA: base, CAPTURE: capture },
+      { BASE_SHA: base, CAPTURE: capture, NODE_BIN: nodeBin },
       bin,
     );
     return {
@@ -513,7 +519,7 @@ function attributionFixture({
       calls: existsSync(calls) ? readFileSync(calls, 'utf8') : '',
     };
   };
-  return { run };
+  return { run, root, git, base };
 }
 
 describe('PR Gallery attributes a failure main already has', () => {
@@ -832,6 +838,48 @@ describe('an excuse needs a complete capture and a sound comparison', () => {
     }).run();
     expect(result.output, result.out).toBe('verdict=main\n');
     expect(result.calls).not.toContain('screenshot:diff');
+  });
+});
+
+describe('the base checkout is not what a planted replace ref says', () => {
+  it('ignores refs/replace for the base commit', () => {
+    const fixture = attributionFixture({
+      composed: [failedCapture('child-chat-dark-390'), screen('home')],
+      // main renders the screen, so the honest answer is pr.
+      baseCapture: manifest(
+        [screen('child-chat-dark-390')],
+        ['child-chat-dark-390'],
+      ),
+    });
+    // A forged base whose attribution script always excuses.
+    const forged = join(fixture.root, 'scripts/gallery-main-attribution.mjs');
+    const honest = readFileSync(forged, 'utf8');
+    writeFileSync(
+      forged,
+      "console.log(process.argv[2] === 'plan' ? 'screens=child-chat-dark-390' : 'FORGED\\nverdict=main');\n",
+    );
+    fixture.git('add', '.');
+    const tree = fixture.git('write-tree');
+    const forgedCommit = fixture.git('commit-tree', tree, '-m', 'forged base');
+    fixture.git('replace', fixture.base, forgedCommit);
+    writeFileSync(forged, honest);
+    fixture.git('add', '.');
+    const result = fixture.run();
+    expect(result.out).not.toContain('FORGED');
+    expect(result.output, result.out).toBe('verdict=pr\n');
+  });
+
+  it('refuses a node that is not an absolute path', () => {
+    const result = attributionFixture({
+      composed: [failedCapture('child-chat-dark-390'), screen('home')],
+      baseCapture: manifest(
+        [failedCapture('child-chat-dark-390')],
+        ['child-chat-dark-390'],
+      ),
+      nodeBin: 'node',
+    }).run();
+    expect(result.output).toBe('verdict=pr\n');
+    expect(result.calls).toBe('');
   });
 });
 
