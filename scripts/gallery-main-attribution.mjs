@@ -207,7 +207,7 @@ function runCompare(options) {
   return 0;
 }
 
-export function main(argv = process.argv.slice(2)) {
+function main(argv = process.argv.slice(2)) {
   try {
     const options = parseArgs(argv);
     return options.mode === 'plan' ? runPlan(options) : runCompare(options);
