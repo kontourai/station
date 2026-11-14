@@ -13,7 +13,27 @@ import { DisclosureToggle } from '../DisclosureToggle';
 import { Empty, ErrorState, SkeletonBlock } from '../state';
 import './Updates.css';
 
-function NotesBody({ body }: { body: string }) {
+function changelogBody(body: string) {
+  return (
+    body
+      .replace(/^## Installation[^\n]*\n[\s\S]*?(?=^## |$(?![\s\S]))/gm, '')
+      // Exact legacy portable-server template, before Installation had a heading.
+      .replace(
+        /^Portable server Nightly (\d+\.\d+\.\d+-nightly\.\d+(?:\.\d+)?) from ([a-f0-9]{40})\. Install with: curl -fsSL https:\/\/raw\.githubusercontent\.com\/kontourai\/station\/main\/install\.sh \| STATION_CHANNEL=nightly sh \(this release's install\.sh and install\.ps1 are the installers at \2\)\. These assets are immutable\.\s*$/,
+        '',
+      )
+      .replace(
+        /^Portable server Nightly \d+\.\d+\.\d+-nightly\.\d+(?:\.\d+)? from [a-f0-9]{40}\. Install through the signed rolling manifest \(portable-nightly\); these assets are immutable\.\s*$/,
+        '',
+      )
+      .trim()
+  );
+}
+
+function NotesBody({ body, url }: { body: string; url: string }) {
+  const entries = [...body.matchAll(/^(?:[-*+] |\d+\. )/gm)];
+  const truncated = entries.length > 50;
+  const visible = truncated ? body.slice(0, entries[50].index).trim() : body;
   return (
     <div className="release-notes__body">
       <ReactMarkdown
@@ -34,8 +54,13 @@ function NotesBody({ body }: { body: string }) {
           img: ({ alt }) => <span>{alt}</span>,
         }}
       >
-        {body}
+        {visible}
       </ReactMarkdown>
+      {truncated && (
+        <a href={url} target="_blank" rel="noopener noreferrer">
+          See all changes
+        </a>
+      )}
     </div>
   );
 }
@@ -61,13 +86,10 @@ function PublishedNotes({
   release: StationReleaseNotes;
   history?: boolean;
 }) {
+  const body = changelogBody(release.body);
   return (
     <article className="content-stack">
-      {release.body.trim() ? (
-        <NotesBody body={release.body} />
-      ) : (
-        <MissingNotes />
-      )}
+      {body ? <NotesBody body={body} url={release.url} /> : <MissingNotes />}
       <footer className="release-notes__links">
         <a href={release.url} target="_blank" rel="noopener noreferrer">
           View this release on GitHub
@@ -92,13 +114,16 @@ export function ReleaseNotes({
   notes,
   active = true,
   collapsible = false,
+  title = 'What’s new',
 }: {
   version: string;
   nativeApp?: boolean;
   notes?: string | null;
   active?: boolean;
   collapsible?: boolean;
+  title?: string;
 }) {
+  const fallback = changelogBody(notes ?? '');
   const [open, setOpen] = useState(false);
   const expanded = !collapsible || open;
   const id = useId();
@@ -115,10 +140,10 @@ export function ReleaseNotes({
           onToggle={() => setOpen(!open)}
           controls={id}
         >
-          What’s new
+          {title}
         </DisclosureToggle>
       ) : (
-        <h4>What’s new</h4>
+        <h4>{title}</h4>
       )}
       {expanded && (
         <div id={id} className="content-stack">
@@ -126,8 +151,13 @@ export function ReleaseNotes({
             <PublishedNotes release={query.data} />
           ) : (
             <>
-              {notes?.trim() && <NotesBody body={notes} />}
-              {query.isFetching && !notes?.trim() && (
+              {fallback && (
+                <NotesBody
+                  body={fallback}
+                  url={`${STATION_RELEASE_HISTORY_URL}/tag/${nativeApp && version.includes('-nightly.') ? 'desktop-' : ''}v${encodeURIComponent(version)}`}
+                />
+              )}
+              {query.isFetching && !fallback && (
                 <SkeletonBlock count={1} label="Loading release notes" />
               )}
               {query.isError ? (
@@ -142,9 +172,7 @@ export function ReleaseNotes({
                 />
               ) : (
                 !query.isFetching &&
-                !notes?.trim() && (
-                  <MissingNotes retry={() => void query.refetch()} />
-                )
+                !fallback && <MissingNotes retry={() => void query.refetch()} />
               )}
             </>
           )}

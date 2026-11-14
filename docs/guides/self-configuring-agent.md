@@ -359,7 +359,7 @@ repeats the folder decision; tool approval does not bypass them.
 ### Reading a referenced conversation
 
 When a person references another conversation in a message (the composer's
-conversation picker, or a conversation dragged in from Activity or the inbox),
+conversation picker, or a conversation dragged in from the inbox),
 the message carries a link to it, its id, and a line telling the receiving
 Agent to read it with `read_conversation`. The read returns up to 50 messages
 per page, at most 64 KB serialized, oldest first, with a `nextCursor` for the
@@ -532,10 +532,10 @@ Session by its `sessionId`, without creating a task.
   `clientOrigin.sender` (`kind: 'agent-session'`, the sending `sessionId`, its
   title, Agent and engine as Station recorded them, and the call's `requestKey`)
   beside the unchanged `internal` actor. `read_conversation` and the Session
-  digest carry that provenance. Chat and Activity show the sender's own words
+  digest carry that provenance. Chat shows the sender's own words
   as that agent's message, with a link to the sending Session; the sender's transcript shows the call as
   "Sent to <Session>" with its outcome. Links open the exact sending call or
-  received input in Activity by its recorded request key. The transcript may
+  received input in Chat by its recorded request key. The transcript may
   read up to 20 older pages to establish a unique match, then focuses and
   announces it. A missing or repeated key is an explicit unavailable or
   ambiguous anchor; reaching the page limit selects nothing. The public
@@ -543,14 +543,14 @@ Session by its `sessionId`, without creating a task.
   carries a sent/received direction and a 1–128 character request key, with
   a 1–512 character Session id. The parser refuses a mismatched or absent
   Session and drops an invalid anchor without treating it as an exact target.
-  Activity takes the anchor through its ordinary one-shot surface intent;
+  Chat takes the anchor through its ordinary one-shot surface intent;
   remounting cannot replay it, while a new intent token can reveal it again.
   Sender accents use the canonical sending Session id, so a changed display
   name or engine does not recolor that Session.
   On phones, a muted cause row expands to the sender details, message and link.
   Engine-opened replies retain a provider cause on the assistant row after
   settlement and reload; origin is never inferred from prompt text.
-  Inbox and Activity mark the latest agent-delivered input without changing
+  The inbox and Chat mark the latest agent-delivered input without changing
   the status ladder. Settled delegated-result delivery remains dependent on
   #3158; a declared provenance kind alone does not deliver a result.
   The engine's own tool-call id is not visible to Station's tool server, so

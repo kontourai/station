@@ -183,12 +183,41 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       rebindBeforeDispatch: true,
     },
     {
-      label: 'Claude first handoff seed failure fences ordinary native reuse',
+      label:
+        'Codex handoff seed completed without a delivery witness stays refused',
+      source: CLAUDE,
+      target: CODEX,
+      nativeReturn: false,
+      preserveProfile: false,
+      dropHandoffSeedWitness: true,
+    },
+    {
+      label:
+        'Claude first handoff seed failure redelivers context in a successor',
       source: CODEX,
       target: CLAUDE,
       nativeReturn: true,
       preserveProfile: false,
-      failFirstHandoffSeed: true,
+      failFirstHandoffSeed: 'runtime.error' as const,
+    },
+    {
+      label:
+        'Claude first handoff seed interrupted redelivers context in a successor',
+      source: CODEX,
+      target: CLAUDE,
+      nativeReturn: true,
+      preserveProfile: false,
+      failFirstHandoffSeed: 'turn.aborted' as const,
+    },
+    {
+      label:
+        'Claude handoff seed and its redelivery both interrupted redeliver again',
+      source: CODEX,
+      target: CLAUDE,
+      nativeReturn: true,
+      preserveProfile: false,
+      failFirstHandoffSeed: 'turn.aborted' as const,
+      failRedeliveredSeed: true,
     },
   ])(
     '$label preserves one Conversation across an explicit, replay-safe Session handoff and an ordinary target turn',
@@ -203,7 +232,12 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       raceContextReservation = false,
       restartBeforeReturnStart = false,
       missingSeedInvocation = false,
-      failFirstHandoffSeed = false,
+      failRedeliveredSeed = false,
+      dropHandoffSeedWitness = false,
+      failFirstHandoffSeed = undefined as
+        | 'runtime.error'
+        | 'turn.aborted'
+        | undefined,
       rebindBeforeDispatch = false,
     }) => {
       const targetProfileId = preserveProfile ? source.agent : target.agent;
@@ -534,7 +568,9 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           agent: targetRef,
         },
       };
-      targetAdapter.failNextTranscriptSeed = failFirstHandoffSeed;
+      targetAdapter.failNextTranscriptSeed = failFirstHandoffSeed !== undefined;
+      if (failFirstHandoffSeed)
+        targetAdapter.seedFailureMethod = failFirstHandoffSeed;
       const handoff = await post(
         `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
         handoffBody,
@@ -566,9 +602,10 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
               )?.status,
             ).toBe('failed');
           });
-          // #4179: the handoff Session is still live, but its failed seed
-          // fences the next ordinary turn, so the open read does not say
-          // whether that turn starts a Session.
+          // The failed seed was never acknowledged, so the handoff Session
+          // cannot take an ordinary turn; the next one starts a successor
+          // that carries the whole conversation again, and the open read
+          // says so rather than leaving the conversation stuck.
           const opened = await service.resolveConversationOpen(
             conversationId,
             sessionReadAuthorityFromRequest(OWNER, undefined, undefined),
@@ -576,15 +613,54 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           expect(opened).toMatchObject({
             status: 'resolved',
             currentSessionId: handoffReceipt.data.sessionId,
+            nextTurnStartsSession: true,
           });
-          expect(opened).not.toHaveProperty('nextTurnStartsSession');
-          await expect(
-            execute(target, {
+          // Switch, stop, send, stop: the redelivery's own first turn is
+          // stopped too.
+          targetAdapter.failNextTranscriptSeed = failRedeliveredSeed;
+          await execute(target, {
+            conversationId,
+            message: 'Continue after the first handoff seed failed.',
+          });
+          await eventually(() => expect(targetAdapter.turns).toHaveLength(2));
+          const redelivered = targetAdapter.turns[1]!;
+          expect(redelivered.threadId).not.toBe(handoffReceipt.data.sessionId);
+          expect(
+            store.conversationSessions(conversationId).at(-1)?.sessionId,
+          ).toBe(redelivered.threadId);
+          expect(redelivered.ambientContext).toContain(CONTEXT_TOKEN);
+          // Never the failed Session's native thread: it never took the seed.
+          expect(targetAdapter.starts.at(-1)?.resumeCursor).toBeUndefined();
+          if (failRedeliveredSeed) {
+            await eventually(async () => {
+              const current = await service.readCurrentConversationSession(
+                conversationId,
+                INTERNAL_SESSION_READ_SCOPE,
+              );
+              expect(current?.session.threadId).toBe(redelivered.threadId);
+              expect(current?.session.hasActiveTurn).toBe(false);
+              expect(
+                store
+                  .listEvents(redelivered.threadId)
+                  .some((row) => row.payload.method === 'turn.aborted'),
+              ).toBe(true);
+            });
+            // ... send: the stopped continuation seed is redelivered again
+            // rather than refused forever.
+            await execute(target, {
               conversationId,
-              message: 'Continue after the first handoff seed failed.',
-            }),
-          ).rejects.toThrow(/handoff.*context|context.*handoff/i);
-          expect(targetAdapter.turns).toHaveLength(1);
+              message: 'Continue after the redelivery was stopped too.',
+            });
+            await eventually(() => expect(targetAdapter.turns).toHaveLength(3));
+            const again = targetAdapter.turns[2]!;
+            expect(again.threadId).not.toBe(redelivered.threadId);
+            expect(again.threadId).not.toBe(handoffReceipt.data.sessionId);
+            expect(
+              store.conversationSessions(conversationId).at(-1)?.sessionId,
+            ).toBe(again.threadId);
+            expect(again.ambientContext).toContain(CONTEXT_TOKEN);
+            expect(targetAdapter.starts.at(-1)?.resumeCursor).toBeUndefined();
+          }
         } finally {
           await service.shutdown();
           store.close();
@@ -719,6 +795,58 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           )?.session.lifecycleState,
         ).toBe('idle');
       });
+      if (dropHandoffSeedWitness) {
+        try {
+          const handoffSessionId = handoffReceipt.data.sessionId;
+          await eventually(async () => {
+            const status = await service.readConversationHandoffStatus(
+              conversationId,
+              idempotencyKey,
+              INTERNAL_SESSION_READ_SCOPE,
+            );
+            expect(status?.contextDelivery?.status).toBe('completed');
+          });
+          // The turn completed, but nothing now proves the exact seed was
+          // delivered: uncertain, not failed, so it must not be redelivered
+          // (resending could duplicate it) nor silently skipped.
+          store['db']
+            .prepare(
+              'DELETE FROM orchestration_context_seed_witnesses WHERE thread_id = ?',
+            )
+            .run(handoffSessionId);
+          const status = await service.readConversationHandoffStatus(
+            conversationId,
+            idempotencyKey,
+            INTERNAL_SESSION_READ_SCOPE,
+          );
+          expect(status?.status).toBe('completed');
+          expect(status?.contextDelivery?.status).toBe('indeterminate');
+          const opened = await service.resolveConversationOpen(
+            conversationId,
+            sessionReadAuthorityFromRequest(OWNER, undefined, undefined),
+          );
+          expect(opened).not.toHaveProperty('nextTurnStartsSession');
+          const refused = await execute(target, {
+            conversationId,
+            message: 'Continue after an unwitnessed handoff seed.',
+          }).then(
+            () => undefined,
+            (error: unknown) => error,
+          );
+          expect(refused).toMatchObject({
+            code: 'conversation-context-unavailable',
+            message: expect.stringContaining(
+              'Handoff context delivery has not completed.',
+            ),
+          });
+          expect(targetAdapter.turns).toHaveLength(1);
+          expect(store.conversationSessions(conversationId)).toHaveLength(2);
+        } finally {
+          await service.shutdown();
+          store.close();
+        }
+        return;
+      }
       const lineageAfterHandoff = store.conversationSessions(conversationId);
       expect(lineageAfterHandoff).toHaveLength(2);
       expect(lineageAfterHandoff[1]?.sessionId).toBe(
@@ -997,14 +1125,21 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
                 status?.contextDelivery?.acceptedTextThrough,
               ).toBeUndefined();
             });
-            await expect(
-              execute(source, {
-                conversationId,
-                message: 'Continue after the failed return.',
-              }),
-            ).rejects.toThrow(
-              /(?:native.return|handoff).*context|context.*(?:native.return|handoff)/i,
+            const refused = await execute(source, {
+              conversationId,
+              message: 'Continue after the failed return.',
+            }).then(
+              () => undefined,
+              (error: unknown) => error,
             );
+            // A native return never resends its catch-up automatically; the
+            // refusal carries a closed code the client can render.
+            expect(refused).toMatchObject({
+              code: 'conversation-context-unavailable',
+              message: expect.stringMatching(
+                /(?:native.return|handoff).*context|context.*(?:native.return|handoff)/i,
+              ),
+            });
             expect(sourceAdapter.turns).toHaveLength(2);
           } finally {
             await service.shutdown();
