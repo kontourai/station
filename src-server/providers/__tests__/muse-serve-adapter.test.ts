@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 /**
@@ -73,6 +72,9 @@ import {
   museServeApprovalPlan,
 } from '../adapters/muse-serve-session.js';
 import { CredentialProfileEnvironmentError } from '../app-home/app-home-profiles.js';
+import museStableSchema from './fixtures/muse-msp-1.4.20-stable.schema.json' with {
+  type: 'json',
+};
 import {
   FakeMuseServeHost,
   loadMuseServeCapture,
@@ -5315,12 +5317,8 @@ const UNKNOWN_VERSION = '1.4.99';
  * with only its `description` texts removed.
  */
 function stableSchemaExport(): Record<string, unknown> {
-  return JSON.parse(
-    readFileSync(
-      new URL('./fixtures/muse-msp-1.4.20-stable.schema.json', import.meta.url),
-      'utf8',
-    ),
-  ) as Record<string, unknown>;
+  // A fresh copy per call: tests edit the export they are handed.
+  return structuredClone(museStableSchema) as Record<string, unknown>;
 }
 
 interface SchemaRun {

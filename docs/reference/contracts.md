@@ -1902,6 +1902,7 @@ These Muse capabilities are deliberately not offered:
 | `task/background`, `stopAll` | No Station surface; Stop targets one task or subagent. |
 | Listing Muse's skills | `skill/list` is per session, while command listing is per provider; a probe host would have to start, and leave stored, a Muse session. |
 | API-key sign-in | No engine route offers an API-key mechanism for profiles; `META_API_KEY` in the environment applies only to the default account. |
+| Station-issued credentials (engine credential provider) | Stable MSP 1.4.20 has no request through which `muse serve` asks its client for a token; Muse signs in for itself with `muse login`. |
 | Per-profile account allowance | The allowance shape has not been seen (the observed account reported none), so account usage reads unknown. |
 | Managed install | The binary channel is publicly downloadable with a sha256 manifest, but managed install is keyed on built-in ACP descriptors. |
 | MCP reconnect | Not in stable MSP. |
