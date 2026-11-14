@@ -44,8 +44,6 @@
 
     "src-server/services/flow/flow-run-service.ts",
 
-    "src-server/services/orchestration/event-store.ts",
-
     "src-server/services/orchestration/flow-policy-sidecar.ts",
 
     "src-server/services/orchestration/orchestration-service.ts",
