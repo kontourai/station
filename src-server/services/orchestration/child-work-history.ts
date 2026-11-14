@@ -47,9 +47,7 @@ export function settledChildWorkFromHistory(
         : delta.reporterThreadId;
     if (reporter !== threadId) continue;
     historical = applyChildWorkDelta(historical, delta);
-    // As in the live fold: saying children are not reported is not a report
-    // that nothing is running.
-    if (delta.kind !== 'not-reported') lastReportAt = event.createdAt;
+    lastReportAt = event.createdAt;
   }
   const settlements: Array<Extract<ChildWorkDelta, { kind: 'settle' }>> = [];
   for (const item of childWorkForReporter(historical, threadId)) {
