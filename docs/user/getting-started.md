@@ -1083,8 +1083,9 @@ before sending if needed.
 The existing Task room, Project channels and agent-thread replies accept
 images the same way, including messages with only an image. You can attach up to five files, 5 MiB
 each and 15 MiB combined. Keep unsent local files in the open draft; reloading
-does not restore them. An older image in history may become unavailable after
-the server's attachment retention expires.
+does not restore them. In chats and the Task room, an older image in history may
+become unavailable after the server's attachment retention expires; a Project
+channel keeps a file for as long as its message stands.
 
 An existing chat can become a Task through **New Task from this** in its More menu.
 The **Add to Task** picker also offers **New Task from this** for an answer or input.
@@ -1106,7 +1107,9 @@ and agents have square avatars where people have round ones. New messages
 follow the newest message while you are at the bottom; if you scroll up, the
 room keeps your place, marks where new messages start, and **N new messages**
 returns you to the latest. **Load earlier messages** appears above the visible
-history. A failed agent request stays in the room
+history. A Project channel keeps the latest 500 messages in view: at that point
+it says so instead of offering more, and when new messages unload older ones,
+a note says so above **Load earlier messages**. A failed agent request stays in the room
 with **Retry** and **Open run**. The Brief is shared with agent requests unless
 you turn off **Brief attached**. Saved answers appear in Results, with their
 source and evidence available through **Answer details**. For engines that can resume, idle agent threads remain available after restarting Station. Ended or replaced runs still require a new agent request.

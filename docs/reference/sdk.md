@@ -796,7 +796,10 @@ window, then loads older windows; it retains up to 20 windows.
 windows the room has moved past, each time the room is invalidated, so an edit,
 delete or reaction reaches them too. It reads at most
 `PROJECT_ROOM_RETAINED_REREAD_MESSAGES` (500) below the live windows; a caller
-retires kept rows older than that instead of showing them stale. Named `changed` events
+retires kept rows older than that instead of showing them stale.
+`useProjectRoomHistorySpan` reads one span right away: give it the rows that
+just left the live windows, so a history read cancelled as the tail moved
+does not leave them stale until the next event. Named `changed` events
 invalidate queries, `presence` updates participants, and `revoked` or terminal
 401/403 stops the stream and clears retained query content. Cache identities
 include the API authority, local Project ID, and room ID for history.
