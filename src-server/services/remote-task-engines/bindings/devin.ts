@@ -25,6 +25,7 @@ import type {
 } from '@kontourai/station-contracts/remote-task-engine';
 import {
   asRecord,
+  invalidTaskId,
   malformed,
   type RemoteTaskBinding,
   type RemoteTaskCallContext,
@@ -43,8 +44,7 @@ function orgPath(context: RemoteTaskCallContext): string {
 }
 
 function sessionPath(context: RemoteTaskCallContext, taskId: string): string {
-  if (!SESSION_ID.test(taskId))
-    throw new Error('A Devin session id starts with "devin-".');
+  if (!SESSION_ID.test(taskId)) throw invalidTaskId(VENDOR);
   return `${orgPath(context)}/sessions/${encodeURIComponent(taskId)}`;
 }
 
@@ -245,13 +245,15 @@ export const devinBinding: RemoteTaskBinding = {
       const event = devinMessage(item);
       return event ? [event] : [];
     });
-    const hasMore = record.has_next_page === true;
-    // `end_cursor` is null on an empty page; keep the cursor we already had
-    // rather than restart from the beginning.
+    const endCursor = stringField(record, 'end_cursor');
+    // `end_cursor` may be null on the last page. Devin documents no other
+    // position to resume from (whether an `event_id` is a valid `after` is
+    // not stated), so the last cursor it did issue is kept: the next poll
+    // re-reads at most that one page, and the store drops what it holds.
     return {
       events,
-      cursor: stringField(record, 'end_cursor') ?? cursor,
-      hasMore: hasMore && stringField(record, 'end_cursor') !== undefined,
+      cursor: endCursor ?? cursor,
+      hasMore: record.has_next_page === true && endCursor !== undefined,
     };
   },
 
@@ -261,4 +263,8 @@ export const devinBinding: RemoteTaskBinding = {
       path: sessionPath(context, taskId),
     });
   },
+
+  // The messages endpoint lists 410 without a stated meaning; for a session
+  // already finished it can only mean there is nothing more to read.
+  isEndOfMessages: (error) => error.details.vendorStatus === 410,
 };

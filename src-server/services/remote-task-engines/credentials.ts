@@ -3,8 +3,10 @@
  * vault (docs/decisions/engine-credential-provider.md), one bucket per
  * connection: `engine-secret:<connectionId>:default`, key
  * {@link REMOTE_TASK_CREDENTIAL_KEY}. Connection ids carry the
- * `remote-task-` prefix, so no ACP connection (whose engine-held secrets share
- * the family) can name one of these buckets.
+ * `remote-task-` prefix, which an ACP connection id may not take
+ * (`acpConnectionSchema`), so an ACP connection's secrets and their removal
+ * never reach one of these buckets. Removing a remote task connection deletes
+ * only its own key, never every bucket of the id.
  *
  * Nothing here returns a credential to a route. {@link withCredential} hands
  * the value to the service's request builder for one call, and a route can
@@ -16,6 +18,12 @@ import type { EngineHostAuthVault } from '../engine-host-auth/vault.js';
 export const REMOTE_TASK_CREDENTIAL_KEY = 'remote-task.api-token';
 /** Longer than any vendor token Station knows; refuses pasted documents. */
 const CREDENTIAL_MAX_CHARS = 4096;
+/**
+ * Every vendor token Station binds is longer. A shorter value is refused: a
+ * vendor error that quotes it back is redacted by exact match, and a short
+ * value would also match unrelated text.
+ */
+export const REMOTE_TASK_CREDENTIAL_MIN_CHARS = 16;
 
 export const REMOTE_TASK_CONNECTION_ID = /^remote-task-[a-z0-9]{12,32}$/;
 
@@ -34,6 +42,8 @@ export function remoteTaskCredentialProblem(value: unknown): string | null {
   const trimmed = value.trim();
   if (!trimmed) return 'The token is empty.';
   if (trimmed.length > CREDENTIAL_MAX_CHARS) return 'The token is too long.';
+  if (trimmed.length < REMOTE_TASK_CREDENTIAL_MIN_CHARS)
+    return 'The token is too short to be a vendor token.';
   // biome-ignore lint/suspicious/noControlCharactersInRegex: the check itself.
   if (/[\s\u0000-\u001f\u007f]/.test(trimmed))
     return 'The token must not contain spaces or control characters.';
@@ -84,10 +94,11 @@ export class RemoteTaskCredentials {
     );
   }
 
-  /** Every secret held for the connection, for a connection being removed. */
+  /** The connection's own key, for a connection being removed. */
   async removeConnection(connectionId: string): Promise<void> {
-    scope(connectionId);
-    await this.#vault.removeConnection(connectionId);
+    const vault = this.#resolveVault();
+    if (!vault) return;
+    await vault.removeSecret(scope(connectionId), REMOTE_TASK_CREDENTIAL_KEY);
   }
 
   /**

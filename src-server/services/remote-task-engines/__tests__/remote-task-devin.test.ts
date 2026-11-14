@@ -4,10 +4,14 @@
  * (https://docs.devin.ai/api-reference/v3/sessions/get-organizations-session.md,
  * https://docs.devin.ai/api-reference/v3/sessions/get-organizations-session-messages).
  */
+import { REMOTE_TASK_EVENT_TEXT_MAX_CHARS } from '@kontourai/station-contracts/remote-task-engine';
 import { describe, expect, test } from 'vitest';
 import { devinStatus } from '../bindings/devin.js';
 import { RemoteTaskError } from '../remote-task-error.js';
-import { RemoteTaskStore } from '../stores.js';
+import {
+  REMOTE_TASK_STORED_EVENT_BYTES_MAX,
+  RemoteTaskStore,
+} from '../stores.js';
 import { harness } from './harness.js';
 import { devinFake, json } from './vendor-fakes.js';
 
@@ -87,6 +91,7 @@ describe('Devin binding', () => {
       prompt: 'Go',
     });
     devin.setStatus(taskId, 'running', 'working');
+    for (let i = 0; i < 120; i += 1) devin.reply(taskId, `step ${i}`);
     await h.service.syncTask(connectionId, taskId);
     // Station is off; Devin keeps working.
     devin.reply(taskId, 'made progress');
@@ -95,7 +100,8 @@ describe('Devin binding', () => {
     const restarted = harness(devin.fake.fetch, h.home);
     const store = new RemoteTaskStore(h.home);
     const before = store.get(connectionId, taskId);
-    expect(before?.vendorCursor).toBe('c0');
+    // The last page's end_cursor was null: the last cursor Devin issued is kept.
+    expect(before?.vendorCursor).toBe('c99');
     const result = await restarted.service.syncTask(connectionId, taskId);
     expect(result.appended.map((e) => e.text)).toEqual([
       'made progress',
@@ -106,7 +112,7 @@ describe('Devin binding', () => {
         .matching('GET', /\/messages$/)
         .at(-1)
         ?.url.searchParams.get('after'),
-    ).toBe('c0');
+    ).toBe('c99');
 
     // A cursor lost in a crash replays the page: stored ids drop it.
     await store.mutate(connectionId, taskId, (record) => ({
@@ -171,6 +177,23 @@ describe('Devin binding', () => {
     });
   });
 
+  test('the token is removed from a vendor error code as well as its message', async () => {
+    const { devin, h, connectionId } = await setup();
+    devin.fake.inject(1, () =>
+      json(422, {
+        title: 'Unprocessable',
+        status: 422,
+        detail: 'bad request',
+        error_code: `invalid_token_${TOKEN}`,
+      }),
+    );
+    const error = (await h.service
+      .createTask(connectionId, { prompt: 'Go' })
+      .catch((caught: unknown) => caught)) as RemoteTaskError;
+    expect(error.details.vendorCode).toBe('invalid_token_[redacted]');
+    expect(JSON.stringify(error.details)).not.toContain(TOKEN);
+  });
+
   test("passes on the vendor's refusal, with the token removed", async () => {
     const { devin, h, connectionId } = await setup();
     devin.fake.inject(1, () =>
@@ -206,6 +229,107 @@ describe('Devin binding', () => {
     expect(devinStatus(status, detail)).toBe(expected);
   });
 
+  test('a one-page session keeps no cursor and stores nothing twice across polls', async () => {
+    const { devin, h, connectionId } = await setup();
+    const { taskId } = await h.service.createTask(connectionId, {
+      prompt: 'Go',
+    });
+    devin.setStatus(taskId, 'running', 'working');
+    devin.reply(taskId, 'first');
+    await h.service.syncTask(connectionId, taskId);
+    devin.reply(taskId, 'second');
+    const again = await h.service.syncTask(connectionId, taskId);
+    expect(
+      again.appended.filter((e) => e.author !== 'system').map((e) => e.text),
+    ).toEqual(['second']);
+    // Devin issued no cursor (end_cursor null on its only page), so each poll
+    // re-reads that one page from the start.
+    expect(
+      devin.fake
+        .matching('GET', /\/messages$/)
+        .map((r) => r.url.searchParams.get('after')),
+    ).toEqual([null, null]);
+    const { events } = h.service.readEvents(connectionId, taskId, 0);
+    expect(events.filter((e) => e.text === 'first')).toHaveLength(1);
+  });
+
+  test('a long transcript never wedges sync: text is capped and storage trimmed by bytes', async () => {
+    const { devin, h, connectionId } = await setup();
+    const { taskId } = await h.service.createTask(connectionId, {
+      prompt: 'Go',
+    });
+    devin.setStatus(taskId, 'running', 'working');
+    const long = 'x'.repeat(6_000);
+    for (let i = 0; i < 1_500; i += 1) devin.reply(taskId, `${i}:${long}`);
+    // A 20,000-character message is cut and marked.
+    devin.reply(taskId, 'y'.repeat(20_000));
+    const results = [];
+    for (let i = 0; i < 4; i += 1)
+      results.push(await h.service.syncTask(connectionId, taskId));
+    const stored = new RemoteTaskStore(h.home).get(connectionId, taskId);
+    expect(stored).toBeDefined();
+    const bytes = Buffer.byteLength(JSON.stringify(stored?.events), 'utf8');
+    expect(bytes).toBeLessThanOrEqual(REMOTE_TASK_STORED_EVENT_BYTES_MAX);
+    const last = stored?.events.at(-1);
+    expect(last?.text).toHaveLength(REMOTE_TASK_EVENT_TEXT_MAX_CHARS);
+    expect(last?.truncated).toBe(true);
+    // Every message Devin sent got a sequence, though the oldest were dropped.
+    expect(stored?.nextSequence).toBeGreaterThan(1_500);
+    const read = h.service.readEvents(connectionId, taskId, 0);
+    expect(read.missed).toBe(true);
+    expect(read.firstSequence).toBeGreaterThan(1);
+    // A later poll still succeeds.
+    devin.reply(taskId, 'still going');
+    const later = await h.service.syncTask(connectionId, taskId);
+    expect(later.appended.map((e) => e.text)).toEqual(['still going']);
+  });
+
+  test('a session that finishes is read to its last message once, then not paged again', async () => {
+    const { devin, h, connectionId } = await setup();
+    const { taskId } = await h.service.createTask(connectionId, {
+      prompt: 'Go',
+    });
+    devin.reply(taskId, 'final answer');
+    devin.setStatus(taskId, 'exit');
+    const finishing = await h.service.syncTask(connectionId, taskId);
+    expect(finishing.appended.map((e) => e.text)).toContain('final answer');
+    expect(finishing.quiescent).toBe(true);
+    const pages = () => devin.fake.matching('GET', /\/messages$/).length;
+    const before = pages();
+    await h.service.syncTask(connectionId, taskId);
+    expect(pages()).toBe(before);
+  });
+
+  test("a 410 on a finished session's messages ends paging instead of failing", async () => {
+    const { devin, h, connectionId } = await setup();
+    const { taskId } = await h.service.createTask(connectionId, {
+      prompt: 'Go',
+    });
+    devin.setStatus(taskId, 'exit');
+    devin.fake.injectFor('GET', /\/messages$/, () =>
+      json(410, { title: 'Gone', status: 410 }),
+    );
+    const result = await h.service.syncTask(connectionId, taskId);
+    expect(result.quiescent).toBe(true);
+    expect(h.service.isActive(connectionId, taskId)).toBe(false);
+  });
+
+  test('a 410 while the session still runs is a failure, not an end', async () => {
+    const { devin, h, connectionId } = await setup();
+    const { taskId } = await h.service.createTask(connectionId, {
+      prompt: 'Go',
+    });
+    devin.setStatus(taskId, 'running', 'working');
+    devin.fake.injectFor('GET', /\/messages$/, () =>
+      json(410, { title: 'Gone', status: 410 }),
+    );
+    await expect(
+      h.service.syncTask(connectionId, taskId),
+    ).rejects.toMatchObject({
+      code: 'remote-task-vendor-refused',
+    });
+  });
+
   test('a finished session stops polling until the next sync', async () => {
     const { devin, h, connectionId } = await setup();
     const { taskId } = await h.service.createTask(connectionId, {
@@ -214,6 +338,6 @@ describe('Devin binding', () => {
     devin.setStatus(taskId, 'running', 'finished');
     const result = await h.service.syncTask(connectionId, taskId);
     expect(result.quiescent).toBe(true);
-    expect(h.service.activeTasks()).toEqual([]);
+    expect(h.service.isActive(connectionId, taskId)).toBe(false);
   });
 });

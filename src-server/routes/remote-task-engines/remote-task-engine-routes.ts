@@ -186,13 +186,19 @@ export function createRemoteTaskEngineRoutes(
     handle(async (c) => {
       const id = param(c, 'id');
       const task = await service.createTask(id, await jsonBody(c));
-      tracker.track(id, task.taskId);
+      tracker.noteInterest(id, task.taskId);
       return task;
     }, 201),
   );
   app.get(
     '/connections/:id/tasks/:taskId',
-    handle((c) => service.getTask(param(c, 'id'), param(c, 'taskId'))),
+    handle(async (c) => {
+      const id = param(c, 'id');
+      const taskId = param(c, 'taskId');
+      const task = await service.getTask(id, taskId);
+      tracker.noteInterest(id, taskId);
+      return task;
+    }),
   );
   app.post(
     '/connections/:id/tasks/:taskId/messages',
@@ -204,7 +210,7 @@ export function createRemoteTaskEngineRoutes(
         taskId,
         (await jsonBody(c)).text,
       );
-      tracker.track(id, taskId);
+      tracker.noteInterest(id, taskId);
       return result;
     }),
   );
@@ -214,7 +220,7 @@ export function createRemoteTaskEngineRoutes(
       const id = param(c, 'id');
       const taskId = param(c, 'taskId');
       await service.cancelTask(id, taskId);
-      tracker.track(id, taskId);
+      tracker.noteInterest(id, taskId);
     }),
   );
   app.post(
@@ -223,7 +229,7 @@ export function createRemoteTaskEngineRoutes(
       const id = param(c, 'id');
       const taskId = param(c, 'taskId');
       const result = await service.syncTask(id, taskId);
-      if (!result.quiescent) tracker.track(id, taskId);
+      tracker.noteInterest(id, taskId);
       return result;
     }),
   );
@@ -231,7 +237,8 @@ export function createRemoteTaskEngineRoutes(
    * Stored messages after Station's own sequence. `after` (or a
    * `Last-Event-ID` header, the orchestration stream's resume cursor) is the
    * last sequence the client holds; a reconnecting client sends it back and
-   * receives only what followed.
+   * receives only what followed. Reading keeps the task polled for the
+   * tracker's interest window: nothing is polled that nobody reads.
    */
   app.get(
     '/connections/:id/tasks/:taskId/events',
@@ -243,11 +250,11 @@ export function createRemoteTaskEngineRoutes(
           'after must be a sequence number',
           400,
         );
-      return service.readEvents(
-        param(c, 'id'),
-        param(c, 'taskId'),
-        Number(raw),
-      );
+      const id = param(c, 'id');
+      const taskId = param(c, 'taskId');
+      const read = service.readEvents(id, taskId, Number(raw));
+      tracker.noteInterest(id, taskId);
+      return read;
     }),
   );
 

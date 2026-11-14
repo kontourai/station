@@ -53,6 +53,41 @@ export interface VendorResponse {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+/** The largest answer body Station reads from a vendor; a larger one is refused. */
+export const VENDOR_RESPONSE_MAX_BYTES = 4 * 1024 * 1024;
+/** An error body is read only this far: Station needs its first sentence. */
+const VENDOR_ERROR_BODY_MAX_BYTES = 64 * 1024;
+
+/**
+ * The body as text, read no further than `maxBytes`; undefined when it is
+ * longer (the rest is cancelled, never buffered).
+ */
+async function readBounded(
+  response: Response,
+  maxBytes: number,
+): Promise<string | undefined> {
+  if (!response.body) return '';
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await response.body.cancel().catch(() => {});
+    return undefined;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  let bytes = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes += value.byteLength;
+    if (bytes > maxBytes) {
+      await reader.cancel().catch(() => {});
+      return undefined;
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
+}
 
 /**
  * The vendor's wait in milliseconds: `Retry-After` as seconds or an HTTP
@@ -95,7 +130,6 @@ export class VendorHttp {
   async #send(
     request: VendorRequest,
     extraHeaders: Record<string, string>,
-    signal?: AbortSignal,
   ): Promise<Response> {
     const options = this.#options;
     const timeout = AbortSignal.timeout(
@@ -114,10 +148,9 @@ export class VendorHttp {
         ...(request.body !== undefined
           ? { body: JSON.stringify(request.body) }
           : {}),
-        signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+        signal: timeout,
       });
-    } catch (error) {
-      if (signal?.aborted) throw error;
+    } catch {
       throw new RemoteTaskError(
         'remote-task-vendor-unavailable',
         `${options.vendorName} could not be reached.`,
@@ -130,7 +163,8 @@ export class VendorHttp {
     const options = this.#options;
     let body: unknown;
     try {
-      body = await response.json();
+      const text = await readBounded(response, VENDOR_ERROR_BODY_MAX_BYTES);
+      body = text ? JSON.parse(text) : undefined;
     } catch {
       body = undefined;
     }
@@ -188,31 +222,38 @@ export class VendorHttp {
       accept: this.#options.headers.accept ?? 'application/json',
     });
     if (!response.ok) throw await this.#refusal(response);
-    let body: unknown;
+    if (response.status === 204)
+      return {
+        status: response.status,
+        body: undefined,
+        headers: response.headers,
+      };
+    let text: string | undefined;
     try {
-      body = response.status === 204 ? undefined : await response.json();
+      text = await readBounded(response, VENDOR_RESPONSE_MAX_BYTES);
     } catch {
       throw new RemoteTaskError(
         'remote-task-vendor-unavailable',
-        `${this.#options.vendorName} sent an answer Station could not read.`,
+        `${this.#options.vendorName} stopped sending its answer.`,
         503,
       );
     }
+    if (text === undefined)
+      throw new RemoteTaskError(
+        'remote-task-vendor-malformed',
+        `${this.#options.vendorName} sent an answer larger than Station reads.`,
+        502,
+      );
+    let body: unknown;
+    try {
+      body = text === '' ? undefined : JSON.parse(text);
+    } catch {
+      throw new RemoteTaskError(
+        'remote-task-vendor-malformed',
+        `${this.#options.vendorName} sent an answer Station could not read.`,
+        502,
+      );
+    }
     return { status: response.status, body, headers: response.headers };
-  }
-
-  /** An event stream, opened; the caller reads and closes it. */
-  async stream(
-    request: VendorRequest,
-    headers: Record<string, string>,
-    signal: AbortSignal,
-  ): Promise<Response> {
-    const response = await this.#send(
-      request,
-      { accept: 'text/event-stream', ...headers },
-      signal,
-    );
-    if (!response.ok) throw await this.#refusal(response);
-    return response;
   }
 }

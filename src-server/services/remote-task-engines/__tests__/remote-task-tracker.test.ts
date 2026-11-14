@@ -1,8 +1,10 @@
 /**
- * The tracker's cadence against a scripted service: interval after success,
- * doubling backoff to the ceiling after failures, the vendor's wait after a
- * rate limit, a held (not dropped) task while the preview or policy is off,
- * a stop for refusals only a person can fix, and resume after restart.
+ * The tracker against a scripted service: it polls only while a client is
+ * reading the task, on the interval after success, with doubling backoff to
+ * the ceiling after vendor failures and the vendor's wait after a rate
+ * limit, holds a task while the preview or policy is off, and stops for
+ * everything else: a refusal only a person can fix, a store failure, and an
+ * unexpected error.
  */
 import type { RemoteTaskPolling } from '@kontourai/station-contracts/remote-task-engine';
 import { describe, expect, test } from 'vitest';
@@ -13,12 +15,14 @@ import type { RemoteTaskSyncResult } from '../service.js';
 import { RemoteTaskTracker } from '../tracker.js';
 
 const POLLING: RemoteTaskPolling = { intervalMs: 10_000, maxBackoffMs: 60_000 };
+const WINDOW = 15 * 60_000;
 
 type Outcome = 'ok' | 'quiescent' | Error;
 
-function setup(outcomes: Outcome[], active: Array<[string, string]> = []) {
+function setup(outcomes: Outcome[], options: { active?: boolean } = {}) {
   const timers: Array<{ run: () => void; ms: number; cleared: boolean }> = [];
   const syncs: string[] = [];
+  const clock = { now: 1_000_000 };
   const tracker = new RemoteTaskTracker({
     service: {
       async syncTask(connectionId, taskId) {
@@ -27,11 +31,12 @@ function setup(outcomes: Outcome[], active: Array<[string, string]> = []) {
         if (outcome instanceof Error) throw outcome;
         return { quiescent: outcome === 'quiescent' } as RemoteTaskSyncResult;
       },
-      activeTasks: () =>
-        active.map(([connectionId, taskId]) => ({ connectionId, taskId })),
+      isActive: () => options.active ?? true,
       pollingFor: () => POLLING,
     },
     logger: createLogger({ name: 'remote-task-tracker-test' }),
+    now: () => clock.now,
+    interestWindowMs: WINDOW,
     setTimer: (run, ms) => {
       const timer = { run, ms, cleared: false };
       timers.push(timer);
@@ -41,16 +46,17 @@ function setup(outcomes: Outcome[], active: Array<[string, string]> = []) {
       (handle as { cleared: boolean }).cleared = true;
     },
   });
-  /** Fire the newest pending timer and wait for its poll to settle. */
+  /** Fire the newest pending timer, advancing the clock by its delay. */
   const fire = async () => {
     const timer = timers.filter((t) => !t.cleared).at(-1);
     if (!timer) throw new Error('nothing scheduled');
     timer.cleared = true;
+    clock.now += timer.ms;
     timer.run();
     await new Promise((resolve) => setImmediate(resolve));
   };
   const pending = () => timers.filter((t) => !t.cleared).map((t) => t.ms);
-  return { tracker, timers, syncs, fire, pending };
+  return { tracker, timers, syncs, fire, pending, clock };
 }
 
 const rateLimited = (retryAfterMs?: number) =>
@@ -61,9 +67,15 @@ const unavailable = () =>
   new RemoteTaskError('remote-task-vendor-unavailable', 'down', 503);
 
 describe('RemoteTaskTracker', () => {
-  test('polls on the interval until the task is quiescent', async () => {
+  test('nothing polls a task nobody has read', () => {
+    const t = setup([]);
+    expect(t.pending()).toEqual([]);
+    expect(t.tracker.isTracking('c', 'task')).toBe(false);
+  });
+
+  test('a read starts polling, which stops once the task is quiescent', async () => {
     const t = setup(['ok', 'ok', 'quiescent']);
-    t.tracker.track('c', 'task');
+    t.tracker.noteInterest('c', 'task');
     expect(t.pending()).toEqual([0]);
     await t.fire();
     expect(t.pending()).toEqual([10_000]);
@@ -71,11 +83,37 @@ describe('RemoteTaskTracker', () => {
     expect(t.pending()).toEqual([10_000]);
     await t.fire();
     expect(t.pending()).toEqual([]);
-    expect(t.tracker.isTracking('c', 'task')).toBe(false);
     expect(t.syncs).toHaveLength(3);
   });
 
-  test('failures double the delay up to the ceiling, and success resets it', async () => {
+  test('a quiescent task is not polled on a read', () => {
+    const t = setup([], { active: false });
+    t.tracker.noteInterest('c', 'task');
+    expect(t.pending()).toEqual([]);
+  });
+
+  test('polling stops when nobody has read the task within the window, and a read restarts it', async () => {
+    const t = setup([]);
+    t.tracker.noteInterest('c', 'task');
+    await t.fire();
+    t.clock.now += WINDOW;
+    await t.fire();
+    expect(t.pending()).toEqual([]);
+    expect(t.syncs).toHaveLength(1);
+    t.tracker.noteInterest('c', 'task');
+    expect(t.pending()).toEqual([0]);
+  });
+
+  test('repeated reads never shorten the cadence', async () => {
+    const t = setup([]);
+    t.tracker.noteInterest('c', 'task');
+    await t.fire();
+    t.tracker.noteInterest('c', 'task');
+    t.tracker.noteInterest('c', 'task');
+    expect(t.pending()).toEqual([10_000]);
+  });
+
+  test('vendor failures double the delay up to the ceiling, and success resets it', async () => {
     const t = setup([
       unavailable(),
       unavailable(),
@@ -83,7 +121,7 @@ describe('RemoteTaskTracker', () => {
       unavailable(),
       'ok',
     ]);
-    t.tracker.track('c', 'task');
+    t.tracker.noteInterest('c', 'task');
     const delays: number[] = [];
     for (let i = 0; i < 5; i += 1) {
       await t.fire();
@@ -94,11 +132,11 @@ describe('RemoteTaskTracker', () => {
 
   test("a rate limit waits at least the vendor's Retry-After", async () => {
     const t = setup([rateLimited(90_000), rateLimited()]);
-    t.tracker.track('c', 'task');
+    t.tracker.noteInterest('c', 'task');
     await t.fire();
     expect(t.pending()).toEqual([90_000]);
+    t.tracker.noteInterest('c', 'task');
     await t.fire();
-    // Without a wait: the doubled backoff, capped at the ceiling.
     expect(t.pending()).toEqual([60_000]);
   });
 
@@ -111,7 +149,7 @@ describe('RemoteTaskTracker', () => {
       new RemoteTaskError('remote-task-policy-refused', 'managed', 403),
       'ok',
     ]);
-    t.tracker.track('c', 'task');
+    t.tracker.noteInterest('c', 'task');
     await t.fire();
     expect(t.pending()).toEqual([60_000]);
     await t.fire();
@@ -120,41 +158,34 @@ describe('RemoteTaskTracker', () => {
     expect(t.pending()).toEqual([10_000]);
   });
 
-  test('a refusal only a person can fix stops tracking', async () => {
-    for (const code of [
-      'remote-task-acknowledgement-required',
-      'remote-task-credential-missing',
-      'remote-task-not-found',
-    ] as const) {
-      const t = setup([new RemoteTaskError(code, 'fix it', 403)]);
-      t.tracker.track('c', 'task');
-      await t.fire();
-      expect(t.pending(), code).toEqual([]);
-      expect(t.tracker.isTracking('c', 'task')).toBe(false);
-    }
+  test.each([
+    ['remote-task-acknowledgement-required', 403],
+    ['remote-task-credential-missing', 409],
+    ['remote-task-not-found', 404],
+    ['remote-task-store-failed', 500],
+    ['remote-task-vendor-malformed', 502],
+  ] as const)('%s stops tracking', async (code, status) => {
+    const t = setup([new RemoteTaskError(code, 'stop', status)]);
+    t.tracker.noteInterest('c', 'task');
+    await t.fire();
+    expect(t.pending()).toEqual([]);
+    expect(t.tracker.isTracking('c', 'task')).toBe(false);
   });
 
-  test('resume schedules every stored active task at once', () => {
-    const t = setup(
-      [],
-      [
-        ['c1', 'a'],
-        ['c2', 'b'],
-      ],
-    );
-    t.tracker.resume();
-    expect(t.pending()).toEqual([0, 0]);
-    expect(t.tracker.isTracking('c1', 'a')).toBe(true);
-    expect(t.tracker.isTracking('c2', 'b')).toBe(true);
+  test('an unexpected error stops tracking instead of retrying forever', async () => {
+    const t = setup([new Error('remote task exceeds the byte limit')]);
+    t.tracker.noteInterest('c', 'task');
+    await t.fire();
+    expect(t.pending()).toEqual([]);
   });
 
   test('stop clears every pending poll', () => {
     const t = setup([]);
-    t.tracker.track('c', 'a');
-    t.tracker.track('c', 'b');
+    t.tracker.noteInterest('c', 'a');
+    t.tracker.noteInterest('c', 'b');
     t.tracker.stop();
     expect(t.pending()).toEqual([]);
-    t.tracker.track('c', 'a');
+    t.tracker.noteInterest('c', 'a');
     expect(t.pending()).toEqual([]);
   });
 });

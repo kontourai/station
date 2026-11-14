@@ -14,7 +14,10 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createLogger } from '../../../utils/logger.js';
 import { EngineHostAuthVault } from '../../engine-host-auth/vault.js';
 import { RemoteTaskCredentials } from '../credentials.js';
-import { RemoteTaskEngineService } from '../service.js';
+import {
+  RemoteTaskEngineService,
+  type RemoteTaskEngineServiceOptions,
+} from '../service.js';
 
 const makeTempDir = trackTempDirs();
 
@@ -24,7 +27,11 @@ export const POLICY_SUMMARY = {
 } as unknown as ManagedPolicySummary;
 
 /** `home`: reuse another harness's home, as a restarted Station would. */
-export function harness(fetchImpl: typeof fetch, home?: string) {
+export function harness(
+  fetchImpl: typeof fetch,
+  home?: string,
+  bindings?: RemoteTaskEngineServiceOptions['bindings'],
+) {
   home ??= makeTempDir('remote-task-engines-');
   const vault = new EngineHostAuthVault(join(home, 'vault-home'));
   const switches = {
@@ -47,6 +54,7 @@ export function harness(fetchImpl: typeof fetch, home?: string) {
           }
         : null,
     fetch: fetchImpl,
+    ...(bindings ? { bindings } : {}),
     logger: createLogger({ name: 'remote-task-test' }),
   });
 

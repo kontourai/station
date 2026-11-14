@@ -109,7 +109,11 @@ function featureRoutes(id: string, taskId: string) {
       `/connections/${id}/acknowledgement`,
       { statement: remoteTaskAcknowledgementStatement('devin') },
     ],
-    ['PUT', `/connections/${id}/credential`, { token: 'cog_other' }],
+    [
+      'PUT',
+      `/connections/${id}/credential`,
+      { token: 'cog_other_token_value_0001' },
+    ],
     ['GET', `/connections/${id}/tasks`],
     ['POST', `/connections/${id}/tasks`, { prompt: 'Go' }],
     ['GET', `/connections/${id}/tasks/${taskId}`],
@@ -378,5 +382,108 @@ describe('remote task engine routes', () => {
       code: 'remote-task-rate-limited',
       retryAfterMs: 12_000,
     });
+  });
+
+  test('a repository named by dots is refused before any request', async () => {
+    const s = setup();
+    const id = await readyConnection(s);
+    const sent = s.vendorRequests();
+    for (const repository of [
+      { owner: '..', name: '..' },
+      { owner: '.', name: 'widgets' },
+      { owner: 'example', name: '...' },
+    ]) {
+      const answer = await s.call('POST', `/connections/${id}/tasks`, {
+        prompt: 'Go',
+        repository,
+      });
+      expect(answer.status, JSON.stringify(repository)).toBe(400);
+      expect(answer.body.code).toBe('remote-task-invalid');
+    }
+    expect(s.vendorRequests()).toBe(sent);
+    // Dots inside a name are still a name.
+    expect(
+      (
+        await s.call('POST', `/connections/${id}/tasks`, {
+          prompt: 'Go',
+          repository: { owner: 'example', name: 'widgets.js' },
+        })
+      ).status,
+    ).toBe(201);
+  });
+
+  test("a task id that is not the vendor's shape answers 400, not 500", async () => {
+    const s = setup();
+    const id = await readyConnection(s);
+    const sent = s.vendorRequests();
+    for (const [method, path] of [
+      ['GET', `/connections/${id}/tasks/not-a-session`],
+      ['POST', `/connections/${id}/tasks/not-a-session/sync`],
+      ['POST', `/connections/${id}/tasks/not-a-session/cancel`],
+    ] as const) {
+      const answer = await s.call(method, path);
+      expect(answer.status, `${method} ${path}`).toBe(400);
+      expect(answer.body.code).toBe('remote-task-invalid');
+    }
+    expect(s.vendorRequests()).toBe(sent);
+  });
+
+  test('a token too short to redact safely is refused', async () => {
+    const s = setup();
+    const created = await s.call('POST', '/connections', {
+      vendor: 'devin',
+      settings: { orgId: ORG_A },
+    });
+    const id = (created.body.data as { id: string }).id;
+    const answer = await s.call('PUT', `/connections/${id}/credential`, {
+      token: 'cog_short',
+    });
+    expect(answer.status).toBe(400);
+    expect(
+      (
+        (await s.call('GET', `/connections/${id}`)).body.data as {
+          credential: string;
+        }
+      ).credential,
+    ).toBe('missing');
+  });
+
+  test("a connection's organization cannot change under its stored tasks", async () => {
+    const s = setup();
+    const id = await readyConnection(s);
+    // Before any task, the settings may change.
+    expect(
+      (
+        await s.call('PATCH', `/connections/${id}`, {
+          settings: { orgId: ORG_B },
+        })
+      ).status,
+    ).toBe(200);
+    await s.call('PATCH', `/connections/${id}`, { settings: { orgId: ORG_A } });
+    await s.call('POST', `/connections/${id}/tasks`, { prompt: 'Go' });
+    const answer = await s.call('PATCH', `/connections/${id}`, {
+      settings: { orgId: ORG_B },
+    });
+    expect(answer.status).toBe(409);
+    expect(answer.body.code).toBe('remote-task-conflict');
+    // A label change is still fine.
+    expect(
+      (await s.call('PATCH', `/connections/${id}`, { label: 'Renamed' }))
+        .status,
+    ).toBe(200);
+  });
+
+  test('reading messages starts polling; with no reader nothing polls', async () => {
+    const s = setup();
+    const id = await readyConnection(s);
+    const created = await s.call('POST', `/connections/${id}/tasks`, {
+      prompt: 'Go',
+    });
+    const taskId = (created.body.data as { taskId: string }).taskId;
+    // Creating the task is interest: one poll is scheduled.
+    expect(s.timers).toHaveLength(1);
+    await s.call('GET', `/connections/${id}/tasks/${taskId}/events?after=0`);
+    // Already scheduled: a read does not add or hurry a poll.
+    expect(s.timers).toHaveLength(1);
   });
 });

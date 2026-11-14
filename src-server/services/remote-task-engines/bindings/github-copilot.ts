@@ -23,6 +23,7 @@ import type {
 } from '@kontourai/station-contracts/remote-task-engine';
 import {
   asRecord,
+  invalidTaskId,
   malformed,
   type RemoteTaskBinding,
   stringField,
@@ -50,7 +51,7 @@ const USAGE_UNITS: Readonly<Record<string, RemoteTaskUsageUnit>> = {
 };
 
 function taskPath(taskId: string): string {
-  if (!TASK_ID.test(taskId)) throw new Error('Not a GitHub agent task id.');
+  if (!TASK_ID.test(taskId)) throw invalidTaskId(VENDOR);
   return `/agents/tasks/${encodeURIComponent(taskId)}`;
 }
 

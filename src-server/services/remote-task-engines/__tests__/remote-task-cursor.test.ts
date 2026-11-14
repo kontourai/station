@@ -1,12 +1,15 @@
 /**
  * The Cursor Cloud Agents v1 binding through the real service, against an
- * HTTP fake serving the reference's own example bodies and its agent SSE
- * stream (https://cursor.com/docs/cloud-agent/api/endpoints).
+ * HTTP fake serving the reference's own example bodies
+ * (https://cursor.com/docs/cloud-agent/api/endpoints). The fake's agent
+ * stream sends `assistant` text deltas, as the reference documents for an
+ * ordinary agent; Station reads each finished run's `result` instead and
+ * never opens the stream.
  */
 import { describe, expect, test } from 'vitest';
 import { RemoteTaskStore } from '../stores.js';
 import { harness } from './harness.js';
-import { CURSOR_FINISHED_RUN, cursorFake } from './vendor-fakes.js';
+import { cursorFake } from './vendor-fakes.js';
 
 const TOKEN = 'key_cursor_test_0001';
 
@@ -16,6 +19,10 @@ async function setup() {
   const connectionId = await h.readyConnection('cursor', TOKEN);
   return { cursor, h, connectionId };
 }
+
+const agentMessages = (
+  events: ReadonlyArray<{ author: string; text: string }>,
+) => events.filter((e) => e.author === 'agent').map((e) => e.text);
 
 describe('Cursor binding', () => {
   test('creates an agent with v1 fields and never forwards tool servers', async () => {
@@ -62,50 +69,65 @@ describe('Cursor binding', () => {
     ]);
   });
 
-  test('pages messages from the stream and resumes with Last-Event-ID, without duplicates', async () => {
+  test("stores each finished run's result once, never a stream delta, and opens no stream", async () => {
     const { cursor, h, connectionId } = await setup();
     cursor.state.run.status = 'RUNNING';
-    cursor.state.stream.push(
-      {
-        id: '1713033000000-0',
-        event: 'assistant',
-        data: { text: "I'll update the README now." },
-      },
-      {
-        id: '1713033005000-0',
-        event: 'tool_call',
-        data: { callId: 'call-1', name: 'read_file', status: 'running' },
-      },
-    );
-    const first = await h.service.syncTask(connectionId, cursor.agentId);
-    expect(
-      first.appended.filter((e) => e.author === 'agent').map((e) => e.text),
-    ).toEqual(["I'll update the README now."]);
-    const streams = () => cursor.fake.matching('GET', /\/stream$/);
-    expect(streams()[0]?.headers.get('last-event-id')).toBeNull();
+    const running = await h.service.syncTask(connectionId, cursor.agentId);
+    // A running run has no result yet: nothing from the agent, and the
+    // stream's deltas ("I'll ", "update ", ...) are never read.
+    expect(agentMessages(running.appended)).toEqual([]);
 
-    cursor.state.stream.push({
-      id: '1713033302000-0',
-      event: 'assistant',
-      data: { text: 'Also adding a section on running the tests.' },
-    });
+    cursor.finishRun('Added README.md with installation instructions.');
+    const finished = await h.service.syncTask(connectionId, cursor.agentId);
+    expect(agentMessages(finished.appended)).toEqual([
+      'Added README.md with installation instructions.',
+    ]);
+
+    // A follow-up run finishes; earlier results are not stored again.
+    cursor.startRun(
+      'run-00000000-0000-0000-0000-000000000002',
+      '2026-04-13T18:50:00.000Z',
+    );
+    await h.service.sendMessage(connectionId, cursor.agentId, 'Add tests');
+    cursor.finishRun('Added a test for the README check.');
     const second = await h.service.syncTask(connectionId, cursor.agentId);
-    // The cursor is the last id read, the tool call's included.
-    expect(streams()[1]?.headers.get('last-event-id')).toBe('1713033005000-0');
-    expect(
-      second.appended.filter((e) => e.author === 'agent').map((e) => e.text),
-    ).toEqual(['Also adding a section on running the tests.']);
+    expect(agentMessages(second.appended)).toEqual([
+      'Added a test for the README check.',
+    ]);
+    const replay = await h.service.syncTask(connectionId, cursor.agentId);
+    expect(replay.appended).toEqual([]);
 
-    // An expired stream position re-reads what Cursor retains; the store
-    // drops what it already holds.
-    cursor.state.expiredBefore = '9';
-    const third = await h.service.syncTask(connectionId, cursor.agentId);
-    expect(third.appended.filter((e) => e.author === 'agent')).toEqual([]);
-    expect(streams().at(-1)?.headers.get('last-event-id')).toBeNull();
-    const store = new RemoteTaskStore(h.home);
-    expect(store.get(connectionId, cursor.agentId)?.vendorCursor).toBe(
-      '1713033302000-0',
-    );
+    const { events } = h.service.readEvents(connectionId, cursor.agentId, 0);
+    expect(agentMessages(events)).toEqual([
+      'Added README.md with installation instructions.',
+      'Added a test for the README check.',
+    ]);
+    expect(cursor.fake.matching('GET', /\/stream$/)).toHaveLength(0);
+  });
+
+  test('reads a result the runs list leaves out from the run itself', async () => {
+    const { cursor, h, connectionId } = await setup();
+    cursor.state.omitResultInList = true;
+    cursor.finishRun('Done from the run read.');
+    const result = await h.service.syncTask(connectionId, cursor.agentId);
+    expect(agentMessages(result.appended)).toEqual(['Done from the run read.']);
+  });
+
+  test('an archived agent finishes its sync and is not paged again', async () => {
+    const { cursor, h, connectionId } = await setup();
+    cursor.finishRun('Last words.');
+    cursor.state.agent.status = 'ARCHIVED';
+    // The runs list answers 409 agent_archived: end of messages, not a failure.
+    const first = await h.service.syncTask(connectionId, cursor.agentId);
+    expect(first.quiescent).toBe(true);
+    expect(first.task.status).toBe('completed');
+    const lists = () => cursor.fake.matching('GET', /\/runs$/).length;
+    expect(lists()).toBe(1);
+    // Settled: the next sync reads the agent but pages nothing.
+    const second = await h.service.syncTask(connectionId, cursor.agentId);
+    expect(second.quiescent).toBe(true);
+    expect(lists()).toBe(1);
+    expect(h.service.isActive(connectionId, cursor.agentId)).toBe(false);
   });
 
   test('cancels the latest run, and reads token usage once the agent stops', async () => {
@@ -116,7 +138,18 @@ describe('Cursor binding', () => {
     ).toBe(
       `/v1/agents/${cursor.agentId}/runs/run-00000000-0000-0000-0000-000000000001/cancel`,
     );
-    cursor.state.run = structuredClone(CURSOR_FINISHED_RUN);
+    cursor.finishRun('Stopped early.', 'FINISHED');
+    Object.assign(cursor.state.run, {
+      git: {
+        branches: [
+          {
+            repoUrl: 'github.com/your-org/your-repo',
+            branch: 'cursor/add-readme-a1b2',
+            prUrl: 'https://github.com/your-org/your-repo/pull/123',
+          },
+        ],
+      },
+    });
     const result = await h.service.syncTask(connectionId, cursor.agentId);
     expect(result.quiescent).toBe(true);
     expect(result.task.status).toBe('completed');
@@ -130,11 +163,17 @@ describe('Cursor binding', () => {
     expect(cursor.fake.matching('GET', /\/usage$/)).toHaveLength(1);
   });
 
-  test('usage is not read on every poll while the agent runs', async () => {
+  test('a poll costs three requests and usage is not read while the agent runs', async () => {
     const { cursor, h, connectionId } = await setup();
     cursor.state.run.status = 'RUNNING';
     await h.service.syncTask(connectionId, cursor.agentId);
+    // agent, latest run, runs list
+    expect(cursor.fake.requests).toHaveLength(3);
     await h.service.syncTask(connectionId, cursor.agentId);
     expect(cursor.fake.matching('GET', /\/usage$/)).toHaveLength(0);
+    expect(
+      new RemoteTaskStore(h.home).get(connectionId, cursor.agentId)
+        ?.vendorCursor,
+    ).toBeNull();
   });
 });

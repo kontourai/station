@@ -32,6 +32,13 @@ export const acpConnectionSchema = z.object({
     .refine((value) => parseEngineConnectionId(value) !== undefined, {
       message:
         'must be a clean engine identity using lowercase letters, digits, and hyphens',
+    })
+    // Remote task engine connections own this prefix: their vendor token
+    // shares the engine vault, keyed by connection id
+    // (docs/decisions/remote-task-engines.md).
+    .refine((value) => !value.startsWith('remote-task-'), {
+      message:
+        'must not start with "remote-task-", which remote task engines use',
     }),
   command: z.string().min(1),
   name: z.string().optional(),

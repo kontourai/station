@@ -36,6 +36,7 @@ import {
   type RemoteTaskConnectionView,
   type RemoteTaskCreateInput,
   type RemoteTaskEvent,
+  type RemoteTaskEventRead,
   type RemoteTaskPolling,
   type RemoteTaskStatus,
   type RemoteTaskStoredEvent,
@@ -96,6 +97,8 @@ const SETTING_MAX_CHARS = 256;
 /** Pages read per sync, so a long backlog cannot hold one poll forever. */
 const EVENT_PAGES_PER_SYNC = 10;
 const REPOSITORY_PART = /^[A-Za-z0-9_.-]{1,100}$/;
+/** `.` and `..` would make a path segment, not a repository name. */
+const DOT_ONLY = /^\.+$/;
 const REF = /^[A-Za-z0-9_./-]{1,255}$/;
 const MODEL = /^[A-Za-z0-9_.:-]{1,128}$/;
 
@@ -173,7 +176,9 @@ function parseRemoteTaskCreateInput(
       typeof record.owner !== 'string' ||
       typeof record.name !== 'string' ||
       !REPOSITORY_PART.test(record.owner) ||
-      !REPOSITORY_PART.test(record.name)
+      !REPOSITORY_PART.test(record.name) ||
+      DOT_ONLY.test(record.owner) ||
+      DOT_ONLY.test(record.name)
     )
       throw invalid('repository must be { owner, name }');
     repo = { owner: record.owner, name: record.name };
@@ -205,12 +210,28 @@ function parseRemoteTaskCreateInput(
   };
 }
 
+/** The task with only the usage units its binding declares. */
+function declaredUsage(
+  binding: RemoteTaskBinding,
+  task: RemoteTask,
+): RemoteTask {
+  const units = binding.capabilities.usageUnits;
+  return task.usage.every((entry) => units.includes(entry.unit))
+    ? task
+    : {
+        ...task,
+        usage: task.usage.filter((entry) => units.includes(entry.unit)),
+      };
+}
+
 export class RemoteTaskEngineService {
   readonly #options: RemoteTaskEngineServiceOptions;
   readonly #connections: RemoteTaskConnectionStore;
   readonly #tasks: RemoteTaskStore;
   readonly #bindings: Readonly<Record<RemoteTaskVendorId, RemoteTaskBinding>>;
   readonly #now: () => number;
+  /** Connections removed by this process: a sync still in flight writes nothing for them. */
+  readonly #deleted = new Set<string>();
 
   constructor(options: RemoteTaskEngineServiceOptions) {
     this.#options = options;
@@ -253,9 +274,11 @@ export class RemoteTaskEngineService {
   }
 
   #connection(connectionId: string): RemoteTaskConnectionRecord {
-    const connection = REMOTE_TASK_CONNECTION_ID.test(connectionId)
-      ? this.#connections.get(connectionId)
-      : undefined;
+    const connection =
+      REMOTE_TASK_CONNECTION_ID.test(connectionId) &&
+      !this.#deleted.has(connectionId)
+        ? this.#connections.get(connectionId)
+        : undefined;
     if (!connection)
       throw new RemoteTaskError(
         'remote-task-not-found',
@@ -435,6 +458,17 @@ export class RemoteTaskEngineService {
       record.settings !== undefined
         ? cleanSettings(binding, record.settings)
         : current.settings;
+    const settingsChanged =
+      JSON.stringify(Object.entries(settings).sort()) !==
+      JSON.stringify(Object.entries(current.settings).sort());
+    // The stored tasks belong to the account the settings name (Devin's
+    // organization): switching it under them would poll another account.
+    if (settingsChanged && this.#tasks.hasTasks(current.id))
+      throw new RemoteTaskError(
+        'remote-task-conflict',
+        'This connection already has tasks; create a new connection for other settings.',
+        409,
+      );
     let polling = current.polling;
     if (record.polling !== undefined) {
       const problems = remoteTaskPollingProblems(record.polling);
@@ -458,6 +492,26 @@ export class RemoteTaskEngineService {
       'No such remote task connection.',
       404,
     );
+  }
+
+  /**
+   * Update one task file, refused once its connection is gone. The check
+   * runs inside the file lock, right before the write, so a sync that was
+   * in flight when the connection was removed cannot leave a task behind.
+   */
+  #mutateTask(
+    connectionId: string,
+    taskId: string,
+    update: Parameters<RemoteTaskStore['mutate']>[2],
+  ) {
+    return this.#tasks.mutate(connectionId, taskId, (current) => {
+      if (
+        this.#deleted.has(connectionId) ||
+        !this.#connections.get(connectionId)
+      )
+        throw this.#connectionGone();
+      return update(current);
+    });
   }
 
   /**
@@ -520,9 +574,10 @@ export class RemoteTaskEngineService {
   /** Retained maintenance: removes the connection, its credential and its stored tasks. */
   async deleteConnection(connectionId: string): Promise<void> {
     const connection = this.#connection(connectionId);
+    this.#deleted.add(connection.id);
+    await this.#connections.mutate(connection.id, () => undefined);
     await this.#options.credentials.removeConnection(connection.id);
     this.#tasks.removeConnection(connection.id);
-    await this.#connections.mutate(connection.id, () => undefined);
   }
 
   // --- tasks -------------------------------------------------------------------
@@ -534,10 +589,13 @@ export class RemoteTaskEngineService {
       binding.capabilities,
       connection.vendor,
     );
-    const task = await this.#call(connectionId, (context) =>
-      binding.createTask(context, parsed),
+    const task = declaredUsage(
+      binding,
+      await this.#call(connectionId, (context) =>
+        binding.createTask(context, parsed),
+      ),
     );
-    await this.#tasks.mutate(connection.id, task.taskId, (record) => ({
+    await this.#mutateTask(connection.id, task.taskId, (record) => ({
       ...record,
       snapshot: task,
       tracking: 'active',
@@ -547,10 +605,13 @@ export class RemoteTaskEngineService {
 
   async getTask(connectionId: string, taskId: string): Promise<RemoteTask> {
     const { connection, binding } = this.gate(connectionId);
-    if (!binding.getTask)
+    if (!binding.getTask || !binding.capabilities.getTask)
       throw unsupported(connection.vendor, 'reading a task');
     const getTask = binding.getTask;
-    return this.#call(connectionId, (context) => getTask(context, taskId));
+    return declaredUsage(
+      binding,
+      await this.#call(connectionId, (context) => getTask(context, taskId)),
+    );
   }
 
   async listTasks(
@@ -558,10 +619,16 @@ export class RemoteTaskEngineService {
     cursor: string | null,
   ): Promise<{ tasks: readonly RemoteTask[]; cursor: string | null }> {
     const { connection, binding } = this.gate(connectionId);
-    if (!binding.listTasks)
+    if (!binding.listTasks || !binding.capabilities.listTasks)
       throw unsupported(connection.vendor, 'listing tasks');
     const listTasks = binding.listTasks;
-    return this.#call(connectionId, (context) => listTasks(context, cursor));
+    const page = await this.#call(connectionId, (context) =>
+      listTasks(context, cursor),
+    );
+    return {
+      tasks: page.tasks.map((task) => declaredUsage(binding, task)),
+      cursor: page.cursor,
+    };
   }
 
   async sendMessage(
@@ -580,7 +647,7 @@ export class RemoteTaskEngineService {
       sendMessage(context, taskId, text),
     );
     // The task works again: the tracker resumes polling it.
-    await this.#tasks.mutate(connection.id, taskId, (record) => ({
+    await this.#mutateTask(connection.id, taskId, (record) => ({
       ...record,
       tracking: 'active',
       usageSettled: false,
@@ -605,11 +672,7 @@ export class RemoteTaskEngineService {
     connectionId: string,
     taskId: string,
     after: number,
-  ): {
-    events: RemoteTaskStoredEvent[];
-    task: RemoteTask | null;
-    tracking: string;
-  } {
+  ): RemoteTaskEventRead {
     this.#requirePreview();
     const connection = this.#connection(connectionId);
     this.#requirePolicy(connection.vendor);
@@ -620,19 +683,28 @@ export class RemoteTaskEngineService {
         'Station has stored nothing for this task.',
         404,
       );
+    const firstSequence = record.events[0]?.sequence ?? null;
     return {
       events: record.events.filter((event) => event.sequence > after),
       task: record.snapshot,
       tracking: record.tracking,
+      firstSequence,
+      // Messages after `after` that the bounded store no longer holds.
+      missed:
+        after + 1 < (firstSequence ?? record.nextSequence) &&
+        record.nextSequence > after + 1,
     };
   }
 
-  /** Tasks the tracker should poll: stored and not quiescent. */
-  activeTasks(): Array<{ connectionId: string; taskId: string }> {
-    return this.#tasks
-      .listAll()
-      .filter((record) => record.tracking === 'active')
-      .map(({ connectionId, taskId }) => ({ connectionId, taskId }));
+  /** Whether the tracker should poll the task: stored, its connection live, not quiescent. */
+  isActive(connectionId: string, taskId: string): boolean {
+    if (this.#deleted.has(connectionId) || !this.#connections.get(connectionId))
+      return false;
+    try {
+      return this.#tasks.get(connectionId, taskId)?.tracking === 'active';
+    } catch {
+      return false;
+    }
   }
 
   pollingFor(connectionId: string): RemoteTaskPolling | undefined {
@@ -647,15 +719,23 @@ export class RemoteTaskEngineService {
    * and, once no work is running, read usage a vendor reports apart. A
    * restart resumes from the stored cursor, so a task that ran while Station
    * was off is caught up on the next sync.
+   *
+   * A task that was already finished and settled at the last sync is not
+   * paged again: the sync that saw it finish read its last messages. A vendor
+   * that answers a finished task's messages with its end-of-stream refusal
+   * (`isEndOfMessages`) ends paging instead of failing the sync.
    */
   async syncTask(
     connectionId: string,
     taskId: string,
   ): Promise<RemoteTaskSyncResult> {
     return this.#call(connectionId, async (context, binding, connection) => {
-      if (!binding.getTask)
+      if (!binding.getTask || !binding.capabilities.getTask)
         throw unsupported(connection.vendor, 'reading a task');
-      const task = await binding.getTask(context, taskId);
+      const task = declaredUsage(
+        binding,
+        await binding.getTask(context, taskId),
+      );
       const before = this.#tasks.get(connection.id, taskId);
       const statusEvents: RemoteTaskEvent[] = [];
       if (before?.snapshot?.vendorStatus !== task.vendorStatus)
@@ -667,45 +747,60 @@ export class RemoteTaskEngineService {
           ...(task.updatedAt ? { createdAt: task.updatedAt } : {}),
         });
       const appended: RemoteTaskStoredEvent[] = [];
-      let record = await this.#tasks.mutate(
-        connection.id,
-        taskId,
-        (current) => {
-          const next = appendRemoteTaskEvents(current, statusEvents);
-          appended.push(...next.appended);
-          return { ...next.record, snapshot: task };
-        },
-      );
+      let record = await this.#mutateTask(connection.id, taskId, (current) => {
+        const next = appendRemoteTaskEvents(current, statusEvents);
+        appended.push(...next.appended);
+        return { ...next.record, snapshot: task };
+      });
+      const terminal = isRemoteTaskTerminal(task.status);
+      const settled =
+        terminal &&
+        before?.tracking === 'quiescent' &&
+        before.snapshot !== null &&
+        before.snapshot.vendorStatus === task.vendorStatus;
       let more = false;
-      if (binding.capabilities.events && binding.pageEvents) {
+      if (binding.capabilities.events && binding.pageEvents && !settled) {
         let cursor = record.vendorCursor;
         for (let page = 0; page < EVENT_PAGES_PER_SYNC; page += 1) {
-          const result = await binding.pageEvents(context, taskId, cursor);
+          let result: Awaited<
+            ReturnType<NonNullable<RemoteTaskBinding['pageEvents']>>
+          >;
+          try {
+            result = await binding.pageEvents(context, taskId, cursor);
+          } catch (error) {
+            if (
+              terminal &&
+              error instanceof RemoteTaskError &&
+              binding.isEndOfMessages?.(error)
+            )
+              break;
+            throw error;
+          }
           cursor = result.cursor;
-          record = await this.#tasks.mutate(
-            connection.id,
-            taskId,
-            (current) => {
-              const next = appendRemoteTaskEvents(current, result.events);
-              appended.push(...next.appended);
-              return { ...next.record, vendorCursor: result.cursor };
-            },
-          );
+          record = await this.#mutateTask(connection.id, taskId, (current) => {
+            const next = appendRemoteTaskEvents(current, result.events);
+            appended.push(...next.appended);
+            return { ...next.record, vendorCursor: result.cursor };
+          });
           more = result.hasMore;
           if (!result.hasMore) break;
         }
       }
-      const quiescent =
-        !more &&
-        (isRemoteTaskTerminal(task.status) || QUIESCENT.includes(task.status));
+      const quiescent = !more && (terminal || QUIESCENT.includes(task.status));
       let finalTask = task;
       if (quiescent && binding.getUsage && !record.usageSettled) {
         const usage = await binding.getUsage(context, taskId);
-        finalTask = { ...task, usage };
+        finalTask = declaredUsage(binding, { ...task, usage });
       }
-      await this.#tasks.mutate(connection.id, taskId, (current) => ({
+      await this.#mutateTask(connection.id, taskId, (current) => ({
         ...current,
-        snapshot: finalTask,
+        snapshot:
+          quiescent || !current.usageSettled
+            ? finalTask
+            : {
+                ...finalTask,
+                usage: current.snapshot?.usage ?? finalTask.usage,
+              },
         tracking: quiescent ? 'quiescent' : 'active',
         usageSettled: quiescent ? true : current.usageSettled,
       }));

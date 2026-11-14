@@ -63,6 +63,17 @@ export class VendorFake {
     return this;
   }
 
+  readonly #scoped: Array<{
+    method: string;
+    path: RegExp;
+    response: () => Response;
+  }> = [];
+
+  /** The next request matching `method` and `path` is answered by `response()`. */
+  injectFor(method: string, path: RegExp, response: () => Response): void {
+    this.#scoped.push({ method, path, response });
+  }
+
   /** The next `count` requests are answered by `response()`. */
   inject(count: number, response: () => Response): void {
     for (let i = 0; i < count; i += 1) this.#injected.push(response);
@@ -82,6 +93,13 @@ export class VendorFake {
     this.requests.push(request);
     const injected = this.#injected.shift();
     if (injected) return injected();
+    const scoped = this.#scoped.findIndex(
+      (entry) => entry.method === method && entry.path.test(url.pathname),
+    );
+    if (scoped !== -1) {
+      const [entry] = this.#scoped.splice(scoped, 1);
+      return (entry as { response: () => Response }).response();
+    }
     for (const route of this.#routes) {
       if (route.method !== method) continue;
       const match = url.pathname.match(route.path);
@@ -203,10 +221,13 @@ export function devinFake(orgId: string) {
       const first = Number(request.url.searchParams.get('first') ?? 100);
       const items = list.slice(start, start + first);
       const end = start + items.length - 1;
+      const hasNext = end + 1 < list.length;
+      // Devin documents `end_cursor` as nullable; this fake answers null on
+      // the last page, the case that leaves no position past it.
       return json(200, {
         items,
-        end_cursor: items.length > 0 ? `c${end}` : null,
-        has_next_page: end + 1 < list.length,
+        end_cursor: hasNext && items.length > 0 ? `c${end}` : null,
+        has_next_page: hasNext,
       });
     },
   );
@@ -370,16 +391,61 @@ function sse(events: CursorStreamEvent[]): Response {
 export function cursorFake() {
   const fake = new VendorFake('https://api.cursor.com');
   const agentId = CURSOR_CREATE_RESPONSE.agent.id;
+  const run = structuredClone(CURSOR_CREATE_RESPONSE.run) as Record<
+    string,
+    unknown
+  >;
   const state = {
     agent: structuredClone(CURSOR_CREATE_RESPONSE.agent) as Record<
       string,
       unknown
     >,
-    run: structuredClone(CURSOR_CREATE_RESPONSE.run) as Record<string, unknown>,
+    /** The latest run (also the first of `runs`). */
+    run,
+    /** Every run, newest first. */
+    runs: [run] as Array<Record<string, unknown>>,
     busy: false,
-    /** The agent stream as Cursor retains it; `status` without id leads. */
-    stream: [] as CursorStreamEvent[],
-    expiredBefore: undefined as string | undefined,
+    /** List entries leave `result` out (the get-run read carries it). */
+    omitResultInList: false,
+    /**
+     * The agent stream as Cursor documents it for an ordinary agent:
+     * `assistant` events are text deltas. Station must never open it.
+     */
+    stream: [
+      { id: '1713033000000-0', event: 'assistant', data: { text: "I'll " } },
+      { id: '1713033000001-0', event: 'assistant', data: { text: 'update ' } },
+      {
+        id: '1713033000002-0',
+        event: 'assistant',
+        data: { text: 'the README.' },
+      },
+    ] as CursorStreamEvent[],
+  };
+  const archived = () =>
+    json(409, {
+      error: { code: 'agent_archived', message: 'Agent is archived' },
+    });
+  /** Finish the latest run with `result`, as the get-run example shows. */
+  const finishRun = (result: string, status = 'FINISHED') => {
+    Object.assign(state.run, {
+      status,
+      updatedAt: '2026-04-13T18:45:00.000Z',
+      durationMs: 12357,
+      result,
+    });
+  };
+  /** A follow-up run begins (newest first). */
+  const startRun = (id: string, createdAt: string) => {
+    const next: Record<string, unknown> = {
+      id,
+      agentId,
+      status: 'RUNNING',
+      createdAt,
+      updatedAt: createdAt,
+    };
+    state.runs.unshift(next);
+    state.run = next;
+    state.agent.latestRunId = id;
   };
   fake.on('POST', /^\/v1\/agents$/, () => json(200, CURSOR_CREATE_RESPONSE));
   fake.on('GET', /^\/v1\/agents$/, () => json(200, { items: [state.agent] }));
@@ -390,9 +456,24 @@ export function cursorFake() {
           error: { code: 'agent_not_found', message: 'Agent not found' },
         }),
   );
-  fake.on('GET', /^\/v1\/agents\/[^/]+\/runs\/([^/]+)$/, () =>
-    json(200, state.run),
-  );
+  fake.on('GET', /^\/v1\/agents\/[^/]+\/runs$/, () => {
+    if (state.agent.status === 'ARCHIVED') return archived();
+    return json(200, {
+      items: state.runs.map((entry) => {
+        if (!state.omitResultInList) return entry;
+        const { result: _result, ...rest } = entry;
+        return rest;
+      }),
+    });
+  });
+  fake.on('GET', /^\/v1\/agents\/[^/]+\/runs\/([^/]+)$/, (_r, match) => {
+    const found = state.runs.find((entry) => entry.id === match[1]);
+    return found
+      ? json(200, found)
+      : json(404, {
+          error: { code: 'run_not_found', message: 'Run not found' },
+        });
+  });
   fake.on('POST', /^\/v1\/agents\/[^/]+\/runs$/, (request) => {
     const body = request.body as Record<string, unknown>;
     if (body.delivery === 'steer')
@@ -423,24 +504,14 @@ export function cursorFake() {
     },
   );
   fake.on('GET', /^\/v1\/agents\/[^/]+\/usage$/, () => json(200, CURSOR_USAGE));
-  fake.on('GET', /^\/v1\/agents\/[^/]+\/stream$/, (request) => {
-    const last = request.headers.get('last-event-id');
-    if (last && state.expiredBefore && last < state.expiredBefore)
-      return json(410, {
-        error: { code: 'stream_expired', message: 'Stream retention expired' },
-      });
-    const status: CursorStreamEvent = {
-      event: 'status',
-      data: { agentId, status: state.run.status },
-    };
-    const index = last
-      ? state.stream.findIndex((event) => event.id === last) + 1
-      : 0;
-    return sse([
-      status,
-      ...state.stream.slice(index),
-      { event: 'heartbeat', data: {} },
-    ]);
-  });
-  return { fake, state, agentId };
+  fake.on('GET', /^\/v1\/agents\/[^/]+\/stream$/, () =>
+    state.agent.status === 'ARCHIVED'
+      ? archived()
+      : sse([
+          { event: 'status', data: { agentId, status: state.run.status } },
+          ...state.stream,
+          { event: 'heartbeat', data: {} },
+        ]),
+  );
+  return { fake, state, agentId, finishRun, startRun };
 }

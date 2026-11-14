@@ -1,20 +1,22 @@
 /**
- * Polls each active remote task on its connection's cadence and stops once
- * the task is quiescent (finished, idle, or waiting for the person). The
- * work keeps running on the vendor's machines whatever Station does; the
- * tracker only catches Station up.
+ * Polls a remote task only while someone is reading it, on its connection's
+ * cadence, and stops once the task is quiescent (finished, idle, or waiting
+ * for the person). The work keeps running on the vendor's machines whatever
+ * Station does; the tracker only catches Station up for a reader.
  *
+ * - Interest: a poll runs only while a client touched the task (created it,
+ *   wrote to it, synced it or read its messages) within the interest window.
+ *   No reader, no polling: nothing spends the owner's vendor quota or disk
+ *   unseen. After a restart nothing polls until a client reads a task again;
+ *   that read resumes from the stored vendor cursor.
  * - Cadence: `nextRemoteTaskPollDelay`. Success polls after the interval; a
  *   failure doubles the delay up to the connection's `maxBackoffMs`; a rate
  *   limit waits at least as long as the vendor asked.
- * - Preview and policy: each poll goes through the service's gate. A poll
- *   refused because the preview or the policy is off sends nothing and is
- *   retried after the backoff ceiling, so turning the preview back on
- *   resumes tracking without a restart. A refusal that only a person can fix
- *   (no acknowledgement, no credential, a connection that is gone) stops
- *   tracking the task until the next explicit sync.
- * - Restart: {@link RemoteTaskTracker.resume} re-schedules every stored task
- *   still marked active; each sync continues from the stored vendor cursor.
+ * - Retried: only refusals that resolve on their own (the preview or the
+ *   policy turned off, a rate limit, an unreachable vendor). Anything else
+ *   (no acknowledgement or credential, a connection that is gone, a store or
+ *   vendor answer Station cannot handle, or an unexpected error) stops
+ *   polling the task until a client touches it again.
  */
 import {
   nextRemoteTaskPollDelay,
@@ -25,19 +27,23 @@ import { FeaturePreviewDisabledError } from '../feature-previews/feature-preview
 import { RemoteTaskError } from './remote-task-error.js';
 import type { RemoteTaskEngineService } from './service.js';
 
+/** How long one read keeps a task polled. */
+export const REMOTE_TASK_INTEREST_WINDOW_MS = 15 * 60_000;
+
 export interface RemoteTaskTrackerOptions {
   readonly service: Pick<
     RemoteTaskEngineService,
-    'syncTask' | 'activeTasks' | 'pollingFor'
+    'syncTask' | 'isActive' | 'pollingFor'
   >;
   readonly logger: Logger;
   readonly setTimer?: (run: () => void, ms: number) => unknown;
   readonly clearTimer?: (handle: unknown) => void;
+  readonly now?: () => number;
+  readonly interestWindowMs?: number;
 }
 
-/** Refusals that resolve on their own (the gate or the vendor); retried. */
-const TRANSIENT = new Set([
-  'remote-task-policy-refused',
+/** Vendor refusals that resolve on their own; retried with backoff. */
+const TRANSIENT_VENDOR = new Set([
   'remote-task-rate-limited',
   'remote-task-vendor-unavailable',
 ]);
@@ -54,12 +60,17 @@ function key(connectionId: string, taskId: string): string {
 export class RemoteTaskTracker {
   readonly #options: RemoteTaskTrackerOptions;
   readonly #tracked = new Map<string, Tracked>();
+  readonly #interest = new Map<string, number>();
   readonly #setTimer: (run: () => void, ms: number) => unknown;
   readonly #clearTimer: (handle: unknown) => void;
+  readonly #now: () => number;
+  readonly #windowMs: number;
   #stopped = false;
 
   constructor(options: RemoteTaskTrackerOptions) {
     this.#options = options;
+    this.#now = options.now ?? Date.now;
+    this.#windowMs = options.interestWindowMs ?? REMOTE_TASK_INTEREST_WINDOW_MS;
     this.#setTimer =
       options.setTimer ??
       ((run, ms) => {
@@ -72,24 +83,19 @@ export class RemoteTaskTracker {
       ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
   }
 
-  /** Re-schedule every stored task still active (after a restart). */
-  resume(): void {
-    for (const { connectionId, taskId } of this.#options.service.activeTasks())
-      this.track(connectionId, taskId, 0);
-  }
-
-  /** Poll `taskId` after `delayMs` (default: now), replacing any pending poll. */
-  track(connectionId: string, taskId: string, delayMs = 0): void {
+  /**
+   * A client read or wrote the task: keep it polled for the interest window,
+   * starting now if it is active and not already scheduled. A pending poll is
+   * left alone, so a client reading every few seconds never shortens the
+   * cadence.
+   */
+  noteInterest(connectionId: string, taskId: string): void {
     if (this.#stopped) return;
     const id = key(connectionId, taskId);
-    const existing = this.#tracked.get(id);
-    if (existing) this.#clearTimer(existing.handle);
-    const entry: Tracked = { handle: undefined, delayMs };
-    entry.handle = this.#setTimer(
-      () => void this.#poll(connectionId, taskId, entry),
-      delayMs,
-    );
-    this.#tracked.set(id, entry);
+    this.#interest.set(id, this.#now());
+    if (this.#tracked.has(id)) return;
+    if (!this.#options.service.isActive(connectionId, taskId)) return;
+    this.#schedule(connectionId, taskId, 0);
   }
 
   isTracking(connectionId: string, taskId: string): boolean {
@@ -103,9 +109,32 @@ export class RemoteTaskTracker {
     this.#tracked.clear();
   }
 
+  #schedule(connectionId: string, taskId: string, delayMs: number): void {
+    const id = key(connectionId, taskId);
+    const existing = this.#tracked.get(id);
+    if (existing) this.#clearTimer(existing.handle);
+    const entry: Tracked = { handle: undefined, delayMs };
+    entry.handle = this.#setTimer(
+      () => void this.#poll(connectionId, taskId, entry),
+      delayMs,
+    );
+    this.#tracked.set(id, entry);
+  }
+
+  #interested(id: string): boolean {
+    const at = this.#interest.get(id);
+    return at !== undefined && this.#now() - at <= this.#windowMs;
+  }
+
   async #poll(connectionId: string, taskId: string, entry: Tracked) {
     const id = key(connectionId, taskId);
     if (this.#tracked.get(id) !== entry || this.#stopped) return;
+    if (!this.#interested(id)) {
+      // Nobody has read the task lately: stop until someone does.
+      this.#tracked.delete(id);
+      this.#interest.delete(id);
+      return;
+    }
     const polling =
       this.#options.service.pollingFor(connectionId) ??
       REMOTE_TASK_POLLING_DEFAULT;
@@ -129,13 +158,17 @@ export class RemoteTaskTracker {
             ? { retryAfterMs: error.details.retryAfterMs }
             : {}),
         });
-      else if (code === undefined || TRANSIENT.has(code))
+      else if (code !== undefined && TRANSIENT_VENDOR.has(code))
         next = nextRemoteTaskPollDelay(polling, entry.delayMs, {
           kind: 'failed',
         });
       this.#options.logger.warn('Remote task poll failed', {
         connectionId,
-        code: code ?? 'error',
+        code:
+          code ??
+          (error instanceof FeaturePreviewDisabledError
+            ? 'feature_preview_disabled'
+            : 'unexpected'),
         retryInMs: next ?? null,
       });
     }
@@ -144,6 +177,6 @@ export class RemoteTaskTracker {
       this.#tracked.delete(id);
       return;
     }
-    this.track(connectionId, taskId, next);
+    this.#schedule(connectionId, taskId, next);
   }
 }

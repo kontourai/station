@@ -18,6 +18,7 @@ import type {
   RemoteTaskUsage,
   RemoteTaskVendorId,
 } from '@kontourai/station-contracts/remote-task-engine';
+import { RemoteTaskError } from './remote-task-error.js';
 import type { VendorErrorSummary, VendorHttp } from './vendor-http.js';
 
 /** What one call can read of its connection: never the credential. */
@@ -70,6 +71,12 @@ export interface RemoteTaskBinding {
   ): Promise<RemoteTaskEventPage>;
   cancelTask?(context: RemoteTaskCallContext, taskId: string): Promise<void>;
   /**
+   * Whether a refusal while paging a finished task means the vendor has no
+   * more messages to give (Cursor's `409 agent_archived`, Devin's `410`), so
+   * paging ends instead of failing the sync.
+   */
+  isEndOfMessages?(error: RemoteTaskError): boolean;
+  /**
    * Usage for a vendor that reports it apart from the task. The tracker calls
    * it once a task stops working, not on every poll.
    */
@@ -94,6 +101,19 @@ export function asRecord(value: unknown): Record<string, unknown> {
 }
 
 /** A vendor answer that lacks a field Station needs. */
-export function malformed(vendor: string, what: string): Error {
-  return new Error(`${vendor} sent ${what} Station could not read.`);
+export function malformed(vendor: string, what: string): RemoteTaskError {
+  return new RemoteTaskError(
+    'remote-task-vendor-malformed',
+    `${vendor} sent ${what} Station could not read.`,
+    502,
+  );
+}
+
+/** A task id that is not this vendor's shape: refused before any request. */
+export function invalidTaskId(vendor: string): RemoteTaskError {
+  return new RemoteTaskError(
+    'remote-task-invalid',
+    `That is not a ${vendor} task id.`,
+    400,
+  );
 }

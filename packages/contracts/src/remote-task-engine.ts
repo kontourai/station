@@ -50,7 +50,8 @@ export type RemoteTaskUsageUnit =
  * What one binding can do. Every flag is a declaration of a documented vendor
  * endpoint; a caller never offers an operation whose flag is off, and the
  * service refuses it with `remote-task-capability-unsupported` before any
- * request leaves the host.
+ * request leaves the host. `usageUnits` is enforced on the way out: a usage
+ * figure in a unit the binding does not declare is dropped.
  */
 export interface RemoteTaskCapabilities {
   /** Create a task from a prompt. Every binding has it. */
@@ -150,7 +151,12 @@ export interface RemoteTaskEvent {
   readonly author: 'user' | 'agent' | 'system';
   readonly text: string;
   readonly createdAt?: string;
+  /** Station kept only the first {@link REMOTE_TASK_EVENT_TEXT_MAX_CHARS} characters. */
+  readonly truncated?: true;
 }
+
+/** The longest message text Station stores; the rest is cut and marked. */
+export const REMOTE_TASK_EVENT_TEXT_MAX_CHARS = 16_000;
 
 /** One page of a task's messages from the vendor. */
 export interface RemoteTaskEventPage {
@@ -314,8 +320,24 @@ export type RemoteTaskRefusalCode =
   | 'remote-task-rate-limited'
   | 'remote-task-vendor-refused'
   | 'remote-task-vendor-unavailable'
+  | 'remote-task-vendor-malformed'
+  | 'remote-task-store-failed'
+  | 'remote-task-conflict'
   | 'remote-task-invalid'
   | 'remote-task-not-found';
+
+/**
+ * What a client reads of a task's stored messages. Station keeps a bounded
+ * window per task; `missed` says messages after the client's `after` were
+ * dropped before it read them, and `firstSequence` is the oldest one kept.
+ */
+export interface RemoteTaskEventRead {
+  readonly events: readonly RemoteTaskStoredEvent[];
+  readonly task: RemoteTask | null;
+  readonly tracking: 'active' | 'quiescent';
+  readonly firstSequence: number | null;
+  readonly missed: boolean;
+}
 
 /** A connection as a client may see it: never a credential value. */
 export interface RemoteTaskConnectionView {

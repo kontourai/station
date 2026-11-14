@@ -8188,7 +8188,6 @@ export function configureRuntimeRoutes(
     service: remoteTaskService,
     logger: context.logger,
   });
-  remoteTaskTracker.resume();
   context.app.route(
     '/remote-task-engines',
     createRemoteTaskEngineRoutes({

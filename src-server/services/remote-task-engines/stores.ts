@@ -17,6 +17,7 @@ import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   isRemoteTaskVendorId,
+  REMOTE_TASK_EVENT_TEXT_MAX_CHARS,
   type RemoteTask,
   type RemoteTaskAcknowledgement,
   type RemoteTaskEvent,
@@ -29,6 +30,8 @@ import {
   mutateJsonFile,
   readJsonFile,
 } from '@kontourai/station-shared/json-file-storage';
+import { REMOTE_TASK_CONNECTION_ID } from './credentials.js';
+import { RemoteTaskError } from './remote-task-error.js';
 
 export interface RemoteTaskConnectionRecord {
   readonly id: string;
@@ -177,10 +180,60 @@ function emptyTask(connectionId: string, taskId: string): RemoteTaskRecord {
   };
 }
 
+/** A vendor id longer than this is kept as its digest. */
+const EVENT_ID_MAX_CHARS = 200;
+/**
+ * The stored messages of one task, as JSON, stay under this; the oldest are
+ * dropped first. Well inside {@link TASK_MAX_BYTES}, which also holds the
+ * seen ids and the snapshot.
+ */
+export const REMOTE_TASK_STORED_EVENT_BYTES_MAX = 4 * 1024 * 1024;
+
+function storedId(id: string): string {
+  return id.length <= EVENT_ID_MAX_CHARS
+    ? id
+    : `sha256:${createHash('sha256').update(id).digest('hex')}`;
+}
+
+/** The message as Station keeps it: its text cut at the cap and marked. */
+function boundedEvent(event: RemoteTaskEvent): RemoteTaskEvent {
+  const id = storedId(event.id);
+  if (event.text.length <= REMOTE_TASK_EVENT_TEXT_MAX_CHARS)
+    return id === event.id ? event : { ...event, id };
+  return {
+    ...event,
+    id,
+    text: event.text.slice(0, REMOTE_TASK_EVENT_TEXT_MAX_CHARS),
+    truncated: true,
+  };
+}
+
+/** The newest stored events that fit the count and byte caps. */
+function keptEvents(
+  events: readonly RemoteTaskStoredEvent[],
+): RemoteTaskStoredEvent[] {
+  const kept: RemoteTaskStoredEvent[] = [];
+  let bytes = 0;
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index] as RemoteTaskStoredEvent;
+    const size = Buffer.byteLength(JSON.stringify(event), 'utf8');
+    if (
+      kept.length >= REMOTE_TASK_STORED_EVENTS_MAX ||
+      bytes + size > REMOTE_TASK_STORED_EVENT_BYTES_MAX
+    )
+      break;
+    kept.push(event);
+    bytes += size;
+  }
+  return kept.reverse();
+}
+
 /**
  * `record` with `events` appended: ids already seen are dropped (a replayed
- * page, or a vendor that resends an event after reconnect), the rest get the
- * next sequence numbers in order.
+ * page, or a vendor that resends an event after reconnect), each text is cut
+ * at {@link REMOTE_TASK_EVENT_TEXT_MAX_CHARS}, the rest get the next sequence
+ * numbers in order, and the oldest stored events past the count or byte cap
+ * are dropped. However long a transcript grows, the task file stays bounded.
  */
 export function appendRemoteTaskEvents(
   record: RemoteTaskRecord,
@@ -189,7 +242,8 @@ export function appendRemoteTaskEvents(
   const seen = new Set(record.seenIds);
   const appended: RemoteTaskStoredEvent[] = [];
   let sequence = record.nextSequence;
-  for (const event of events) {
+  for (const raw of events) {
+    const event = boundedEvent(raw);
     if (seen.has(event.id)) continue;
     seen.add(event.id);
     appended.push({ ...event, sequence });
@@ -197,18 +251,25 @@ export function appendRemoteTaskEvents(
   }
   if (appended.length === 0) return { record, appended };
   const ids = [...record.seenIds, ...appended.map((event) => event.id)];
-  const stored = [...record.events, ...appended];
   return {
     record: {
       ...record,
       seenIds: ids.slice(Math.max(0, ids.length - SEEN_IDS_MAX)),
       nextSequence: sequence,
-      events: stored.slice(
-        Math.max(0, stored.length - REMOTE_TASK_STORED_EVENTS_MAX),
-      ),
+      events: keptEvents([...record.events, ...appended]),
     },
     appended,
   };
+}
+
+function storeFailed(): RemoteTaskError {
+  // Never retried by the tracker: a store that cannot be read or written
+  // does not heal by polling the vendor again.
+  return new RemoteTaskError(
+    'remote-task-store-failed',
+    'Station could not read or save this task.',
+    500,
+  );
 }
 
 export class RemoteTaskStore {
@@ -219,38 +280,69 @@ export class RemoteTaskStore {
   }
 
   #path(connectionId: string, taskId: string): string {
+    if (!REMOTE_TASK_CONNECTION_ID.test(connectionId))
+      throw new Error('Not a remote task connection id.');
     const digest = createHash('sha256').update(taskId).digest('hex');
     return join(this.#root, connectionId, `${digest.slice(0, 40)}.json`);
   }
 
   get(connectionId: string, taskId: string): RemoteTaskRecord | undefined {
-    const value = readJsonFile<RemoteTaskRecord | null>(
-      this.#path(connectionId, taskId),
-      null,
-      { maxBytes: TASK_MAX_BYTES, label: 'remote task' },
-    );
+    const path = this.#path(connectionId, taskId);
+    let value: RemoteTaskRecord | null;
+    try {
+      value = readJsonFile<RemoteTaskRecord | null>(path, null, {
+        maxBytes: TASK_MAX_BYTES,
+        label: 'remote task',
+      });
+    } catch {
+      throw storeFailed();
+    }
     return value && value.taskId === taskId ? value : undefined;
   }
 
+  /** Whether any task is stored for the connection. */
+  hasTasks(connectionId: string): boolean {
+    if (!REMOTE_TASK_CONNECTION_ID.test(connectionId)) return false;
+    try {
+      return readdirSync(join(this.#root, connectionId)).some((file) =>
+        file.endsWith('.json'),
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Read, update and write one task file under its lock. `update` runs
+   * synchronously inside the lock, so a check it makes (the connection still
+   * exists) holds for the write. A {@link RemoteTaskError} it throws passes
+   * through; any other failure is `remote-task-store-failed`.
+   */
   async mutate(
     connectionId: string,
     taskId: string,
     update: (current: RemoteTaskRecord) => RemoteTaskRecord,
   ): Promise<RemoteTaskRecord> {
-    return mutateJsonFile<RemoteTaskRecord>(
-      this.#path(connectionId, taskId),
-      emptyTask(connectionId, taskId),
-      (current) =>
-        update(
-          current && current.taskId === taskId
-            ? current
-            : emptyTask(connectionId, taskId),
-        ),
-      { maxBytes: TASK_MAX_BYTES, label: 'remote task' },
-    );
+    const path = this.#path(connectionId, taskId);
+    try {
+      return await mutateJsonFile<RemoteTaskRecord>(
+        path,
+        emptyTask(connectionId, taskId),
+        (current) =>
+          update(
+            current && current.taskId === taskId
+              ? current
+              : emptyTask(connectionId, taskId),
+          ),
+        { maxBytes: TASK_MAX_BYTES, label: 'remote task' },
+      );
+    } catch (error) {
+      if (error instanceof RemoteTaskError) throw error;
+      throw storeFailed();
+    }
   }
 
-  /** Every stored task of every connection, for resuming after a restart. */
+  /** Every stored task of every connection. */
   listAll(): RemoteTaskRecord[] {
     let connections: string[];
     try {
@@ -268,18 +360,24 @@ export class RemoteTaskStore {
       }
       for (const file of files) {
         if (!file.endsWith('.json')) continue;
-        const value = readJsonFile<RemoteTaskRecord | null>(
-          join(this.#root, connectionId, file),
-          null,
-          { maxBytes: TASK_MAX_BYTES, label: 'remote task' },
-        );
-        if (value && typeof value.taskId === 'string') records.push(value);
+        try {
+          const value = readJsonFile<RemoteTaskRecord | null>(
+            join(this.#root, connectionId, file),
+            null,
+            { maxBytes: TASK_MAX_BYTES, label: 'remote task' },
+          );
+          if (value && typeof value.taskId === 'string') records.push(value);
+        } catch {
+          // Skipped here; reading the task directly answers
+          // remote-task-store-failed.
+        }
       }
     }
     return records;
   }
 
   removeConnection(connectionId: string): void {
+    if (!REMOTE_TASK_CONNECTION_ID.test(connectionId)) return;
     rmSync(join(this.#root, connectionId), { recursive: true, force: true });
   }
 }
