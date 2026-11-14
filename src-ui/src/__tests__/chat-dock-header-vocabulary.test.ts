@@ -67,7 +67,9 @@ describe('project choice belongs to the shared start heading', () => {
 
   test('the dock header has no retired project badge or session-name segment', () => {
     expect(ruleBodiesFor(indexCss, '.chat-dock__project-badge')).toEqual([]);
-    expect(ruleBodiesFor(indexCss, '.chat-dock__project-session-name')).toEqual([]);
+    expect(ruleBodiesFor(indexCss, '.chat-dock__project-session-name')).toEqual(
+      [],
+    );
     const header = readFileSync(
       path.join(uiRoot, 'components/chat-dock/ChatDockHeader.tsx'),
       'utf-8',
