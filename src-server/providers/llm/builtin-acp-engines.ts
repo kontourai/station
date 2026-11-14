@@ -431,6 +431,12 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     name: 'Factory Droid',
     description: "Factory's Droid coding agent CLI.",
     command: 'droid',
+    // Factory's docs for droid 1.x list `-o acp` and never `acp-daemon`
+    // (docs.factory.com/droid-exec/overview.md, 2026-11-13), but Factory's
+    // own ACP registry entry for droid 1.10.1 still launches `acp-daemon`
+    // (agentclientprotocol/registry factory-droid/agent.json @ 270502f077c8).
+    // What differs between the two is not documented; kept until a live
+    // `initialize` on 1.x says otherwise.
     args: ['exec', '--output-format', 'acp-daemon'],
     icon: 'FD',
     tags: ['acp', 'factory', 'droid'],
@@ -471,6 +477,10 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     name: 'Hermes Agent',
     description: "Nous Research's Hermes Agent.",
     command: 'hermes',
+    // From v0.22.1 `hermes acp` is a viewer of the `hermes gateway` daemon,
+    // and starts that daemon itself when none runs
+    // (hermes_cli/gateway_client.py connect_gateway, ensure_gateway_runtime;
+    // NousResearch/hermes-agent v0.23.1), so connecting needs no extra step.
     args: ['acp'],
     icon: 'HA',
     tags: ['acp', 'hermes', 'nous'],

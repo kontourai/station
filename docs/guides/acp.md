@@ -917,6 +917,20 @@ HTTP. The rules, in full:
   connects to it with an MCP HTTP client, exactly as it would any other HTTP
   MCP server. Nothing ACP-specific is required beyond supporting the
   transport.
+- **The same list on reattach, except the token.** `session/load` and
+  `session/resume` carry `mcpServers` resolved exactly as for `session/new`,
+  in the same order. A relaunch inside one Station process (the approval-floor
+  switch) resends the session's own list unchanged. A fresh engine start
+  (after a Station restart, or a credential recovery) resolves the list again
+  from the current configuration and mints a new token, which revokes the
+  previous one. A Station restart loses every token anyway, since they are
+  held only in memory. So the list matches the first one except for the
+  `Authorization` header, plus any configuration change made since. Station
+  does not persist tokens to make the lists identical: that would keep a
+  bearer valid across restarts. Hermes's gateway (from v0.22.1) fingerprints
+  the whole list, headers included. On a changed list its ACP viewer re-binds
+  the session's servers while the session is idle, and fails the load while a
+  turn is running, which Station reports as a failed resume.
 - **`Authorization: Bearer <token>`.** The credential is in the header list,
   never in the URL — the URL carries no token at all. Present the header on
   every request to that endpoint.
