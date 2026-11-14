@@ -756,6 +756,7 @@ export type ChatUIState = {
   defaultModelSource?: EffectiveModelSource;
   sessionAutoApprove?: string[];
   pendingApprovals?: string[];
+  pendingRequestKinds?: Record<string, 'input' | 'approval'>;
   /**
    * #3071: the turn each request in `pendingApprovals` names
    * (`request.opened.turnId`), for the requests that name one. It is what

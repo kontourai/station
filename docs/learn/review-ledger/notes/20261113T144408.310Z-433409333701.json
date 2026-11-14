@@ -1,7 +1,0 @@
-{
-  "revision": "2a598b444266e80e5106ec751b8f9ada0ce2af6d",
-
-  "notes": [
-    {"path":"docs/design/placement.md","note":"Reviewed the retirement notice and removed Activity shortcut examples against the surface registry, legacy link translator, saved-region migration and child dock outlet. Remaining Activity examples are explicitly historical; this is not a new audit of all placement journeys.","inputs":["docs/design/placement.md","packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/SubagentTranscriptCard.tsx","src-ui/src/contexts/RegionModelContext.tsx","src-ui/src/contexts/useShowSurface.ts","src-ui/src/workspace-panes/RegionEmptyChooser.tsx","src-ui/src/workspace-panes/RegionPaneHost.tsx","src-ui/src/workspace-panes/__tests__/RegionChromeBar.test.tsx","src-ui/src/workspace-panes/__tests__/RegionEmptyChooser.test.tsx"]}
-  ]
-}

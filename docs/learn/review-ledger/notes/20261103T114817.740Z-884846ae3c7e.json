@@ -1,7 +1,0 @@
-{
-  "revision": "6d33e8969d2bb9c086374201a43b09f9cf4c2d32",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Reviewed SessionCommandModule start attachment, durable session.started commit signal, timeout indeterminate outcome, authority cleanup, failed-stop handle retention and deferred-announcement semantics against the real orchestration owner and 6/6 contention/lifecycle tests. No journal, performance or provider qualification claimed.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-command-module.ts"]}
-  ]
-}

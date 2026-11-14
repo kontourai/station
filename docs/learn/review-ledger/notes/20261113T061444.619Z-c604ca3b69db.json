@@ -1,9 +1,0 @@
-{
-  "revision": "06f12d5b0e655572b9a2ca496d0443bb5b25e289",
-
-  "notes": [
-    {"path":"README.md","note":"Reviewed Get Station and release links against the updated Nightly guide. This fix changes note generation and rendering, not installers, availability, channel entry points, or stable release status. README remains accurate; real-history dry run is not a published stable release.","inputs":["README.md","docs/guides/nightly.md"]},
-
-    {"path":"docs/user/settings.md","note":"Reviewed Updates and changelogs against ReleaseNotes and empty-state tests. Installation text is omitted, including the exact legacy template; install-only notes show the existing unavailable state and retain GitHub link. Update actions, preference, and popup ownership unchanged; existing explanation remains accurate.","inputs":["docs/user/settings.md","src-ui/src/components/updates/ReleaseNotes.tsx"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "6d33e8969d2bb9c086374201a43b09f9cf4c2d32",
-
-  "notes": [
-    {"path":"docs/reference/session-api.md","note":"Reviewed announced-start acceptance through session-command-module and orchestration commit signalling, five-second deadline, cleanup and start-owner fallback ordering. The contention suite passes 6/6; baseline and await-removal mutation both fail the durable-event and timeout assertions. Deferred announcements retain owner fallback. No live provider or release qualification.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-command-module.ts"]}
-  ]
-}

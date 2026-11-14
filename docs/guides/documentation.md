@@ -78,7 +78,8 @@ machinery:
 - [keep reviews fresh](documentation-review-ledger.md#keep-reviews-fresh): after
   committing reviewed bytes, run `npm run docs:freshness:check`, inspect each
   document it names, and record what you checked with
-  `npm run docs:review:record -- <doc> --note "..."`;
+  `npm run docs:review:record -- <doc> --note "..."` (`--input <source>`
+  writes that note for every document citing one changed source);
 - the [ledger layout and merge rules](documentation-review-ledger.md#ledger-layout-and-merges),
   including the append-only note guards;
 - [generated release records and removed notes](documentation-review-ledger.md#generated-release-records-and-removed-notes).
@@ -307,7 +308,8 @@ bundle-only document (`"publish": false`, so it gets no page) and mirrors the
 `docs/learn/mcp-topics.json` topics as anchors into it, so the shared server
 answers with the same sections as Station Docs. `docs-kit-manifest.test.ts`
 fails when either drifts. `PR: Docs kit` runs `corpus check` on pull
-requests, merge-queue entries and main as an advisory, non-required check; run
+requests and merge-queue entries (main gets the queue's verdict for the same
+SHA, or a manual dispatch) as an advisory, non-required check; run
 `npx -y github:kontourai/corpus#<sha> check` locally for faster
 feedback.
 

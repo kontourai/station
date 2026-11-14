@@ -1,7 +1,0 @@
-{
-  "revision": "ea7a72218027623efdabb2eb2375379d1d9e77fd",
-
-  "notes": [
-    {"path":"docs/guides/native-shell-verification.md","note":"No claim affected: only useConversationInbox tests changed (missed-read and no-retry cases); native request queue pressure and outbound queue claims are unrelated and unchanged.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/__tests__/useConversationInbox.test.tsx"]}
-  ]
-}

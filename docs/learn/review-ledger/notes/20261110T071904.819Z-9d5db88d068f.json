@@ -1,7 +1,0 @@
-{
-  "revision": "f01a6356f29ed74b2e5e9623ec6470e8e18b9471",
-
-  "notes": [
-    {"path":"docs/testing/browser-smoke.md","note":"Scoped runner-input review at f01a6356f29ed74b2e5e9623ec6470e8e18b9471 of the PR browser-smoke guide's isolated runner, workers/retries, evidence limits and verification/flake instructions. The new policy applies only to smoke-live with the sole normalized runnable tests/task-room-reload-recovery.spec.ts selection, not pr-smoke. That selection clears synthetic readiness/Muse, gives both Station and Playwright private Claude/Codex and all four external-history roots, and skips three broad pre-start sweep/recovery calls and the final retained-results sweep while retaining own cleanup and both Station lifetimes. Default/full/mixed and genuine Muse behavior is unchanged. The guide's PR-smoke claims remain accurate; no prose change is needed. Its seeded-failure/three-clean-run maintenance instruction remains in force and was not executed or satisfied by this review. ROOT620 retained 2 intended builder assertion failures and 101 passes; ROOT624 retained 103/103 passes and read-only scoped Biome exit0 (schema-version information only). These are builder execution and literal caller/guard review, not execution of main spawn, sweep dispatch, either managed Station lifetime or E2E. Historical 57-test and hosted 1ad receipts are not renewed. No PR-smoke, provider, physical-device or release result is recertified.","inputs":["docs/testing/browser-smoke.md","scripts/run-e2e-suite.mjs"]}
-  ]
-}

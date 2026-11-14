@@ -1,7 +1,0 @@
-{
-  "revision": "3549318cec9b50b1bfc2fb898b4de2c725f57ce3",
-
-  "notes": [
-    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Claude session-grant change: agent-configuration.md gained a bullet that autoApprove never covers Bash command-analysis warnings and a qualified guardian sentence. This plan only inventories Agent-ID surfaces and makes no claim about approval grants, autoApprove or the guardian, so no change was needed.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agent-configuration.md"]}
-  ]
-}

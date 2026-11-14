@@ -1,7 +1,0 @@
-{
-  "revision": "abd9494ef793245ce398b9eea83d720f16c96e56",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Reviewed keep-typing, Queue default, Steer dropdown, separate Stop and text-only attachment guidance. Adding a class to the existing steering-status paragraph changes no label, action, admission, keyboard behavior, copy or breakpoint. The token-based inset and quieter text do not change those user instructions; no prose edit needed.","inputs":["docs/user/getting-started.md"]}
-  ]
-}

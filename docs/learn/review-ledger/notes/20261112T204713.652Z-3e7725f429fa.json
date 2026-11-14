@@ -1,7 +1,0 @@
-{
-  "revision": "336aeb343f2b8816151f8da307d7a77efd05d5f4",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Re-checked after ProjectRoom.tsx gated sends until a legacy (pre-revision) draft's migrated revision renders: no route, contract, SDK or draft-keying claim changed; the per-channel and per-thread draft and retained-intent statements still match the code.","inputs":["docs/architecture/module-map.md","src-ui/src/views/project-page/ProjectRoom.tsx"]}
-  ]
-}

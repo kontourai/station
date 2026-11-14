@@ -203,5 +203,8 @@ export function describeEngineProbeFailure(
 ): string {
   if (lastError.code === 'managed-runtime-not-installed')
     return `${engineName} isn't installed yet. Install it from its sign-in panel.`;
+  // Station composes this text itself from the engine's built-in entry and
+  // the version it read, so it is shown as is.
+  if (lastError.code === 'engine-update-required') return lastError.message;
   return describeStationFailure(lastError).body;
 }

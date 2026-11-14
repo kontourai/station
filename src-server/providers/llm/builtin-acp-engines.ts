@@ -5,8 +5,9 @@
  * shows them and never runs them. Windows commands are PowerShell.
  * `homepageUrl` is data only, not yet applied.
  *
- * `auth.statusCommand` is set only where the vendor's source or docs pin
- * what the command prints signed in and signed out (2026-10-21 review);
+ * `auth.statusCommand` is set only where the vendor's source or docs, or a
+ * recorded run of the vendor's release, pin what the command prints signed
+ * in and signed out (2026-10-21 review; Antigravity recorded 2026-11-13);
  * everywhere else sign-in stays unchecked rather than guessed.
  */
 
@@ -312,6 +313,14 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       },
     },
     auth: {
+      // `grok models` states the sign-in first, exit 0 either way (grok
+      // 1.0.77, live: "You are logged in with grok.com." / "You are not
+      // authenticated."). Other output stays unknown.
+      statusCommand: ['grok', 'models'],
+      statusRule: {
+        signedOutText: ['You are not authenticated'],
+        signedInText: ['You are logged in with'],
+      },
       signInHint:
         'Run grok login on the computer Station runs on, or provide an xAI API key.',
       credentialEnvVars: ['XAI_API_KEY'],
@@ -350,33 +359,53 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
   {
     id: 'antigravity',
     name: 'Google Antigravity',
-    description:
-      "Google's Antigravity agent, through the server Google ships for editors.",
-    command: 'agy_acp_server.par',
-    args: [],
+    description: "Google's Antigravity agent, run from its agy command.",
+    // Google's ACP guide (antigravity.google/docs/cli/acp) runs `agy acp`.
+    // `--process-per-session` is its documented flag for HTTP MCP servers the
+    // client supplies; with it, 1.5.8 declares `mcpCapabilities.http`, which
+    // Station's own tools need. Station runs one process per session anyway.
+    command: 'agy',
+    args: ['acp', '--process-per-session'],
     icon: 'AG',
     tags: ['acp', 'antigravity', 'google'],
-    homepageUrl: 'https://antigravity.google/docs/ide/extensions/zed',
-    // Google's Linux build is launched with an undocumented `--uid=` flag and
-    // its Windows build is a differently named .exe; one entry cannot express
-    // either, so this entry only launches on macOS.
-    platforms: ['darwin'],
+    homepageUrl: 'https://antigravity.google/docs/cli/acp',
     install: {
       darwin: {
-        docsUrl: 'https://antigravity.google/docs/ide/extensions/zed',
-        note: 'Google ships this server as a download, not an installer. Unzip it and put agy_acp_server.par on your PATH.',
+        command: 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
+        docsUrl: 'https://antigravity.google/docs/getting-started',
       },
       linux: {
-        docsUrl: 'https://antigravity.google/docs/ide/extensions/zed',
-        note: "Station's built-in Antigravity entry does not support Linux yet.",
+        command: 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
+        docsUrl: 'https://antigravity.google/docs/getting-started',
       },
       win32: {
-        docsUrl: 'https://antigravity.google/docs/ide/extensions/zed',
-        note: 'On Windows the server is agy_acp_server.exe. Add it as a custom engine with that command.',
+        command: 'irm https://antigravity.google/cli/install.ps1 | iex',
+        docsUrl: 'https://antigravity.google/docs/getting-started',
+        note: POWERSHELL,
       },
     },
     auth: {
-      signInHint: 'Sign in with your Google account when Antigravity asks.',
+      // Recorded from Antigravity CLI 1.5.8 (2026-11-13): signed out, `agy
+      // models` exits 1 with "Error: Please sign in to view available
+      // models."; signed in it exits 0 and lists the account's models.
+      statusCommand: ['agy', 'models'],
+      statusRule: {
+        signedOutText: ['Please sign in to view available models'],
+        exitZeroMeansSignedIn: true,
+      },
+      signInHint:
+        'Run agy on the computer Station runs on and sign in with Google, or run agy acp --login there over SSH.',
+      // The `gemini-api-key` sign-in reads it from the engine's environment.
+      credentialEnvVars: ['GEMINI_API_KEY'],
+    },
+    // `agy acp` arrived in Antigravity CLI 1.5.0; 1.4.4 has no such command
+    // and never answers (services/acp/__tests__/fixtures/
+    // antigravity-1.4.4-acp-help.txt). `agy --version` prints the bare version.
+    minimumVersion: {
+      versionCommand: ['agy', '--version'],
+      minimum: '1.5.0',
+      updateHint:
+        'Run agy update on the computer Station runs on, then check again.',
     },
   },
   {

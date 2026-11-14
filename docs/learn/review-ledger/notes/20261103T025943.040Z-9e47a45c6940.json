@@ -1,7 +1,0 @@
-{
-  "revision": "c2d1556338edf942c3100b77839ab182cb74bf2e",
-
-  "notes": [
-    {"path":"docs/design/approval-posture-server-ordered.md","note":"Change under review (#4480): the start-session hook binds the accepted start's server-stamped owner (startInput.metadata.userId) in SessionAuthorization, and canReadSessionForCommand uses it only while the store has no durable owner yet (the adapter's echoed session.started still retrying under SQLite contention); the positive owner cache and read paths are unchanged. Checked the dispatchWithReceipt authorization list and 'Command authorization admits only the session owner's own principals': still accurate, the pending owner is the same principal that becomes the durable owner and a different principal is still refused (start-owner-publication-contention.test.ts).","inputs":["docs/design/approval-posture-server-ordered.md","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

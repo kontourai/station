@@ -1,0 +1,7 @@
+{
+  "revision": "e365cd82fb8a57b9897ff2f50a40217afcd45f60",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Cites docs/reference/contracts.md; only the openRequestKinds input wording gained links to open; contract authoring rules here are unaffected.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

@@ -1,14 +1,16 @@
 import { CHANNEL_VERSION } from '../../packages/shared/src/release-manifest.mjs';
 import { STATION_RELEASE_RINGS } from '../../packages/shared/src/release-rings.generated.mjs';
 import { invokedDirectly } from './module-entry.mjs';
+import { parseReleaseTag } from './release-tag.mjs';
 
 const SHA = /^[0-9a-f]{40}$/i;
 /**
- * Container images are published for the stable and preview rings only: a
- * Nightly image has no registry tag policy (its prerelease would take the
- * `preview` tag), so createContainerReleaseMetadata refuses every other ring.
+ * Container images are published for tagged Stable releases only (a final
+ * `vX.Y.Z` or a candidate `vX.Y.Z-rc.N`, #4929). A Nightly image has no
+ * registry tag policy, so createContainerReleaseMetadata refuses every other
+ * ring.
  */
-const CONTAINER_RINGS = new Set(['stable', 'preview']);
+const CONTAINER_RINGS = new Set(['stable']);
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const CONTAINER_PLATFORMS = ['linux/amd64', 'linux/arm64'];
 
@@ -17,13 +19,20 @@ function fail(message) {
 }
 
 /**
- * The release ring a `v<version>` tag belongs to, read from the generated
- * ring table (config/channel-ports.json releaseRings) through the shared
- * verifier's per-ring version grammar, so every installable ring is accepted
- * and no ring list is typed here.
+ * The release ring a `v<version>` tag belongs to. A tagged release (final or
+ * candidate) is Stable through the shared release-tag parser; any other tag
+ * is read from the generated ring table (config/channel-ports.json
+ * releaseRings) through the shared verifier's per-ring version grammar, so a
+ * prerelease ring such as Nightly needs no list typed here.
  */
 function releaseRingForTag(tag) {
   if (typeof tag !== 'string' || !tag.startsWith('v')) return undefined;
+  try {
+    parseReleaseTag(tag);
+    return 'stable';
+  } catch {
+    // Not a tagged Stable release; try the prerelease rings below.
+  }
   const version = tag.slice(1);
   return Object.keys(STATION_RELEASE_RINGS).find((ring) =>
     CHANNEL_VERSION[ring]?.test(version),
@@ -34,13 +43,13 @@ export function createPackagedReleaseManifest({ tag, sha, createdAt }) {
   const ring = releaseRingForTag(tag);
   if (!ring) {
     fail(
-      `tag must be one release ring's version: ${Object.entries(
-        STATION_RELEASE_RINGS,
-      )
-        .map(([name, { prerelease }]) =>
-          prerelease ? `vMAJOR.MINOR.PATCH-${name}.N` : 'vMAJOR.MINOR.PATCH',
-        )
-        .join(', ')}`,
+      `tag must be one release ring's version: ${[
+        'vMAJOR.MINOR.PATCH-rc.N',
+        ...Object.entries(STATION_RELEASE_RINGS).map(
+          ([name, { prerelease }]) =>
+            prerelease ? `vMAJOR.MINOR.PATCH-${name}.N` : 'vMAJOR.MINOR.PATCH',
+        ),
+      ].join(', ')}`,
     );
   }
   if (typeof sha !== 'string' || !SHA.test(sha))
@@ -74,7 +83,7 @@ export function createContainerReleaseMetadata({
   const manifest = createPackagedReleaseManifest({ tag, sha, createdAt });
   if (!CONTAINER_RINGS.has(manifest.releaseChannel))
     fail(
-      `container images are published for stable and preview tags only, not ${manifest.releaseChannel}`,
+      `container images are published for stable tags only, not ${manifest.releaseChannel}`,
     );
   if (
     typeof repository !== 'string' ||
@@ -82,7 +91,7 @@ export function createContainerReleaseMetadata({
   ) {
     fail('repository must be lowercase GHCR image path');
   }
-  const version = tag.slice(1);
+  const { baseVersion, kind } = parseReleaseTag(tag);
   const shaTag = `sha-${manifest.sha}`;
   return {
     image: `ghcr.io/${repository}`,
@@ -90,7 +99,9 @@ export function createContainerReleaseMetadata({
     sha: manifest.sha,
     createdAt,
     channel: manifest.releaseChannel,
-    tags: [tag, version, shaTag, manifest.prerelease ? 'preview' : 'latest'],
+    // A candidate is tagged only with its own tag and the source SHA: the
+    // bare version and `latest` move when it is promoted, never at staging.
+    tags: kind === 'rc' ? [tag, shaTag] : [tag, baseVersion, shaTag, 'latest'],
     labels: {
       'org.opencontainers.image.created': createdAt,
       'org.opencontainers.image.revision': manifest.sha,

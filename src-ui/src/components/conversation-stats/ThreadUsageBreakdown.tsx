@@ -9,6 +9,7 @@ import type {
   ThreadUsageTree,
 } from '@kontourai/station-contracts/thread-usage-tree';
 import { useState } from 'react';
+import { formatDuration } from '../../utils/relativeTime';
 import { Button } from '../Button';
 import { describeReadFailure } from '../state';
 import './ThreadUsageBreakdown.css';
@@ -91,14 +92,6 @@ function formatCostBuckets(
   return parts.length > 0 ? parts.join(' · ') : undefined;
 }
 
-function formatDuration(ms: number | undefined): string | undefined {
-  if (ms === undefined) return undefined;
-  if (ms < 1_000) return `${Math.round(ms)} ms`;
-  const seconds = Math.round(ms / 1_000);
-  if (seconds < 60) return `${seconds} s`;
-  return `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
-}
-
 function figureParts(own: ThreadUsageFigures | undefined): string[] {
   if (!own) return ['nothing reported'];
   return [
@@ -113,7 +106,7 @@ function figureParts(own: ThreadUsageFigures | undefined): string[] {
     own.toolUses !== undefined
       ? `${own.toolUses} tool ${own.toolUses === 1 ? 'use' : 'uses'}`
       : undefined,
-    formatDuration(own.durationMs),
+    own.durationMs === undefined ? undefined : formatDuration(own.durationMs),
   ].filter((part): part is string => part !== undefined);
 }
 

@@ -1,7 +1,0 @@
-{
-  "revision": "8b0cad9f2866c9b39877f4c753f1db572c8ab503",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"Reviewed Task recording publication extraction against pin, authority, evidence verification, cleanup and real Task-store tests; existing claims remain accurate.","inputs":["docs/reference/api.md","src-server/routes/__tests__/browser-agent-capture.test.ts","src-server/services/projects/task-browser-recording.ts"]}
-  ]
-}

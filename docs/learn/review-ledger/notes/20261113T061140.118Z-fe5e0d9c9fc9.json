@@ -1,9 +1,0 @@
-{
-  "revision": "9bf66cf2ae7c139fb8ae51eed540f203b03b5b4a",
-
-  "notes": [
-    {"path":"docs/guides/nightly.md","note":"Reviewed generator and publish caller: fallback selects older plain tags when Releases contain only same-base nightlies; comparison preserves SHA bounds; only transient availability errors fall back for Nightly; Retry-After bounded at 30 seconds. Changelog renderer strips exact legacy/install sections before empty state. Tests cover these; real GitHub stable dry run returned 2033 lines. Publication remains unqualified.","inputs":["docs/guides/nightly.md","scripts/lib/desktop-release-notes.mjs","src-ui/src/components/updates/ReleaseNotes.tsx"]},
-
-    {"path":"docs/design/connections-onboarding.md","note":"Reviewed connection notice producer and mounted tests: quiet threshold unchanged; blocked changes update copy; terminal closed stream with recovered health dismisses stale loss without event-delivery claim; decision ownership dismisses existing notice. Auth and transport authority unchanged; physical recovery remains unqualified.","inputs":["docs/design/connections-onboarding.md","src-ui/src/__tests__/ConnectionBannerSource.test.tsx"]}
-  ]
-}

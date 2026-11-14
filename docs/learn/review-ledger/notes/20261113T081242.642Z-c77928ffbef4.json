@@ -1,7 +1,0 @@
-{
-  "revision": "0f5882949fcf96e48041a2fa362a27f2b194754c",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Added the Idle weight and request overhead subsection (perf:station-weight, routes to docs/reference/station-weight.md). The resource manifest gained scripts/__tests__/station-weight.process.test.ts in the process-heavy group; existing lane and scheduling claims unchanged.","inputs":["docs/guides/testing.md","package.json#/scripts","scripts/vitest-resource-manifest.mjs"]}
-  ]
-}

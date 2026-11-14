@@ -1,7 +1,0 @@
-{
-  "revision": "c2549144a425b6373203490eccbce61836934a27",
-
-  "notes": [
-    {"path":"docs/guides/release-rings.md","note":"Added that the station source must never be revoked while builds post to it, that its channel list is provisioned final, and that in-place editing is future work. Checked telemetry-publisher-service.ts: a non-OK response is recorded as dropped and never retried; lite-core.ts parseLiteSource and receiver.ts createSource offer no update route.","inputs":["docs/guides/release-rings.md"]}
-  ]
-}

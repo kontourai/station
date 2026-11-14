@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/guides/development.md","note":"#4517 managed settings. Changed: index.ts: startup checks managed setting values against the settings schema inside the existing fail-closed policy load. The listed config set and registry commands are unchanged; lock refusals are documented in the CLI reference.","inputs":["docs/guides/development.md","src-server/index.ts"]}
-  ]
-}

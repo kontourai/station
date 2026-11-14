@@ -1,7 +1,0 @@
-{
-  "revision": "2c2b032a6c6c5e69cf3687cacb53c2f07e561ee8",
-
-  "notes": [
-    {"path":"docs/design/verified-action-replay.md","note":"Independent review fixes. Corrected: the history limit is 200 actor and lifecycle entries with separate page-noise (50) and refusal (20) bounds, not 200 total (browser-session-registry.ts; this supersedes the earlier note's '200-entry' wording). Project standing is resolved once at the route boundary (authorizeBrowserAgentCaller, browser-agent.ts) and the grant-currentness check does not re-read membership, so replay must reauthorize per action. withControl claims and releases control per operation (browser-automation.ts, control-lease.ts), so replay needs its own takeover latch. Revocation is terminal per the secret-binding contract. Attribution is described as observed progress, and the navigation exemption is limited to the replay-issued commit. Secret dispatch now requires origin and owner checks at typing time. Model-turn savings qualified because adapters batch independent tool calls (claude-adapter-events.ts). No tests executed.","inputs":["docs/design/verified-action-replay.md","src-server/routes/browser-agent.ts","src-server/services/browser/browser-agent-authority.ts"]}
-  ]
-}

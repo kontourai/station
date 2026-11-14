@@ -1,9 +1,0 @@
-{
-  "revision": "d6fbe91ceb4961e287ed13ce03305627b4f1bef4",
-
-  "notes": [
-    {"path":"docs/learn/media/inspect-request.png","note":"Capture shows the inspect-request journey UI. The only dependency change is a type-only optional filter field on orchestration-service.ts readUsageReceipts options; no visible behavior or UI in this capture depends on it.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
-
-    {"path":"docs/learn/media/inspect-request.webm","note":"Recording shows the inspect-request journey UI. The only dependency change is a type-only optional filter field on orchestration-service.ts readUsageReceipts options; no visible behavior or UI in this recording depends on it.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

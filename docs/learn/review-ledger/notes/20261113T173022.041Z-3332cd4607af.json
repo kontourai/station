@@ -1,0 +1,7 @@
+{
+  "revision": "8fa4ab4c5047714b0ea5ae1f242cf15cd8153981",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed Show work entry through useInboxScope and rendered ChatDockInboxSharedRows tests: Home has one All work option, This project follows navigation, Always project pins its Station-qualified key. 160 focused tests passed; fault reversion caught five assertions and restoration passed 160. No live provider or remote authority claim.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/InboxScopeFilter.tsx"]}
+  ]
+}

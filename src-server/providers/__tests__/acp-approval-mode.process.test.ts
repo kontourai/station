@@ -663,6 +663,37 @@ describe.skipIf(process.platform === 'win32')(
       ).rejects.toThrow(/the helper agent keeps its own permission rules/);
     });
 
+    test("a reopened governed session does not take the user's own agent back", async () => {
+      process.env.FAKE_OPENCODE_USER_CONFIG = JSON.stringify({
+        permission: 'allow',
+        agent: { helper: { mode: 'primary', permission: { '*': 'allow' } } },
+      });
+      h = harness('opencode');
+      const opened = (await h.adapter.startSession({
+        provider: 'acp',
+        threadId: 'reopen-governed',
+        cwd: h.cwd,
+        confinement: 'workspace',
+        metadata: { connectionId: 'engine-under-test' },
+        modelOptions: { approvalMode: 'ask' },
+      })) as { resumeCursor?: unknown };
+      await h.adapter.stopSession('reopen-governed');
+      // The reopen asks for the user's own agent: refused before anything
+      // launches, as for a new governed chat, so a reattach never applies it.
+      await expect(
+        h.adapter.startSession({
+          provider: 'acp',
+          threadId: 'reopen-governed',
+          cwd: h.cwd,
+          confinement: 'workspace',
+          metadata: { connectionId: 'engine-under-test' },
+          resumeCursor: opened.resumeCursor,
+          modelOptions: { approvalMode: 'ask', mode: 'helper' },
+        } as never),
+      ).rejects.toThrow(/the helper agent keeps its own permission rules/);
+      expect(resumes(h)).toEqual([]);
+    });
+
     test("finding 1: a takeover is refused while the chat runs the user's own agent", async () => {
       process.env.FAKE_OPENCODE_USER_CONFIG = JSON.stringify({
         permission: 'allow',

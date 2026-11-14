@@ -1,7 +1,0 @@
-{
-  "revision": "2a598b444266e80e5106ec751b8f9ada0ce2af6d",
-
-  "notes": [
-    {"path":"docs/reference/contracts.md","note":"Reviewed removal of the Activity pane public subpaths and optional engine-issued toolCallId on child transcript calls/results against package exports, provider adapters and focused contract/consumer tests.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports","packages/contracts/src/child-work.ts","packages/contracts/src/index.ts"]}
-  ]
-}

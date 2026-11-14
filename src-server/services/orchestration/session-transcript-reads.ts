@@ -438,6 +438,7 @@ export class SessionTranscriptReads {
       {
         terminalTurns: Set<string>;
         usageTurns: Set<string>;
+        contextOnlyTurns: Set<string>;
         observedThrough?: string;
         providerObservedThrough?: string;
       }
@@ -448,11 +449,13 @@ export class SessionTranscriptReads {
       const created: {
         terminalTurns: Set<string>;
         usageTurns: Set<string>;
+        contextOnlyTurns: Set<string>;
         observedThrough?: string;
         providerObservedThrough?: string;
       } = {
         terminalTurns: new Set<string>(),
         usageTurns: new Set<string>(),
+        contextOnlyTurns: new Set<string>(),
       };
       providers.set(name, created);
       return created;
@@ -493,6 +496,19 @@ export class SessionTranscriptReads {
         provider.usageTurns.add(
           `${event.threadId}:${event.turnId ?? event.id}`,
         );
+      } else if (
+        event.payload.method === 'token-usage.updated' &&
+        (isReportedAmount(event.payload.contextTokens) ||
+          isReportedAmount(event.payload.contextWindowTokens) ||
+          isReportedAmount(event.payload.contextPercent) ||
+          isReportedAmount(event.payload.reportedCost?.amount))
+      ) {
+        // Context (the token pair or an engine's percent) or an engine's own
+        // cost (Kiro credits, Grok USD, scoped by its unit), with no token
+        // totals: what the occupancy reason describes.
+        provider.contextOnlyTurns.add(
+          `${event.threadId}:${event.turnId ?? event.id}`,
+        );
       }
     }
     const requestedEnd = Date.parse(`${request.to}T23:59:59.999Z`);
@@ -503,6 +519,16 @@ export class SessionTranscriptReads {
         const usageReportedTurnCount = [...provider.terminalTurns].filter(
           (key) => provider.usageTurns.has(key),
         ).length;
+        // Usage scope is declared per provider, but within one provider an
+        // engine may report only its context (ACP: every engine but those in
+        // `ACP_PER_TURN_PROMPT_USAGE_ENGINES`). So the reason is read from
+        // what the unreported turns did carry, not only from the declaration.
+        const unreportedTurns = [...provider.terminalTurns].filter(
+          (key) => !provider.usageTurns.has(key),
+        );
+        const unreportedReportContextOnly =
+          unreportedTurns.length > 0 &&
+          unreportedTurns.every((key) => provider.contextOnlyTurns.has(key));
         const reportsComplete =
           observedTurnCount > 0 && usageReportedTurnCount === observedTurnCount;
         const freshness = provider.providerObservedThrough
@@ -528,7 +554,8 @@ export class SessionTranscriptReads {
                   ? COVERAGE_CAP_REASON
                   : observedTurnCount === 0
                     ? 'provider declared but no terminal turns observed'
-                    : providerReportsContextOccupancyOnly(providerName)
+                    : providerReportsContextOccupancyOnly(providerName) ||
+                        unreportedReportContextOnly
                       ? CONTEXT_OCCUPANCY_ONLY_REASON
                       : 'terminal turns missing usage reports',
               }
