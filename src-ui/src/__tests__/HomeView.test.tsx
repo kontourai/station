@@ -975,12 +975,9 @@ describe('HomeView', () => {
     fixtures.sessions = [workSession()];
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     expect(screen.queryByRole('region', { name: 'Recent work' })).toBeNull();
-    const region = screen.getByRole('region', { name: 'Continue' });
+    expect(screen.getByRole('region', { name: 'Continue' })).toBeTruthy();
     expect(continueRow().textContent).toContain(CODEX_SESSION_TITLE);
-    fireEvent.click(
-      within(region).getByRole('button', { name: 'View Activity' }),
-    );
-    expect(showSurfacePage).toHaveBeenCalledWith('activity');
+    expect(screen.queryByRole('button', { name: 'View Activity' })).toBeNull();
   });
 
   test('with no Agent to offer the chip asks for one and Start still goes (first run)', () => {
@@ -1075,7 +1072,7 @@ describe('HomeView', () => {
     renderHomeView({ continuation: null, onNavigate });
     expect(screen.getAllByText('Agent not reported').length).toBeGreaterThan(0);
     fireEvent.click(continueRow());
-    expect(showSurface).toHaveBeenCalledWith('activity', {
+    expect(showSurface).toHaveBeenCalledWith('chat', {
       session: 'unmapped-thread',
     });
     expect(onNavigate).not.toHaveBeenCalled();
@@ -1116,7 +1113,7 @@ describe('HomeView', () => {
     ];
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     fireEvent.click(continueRow());
-    expect(showSurface).toHaveBeenCalledWith('activity', {
+    expect(showSurface).toHaveBeenCalledWith('chat', {
       session: 'worked-thread',
     });
   });
@@ -1348,7 +1345,7 @@ describe('HomeView', () => {
 
     fireEvent.click(continueRow());
 
-    expect(showSurface).toHaveBeenCalledWith('activity', {
+    expect(showSurface).toHaveBeenCalledWith('chat', {
       session: 'attached-thread',
     });
     expect(onNavigate).not.toHaveBeenCalled();
@@ -1371,7 +1368,7 @@ describe('HomeView', () => {
     fireEvent.click(continueRow());
 
     expect(focus).not.toHaveBeenCalled();
-    expect(showSurface).toHaveBeenCalledWith('activity', {
+    expect(showSurface).toHaveBeenCalledWith('chat', {
       session: 'peer-delegation:abc',
     });
     expect(onNavigate).not.toHaveBeenCalled();
@@ -1552,8 +1549,8 @@ describe('HomeView', () => {
 
     expect(container.querySelector('.home-view__empty')).toBeNull();
     expect(screen.getByRole('alert')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Open Activity' }));
-    expect(showSurfacePage).toHaveBeenCalledWith('activity');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(fixtures.sessionsRefetch).toHaveBeenCalled();
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
@@ -1583,8 +1580,7 @@ describe('HomeView', () => {
     expect(continueRow().textContent).toContain('Durable local work');
     expect(continueRow().textContent).toContain('Task · station');
     expect(continueRow().textContent).toContain('Task · To do');
-    fireEvent.click(screen.getByRole('button', { name: 'View Activity' }));
-    expect(showSurfacePage).toHaveBeenCalledWith('activity');
+    expect(screen.queryByRole('button', { name: 'View Activity' })).toBeNull();
     expect(onNavigate).not.toHaveBeenCalled();
     onNavigate.mockClear();
     fireEvent.click(continueRow());
@@ -2003,7 +1999,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     const continueButton = continueRow();
     expect(continueButton.textContent).toContain(CODEX_SESSION_TITLE);
     fireEvent.click(continueButton);
-    expect(showSurface).toHaveBeenCalledWith('activity', {
+    expect(showSurface).toHaveBeenCalledWith('chat', {
       session: 'local-thread',
     });
   });

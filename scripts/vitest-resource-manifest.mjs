@@ -221,6 +221,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',
   'packages/cli/src/__tests__/passive-cli.test.ts',
   'scripts/__tests__/server-scenario.test.ts',
+  // Builds and starts an isolated Station on free ports, runs the bundled
+  // Claude engine against a loopback stub, and owns detached process trees.
+  'scripts/__tests__/station-weight.end-to-end.process.test.ts',
+  // Detached and double-forked node children, a CPU-burning worker, git
+  // fixtures and the runner's gate as a child process.
+  'scripts/__tests__/station-weight.process.test.ts',
   // Real IPC child observes the native histogram at reset acknowledgement and blocks for 80ms.
   'scripts/__tests__/server-scenario-probe.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
@@ -1357,6 +1363,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Installs a fake Kiro agent service with the real installer and launches
   // it through the real ACPProcess, managed and as a custom command.
   'src-server/services/engine-host-auth/__tests__/engine-host-auth-launch.process.test.ts',
+  // Runs a managed runtime's `--version` (Node, and a slow shell stand-in
+  // killed by an abort) through the ACP adapter's readiness.
+  'src-server/providers/__tests__/acp-managed-runtime-readiness.test.ts',
   // Two real processes race one expiring credential through the vault's
   // cross-process refresh lock against a local stub issuer.
   'src-server/services/engine-host-auth/__tests__/engine-host-auth-refresh-lock.process.test.ts',
@@ -1746,7 +1755,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // jsdom, then launch a real Chromium to lay that DOM out against index.css —
   // whether the dock body scrolls inside the shell, and whether a collapsed
   // bottom dock is its bar alone. A rule-text scan could not see an override.
-  'src-ui/src/app-shell/__tests__/ActivityRegionShell.dock-body.test.tsx',
+  // Renders the actual child chat DOM in Chromium at desktop and phone widths.
+  'src-ui/src/__tests__/child-transcript-navigation.test.tsx',
   'src-ui/src/app-shell/__tests__/CollapsedRegionDockBody.test.tsx',
   // Runs the full-regression phase driver CLI and real npm children, including
   // one it must kill at a deadline.

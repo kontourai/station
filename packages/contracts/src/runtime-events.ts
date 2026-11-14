@@ -1182,6 +1182,10 @@ export type EngineMcpServerState =
 /** One MCP server as the engine reports it. Engine-attributed, never Station's own view. */
 /** The longest MCP server name an engine status names; a longer one is dropped. */
 export const ENGINE_MCP_SERVER_NAME_MAX_CHARS = 128;
+/** The most MCP servers one status report carries; the rest are dropped. */
+export const ENGINE_MCP_STATUS_MAX_SERVERS = 64;
+/** The longest engine error text one server carries; adapters shorten longer text. */
+export const ENGINE_MCP_ERROR_MAX_CHARS = 512;
 
 export interface EngineMcpServerStatus {
   /** At most {@link ENGINE_MCP_SERVER_NAME_MAX_CHARS} characters. */

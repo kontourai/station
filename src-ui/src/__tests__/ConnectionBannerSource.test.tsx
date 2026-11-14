@@ -15,6 +15,7 @@ import { ConnectionBannerSource } from '../components/notifications/ConnectionBa
 import { StationDetailsHost } from '../components/notifications/StationConditions';
 import { openStationDetails } from '../components/notifications/stationDetailsEvents';
 import { bannerStore } from '../contexts/banner-store';
+import { toastStore } from '../contexts/ToastContext';
 import {
   getStreamConnectionState,
   setStreamConnectionState,
@@ -110,6 +111,7 @@ beforeEach(() => {
   connectionStatus.blocked = false;
   connectionStatus.recheck.mockReset();
   removeConnection.mockReset();
+  toastStore.clear();
   bannerStore.reset();
 });
 
@@ -131,6 +133,7 @@ it('known credential rejection also blocks chat recovery until an authenticated 
 });
 
 afterEach(() => {
+  toastStore.clear();
   bannerStore.reset();
 });
 
@@ -769,4 +772,165 @@ describe('ConnectionBannerSource → Station details — blocked credential', ()
       /Tailnet Station isn't accepting this device/,
     );
   });
+});
+
+it('announces sustained loss once, waits for SSE catch-up, and keeps blips quiet', () => {
+  activeConnection = {
+    id: 'studio',
+    name: 'Studio',
+    url: 'https://station.example.test',
+  };
+  connectionStatus.status = 'connected';
+  const client = new QueryClient();
+  const tree = () => (
+    <QueryClientProvider client={client}>
+      <ConnectionBannerSource />
+    </QueryClientProvider>
+  );
+  const view = render(tree());
+  connectionStatus.status = 'error';
+  connectionStatus.reason = 'timeout';
+  connectionStatus.failureStreak = 2;
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()).toHaveLength(0);
+  connectionStatus.failureStreak = 3;
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()).toHaveLength(1);
+  expect(toastStore.getSnapshot()[0].message).toBe(
+    "Studio didn't answer in time. Reconnecting…",
+  );
+  expect(toastStore.getSnapshot()[0].duration).toBe(0);
+  expect(toastStore.getSnapshot()[0].dedupeKey).toBe(
+    'connection:studio:https://station.example.test',
+  );
+  expect(toastStore.getSnapshot()[0].message).toContain(
+    "didn't answer in time",
+  );
+  connectionStatus.failureStreak = 4;
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()[0].occurrences).toBe(1);
+  act(() => {
+    setStreamConnectionState('https://station.example.test', 'interrupted');
+  });
+  connectionStatus.status = 'connected';
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()[0].message).toContain('Reconnecting');
+  act(() => {
+    setStreamConnectionState('https://station.example.test', 'caught-up');
+  });
+  expect(toastStore.getSnapshot()).toHaveLength(1);
+  expect(toastStore.getSnapshot()[0].message).toBe(
+    'Server connection restored.',
+  );
+});
+
+it('does not announce recovery on initial connection or carry an outage across Station selections', () => {
+  connectionStatus.reason = 'timeout';
+  connectionStatus.status = 'connected';
+  const client = new QueryClient();
+  const tree = () => (
+    <QueryClientProvider client={client}>
+      <ConnectionBannerSource />
+    </QueryClientProvider>
+  );
+  const view = render(tree());
+  expect(toastStore.getSnapshot()).toHaveLength(0);
+  connectionStatus.status = 'error';
+  connectionStatus.failureStreak = 3;
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()).toHaveLength(1);
+  activeConnection = {
+    id: 'other',
+    name: 'Other Station',
+    url: 'https://station.example.test',
+  };
+  connectionStatus.status = 'connected';
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()).toHaveLength(0);
+});
+
+it.each([
+  'authentication-failed',
+  'identity-mismatch',
+  'unexpected-response',
+  'unsupported-capability-version',
+  'awaiting-approval',
+] as const)(
+  'does not duplicate the decision banner with a %s toast',
+  (reason) => {
+    connectionStatus.status = 'connected';
+    const client = new QueryClient();
+    const tree = () => (
+      <QueryClientProvider client={client}>
+        <ConnectionBannerSource />
+      </QueryClientProvider>
+    );
+    const view = render(tree());
+    connectionStatus.status = 'error';
+    connectionStatus.reason = reason;
+    connectionStatus.failureStreak = 3;
+    view.rerender(tree());
+    expect(toastStore.getSnapshot()).toHaveLength(0);
+  },
+);
+
+it('updates reconnect copy when blocked changes and clears loss on terminal stream health recovery', () => {
+  connectionStatus.status = 'connected';
+  const client = new QueryClient();
+  const tree = () => (
+    <QueryClientProvider client={client}>
+      <ConnectionBannerSource />
+    </QueryClientProvider>
+  );
+  const view = render(tree());
+  connectionStatus.status = 'error';
+  connectionStatus.reason = 'timeout';
+  connectionStatus.failureStreak = 3;
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()[0].message).toContain('Reconnecting');
+  connectionStatus.blocked = true;
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()[0].message).toContain(
+    'Reconnect needs attention',
+  );
+  connectionStatus.blocked = false;
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()[0].message).toContain('Reconnecting');
+  act(() => {
+    setStreamConnectionState('https://station.example.test', 'closed');
+  });
+  connectionStatus.status = 'connected';
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()).toHaveLength(0);
+});
+
+it('removes an existing lost toast when a decision takes ownership', () => {
+  activeConnection = {
+    id: 'local',
+    name: 'Station',
+    url: 'https://station.example.test',
+  };
+  connectionStatus.status = 'connected';
+  const client = new QueryClient();
+  const tree = () => (
+    <QueryClientProvider client={client}>
+      <ConnectionBannerSource />
+    </QueryClientProvider>
+  );
+  const view = render(tree());
+  connectionStatus.status = 'error';
+  connectionStatus.reason = 'timeout';
+  connectionStatus.failureStreak = 3;
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()).toHaveLength(1);
+  // Credential ownership may arrive while health still reports connected.
+  connectionStatus.status = 'connected';
+  activeConnection = {
+    id: 'local',
+    name: 'Station',
+    url: 'https://station.example.test',
+    credentialState: 'required',
+  };
+  view.rerender(tree());
+  expect(toastStore.getSnapshot()).toHaveLength(0);
 });

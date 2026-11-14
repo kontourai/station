@@ -273,13 +273,14 @@ keeps two independent mechanisms and separately labelled actions:
 A machine's [managed policy](managed-policy.md#update-control) can turn both
 checks off, make the nightly channel unavailable, or send them to a mirror.
 
-The update proposal shows **What’s new** for the offered version. Release notes
+The update proposal shows **What’s new** for the offered version. The connected
+server section also shows the installed server version’s changelog. Release notes
 come from the exact version’s GitHub Release, with the native updater’s notes
 available as a fallback for desktop downloads. GitHub prose is informational;
 it never determines whether an update is available or safe to install. Missing
 archives remain an explicit, retryable state; notes from another version are
-never substituted. When no update is offered, **What’s new** stays folded until
-opened. The
+never substituted. Installed server notes remain available without an offered
+update; an app’s installed notes stay folded until opened. The
 sidebar icon shows a circular download indicator using the updater’s byte
 counts, or an indeterminate arc when the total size is unknown. An observed
 server download can also drive the ring while the panel stays closed.
@@ -308,7 +309,15 @@ popup; downgrades and repeated launches do not show one. **Show changelog after
 updates** is enabled by default and can be changed in that dialog, Updates, or
 Settings → System. It is a device preference. Automatic presentation requires
 working local storage and a release identity; an unstamped development UI
-never triggers it. Changing the connected server does not trigger it.
+never triggers the app prompt. A connected server version increase can open
+**Updated server …** separately, remembered per endpoint and instance. A newly
+observed server only establishes its baseline. App and server prompts share the
+preference; the app prompt appears first if both are pending. Browser clients
+suppress the server popup when it shares the bundle version or origin.
+In-app changelogs omit the Installation section and the legacy install-only
+Nightly template; GitHub retains them. An install-only body shows **Release
+notes unavailable**. In-app lists show the first 50 changes, with **See all
+changes** linking to the versioned release.
 
 Nightly desktop planning generates GitHub release notes from the previous
 `nightly-desktop` source to the planned source. The generated notes travel
@@ -319,6 +328,27 @@ do not become GitHub’s Latest release. Historical comparison links use commit
 SHAs so advancing the rolling marker cannot change their range. Mobile Nightlies read the same cohort’s changelog. If desktop publication
 did not produce an archive for a partial cohort, the notes remain unavailable.
 Earlier Nightlies without a versioned changelog are not reconstructed.
+
+Portable server Nightly publication and stable/preview draft assembly generate
+notes against a previous published server `v*` tag, keeping install instructions.
+They select the highest older version in the same release channel. A new
+channel falls back to the highest older version across preceding-base Releases
+and plain stable git tags. Desktop and rolling tags are excluded. Moved tags
+stop publication. Missing predecessors or source commits, identical source bounds,
+and empty change notes are availability failures for Nightly: publication warns
+with a fixed reason category (never GitHub response details or token scopes) and
+retains installation instructions alone. Stable and preview
+still refuse missing predecessors, but identical sources or empty changes produce
+a clear “No changes since” line. Comparison links retain commit bounds.
+Generated notes retain at most 100 entries and stay below 50,000 characters,
+leaving room for installation instructions. Truncated bodies report the omitted
+change count and keep a full comparison link.
+
+Reads and note generation retry transient API failures once, honoring
+Retry-After, or the rate-limit reset time once the quota is exhausted, up to 30
+seconds (otherwise a short backoff). Configuration and invalid-history errors stop all channels.
+Stable and preview also stop on API availability errors. This source wiring does
+not qualify an end-to-end publication, and existing release bodies are not rewritten.
 
 Archive publication checks the Git tag reference before resolving its commit:
 GitHub's commit endpoint returns HTTP 422 for a missing tag. An existing tag

@@ -244,7 +244,10 @@ describe('ChatDockBody usage-limit banner (#3157)', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
-        requested.push(String(input instanceof Request ? input.url : input));
+        const url = String(input instanceof Request ? input.url : input);
+        // The rewind action's live-continuity read is the dock's own and is
+        // not what these tests are about.
+        if (!url.endsWith('/continuity')) requested.push(url);
         return new Response(
           JSON.stringify({ success: true, data: { recovery: PROJECTION } }),
           { status: 200, headers: { 'content-type': 'application/json' } },

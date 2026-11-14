@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, test, vi } from 'vitest';
 import {
   ENGINE_EXTENSION_BINDINGS,
+  engineExtensionRowLive,
   extensionNotificationBinding,
   GROK_LIVE_CAPTURE,
 } from '../../../src-shared/extension-notification-bindings.js';
@@ -20,7 +21,7 @@ import {
   type AcpMapperState,
   mapAcpExtensionNotification,
 } from '../adapters/acp-adapter-events.js';
-import { ACP_CHILD_WORK_REPORTERS } from '../adapters/acp-child-work.js';
+import { acpSubagentWires } from '../adapters/acp-child-work.js';
 import { AcpToolUpdateSupervisor } from '../adapters/acp-tool-update-supervisor.js';
 
 type Frame = { method?: string; id?: unknown; params?: any; result?: any };
@@ -37,7 +38,12 @@ function capture(name: string, dir: 'E->C' | 'C->E' = 'E->C'): Frame[] {
     .map((entry) => entry.msg as Frame);
 }
 
-function harness(state: AcpMapperState = {}) {
+/** A Grok session's store: its `grokShell` handshake names both Grok child-work wires. */
+const grokSessionState = (): AcpMapperState => ({
+  acpSubagentWires: new Set(['background-task', 'subagent-lifecycle']),
+});
+
+function harness(state: AcpMapperState = grokSessionState()) {
   const events: CanonicalRuntimeEvent[] = [];
   const session: ProviderSession = {
     provider: 'acp',
@@ -116,22 +122,23 @@ describe('Grok handshake identity', () => {
     expect(unbound).toEqual([]);
   });
 
-  test('the child-work reporter list names only live, non-pending child-work rows', () => {
-    for (const ids of Object.values(ACP_CHILD_WORK_REPORTERS))
-      for (const id of ids ?? []) {
-        const row = ENGINE_EXTENSION_BINDINGS.find((entry) => entry.id === id);
-        expect(row, id).toBeDefined();
-        expect(row?.consumer).toBe('child-work');
-        expect(row?.pending).toBeUndefined();
-      }
-    // And every Grok child-work row is listed: none is bound but unclaimed.
-    expect(
-      ENGINE_EXTENSION_BINDINGS.filter(
-        (row) => row.id.startsWith('grok.') && row.consumer === 'child-work',
-      )
-        .map(({ id }) => id)
-        .sort(),
-    ).toEqual([...(ACP_CHILD_WORK_REPORTERS['grok-build'] ?? [])].sort());
+  test('a grokShell handshake names both Grok child-work wires, and every Grok child-work row reads through one', () => {
+    const handshake = capture('handshake').find(
+      (msg) => msg.result?.agentCapabilities,
+    )?.result;
+    expect(handshake).toBeDefined();
+    expect([...acpSubagentWires(handshake)].sort()).toEqual([
+      'background-task',
+      'subagent-lifecycle',
+    ]);
+    // Another engine's handshake names neither.
+    expect(acpSubagentWires({ ...handshake, _meta: {} }).size).toBe(0);
+    const rows = ENGINE_EXTENSION_BINDINGS.filter(
+      (row) => row.id.startsWith('grok.') && row.consumer === 'child-work',
+    );
+    expect(rows.length).toBe(7);
+    for (const row of rows)
+      expect(engineExtensionRowLive(row), row.id).toBe(true);
   });
 });
 
@@ -172,6 +179,85 @@ describe('Grok MCP server status', () => {
     expect(
       events.filter((event) => event.method === 'engine-mcp.status'),
     ).toEqual([]);
+  });
+
+  test('a reconnect takes the server out (disabled, not failed), then starts it again', () => {
+    const { notify, of } = harness({ mcpServers: [{ name: 'probe-broken' }] });
+    for (const msg of capture('mcp-reconnect'))
+      if (msg.method === '_x.ai/mcp/server_status')
+        notify(msg.method, msg.params);
+    const probe = of('engine-mcp.status')
+      .flatMap((event) => event.servers)
+      .filter((server) => server.name === 'probe-broken');
+    expect(probe).toEqual([
+      { name: 'probe-broken', state: 'disabled', scope: 'session' },
+      { name: 'probe-broken', state: 'starting', scope: 'session' },
+    ]);
+  });
+});
+
+describe('MCP server secrets in a published extension payload', () => {
+  test('env, header, argument and URL credentials are redacted; names and commands are kept', () => {
+    const { notify, of } = harness();
+    notify('_x.ai/mcp/servers_updated', {
+      sessionId: 's',
+      mcpServers: [
+        {
+          name: 'docs',
+          command: 'docs-mcp',
+          env: [{ name: 'DOCS_TOKEN', value: 'secret-env-value' }],
+          headers: [{ name: 'Authorization', value: 'Bearer secret-header' }],
+        },
+        { name: 'map', env: { MAP_KEY: 'secret-map-value' } },
+        {
+          name: 'remote',
+          type: 'http',
+          url: 'https://user:secret-pass@mcp.example.com/sse/secret-path?token=secret-q',
+          args: ['--api-key', 'secret-arg'],
+        },
+        { name: 'one-line', command: 'tool', args: '--token secret-string' },
+      ],
+    });
+    const [published] = of('extension.notification');
+    expect(JSON.stringify(published)).not.toMatch(/secret-/);
+    expect(published?.payload).toEqual({
+      sessionId: 's',
+      mcpServers: [
+        {
+          name: 'docs',
+          command: 'docs-mcp',
+          env: [{ name: 'DOCS_TOKEN', value: '[redacted]' }],
+          headers: [{ name: 'Authorization', value: '[redacted]' }],
+        },
+        { name: 'map', env: { MAP_KEY: '[redacted]' } },
+        {
+          name: 'remote',
+          type: 'http',
+          url: 'https://mcp.example.com',
+          args: ['[redacted]', '[redacted]'],
+        },
+        { name: 'one-line', command: 'tool', args: '[redacted]' },
+      ],
+    });
+    // The live list keeps each server's name, source and command.
+    const live = capture('fork-at-prompt').find(
+      (msg) => msg.method === '_x.ai/mcp/servers_updated',
+    );
+    expect(live).toBeDefined();
+    const other = harness();
+    other.notify(live!.method!, live!.params);
+    const forwarded = other.of('extension.notification');
+    expect(forwarded).toHaveLength(1);
+    const liveServers = live!.params.mcpServers as Array<
+      Record<string, unknown>
+    >;
+    expect(forwarded[0]?.payload).toEqual({
+      ...live!.params,
+      mcpServers: liveServers.map((server) => ({
+        ...server,
+        args: (server.args as unknown[]).map(() => '[redacted]'),
+      })),
+    });
   });
 });
 
@@ -282,6 +368,23 @@ describe('Grok turn cost', () => {
 });
 
 describe('Grok background task verdicts', () => {
+  test('a session whose handshake names no Grok wire maps no Grok frame to child work', () => {
+    const { notify, of } = harness({});
+    for (const msg of [
+      ...capture('background-bash-interject'),
+      ...capture('background-subagent'),
+    ])
+      if (msg.method && msg.method !== 'session/update')
+        notify(msg.method, msg.params ?? {});
+    expect(of('child-work.updated')).toEqual([]);
+    // The same frames on a Grok session do report children.
+    const grok = harness();
+    for (const msg of capture('background-subagent'))
+      if (msg.method && msg.method !== 'session/update')
+        grok.notify(msg.method, msg.params ?? {});
+    expect(grok.of('child-work.updated').length).toBeGreaterThan(0);
+  });
+
   const completed = (snapshot: Record<string, unknown>) => ({
     sessionId: 's',
     update: {

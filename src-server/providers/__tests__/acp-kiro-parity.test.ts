@@ -31,6 +31,7 @@ import {
 } from '../adapters/acp-input-requests.js';
 import {
   acpSessionContinuity,
+  readAcpRewindAnswer,
   readAcpUserMessageId,
   resolveAcpMcpReconnect,
 } from '../adapters/acp-session-actions.js';
@@ -436,6 +437,50 @@ describe('session actions and projection', () => {
       applied: false,
       reason: expect.stringContaining('bundled'),
     });
+  });
+});
+
+describe('rewind answer', () => {
+  // The outcome keeps at most `pathsMax` paths and always the engine's own
+  // count: a cut list is stated as cut, never passed off as the whole.
+  const paths = (count: number) =>
+    Array.from({ length: count }, (_, index) => `src/file-${index}.ts`);
+
+  test('at the bound every path is kept', () => {
+    expect(
+      readAcpRewindAnswer({ success: true, affectedFiles: paths(3) }, 3),
+    ).toEqual({ success: true, affectedFiles: { count: 3, paths: paths(3) } });
+  });
+
+  test('one past the bound keeps the bound and the real count', () => {
+    expect(
+      readAcpRewindAnswer({ success: true, affectedFiles: paths(4) }, 3),
+    ).toEqual({ success: true, affectedFiles: { count: 4, paths: paths(3) } });
+  });
+
+  test('a path over 4,096 characters is left out of the list but counted', () => {
+    const long = `src/${'a'.repeat(4093)}`;
+    expect(long.length).toBe(4097);
+    const atBound = `src/${'a'.repeat(4092)}`;
+    expect(
+      readAcpRewindAnswer(
+        { success: true, affectedFiles: ['src/a.ts', long, atBound] },
+        50,
+      ),
+    ).toEqual({
+      success: true,
+      affectedFiles: { count: 3, paths: ['src/a.ts', atBound] },
+    });
+  });
+
+  test('no file list is no file claim; anything but success is a failure', () => {
+    expect(readAcpRewindAnswer({ success: true }, 50)).toEqual({
+      success: true,
+    });
+    expect(
+      readAcpRewindAnswer({ success: false, message: 'still running' }, 50),
+    ).toEqual({ success: false, message: 'still running' });
+    expect(readAcpRewindAnswer(null, 50)).toEqual({ success: false });
   });
 });
 

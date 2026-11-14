@@ -1,3 +1,5 @@
+import { ChildChatContext } from '../components/chat-dock/ChildChatNavigationContext';
+import { ConversationConnectionProvider } from '../components/conversation/ConversationConnectionContext';
 /**
  * @vitest-environment jsdom
  *
@@ -81,6 +83,8 @@ vi.mock('../hooks/orchestration/useSessionEventWindow', () => ({
 import { ChatMessageList } from '../components/chat/ChatMessageList';
 import { ActiveChatsProvider } from '../contexts/ActiveChatsContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { backgroundTasksStore } from '../contexts/background-tasks-store';
+import { childWorkGlobalStore } from '../contexts/child-work-global-store';
 import { applyChildWorkToChat } from '../hooks/orchestration/childWorkHandlers';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import type { ChatSession } from '../types';
@@ -385,29 +389,34 @@ function stubFetch(): void {
   );
 }
 
+const openChild = vi.fn();
 function renderTranscript(session = chatSession(), streamingShell = false) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const tree = () => (
     <QueryClientProvider client={client}>
-      <ActiveChatsProvider>
-        {streamingShell ? (
-          <ChatMessageList
-            activeSession={session}
-            approvalEvents={
-              windowEvents.current as Parameters<
-                typeof ChatMessageList
-              >[0]['approvalEvents']
-            }
-            fontSize={13}
-            showReasoning={false}
-            showToolDetails={false}
-          />
-        ) : (
-          <TranscriptHarness session={session} />
-        )}
-      </ActiveChatsProvider>
+      <ConversationConnectionProvider value={{ apiBase: API_BASE }}>
+        <ChildChatContext.Provider value={openChild}>
+          <ActiveChatsProvider>
+            {streamingShell ? (
+              <ChatMessageList
+                activeSession={session}
+                approvalEvents={
+                  windowEvents.current as Parameters<
+                    typeof ChatMessageList
+                  >[0]['approvalEvents']
+                }
+                fontSize={13}
+                showReasoning={false}
+                showToolDetails={false}
+              />
+            ) : (
+              <TranscriptHarness session={session} />
+            )}
+          </ActiveChatsProvider>
+        </ChildChatContext.Provider>
+      </ConversationConnectionProvider>
     </QueryClientProvider>
   );
   const rendered = render(tree());
@@ -426,6 +435,7 @@ async function findCard(): Promise<HTMLElement> {
 describe('subagent transcript cards', () => {
   beforeEach(() => {
     _setApiBase(API_BASE);
+    openChild.mockClear();
     sequence = 0;
     unexpectedRequests.length = 0;
     stubFetch();
@@ -1252,14 +1262,13 @@ describe('subagent transcript cards', () => {
     expect(
       within(card).getByText('48,210 tokens · 37 tool uses · ran 17:04'),
     ).toBeTruthy();
-    fireEvent.click(
-      within(card).getByRole('button', { name: 'View transcript' }),
-    );
-    expect(
-      await within(card).findByText('Review the ADR freeze PR.', {
-        selector: '.child-work-transcript__text',
+    fireEvent.click(within(card).getByRole('button', { name: 'Open chat' }));
+    expect(openChild).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: THREAD,
+        childId: expect.any(String),
       }),
-    ).toBeTruthy();
+    );
     expect(unexpectedRequests).toEqual([]);
   });
 
@@ -1438,5 +1447,137 @@ describe('subagent transcript cards', () => {
     await within(card).findByText('No result');
     expect(within(card).queryByText('Run finished')).toBeNull();
     expect(within(card).queryByText('Running')).toBeNull();
+  });
+});
+
+/**
+ * The banner under a finished turn lists running background work, but a task
+ * the transcript already draws as its card is not drawn again: the card is
+ * the task's one appearance, with its own activity and elapsed time.
+ */
+describe('running background tasks under the banner', () => {
+  const chatId = 'chat-tab';
+  /** Spawned in a turn the loaded transcript does not hold: no card. */
+  const offscreenChild: ChildWorkItem = {
+    ...runningChild,
+    childId: 'off-screen-1',
+    parent: { toolCallId: 'toolu_earlier', turnId: 'turn-0' },
+    title: 'Lane 7: gallery baselines',
+    transcript: undefined,
+    latestTool: 'Bash',
+    progress: 'Waiting on dependencies:ci',
+  };
+
+  function bannerSession(): ChatSession {
+    return {
+      ...chatSession(),
+      conversationActivity: {
+        conversationId: 'conversation-1',
+        currentThreadId: THREAD,
+        asOfSequence: 99,
+        runningChildWork: { count: 2, producers: ['engine-subagent'] },
+      },
+    };
+  }
+
+  /** What the live stream feeds the background-task stores for the chat. */
+  function seedLiveStores(running: ChildWorkItem[]) {
+    for (const item of running)
+      backgroundTasksStore.ingest(
+        {
+          provider: 'claude',
+          createdAt: STARTED_AT,
+          threadId: chatId,
+          method: 'tool.started',
+          itemId: item.parent!.toolCallId,
+          toolCallId: item.parent!.toolCallId,
+          toolName: 'Agent',
+        } as never,
+        API_BASE,
+      );
+    backgroundTasksStore.bindProviderReporter(API_BASE, THREAD, chatId);
+    childWorkGlobalStore.ingest(API_BASE, {
+      eventId: 'live-snapshot',
+      provider: 'claude',
+      createdAt: STARTED_AT,
+      threadId: THREAD,
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: THREAD,
+        running,
+      },
+    } as never);
+  }
+
+  beforeEach(() => {
+    _setApiBase(API_BASE);
+    sequence = 0;
+    unexpectedRequests.length = 0;
+    stubFetch();
+    backgroundTasksStore.reset();
+    childWorkGlobalStore.reset();
+  });
+
+  afterEach(() => {
+    cleanup();
+    backgroundTasksStore.reset();
+    childWorkGlobalStore.reset();
+    activeChatsStore.removeChat(chatId);
+    vi.unstubAllGlobals();
+    _setApiBase('');
+  });
+
+  test('a carded running task is drawn once, by its card; an uncarded one gets a banner line', async () => {
+    windowEvents.current = [...spawningTurn(), progress()];
+    seedLiveStores([
+      {
+        ...runningChild,
+        latestTool: 'Read',
+        progress: 'Reading the decision records',
+      },
+      offscreenChild,
+    ]);
+    renderTranscript(bannerSession());
+    const card = await findCard();
+    // The card carries the carded task's activity and elapsed time itself.
+    expect(within(card).getByText('Reading the decision records')).toBeTruthy();
+    expect(card.querySelector('.subagent-card__elapsed')).toBeTruthy();
+    await waitFor(() =>
+      expect(document.querySelector('.background-tasks-banner')).toBeTruthy(),
+    );
+    expect(
+      screen.getAllByText(runningChild.title!, { exact: true }),
+    ).toHaveLength(1);
+    const lines = document.querySelector(
+      '.background-tasks-banner__tasks',
+    ) as HTMLElement;
+    expect(lines).toBeTruthy();
+    expect(within(lines).getByText('Lane 7: gallery baselines')).toBeTruthy();
+    expect(lines.textContent).toContain('Waiting on dependencies:ci');
+    expect(lines.textContent).not.toContain(runningChild.title!);
+  });
+
+  test('with every running task carded, no task list renders', async () => {
+    windowEvents.current = [...spawningTurn(), progress()];
+    seedLiveStores([
+      {
+        ...runningChild,
+        latestTool: 'Read',
+        progress: 'Reading the decision records',
+      },
+    ]);
+    renderTranscript(bannerSession());
+    await findCard();
+    await waitFor(() =>
+      expect(document.querySelector('.background-tasks-banner')).toBeTruthy(),
+    );
+    expect(
+      document.querySelector('.background-tasks-banner__tasks'),
+    ).toBeNull();
+    expect(
+      screen.getAllByText(runningChild.title!, { exact: true }),
+    ).toHaveLength(1);
   });
 });

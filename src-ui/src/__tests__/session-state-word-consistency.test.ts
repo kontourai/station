@@ -444,10 +444,8 @@ const SURFACE_ROOTS = [
   'components/session-detail',
   'components/status',
   'views/home',
-  'views/activity',
   'views/sessions',
   'views/project-page',
-  'views/SessionsView.tsx',
   'views/HomeView.tsx',
   'components/flow/WorkflowPlanPanel.tsx',
   'components/chat/PendingApprovalStrip.tsx',
@@ -568,7 +566,6 @@ describe('one vocabulary on the work surfaces', () => {
     );
     for (const guarded of [
       'views/home/work-status.ts',
-      'views/SessionsView.tsx',
       'components/chat-dock/ChatDockInboxRows.tsx',
       'components/chat-dock/ChatInboxHoverCard.tsx',
       'components/chat-dock/ChatDockHeader.tsx',

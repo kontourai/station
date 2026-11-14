@@ -1,0 +1,13 @@
+{
+  "revision": "7bb6dae51e638f2fd2f4f4a4395ab968b8acf187",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the change: connection-inspector.ts now marks an engine Station signs in as inspectionPartial when its sign-in readiness could not be read, so the inventory outcome reports partial. This document's claims still hold (its process-heavy and partial-inventory wording is unchanged by it).","inputs":["docs/architecture/module-map.md","src-server/services/connections/connection-inspector.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the change: vitest-resource-manifest.mjs adds acp-managed-runtime-readiness.test.ts to the process-heavy group (it runs a managed runtime's --version and a slow stand-in killed by an abort). This document's claims still hold (its process-heavy and partial-inventory wording is unchanged by it).","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Reviewed the change: vitest-resource-manifest.mjs adds acp-managed-runtime-readiness.test.ts to the process-heavy group (it runs a managed runtime's --version and a slow stand-in killed by an abort). This document's claims still hold (its process-heavy and partial-inventory wording is unchanged by it).","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the change: vitest-resource-manifest.mjs adds acp-managed-runtime-readiness.test.ts to the process-heavy group (it runs a managed runtime's --version and a slow stand-in killed by an abort). This document's claims still hold (its process-heavy and partial-inventory wording is unchanged by it).","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

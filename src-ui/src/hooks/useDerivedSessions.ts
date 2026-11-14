@@ -372,6 +372,7 @@ function deriveSession(
     liveUsage: chatState.liveUsage,
     engineMcpServers: chatState.engineMcpServers,
     engineMcpReconnect: chatState.engineMcpReconnect,
+    engineMcpComplete: chatState.engineMcpComplete,
     replay: chatState.replay,
   };
 }

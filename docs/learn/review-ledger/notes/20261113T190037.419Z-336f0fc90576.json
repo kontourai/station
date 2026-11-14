@@ -1,0 +1,7 @@
+{
+  "revision": "4088c7efd93e499c1d352edc87698f5ac833d105",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"UpdatesControl.test.tsx only changed its getByRole matchers from {name, exact:true} to anchored regexes after the testing-library types tightened; the tested Updates/changelog behavior and the guide claims citing it are unchanged.","inputs":["docs/guides/desktop-build.md","src-ui/src/components/updates/__tests__/UpdatesControl.test.tsx"]}
+  ]
+}

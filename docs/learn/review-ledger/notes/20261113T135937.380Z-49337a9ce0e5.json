@@ -1,0 +1,23 @@
+{
+  "revision": "dca5c5560f63addd68b26fdf2181219c187fb1df",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed the Nightly installation and guide links against the committed changelog limit/availability delta. Installer, artifact and publication claims are unchanged; the detailed guide now describes bounded notes and no-change results.","inputs":["README.md","docs/guides/nightly.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed the settings-guide delta: it only documents release-note limits and links. Project guidance, learning, context and authority claims in this guide are unchanged.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed the settings-guide delta and release-note component. Fifty-entry display limits add no capability or authority, and do not change preview scope, storage, defaults or registry policy.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/nightly.md","note":"Traced server CLI, generator and release-note renderer against focused tests and live read-only generation: 100-entry/50k publication limits, 50-entry in-app limit, exact legacy templates, predecessor fallback, bounded reset delay and Nightly/no-change stable policy. Publication and physical-device execution remain unverified.","inputs":["docs/guides/nightly.md","scripts/lib/desktop-release-notes.mjs","src-ui/src/components/updates/ReleaseNotes.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed exact-version UI, installation stripping and bounded rendering. Long notes retain 50 changes with a versioned See all changes link; server/app and prompt preferences remain unchanged. Mounted tests and six inspected browser captures cover truncation, not deployment.","inputs":["docs/user/settings.md","src-ui/src/components/updates/ReleaseNotes.tsx"]},
+
+    {"path":"docs/learn/media/updates-after-390-dark.png","note":"Re-rendered the real Updates/notes/history components using the existing learning-media fixture and inspected the new PNG alongside this retained capture. Short-note layout and links remain accurate; the new 50-entry cap does not alter this fixture. Separate long-note captures cover the bounded list at desktop and phone sizes in both themes.","inputs":["docs/learn/media/updates-after-390-dark.png","src-ui/src/components/updates/ReleaseNotes.tsx"]},
+
+    {"path":"docs/learn/media/updates-after-1440-light.png","note":"Re-rendered the real Updates/notes/history components using the existing learning-media fixture and inspected the new PNG alongside this retained capture. Short-note layout and links remain accurate; the new 50-entry cap does not alter this fixture. Separate long-note captures cover the bounded list at desktop and phone sizes in both themes.","inputs":["docs/learn/media/updates-after-1440-light.png","src-ui/src/components/updates/ReleaseNotes.tsx"]},
+
+    {"path":"docs/learn/media/updates-history-after-390-dark.png","note":"Re-rendered the real Updates/notes/history components using the existing learning-media fixture and inspected the new PNG alongside this retained capture. Short-note layout and links remain accurate; the new 50-entry cap does not alter this fixture. Separate long-note captures cover the bounded list at desktop and phone sizes in both themes.","inputs":["docs/learn/media/updates-history-after-390-dark.png","src-ui/src/components/updates/ReleaseNotes.tsx"]},
+
+    {"path":"docs/learn/media/updates-notes-after-390-light.png","note":"Re-rendered the real Updates/notes/history components using the existing learning-media fixture and inspected the new PNG alongside this retained capture. Short-note layout and links remain accurate; the new 50-entry cap does not alter this fixture. Separate long-note captures cover the bounded list at desktop and phone sizes in both themes.","inputs":["docs/learn/media/updates-notes-after-390-light.png","src-ui/src/components/updates/ReleaseNotes.tsx"]}
+  ]
+}

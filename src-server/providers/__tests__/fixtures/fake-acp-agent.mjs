@@ -30,13 +30,18 @@
 //                        config option, which arrives that many ms later in
 //                        a `config_option_update` (an engine whose model list
 //                        loads after it answers)
+//   requestDelaysMs      { "<core method>": ms } for session/set_mode and
+//                        session/set_config_option: answer that much later
 //   --prompt-steps <path>  a JSON step list replacing the default turn. Extra
 //                        step kinds: `client-request` {method, params},
 //                        `user-message-id` (a Kiro `user_message_id_assigned`
 //                        session_info_update, ids `msg-1`, `msg-2`, ...),
-//                        `wait-ms` {ms}
+//                        `wait-ms` {ms}, `session-update` {update} (one
+//                        `session/update` sent as given)
 // Client-to-engine extension requests are answered from the profile's
-// `extMethodAnswers` ({ "<method>": { result } | { error } }) and recorded as
+// `extMethodAnswers` ({ "<method>": { result } | { error }, optional
+// `delayMs` before answering, or `exitAfterMs` to exit with it unanswered })
+// and recorded as
 // `{ extMethod, params }`; any other is refused -32601. `session/load`,
 // `session/fork` and `session/delete` are answered and recorded too.
 //
@@ -201,6 +206,8 @@ async function runStep(step, sessionId, client) {
       });
     case 'wait-ms':
       return new Promise((resolve) => setTimeout(resolve, step.ms));
+    case 'session-update':
+      return update(step.update);
     case 'tool': {
       const toolCallId = `call_fake_${++state.toolCalls}`;
       await update({
@@ -245,6 +252,12 @@ async function runStep(step, sessionId, client) {
       throw new Error(`Unknown profile step kind: ${step.kind}`);
   }
 }
+
+/** The profile's `requestDelaysMs[<method>]`: wait that long before answering. */
+const requestDelay = (method) =>
+  new Promise((resolve) =>
+    setTimeout(resolve, profile.requestDelaysMs?.[method] ?? 0),
+  );
 
 const authRequired = () =>
   acp.RequestError.authRequired(
@@ -360,13 +373,15 @@ const app = acp
     record({ method: 'session/delete', sessionId: params.sessionId });
     return {};
   })
-  .onRequest('session/set_mode', ({ params }) => {
+  .onRequest('session/set_mode', async ({ params }) => {
     record({ method: 'session/set_mode', modeId: params.modeId });
+    await requestDelay('session/set_mode');
     state.modes.set(params.sessionId, params.modeId);
     return {};
   })
-  .onRequest('session/set_config_option', ({ params }) => {
+  .onRequest('session/set_config_option', async ({ params }) => {
     record({ method: 'session/set_config_option', configId: params.configId });
+    await requestDelay('session/set_config_option');
     state.config.set(`${params.sessionId}\0${params.configId}`, params.value);
     return {
       configOptions: sessionShape(params.sessionId).configOptions ?? [],
@@ -379,10 +394,17 @@ const app = acp
       await runStep(step, params.sessionId, client);
     return { stopReason: 'end_turn' };
   })
-  .onRequest('*', ({ method, params }) => {
+  .onRequest('*', async ({ method, params }) => {
     record({ extMethod: method, params });
     const answer = profile.extMethodAnswers?.[method];
     if (!answer) throw acp.RequestError.methodNotFound(method);
+    if (answer.exitAfterMs) {
+      // The engine process ends with the request unanswered.
+      setTimeout(() => process.exit(0), answer.exitAfterMs);
+      return new Promise(() => {});
+    }
+    if (answer.delayMs)
+      await new Promise((resolve) => setTimeout(resolve, answer.delayMs));
     if (answer.error)
       throw new acp.RequestError(
         answer.error.code,

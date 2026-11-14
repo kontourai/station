@@ -454,6 +454,19 @@ refresh lock; the issue is then refused `unavailable`. An import-boundary test k
 responder and the vault from reaching Station's own principals. See
 [Sign in to Kiro without kiro-cli](connections.md#sign-in-to-kiro-without-kiro-cli).
 
+Observed on the pinned bundle (`@kiro/agent` 0.66.104, installed by Station
+and launched with its managed argv, 2026-11-13, signed out): the engine stays
+silent until `initialize`, then sends `_kiro/auth/getAccessToken` (params `{}`)
+before it answers it. Its `authMethods` are `aws-builder-id` and
+`aws-iam-identity-center`. With every token request refused (`-32000`,
+"Station has no signed-in credential for this engine"), `initialize` and
+`session/new` still succeed, so Station's readiness, not the handshake,
+holds a chat until the person signs in. The scrubbed frames are the
+`kas-bundle` scripted profile
+(`src-server/providers/__tests__/fixtures/acp-scripted-profiles/kas-bundle.json`).
+The engine reads custom agents from the launching user's `~/.kiro`, so its
+mode list includes them.
+
 Engine-held secrets use `registerSecretResponder(binding, store)` with an
 entry of `REVIEWED_ENGINE_SECRET_BINDINGS`
 (`@kontourai/station-contracts/engine-secret-storage`). For Kiro's MCP OAuth
@@ -498,9 +511,7 @@ names:
 - its consumer.
 
 A notification row binds only once its consumer, and every consumer it names
-in `also`, is marked implemented in `ENGINE_EXTENSION_CONSUMERS`, and while
-it carries no `pending` reason (Kiro's two child-work rows carry one: only
-test vectors back them). The ACP mapper
+in `also`, is marked implemented in `ENGINE_EXTENSION_CONSUMERS`. The ACP mapper
 ([acp-engine-extension-events.ts](../../src-server/providers/adapters/acp-engine-extension-events.ts))
 reads each bound row through one reader per row id and publishes the
 generic event; the opaque `extension.notification` envelope is still
@@ -549,7 +560,12 @@ How the events behave:
   declares the reviewed reconnect binding, and the panel offers the actions
   only then (Codex reports its servers without it). A handoff or a newly
   opened conversation drops the predecessor session's server list along with
-  its live usage. Both actions call
+  its live usage. A reopened conversation reads the list from its
+  statistics (`engineMcp`): the server folds the persisted reports with the
+  same reducer the live chat uses (`foldEngineMcpStatus`), starting again at
+  each Session of the lineage as a handoff does, and the reconnect bit comes
+  from the same report. Partial reports that arrive after the reopen update
+  that list; once a complete one arrives it replaces the list. Both actions call
   `POST /api/orchestration/sessions/:threadId/mcp-servers/:serverName/reconnect`
   ([session API](../reference/session-api.md#engine-mcp-servers-sessionsthreadidmcp-servers)),
   Sign in with `startOAuth: true`, and the panel says what the engine
@@ -566,9 +582,40 @@ How the events behave:
   title-suggestion event, its turns start on its own `session/prompt`
   (an engine-started turn needs the adapter to own provider-triggered
   turns), and there is no engine-policy or engine-loaded-context surface yet.
-- **Subagents.** Not mapped yet. The ACP capability-matrix subagent cell is
-  `none`, and orchestration keeps a `none` engine's child work out of the
-  session; `_kiro.dev/subagent/list_update` stays host chrome.
+- **Subagents.** ACP has no subagent concept, so the ACP capability-matrix
+  subagent cell is declared and observed per connection
+  ([acp-child-work.ts](../../src-server/providers/adapters/acp-child-work.ts)).
+  On an engine whose handshake identifies a reporter, its frames become
+  `child-work.updated`: kiro-cli's `_kiro.dev/subagent/list_update` roster
+  (`subagents[{sessionId, sessionName, agentName, initialQuery, status:
+  {type}}]`; each terminal entry is settled and the running ones are the
+  authoritative running set) and the agent service's `tool_call` /
+  `tool_call_update` whose `_meta.kiro.kind` is `agent-subtask` (named by
+  `agentSubtaskId`; the call is still shown as a tool call). Each wire is read
+  only on a session whose handshake identifies that reporter (kiro-cli's
+  `agentInfo.name` for the roster, the `kiro` capability namespace for
+  `agent-subtask`). Any other ACP engine's session publishes `not-reported` at
+  start, and the same frames from it are ignored, so a surface never reads
+  its silence as nothing running. A roster restating a finished child settles
+  it once. A roster with more than 64 running children
+  (`CHILD_WORK_ITEMS_MAX_PER_REPORTER`) publishes no running set, since a cut
+  one would mark the rest ended; an `agent-subtask` past 64 running is not
+  tracked. Each is logged through the adapter's logger once per session while
+  it stays over the bound. No ACP subagent can be stopped on its own. The
+  cell is marked per connection (`perConnection`), so an ACP session this
+  Station process has not seen report (after a restart, before the engine
+  starts again) reads `not-reported`, and the Agents pane says subagents are
+  not shown rather than that none are running.
+  The roster's opaque `extension.notification` stays host chrome. Neither wire
+  has a live capture (kirocrew's live captures omit the roster because it names
+  the host's agents); the shapes are kirocrew's test vectors. Grok Build is
+  the third reporter, with two wires keyed on `_meta.grokShell` (background
+  tasks, and subagent lifecycle; see
+  [Grok Build extensions](#grok-build-extensions)). Its frames report a
+  child's start, progress and end separately, so they are folded through the
+  child-work registry: a re-sent start changes nothing, and every end settles
+  a child a running set listed. The cell's signals are the union: Kiro's
+  wires carry `lifecycle` only, Grok's also `progress`, `usage` and `result`.
 
 Observed on kiro-cli 2.35.0 `--agent-engine v3`:
 
@@ -629,45 +676,143 @@ logged `shellType.resolved source: client`.
 Each action is keyed on the live session's own `initialize` answer
 ([acp-session-actions.ts](../../src-server/providers/adapters/acp-session-actions.ts)).
 The ACP adapter's `metadata.continuity` stays `none` because most ACP engines
-declare neither action. `sessionContinuity(threadId)` reports a session's
-own continuity.
+declare neither rewind nor fork. `sessionContinuity(threadId)` reports a live
+session's own continuity, which
+`GET /api/orchestration/sessions/:threadId/continuity` serves
+([session API](../reference/session-api.md#engine-continuity-and-rewind-sessionsthreadidcontinuity-rewind)).
 
-Only the MCP reconnect has a Station caller today (the generic route above).
-Rewind, fork, delete and steer retract are adapter methods with no caller:
-no other engine rewinds or forks natively (Claude and Codex declare both
-`none`; conversation fork is a Station replay seed for every engine),
-deleting a runtime conversation's history is refused rather than routed to
-its engine, and no surface withdraws a steer the engine already holds.
-Each needs a generic Station surface before anything can call it.
+- **Rewind** (`rewindSession(threadId, turnId)`) is the generic "Rewind
+  conversation to here" on a past user turn, offered only while the live
+  session declares `rewind: 'in-place'`. On ACP that needs
+  `_meta.kiro.checkpoints`, or the Grok Build handshake (below). Kiro is sent `_kiro/checkpoint/revertMultiple
+  { sessionId, messageId }`, where `messageId` is the prompt id the engine
+  reported for that turn as `user_message_id_assigned`. A steer that cancels
+  and re-prompts gets a second id in the same turn; the rewind uses the turn's
+  first (its own prompt), a fork its last. The adapter keeps these ids for the
+  last 500 turns (`ACP_TURN_MESSAGES_MAX`). The engine hides that turn and
+  every later one from the model, and restores files its write tools changed
+  in them; it reports them as `affectedFiles`, and the outcome and marker say
+  how many. A rewind is refused, with nothing sent, while a turn runs
+  (`turn-running`), for a turn whose prompt id this engine process did not
+  report or an earlier rewind already hid (`unknown-turn`), on an engine that
+  declared none (`unsupported`), and on a session no process holds
+  (`not-live`). While the engine answers, the session starts no turn: a send
+  is refused retryably with `provider_turn_in_progress` ("Station is
+  rewinding this conversation; send again when it finishes."), which the
+  inbox holds and resends, and a second rewind is refused `rewind-pending`.
+  A rewind is refused `send-preparing` while a send is still preparing its
+  turn (a mode or effort change, or an approval relaunch of the engine
+  process). The wait is bounded at 30 seconds: an engine that has not
+  answered by then gets `failed` ("did not answer the rewind in time"), no
+  turn is marked rewound yet, and sends are accepted again. The request stays
+  open, and other rewinds are refused `rewind-pending` until it settles or
+  for at most 5 more minutes. If the engine then applies it, no turn has
+  started since, and those 5 minutes have not passed, it is recorded as if on
+  time (the turns are marked rewound). Otherwise the transcript cannot say
+  which turns the engine now hides: a `runtime.warning`
+  (`acp.session-rewound-late`, `ACP_SESSION_REWOUND_LATE_CODE`) is drawn as
+  its own marker row ("Rewound late") and nothing is marked. The same warning
+  says the engine may have applied the rewind when its process ends (an exit
+  or a relaunch) with the request unanswered; a stop someone asked for only
+  logs it, since that conversation's session is ending. A late refusal or error is
+  logged, and so is the 5-minute give-up. Held follow-ups are looked at again
+  as soon as the rewind ends, whatever its outcome. The marker names only turns whose prompt id the engine
+  reported; a later turn with none (an engine that skipped the report) is
+  still hidden by the engine but is not marked rewound in the transcript.
+  The transcript keeps every turn. A `runtime.warning`
+  (`code: acp.session-rewound`, `ACP_SESSION_REWOUND_CODE`, details
+  `beforeTurnId`, `hiddenTurnIds`, `affectedFileCount`) records the rewind;
+  the transcript draws it as a marker row and shows each hidden turn dimmed
+  with a Rewound badge, never as a toast. Checkpoint restore stays the
+  file-level action; the two are separate.
 
-- **Rewind** (`rewindSession(threadId, toTurnId)`) needs `_meta.kiro.checkpoints`.
-  It sends `_kiro/checkpoint/revertMultiple { sessionId, messageId }`, where
-  `messageId` is the prompt id of the turn after `toTurnId`. The engine
-  reported that id as `user_message_id_assigned`. A steer that cancels and
-  re-prompts gets a second id in the same turn; the rewind uses the turn's
-  first (its own prompt), the fork its last. The adapter keeps these ids for
-  the last 500 turns (`ACP_TURN_MESSAGES_MAX`). It hides that turn and
-  every later one from the model, and restores files the engine's write
-  tools changed. A rewind is refused while a turn runs, and for a turn whose
-  prompt id this engine process did not report. The transcript keeps every
-  turn. A `runtime.warning` (`code: acp.session-rewound`,
-  `ACP_SESSION_REWOUND_CODE`) records the rewind, with `hiddenTurnIds`; the
-  chat shows it as a transcript notice, not a toast.
+  Grok Build names its rewind points by its own prompt index, not a message
+  id. Observed on grok 1.0.77: every prompt Grok runs takes an index, a wake
+  included, but it lists a point only for a prompt a client sent (points 0,
+  1, 2 and 4, the wake having run as 3), and a mid-turn steer takes neither.
+  So counting points cannot locate a turn. Each point carries `created_at`,
+  the time Grok made it: in a raw live capture on one host (not checked in;
+  the scrubbed fixture keeps the points' times but not the capture's), 10 to
+  22 ms after the `_x.ai/queue/changed` notice first naming that prompt
+  running, and later when a prompt hook runs first. Grok runs one prompt at
+  a time, so for each turn it remembers the adapter keeps when it first saw
+  Grok report the turn's prompt running and when it first saw the next
+  prompt Grok ran (a wake's too), and a turn's point is the one point made in its
+  window: from its prompt's first notice to the next prompt's, both moved a
+  quarter second earlier for Station reading a notice late, so consecutive
+  windows tile time and a point belongs to one turn at most. Only a prompt's
+  first notice counts: Grok restates the running prompt, and while a cancel
+  finishes it still names the old one. A point's time is read on Station's
+  clock, less how far Grok's clock is from it, measured from the
+  `_meta.agentTimestampMs` Grok stamps on its frames (the largest recent
+  reading, since transit, Station's own lag and a load's replayed frames
+  only lower it); a reading more than half a second off, or none at all,
+  fails the rewind before anything is sent. That point's preview must also
+  be the one Grok lists for the turn's text (its first non-empty line, cut
+  to 57 characters plus `...` when longer than 60); Station puts the same
+  ambient line (the timezone) first in every prompt, so the preview alone
+  rarely tells turns apart. Every turn the adapter remembers must resolve
+  the same way, each to its own point at a rising index, because a turn
+  shorter than the quarter second can lose its point to the next window,
+  and that chain always leaves some turn with none. The one exception is a
+  turn other than the chosen one that is a slash command, which may have
+  none (Grok can run one itself). Otherwise the rewind fails with nothing
+  changed: no point in a window, two, or a preview that differs. So, while
+  the adapter remembers it, any one of these stops every Grok rewind and
+  fork in the conversation: a turn Grok made no point for (a prompt hook
+  blocked it), a notice Station read more than about a quarter second late,
+  or a step of more than about a quarter second in Grok's clock after the
+  turn. A point copied into a fork carries no time and
+  never matches, and a prompt that opens with a tag block Grok strips from
+  its preview never matches either.
+  The chosen point's `prompt_index` is the one sent. It then sends `_x.ai/rewind/execute { sessionId,
+  targetPromptIndex, force: false, mode: 'all' }`, Grok's dry run. When that
+  names `conflicts` (files changed outside Grok since the turn, which
+  applying would overwrite), the rewind fails, naming them, and nothing is
+  changed. Otherwise it sends the same request with `force: true`, and Grok's
+  `reverted_files` are the restored files. Unreadable points, a preview that
+  does not match, or a step that does not answer within 30 seconds each fail
+  with nothing changed. Only the applying request gets the late-answer
+  handling above.
 - **Fork** (`forkSession(threadId, atTurnId)`) needs
-  `sessionCapabilities.fork._meta.kiro.messageId`. It sends core
-  `session/fork` with `_meta.kiro.messageId`, and the fork keeps that turn
-  whole. It returns the new session as a resume cursor.
-- **Delete**: `discardSession` sends core `session/delete` when the session
-  declared `sessionCapabilities.delete`, then stops the session.
+  `sessionCapabilities.fork._meta.kiro.messageId`, or the Grok Build
+  handshake. Kiro is sent core `session/fork` with `_meta.kiro.messageId`,
+  and the fork keeps that turn whole. Grok's turn is located as a rewind
+  locates it, and Grok is sent `_x.ai/session/fork { sourceSessionId,
+  sourceCwd, newCwd, targetPromptIndex }`; it copies the conversation through
+  that prompt, inclusive (live: a fork at index 0 of a two-prompt session
+  loads with one rewind point), into the `newSessionId` it answers. Either
+  way the new session is returned as a resume cursor. Nothing calls it yet:
+  conversation fork is a Station replay seed for every engine. Binding a fork
+  to the engine's forked session needs the native-fork effect protocol in the
+  event store (`reserveNativeForkEffect`, still `activation: 'unwired'`),
+  which seals the source by native identity and resume binding; the ACP
+  adapter reports neither yet.
 - **Reconnect an MCP server** (`reconnectMcpServer(threadId, name, { startOAuth })`)
   sends `_kiro/mcp/resetServer` on a session whose handshake has the `kiro`
   namespace. Kiro does not list the method, so it is a vendor-attributed
   table entry. With `startOAuth`, the consent link arrives as
-  `_kiro/openExternalUrl`.
+  `_kiro/openExternalUrl`. Grok Build's only MCP call,
+  `_x.ai/session/update_mcp_servers { sessionId, mcpServers }`, replaces the
+  servers the client passed: the adapter sends the session's list without
+  the server, then the whole list again, and Grok stops and restarts that
+  server (live: `unavailable` `config_removed`, then `initializing`
+  `config_added`). Only a server Station passed can be reconnected that way;
+  one from Grok's own configuration, or a reconnect with `startOAuth`, fails
+  before anything is sent. When the second send fails, the list is sent once
+  more and the failure is reported; if that fails too, the outcome says Grok
+  may be running the conversation without the server until it restarts.
 - **Steer retract** (`retractPendingSteers`) sends `_session/steer/clear`.
   Only kiro-cli's own engine gets it: its drop report names exactly the
   unread steers. The agent service's report also names steers the turn
-  already read.
+  already read. Nothing calls it yet: the clear drops every unread steer on
+  the session, whoever sent it, while the inbox withdraws only its own
+  sender's entry, and an already-sent steer has no inbox row to withdraw.
+- **Delete**: the adapter does not delete the engine's stored session.
+  Station refuses deleting a runtime conversation, and the only caller of an
+  adapter's `discardSession` is attached-session adoption, which ACP does not
+  support, so ACP has no `discardSession`. The connection probe still deletes
+  its own probe session where `session/delete` is declared.
 
 ### Session agent on the agent service
 
@@ -724,15 +869,18 @@ notification the engine sent there is bound.
 | `_x.ai/monitor_event` | That monitor child's progress line |
 | `_x.ai/queue/changed` `runningPromptId` | A prompt Station did not send, run while no turn is open, opens a provider turn: Grok wakes itself after a monitor line (`notifications-<id>`) or a finished task or subagent (`task-completed-<id>`, `subagent-completed-<id>`) |
 | `_x.ai/session_notification` `turn_completed` | Ends that prompt's provider turn (`end_turn` completes it, `cancelled` aborts it, `error` fails it with the engine's `agent_result`, and a request the wake opened is settled), and states its cost once: `costUsdTicks`, 10^10 ticks to the dollar, scope `turn`; 0 means the price is unknown, not free. The figure includes its subagents' calls; two engine prompts in one Station turn publish their sum |
-| `_x.ai/mcp/server_status` | `engine-mcp.status` for that server: `ready`, or `unavailable` as `failed` with Grok's `detail`. Grok calls every server `local`, so a server Station passed on `session/new` is scope `session` by name |
+| `_x.ai/mcp/server_status` | `engine-mcp.status` for that server: `initializing` as `starting`, `ready`, `unavailable` as `failed` with Grok's `detail`, and `unavailable` with reason `config_removed` (a server taken out of the client's list, as a reconnect does) as `disabled`. Grok calls every server `local`, so a server Station passed on `session/new` is scope `session` by name |
 | `_x.ai/session/setup`, `_x.ai/session/interjection`, `_x.ai/models/update`, `_x.ai/settings/update`, `_x.ai/announcements/update`, `_x.ai/sessions/changed`, `_x.ai/session/prompt_complete`, the other `_x.ai/session_notification` kinds | Host chrome: forwarded as `extension.notification`, no fact derived |
-| `_x.ai/mcp/init_progress`, `_x.ai/mcp_initialized`, `_x.ai/mcp/servers_updated` | Host chrome for the MCP status display (counts only; no per-server state) |
+| `_x.ai/mcp/init_progress`, `_x.ai/mcp_initialized`, `_x.ai/mcp/servers_updated` | Host chrome for the MCP status display (counts only; no per-server state). `servers_updated` lists each server's launch shape; for every engine, a published extension payload's `mcpServers` keep each server's name, command and transport, while `env` and `headers` values and its `args` read `[redacted]` and a `url` keeps only its scheme and host, since the envelope is durable |
 | `_x.ai/ask_user_question` (request) `{ toolCallId, questions[{ question, options[{ label, description }], multiSelect }], mode }` | The harness-question form (source `harness:grok`), one choice or multi-choice field per question. Answered `{ outcome: 'accepted', answers: { <question>: [<label>, ...] } }`; a decline, a cancel, a question Station cannot show (two with the same text, one without options) or one no person may answer goes back `{ outcome: 'cancelled' }`, which Grok tells its model is a decline. Before this binding Station's `-32601` failed the tool and the model asked in plain text instead |
 
 | Station to Grok | Use |
 |---|---|
 | `session/set_config_option` `model`, `reasoning_effort` (category `thought_level`) | Model and effort selection, through the generic config-option path |
 | `_x.ai/interject` `{ sessionId, text }` | Steer: answered `{ result: { status: 'queued' } }`, echoed as `_x.ai/session/interjection`, read by the model at its next step |
+| `_x.ai/rewind/points`, `_x.ai/rewind/execute` | Rewind in place (see [Engine session actions](#engine-session-actions)) |
+| `_x.ai/session/fork` | Fork after a turn, into a session a resume loads |
+| `_x.ai/session/update_mcp_servers` | Reconnect one MCP server Station passed |
 | `authenticate` `grok.com` | Engine sign-in. Grok runs its own browser sign-in; a signed-out engine lists only `grok.com` and answers `session/new` `-32000 Authentication required`. The descriptor reads `grok models` for the sign-in state ("You are logged in with" / "You are not authenticated") |
 
 A subagent runs as an engine session of its own on the same connection, and
@@ -760,8 +908,8 @@ recovery, which replaces the engine process, aborts an open wake as it does
 Station's own turn (`engine-restarted`, or `stopped` when the session is
 stopping). A wake still open when the
 session stops ends with the session (`session.exited`). A turn cost that names
-no engine prompt is not published. An ACP session whose
-engine reports no child work (every engine but Grok today) publishes one
+no engine prompt is not published. An ACP session whose handshake names no
+subagent reporter (any engine but Kiro and Grok today) publishes one
 `child-work.updated` `not-reported` at start, so the ACP capability cell can
 be `declared` without any other engine reading "nothing running".
 
@@ -769,7 +917,9 @@ be `declared` without any other engine reading "nothing running".
 
 | Extension | Why not |
 |---|---|
-| Rewind and fork (`x.ai/rewind/*`, `x.ai/session/fork`, `_meta.cancelRewind`) | Grok does not declare `sessionCapabilities.fork`, and no request or answer shape was observed. Station has no caller for engine rewind or fork either (see [Engine session actions](#engine-session-actions)). |
+| Rewind `mode` `conversation_only` and `files_only` | Station's rewind hides the turns and restores their files together (`mode: 'all'`); it has no conversation-only or files-only rewind to offer. |
+| `x.ai/session/rename`, `x.ai/session/delete`, `x.ai/commands/list`, `x.ai/plugins/reload`, `x.ai/compact_conversation`, `x.ai/prompt_history` | Station names, keeps and compacts its own conversations and lists commands from `available_commands_update`; none of these has a Station caller. |
+| `grok agent serve`, `headless`, `leader` | The same ACP over a WebSocket, a relay or a shared local process (Grok's agent-mode guide; `serve` answered the same `initialize` live). Station launches and owns the process over stdio, so it needs no listening port or secret. |
 | `x.ai/exit_plan_mode` | Grok lists an `exit_plan_mode` tool, but no live capture shows the request it sends. A plan approval needs evidence of the request and the answer Grok reads before it is bound. |
 | `x.ai/fs/*`, `x.ai/git/*`, `x.ai/git/worktree/*`, `x.ai/search/*`, `x.ai/terminal/*`, `x.ai/fs_notify`, `x.ai/fs/index` | Client-side services for Grok's own IDE clients. Station announces none of them, and its own terminal bridge, file tools and worktrees govern the host. |
 | `x.ai/auth/get_url`, `x.ai/auth/submit_code` | Station signs Grok in through ACP `authenticate`; it never relays a sign-in code or token. |

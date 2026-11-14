@@ -394,35 +394,20 @@ describe('engine extension bindings (Kiro parity)', () => {
         (unimplemented as string[]).includes(consumer),
       ),
     ).toEqual([]);
-    // `child-work` is implemented, but Kiro's rows for it are pending: its
-    // v2 tuple keeps the host-chrome row and its rows bind nothing.
+    // `child-work` is implemented, and both Kiro rows run (their readers act
+    // only on a session whose handshake names the wire, `acp-child-work.ts`);
+    // the v2 roster's opaque envelope keeps its host-chrome row.
     expect(ENGINE_EXTENSION_CONSUMERS['child-work'].implemented).toBe(true);
     expect(
       extensionNotificationBinding('_kiro.dev', 'subagent/list_update')
         ?.consumer,
     ).toBe('acp.host-chrome');
-    const pending = ENGINE_EXTENSION_BINDINGS.filter((row) => row.pending);
-    expect(pending.map(({ id }) => id)).toEqual([
+    for (const id of [
       'kiro-v2.subagent-list-update',
       'kiro-v3.tool.agent-subtask',
-    ]);
-    for (const row of pending) {
-      // The one predicate binding and dispatch both read: a pending row is
-      // not live though its consumer is implemented, and is without it.
-      expect(engineExtensionRowLive(row)).toBe(false);
-      expect(engineExtensionRowLive({ ...row, pending: undefined })).toBe(true);
-      expect(
-        ENGINE_EXTENSION_CONSUMERS[row.consumer as EngineExtensionConsumerId]
-          ?.implemented,
-      ).toBe(true);
-      if (row.wire.kind !== 'notification') continue;
-      const [namespace, type] = [
-        row.wire.method.slice(0, row.wire.method.indexOf('/')),
-        row.wire.method.slice(row.wire.method.indexOf('/') + 1),
-      ];
-      expect(extensionNotificationBinding(namespace, type)?.consumer).not.toBe(
-        row.consumer,
-      );
+    ]) {
+      const row = ENGINE_EXTENSION_BINDINGS.find((entry) => entry.id === id);
+      expect(row && engineExtensionRowLive(row), id).toBe(true);
     }
   });
 
@@ -547,7 +532,6 @@ describe('engine extension bindings (Grok)', () => {
     expect(grok.length).toBeGreaterThan(0);
     for (const row of grok) {
       expect(row.basis).toBe('undeclared-engine');
-      expect(row.pending).toBeUndefined();
       expect(row.observed.variant).toBe('grok-1.0.77');
     }
   });

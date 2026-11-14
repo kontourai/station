@@ -601,3 +601,130 @@ test('where the engine keeps its sign-in is said only when the engine keeps it',
     ),
   ).toBeTruthy();
 });
+
+test('on the Station computer, Google or GitHub starts a social sign-in and opens the Kiro page only on request', async () => {
+  let login: unknown = null;
+  const portal =
+    'https://app.kiro.dev/signin?state=s&code_challenge=c&code_challenge_method=S256&redirect_uri=http%3A%2F%2Flocalhost%3A3128&redirect_from=kirocli';
+  const calls = serve(
+    {
+      ...bundleView,
+      hostAuth: {
+        ...bundleView.hostAuth,
+        identities: ['builder-id', 'identity-center', 'social'],
+      },
+    },
+    (call) => {
+      if (!call.path.endsWith('/host-auth/login')) return undefined;
+      if (call.method === 'POST')
+        login = {
+          kind: 'kiro.oidc-access-token',
+          phase: 'awaiting-approval',
+          startedAt: '2026-11-13T10:00:02.000Z',
+          expiresAt: '2026-11-13T10:05:02.000Z',
+          authorizationUrl: portal,
+        };
+      return { data: login };
+    },
+  );
+  renderPanel();
+  await screen.findByText(/Station keeps .*sign-in itself/);
+  expect(
+    screen.queryByText(/needs a browser on the computer Station runs on/),
+  ).toBeNull();
+  fireEvent.change(screen.getByLabelText('Sign in with'), {
+    target: { value: 'social' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+  expect(
+    await screen.findByText(
+      'Finish signing in to Kiro in the browser on this computer.',
+    ),
+  ).toBeTruthy();
+  expect(
+    JSON.parse(
+      calls.find(
+        (call) =>
+          call.path.endsWith('/host-auth/login') && call.method === 'POST',
+      )?.body ?? '{}',
+    ),
+  ).toEqual({ identity: 'social' });
+  expect(openLink).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Open sign-in page' }));
+  expect(openLink).toHaveBeenCalledWith(portal);
+});
+
+test('from another device, Google or GitHub is not offered and the panel says why', async () => {
+  serve(
+    {
+      ...bundleView,
+      hostAuth: {
+        ...bundleView.hostAuth,
+        socialSignIn: 'needs-browser-on-host',
+      },
+    },
+    (call) =>
+      call.path.endsWith('/host-auth/login') ? { data: null } : undefined,
+  );
+  renderPanel();
+  await screen.findByText(/Station keeps .*sign-in itself/);
+  expect(
+    screen.getByText(
+      'Google and GitHub sign-in needs a browser on the computer Station runs on.',
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByRole('option', { name: 'Google or GitHub' })).toBeNull();
+  expect(screen.getByRole('option', { name: 'AWS Builder ID' })).toBeTruthy();
+});
+
+test('a social sign-in is named by its provider', async () => {
+  serve(
+    {
+      ...bundleView,
+      status: { ...bundleView.status, state: 'authenticated' },
+      hostAuth: {
+        ...bundleView.hostAuth,
+        status: {
+          owner: 'station',
+          state: 'signed-in',
+          identity: { kind: 'social', provider: 'github' },
+          issueCount24h: 0,
+        },
+      },
+    },
+    (call) =>
+      call.path.endsWith('/host-auth/login') ? { data: null } : undefined,
+  );
+  renderPanel();
+  expect(await screen.findByText('Signed in with GitHub.')).toBeTruthy();
+});
+
+test('a social sign-in that timed out says what to do instead', async () => {
+  serve(
+    {
+      ...bundleView,
+      hostAuth: {
+        ...bundleView.hostAuth,
+        identities: ['builder-id', 'identity-center', 'social'],
+      },
+    },
+    (call) =>
+      call.path.endsWith('/host-auth/login')
+        ? {
+            data: {
+              kind: 'kiro.oidc-access-token',
+              phase: 'failed',
+              startedAt: '2026-11-13T10:00:02.000Z',
+              expiresAt: '2026-11-13T10:05:02.000Z',
+              failure: 'expired',
+              reason:
+                'No answer came back from the browser in time. If the browser is not on the computer Station runs on, use AWS Builder ID or IAM Identity Center.',
+            },
+          }
+        : undefined,
+  );
+  renderPanel();
+  expect(
+    await screen.findByText(/did not finish\. No answer came back/),
+  ).toBeTruthy();
+});

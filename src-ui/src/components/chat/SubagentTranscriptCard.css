@@ -41,7 +41,7 @@
 .subagent-card__glyph {
   grid-column: 1;
   grid-row: 1;
-  align-self: start;
+  align-self: center;
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
@@ -166,7 +166,7 @@
 }
 
 .subagent-card__aside {
-  align-self: start;
+  align-self: center;
   grid-column: 3;
   grid-row: 1;
   display: flex;

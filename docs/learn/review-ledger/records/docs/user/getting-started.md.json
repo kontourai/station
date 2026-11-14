@@ -202,8 +202,6 @@
 
     "src-server/services/orchestration/attached-session-repository.ts",
 
-    "src-ui/src/views/activity/activity-list-model.ts",
-
     "src-server/providers/sessions/claude-transcript-session-source.ts",
 
     "src-server/providers/sessions/codex-rollout-session-source.ts",
@@ -227,14 +225,6 @@
     "src-server/routes/orchestration/tasks.ts",
 
     "src-ui/src/contexts/active-chats-state.ts",
-
-    "src-ui/src/views/SessionsView.tsx",
-
-    "src-ui/src/workspace-panes/RegionActivityReviewPane.tsx",
-
-    "src-ui/src/views/activity/openActivityReview.ts",
-
-    "tests/activity-related-review.spec.ts",
 
     "src-ui/src/components/modals/NewProjectRepositorySource.tsx",
 
@@ -314,10 +304,6 @@
 
     "src-ui/src/utils/sessionDisplay.ts",
 
-    "src-ui/src/views/SessionsView.css",
-
-    "src-ui/src/views/activity/__tests__/ActivityList.test.tsx",
-
     "src-ui/src/views/home/home-view-model.ts",
 
     "src-ui/src/components/chat/message-bubble/MessageDeliveryNote.tsx",
@@ -342,7 +328,25 @@
 
     "src-ui/src/components/room/RoomComposer.tsx",
 
-    "src-ui/src/components/room/RoomConversation.tsx"
+    "src-ui/src/components/room/RoomConversation.tsx",
+
+    "src-ui/src/components/conversation/ConversationReader.tsx",
+
+    "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+
+    "src-ui/src/components/chat-dock/ChildChatNavigationContext.ts",
+
+    "src-ui/src/components/conversation/SessionReaderBinding.tsx",
+
+    "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+
+    "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts",
+
+    "src-ui/src/__tests__/child-transcript-navigation.test.tsx",
+
+    "src-ui/src/__tests__/activity-retirement.test.ts",
+
+    "src-ui/src/components/chat-dock/__tests__/useChatDockOverlays.child-intents.test.tsx"
   ],
 
   "checks": [

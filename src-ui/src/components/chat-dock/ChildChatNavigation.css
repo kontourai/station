@@ -1,0 +1,140 @@
+.child-chat-root {
+  display: contents;
+}
+.child-chat-root[hidden],
+.child-chat-pane__reader[hidden] {
+  display: none;
+}
+.child-chat-pane {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+.child-chat-trail {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  min-width: 0;
+  padding: 0;
+  gap: var(--k-space-1);
+}
+.child-chat-trail__segment {
+  gap: var(--k-space-1);
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  white-space: nowrap;
+}
+.child-chat-trail button {
+  min-height: 44px;
+  min-width: 44px;
+  flex-shrink: 0;
+}
+.child-chat-pane__reader {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+}
+.child-chat-pane .conversation-reader,
+.child-chat-pane .child-work-transcript {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.child-chat-parent-reader {
+  display: contents;
+}
+.child-chat-parent-reader[hidden] {
+  display: none;
+}
+.child-chat-trail__label,
+.child-chat-trail__segment [aria-current] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.child-chat-trail__segment:last-child {
+  flex: 1 1 auto;
+}
+.chat-dock__mobile-header--child .child-chat-trail__segment:not(:last-child) {
+  flex: 0 1 44px;
+}
+
+.chat-dock__active-identity--child .chat-dock__active-identity-text {
+  height: auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  overflow: visible;
+}
+.chat-dock__active-identity--child .chat-dock__active-identity-title,
+.chat-dock__mobile-header--child .chat-dock__mobile-title-text {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: visible;
+}
+.chat-dock__active-identity--child .chat-dock__active-identity-context,
+.chat-dock__active-identity--child .chat-dock__active-identity-engine,
+.chat-dock__mobile-header--child .chat-dock__mobile-eyebrow {
+  display: none;
+}
+.chat-dock__mobile-header--child .chat-dock__mobile-identity-lines {
+  display: flex;
+  min-width: 0;
+}
+.child-chat-trail {
+  flex: 1 1 auto;
+}
+
+.chat-dock__mobile-header--child {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.chat-dock__mobile-header--child .chat-dock__mobile-actions {
+  min-width: 88px;
+}
+
+.chat-dock__mobile-header--child .chat-dock__mobile-identity {
+  min-width: 0;
+  padding-inline: 0;
+  overflow: visible;
+}
+.chat-dock__mobile-header--child .chat-dock__mobile-identity-lines {
+  flex: 1 1 0;
+  overflow: visible;
+}
+
+.chat-dock__mobile-header--child .chat-dock__mobile-identity-lines {
+  flex-direction: row;
+  align-items: center;
+}
+.chat-dock__mobile-header--child .child-chat-trail {
+  max-width: 100%;
+  flex-basis: 0;
+}
+.child-chat-trail__segment:last-child {
+  flex-basis: 0;
+}
+
+.child-chat-trail__segment button {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 44px;
+}
+
+.child-chat-pane
+  .tool-call__status-footer:not(.tool-call__status-footer--error) {
+  color: var(--k-text);
+}
+
+.child-chat-trail__segment:not(:last-child) {
+  min-width: 44px;
+  max-width: 60%;
+}

@@ -82,6 +82,28 @@ async function signInBuilderId(
 }
 
 describe('Kiro device sign-in against a stub SSO-OIDC', () => {
+  test('removing the connection while a token poll is in flight keeps no credential', async () => {
+    const { stub, service } = await setup();
+    stub.deviceAnswers.push({
+      accessToken: 'late-access',
+      refreshToken: 'late-refresh',
+      delayMs: 400,
+    });
+    await service.startLogin(SCOPE, { identity: 'builder-id' });
+    await vi.waitFor(() =>
+      expect(
+        stub.requests.some(
+          (r) =>
+            r.body.grantType === 'urn:ietf:params:oauth:grant-type:device_code',
+        ),
+      ).toBe(true),
+    );
+    await service.removeConnection(SCOPE.connectionId);
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(service.vault.read('kiro.oidc-access-token', SCOPE)).toBeUndefined();
+    expect(service.status(SCOPE).state).toBe('signed-out');
+  });
+
   test('Builder ID: pending, then slow_down widens the interval, then the credential lands in the vault', async () => {
     const { stub, service, delays } = await setup();
     stub.deviceAnswers.push('authorization_pending', 'slow_down', {

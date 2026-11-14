@@ -76,8 +76,9 @@ the dock is maximized. Slash commands, `/model` and `@` file results all open
 through one anchored popup outside the composer, so no composer clipping can cut
 them off. The `@` list closes when the input loses focus (pressing inside the
 list does not take focus) and reopens when focus returns with the caret in an
-`@` query. A narrow Activity region shows its list or its selected
-detail, with a Back to list control, instead of squeezing both columns.
+`@` query. Child transcripts use the chat pane. Its title becomes an ancestor breadcrumb while the dock controls stay visible. Back, Escape and system Back return to the parent; each child keeps its own reader. Engine tool results join their recorded call IDs in the shared tool rows. Live child-work state refreshes the reader and stops polling when the child settles.
+While a child covers its parent, the parent retains its draft but publishes no
+header controls or active-reader shortcuts.
 
 The [working-chat focus owner](../../src-ui/src/hooks/useWorkingChatFocus.ts)
 requests composer focus once after selection, when the conversation
@@ -258,7 +259,7 @@ retaining portable Project/resource admission and the explicit no-fallback
 refusals; **Run task** starts a task and does not place or migrate a
 foreground chat on a peer. Once the task is accepted the composer closes
 and the dock shows **Task started on <Station>.** with **Open task** into
-Activity. **Connect a Station for this task** keeps the
+Chat. **Connect a Station for this task** keeps the
 task draft, chosen Station and Project resource while setup opens; returning
 refreshes discovery and still requires an explicit **Run task** action.
 Editing the task message updates the originating draft, so Cancel retains
@@ -310,7 +311,7 @@ visible and retryable; a failed Task stop keeps the confirmation open.
 Full access, arbitrary folders, remote mentions, offline copies/replay, personal
 defaults and local skill/workspace integrations are unavailable on relayed chats.
 
-Dock, Activity, attached records and coding tabs use the same conversation body.
+Dock, attached records and coding tabs use the same conversation body.
 Attached records retain their read-only access and explicit **Continue in Station**
 action, which confirms continuation into an owned child.
 Owner, member and guest Task histories share record rendering and pagination;
@@ -416,7 +417,7 @@ storage events refresh snoozes in other tabs of the same browser.
 The implementation is shared by both Inbox presentations; Home and
 sidebar hosts retain their own actions.
 When Continue holds Home's only item of work, Recent work is not shown and
-View Activity sits beside the Continue heading.
+Recent work and the inbox provide the work list.
 Home's Recent work rows use a recorded Directory label when no Project label
 is available and a working folder is known. For a Project, the decorative mark
 before its name is its chosen icon, or, without one, a dot in its sidebar colour
@@ -661,6 +662,16 @@ own tool row or inside an activity summary. A Claude background shell command
 (`local_bash`, including one a Monitor launched) is child work of kind
 `command`/`monitor`, not a subagent: its card shows a terminal mark, the
 command line and its exit code, with no model, instructions or transcript.
+After the turn ends, the banner that says background work continues lists
+each running task the loaded transcript does not already draw as a card, with
+the same activity line the Background tasks sheet and Agents pane show (latest
+tool, progress, elapsed time), ticking live. A carded task appears once, as
+its card, which carries its own activity and elapsed time; with every running
+task carded, no list renders.
+A chat that recorded a local failure (a send refused during a restart, an
+earlier session's error) still reads Running in the inbox and header while the
+server reports the conversation's current execution running a turn or
+background work.
 Adjacent tool calls and visible reasoning share an activity summary on every
 screen size, live and settled. A brain glyph marks reasoning and mixed groups;
 the summary counts reasoning steps separately from tools. Opening the group

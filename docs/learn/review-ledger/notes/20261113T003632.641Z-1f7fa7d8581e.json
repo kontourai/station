@@ -1,0 +1,15 @@
+{
+  "revision": "b1db6191865b1523cfcf6060108d64716cdc08e9",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Re-reviewed the Add source paragraph against MarketplaceSources.tsx and RegistryView.tsx. Manage sources now opens as a dialog from the Registry toolbar, so the catalog comes first. Trust tiers are Station, Default, Plugin and Unverified (the stale 'Operator' wording is corrected). It covers default catalogs' last count or 'Not scanned yet', same-name sources told apart by location, the overlap note, and the chosen source kept across tabs.","inputs":["docs/guides/plugins.md","src-ui/src/views/RegistryView.tsx"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"RegistryView.tsx now opens source management from the toolbar and keeps the chosen source across tabs. The Marketplace sources section (adding a source grants and installs nothing; removal preserves packages and policy) is unaffected. No prose change.","inputs":["docs/guides/distribution-profiles.md","src-ui/src/views/RegistryView.tsx"]},
+
+    {"path":"README.md","note":"Stale through plugins.md (Manage sources dialog, labels, overlap, default counts). The root README states no Registry source-UI detail. No prose change.","inputs":["README.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Stale through plugins.md. It routes integrators to the plugin and API references and restates no Registry UI behavior. No prose change.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Stale through plugins.md. Its one mention (Browse marketplaces opens Registry while keeping the picker) is unaffected by moving source management into a dialog. No prose change.","inputs":["docs/user/getting-started.md","docs/guides/plugins.md"]}
+  ]
+}

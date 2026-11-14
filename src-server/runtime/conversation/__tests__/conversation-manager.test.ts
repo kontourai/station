@@ -779,3 +779,83 @@ describe('getConversationStats — engine-reported cost and context reading', ()
     ).toEqual([{ unit: 'credit', amount: 1 }]);
   });
 });
+
+describe('getConversationStats — engine MCP status after reopen', () => {
+  const mcpEvent = (
+    index: number,
+    servers: unknown[],
+    complete: boolean,
+    reconnect?: true,
+  ): CanonicalRuntimeEvent => ({
+    eventId: `mcp${index}`,
+    provider: 'acp',
+    threadId: 'thread-1',
+    createdAt: '2026-11-13T00:00:00.000Z',
+    method: 'engine-mcp.status',
+    servers: servers as never,
+    complete,
+    ...(reconnect ? { reconnect } : {}),
+  });
+
+  async function statsFor(events: CanonicalRuntimeEvent[]) {
+    const data = await getConversationStats(
+      'kiro',
+      'thread-1',
+      new Map(),
+      new Map(),
+      new Map(),
+      createConfigLoader(),
+      appConfig,
+      undefined,
+      mockLogger,
+      () => foldUsageEvents(events),
+    );
+    return parseConversationStatsResponse(JSON.parse(JSON.stringify(data)));
+  }
+
+  test('the folded MCP servers and reconnect bit reach the wire, even before a turn completes', async () => {
+    const parsed = await statsFor([
+      mcpEvent(
+        0,
+        [
+          { name: 'docs', state: 'starting', scope: 'engine-config' },
+          { name: 'tracker', state: 'ready', scope: 'session', toolCount: 4 },
+        ],
+        true,
+        true,
+      ),
+      mcpEvent(
+        1,
+        [{ name: 'docs', state: 'needs-auth', scope: 'engine-config' }],
+        false,
+        true,
+      ),
+    ]);
+    expect(parsed?.measurement).toEqual({
+      source: 'engine-events',
+      provider: 'acp',
+    });
+    expect(parsed?.engineMcp).toEqual({
+      servers: [
+        { name: 'docs', state: 'needs-auth', scope: 'engine-config' },
+        { name: 'tracker', state: 'ready', scope: 'session', toolCount: 4 },
+      ],
+      reconnect: true,
+    });
+  });
+
+  test('an engine that never reported MCP status has no engineMcp', async () => {
+    const parsed = await statsFor([
+      {
+        eventId: 'e0',
+        provider: 'acp',
+        threadId: 'thread-1',
+        createdAt: '2026-11-13T00:00:00.000Z',
+        method: 'turn.completed',
+        turnId: 't1',
+      } as CanonicalRuntimeEvent,
+    ]);
+    expect(parsed?.turns).toBe(1);
+    expect(parsed).not.toHaveProperty('engineMcp');
+  });
+});

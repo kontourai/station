@@ -1,28 +1,21 @@
 /**
- * Child work (subagents, background commands, monitors) an ACP engine
- * reports, folded into the child-work contract
- * (`packages/contracts/src/child-work.ts`).
+ * Engine subagents on ACP, published as `child-work.updated`. ACP itself has
+ * no subagent concept, so what a session can report is a per-connection
+ * observation: an engine whose handshake identifies one of the reporters
+ * below has its subagent frames mapped here; every other engine's session
+ * says, once at its start, that its child work is `not-reported`, so no
+ * surface reads its silence as "nothing running".
  *
- * ACP itself has no subagent concept, so whether a session reports child
- * work is a fact of the engine on the other end, read from its own
- * handshake: an engine variant whose binding rows (`ENGINE_EXTENSION_BINDINGS`,
- * consumer `child-work`) are listed in {@link ACP_CHILD_WORK_REPORTERS}
- * reports; any other session states `not-reported` once, at start, so a
- * surface never reads "nothing running" that no engine said.
- *
- * The readers that turn a vendor payload into these calls live with the
- * other engine-extension readers (`acp-engine-extension-events.ts`), keyed
- * by binding id. This module owns the registry fold and every emission:
- *
- * - a child's start is a running snapshot of every child the session holds,
- *   so the contract's lifecycle rule (a settle for a child a snapshot listed)
- *   holds and a re-sent start changes nothing;
- * - progress, usage and identity are upserts;
- * - an end is a settle. A child the engine never settles stays running until
- *   the session ends, when the projection marks it `unresolved`.
+ * Every child-work event the ACP adapter emits is built in this module (the
+ * capability matrix names it as the ACP cell's adapter module). Two shapes of
+ * reporter feed it: a wire that restates the whole roster or each child's
+ * status (Kiro), published as it comes; and a wire that reports a child's
+ * start, progress and end as separate facts (Grok Build), folded through the
+ * child-work registry (`startAcpChild` / `updateAcpChild` /
+ * `settleAcpChild`) so a re-sent start changes nothing and every settle is of
+ * a child a snapshot listed.
  */
 import crypto from 'node:crypto';
-import type { ProviderDeclaredEngineVariant } from '@kontourai/station-contracts/catalog';
 import {
   applyChildWorkDelta,
   CHILD_WORK_ITEMS_MAX_PER_REPORTER,
@@ -35,43 +28,35 @@ import {
   childWorkForReporter,
   createEmptyChildWorkRegistry,
 } from '@kontourai/station-contracts/child-work';
-import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { GROK_LIVE_CAPTURE } from '../../../src-shared/extension-notification-bindings.js';
+import {
+  type AcpHandshakeIdentity,
+  type AcpIdentityHandshake,
+  matchesAcpHandshakeIdentity,
+} from '../../services/acp/acp-handshake-facts.js';
+import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '../adapter-shape.js';
 
-/**
- * Engine variants that report child work, and the binding rows they report
- * it through. A row named here must exist, be bound to `child-work` and not
- * be pending (a test pins this), so the claim is never wider than the
- * readers behind it.
- */
-export const ACP_CHILD_WORK_REPORTERS: Readonly<
-  Partial<Record<ProviderDeclaredEngineVariant, readonly string[]>>
-> = Object.freeze({
-  'grok-build': Object.freeze([
-    'grok.task-backgrounded',
-    'grok.task-completed',
-    'grok.monitor-event',
-    'grok.background-tasks',
-    'grok.subagent-spawned',
-    'grok.subagent-progress',
-    'grok.subagent-finished',
-  ]),
-});
-
-/** Why an ACP session reports no child work. */
-const ACP_CHILD_WORK_NOT_REPORTED_REASON =
-  'This engine does not report its subagents or background work over ACP.';
-
-/** Whether a session whose handshake resolved to `variant` reports child work. */
-export function acpEngineReportsChildWork(
-  variant: ProviderDeclaredEngineVariant | undefined,
-): boolean {
-  return (
-    variant !== undefined && ACP_CHILD_WORK_REPORTERS[variant] !== undefined
-  );
-}
-
-/** Adapter-owned per-session child-work state (part of the session record). */
+/** The adapter-owned state these readers keep (part of the session record). */
 export interface AcpChildWorkState {
+  /**
+   * The subagent wires this session's handshake identifies its engine as
+   * sending (`acpSubagentWires`), set by the adapter at session start. A
+   * frame on any other wire publishes nothing: the session already said its
+   * child work is not reported.
+   */
+  acpSubagentWires?: ReadonlySet<AcpSubagentWire>;
+  /** Running subagents a v3 `agent-subtask` frame reported, by child id. */
+  acpSubagents?: Map<string, ChildWorkItem>;
+  /**
+   * Roster children already settled, so a repeated roster does not settle
+   * them again. Bounded (oldest out): a child evicted past the bound is
+   * settled again if a later roster still restates it, which the fold
+   * treats as a no-op on an already-terminal child.
+   */
+  acpSettledSubagents?: Set<string>;
+  /** The over-bound warning already logged for this session, per wire, while it stays over. */
+  acpSubagentBoundWarned?: Set<AcpSubagentWire>;
+  /** The fold of the children a start/progress/end wire reported (Grok Build). */
   childWorkRegistry?: ChildWorkRegistryState;
 }
 
@@ -80,7 +65,344 @@ export interface AcpChildWorkContext {
   activeTurnId?: string;
   publish: (event: CanonicalRuntimeEvent) => void;
   state?: AcpChildWorkState;
+  logger?: {
+    warn: (message: string, fields?: Record<string, unknown>) => void;
+  };
 }
+
+export type AcpSubagentWire =
+  | 'roster'
+  | 'agent-subtask'
+  | 'background-task'
+  | 'subagent-lifecycle';
+
+/**
+ * Engines whose subagent frames this module maps, keyed on what the live
+ * handshake says about the engine (the steer table's identity matcher).
+ * Neither wire is declared at `initialize`, so both are `undeclared-engine`
+ * rows of the engine-extension binding table.
+ */
+const ACP_SUBAGENT_REPORTERS: ReadonlyArray<{
+  identity: AcpHandshakeIdentity;
+  wire: AcpSubagentWire;
+  observed: string;
+}> = [
+  {
+    // `_kiro.dev/subagent/list_update`
+    identity: { agentInfoName: 'Kiro CLI Agent' },
+    wire: 'roster',
+    observed:
+      'kirocrew test/fixtures/acp_frames/kiro/notifications.jsonl; dashboard/chat_turn/native_cards.py _native_subagent_sync',
+  },
+  {
+    // `tool_call` with `_meta.kiro.kind: agent-subtask`
+    identity: { capabilityMetaNamespace: 'kiro' },
+    wire: 'agent-subtask',
+    observed:
+      'kirocrew acp/session_handle_native_children.py _handle_kas_subagent; test/test_kas_subagent_progress.py',
+  },
+  {
+    // `_x.ai/task_backgrounded`, `_x.ai/task_completed`,
+    // `_x.ai/monitor_event` and the `background_tasks` session notification:
+    // background commands and monitors.
+    identity: { initializeMetaFlag: 'grokShell' },
+    wire: 'background-task',
+    observed: GROK_LIVE_CAPTURE,
+  },
+  {
+    // `subagent_spawned` / `subagent_progress` / `subagent_finished` on
+    // `_x.ai/session_notification`.
+    identity: { initializeMetaFlag: 'grokShell' },
+    wire: 'subagent-lifecycle',
+    observed: GROK_LIVE_CAPTURE,
+  },
+];
+
+/** The subagent wires this session's engine is identified as sending. */
+export function acpSubagentWires(
+  handshake: AcpIdentityHandshake | null | undefined,
+): ReadonlySet<AcpSubagentWire> {
+  if (!handshake) return new Set();
+  return new Set(
+    ACP_SUBAGENT_REPORTERS.filter(({ identity }) =>
+      matchesAcpHandshakeIdentity(handshake, identity),
+    ).map(({ wire }) => wire),
+  );
+}
+
+/** Why an ACP engine's child work is `not-reported`. */
+const ACP_CHILD_WORK_NOT_REPORTED_REASON =
+  'This engine reports no subagents to Station over ACP.';
+
+function event(
+  ctx: AcpChildWorkContext,
+  delta: Extract<
+    CanonicalRuntimeEvent,
+    { method: 'child-work.updated' }
+  >['delta'],
+): CanonicalRuntimeEvent {
+  return {
+    eventId: crypto.randomUUID(),
+    provider: 'acp',
+    threadId: ctx.session.threadId,
+    createdAt: new Date().toISOString(),
+    ...(ctx.activeTurnId ? { turnId: ctx.activeTurnId } : {}),
+    method: 'child-work.updated',
+    delta,
+  };
+}
+
+/** The one child-work fact a non-reporting engine's session states. */
+export function acpChildWorkNotReportedEvent(
+  threadId: string,
+): CanonicalRuntimeEvent {
+  return event(
+    { session: { threadId }, publish: () => {} },
+    {
+      kind: 'not-reported',
+      reporterThreadId: threadId,
+      reason: ACP_CHILD_WORK_NOT_REPORTED_REASON,
+    },
+  );
+}
+
+const CHILD_ID_MAX_CHARS = 256;
+/** Bound on roster children remembered as settled per session; oldest first out. */
+const CHILD_WORK_SETTLED_IDS_MAX = 1024;
+const LABEL_MAX_CHARS = 200;
+
+function childId(value: unknown): string | undefined {
+  return typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= CHILD_ID_MAX_CHARS
+    ? value
+    : undefined;
+}
+
+function label(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, LABEL_MAX_CHARS) : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Status words an engine uses for a child still at work (kirocrew's set). */
+const RUNNING_STATUSES = new Set([
+  '',
+  'working',
+  'running',
+  'pending',
+  'queued',
+  'in_progress',
+]);
+
+const TERMINAL_STATUSES: Readonly<Record<string, ChildWorkTerminalStatus>> = {
+  completed: 'completed',
+  failed: 'failed',
+  error: 'failed',
+  cancelled: 'cancelled',
+  canceled: 'cancelled',
+};
+
+/**
+ * A status word as a child-work status. A terminal word Station does not
+ * know ends the child without an observed outcome: `unresolved`.
+ */
+function childStatus(
+  word: string,
+): { running: true } | { running: false; status: ChildWorkTerminalStatus } {
+  const normalized = word.toLowerCase();
+  if (RUNNING_STATUSES.has(normalized)) return { running: true };
+  return {
+    running: false,
+    status: TERMINAL_STATUSES[normalized] ?? 'unresolved',
+  };
+}
+
+function baseItem(
+  ctx: AcpChildWorkContext,
+  id: string,
+  identity: { title?: string; kindLabel?: string; toolCallId?: string },
+): ChildWorkItem {
+  return {
+    producer: 'engine-subagent',
+    reporterThreadId: ctx.session.threadId,
+    childId: id,
+    status: 'running',
+    workKind: 'agent',
+    parent: {
+      threadId: ctx.session.threadId,
+      ...(ctx.activeTurnId ? { turnId: ctx.activeTurnId } : {}),
+      ...(identity.toolCallId ? { toolCallId: identity.toolCallId } : {}),
+    },
+    ...(identity.title ? { title: identity.title } : {}),
+    ...(identity.kindLabel ? { kindLabel: identity.kindLabel } : {}),
+  };
+}
+
+/** Log an over-bound refusal once while the session stays over the bound. */
+function warnOverBoundOnce(
+  ctx: AcpChildWorkContext,
+  wire: AcpSubagentWire,
+  message: string,
+  fields: Record<string, unknown>,
+): void {
+  const warned = (ctx.state!.acpSubagentBoundWarned ??= new Set());
+  if (warned.has(wire)) return;
+  warned.add(wire);
+  ctx.logger?.warn(message, { threadId: ctx.session.threadId, ...fields });
+}
+
+function publishSettle(
+  ctx: AcpChildWorkContext,
+  item: ChildWorkItem,
+  status: ChildWorkTerminalStatus,
+): void {
+  const { producer, reporterThreadId, childId: id, ...identity } = item;
+  const { status: _running, ...rest } = identity;
+  ctx.publish(
+    event(ctx, {
+      kind: 'settle',
+      producer,
+      reporterThreadId,
+      childId: id,
+      status,
+      identity: rest,
+    }),
+  );
+}
+
+function publishSnapshot(
+  ctx: AcpChildWorkContext,
+  running: ChildWorkItem[],
+): void {
+  ctx.publish(
+    event(ctx, {
+      kind: 'snapshot',
+      producer: 'engine-subagent',
+      reporterThreadId: ctx.session.threadId,
+      running,
+    }),
+  );
+}
+
+/**
+ * kiro-cli's `_kiro.dev/subagent/list_update`: the engine's whole subagent
+ * roster, `subagents[{sessionId, sessionName, agentName|role, initialQuery,
+ * status: {type, message}}]` (the synthetic fixture's older spelling, `{id,
+ * name, status: '<word>'}`, reads the same). Each terminal entry is settled,
+ * then the running ones are published as the authoritative running set, so
+ * a child the roster drops without an outcome reads `unresolved`.
+ */
+export function publishAcpSubagentRoster(
+  params: Record<string, unknown>,
+  ctx: AcpChildWorkContext,
+): void {
+  if (!ctx.state?.acpSubagentWires?.has('roster')) return;
+  if (!Array.isArray(params.subagents)) return;
+  const settled = (ctx.state.acpSettledSubagents ??= new Set());
+  const running: ChildWorkItem[] = [];
+  const seen = new Set<string>();
+  for (const entry of params.subagents) {
+    if (!isRecord(entry)) continue;
+    const id = childId(entry.sessionId) ?? childId(entry.id);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const statusWord = isRecord(entry.status)
+      ? entry.status.type
+      : entry.status;
+    if (typeof statusWord !== 'string') continue;
+    const item = baseItem(ctx, id, {
+      title:
+        label(entry.initialQuery) ??
+        label(entry.sessionName) ??
+        label(entry.name),
+      kindLabel: label(entry.role) ?? label(entry.agentName),
+    });
+    const status = childStatus(statusWord);
+    if (status.running) running.push(item);
+    else if (!settled.has(id)) {
+      // The roster restates finished children every time; each is settled
+      // once. The set is bounded like the registry it feeds.
+      settled.add(id);
+      if (settled.size > CHILD_WORK_SETTLED_IDS_MAX)
+        settled.delete(settled.values().next().value as string);
+      publishSettle(ctx, item, status.status);
+    }
+  }
+  // The running set is authoritative: a child it leaves out reads
+  // `unresolved`. One cut to the registry's bound would mark live children
+  // ended, so an oversized roster publishes no running set at all and the
+  // last one stands.
+  if (running.length > CHILD_WORK_ITEMS_MAX_PER_REPORTER) {
+    warnOverBoundOnce(
+      ctx,
+      'roster',
+      'ACP subagent roster exceeds the child-work bound; its running set is not published',
+      { running: running.length, max: CHILD_WORK_ITEMS_MAX_PER_REPORTER },
+    );
+    return;
+  }
+  ctx.state.acpSubagentBoundWarned?.delete('roster');
+  publishSnapshot(ctx, running);
+}
+
+/**
+ * Kiro's agent service: a `tool_call` / `tool_call_update` whose
+ * `_meta.kiro.kind` is `agent-subtask` is the subagent itself, named by
+ * `agentSubtaskId`; its `status` is the child's. The roster of running
+ * children is kept per session and republished whole after each change, so
+ * a settle is always of a child a snapshot listed.
+ */
+export function publishAcpAgentSubtask(
+  update: Record<string, unknown>,
+  meta: Record<string, unknown>,
+  ctx: AcpChildWorkContext,
+): void {
+  const id = childId(meta.agentSubtaskId);
+  if (!id || !ctx.state?.acpSubagentWires?.has('agent-subtask')) return;
+  const roster = (ctx.state.acpSubagents ??= new Map());
+  const known = roster.get(id);
+  const title = label(update.title);
+  const item =
+    known ??
+    baseItem(ctx, id, {
+      title,
+      kindLabel: title?.startsWith('Sub-agent: ')
+        ? label(title.slice('Sub-agent: '.length))
+        : undefined,
+      toolCallId: childId(update.toolCallId),
+    });
+  const statusWord = typeof update.status === 'string' ? update.status : '';
+  const status = childStatus(statusWord);
+  if (status.running) {
+    if (known) return;
+    // Past the registry's bound a new child is not tracked: it is never
+    // shown running, and its end is ignored. Logged, so the gap is visible.
+    if (roster.size >= CHILD_WORK_ITEMS_MAX_PER_REPORTER) {
+      warnOverBoundOnce(
+        ctx,
+        'agent-subtask',
+        'ACP agent-subtask past the child-work bound is not tracked',
+        { max: CHILD_WORK_ITEMS_MAX_PER_REPORTER },
+      );
+      return;
+    }
+    roster.set(id, item);
+    publishSnapshot(ctx, [...roster.values()]);
+    return;
+  }
+  if (!known) return;
+  roster.delete(id);
+  ctx.state.acpSubagentBoundWarned?.delete('agent-subtask');
+  publishSettle(ctx, item, status.status);
+  publishSnapshot(ctx, [...roster.values()]);
+}
+
+// --- Start / progress / end wires, folded through the child-work registry ---
 
 /** A child as a reader saw it start. `reporterThreadId` and status are filled in here. */
 export type AcpChildStart = Omit<
@@ -94,63 +416,77 @@ function registry(ctx: AcpChildWorkContext): ChildWorkRegistryState {
   return ctx.state.childWorkRegistry;
 }
 
-function emit(ctx: AcpChildWorkContext, delta: ChildWorkDelta): void {
-  // Without a session store there is nothing to fold against; publishing
-  // anyway would let a duplicate frame read as a second start.
-  if (!ctx.state) return;
+/**
+ * Publishes `delta` when it changes the session's fold. A frame on a wire
+ * this session's handshake does not name publishes nothing: the session
+ * already said its child work is not reported. Without a session store
+ * there is nothing to fold against, and publishing anyway would let a
+ * duplicate frame read as a second start.
+ */
+function emit(
+  ctx: AcpChildWorkContext,
+  wire: AcpSubagentWire,
+  delta: ChildWorkDelta,
+): void {
+  if (!ctx.state?.acpSubagentWires?.has(wire)) return;
   const before = registry(ctx);
   const next = applyChildWorkDelta(before, delta);
   if (next === before) return;
   ctx.state.childWorkRegistry = next;
-  ctx.publish({
-    eventId: crypto.randomUUID(),
-    provider: 'acp',
-    threadId: ctx.session.threadId,
-    createdAt: new Date().toISOString(),
-    ...(ctx.activeTurnId ? { turnId: ctx.activeTurnId } : {}),
-    method: 'child-work.updated',
-    delta,
-  });
+  ctx.publish(event(ctx, delta));
 }
 
-function children(ctx: AcpChildWorkContext): ChildWorkItem[] {
+function foldedChildren(ctx: AcpChildWorkContext): ChildWorkItem[] {
   return childWorkForReporter(registry(ctx), ctx.session.threadId).filter(
     (item) => item.producer === 'engine-subagent',
   );
 }
 
-/** The child this session holds under `childId`, if any. */
+/** The child this session's fold holds under `id`, if any. */
 export function acpChild(
   ctx: AcpChildWorkContext,
-  childId: string,
+  id: string,
 ): ChildWorkItem | undefined {
-  return children(ctx).find((item) => item.childId === childId);
+  return foldedChildren(ctx).find((item) => item.childId === id);
 }
 
 /**
  * A child started. Published as the session's whole running set, so the
  * new child is listed beside the ones already running. A child the session
- * already holds is enriched instead, never restarted.
+ * already holds is enriched instead, never restarted. Past the registry's
+ * bound a new child is not tracked, and that is logged once.
  */
 export function startAcpChild(
   ctx: AcpChildWorkContext,
+  wire: AcpSubagentWire,
   start: AcpChildStart,
 ): void {
+  if (!ctx.state?.acpSubagentWires?.has(wire)) return;
   const existing = acpChild(ctx, start.childId);
   if (existing) {
     if (existing.status === 'running')
-      emit(ctx, { kind: 'upsert', item: { ...start, ...existing } });
+      emit(ctx, wire, { kind: 'upsert', item: { ...start, ...existing } });
     return;
   }
-  const running = children(ctx).filter((item) => item.status === 'running');
-  if (running.length >= CHILD_WORK_ITEMS_MAX_PER_REPORTER) return;
+  const running = foldedChildren(ctx).filter(
+    (item) => item.status === 'running',
+  );
+  if (running.length >= CHILD_WORK_ITEMS_MAX_PER_REPORTER) {
+    warnOverBoundOnce(
+      ctx,
+      wire,
+      'ACP child past the child-work bound is not tracked',
+      { max: CHILD_WORK_ITEMS_MAX_PER_REPORTER },
+    );
+    return;
+  }
   const item: ChildWorkItem = {
     ...start,
     producer: 'engine-subagent',
     reporterThreadId: ctx.session.threadId,
     status: 'running',
   };
-  emit(ctx, {
+  emit(ctx, wire, {
     kind: 'snapshot',
     producer: 'engine-subagent',
     reporterThreadId: ctx.session.threadId,
@@ -161,20 +497,22 @@ export function startAcpChild(
 /** New facts about a running child (progress, usage, latest tool). */
 export function updateAcpChild(
   ctx: AcpChildWorkContext,
-  childId: string,
+  wire: AcpSubagentWire,
+  id: string,
   patch: Partial<
     Pick<ChildWorkItem, 'progress' | 'usage' | 'latestTool' | 'title'>
   >,
 ): void {
-  const existing = acpChild(ctx, childId);
+  const existing = acpChild(ctx, id);
   if (!existing || existing.status !== 'running') return;
-  emit(ctx, { kind: 'upsert', item: { ...existing, ...patch } });
+  emit(ctx, wire, { kind: 'upsert', item: { ...existing, ...patch } });
 }
 
 /** A child ended with the engine's own verdict. */
 export function settleAcpChild(
   ctx: AcpChildWorkContext,
-  childId: string,
+  wire: AcpSubagentWire,
+  id: string,
   status: ChildWorkTerminalStatus,
   facts: {
     result?: ChildWorkResult;
@@ -183,14 +521,16 @@ export function settleAcpChild(
     identity?: Partial<AcpChildStart>;
   } = {},
 ): void {
-  const existing = acpChild(ctx, childId);
+  const existing = acpChild(ctx, id);
+  if (existing?.status === 'running')
+    ctx.state?.acpSubagentBoundWarned?.delete(wire);
   // An end for a child this session never saw start (it began before
   // Station attached) still records the verdict, with what the end says.
-  emit(ctx, {
+  emit(ctx, wire, {
     kind: 'settle',
     producer: 'engine-subagent',
     reporterThreadId: ctx.session.threadId,
-    childId,
+    childId: id,
     status,
     ...(facts.result ? { result: facts.result } : {}),
     ...(facts.usage ? { usage: facts.usage } : {}),
@@ -205,22 +545,4 @@ export function settleAcpChild(
           }
         : {}),
   });
-}
-
-/** The one child-work fact a session whose engine reports none can state. */
-export function acpChildWorkNotReportedEvent(input: {
-  threadId: string;
-}): CanonicalRuntimeEvent {
-  return {
-    eventId: crypto.randomUUID(),
-    provider: 'acp',
-    threadId: input.threadId,
-    createdAt: new Date().toISOString(),
-    method: 'child-work.updated',
-    delta: {
-      kind: 'not-reported',
-      reporterThreadId: input.threadId,
-      reason: ACP_CHILD_WORK_NOT_REPORTED_REASON,
-    },
-  };
 }

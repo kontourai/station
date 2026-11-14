@@ -1,5 +1,11 @@
 # Shell ownership scopes and Boards
 
+> **Activity retirement amendment:** Activity and its Quick review pane are
+> removed. Home and the inbox list work; Session links and child transcripts
+> open in Chat. The Activity-specific delivery notes below describe the earlier
+> design. See [placement](placement.md) for migration and URL compatibility.
+
+
 > **Reading status: accepted design; all nine delivery slices landed.** Epic
 > #2058's slices shipped in three pull requests: slices 1, 2 and 6 in #2080;
 > 3, 5 and 8 in #2084; 4, 7 and 9 in #2095. Personal Boards have an

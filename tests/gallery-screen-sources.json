@@ -94,10 +94,6 @@
     "telemetry-settings-detailed-expanded-mobile": [
       "src-ui/src/views/SettingsView.tsx"
     ],
-    "mobile-activity-compact": [
-      "src-ui/src/views/HomeView.tsx",
-      "src-ui/src/app-shell/ActivityRegionShell.tsx"
-    ],
     "mobile-http-consent-320": [
       "src-ui/src/views/SettingsView.tsx",
       "src-ui/src/views/connections-hub/ConnectStationDialog.tsx"
@@ -135,10 +131,6 @@
       "src-ui/src/views/ConnectionsSectionFrame.tsx",
       "src-ui/src/views/KnowledgeConnectionView.tsx"
     ],
-    "sessions": [
-      "src-ui/src/views/HomeView.tsx",
-      "src-ui/src/app-shell/ActivityRegionShell.tsx"
-    ],
     "plugins": ["src-ui/src/views/PluginManagementView.tsx"],
     "schedule": ["src-ui/src/views/ScheduleView.tsx"],
     "developer-telemetry": ["src-ui/src/views/DeveloperView.tsx"],
@@ -153,10 +145,6 @@
     "mobile-agent-editor-save-footer": ["src-ui/src/views/AgentsView.tsx"],
     "mobile-agent-editor-project-control": ["src-ui/src/views/AgentsView.tsx"],
     "mobile-settings-overview": ["src-ui/src/views/SettingsView.tsx"],
-    "sessions-filtered-empty": [
-      "src-ui/src/views/HomeView.tsx",
-      "src-ui/src/app-shell/ActivityRegionShell.tsx"
-    ],
     "agents-empty": ["src-ui/src/views/AgentsView.tsx"],
     "command-palette-empty": ["src-ui/src/views/HomeView.tsx"],
     "motion-reduced-navigation": ["src-ui/src/views/AgentsView.tsx"],
@@ -533,6 +521,60 @@
       "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
       "src-ui/src/views/ProjectPage.tsx",
       "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "child-chat-dark-1440": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
+    ],
+    "child-chat-light-1440": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
+    ],
+    "child-chat-dark-412": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
+    ],
+    "child-chat-light-412": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
+    ],
+    "child-chat-dark-390": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
+    ],
+    "child-chat-light-390": [
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+      "src-ui/src/components/chat-dock/ChildChatNavigation.css",
+      "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
+      "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+      "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
     ]
   }
 }

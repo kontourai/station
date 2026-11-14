@@ -51,6 +51,7 @@ import {
   isReplayMarkedUpdate,
   mapEngineExtensionNotification,
   mapEngineSessionInfo,
+  mapEngineToolCallMeta,
   readAcpUsageCost,
 } from './acp-engine-extension-events.js';
 import type { AcpToolUpdateSupervisor } from './acp-tool-update-supervisor.js';
@@ -306,6 +307,8 @@ export function mapAcpSessionUpdate(
         hasRawInput: Object.hasOwn(update, 'rawInput'),
         hasRawOutput: Object.hasOwn(update, 'rawOutput'),
       });
+      // A vendor kind on the call (Kiro's `agent-subtask`) is also child work.
+      mapEngineToolCallMeta(update, { ...ctx, logger: mapperLogger(ctx) });
       return;
     }
 
@@ -328,6 +331,7 @@ export function mapAcpSessionUpdate(
         hasContent: Object.hasOwn(update, 'content'),
         hasStatus: Object.hasOwn(update, 'status'),
       });
+      mapEngineToolCallMeta(update, { ...ctx, logger: mapperLogger(ctx) });
       return;
     }
 
@@ -499,7 +503,10 @@ export function mapAcpExtensionNotification(
   }
   // Engine-extension rows (`ENGINE_EXTENSION_BINDINGS`) whose consumer is a
   // canonical event: published beside the opaque envelope below.
-  mapEngineExtensionNotification(method, params, ctx);
+  mapEngineExtensionNotification(method, params, {
+    ...ctx,
+    logger: mapperLogger(ctx),
+  });
 
   ctx.publish({
     eventId: crypto.randomUUID(),
@@ -510,8 +517,77 @@ export function mapAcpExtensionNotification(
     method: 'extension.notification',
     namespace,
     type,
-    payload: params,
+    payload: withoutMcpServerSecrets(params),
   });
+}
+
+/** What replaces an MCP server's environment or header value in a published payload. */
+const MCP_SECRET_REDACTED = '[redacted]';
+
+function redactedValues(value: unknown): unknown {
+  // ACP's own shape is `[{name, value}]`; a vendor may send a name-to-value map.
+  if (Array.isArray(value))
+    return value.map((entry) =>
+      entry !== null && typeof entry === 'object' && !Array.isArray(entry)
+        ? { ...entry, value: MCP_SECRET_REDACTED }
+        : MCP_SECRET_REDACTED,
+    );
+  if (value !== null && typeof value === 'object')
+    return Object.fromEntries(
+      Object.keys(value).map((key) => [key, MCP_SECRET_REDACTED]),
+    );
+  return value === undefined ? undefined : MCP_SECRET_REDACTED;
+}
+
+/** A server URL as its scheme and host only: a token can ride in the user info, path or query. */
+function urlWithoutCredentials(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return MCP_SECRET_REDACTED;
+  }
+}
+
+/**
+ * An extension payload as it is published: every MCP server it lists keeps
+ * its name, command and transport, but not what can carry a credential: its
+ * `env` and `headers` values, its `args` (a token is often passed as one) and
+ * everything in its URL after the host. The opaque envelope is durable and reaches
+ * every surface; an engine that echoes its MCP configuration (Grok's
+ * `mcp/servers_updated` lists each server's launch shape) must not put a
+ * token there.
+ */
+function withoutMcpServerSecrets(params: Record<string, unknown>): unknown {
+  // A vendor may send no params at all; the envelope carries what came.
+  const servers = params?.mcpServers;
+  if (!Array.isArray(servers)) return params;
+  return {
+    ...params,
+    mcpServers: servers.map((server) => {
+      if (
+        server === null ||
+        typeof server !== 'object' ||
+        Array.isArray(server)
+      )
+        return server;
+      const entry = server as Record<string, unknown>;
+      return {
+        ...entry,
+        ...('env' in entry ? { env: redactedValues(entry.env) } : {}),
+        ...('headers' in entry
+          ? { headers: redactedValues(entry.headers) }
+          : {}),
+        ...(Array.isArray(entry.args)
+          ? { args: entry.args.map(() => MCP_SECRET_REDACTED) }
+          : 'args' in entry
+            ? { args: MCP_SECRET_REDACTED }
+            : {}),
+        ...('url' in entry ? { url: urlWithoutCredentials(entry.url) } : {}),
+      };
+    }),
+  };
 }
 
 function splitExtensionMethod(method: string): {

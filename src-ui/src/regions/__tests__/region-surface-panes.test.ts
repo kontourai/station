@@ -1,6 +1,5 @@
 // @vitest-environment node
 
-import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
 import { WORKSPACE_AGENTS_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-agents-pane';
 import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
 import {
@@ -35,7 +34,6 @@ const NO_PROJECT = { projectId: null, projectSlug: null };
 /** The descriptor each entry is an occurrence of, by surface id. */
 const ENTRY_DESCRIPTORS: Record<string, WorkspacePaneDescriptor> = {
   chat: WORKSPACE_CHAT_PANE_DESCRIPTOR,
-  activity: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
   // #2050: this conversation's background work, beside the conversation.
   'workspace-agents': WORKSPACE_AGENTS_PANE_DESCRIPTOR,
   // #1969: a captured device screen, and like Activity it binds nothing —
@@ -66,7 +64,6 @@ describe('region surface panes (#2045, #2047)', () => {
       .map((surface) => surface.id)
       .sort();
     expect(dockCapable).toEqual([
-      'activity',
       'chat',
       'coding:diff',
       'coding:file-browser',
@@ -121,12 +118,7 @@ describe('region surface panes (#2045, #2047)', () => {
       expect(other?.instanceId).toBe(bound?.instanceId);
       expect(other?.boundContext?.projectId).toBe('other-project');
     }
-    for (const surfaceId of [
-      'chat',
-      'activity',
-      'workspace-agents',
-      'device',
-    ]) {
+    for (const surfaceId of ['chat', 'workspace-agents', 'device']) {
       const pane = regionSurfacePane(surfaceId);
       expect(pane?.instance(NO_PROJECT), surfaceId).toBe(
         pane?.instance(PROJECT),

@@ -1,0 +1,7 @@
+{
+  "revision": "8ea264868b13d178784927fd53eb5880d6c51ab4",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-read the owned-process claims (scenario cleanup at the perf section, owned-command runner Windows exit/close settlement, heavy-check slot process groups) and the station-weight section against scripts/lib/owned-process.mjs at this change: forceTerminate gained an opt-in onlyWhileLeaderUnreaped option used only by station-weight's launcher timeout; default terminate/forceTerminate, Windows settlement and capture are unchanged, so every claim stays accurate. The station-weight paragraph defers ownership detail to docs/reference/station-weight.md, updated in this change.","inputs":["docs/guides/testing.md","scripts/lib/owned-process.mjs"]}
+  ]
+}

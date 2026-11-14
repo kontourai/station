@@ -209,6 +209,11 @@ export interface ChatMessage {
    */
   stationRestartContinuation?: boolean;
   /**
+   * An in-place engine rewind hid this turn from the engine. The row stays
+   * in the transcript, shown dimmed with a Rewound badge.
+   */
+  rewound?: boolean;
+  /**
    * The interrupted-turn boundary this row reports: the restart notice, or
    * the stopped row that says "Station restarted mid-turn" in its place.
    * Continue keys its send on it.
@@ -534,6 +539,8 @@ export interface ChatSession {
   engineMcpServers?: ChatEngineMcpServer[];
   /** See ChatUIState.engineMcpReconnect. */
   engineMcpReconnect?: true;
+  /** See ChatUIState.engineMcpComplete. */
+  engineMcpComplete?: true;
   /** Synthetic event-replay chat; absent on ordinary sessions. */
   replay?: {
     mode?: 'timeline';

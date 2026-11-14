@@ -1,0 +1,17 @@
+{
+  "revision": "71aa74855ca700d2810b5e3d633fbb329d41275c",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Re-recorded after merging main (#4876 squashed): this document's text is unchanged from the reviewed #4879 head. It uses the UI's 'Add source' and 'Manage sources' (opened from the Registry toolbar) wording, which matches MarketplaceSources.tsx; #4876's later review notes had bound it to the earlier 'Add marketplace' text.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"examples/registry/README.md","note":"Re-recorded after merging main (#4876 squashed): this document's text is unchanged from the reviewed #4879 head. It uses the UI's 'Add source' and 'Manage sources' (opened from the Registry toolbar) wording, which matches MarketplaceSources.tsx; #4876's later review notes had bound it to the earlier 'Add marketplace' text.","inputs":["examples/registry/README.md"]},
+
+    {"path":"examples/registry/integrations/README.md","note":"Re-recorded after merging main (#4876 squashed): this document's text is unchanged from the reviewed #4879 head. It uses the UI's 'Add source' and 'Manage sources' (opened from the Registry toolbar) wording, which matches MarketplaceSources.tsx; #4876's later review notes had bound it to the earlier 'Add marketplace' text.","inputs":["examples/registry/integrations/README.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Its source docs/guides/plugins.md now carries #4879's Add source / Manage sources wording after the main merge; this guide makes no claim about that flow's labels. Nothing to change.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Its source docs/guides/plugins.md now carries #4879's Add source / Manage sources wording after the main merge; getting-started does not describe that flow's labels. Nothing to change.","inputs":["docs/user/getting-started.md","docs/guides/plugins.md"]},
+
+    {"path":"README.md","note":"Its source docs/guides/plugins.md now carries #4879's Add source / Manage sources wording after the main merge; the README does not describe that flow's labels. Nothing to change.","inputs":["README.md","docs/guides/plugins.md"]}
+  ]
+}

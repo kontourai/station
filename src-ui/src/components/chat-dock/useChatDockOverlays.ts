@@ -13,12 +13,16 @@ import {
   type DeviceSettingsActions,
   useDeviceSettings,
 } from '../../contexts/DeviceSettingsContext';
-import { useRegionModelOptional } from '../../contexts/RegionModelContext';
+import {
+  type SurfaceIntentRecord,
+  useRegionModelOptional,
+} from '../../contexts/RegionModelContext';
 import { useExitTransition } from '../../hooks/useExitTransition';
 import type {
   NewChatClosedOutcome,
   NewChatIntent,
 } from '../../lib/newChatIntent';
+import type { ChatSession } from '../../types';
 import type { ActiveWorkPanel } from './ActiveWorkContextFrame';
 import { CHAT_DOCK_INBOX_EXIT_MS } from './chat-dock-utils';
 
@@ -40,6 +44,7 @@ export function useChatDockOverlays({
   setShowNewChatModalState,
   hasConversationIntent,
   onReaderIntent,
+  hostSessionRef,
 }: {
   isMobile: boolean;
   composerMenuTriggerRef: RefObject<HTMLButtonElement | null>;
@@ -47,6 +52,10 @@ export function useChatDockOverlays({
   setShowNewChatModalState: (open: boolean) => void;
   hasConversationIntent: boolean;
   onReaderIntent: () => void;
+  hostSessionRef?: RefObject<Pick<
+    ChatSession,
+    'id' | 'conversationId' | 'currentSessionId'
+  > | null>;
 }) {
   const [mobileInboxOpen, setMobileInboxOpen] = useState(
     isMobile && !hasConversationIntent,
@@ -56,19 +65,53 @@ export function useChatDockOverlays({
   );
   const regionModel = useRegionModelOptional();
   const incoming = regionModel?.surfaceIntents.chat;
+  const [readerSurfaceIntent, setReaderSurfaceIntent] = useState<
+    SurfaceIntentRecord & { workingSessionId?: string }
+  >();
   const consumeIntent = regionModel?.consumeSurfaceIntent;
   useEffect(() => {
     if (!incoming?.session) return;
     onReaderIntent();
     setMobileInboxOpen(false);
-    setImportedSessionId(incoming.session);
+    const hostSession = hostSessionRef?.current;
+    const reusesWorkingParent = Boolean(
+      (incoming.childId || incoming.childSessionId) &&
+        !incoming.messageAnchor &&
+        !incoming.focus &&
+        hostSession &&
+        [
+          hostSession.id,
+          hostSession.conversationId,
+          hostSession.currentSessionId,
+        ].includes(incoming.session),
+    );
+    setImportedSessionId(reusesWorkingParent ? null : incoming.session);
+    setReaderSurfaceIntent({
+      ...incoming,
+      workingSessionId: reusesWorkingParent ? hostSession!.id : undefined,
+    });
     consumeIntent?.('chat', incoming.token);
-  }, [incoming, consumeIntent, onReaderIntent]);
+  }, [incoming, consumeIntent, onReaderIntent, hostSessionRef]);
+  const consumeChildIntent = useCallback(
+    (token: number) =>
+      setReaderSurfaceIntent((current) =>
+        current?.token === token && (current.childId || current.childSessionId)
+          ? {
+              ...current,
+              childId: undefined,
+              childSessionId: undefined,
+              childTitle: undefined,
+            }
+          : current,
+      ),
+    [],
+  );
   // An imported conversation occupies the same reading surface as an owned chat.
   const onOpenInboxSession = useCallback(
     (threadId: string) => {
       onReaderIntent();
       setMobileInboxOpen(false);
+      setReaderSurfaceIntent(undefined);
       setImportedSessionId(threadId);
     },
     [onReaderIntent],
@@ -116,6 +159,7 @@ export function useChatDockOverlays({
       if (open) {
         onReaderIntent();
         setMobileInboxOpen(false);
+        setReaderSurfaceIntent(undefined);
         setImportedSessionId(null);
         setNewChatRequestEpoch((epoch) => epoch + 1);
       }
@@ -197,6 +241,8 @@ export function useChatDockOverlays({
 
   return {
     importedSessionId,
+    readerSurfaceIntent,
+    consumeChildIntent,
     setImportedSessionId,
     onOpenInboxSession,
     newChatRequestEpoch,

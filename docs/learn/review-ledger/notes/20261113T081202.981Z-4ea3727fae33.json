@@ -1,0 +1,7 @@
+{
+  "revision": "0f5882949fcf96e48041a2fa362a27f2b194754c",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Checked against the package.json script change: the only addition is perf:station-weight; none of this document's claims name or depend on it, and every script it names is unchanged. Testing guide only gained the station-weight pointer subsection.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md","package.json#/scripts"]}
+  ]
+}

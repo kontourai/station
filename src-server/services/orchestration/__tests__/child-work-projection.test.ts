@@ -77,6 +77,35 @@ describe('ChildWorkProjection', () => {
       ],
     });
   });
+  test('an ACP session that has reported speaks as reported; one that has not, as not-reported', () => {
+    const projection = new ChildWorkProjection();
+    projection.observe(
+      event(
+        {
+          method: 'child-work.updated',
+          delta: {
+            kind: 'upsert',
+            item: {
+              producer: 'engine-subagent',
+              reporterThreadId: 'kiro-thread',
+              childId: 'sub-1',
+              status: 'running',
+              title: 'Explore',
+            },
+          },
+        },
+        'kiro-thread',
+        'acp',
+      ),
+    );
+    expect(projection.read('kiro-thread', 'acp')).toMatchObject({
+      observability: 'reported',
+      running: [{ childId: 'sub-1', status: 'running' }],
+    });
+    expect(projection.read('other-acp-thread', 'acp')).toMatchObject({
+      observability: 'not-reported',
+    });
+  });
   test('R2: with no report of its own (a fresh process after a restart) the view still speaks for every engine session', () => {
     const projection = new ChildWorkProjection();
     // A declared engine: reported, nothing running — truthful, because an
@@ -86,10 +115,13 @@ describe('ChildWorkProjection', () => {
       running: [],
       observedAt: 'now',
     });
-    // A `none` engine: not-reported, with the matrix's own reason.
+    // An engine that reports only on some connections (ACP: Kiro does,
+    // others do not): with no report seen by this process it cannot claim
+    // nothing is running.
     expect(projection.read(THREAD, 'acp')).toEqual({
       observability: 'not-reported',
-      reason: 'ACP 1.1.1 has no subagent concept.',
+      reason:
+        'Only some ACP engines report subagents, and this session has not reported since Station started.',
     });
     // #2452: Muse's workflow children are mapped (serve), so a Muse session
     // speaks like any declared engine...

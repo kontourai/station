@@ -273,7 +273,7 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
     ),
     continueWork: createContinueWork(
       onNavigate,
-      (sessionId) => showSurface('activity', { session: sessionId }),
+      (sessionId) => showSurface('chat', { session: sessionId }),
       (conversationId, updatedAt, readVersion) =>
         acknowledge.mutate({
           conversationId,

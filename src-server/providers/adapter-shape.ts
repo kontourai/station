@@ -28,6 +28,8 @@ import type {
   ProviderSessionSourceAffinity,
   ProviderSessionStartInput,
   ProviderTurnStartResult,
+  SessionLiveContinuity,
+  SessionRewindOutcome,
 } from '@kontourai/station-contracts/provider';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
@@ -182,6 +184,25 @@ export class ProviderTurnInProgressError extends SendTurnRefusedError {
       'busy',
     );
     this.name = 'ProviderTurnInProgressError';
+  }
+}
+
+/**
+ * A send refused because the session's engine is rewinding its context in
+ * place and has not answered yet. It shares the provider-turn code: the
+ * engine is busy with work that is not this send's turn, the send never
+ * reached it, and the same send succeeds once that work ends, so the inbox
+ * holds it and clients send it then.
+ */
+export class SessionRewindingError extends SendTurnRefusedError {
+  readonly code = PROVIDER_TURN_IN_PROGRESS_CODE;
+
+  constructor() {
+    super(
+      'Station is rewinding this conversation; send again when it finishes.',
+      'busy',
+    );
+    this.name = 'SessionRewindingError';
   }
 }
 
@@ -557,30 +578,23 @@ export interface ProviderAdapterShape {
     options: { startOAuth: boolean },
   ): Promise<EngineCommandOutcome>;
   /**
-   * Move the session's engine back to the end of `toTurnId` in place: later
-   * turns stay in the transcript but are hidden from the engine. Present
-   * only where some engine the adapter runs can rewind; a session whose
-   * engine cannot answers `not-declared`.
-   *
-   * Reached today only through `OpenCodeAdapter`'s `/rewind` command
-   * (its `rewind` adapter action, `engine-command-dispatch.ts`) for a
-   * session on OpenCode's own server. No Station route asks an ACP session
-   * to rewind, so `AcpAdapter.rewindSession` has no production caller.
+   * This live session's continuity as its own engine declared it. `live:
+   * false` when no engine process holds the session. Present only on an
+   * adapter some of whose engines can declare a native mechanism; absent
+   * reads as `none` for both.
+   */
+  sessionContinuity?(threadId: string): SessionLiveContinuity;
+  /**
+   * Rewind the engine's context in place to before `turnId`: that turn and
+   * every later one are hidden from the engine. The transcript keeps every
+   * turn. Refused with a typed reason before anything reaches the engine
+   * when the session declares no in-place rewind, is not live, is running a
+   * turn, or never reported an id for the turn.
    */
   rewindSession?(
     threadId: string,
-    toTurnId: string,
-  ): Promise<EngineCommandOutcome>;
-  /**
-   * The continuity one live session's engine declared, for an adapter whose
-   * engines differ (ACP reads it from each engine's `initialize`), where
-   * `metadata.continuity` speaks only for the adapter as a whole. No caller
-   * reads it yet: `OpenCodeAdapter` forwards its inner ACP adapter's answer,
-   * and nothing in orchestration or the UI asks for one session's.
-   */
-  sessionContinuity?(
-    threadId: string,
-  ): Pick<ProviderContinuityCapabilities, 'fork' | 'rewind'>;
+    turnId: string,
+  ): Promise<SessionRewindOutcome>;
   /**
    * For an adapter whose `metadata.connectionBacking` is `acp-registry`:
    * whether a new session on this saved ACP connection runs on this adapter

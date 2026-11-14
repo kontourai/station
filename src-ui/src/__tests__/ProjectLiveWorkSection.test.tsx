@@ -497,8 +497,7 @@ describe('ProjectLiveWorkSection', () => {
     );
 
     render(<ProjectLiveWorkSection slug="station" />);
-    fireEvent.click(screen.getByRole('button', { name: 'All activity' }));
-    expect(mocks.showSurfacePage).toHaveBeenCalledWith('activity');
+    expect(screen.queryByRole('button', { name: 'All activity' })).toBeNull();
     expect(mocks.showSurface).not.toHaveBeenCalled();
     // The retired surface name (archive#3280) renders no second affordance.
     expect(

@@ -1685,7 +1685,7 @@ cause disclosure, while desktop incoming bubbles keep their sender treatment.
 Exact send/receive navigation uses the recorded request key, reads at most
 20 older pages to rule out ambiguity, and focuses a uniquely resolved record.
 Missing, ambiguous and page-limit outcomes remain visible. The public
-`SessionMessageAnchor` travels through the existing region outbox and Activity
+`SessionMessageAnchor` travels through the existing region outbox and Chat
 binding as one consumed intent, with repeat activations keyed by its token.
 Its parser requires a matching Session of 1–512 characters, sent/received
 direction and a request key of 1–128 characters; invalid anchors grant
@@ -2207,8 +2207,15 @@ carrier rebind cannot borrow that acknowledgement. A failed witness projection
 rolls back only that derived update; the observed canonical terminal remains
 independently persistable. These private projections remain in the existing EventStore. A consumed start
 boundary is not a delivery acknowledgement; uncertain or failed seed delivery
-refuses ordinary reuse. Deliberate empty context and the framework's native
-memory companion retain their separate contracts.
+refuses ordinary reuse. A handoff (not a native return) or a plain continuation
+(no deliberate context boundary) whose seed-bearing turn definitively failed or
+was stopped does not strand the conversation: the next ordinary turn starts a
+successor Session with a freshly pinned transcript seed of the whole
+conversation, never the failed Session's native cursor, and a stopped
+redelivery is redelivered the same way. An open or uncertain seed turn, a
+failed boundary seed and a failed fork seed stay refused. These refusals carry the closed
+`conversation-context-unavailable` code. Deliberate empty context and the
+framework's native memory companion retain their separate contracts.
 
 [Saved fork context](../../src-server/services/orchestration/conversation-fork-context.ts)
 is an owner-scoped immutable copy with an independent Conversation identity.
@@ -3019,17 +3026,39 @@ tuple the table above already binds. Today eleven bind: Kiro v2's
 and `metadata` (`usage.context-percent`), v3's `_kiro/mcp/status`
 (`engine-mcp.status`), and seven v3 notifications bound as `acp.host-chrome`. The notification table carries no promotion
 metadata: a tuple's binding says nothing about which canonical event, if any,
-should replace it.
+should replace it. The `child-work` consumer is implemented in
+[`acp-child-work.ts`](../../src-server/providers/adapters/acp-child-work.ts):
+kiro-cli's `subagent/list_update` keeps its host-chrome notification row while
+its engine row reads the roster into `child-work.updated`, and a `tool_call`
+whose `_meta.kiro.kind` is `agent-subtask` is read the same way. An ACP
+engine whose handshake names neither reporter publishes `not-reported` at
+session start. The matrix cell's `perConnection` reason is what
+`child-work-projection.ts` and the Agents pane fall back to for an ACP
+session with no report seen in this process.
+
+The transcript projection also draws an in-place engine rewind (a
+`runtime.warning` with `ACP_SESSION_REWOUND_CODE`) as a marker row and marks
+the turns it hid `rewound`, and a rewind the engine applied late
+(`ACP_SESSION_REWOUND_LATE_CODE`) as a marker row that marks no turn; the UI
+handler neither toasts them nor adds a notice. [`SessionRewind`](../../src-ui/src/components/chat/SessionRewind.tsx)
+offers "Rewind conversation to here" on a user turn of the live session only
+while `GET /api/orchestration/sessions/:threadId/continuity` says its engine
+rewinds in place.
 
 Engines Station installs and signs in itself have two owners.
 [`services/engines/managed-install.ts`](../../src-server/services/engines/managed-install.ts)
 installs a reviewed pin with consent (the manifest digest first, then each
 artifact, entry names and the unpacked tree) under
 `<STATION_HOME>/engines/<installId>/<version>/`, and `ACPProcess` resolves a
-`station-managed:<installId>` command to it at launch.
+`station-managed:<installId>` command to it at launch (the ACP adapter's
+readiness reads the same install, and the connection inspector takes an
+engine Station signs in as ready only when that readiness has no required
+row missing).
 [`services/engine-host-auth/`](../../src-server/services/engine-host-auth/service.ts)
 holds the vault (`security/engine-host-auth.json`), the issuer, the
-`_kiro/secret/*` store and the Kiro device sign-in, and
+`_kiro/secret/*` store and the Kiro sign-ins (the device-code flow, and the
+Google/GitHub portal flow with its loopback callback in
+[`kiro-oidc/social.ts`](../../src-server/services/engine-host-auth/kiro-oidc/social.ts)), and
 `installEngineHostAuthResponders` registers the reviewed responders on a
 session or probe registry. Its import graph never reaches Station's own
 principals; launch facts are injected at bootstrap.
@@ -4118,10 +4147,10 @@ starts from exact authorized account/Session/correlation identity. The active
 row does not yet have a routing receipt; settlement adds the sealed receipt ID
 before terminal publication. [Tracking helpers](../../src-server/services/operations/action-operation-tracker.ts)
 use stable handoff identities and catch observation-storage failures so those
-failures do not replace the wrapped domain result. The SDK/Activity UI consume
+failures do not replace the wrapped domain result. The SDK/Monitoring UI consume
 these browser-safe records, not the private file store.
 
-The [Activity section](../../src-ui/src/components/action-operations/ActionOperationsSection.tsx)
+The [Monitoring section](../../src-ui/src/components/action-operations/ActionOperationsSection.tsx)
 keeps platform actions separate from filtered sessions: operation records have
 account and optional machine/Session scope, without the Project or client-origin
 attribution those filters need. Its disclosure shows running and attention counts,
@@ -4879,7 +4908,7 @@ JS fixtures do not establish installed-shell qualification.
 [ConversationBody](../../src-ui/src/components/conversation/ConversationBody.tsx),
 [useConversationController](../../src-ui/src/components/conversation/useConversationController.ts)
 and the [transport](../../src-ui/src/components/conversation/conversation-transport.ts)
-own the dock, Activity, attached-session and coding-tab conversation composition.
+own the dock, attached-session and coding-tab conversation composition.
 Record density changes framing; the adapters retain read-only access and explicit
 continuation into an owned child. [SharedTaskHistoryList](../../src-ui/src/components/conversation/SharedTaskHistoryList.tsx)
 receives owner/member/guest history projections and paging ports without changing

@@ -80,6 +80,42 @@
       "sha256": "4f030fab5a00cc08660db4a7f03d85cd0d4cbe5fc5a8c7ac5ebad1340be16e72"
     },
     {
+      "name": "child-chat-dark-1440",
+      "width": 1440,
+      "height": 900,
+      "sha256": "aa757b53825e1f13b5d5980bc047d96e22df7870e2bbc8b32c4aa0d26c27bb96"
+    },
+    {
+      "name": "child-chat-dark-390",
+      "width": 390,
+      "height": 844,
+      "sha256": "7fbe5687d52d0163f915aa14d62cf53f13029a6b8b70f30f540512ffd7711d82"
+    },
+    {
+      "name": "child-chat-dark-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "a1b04078e50d9b13f3f17a4874b85e4381cc92d9be98f4d60a48e0b3c8cbd1f2"
+    },
+    {
+      "name": "child-chat-light-1440",
+      "width": 1440,
+      "height": 900,
+      "sha256": "6e2df57bd233ecb881699928863301afa25aef29b729d20166d5d0eb51c3b110"
+    },
+    {
+      "name": "child-chat-light-390",
+      "width": 390,
+      "height": 844,
+      "sha256": "bcb15d58946891d904ec620eda293fbc3a86ec42cdb1ce3cfafe6b5f20af4241"
+    },
+    {
+      "name": "child-chat-light-412",
+      "width": 412,
+      "height": 915,
+      "sha256": "2485cbd748e69c75ea589164af9ac5ae0877422e9ff51f2447be82d553802e56"
+    },
+    {
       "name": "command-palette-empty",
       "width": 1440,
       "height": 900,
@@ -192,12 +228,6 @@
       "width": 390,
       "height": 844,
       "sha256": "94b5555ddf96a470e5b7f4a892d27c9569aec5b53cdbbbd9086cc65558776dba"
-    },
-    {
-      "name": "mobile-activity-compact",
-      "width": 390,
-      "height": 844,
-      "sha256": "ada796343f6e45ad4368b4590c0a311f9893945a4fbf074a299404f3ad3804fe"
     },
     {
       "name": "mobile-agent-editor",
@@ -395,7 +425,7 @@
       "name": "overlay-region-chooser-from-toggle",
       "width": 1440,
       "height": 900,
-      "sha256": "be43b6d2e69fb8d6f80df5a4438ae9ac8ecd9e083c5856617851794c2af52548"
+      "sha256": "ac4811a031239794325a13b3a6407d7e20a56502d65e8183c598cbd10142e8eb"
     },
     {
       "name": "overlay-toast",
@@ -780,18 +810,6 @@
       "width": 1440,
       "height": 900,
       "sha256": "ef63d35656dcdd2129636c53127c981bdc2588382aa9b3a5592c341eff659275"
-    },
-    {
-      "name": "sessions",
-      "width": 1440,
-      "height": 900,
-      "sha256": "2827bf99bd72f1fee547fcae0c5c20adc349940e0df363468818fe4756d058f1"
-    },
-    {
-      "name": "sessions-filtered-empty",
-      "width": 1440,
-      "height": 900,
-      "sha256": "ca01fd46645549679dfe453bd891cb8fb98170fddb5242cd6730a75f5a652427"
     },
     {
       "name": "settings",

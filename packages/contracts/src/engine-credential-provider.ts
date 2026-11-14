@@ -155,7 +155,10 @@ export type EngineHostAuthState =
 
 export interface EngineHostAuthIdentity {
   readonly kind: 'builder-id' | 'identity-center' | 'external-idp' | 'social';
-  /** The social or external identity provider's display name. */
+  /**
+   * The social provider (`google`, `github`) the person chose on the
+   * vendor's sign-in page, or an external identity provider's name.
+   */
   readonly provider?: string;
   /** An Identity Center start URL. */
   readonly startUrl?: string;
@@ -195,8 +198,23 @@ export type HostAuthLoginRequest =
       readonly startUrl: string;
       readonly region: string;
     }
-  | { readonly identity: 'social'; readonly provider: string }
+  /**
+   * Google or GitHub, chosen on the vendor's own sign-in page. Needs the
+   * browser on the Station's computer: the page returns to a loopback port.
+   */
+  | { readonly identity: 'social' }
   | { readonly identity: 'external-idp'; readonly issuerUrl: string };
+
+/**
+ * Why a sign-in failed, where a client acts on it:
+ * - `refused`: the vendor or its sign-in page turned it down, or the answer
+ *   came back from another attempt or to the wrong address;
+ * - `expired`: nothing came back before the attempt's deadline;
+ * - `unavailable`: this computer could not take the sign-in's answer (every
+ *   port the vendor allows is in use).
+ * Absent on a failure with no such class.
+ */
+export type HostAuthLoginFailure = 'refused' | 'expired' | 'unavailable';
 
 /** A running or finished Station-run sign-in. */
 export interface HostAuthLoginStart {
@@ -213,4 +231,6 @@ export interface HostAuthLoginStart {
   readonly authorizationUrl?: string;
   /** Present on `failed` only. */
   readonly reason?: string;
+  /** Present on some `failed` records; see {@link HostAuthLoginFailure}. */
+  readonly failure?: HostAuthLoginFailure;
 }

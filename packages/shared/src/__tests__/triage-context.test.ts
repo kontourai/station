@@ -512,6 +512,23 @@ describe('draftTroubleshootReport', () => {
     );
   });
 
+  test('keeps in-app routes while home directories still become ~', () => {
+    const draft = draftTroubleshootReport({
+      title: 'Turn failed after opening /settings',
+      fields: {
+        'observed-behavior':
+          'Started from /settings, then /projects/x/tasks. Log at /Users/alice/.station/logs and /home/bob/x.',
+      },
+    });
+    expect(draft.title).toBe('Turn failed after opening /settings');
+    expect(draft.fields['observed-behavior']).toBe(
+      'Started from /settings, then /projects/x/tasks. Log at ~/.station/logs and ~/x.',
+    );
+    expect(new URL(draft.url).searchParams.get('observed-behavior')).toContain(
+      'Started from /settings',
+    );
+  });
+
   test('refuses an unknown field by name', () => {
     expect(() =>
       draftTroubleshootReport({

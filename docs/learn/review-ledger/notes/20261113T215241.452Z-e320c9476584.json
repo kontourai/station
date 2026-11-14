@@ -1,0 +1,9 @@
+{
+  "revision": "30ce0f47546b98d7d33c4e30ceab915fd65e8502",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"The cited sidebar test only gained mocks for the connected-server update context and an empty update-status query, because the footer Updates control now reads them; every assertion the document cites is unchanged.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/__tests__/ProjectSidebar.test.tsx"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"The cited sidebar test only gained mocks for the connected-server update context and an empty update-status query, because the footer Updates control now reads them; every assertion the document cites is unchanged.","inputs":["docs/reviews/workspace-map-20261015/README.md","src-ui/src/__tests__/ProjectSidebarFooter.test.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "609307fe5068b8e8c2afa1285206c4204feb10b0",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Its input docs/guides/monitoring.md changed only in the monitoring-bridge paragraph (which later tool input reaches the end row). This document makes no claim about tool-span arguments; no text change needed.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]}
+  ]
+}

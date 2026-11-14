@@ -1,0 +1,7 @@
+{
+  "revision": "91978da65ff851fbdfa759fc83049406b733445c",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Rechecked insights and monitoring history text against emitter.ts and the bridge: tool calls still count start records, errors/outcomes end records; result rows may now also carry arguments, which the reference does not enumerate. Source reading and insights.routes focused tests.","inputs":["docs/reference/api.md","src-server/monitoring/emitter.ts"]}
+  ]
+}

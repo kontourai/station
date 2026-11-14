@@ -1,0 +1,7 @@
+{
+  "revision": "0d4fc30d2d4c8d75b447052293050103f8e6d356",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed ConversationReader canonical exact-message tests after Activity retirement: Chat links preserve sent/received anchors, older-page lookup, resource bounds and ambiguity refusal. The Activity retirement amendment correctly routes Session transcripts to Chat; historical Activity details remain superseded, and reader chronology/tail behavior is unchanged.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/__tests__/ConversationReader.test.tsx"]}
+  ]
+}
