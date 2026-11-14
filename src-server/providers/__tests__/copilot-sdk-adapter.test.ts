@@ -1516,9 +1516,13 @@ describe('Copilot SDK approvals: real-path resolution fails closed', () => {
     Object.assign(new Error(code), { code }) as NodeJS.ErrnoException;
 
   test('a path that cannot be resolved for any reason but absence is unresolvable', () => {
+    // Only the target is unreadable; its parent resolves. Read as "absent",
+    // the error would let the target resolve through that parent.
+    const target = join(CWD, 'x');
     const denied = {
-      realpath: () => {
-        throw missing('EACCES');
+      realpath: (path: string) => {
+        if (path === target) throw missing('EACCES');
+        return path;
       },
       lstat: () => ({ isSymbolicLink: () => false }),
       readlink: () => '',
