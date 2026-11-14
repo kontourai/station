@@ -400,7 +400,6 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
 | [`ci-throughput-health.yml`](../../.github/workflows/ci-throughput-health.yml) | — | **Repo: CI throughput health** | UTC schedule: `41 */6 * * *`; manual dispatch; reports only while #3101 is open. |
 | [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes (heavy lane skipped when the merge queue already verified that exact SHA and base); manual dispatch. |
-| [`codex-pr-review.yml`](../../.github/workflows/codex-pr-review.yml) | Advisory PR review | **PR: Advisory review** | after `PR: Secret scan`. |
 | [`container-smoke.yml`](../../.github/workflows/container-smoke.yml) | Container smoke | **Main: Container smoke** | main pushes; manual dispatch. |
 | [`dated-todo-sweep.yml`](../../.github/workflows/dated-todo-sweep.yml) | Dated TODO sweep | **Repo: Dated TODO sweep** | UTC schedule: `41 4 * * 1`; manual dispatch. |
 | [`dependency-advisory.yml`](../../.github/workflows/dependency-advisory.yml) | Scheduled dependency advisory floor | **Repo: Dependency advisory** | UTC schedule: `23 2,8,14,20 * * *`; manual dispatch. |
@@ -460,7 +459,6 @@ workflow is obsolete. Disabled state was checked through the Actions REST API.
 | Candidate | Reason / decision needed |
 | --- | --- |
 | `Tool: CI extended` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
-| `PR: Advisory review` | Disabled manually; review admission/cost before any re-enable (slice I). |
 | `Main: Full qualification` | Zero runs in the dated seven-day inventory; confirm continued need at its callers. |
 | `Tool: Interactive workspace performance` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
 | `Release: Internal TestFlight cohort` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
