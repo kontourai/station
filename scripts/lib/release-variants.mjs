@@ -1,8 +1,12 @@
-export const RELEASE_TAG_PATTERN =
-  /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-preview\.([1-9][0-9]*))?$/;
+import { isReleaseTag } from './release-tag.mjs';
 
+/**
+ * The variants and asset file names of one tagged release. Files are named
+ * for the tag, the release's location, so a candidate's assets read
+ * `station-v0.2.0-rc.1-...` while the bytes carry the base version (#4929).
+ */
 export function releaseVariants(tag) {
-  if (!RELEASE_TAG_PATTERN.test(tag)) {
+  if (!isReleaseTag(tag)) {
     throw new Error(`Invalid release artifact inventory: invalid tag ${tag}`);
   }
   const variants = [
@@ -159,7 +163,5 @@ export function releaseVariants(tag) {
       files,
     }),
   );
-  return tag.includes('-preview.')
-    ? variants.filter((variant) => variant.platform !== 'ios')
-    : variants;
+  return variants;
 }

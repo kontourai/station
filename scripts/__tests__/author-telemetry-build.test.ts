@@ -33,7 +33,7 @@ function guard(script: string, args: string[] = []) {
 }
 
 describe('official author telemetry build boundary', () => {
-  it('checks desktop and portable preview channel expressions, stamps representative server bundles as beta, and refuses invalid endpoints and non-official builds', () => {
+  it('checks desktop and portable release-candidate channel expressions, stamps representative server bundles as stable, and refuses retired preview tags, invalid endpoints and non-official builds', () => {
     const result = guard('check-author-telemetry-build.mjs');
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain('Author telemetry build guard: PASS');

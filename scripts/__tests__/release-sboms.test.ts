@@ -469,25 +469,51 @@ describe('release SBOM validation leaf', () => {
     );
   });
 
-  test('enforces preview/stable mobile and complete desktop variants', () => {
-    const previewContext = {
+  test('binds a release candidate to its tag subjects and base version, and enforces complete variants (#4929)', () => {
+    const candidateTag = 'v1.0.0-rc.2';
+    const candidateContext = {
       ...context,
-      tag: 'v1.0.0-preview.1',
-      version: '1.0.0-preview.1',
-      channel: 'preview',
+      tag: candidateTag,
+      version: '1.0.0',
+      channel: 'stable',
       subjectsByScope: {
-        portable: subjectsFor('v1.0.0-preview.1', 'portable'),
-        desktop: subjectsFor('v1.0.0-preview.1', 'desktop'),
-        mobile: subjectsFor('v1.0.0-preview.1', 'mobile'),
+        portable: subjectsFor(candidateTag, 'portable'),
+        desktop: subjectsFor(candidateTag, 'desktop'),
+        mobile: subjectsFor(candidateTag, 'mobile'),
       },
     } as const;
     const mobile = {
       ...descriptor('mobile'),
-      tag: previewContext.tag,
-      version: previewContext.version,
-      subjects: previewContext.subjectsByScope.mobile,
+      tag: candidateContext.tag,
+      version: candidateContext.version,
+      subjects: candidateContext.subjectsByScope.mobile,
     };
-    expect(validateSbomDescriptor(mobile, previewContext)).toBe(mobile);
+    expect(validateSbomDescriptor(mobile, candidateContext)).toBe(mobile);
+    // The candidate's mobile subjects are named for its tag, iOS included.
+    expect(mobile.subjects.map(({ name }) => name)).toEqual(
+      expect.arrayContaining([
+        `station-${candidateTag}-ios-device.ipa`,
+        `station-${candidateTag}-android-universal.apk`,
+      ]),
+    );
+    for (const wrong of [
+      // The bytes carry the base version, never the candidate suffix.
+      { version: '1.0.0-rc.2' },
+      { version: '1.0.1' },
+      // A candidate is the Stable ring.
+      { channel: 'preview' },
+      // Retired Beta tags are not release contexts.
+      { tag: 'v1.0.0-preview.1', version: '1.0.0-preview.1' },
+      { tag: 'v1.0.0-preview.1', version: '1.0.0' },
+    ])
+      expect(
+        () =>
+          validateSbomDescriptor(
+            { ...mobile, ...wrong },
+            { ...candidateContext, ...wrong },
+          ),
+        JSON.stringify(wrong),
+      ).toThrow(/release context/);
     expect(() =>
       validateSbomDescriptor(
         {
@@ -498,11 +524,11 @@ describe('release SBOM validation leaf', () => {
           ],
         },
         {
-          ...previewContext,
+          ...candidateContext,
           subjectsByScope: {
-            ...previewContext.subjectsByScope,
+            ...candidateContext.subjectsByScope,
             mobile: [
-              ...previewContext.subjectsByScope.mobile,
+              ...candidateContext.subjectsByScope.mobile,
               subject('unexpected.ipa', 'ios-device'),
             ],
           },

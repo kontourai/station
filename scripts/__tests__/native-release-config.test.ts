@@ -151,7 +151,7 @@ describe('native release configuration', () => {
 
   test('rejects a candidate number that would take the final tag slot', () => {
     expect(() => taggedStoreIdentity('v1.2.3-rc.99')).toThrow(
-      'release candidate number must be 1-98',
+      'a release candidate is numbered 1-98',
     );
   });
 

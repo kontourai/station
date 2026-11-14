@@ -7,10 +7,12 @@
 // the ring-generic ones Nightly uses (scripts/lib/portable-publication.mjs),
 // bound here to the rings the release key signs.
 //
-//   locations      --ring R --repository owner/name --version V  (GITHUB_OUTPUT lines)
+//   locations      --ring R --repository owner/name --version V [--tag T]
+//                  (GITHUB_OUTPUT lines; T is the release the assets are
+//                  staged under, a candidate's own tag, default vV)
 //   manifest-asset --ring R                    (the signed manifest's asset name)
 //   dry-run-keys   --ring R --out-dir D        (ephemeral key + key table)
-//   check-payload  --ring R --payload P --version V --source-sha S --repository owner/name
+//   check-payload  --ring R --payload P --version V --source-sha S --repository owner/name [--tag T]
 //   check-archives --payload P --archives D    (local bytes are the signed ones)
 //   verify         --ring R --manifest <file|https URL> --expected-payload P [--keys T]
 //   verify-assets  --payload P                 (published bytes are the signed ones)
@@ -35,6 +37,7 @@ import {
   verifyPublishedAssets,
 } from './lib/portable-publication.mjs';
 import { manifestPointer } from './lib/public-release-locations.mjs';
+import { parseReleaseTag } from './lib/release-tag.mjs';
 
 const DEFAULT_KEY_TABLE = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -57,19 +60,37 @@ export function releaseRing(ring) {
 }
 
 /**
+ * The release a tagged build's assets are staged under. Undefined `tag` is
+ * the final release `v<version>`; a candidate names its own tag, which must
+ * be a Stable release tag of exactly this base version (#4929): the bytes
+ * carry the base version, the tag is only where they live.
+ */
+export function releaseLocationTag(ring, version, tag) {
+  if (tag === undefined) return undefined;
+  const parsed = parseReleaseTag(tag);
+  if (releaseRing(ring) !== 'stable' || parsed.baseVersion !== version)
+    throw new Error(
+      `--tag ${tag} is not a ${String(ring)} release of version ${String(version)}`,
+    );
+  return tag;
+}
+
+/**
  * The payload a publish is about to sign is this release's: the ring, the
- * tag's version and source SHA, and every artifact named at the versioned
- * release under the public release base.
+ * tag's base version and source SHA, and every artifact named at the release
+ * the assets are staged under (`tag`, default `v<version>`) under the public
+ * release base.
  */
 export function assertReleasePayload(
   ring,
   payload,
-  { repository, version, sourceSha },
+  { repository, version, sourceSha, tag },
 ) {
   const { baseUrl } = publicationLocations(
     releaseRing(ring),
     repository,
     version,
+    { locationTag: releaseLocationTag(ring, version, tag) },
   );
   return assertPayloadIdentity(
     ring,
@@ -158,6 +179,7 @@ async function main(argv) {
       ring: { type: 'string' },
       repository: { type: 'string' },
       version: { type: 'string' },
+      tag: { type: 'string' },
       'out-dir': { type: 'string' },
       payload: { type: 'string' },
       archives: { type: 'string' },
@@ -176,7 +198,18 @@ async function main(argv) {
   const ring = () => releaseRing(values.ring);
   switch (command) {
     case 'locations': {
-      const l = publicationLocations(ring(), values.repository, values.version);
+      const l = publicationLocations(
+        ring(),
+        values.repository,
+        values.version,
+        {
+          locationTag: releaseLocationTag(
+            values.ring,
+            values.version,
+            values.tag,
+          ),
+        },
+      );
       process.stdout.write(
         [
           `release_tag=${l.releaseTag}`,
@@ -216,6 +249,7 @@ async function main(argv) {
         repository: values.repository,
         version: values.version,
         sourceSha: values['source-sha'],
+        tag: values.tag,
       });
       process.stdout.write(
         `payload is ${values.ring} ${values.version} at ${values['source-sha']}\n`,

@@ -1,12 +1,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { assertProductVersion } from '../product-version.mjs';
 import { invokedDirectly } from './module-entry.mjs';
+import { parseReleaseTag as parseSharedReleaseTag } from './release-tag.mjs';
 
-// A tagged release is either a release candidate (`vX.Y.Z-rc.N`) or a final
-// Stable tag (`vX.Y.Z`). Both build with Stable identity and the bare base
-// version so a candidate's exact bytes can later be promoted unchanged (#4929).
-const RELEASE_TAG =
-  /^v((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*))(?:-rc\.([1-9]\d*))?$/;
 export const NATIVE_UPDATER_ARTIFACT_MODE = 'v1Compatible';
 export const STABLE_NATIVE_IDENTIFIER = 'io.kontourai.station';
 export const STABLE_NATIVE_PRODUCT_NAME = 'Station';
@@ -18,24 +14,25 @@ function fail(message) {
   throw new Error(`Invalid native release configuration: ${message}`);
 }
 
+// A tagged release is either a release candidate (`vX.Y.Z-rc.N`) or a final
+// Stable tag (`vX.Y.Z`), parsed by the shared release-tag.mjs. Both build with
+// Stable identity and the bare base version so a candidate's exact bytes can
+// later be promoted unchanged (#4929).
 function parseReleaseTag(tag) {
-  const match = typeof tag === 'string' ? RELEASE_TAG.exec(tag) : null;
-  if (!match) {
-    fail('tag must be vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.N');
+  let parsed;
+  try {
+    parsed = parseSharedReleaseTag(tag);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
   }
-  const candidate = match[5] === undefined ? null : Number(match[5]);
-  if (candidate !== null && candidate >= FINAL_STORE_SLOT) {
-    fail(
-      `release candidate number must be 1-${FINAL_STORE_SLOT - 1} so it fits the store build slot`,
-    );
-  }
+  const [major, minor, patch] = parsed.baseVersion.split('.').map(Number);
   return {
-    baseVersion: match[1],
-    major: Number(match[2]),
-    minor: Number(match[3]),
-    patch: Number(match[4]),
-    kind: candidate === null ? 'final' : 'rc',
-    candidate,
+    baseVersion: parsed.baseVersion,
+    major,
+    minor,
+    patch,
+    kind: parsed.kind,
+    candidate: parsed.rc,
   };
 }
 

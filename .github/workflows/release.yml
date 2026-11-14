@@ -987,6 +987,9 @@ jobs:
       RELEASE_RING: ${{ needs.preflight.outputs.channel }}
       RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
       RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
+      # The payload names the base version; its URLs name this tag's release,
+      # where a candidate's archives are staged (#4929).
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1002,7 +1005,7 @@ jobs:
           path: ${{ runner.temp }}/archives
       - id: locations
         name: Name the versioned release and the rolling manifest
-        run: node scripts/portable-release-publication.mjs locations --ring "$RELEASE_RING" --repository "$GITHUB_REPOSITORY" --version "$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+        run: node scripts/portable-release-publication.mjs locations --ring "$RELEASE_RING" --repository "$GITHUB_REPOSITORY" --version "$RELEASE_VERSION" --tag "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
       - name: Assemble the schema v2 payload from the archive descriptors
         env:
           BASE_URL: ${{ steps.locations.outputs.base_url }}
@@ -1013,8 +1016,8 @@ jobs:
           protocol_max=$(node --input-type=module -e 'import { PORTABLE_LAUNCHER_PROTOCOL as p } from "./scripts/lib/portable-publication.mjs"; process.stdout.write(String(p.max))')
           mkdir -p "$RUNNER_TEMP/host-publication"
           # Every target is required: a partial host stream is not assembled.
-          node scripts/ecosystem-manifest.mjs assemble --descriptors "$RUNNER_TEMP/archives" --version "$RELEASE_VERSION" --channel "$RELEASE_RING" --source-sha "$RELEASE_SHA" --base-url "$BASE_URL" --node-version "$node_version" --launcher-protocol-min "$protocol_min" --launcher-protocol-max "$protocol_max" --output "$RUNNER_TEMP/host-publication/payload.json"
-          node scripts/portable-release-publication.mjs check-payload --ring "$RELEASE_RING" --payload "$RUNNER_TEMP/host-publication/payload.json" --version "$RELEASE_VERSION" --source-sha "$RELEASE_SHA" --repository "$GITHUB_REPOSITORY"
+          node scripts/ecosystem-manifest.mjs assemble --descriptors "$RUNNER_TEMP/archives" --version "$RELEASE_VERSION" --channel "$RELEASE_RING" --source-sha "$RELEASE_SHA" --base-url "$BASE_URL" --location-tag "$RELEASE_TAG" --node-version "$node_version" --launcher-protocol-min "$protocol_min" --launcher-protocol-max "$protocol_max" --output "$RUNNER_TEMP/host-publication/payload.json"
+          node scripts/portable-release-publication.mjs check-payload --ring "$RELEASE_RING" --payload "$RUNNER_TEMP/host-publication/payload.json" --version "$RELEASE_VERSION" --source-sha "$RELEASE_SHA" --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG"
       - name: Sign with a throwaway key and verify
         run: |
           set -euo pipefail
