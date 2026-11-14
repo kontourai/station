@@ -126,9 +126,10 @@ describe('ci:fast generated conformance freshness', () => {
     // and spawned-script edges.
     const manifest = buildTestImpactManifest({ root: process.cwd() });
     const selected = (path: string) =>
-      selectChangedVerification([path], manifest).tests.some(
-        (entry: { path: string }) => entry.path === suite,
-      );
+      selectChangedVerification(
+        [path],
+        manifest as Parameters<typeof selectChangedVerification>[1],
+      ).tests.some((entry: { path: string }) => entry.path === suite);
     // The generator is read from the package script here too: spelling its
     // path in this file is exactly what pulled in the spawned-script scan.
     const generator = /\bscripts\/\S+\.mjs\b/.exec(
