@@ -18,6 +18,7 @@ import { build } from 'esbuild';
 import { z } from 'zod/v3';
 import { prepareNativeTextModelRequest } from '../src-server/runtime/conversation/native-text-model-request.js';
 import { NativeModelContainer } from '../src-server/services/connections/native-model-container.js';
+import type { NativeModelRequest } from '../src-server/services/connections/native-model-stdio-protocol.js';
 import { acquireHeavyCheckSlot } from './lib/heavy-check-slots.mjs';
 import { runLabCommand } from './lib/local-collaboration-process.mjs';
 
@@ -88,7 +89,7 @@ writeFileSync(join(dockerConfig, 'config.json'), '{}\n', {
 const controllerCanary = `host-only-${randomUUID()}`;
 const requests: unknown[] = [];
 let deliveries = 0;
-let currentEngine: string | undefined;
+let currentEngine: (typeof engines)[number]['name'] | undefined;
 const receipt: Record<string, unknown> = {
   sourceHead: process.env.CHILD_WORK_NATIVE_LAB_SOURCE_HEAD,
   driverSha256: createHash('sha256')
@@ -107,6 +108,24 @@ const save = () =>
     JSON.stringify(receipt, null, 2),
   );
 let container: NativeModelContainer | undefined;
+function prepareLabNativeRequest(
+  input: NativeModelRequest,
+  engine: 'claude' | 'codex',
+) {
+  if (!boundedTextWire) return input;
+  const anthropic = engine === 'claude';
+  const final = prepareNativeTextModelRequest(input, {
+    provider: anthropic ? 'anthropic' : 'openai',
+    modelId: anthropic ? 'claude-sonnet-4-5' : fixtureModel,
+    maxOutputTokens: 2048,
+  });
+  const body = JSON.parse(final.body.toString('utf8'));
+  assert.equal(anthropic ? body.max_tokens : body.max_output_tokens, 2048);
+  assert.deepEqual(body.tools, []);
+  if (!anthropic) assert.equal(body.tool_choice, 'none');
+  return final;
+}
+
 try {
   assert.match(
     process.env.CHILD_WORK_NATIVE_LAB_SOURCE_HEAD ?? '',
@@ -249,25 +268,8 @@ try {
           input.path.split('?')[0],
           currentEngine === 'claude' ? '/v1/messages' : '/v1/responses',
         );
-        const finalInput = boundedTextWire
-          ? prepareNativeTextModelRequest(input, {
-              provider: currentEngine === 'claude' ? 'anthropic' : 'openai',
-              modelId:
-                currentEngine === 'codex' ? fixtureModel : 'claude-sonnet-4-5',
-              maxOutputTokens: 2048,
-            })
-          : input;
+        const finalInput = prepareLabNativeRequest(input, currentEngine);
         const body = JSON.parse(finalInput.body.toString('utf8'));
-        if (boundedTextWire) {
-          assert.equal(
-            currentEngine === 'claude'
-              ? body.max_tokens
-              : body.max_output_tokens,
-            2048,
-          );
-          assert.deepEqual(body.tools, []);
-          if (currentEngine === 'codex') assert.equal(body.tool_choice, 'none');
-        }
         assert.equal(
           body.model,
           currentEngine === 'codex' ? fixtureModel : 'claude-sonnet-4-5',

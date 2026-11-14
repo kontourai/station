@@ -106,6 +106,77 @@ const responsesBody = z
   })
   .strict();
 
+function anthropicRequestBody(
+  parsed: unknown,
+  modelId: string,
+  maxOutputTokens: number,
+) {
+  const native = anthropicBody.parse(parsed);
+  if (native.model !== modelId) throw new Error();
+  const cap = Math.min(native.max_tokens, maxOutputTokens);
+  const thinking = native.thinking;
+  const thinkingBudget = thinking?.budget_tokens ?? 0;
+  if (
+    thinking?.type === 'enabled' &&
+    (!thinking.budget_tokens || thinking.budget_tokens < 1024 || cap <= 1024)
+  )
+    throw new Error();
+  if (thinking?.type !== 'enabled' && thinking?.budget_tokens !== undefined)
+    throw new Error();
+  return {
+    model: native.model,
+    max_tokens: cap,
+    messages: native.messages,
+    ...(native.system !== undefined ? { system: native.system } : {}),
+    stream: true,
+    tools: [],
+    service_tier: 'standard_only',
+    inference_geo: 'global',
+    ...(thinking
+      ? {
+          thinking: {
+            type: thinking.type,
+            ...(thinking.type === 'enabled'
+              ? { budget_tokens: Math.min(thinkingBudget, cap - 1) }
+              : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+function responsesRequestBody(
+  parsed: unknown,
+  modelId: string,
+  maxOutputTokens: number,
+) {
+  const native = responsesBody.parse(parsed);
+  if (native.model !== modelId) throw new Error();
+  return {
+    model: native.model,
+    max_output_tokens: Math.min(
+      native.max_output_tokens ?? maxOutputTokens,
+      maxOutputTokens,
+    ),
+    input: native.input.map(({ role, content }) => ({
+      type: 'message',
+      role,
+      content,
+    })),
+    ...(native.instructions !== undefined
+      ? { instructions: native.instructions }
+      : {}),
+    ...(native.reasoning ? { reasoning: native.reasoning } : {}),
+    stream: true,
+    store: false,
+    tools: [],
+    tool_choice: 'none',
+    parallel_tool_calls: false,
+    service_tier: 'default',
+    truncation: 'disabled',
+  };
+}
+
 /** Narrow a native text request BEFORE qualification, quotation and reservation.
  * This supplies no authority and performs no fetch. The caller must bind and
  * authorize the returned bytes, not the original native request or its hash. */
@@ -139,69 +210,10 @@ export function prepareNativeTextModelRequest(
     const parsed = parseBoundedApiRequestBody(
       new TextDecoder('utf-8', { fatal: true }).decode(input.body),
     );
-    let body: unknown;
-    if (policy.provider === 'anthropic') {
-      const native = anthropicBody.parse(parsed);
-      if (native.model !== policy.modelId) throw new Error();
-      const cap = Math.min(native.max_tokens, policy.maxOutputTokens);
-      const thinking = native.thinking;
-      const thinkingBudget = thinking?.budget_tokens ?? 0;
-      if (
-        thinking?.type === 'enabled' &&
-        (!thinking.budget_tokens ||
-          thinking.budget_tokens < 1024 ||
-          cap <= 1024)
-      )
-        throw new Error();
-      if (thinking?.type !== 'enabled' && thinking?.budget_tokens !== undefined)
-        throw new Error();
-      body = {
-        model: native.model,
-        max_tokens: cap,
-        messages: native.messages,
-        ...(native.system !== undefined ? { system: native.system } : {}),
-        stream: true,
-        tools: [],
-        service_tier: 'standard_only',
-        inference_geo: 'global',
-        ...(thinking
-          ? {
-              thinking: {
-                type: thinking.type,
-                ...(thinking.type === 'enabled'
-                  ? { budget_tokens: Math.min(thinkingBudget, cap - 1) }
-                  : {}),
-              },
-            }
-          : {}),
-      };
-    } else {
-      const native = responsesBody.parse(parsed);
-      if (native.model !== policy.modelId) throw new Error();
-      body = {
-        model: native.model,
-        max_output_tokens: Math.min(
-          native.max_output_tokens ?? policy.maxOutputTokens,
-          policy.maxOutputTokens,
-        ),
-        input: native.input.map(({ role, content }) => ({
-          type: 'message',
-          role,
-          content,
-        })),
-        ...(native.instructions !== undefined
-          ? { instructions: native.instructions }
-          : {}),
-        ...(native.reasoning ? { reasoning: native.reasoning } : {}),
-        stream: true,
-        store: false,
-        tools: [],
-        tool_choice: 'none',
-        parallel_tool_calls: false,
-        service_tier: 'default',
-        truncation: 'disabled',
-      };
-    }
+    const body =
+      policy.provider === 'anthropic'
+        ? anthropicRequestBody(parsed, policy.modelId, policy.maxOutputTokens)
+        : responsesRequestBody(parsed, policy.modelId, policy.maxOutputTokens);
     const bytes = Buffer.from(JSON.stringify(body));
     if (bytes.length > NATIVE_MODEL_CHANNEL_LIMITS.bodyBytes) throw new Error();
     return {
