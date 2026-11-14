@@ -57,7 +57,8 @@ const admitRun = release.jobs['assemble-draft']?.steps?.find(
 )?.run;
 
 const STABLE_TAG = 'v1.2.3';
-const PREVIEW_TAG = 'v1.2.3-preview.1';
+// A release candidate stages under its own tag as the Stable ring (#4929).
+const CANDIDATE_TAG = 'v1.2.3-rc.1';
 const IOS_BUNDLE_VERSION = '10203';
 
 type Layout = Record<string, string[]>;
@@ -354,29 +355,46 @@ describe('assemble-draft producer asset admission (#2977)', () => {
   );
 
   it(
-    'admits no iOS asset for a preview tag, whose variants exclude iOS',
+    'admits every producer asset of a release candidate, iOS included, named for its tag',
     async () => {
       const result = await runAdmitStep(
-        producerLayout(PREVIEW_TAG, 'preview'),
-        'preview',
+        producerLayout(CANDIDATE_TAG, 'stable'),
+        'stable',
       );
       expect(result.status, result.stderr).toBe(0);
       expect(result.admitted).toEqual(
-        requiredProducerAssets(PREVIEW_TAG, 'preview'),
+        requiredProducerAssets(CANDIDATE_TAG, 'stable'),
       );
-      expect(result.admitted?.some((name) => name.includes('-ios-'))).toBe(
-        false,
+      expect(result.admitted).toContain(
+        `station-${CANDIDATE_TAG}-ios-device.ipa`,
       );
+      expect(result.admitted).toContain(
+        `station-${CANDIDATE_TAG}-ios-simulator.app.tar.gz`,
+      );
+      expect(result.admitted).toContain('station-release-ring-stable.json');
     },
     FIXTURE_TEST_TIMEOUT_MS,
   );
 
   it(
-    'admits the host-stream archives and payload for both rings, never the per-target build artifacts',
+    'refuses the retired preview channel before copying anything',
+    async () => {
+      const result = await runAdmitStep(
+        producerLayout(CANDIDATE_TAG, 'stable'),
+        'preview',
+      );
+      expectRefusal(result, 'unknown release channel "preview"');
+      expect(result.admitted).toEqual([]);
+    },
+    FIXTURE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'admits the host-stream archives and payload for a final tag and a candidate, never the per-target build artifacts',
     async () => {
       for (const [tag, channel] of [
         [STABLE_TAG, 'stable'],
-        [PREVIEW_TAG, 'preview'],
+        [CANDIDATE_TAG, 'stable'],
       ] as const) {
         const result = await runAdmitStep(
           producerLayout(tag, channel),
@@ -666,9 +684,7 @@ describe('assemble-draft producer asset admission (#2977)', () => {
       expression('needs.preflight.outputs.ios_bundle_version'),
     );
     expect(iosDevice?.with?.channel).toBe(
-      expression(
-        "needs.preflight.outputs.channel == 'preview' && 'beta' || 'stable'",
-      ),
+      expression('needs.preflight.outputs.channel'),
     );
     const staged = (load(testFlightText) as Workflow).jobs.deliver?.steps?.find(
       (step) =>

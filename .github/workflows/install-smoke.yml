@@ -47,23 +47,6 @@ jobs:
           UI_PORT: '3200'
         run: bash scripts/smoke-install-source.sh
 
-      - name: Install, upgrade, and uninstall preview source release
-        if: ${{ !cancelled() && steps.setup-node.outcome == 'success' }}
-        env:
-          SMOKE_HOME: ${{ runner.temp }}/station-home-preview
-          RELEASE_DIR: ${{ runner.temp }}/release-preview
-          RELEASE_TAG: v0.0.0-preview.1
-          RELEASE_CHANNEL: preview
-          RUNTIME_CHANNEL: beta
-          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          ARTIFACT_PORT: '8775'
-          MANIFEST_PORT: '8776'
-          KEY_PORT: '8777'
-          OLLAMA_PORT: '11434'
-          SERVER_PORT: '3351'
-          UI_PORT: '3210'
-        run: bash scripts/smoke-install-source.sh
-
       - name: Dump Station instance logs on failure
         if: failure()
         run: |
