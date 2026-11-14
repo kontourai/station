@@ -30,7 +30,10 @@ jobs:
   # sweep-issue job below is the only one that can write the issue (#4270).
   sweep:
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    # The catch-up walk grows with history since the coverage baseline; a
+    # local run of this report on 2026-11-13 took about 38 minutes on a
+    # heavily loaded host. The bound only caps a hung run.
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:
