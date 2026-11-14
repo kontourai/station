@@ -129,7 +129,7 @@ describe('local iOS release preflight', () => {
         now: new Date('2026-08-27T00:00:00Z'),
         runCommand: localTools,
       }),
-    ).toThrow('tag must be vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.N');
+    ).toThrow('is not a vX.Y.Z or vX.Y.Z-rc.N release tag');
   });
 
   test('keeps release tag/package validation fail-closed', () => {
