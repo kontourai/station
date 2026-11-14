@@ -141,6 +141,8 @@ export function copilotSdkClientPort(
     watchConnection: (onLost) => {
       let stopped = false;
       let checking = false;
+      // The unanswered ping's deadline, cleared by an answer or by stop().
+      let deadline: ReturnType<typeof setTimeout> | undefined;
       const timer = setInterval(() => {
         if (stopped || checking) return;
         checking = true;
@@ -151,7 +153,7 @@ export function copilotSdkClientPort(
           clearTimeout(deadline);
           onLost(error);
         };
-        const deadline = setTimeout(
+        deadline = setTimeout(
           () => lost(new Error('The Copilot runtime stopped answering.')),
           COPILOT_PING_TIMEOUT_MS,
         );
@@ -171,6 +173,7 @@ export function copilotSdkClientPort(
       return () => {
         stopped = true;
         clearInterval(timer);
+        clearTimeout(deadline);
       };
     },
     stop: async () => {
