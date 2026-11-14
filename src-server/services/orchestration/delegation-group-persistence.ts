@@ -749,6 +749,7 @@ export class StationDelegationPersistence {
       const bytes = readBytes(
         join(domain.directory, `${expected.id}.json`),
         256 * 1024,
+        'domain-return',
       );
       requirePersistence(bytes !== null, 'report_flow_observation_missing');
       const record = z

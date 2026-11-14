@@ -5403,3 +5403,34 @@ startup callback that can start its follower after shutdown. Its regression and
 repair remain pending. No latency attribution is claimed yet. The broader
 finalizer, input, lineage, topology and device-readback obligations remain open;
 both production qualification flags remain false and no PR is opened.
+
+
+## Continuation replay and directory-fence checkpoint
+
+Normal merge `f541a2415d58` incorporates main `229787add445`, including the
+landed native model-channel prerequisite and child breadcrumb repair. Managed
+dependencies, conflict formatting and read-only lint passed. Exact-ref readiness
+for that merged source passes all 1,666 connected-agent cases, governance,
+verification policy, hygiene, style and Session transitions. Documentation truth
+still fails stale review bindings. This passing projection sample does not
+establish a causal repair of the retained earlier projection timeout.
+
+The exact-replay preflight in `305e17bf86c8` refuses unusable retained winners
+before historical source preparation while retaining later controller and source
+authentication. Both new custody regressions pass on the merged source. The
+original lost-reappraisal caller still times out at its unchanged 60-second
+bound, reaching retry replay just before expiry. A fresh diagnostic of that same
+scenario records 2,857 filesystem flushes taking 15.74 seconds in that sample;
+temporary instrumentation was restored byte-for-byte. Neither the counts nor
+host load establish a whole-caller speedup.
+
+The continuation snapshot reader now leaves its directory fence to the enclosing
+locked domain, as the admission and execution snapshot readers already do.
+The record flush and the domain's directory/parent flushes still precede return.
+The extended real-store durability test fails before repair because the
+continuation directory is flushed twice; both execution and continuation cases
+pass after repair, including failed-directory durability and request revocation
+before disclosure. Full persistence, typing, fault verification and another
+unprofiled caller result remain pending at this checkpoint. Qualification flags
+remain false; portable authority, peer/SSH, native and full epic acceptance are
+not established by these owner tests.
