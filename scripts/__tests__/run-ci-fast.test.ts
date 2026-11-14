@@ -288,6 +288,8 @@ describe('bounded ci:fast runner', () => {
       [process.execPath, ['scripts/check-changesets.mjs']],
       [process.execPath, ['scripts/code-health-gate.mjs']],
       [process.execPath, ['scripts/test-realtime-wait-gate.mjs']],
+      // The merge-queue diff job's `git diff --check`, on the PR's own lines.
+      [process.execPath, ['scripts/diff-whitespace-gate.mjs']],
       ['npm', ['run', 'channel-ports:check']],
       ['npm', ['run', 'gate:workflows']],
       // #2922: verify:static gates that otherwise first fail in the queue.
@@ -369,6 +371,139 @@ describe('bounded ci:fast runner', () => {
 
     expect(result.status).toBe(0);
     expect(result.output).toContain('OK: no control characters');
+  });
+
+  describe("the merge queue's whitespace check on the PR's own lines", () => {
+    const gateArgs = ['scripts/diff-whitespace-gate.mjs'];
+    /**
+     * A repository whose base already carries trailing whitespace, whose
+     * main then advances past the branch point with more of it, and whose
+     * `pr` branch adds `added` to a file. Returns the base the PR event
+     * would pass (the advanced main tip, not an ancestor of the PR head).
+     */
+    const whitespaceRepo = (added: string) => {
+      const dir = makeTempDir('station-ci-fast-diff-check-');
+      mkdirSync(join(dir, 'scripts', 'lib'), { recursive: true });
+      copyFileSync(
+        join(process.cwd(), ...gateArgs[0].split('/')),
+        join(dir, ...gateArgs[0].split('/')),
+      );
+      copyEntryGuard(dir);
+      const git = (...args: string[]) =>
+        execFileSync('git', args, {
+          cwd: dir,
+          windowsHide: true,
+          encoding: 'utf8',
+        });
+      git('init', '-q', '-b', 'main');
+      git('config', 'user.email', 'ci-fast@test.invalid');
+      git('config', 'user.name', 'ci-fast');
+      writeFileSync(join(dir, 'notes.md'), 'inherited trailing space \n');
+      git('add', '-A');
+      git('commit', '-qm', 'base');
+      git('checkout', '-qb', 'pr');
+      writeFileSync(join(dir, 'change.md'), added);
+      git('add', '-A');
+      git('commit', '-qm', 'pr');
+      git('checkout', '-q', 'main');
+      writeFileSync(join(dir, 'later.md'), 'main added this later \n');
+      git('add', '-A');
+      git('commit', '-qm', 'main moved');
+      const base = git('rev-parse', 'HEAD').trim();
+      git('checkout', '-q', 'pr');
+      return { dir, base };
+    };
+    const runGate = (cwd: string, base: string) => {
+      let output = '';
+      let ran = 0;
+      const status = runCiFast({
+        cwd,
+        env: { STATION_CI_FAST_BASE: base, [FAST_SCOPE_ENV]: 'statics' },
+        execute(command, args, { cwd: childCwd, timeout }) {
+          if (command !== process.execPath || args[0] !== gateArgs[0]) return 0;
+          ran += 1;
+          // run-ci-fast hands statics the inherited environment, where CI
+          // sets STATION_CI_FAST_BASE.
+          const result = spawnSync(command, [...args], {
+            cwd: childCwd,
+            timeout,
+            encoding: 'utf8',
+            windowsHide: true,
+            env: { ...process.env, STATION_CI_FAST_BASE: base },
+          });
+          output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+          return result.status ?? 1;
+        },
+      });
+      expect(ran).toBe(1);
+      return { status, output };
+    };
+
+    it('fails the fast lane when the PR adds trailing whitespace', () => {
+      const { dir, base } = whitespaceRepo('clean line\nnew trailing space \n');
+      const result = runGate(dir, base);
+      expect(result.status).toBe(1);
+      expect(result.output).toContain('change.md:2: trailing whitespace.');
+      expect(result.output).toContain('[diff-whitespace] FAIL');
+      expect(result.output).not.toContain('notes.md');
+      expect(result.output).not.toContain('later.md');
+    });
+
+    it('passes a clean PR despite whitespace already on, or later added to, its base', () => {
+      const { dir, base } = whitespaceRepo('clean line\n');
+      const result = runGate(dir, base);
+      expect(result.status).toBe(0);
+      expect(result.output).toContain('[diff-whitespace] OK');
+    });
+
+    // Base-only whitespace that main ADDS after the branch point shows as a
+    // removal in any range from the main tip, so the test above cannot tell
+    // `<base>...HEAD` from `<base> HEAD`. Whitespace that main REMOVES after
+    // the branch point can: a two-point diff from the main tip reads the
+    // PR's untouched, inherited copy of the line as an addition.
+    it('passes a PR that leaves alone inherited whitespace main has since fixed', () => {
+      const { dir, base } = whitespaceRepo('clean line\n');
+      const git = (...args: string[]) =>
+        execFileSync('git', args, {
+          cwd: dir,
+          windowsHide: true,
+          encoding: 'utf8',
+        });
+      git('checkout', '-q', 'main');
+      writeFileSync(join(dir, 'notes.md'), 'inherited trailing space\n');
+      git('commit', '-qam', 'main fixes the inherited whitespace');
+      const fixedBase = git('rev-parse', 'HEAD').trim();
+      git('checkout', '-q', 'pr');
+      expect(base).not.toBe(fixedBase);
+      expect(
+        spawnSync('git', ['diff', '--check', fixedBase, 'HEAD'], {
+          cwd: dir,
+          windowsHide: true,
+        }).status,
+        'the two-point diff must flag the inherited line for this to discriminate',
+      ).toBe(2);
+      const result = runGate(dir, fixedBase);
+      expect(result.status).toBe(0);
+      expect(result.output).toContain('[diff-whitespace] OK');
+    });
+
+    // The header's contract: the committed head is judged, as CI checks it
+    // out, not uncommitted edits in a local working tree.
+    it('does not judge an uncommitted working-tree edit', () => {
+      const { dir, base } = whitespaceRepo('clean line\n');
+      writeFileSync(join(dir, 'change.md'), 'clean line\nuncommitted \n');
+      const result = runGate(dir, base);
+      expect(result.status).toBe(0);
+      expect(result.output).toContain('[diff-whitespace] OK');
+      expect(result.output).not.toContain('change.md');
+    });
+
+    it('fails closed when the base is not a fetched commit', () => {
+      const { dir } = whitespaceRepo('clean line\n');
+      const result = runGate(dir, 'f'.repeat(40));
+      expect(result.status).toBe(1);
+      expect(result.output).toContain('the base must be a fetched commit');
+    });
   });
 
   it('continues after an explicit selector deferral without treating it as completion', () => {

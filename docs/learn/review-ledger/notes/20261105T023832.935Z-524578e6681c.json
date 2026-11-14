@@ -1,7 +1,0 @@
-{
-  "revision": "19680ee709d2401051e5c92cb4f72c718b0cd263",
-
-  "notes": [
-    {"path":"docs/design/agent-interaction-capabilities.md","note":"Design doc; reviewed against the browser-workspace guide edits (menu group rename, narrow open sizing, empty local servers). No claim affected.","inputs":["docs/design/agent-interaction-capabilities.md","docs/guides/browser-workspace.md"]}
-  ]
-}

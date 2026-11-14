@@ -280,14 +280,14 @@ export function ShareTargetPickerModal({
             type="search"
             className="share-target-picker__search"
             placeholder={
-              mode === 'new-chat' ? 'Search projects…' : 'Search conversations…'
+              mode === 'new-chat' ? 'Search projects…' : 'Search chats…'
             }
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             // biome-ignore lint/a11y/noAutofocus: search-first picker focuses its filter on open.
             autoFocus
             aria-label={
-              mode === 'new-chat' ? 'Search projects' : 'Search conversations'
+              mode === 'new-chat' ? 'Search projects' : 'Search chats'
             }
           />
           {error && (
@@ -336,18 +336,18 @@ export function ShareTargetPickerModal({
                 onSelect={handleStartNewChat}
               />
             ) : isLoading ? (
-              <SkeletonList count={5} label="Loading conversations" />
+              <SkeletonList count={5} label="Loading chats" />
             ) : filtered.length === 0 ? (
               <Empty
                 variant="compact"
                 label={
                   conversations.length === 0
-                    ? 'No conversations yet'
-                    : 'No matching conversations'
+                    ? 'No chats yet'
+                    : 'No matching chats'
                 }
                 description={
                   conversations.length === 0
-                    ? 'Start a conversation to share images into it.'
+                    ? 'Start a chat to share images into it.'
                     : undefined
                 }
               />

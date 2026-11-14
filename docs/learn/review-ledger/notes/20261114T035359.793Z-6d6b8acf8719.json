@@ -1,0 +1,7 @@
+{
+  "revision": "43233686898378145680cc6504e365a24aab3d84",
+
+  "notes": [
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Checked scripts/test-impact-manifest.mjs at this change against the test boundaries this file names: the only edit adds scripts/__tests__/classify-ci-change.test.ts to REPO_SCAN_SUITES; no agent-runtime entry or selection rule changed. No prose change needed.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/test-impact-manifest.mjs"]}
+  ]
+}

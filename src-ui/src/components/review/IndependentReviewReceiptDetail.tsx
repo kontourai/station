@@ -44,10 +44,7 @@ export function IndependentReviewReceiptDetail({
         <span>{receipt.findings.length} findings</span>
         <span>{new Date(receipt.completedAt).toLocaleString()}</span>
       </div>
-      <p>
-        These findings are reviewer-authored evidence for verification. This
-        receipt does not approve, reject, or satisfy a gate.
-      </p>
+      <p>Findings are advisory. They don't approve or block a gate.</p>
       <section aria-label="Reviewer execution status">
         <h3>Reviewer execution</h3>
         <ul>
@@ -64,11 +61,11 @@ export function IndependentReviewReceiptDetail({
       receipt.executions.every(
         (execution) => execution.status === 'completed',
       ) ? (
-        <p>All reviewers completed; no concrete findings were recorded.</p>
+        <p>All reviewers finished with no findings.</p>
       ) : receipt.findings.length === 0 ? (
         <p>
-          Review evidence is incomplete. No findings can be interpreted as a
-          clean review until every reviewer completes successfully.
+          Not every reviewer finished, so no findings doesn't mean a clean
+          review.
         </p>
       ) : (
         receipt.findings.map((finding) => (

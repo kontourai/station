@@ -1,7 +1,0 @@
-{
-  "revision": "f6ed5605da81fcd45a1cddbb9c46168f12dcad4d",
-
-  "notes": [
-    {"path":"tests/AGENTS.md","note":"Re-read the lane and fixture-fidelity routes and the resource-classification sentence. testing.md changed only one sentence in the host-bound required-tests section (exit 2 now also names a non-regular file such as a FIFO and a flag given more than once); no heading or anchor changed and no claim this document relies on changed.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
-  ]
-}

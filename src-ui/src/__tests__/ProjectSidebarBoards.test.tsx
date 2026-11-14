@@ -469,11 +469,7 @@ describe('Apps stay discoverable after Projects', () => {
       projectsHeader.compareDocumentPosition(header!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    const activityRow = screen.getByRole('button', { name: 'Activity' });
-    expect(
-      activityRow.compareDocumentPosition(header!) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Activity' })).toBeNull();
   });
 });
 

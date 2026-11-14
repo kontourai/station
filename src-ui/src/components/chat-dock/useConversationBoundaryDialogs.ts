@@ -165,13 +165,13 @@ export function useConversationBoundaryDialogs({
     contextBoundaryStatusQuery.data?.status ?? contextBoundaryStored?.status;
   const contextBoundaryLabel =
     contextBoundaryStatus === 'reserved'
-      ? `Next engine start: ${(contextBoundaryStatusQuery.data?.policy ?? contextBoundaryStored?.policy) === 'empty-next-cold-start' ? 'Empty' : 'Re-anchor'}`
+      ? `Next message: ${(contextBoundaryStatusQuery.data?.policy ?? contextBoundaryStored?.policy) === 'empty-next-cold-start' ? 'starts fresh' : 'continues'}`
       : contextBoundaryStatus === 'claimed'
-        ? 'Engine start reconciling'
+        ? 'Reset in progress'
         : contextBoundaryStatus === 'indeterminate'
-          ? 'Engine start needs inspection'
+          ? 'Reset unconfirmed, check the chat'
           : contextBoundaryStatus === 'failed'
-            ? 'Start failed; retry available'
+            ? 'Reset failed, retry available'
             : undefined;
   const hasLocalDeferredMessages = Boolean(
     activeSession?.queuedMessages?.length ||
@@ -188,13 +188,13 @@ export function useConversationBoundaryDialogs({
     : isSessionExecutionActive(activeSession)
       ? 'Wait for the current turn to finish.'
       : hasLocalDeferredMessages
-        ? 'Resolve queued or offline messages first.'
+        ? 'Send or discard queued messages first.'
         : durableHandoffQueue.status === 'pending'
           ? 'Checking queued messages…'
           : durableHandoffQueue.status === 'error'
             ? 'Queued message state is unavailable. Try again.'
             : durableHandoffQueueCount > 0
-              ? 'Resolve queued or offline messages first.'
+              ? 'Send or discard queued messages first.'
               : undefined;
 
   const openConversationHandoff = useCallback(

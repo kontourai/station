@@ -1,6 +1,7 @@
 import {
   type ConversationContextBoundaryPolicy,
   type ConversationContextBoundaryProjection,
+  isSummaryContextBoundary,
 } from '@kontourai/station-contracts/conversation-context-boundary';
 import {
   foldedSessionLifecycleState,
@@ -26,6 +27,13 @@ import {
   readConversationContextBoundaryUiState,
   writeConversationContextBoundaryUiState,
 } from './conversationContextBoundaryUiState';
+
+function describeNextStart(policy: ConversationContextBoundaryPolicy) {
+  if (policy === 'empty-next-cold-start') return 'starts fresh';
+  return isSummaryContextBoundary(policy)
+    ? 'continues from a summary'
+    : 'continues from chat history';
+}
 
 export function ConversationContextResetDialog({
   apiBase,
@@ -68,17 +76,18 @@ export function ConversationContextResetDialog({
         })
       : {
           kind: 'blocked' as const,
-          reason: 'Station has no current Session to replace.',
+          reason: 'Send a message first.',
         });
-  const [policy, setPolicy] = useState<ConversationContextBoundaryPolicy>(
-    'empty-next-cold-start',
-  );
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string>();
-  const [stopReceipt, setStopReceipt] = useState<string>();
   const [stored, setStored] = useState(() =>
     readConversationContextBoundaryUiState(conversationId),
   );
+  // A reopened dialog shows the reset already chosen, not the default.
+  const [policy, setPolicy] = useState<ConversationContextBoundaryPolicy>(
+    () => stored?.policy ?? 'empty-next-cold-start',
+  );
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string>();
+  const [stopNote, setStopNote] = useState<string>();
   const onReservedRef = useRef(onReserved);
   onReservedRef.current = onReserved;
   useEffect(() => {
@@ -119,6 +128,14 @@ export function ConversationContextResetDialog({
   const claimedOrIndeterminate =
     statusValue === 'claimed' || statusValue === 'indeterminate';
   const canCancel = statusValue === 'reserved' && Boolean(stored);
+  // A held reservation keeps its idempotency key, and the server refuses that
+  // key with a different policy; change the choice by cancelling first.
+  const choiceLocked =
+    pending ||
+    statusValue === 'reserved' ||
+    statusValue === 'claimed' ||
+    statusValue === 'indeterminate' ||
+    statusValue === 'failed';
   const reserve = async () => {
     if (pending || eligibility.kind !== 'reserve' || claimedOrIndeterminate)
       return;
@@ -143,7 +160,7 @@ export function ConversationContextResetDialog({
       setError(
         cause instanceof Error
           ? userFacingErrorMessage(cause)
-          : 'Could not replace the engine context.',
+          : "Couldn't reset the agent context.",
       );
     } finally {
       setPending(false);
@@ -153,18 +170,17 @@ export function ConversationContextResetDialog({
     if (pending || eligibility.kind !== 'stop-session') return;
     setPending(true);
     setError(undefined);
-    setStopReceipt(undefined);
+    setStopNote(undefined);
     try {
       const {
         dispatchOrchestrationCommandWithReceipt,
         STOP_REQUEST_BUDGET_MS,
       } = await import('@kontourai/station-sdk');
-      const stopped = await dispatchOrchestrationCommandWithReceipt(
+      await dispatchOrchestrationCommandWithReceipt(
         { type: 'stopSession', threadId: sessionId },
         apiBase,
         STOP_REQUEST_BUDGET_MS,
       );
-      setStopReceipt(`Stop receipt ${stopped.receipt.commandId} received.`);
       const refreshed = await onStoppedSessionRefreshed();
       if (
         !refreshed ||
@@ -174,10 +190,11 @@ export function ConversationContextResetDialog({
         refreshed.hasActiveTurn
       ) {
         setError(
-          'Station has not confirmed that the current Session is stopped. No context boundary was reserved.',
+          "Station couldn't confirm the agent stopped. Nothing was reset.",
         );
         return;
       }
+      setStopNote('Agent stopped.');
       const idempotencyKey = stored?.idempotencyKey ?? randomCorrelationId();
       const result = await reserveConversationContextBoundary(
         apiBase,
@@ -196,7 +213,7 @@ export function ConversationContextResetDialog({
       const detail =
         cause instanceof Error ? userFacingErrorMessage(cause) : '';
       setError(
-        `Station did not confirm that the current Session stopped${detail ? `: ${detail}` : '.'} No context boundary was reserved.`,
+        `Station couldn't confirm the agent stopped${detail ? `: ${detail}` : '.'} Nothing was reset.`,
       );
     } finally {
       setPending(false);
@@ -220,7 +237,7 @@ export function ConversationContextResetDialog({
       setError(
         cause instanceof Error
           ? userFacingErrorMessage(cause)
-          : 'Could not cancel the context replacement.',
+          : "Couldn't cancel the reset.",
       );
     } finally {
       setPending(false);
@@ -229,12 +246,12 @@ export function ConversationContextResetDialog({
   return (
     <ResponsiveDialogSurface
       layer="dialog"
-      ariaLabel="Replace engine context"
+      ariaLabel="Reset agent context"
       onClose={pending ? () => {} : onClose}
       historyMode="entry"
     >
       <header className="responsive-dialog__header">
-        <h2>Replace engine context</h2>
+        <h2>Reset agent context</h2>
         <ResponsiveDialogCloseButton
           label="Close context reset"
           disabled={pending}
@@ -243,52 +260,52 @@ export function ConversationContextResetDialog({
       </header>
       <div className="responsive-dialog__body">
         <p>
-          The readable transcript, Task links, and evidence stay. For an open
-          Session, Station stops the current engine context first; it reserves
-          the next engine context only after confirming that stop.
+          Your chat history, Task links and evidence stay. If the agent is
+          running, it's stopped first.
         </p>
         <label>
           <input
             type="radio"
             checked={policy === 'continue-from-history'}
             onChange={() => setPolicy('continue-from-history')}
-            disabled={pending}
+            disabled={choiceLocked}
           />{' '}
-          Continue from durable history
+          Continue with chat history
         </label>
         <label>
           <input
             type="radio"
             checked={policy === 'empty-next-cold-start'}
             onChange={() => setPolicy('empty-next-cold-start')}
-            disabled={pending}
+            disabled={choiceLocked}
           />{' '}
-          Start next engine context empty
+          Start fresh (agent forgets this chat)
         </label>
         {policy === 'empty-next-cold-start' && (
           <p>
-            Omitted: engine-native history, tool state, and session approvals.
-            Preserved: Agent and safety policy, tools/skills, and your next
-            message.
+            The agent also loses its tool state and approvals. It keeps its
+            instructions, safety policy, tools, skills and your next message.
           </p>
         )}
         {statusValue && (
           <p role="status">
             {statusValue === 'reserved'
-              ? `Next engine start: ${policy === 'empty-next-cold-start' ? 'Empty' : 'Re-anchor'}`
+              ? `Ready. On your next message the agent ${describeNextStart(boundary?.policy ?? stored?.policy ?? policy)}.`
               : statusValue === 'claimed'
-                ? 'The next engine start may already be in progress. Repeat and cancel are disabled while Station reconciles it.'
+                ? "Starting the agent's next context. You can't cancel now."
                 : statusValue === 'indeterminate'
-                  ? 'Station cannot prove whether the next engine start happened. Repeat and cancel are disabled; inspect the conversation before continuing.'
+                  ? "Station couldn't confirm whether the agent restarted. Check the chat before continuing."
                   : statusValue === 'failed'
-                    ? 'The prior engine start failed before acceptance. You can retry this same context replacement.'
-                    : 'The context replacement reached a terminal state.'}
+                    ? 'The reset failed before the agent started. You can retry it.'
+                    : statusValue === 'cancelled'
+                      ? 'Reset cancelled.'
+                      : 'Reset applied.'}
           </p>
         )}
         {eligibility.kind !== 'reserve' && (
           <p role="alert">{eligibility.reason}</p>
         )}
-        {stopReceipt && <p role="status">{stopReceipt}</p>}
+        {stopNote && <p role="status">{stopNote}</p>}
         {error && <p role="alert">{error}</p>}
         {eligibility.kind === 'reserve' && (
           <button
@@ -297,20 +314,20 @@ export function ConversationContextResetDialog({
             disabled={pending || claimedOrIndeterminate}
           >
             {pending
-              ? 'Reserving…'
+              ? 'Applying…'
               : stored
-                ? 'Retry context replacement'
-                : 'Replace engine context'}
+                ? 'Retry reset'
+                : 'Reset agent context'}
           </button>
         )}
         {eligibility.kind === 'stop-session' && !statusValue && (
           <button type="button" onClick={stopThenReserve} disabled={pending}>
-            {pending ? 'Stopping current Session…' : 'Stop current Session'}
+            {pending ? 'Stopping agent…' : 'Stop agent and reset'}
           </button>
         )}
         {canCancel && (
           <button type="button" onClick={cancel} disabled={pending}>
-            Cancel context replacement
+            Cancel reset
           </button>
         )}
       </div>

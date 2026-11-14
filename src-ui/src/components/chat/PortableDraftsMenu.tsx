@@ -13,6 +13,7 @@ import { ComposerIconAction } from './ComposerIconAction';
 import { composerDisplayValue } from './composer-mentions';
 
 interface PortableDraftsMenuProps {
+  hideTrigger?: boolean;
   quotes?: readonly DraftQuote[];
   input: string;
   attachments: FileAttachment[];
@@ -23,6 +24,7 @@ interface PortableDraftsMenuProps {
 
 export function PortableDraftsMenu({
   input,
+  hideTrigger = false,
   quotes = [],
   attachments,
   open,
@@ -42,25 +44,27 @@ export function PortableDraftsMenu({
 
   return (
     <>
-      <ComposerIconAction
-        label="Drafts"
-        className="chat-input__drafts-button"
-        expanded={open}
-        onClick={() => onOpenChange(true)}
-      >
-        <svg
-          viewBox="0 0 24 24"
-          width="18"
-          height="18"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          aria-hidden="true"
+      {!hideTrigger && (
+        <ComposerIconAction
+          label="Drafts"
+          className="chat-input__drafts-button"
+          expanded={open}
+          onClick={() => onOpenChange(true)}
         >
-          <path d="M7 3h8l4 4v14H7z" />
-          <path d="M15 3v5h4M10 12h6M10 16h6M3 7v14" />
-        </svg>
-      </ComposerIconAction>
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path d="M7 3h8l4 4v14H7z" />
+            <path d="M15 3v5h4M10 12h6M10 16h6M3 7v14" />
+          </svg>
+        </ComposerIconAction>
+      )}
       {open && (
         <Dialog
           title="Saved drafts"

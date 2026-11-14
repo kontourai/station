@@ -1,7 +1,0 @@
-{
-  "revision": "d5e3c3757b2dfb3fd2d38d801292f5c5a3bbfed6",
-
-  "notes": [
-    {"path":"docs/design/chat-composer.md","note":"Reviewed device-settings contract change (new density and motion keys); composer claims about its own settings and compact pickers are unaffected.","inputs":["docs/design/chat-composer.md","packages/contracts/src/device-settings.ts"]}
-  ]
-}

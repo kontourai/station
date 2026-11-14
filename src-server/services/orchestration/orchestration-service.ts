@@ -42,6 +42,7 @@ import {
   ENGINE_CAPABILITY_MATRICES,
   sessionDeliveryChannels,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
 import {
@@ -88,6 +89,8 @@ import type {
   ProviderDurabilityProfile,
   ProviderSendTurnInput,
   ProviderSession,
+  SessionLiveContinuity,
+  SessionRewindOutcome,
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
@@ -4090,6 +4093,88 @@ export class OrchestrationService {
     const result = await adapter.stopProviderTask(threadId, taskId);
     this.assertAdapterCurrentAfterCommand(adapter);
     return result;
+  }
+
+  /**
+   * Restart one of the session's engine-run MCP servers (and optionally
+   * start its sign-in), through the adapter's `reconnectMcpServer`. An
+   * adapter without it answers `unsupported`; the engine's own answer,
+   * including a refusal, is returned as it gave it.
+   */
+  async reconnectEngineMcpServer(
+    threadId: string,
+    serverName: string,
+    options: { startOAuth: boolean },
+  ): Promise<EngineCommandOutcome> {
+    const adapter = await resolveOrchestrationAdapterForThread({
+      threadId,
+      threadProviders: this.threadProviders,
+      requireAdapter: (provider) => this.requireAdapter(provider),
+      adapters: this.options.adapterRegistry.list(),
+    });
+    this.assertAdapterCurrent(adapter);
+    if (!adapter.reconnectMcpServer) return { kind: 'unsupported' };
+    const outcome = await adapter.reconnectMcpServer(
+      threadId,
+      serverName,
+      options,
+    );
+    this.assertAdapterCurrentAfterCommand(adapter);
+    return outcome;
+  }
+
+  /**
+   * The adapter holding a live engine for `threadId`, or undefined. Never
+   * starts one: a session restored from disk with no process stays without
+   * one.
+   */
+  private async liveAdapterForThread(
+    threadId: string,
+  ): Promise<ProviderAdapterShape | undefined> {
+    try {
+      return await resolveOrchestrationAdapterForThread({
+        threadId,
+        threadProviders: this.threadProviders,
+        requireAdapter: (provider) => this.requireAdapter(provider),
+        adapters: this.options.adapterRegistry.list(),
+      });
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * This session's continuity as its live engine declared it. A session no
+   * engine process holds, or whose adapter declares nothing per session,
+   * reads `live: false` / `none`, so nothing is offered for it.
+   */
+  async readSessionLiveContinuity(
+    threadId: string,
+  ): Promise<SessionLiveContinuity> {
+    const adapter = await this.liveAdapterForThread(threadId);
+    if (!adapter?.sessionContinuity)
+      return { live: false, rewind: 'none', fork: 'none' };
+    return adapter.sessionContinuity(threadId);
+  }
+
+  /**
+   * Rewind a live session's engine context in place to before `turnId`,
+   * through the adapter's `rewindSession`. The transcript is untouched; the
+   * adapter's own marker event records which turns the engine no longer
+   * holds. No engine is started for a session without one.
+   */
+  async rewindSessionToTurn(
+    threadId: string,
+    turnId: string,
+  ): Promise<SessionRewindOutcome> {
+    const adapter = await this.liveAdapterForThread(threadId);
+    if (!adapter) return { kind: 'refused', reason: 'not-live' };
+    this.assertAdapterCurrent(adapter);
+    if (!adapter.rewindSession)
+      return { kind: 'refused', reason: 'unsupported' };
+    const outcome = await adapter.rewindSession(threadId, turnId);
+    this.assertAdapterCurrentAfterCommand(adapter);
+    return outcome;
   }
 
   /**
@@ -14846,6 +14931,28 @@ export class OrchestrationService {
     if (!this.stationControlPullRequests)
       throw new StationControlPullRequestUnavailableError('unconfigured');
     return this.stationControlPullRequests.declare(input);
+  }
+
+  /**
+   * #4830: the turn a station-control call from `threadId` is inferred to
+   * be made in. An engine's call names no turn, so this infers the turn the
+   * Session is running, as Station's persisted lifecycle fold answers (the
+   * lease `declare_pull_request` uses too); #4882 replaces the inference
+   * with a turn-bound credential. A concurrent steer can clear a send's
+   * pending reservation (#4850 review), so `pending` is not exhaustive. `pending` while a send's start is not
+   * yet stored (in flight, accepted but not arrived, or held), when the
+   * stored newest start is not the turn now running; `none` when no turn
+   * runs. Callers deciding authority from it refuse anything but `turn`.
+   */
+  stationControlCallingTurn(
+    threadId: string,
+  ):
+    | { readonly kind: 'turn'; readonly turnId: string }
+    | { readonly kind: 'pending' | 'none' } {
+    if (this.clientOriginTurns.holdsTurnStart(threadId))
+      return { kind: 'pending' };
+    const turnId = this.activeTurnIdOfThread(threadId);
+    return turnId ? { kind: 'turn', turnId } : { kind: 'none' };
   }
 
   /** The turn the session is running, as the lease for what it declares. */

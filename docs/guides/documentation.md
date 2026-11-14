@@ -283,6 +283,17 @@ anchor, the reader accepts an empty `<a id="stable-name"></a>` or
 The learning generator runs the same validation against the captured document
 bytes before producing a snapshot.
 
+`docs:public:hygiene` also compares the public promise on the README, the
+Pages home and `corpus.json` with its
+[single source](../strategy/differentiators.md). The GitHub repository
+description is outside the checkout, and the gates make no network calls.
+After changing the promise, compare it by hand and update it with
+`gh repo edit kontourai/station --description "<promise>"`:
+
+```bash
+gh repo view kontourai/station --json description --jq .description
+```
+
 These check links, indexes, public content policy, examples, source paths,
 documentation tests, and generated Pages output. They do not prove every prose
 claim or deployment. Inspect changed instructions against source and report
@@ -296,7 +307,8 @@ bundle-only document (`"publish": false`, so it gets no page) and mirrors the
 `docs/learn/mcp-topics.json` topics as anchors into it, so the shared server
 answers with the same sections as Station Docs. `docs-kit-manifest.test.ts`
 fails when either drifts. `PR: Docs kit` runs `corpus check` on pull
-requests, merge-queue entries and main as an advisory, non-required check; run
+requests and merge-queue entries (main gets the queue's verdict for the same
+SHA, or a manual dispatch) as an advisory, non-required check; run
 `npx -y github:kontourai/corpus#<sha> check` locally for faster
 feedback.
 

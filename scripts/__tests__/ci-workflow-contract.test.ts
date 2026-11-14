@@ -73,6 +73,51 @@ function evaluateGithubIf(expression: string, github: Record<string, unknown>) {
 }
 
 /**
+ * The draft and release-PR guard every heavy platform job (iOS build,
+ * Windows floor, Gallery capture) carries, verbatim. Written out here rather
+ * than read from one workflow so the three cannot drift together.
+ */
+const HEAVY_PR_LANE_GUARD =
+  "github.event_name != 'pull_request_target' || (!github.event.pull_request.draft && (github.event.pull_request.head.ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login != 'station-automation[bot]'))";
+
+/**
+ * Evaluates a job-level `if:` made of `github.*` and `needs.*` properties,
+ * string and boolean literals, `always()`, `cancelled()`, !, ==, !=, && and
+ * ||. Anything else is refused. `always()` is true; `cancelled()` is the
+ * context's `cancelled` flag (false unless a scenario cancels the run).
+ */
+function evaluateJobIf(
+  expression: string,
+  context: {
+    github: Record<string, unknown>;
+    needs?: Record<string, unknown>;
+    cancelled?: boolean;
+  },
+) {
+  const body = expression.trim().replace(/^\$\{\{([\s\S]*)\}\}$/, '$1');
+  const stripped = body
+    .replace(/'[^']*'/g, '')
+    .replace(/(?:github|needs)(?:\.[A-Za-z_]+)+/g, '')
+    .replace(/\b(?:always|cancelled)\(\)|\btrue\b|\bfalse\b/g, '')
+    .replace(/==|!=|&&|\|\||[()!\s]/g, '');
+  if (stripped) throw new Error(`unsupported expression syntax: ${stripped}`);
+  const js = body
+    .replace(/\balways\(\)/g, 'true')
+    .replace(/\bcancelled\(\)/g, String(Boolean(context.cancelled)))
+    .replace(
+      /\b(github|needs)((?:\.[A-Za-z_]+)+)/g,
+      (_m, root: string, path: string) =>
+        `${root}${path.replaceAll('.', '?.')}`,
+    )
+    .replace(/==/g, '===')
+    .replace(/!===/g, '!==');
+  return new Function('github', 'needs', `return (${js});`)(
+    context.github,
+    context.needs ?? {},
+  ) as boolean;
+}
+
+/**
  * #2709: the job that used to be `fast-checks` is `fast-checks-statics`; the
  * `fast-checks` id is the required aggregator that follows it. Refuses a
  * missing or reordered job rather than slicing to an empty string, which
@@ -352,6 +397,12 @@ describe('CI verification workflow contracts', () => {
       '.github/workflows/secret-scan.yml',
       '.github/workflows/android-test.yml',
       '.github/workflows/dependency-advisory.yml',
+      // Its scheduled main run replaced a per-push run that stayed red for
+      // 8 days with no tracker.
+      '.github/workflows/security-analysis.yml',
+      // Only its main push run reaches the head_branch guard: the sole iOS
+      // build of a UI-only change happens there (build-ios.yml).
+      '.github/workflows/build-ios.yml',
     ];
     const intendedTargetNames = intendedTargetFiles.map((targetFile) => {
       const target = workflowDocuments.find(({ file }) => file === targetFile)
@@ -668,7 +719,7 @@ describe('CI verification workflow contracts', () => {
     );
   });
 
-  it('closes delivery and Gallery health only after their terminal proof, despite expected skips', async () => {
+  it('closes delivery, Gallery and CodeQL health only after their terminal proof, despite expected skips', async () => {
     const document = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/main-health.yml',
     )?.document as {
@@ -696,6 +747,13 @@ describe('CI verification workflow contracts', () => {
         workflowName: 'Nightly: Gallery',
         requiredNames: ['Capture and diff screenshot gallery'],
         optionalName: 'Review gallery usability',
+      },
+      {
+        // Dependency review is skipped in every run on main, so the generic
+        // skip-bearing rule would never clear this tracker.
+        workflowName: 'PR: Security analysis',
+        requiredNames: ['CodeQL JavaScript and TypeScript'],
+        optionalName: 'Dependency review',
       },
     ];
     for (const { workflowName, requiredNames, optionalName } of scenarios) {
@@ -1037,6 +1095,81 @@ describe('CI verification workflow contracts', () => {
     expect(containerSmokeJob).not.toContain('cancel-in-progress: true');
     expect(ci).not.toMatch(/^concurrency:/m);
     expect(containerSmoke).not.toMatch(/^concurrency:/m);
+  });
+
+  // The merge queue fast-forwards main to the candidate its merge_group run
+  // verified, so a queue landing's push skipped only the repeat of that
+  // verdict. The push run itself still exists and concludes, because
+  // qualification-after-repair and station-dogfood-reconcile consume a
+  // successful push-event `PR: CI` run for the exact main SHA.
+  it('skips the heavy push lane only on a proven merge-queue verdict for the exact SHA', () => {
+    type Step = {
+      id?: string;
+      if?: string;
+      run?: string;
+      env?: Record<string, string>;
+      'continue-on-error'?: boolean;
+    };
+    const ci = load(workflow('ci.yml')) as {
+      on: Record<string, unknown>;
+      jobs: Record<
+        string,
+        { if?: string; outputs?: Record<string, string>; steps?: Step[] }
+      >;
+    };
+    expect(Object.keys(ci.on)).toContain('push');
+    const classify = ci.jobs.classify;
+    expect(classify.outputs?.heavy).toBe(
+      "${{ steps.merge-group-verdict.outputs.verified == 'true' && 'false' || steps.classify.outputs.heavy }}",
+    );
+    const steps = classify.steps ?? [];
+    const classifyIndex = steps.findIndex((step) => step.id === 'classify');
+    const verdictIndex = steps.findIndex(
+      (step) => step.id === 'merge-group-verdict',
+    );
+    expect(classifyIndex).toBeGreaterThanOrEqual(0);
+    // After the classifier, so a lookup can never prevent classification.
+    expect(verdictIndex).toBeGreaterThan(classifyIndex);
+    const verdict = steps[verdictIndex];
+    // Merge-group and dispatch runs never consult it.
+    expect(verdict.if).toBe("${{ github.event_name == 'push' }}");
+    // A crashed step leaves `verified` unset, which keeps the full lane.
+    expect(verdict['continue-on-error']).toBe(true);
+    expect(verdict.run).toBe('node scripts/ci-merge-group-verdict.mjs');
+    expect(verdict.env).toEqual({
+      GH_TOKEN: '${{ github.token }}',
+      PUSH_BEFORE: '${{ github.event.before }}',
+    });
+
+    const repair = load(workflow('qualification-after-repair.yml')) as {
+      on: { workflow_run: { workflows: string[] } };
+      jobs: { dispatch: { if: string } };
+    };
+    expect(repair.on.workflow_run.workflows).toEqual(['PR: CI']);
+    expect(repair.jobs.dispatch.if).toContain(
+      "github.event.workflow_run.event == 'push'",
+    );
+  });
+
+  it('runs the advisory docs gate on the merge queue instead of repeating it on main pushes', () => {
+    const docsKit = load(workflow('docs-kit.yml')) as {
+      name: string;
+      on: Record<string, unknown>;
+    };
+    expect(Object.keys(docsKit.on).sort()).toEqual([
+      'merge_group',
+      'pull_request_target',
+      'workflow_dispatch',
+    ]);
+    // A future workflow_run consumer of this gate would need its push runs back.
+    const consumers = readWorkflowDocuments().filter(({ document }) => {
+      const on = (
+        document as { on?: { workflow_run?: { workflows?: string[] } } }
+      ).on;
+      return on?.workflow_run?.workflows?.includes(docsKit.name) ?? false;
+    });
+    expect(docsKit.name).toBe('PR: Docs kit');
+    expect(consumers).toEqual([]);
   });
 
   it('lets the container smoke wait out every desktop-win lease it cannot share the host with', () => {
@@ -1504,7 +1637,9 @@ describe('CI verification workflow contracts', () => {
     const nightly = documentFor('nightly-gallery.yml');
 
     // The protected PR workflow and synthesized queue candidate must both
-    // produce the Gallery context before it can be required for landing.
+    // produce the Gallery contexts before it can be required for landing, so
+    // merge_group stays a trigger even though the capture skips there (the
+    // ready-gating suite below pins that skip).
     expect(Object.keys(pr.on ?? {})).toEqual([
       'pull_request_target',
       'merge_group',
@@ -1513,9 +1648,11 @@ describe('CI verification workflow contracts', () => {
       branches: ['main'],
       types: ['checks_requested'],
     });
+    // ready_for_review: a draft skips the capture until it is marked ready
+    // (the ready-gating suite below owns that behavior).
     expect(pr.on?.pull_request_target).toEqual({
       branches: ['main'],
-      types: ['opened', 'synchronize', 'reopened'],
+      types: ['opened', 'synchronize', 'reopened', 'ready_for_review'],
     });
     expect(pr.permissions).toEqual({ contents: 'read' });
     // The nightly stays a nightly: this check is additive, not a move.
@@ -1549,7 +1686,7 @@ describe('CI verification workflow contracts', () => {
     const job = pr.jobs['gallery-diff'];
     expect(job.needs).toBe('classify');
     expect(job.if).toBe(
-      "always() && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')",
+      `!cancelled() && github.event_name == 'pull_request_target' && (${HEAVY_PR_LANE_GUARD}) && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')`,
     );
     const classificationGuard = job.steps[0];
     expect(classificationGuard.env).toEqual({
@@ -2257,9 +2394,11 @@ describe('CI verification workflow contracts', () => {
         'merge_group:\n    branches: [main]\n    types: [checks_requested]',
       );
     }
+    // The queue's own combined-diff check reads the queue base; the full-diff
+    // classifier no longer runs on merge groups, so it does not.
     expect(ci).toContain(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-      "BEFORE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '0000000000000000000000000000000000000000' }}",
+      "BASE_SHA: ${{ github.event.merge_group.base_sha || github.event.before || 'origin/main' }}",
     );
     expect(ci).toContain(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
@@ -2907,16 +3046,21 @@ describe('CI verification workflow contracts', () => {
     expect(smoke.job['runs-on']).toBe('ubuntu-22.04');
 
     // The part that is allowed to differ, and only in one direction: a
-    // workflow handles merge_group in its BEFORE/AFTER expressions if and
-    // only if it declares the merge_group trigger. That is what makes
+    // classify job handles merge_group in its BEFORE/AFTER expressions if
+    // and only if it can run on merge_group — its workflow declares the
+    // trigger and its job `if` does not skip that event. That is what makes
     // container-smoke's shorter expression correct rather than stale, and it
-    // is also what would catch a merge_group trigger added without the
-    // matching base_sha branch — the actual drift shape here.
-    for (const { name, triggers, step } of [
+    // would catch a merge_group run admitted without the matching base_sha
+    // branch (the actual drift shape here) or a dead branch left behind
+    // when the job stops running there. ci.yml skips classify on merge
+    // groups, whose consumers all admit merge_group by event.
+    for (const { name, triggers, job, step } of [
       { name: 'ci.yml', ...ci },
       { name: 'container-smoke.yml', ...smoke },
     ]) {
-      const declaresMergeGroup = triggers.includes('merge_group');
+      const runsOnMergeGroup =
+        triggers.includes('merge_group') &&
+        !String(job.if ?? '').includes("github.event_name != 'merge_group'");
       const expressions = `${step.env?.BEFORE ?? ''}${step.env?.AFTER ?? ''}`;
       expect(
         expressions,
@@ -2924,9 +3068,14 @@ describe('CI verification workflow contracts', () => {
       ).toContain('github.sha');
       expect(
         expressions.includes('github.event.merge_group'),
-        `${name}: merge_group trigger ${declaresMergeGroup ? 'declared' : 'absent'}, expression ${expressions.includes('github.event.merge_group') ? 'handles' : 'ignores'} it`,
-      ).toBe(declaresMergeGroup);
+        `${name}: classify ${runsOnMergeGroup ? 'runs' : 'never runs'} on merge_group, expression ${expressions.includes('github.event.merge_group') ? 'handles' : 'ignores'} it`,
+      ).toBe(runsOnMergeGroup);
     }
+    expect(ci.triggers).toContain('merge_group');
+    expect(ci.job.if).toContain("github.event_name != 'merge_group'");
+    // Neither copy runs on merge_group now, so their event handling is the
+    // same too.
+    expect(ci.step.env).toEqual(smoke.step.env);
 
     // The guards that read as dead code and are not. Neither workflow
     // declares the event its job-level `if` excludes; the guard is what keeps
@@ -3025,13 +3174,16 @@ describe('CI verification workflow contracts', () => {
       'run: npm run gate:naming && npm run gate:ui-contracts',
     );
     // The cargo compile is skipped only on an exact base-controlled `false`.
-    // The job itself has no condition: a skipped job would leave the required
-    // `Windows PR portable floor` check to GitHub's skipped-counts-as-success.
+    // The job's only condition is the shared draft/release-PR guard: it never
+    // depends on who opened the PR or on the classifier, so a skipped
+    // required `Windows PR portable floor` check exists only for a draft (which
+    // cannot be merged or queued) and the automation app's release PR, and
+    // the merge group runs the floor for both (see the ready-gating suite).
     const floorJob = document.jobs['windows-pr-portable'] as {
       if?: string;
       steps: Array<{ id?: string; name?: string; if?: string; run?: string }>;
     };
-    expect(floorJob.if).toBeUndefined();
+    expect(floorJob.if).toBe(HEAVY_PR_LANE_GUARD);
     const resourceStaging = floorJob.steps.find(
       (step) => step.name === 'Verify desktop resource staging',
     );
@@ -3277,29 +3429,45 @@ describe('iOS verification proves packaged runtime readiness', () => {
     expect(ios).toContain('pull_request_target:');
     expect(ios).toContain('merge_group:');
     // The queue fast-forwards main to the candidate it built (merge_group run
-    // 35778933116 and push run 35781390232 built the same SHA), so a push
-    // trigger only repeats a finished macOS build. Dispatch covers the rest.
+    // 35778933116 and push run 35781390232 built the same SHA), so the push
+    // trigger is back only for what the merge group deliberately skipped:
+    // its classifier scope is `ios-post-merge`, never the native `ios` one.
     const triggers = Object.keys(
       (load(ios) as { on: Record<string, unknown> }).on,
     ).sort();
     expect(triggers).toEqual([
       'merge_group',
       'pull_request_target',
+      'push',
       'workflow_dispatch',
     ]);
-    // Which paths are iOS-relevant is owned by classify-ci-change.test.ts.
+    // Which paths are iOS-relevant (and the push paths filter) is owned by
+    // classify-ci-change.test.ts.
     expect(ios).toContain(
-      'if [ "$GITHUB_EVENT_NAME" != "pull_request_target" ] && [ "$GITHUB_EVENT_NAME" != "merge_group" ]',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "BASE_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event_name == 'push' && github.event.before || '' }}",
     );
     expect(ios).toContain(
       'git show "$BASE_SHA:scripts/classify-ci-change.mjs"',
     );
-    expect(ios).toContain('--scope ios --mode candidate');
+    expect(ios).toContain(
+      '            pull_request_target|merge_group)\n              scope=ios\n              mode=candidate\n',
+    );
+    expect(ios).toContain(
+      '            push)\n              scope=ios-post-merge\n              mode=direct\n',
+    );
+    expect(ios).toContain('--scope "$scope" --mode "$mode"');
     expect(ios).toContain('relevant=true|relevant=false)');
     expect(ios).toContain('fail_closed "classifier execution failed"');
     expect(ios).toContain('fail_closed "classifier returned malformed output"');
     expect(ios).toContain('needs: classify');
-    expect(ios).toContain("if: needs.classify.outputs.relevant == 'true'");
+    expect(
+      (load(ios) as { jobs: Record<string, { if?: string }> }).jobs[
+        'build-ios-verification'
+      ].if,
+    ).toBe(
+      `!cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.relevant == 'true') && (${HEAVY_PR_LANE_GUARD})`,
+    );
     expect(ios).toContain('runs-on: macos-26');
     expect(ios).toContain('/Applications/Xcode_26.6.app/Contents/Developer');
     expect(ios).not.toContain('self-hosted');
@@ -4248,5 +4416,221 @@ describe('hosted qualification workflow covers the full regression', () => {
     expect(selections(jobs).flatMap(({ text }) => phaseIds(text))).toEqual([
       'repo-governance',
     ]);
+  });
+});
+
+describe('heavy platform lanes wait for ready-for-review on PR events', () => {
+  type Job = { if?: string; concurrency?: Record<string, unknown> };
+  type Doc = {
+    on: Record<string, { types?: string[] } | null>;
+    concurrency: { group: string; 'cancel-in-progress': boolean };
+    jobs: Record<string, Job>;
+  };
+  const lanes = [
+    {
+      file: 'build-ios.yml',
+      job: 'build-ios-verification',
+      condition: `!cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.relevant == 'true') && (${HEAVY_PR_LANE_GUARD})`,
+      mergeGroupRuns: true,
+    },
+    {
+      file: 'windows-pr-verification.yml',
+      job: 'windows-pr-portable',
+      condition: HEAVY_PR_LANE_GUARD,
+      mergeGroupRuns: true,
+    },
+    {
+      file: 'gallery-pr-check.yml',
+      job: 'gallery-diff',
+      condition: `!cancelled() && github.event_name == 'pull_request_target' && (${HEAVY_PR_LANE_GUARD}) && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')`,
+      // Gallery is not a required context, so a merge-group capture could
+      // never stop a landing; Nightly: Gallery covers main after landing.
+      mergeGroupRuns: false,
+    },
+  ];
+  const repository = 'kontourai/station';
+  const relevantNeeds = {
+    classify: { result: 'success', outputs: { relevant: 'true' } },
+  };
+  function pullRequest({
+    action = 'synchronize',
+    draft = false,
+    ref = 'feature/x',
+    headRepository = repository,
+    login = 'someone',
+  }: {
+    action?: string;
+    draft?: boolean;
+    ref?: string;
+    headRepository?: string;
+    login?: string;
+  }) {
+    return {
+      event_name: 'pull_request_target',
+      repository,
+      event: {
+        action,
+        pull_request: {
+          draft,
+          head: { ref, repo: { full_name: headRepository } },
+          user: { login },
+        },
+      },
+    };
+  }
+  const releasePr = {
+    ref: 'changeset-release/main',
+    login: 'station-automation[bot]',
+  };
+
+  it.each(lanes)('$file runs $job when a draft is marked ready', ({ file }) => {
+    const types = (load(workflow(file)) as Doc).on.pull_request_target?.types;
+    expect(types).toEqual([
+      'opened',
+      'synchronize',
+      'reopened',
+      'ready_for_review',
+    ]);
+  });
+
+  it.each(lanes)('$file guards $job with the shared condition', (lane) => {
+    const job = (load(workflow(lane.file)) as Doc).jobs[lane.job];
+    expect(job.if).toBe(lane.condition);
+  });
+
+  it.each(lanes)(
+    '$file skips $job only for drafts and the release PR',
+    (lane) => {
+      const condition = (load(workflow(lane.file)) as Doc).jobs[lane.job].if;
+      const runs = (github: Record<string, unknown>) =>
+        evaluateJobIf(String(condition), { github, needs: relevantNeeds });
+      // Drafts wait, whoever opened them.
+      expect(runs(pullRequest({ action: 'opened', draft: true }))).toBe(false);
+      expect(runs(pullRequest({ draft: true }))).toBe(false);
+      expect(
+        runs(pullRequest({ draft: true, headRepository: 'someone/fork' })),
+      ).toBe(false);
+      // Ready, and every later push to a ready PR, runs. Forks included.
+      expect(runs(pullRequest({ action: 'ready_for_review' }))).toBe(true);
+      expect(runs(pullRequest({ action: 'opened' }))).toBe(true);
+      expect(runs(pullRequest({}))).toBe(true);
+      expect(runs(pullRequest({ headRepository: 'someone/fork' }))).toBe(true);
+      // The automation app's same-repository release PR skips on PR events.
+      expect(runs(pullRequest(releasePr))).toBe(false);
+      expect(runs(pullRequest({ ...releasePr, action: 'opened' }))).toBe(false);
+      // Each identity part is required: a fork's branch of that name, a human
+      // on that branch, or the bot on another branch still runs.
+      expect(
+        runs(pullRequest({ ...releasePr, headRepository: 'someone/station' })),
+      ).toBe(true);
+      expect(runs(pullRequest({ ...releasePr, login: 'someone' }))).toBe(true);
+      expect(runs(pullRequest({ ...releasePr, ref: 'feature/x' }))).toBe(true);
+      // The merge group runs the required lanes for every candidate, the
+      // release PR's included; Gallery's capture skips there by design.
+      expect(
+        runs({
+          event_name: 'merge_group',
+          repository,
+          event: { merge_group: {} },
+        }),
+      ).toBe(lane.mergeGroupRuns);
+    },
+  );
+
+  it('keeps the classifier decisive where it applies', () => {
+    for (const lane of lanes.filter(
+      ({ file }) => file !== 'windows-pr-verification.yml',
+    )) {
+      const condition = (load(workflow(lane.file)) as Doc).jobs[lane.job].if;
+      expect(
+        evaluateJobIf(String(condition), {
+          github: pullRequest({ action: 'ready_for_review' }),
+          needs: {
+            classify: { result: 'success', outputs: { relevant: 'false' } },
+          },
+        }),
+        lane.file,
+      ).toBe(false);
+    }
+  });
+
+  // A classify JOB that failed (checkout or runner failure, which the step's
+  // own fail_closed cannot answer) must build, never leave the required check
+  // skipped; a cancelled run must not start a build at all.
+  it.each(lanes.filter(({ file }) => file !== 'windows-pr-verification.yml'))(
+    '$file builds $job when classification is unknown, and never in a cancelled run',
+    (lane) => {
+      const condition = String(
+        (load(workflow(lane.file)) as Doc).jobs[lane.job].if,
+      );
+      const scenarios = [
+        pullRequest({ action: 'ready_for_review' }),
+        { event_name: 'merge_group', repository, event: { merge_group: {} } },
+        { event_name: 'push', repository, event: {} },
+      ]
+        .filter(
+          (github) =>
+            lane.mergeGroupRuns || github.event_name !== 'merge_group',
+        )
+        .filter(
+          (github) =>
+            lane.file === 'build-ios.yml' || github.event_name !== 'push',
+        );
+      for (const github of scenarios)
+        for (const result of ['failure', 'cancelled', 'skipped'])
+          expect(
+            evaluateJobIf(condition, {
+              github,
+              needs: { classify: { result, outputs: {} } },
+            }),
+            `${lane.file} ${github.event_name} classify ${result}`,
+          ).toBe(true);
+      // Drafts still skip on PR events whatever the classifier did.
+      expect(
+        evaluateJobIf(condition, {
+          github: pullRequest({ draft: true }),
+          needs: { classify: { result: 'failure', outputs: {} } },
+        }),
+      ).toBe(false);
+      // A cancelled run (a superseded head, a dropped candidate) starts
+      // nothing, even with a relevant answer.
+      expect(
+        evaluateJobIf(condition, {
+          github: pullRequest({ action: 'ready_for_review' }),
+          needs: relevantNeeds,
+          cancelled: true,
+        }),
+      ).toBe(false);
+    },
+  );
+
+  it('coalesces post-merge iOS builds without cancelling a running one', () => {
+    const ios = load(workflow('build-ios.yml')) as Doc;
+    // Each push gets its own workflow group, so one push never cancels
+    // another's classification; PRs keep their per-PR group.
+    expect(ios.concurrency).toEqual({
+      group:
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        "build-ios-${{ github.workflow }}-${{ github.event.pull_request.number || github.event_name == 'push' && github.sha || github.ref }}",
+      'cancel-in-progress': true,
+    });
+    // The build job shares ONE group on push (one running, one pending, the
+    // pending one replaced by a newer push) and never cancels in progress.
+    expect(ios.jobs['build-ios-verification'].concurrency).toEqual({
+      group:
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        "${{ github.event_name == 'push' && 'build-ios-main-post-merge' || format('build-ios-verification-{0}', github.run_id) }}",
+      'cancel-in-progress': false,
+    });
+    const push = ios.on.push as { branches?: string[] } | null;
+    expect(push?.branches).toEqual(['main']);
+    // A push builds when the post-merge classifier says so; the guard is a
+    // PR-event rule only.
+    expect(
+      evaluateJobIf(String(ios.jobs['build-ios-verification'].if), {
+        github: { event_name: 'push', repository, event: {} },
+        needs: relevantNeeds,
+      }),
+    ).toBe(true);
   });
 });

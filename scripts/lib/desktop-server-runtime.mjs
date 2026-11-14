@@ -215,6 +215,34 @@ export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
 // `.pdb` is Windows debug-symbol data read only by a debugger, never by the
 // loader: node-pty ships one beside every Windows binary (~27 MB per arch).
 
+const SEMANTIC_CONVENTIONS_NODE_EXPORTS = Object.freeze({
+  '.': './build/src/index.js',
+  './incubating': './build/src/index-incubating.js',
+});
+const SEMANTIC_CONVENTIONS_BUNDLER_CONDITIONS = new Set([
+  'esnext',
+  'module',
+  'types',
+  'default',
+]);
+
+function hasReviewedSemanticConventionNodeExports(pkg) {
+  const exports = pkg.exports ?? {};
+  return (
+    pkg.main === 'build/src/index.js' &&
+    (!pkg.type || pkg.type === 'commonjs') &&
+    Object.keys(exports).length === 2 &&
+    Object.entries(exports).every(
+      ([subpath, conditions]) =>
+        Object.hasOwn(SEMANTIC_CONVENTIONS_NODE_EXPORTS, subpath) &&
+        conditions?.default === SEMANTIC_CONVENTIONS_NODE_EXPORTS[subpath] &&
+        Object.keys(conditions).every((condition) =>
+          SEMANTIC_CONVENTIONS_BUNDLER_CONDITIONS.has(condition),
+        ),
+    )
+  );
+}
+
 /**
  * Package-scoped subtrees the packaged server never reads (#2694). Each rule
  * names one package and the top-level entries of it that are dropped; the
@@ -235,6 +263,10 @@ export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
  *   require. Its build/esm and build/esnext trees are alternate bundler
  *   distributions, including duplicate generated protobuf code. Keep the
  *   Node implementation, package metadata and license; omit those variants.
+ * - Semantic conventions' stable and incubating exports likewise choose
+ *   build/src under normal Node import and require. Only prune its bundler
+ *   distributions while the manifest retains the reviewed default targets
+ *   and conditions; a new Node import/require condition keeps every variant.
  * - koffi (#4524) is the FFI the managed policy's Windows registry and ACL
  *   reader loads with `require('koffi')` on first use, and only on Windows
  *   (packages/shared/src/managed-policy-windows.ts). Keep `src/`: the public
@@ -281,6 +313,13 @@ export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
   Object.freeze({
     id: 'otlp-transformer-node-runtime-only',
     package: '@opentelemetry/otlp-transformer',
+    excludes: (segments) =>
+      segments[0] === 'build' && ['esm', 'esnext'].includes(segments[1]),
+  }),
+  Object.freeze({
+    id: 'semantic-conventions-node-runtime-only',
+    package: '@opentelemetry/semantic-conventions',
+    appliesTo: hasReviewedSemanticConventionNodeExports,
     excludes: (segments) =>
       segments[0] === 'build' && ['esm', 'esnext'].includes(segments[1]),
   }),
@@ -335,9 +374,12 @@ export const RUNTIME_DEPENDENCY_EXCLUSIONS = Object.freeze([
 ]);
 
 function packageCopyOptions(sourceRoot, target) {
-  const packageName = readPackage(sourceRoot).name;
+  const pkg = readPackage(sourceRoot);
+  const packageName = pkg.name;
   const rules = RUNTIME_PACKAGE_PRUNE_RULES.filter(
-    (rule) => rule.package === packageName || rule.package === '*',
+    (rule) =>
+      (rule.package === packageName || rule.package === '*') &&
+      (!rule.appliesTo || rule.appliesTo(pkg)),
   );
   return {
     recursive: true,

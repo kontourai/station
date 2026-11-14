@@ -474,8 +474,8 @@ function applyRuntimeAuthenticationFailure<
       : runtime.name;
   const readinessReason =
     typeof runtime.config.proxyConnectionId === 'string'
-      ? 'The last request could not sign in through this proxy. Check the address and key in Models, then choose Check connection.'
-      : `${providerLabel} rejected a real runtime request. Sign in again; Station will automatically recheck this client shortly.`;
+      ? 'The last request could not sign in through this proxy. Check the address and key in Models, then run Check connection on this engine to prove recovery.'
+      : `${providerLabel} rejected a real runtime request. Sign in again, then run Check connection on this engine to prove recovery.`;
   return {
     ...runtime,
     status: 'missing_prerequisites',

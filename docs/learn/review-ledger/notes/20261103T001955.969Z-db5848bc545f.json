@@ -1,7 +1,0 @@
-{
-  "revision": "2e880a01ae6ab5cc02d3ec284393c3e08b9de4cd",
-
-  "notes": [
-    {"path":"docs/reference/settings-deep-links.md","note":"#4470: the generated settings-registry.json gains one row, diagnostics-troubleshoot (informational, section diagnostics, route /settings?view=diagnostics&highlight=diagnostics-troubleshoot), regenerated with npm run gen:settings-registry. Checked the deep-link rules, the registry response shape and the generator/gate description here; all still hold for the new row. No prose change needed.","inputs":["docs/reference/settings-deep-links.md","src-server/generated/settings-registry.json"]}
-  ]
-}

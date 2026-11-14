@@ -76,6 +76,11 @@ match. Supported services download first, then offer a confirmed restart or
 **When idle**. The existing server observer keeps following an accepted
 request if the panel is closed. Browser and mobile devices can open this
 server section, and mobile app release links appear in the same panel.
+The server section also shows its installed version’s changelog. App and server
+upgrades can each open a changelog once; server presentation is remembered per
+endpoint and instance, and the app prompt takes precedence when both are pending.
+The first observation of each server records its version without a popup.
+
 **Update policies and details** opens Settings, where automatic-download
 policies remain. Source-installation and manual host guidance remain reachable
 from the server section; see [update mechanisms](nightly.md#update-checks-in-settings-source-check-vs-release-check).
@@ -122,7 +127,11 @@ and license; its browser distributions and TypeScript sources are omitted.
 The OTLP transformer likewise retains its Node `build/src` implementation,
 metadata and license. Its alternate `build/esm` and `build/esnext` bundler
 distributions are omitted; normal Node imports and `require` share the retained
-implementation. Flow Agents ships its compiled `build/`, hooks, skills, kits,
+implementation. Semantic conventions retains its stable and incubating Node
+exports and license while omitting its `build/esm` and `build/esnext` bundler
+copies. That rule applies only to the reviewed default Node export targets;
+an added Node-specific condition or changed target keeps every distribution
+until it is reviewed. Flow Agents ships its compiled `build/`, hooks, skills, kits,
 schemas and context; since 9.14 it no longer publishes per-harness `dist/`
 bundles, a TypeScript `src/` or its own `evals/` harness, and a portability
 test fails if they return. It ships those bundles instead as one ~7 MB pack,

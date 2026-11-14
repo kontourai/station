@@ -1,7 +1,0 @@
-{
-  "revision": "908a62e44d3048472a5e3e8b83a75de89de1c771",
-
-  "notes": [
-    {"path":"docs/user/contributing.md","note":"Review round 2: reviewers see rather than resume sessions; template says leave markers empty with no agent; public guide carries the where-recorded qualifier and the Agent-Session trailer; end marker pinned by the gate.","inputs":["docs/user/contributing.md"]}
-  ]
-}

@@ -29,7 +29,13 @@
 The Station control owns connection repair and pairing state. **Station details**
 keeps these facts and local-service recovery readable when the Station is offline;
 work-blocking restrictions also appear in the workspace. Routine reconnects use
-the connection indicator. Setup-return guidance is inline on the current page,
+the connection indicator. After three failed checks, a toast names the previously
+connected Station and its loss reason, without showing its address. It remains
+until recovery or dismissal. Recovery replaces that notice after any active event
+stream catches up. If health recovers with a terminally closed stream, the loss
+notice clears without claiming event delivery recovered. A paused reconnect
+updates the notice to request attention. Decisions shown in Station details take
+over an existing loss notice and do not also raise a toast. Setup-return guidance is inline on the current page,
 and short action outcomes use toasts. No global banner stack is mounted.
 
 A fresh phone without a real saved Station instead shows the QR-first welcome
@@ -54,13 +60,13 @@ work after that choice; it does not proceed into engine or personalization
 questions or mark the optional setup run complete. **Personalize Station** opens
 that run explicitly after the work entry.
 
-New chat opens the start composer (Agent and project chips, Start) as a draft
+New chat opens the start composer (Run setup, Project and Start) as a draft
 in the chat dock. A setup helper appears when the
 selected Agent cannot respond. It shows server-supplied prerequisites and links
-to engine installation instructions, existing account sign-in, or Model setup.
-For the built-in Station assistant, **Choose AI for Station** opens the existing
-engine chooser, including ready external apps, before requiring a new Model
-account. Installation commands are display guidance, never automatic execution. The
+to engine installation instructions, existing account sign-in, or **Add a
+model connection**. For Station's own agent, **Choose AI for Station** opens the
+existing engine chooser, including ready external engines, before requiring a
+new model connection. Installation commands are display guidance, never automatic execution. The
 existing setup-return owner retains the draft and revalidates the same Station
 access before returning. Choosing a ready replacement in the draft still waits
 for Send; Home’s automatic goal path continues to use a runnable recommendation.

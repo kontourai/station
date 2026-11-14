@@ -316,7 +316,7 @@ describe('useChatDockActiveChatSync', () => {
 
     await waitFor(() => expect(opener).toHaveBeenCalledTimes(1));
     await waitFor(() =>
-      expect(showSurface).toHaveBeenCalledWith('activity', {
+      expect(showSurface).toHaveBeenCalledWith('chat', {
         session: 'thread-1',
       }),
     );
@@ -455,7 +455,7 @@ describe('useChatDockActiveChatSync', () => {
 
     await waitFor(() => expect(loadedCatalogOpener).toHaveBeenCalledTimes(1));
     await waitFor(() =>
-      expect(showSurface).toHaveBeenCalledWith('activity', {
+      expect(showSurface).toHaveBeenCalledWith('chat', {
         session: 'thread-1',
       }),
     );
@@ -503,7 +503,7 @@ describe('useChatDockActiveChatSync', () => {
 
     await waitFor(() => expect(opener).toHaveBeenCalledTimes(2));
     await waitFor(() =>
-      expect(showSurface).toHaveBeenCalledWith('activity', {
+      expect(showSurface).toHaveBeenCalledWith('chat', {
         session: 'thread-1',
       }),
     );
@@ -633,7 +633,7 @@ describe('useChatDockActiveChatSync', () => {
       );
 
       await waitFor(() =>
-        expect(showSurface).toHaveBeenCalledWith('activity', {
+        expect(showSurface).toHaveBeenCalledWith('chat', {
           session: 'thread-network-error',
         }),
       );

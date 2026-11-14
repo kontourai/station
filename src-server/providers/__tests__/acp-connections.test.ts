@@ -13,9 +13,11 @@ describe('BuiltinACPConnectionRegistryProvider', () => {
     ).listAvailable();
     const byId = Object.fromEntries(entries.map((entry) => [entry.id, entry]));
 
+    // v2 pinned explicitly: kiro-cli's bare `acp` default moves to v3, which
+    // is the separate `kiro-kas` entry.
     expect(byId.kiro).toMatchObject({
       command: 'kiro-cli',
-      args: ['acp'],
+      args: ['acp', '--agent-engine', 'v2'],
       detected: true,
     });
     expect(byId.cursor).toMatchObject({
@@ -87,10 +89,15 @@ describe('BuiltinACPConnectionRegistryProvider', () => {
     ).listAvailable();
     for (const entry of entries) {
       expect(validateACPEngineDescriptor(entry), entry.id).toEqual([]);
+      // Station installs a managed-runtime engine itself (with consent, from
+      // its sign-in panel), so it carries no command for a person to run.
       expect(Object.keys(entry.install ?? {}).sort(), entry.id).toEqual(
-        [...ACP_ENGINE_INSTALL_PLATFORMS].sort(),
+        entry.managedRuntime ? [] : [...ACP_ENGINE_INSTALL_PLATFORMS].sort(),
       );
     }
+    expect(
+      entries.filter((entry) => entry.managedRuntime).map((entry) => entry.id),
+    ).toEqual(['kiro-kas-bundle']);
   });
 
   test('lists the added engines with their launch commands, and never Gemini CLI', () => {

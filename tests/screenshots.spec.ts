@@ -9,6 +9,10 @@ import { assertGalleryScreenSourcesCover } from './gallery-screen-sources.mjs';
 import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
 import { phoneChatInventoryControls } from './helpers/chat-inventory';
 import { contrastRatio } from './helpers/color-contrast';
+import {
+  agentConnectionFixture,
+  modelConnectionFixture,
+} from './helpers/connection-fixtures';
 import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
@@ -28,8 +32,11 @@ import {
 } from './helpers/keyboard-emulation';
 import { openChooserFromToggle } from './helpers/region-placement';
 import {
+  GALLERY_DESIGN_ROOM_ID,
+  installProjectConversationsFixture,
   installProjectRoomFixture,
   installTaskRoomFixture,
+  NAVIGATION_THREAD_ROOT,
   type ProjectRoomScene,
   type TaskRoomScene,
 } from './helpers/room-gallery-fixtures';
@@ -683,7 +690,7 @@ function fulfillAgentsEmptyFixture(route: Route): Promise<void> {
  * later `page.unroute` removes only this handler, leaving the global one
  * intact for every other screen.
  */
-async function fulfillSessionsFilteredEmptyFixture(
+async function _fulfillSessionsFilteredEmptyFixture(
   route: Route,
 ): Promise<void> {
   // `ProviderSession`/`OrchestrationSessionSummary`'s minimal wire-valid
@@ -1435,6 +1442,8 @@ type GalleryProjectFixture = {
   slug: string;
   name: string;
   workingDirectory?: string;
+  repositoryDisplay?: string;
+  derivedIcon?: string;
 };
 
 /** `GET /api/projects` fixture — the list shape `ProjectMetadata[]` (station-contracts). */
@@ -1449,6 +1458,9 @@ function projectsListFixture(
           id: `p-${project.slug}`,
           slug: project.slug,
           name: project.name,
+          workingDirectory: project.workingDirectory,
+          repositoryDisplay: project.repositoryDisplay,
+          derivedIcon: project.derivedIcon,
           hasWorkingDirectory: Boolean(project.workingDirectory),
           layoutCount: 0,
           hasKnowledge: false,
@@ -1469,8 +1481,10 @@ function projectDetailFixture(
           id: `p-${project.slug}`,
           slug: project.slug,
           name: project.name,
-          hasWorkingDirectory: Boolean(project.workingDirectory),
           workingDirectory: project.workingDirectory,
+          repositoryDisplay: project.repositoryDisplay,
+          derivedIcon: project.derivedIcon,
+          hasWorkingDirectory: Boolean(project.workingDirectory),
           layoutCount: 0,
           hasKnowledge: false,
           agents: [],
@@ -1725,6 +1739,10 @@ async function chooseGalleryNewChatProject(
 function withGalleryProjectsList(
   projects: GalleryProjectFixture[],
   assertions: (page: Page) => Promise<void>,
+  readyAgent = false,
+  fullAccess = false,
+  modelName = 'Gallery model',
+  agentName = 'Station',
 ): Pick<Screen, 'beforeGoto' | 'afterGoto' | 'cleanup'> {
   let cleanups: (() => Promise<void>)[] = [];
   return {
@@ -1733,6 +1751,83 @@ function withGalleryProjectsList(
       cleanups = [
         await withRoute(page, '**/api/projects', projectsListFixture(projects)),
       ];
+      if (readyAgent) {
+        const connection = modelConnectionFixture({
+          id: 'gallery-model',
+          name: modelName,
+          config: {
+            defaultModel: 'gallery-model',
+            modelOptions: [
+              {
+                id: 'gallery-model',
+                name: modelName,
+                originalId: 'gallery-model',
+              },
+            ],
+          },
+        });
+        cleanups.push(
+          await withRoute(page, '**/api/agents', (route) =>
+            route.fulfill({
+              json: {
+                success: true,
+                data: [
+                  {
+                    slug: 'station',
+                    name: agentName,
+                    source: 'local',
+                    engineId: fullAccess ? 'claude' : 'station-agent',
+                    ...(fullAccess
+                      ? {
+                          execution: {
+                            agentConnectionId: 'claude',
+                            approvalMode: 'never',
+                          },
+                        }
+                      : {}),
+                    engineDefault: true,
+                    available: true,
+                    model: 'gallery-model',
+                    toolsConfig: { mcpServers: [], autoApprove: [] },
+                  },
+                ],
+              },
+            }),
+          ),
+          await withRoute(page, '**/api/connections/models', (route) =>
+            route.fulfill({ json: { success: true, data: [connection] } }),
+          ),
+          await withRoute(page, '**/config/app', (route) =>
+            route.fulfill({
+              json: {
+                success: true,
+                data: {
+                  defaultLLMProvider: connection.id,
+                  defaultModel: 'gallery-model',
+                },
+              },
+            }),
+          ),
+        );
+      }
+      if (fullAccess)
+        cleanups.push(
+          await withRoute(page, '**/api/connections/agents', (route) =>
+            route.fulfill({
+              json: {
+                success: true,
+                data: [
+                  agentConnectionFixture({
+                    id: 'claude',
+                    config: {
+                      modelOptions: [{ id: 'gallery-model', name: modelName }],
+                    },
+                  }),
+                ],
+              },
+            }),
+          ),
+        );
       for (const project of projects) {
         cleanups.push(
           await withRoute(
@@ -1758,6 +1853,8 @@ interface Screen {
   viewport: { width: number; height: number };
   /** Capture with the operating-system reduced-motion preference enabled. */
   reducedMotion?: boolean;
+  /** Apply after interactions, which may reapply the saved appearance. */
+  captureTheme?: 'dark' | 'light';
   /** Optional selector to await before shooting (beyond the splash gate). */
   waitFor?: string;
   /**
@@ -3690,25 +3787,38 @@ function roomConversationScreens(): Screen[] {
               // #4792 on the shared conversation: switch to #design, keep a
               // draft across a real reload, then show the channel list over
               // that channel's conversation.
+              const phone = viewport.width === MOBILE.width;
+              // On a phone the switcher is in the channel's ⋯ sheet (#4795).
               const openChannels = async () => {
-                await roomRegion
-                  .getByRole('button', { name: /switch channel$/ })
-                  .click();
+                if (phone) {
+                  await roomRegion
+                    .getByRole('button', { name: 'Channel options' })
+                    .click();
+                  await page
+                    .getByRole('dialog', { name: /^#/ })
+                    .getByRole('button', { name: 'Switch channel' })
+                    .click();
+                } else
+                  await roomRegion
+                    .getByRole('button', { name: /switch channel$/ })
+                    .click();
                 return page.getByRole('dialog', { name: 'Channels' });
               };
+              const expectChannel = (region: Locator, name: string) =>
+                expect(
+                  phone
+                    ? region.getByRole('heading', { level: 2, name })
+                    : region.getByRole('button', {
+                        name: new RegExp(`^${name}\\b.*switch channel$`),
+                      }),
+                ).toBeVisible();
               const list = await openChannels();
               await list
                 .getByRole('button', { name: 'design', exact: true })
                 .click();
+              await expectChannel(roomRegion, 'design');
               await expect(
-                roomRegion.getByRole('button', {
-                  name: /^design\b.*switch channel$/,
-                }),
-              ).toBeVisible();
-              await expect(
-                conversation.getByText(
-                  'New checkout screens are up for review.',
-                ),
+                roomRegion.getByText('New checkout screens are up for review.'),
               ).toBeVisible();
               const draftText = 'Shorter CTA: “Pay now”';
               await composer.fill(draftText);
@@ -3716,11 +3826,7 @@ function roomConversationScreens(): Screen[] {
               const reloaded = page.getByRole('region', {
                 name: 'Project room',
               });
-              await expect(
-                reloaded.getByRole('button', {
-                  name: /^design\b.*switch channel$/,
-                }),
-              ).toBeVisible();
+              await expectChannel(reloaded, 'design');
               await expect(
                 reloaded.getByRole('textbox', { name: /^Message/ }),
               ).toHaveValue(draftText);
@@ -3883,8 +3989,517 @@ function roomConversationScreens(): Screen[] {
   );
 }
 
+/**
+ * Channel navigation (#4794, #4795): the Project's channel list (the phone's
+ * Project page; at 1440 the sidebar with one Project expanded and one
+ * collapsed), a channel opened by its address, and a thread. Unread state
+ * comes from the read-marker fixture.
+ *
+ * The phone list is shot in a tall phone frame, the whole page at once: the
+ * collapsed dock overlays the bottom band of the page's scrollport, and in
+ * a 844px frame some control of this page always sits behind it.
+ */
+const CHANNEL_NAV_SCENES = ['list', 'conversation', 'thread'] as const;
+const PHONE_PAGE = { width: MOBILE.width, height: 1200 } as const;
+
+function channelNavigationScreens(): Screen[] {
+  return CHANNEL_NAV_SCENES.flatMap((scene) =>
+    (['dark', 'light'] as const).flatMap((theme) =>
+      [DESKTOP, scene === 'list' ? PHONE_PAGE : MOBILE].map(
+        (viewport): Screen => {
+          const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+          const phone = viewport.width === MOBILE.width;
+          const slug = `gallery-channels-${scene}-${theme}-${viewport.width}`;
+          const other = `${slug}-site`;
+          let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+          const created: string[] = [];
+          const cleanups: (() => Promise<void>)[] = [];
+          const query =
+            scene === 'conversation'
+              ? `?section=room&channel=${GALLERY_DESIGN_ROOM_ID}`
+              : scene === 'thread'
+                ? `?section=room&thread=${NAVIGATION_THREAD_ROOT}`
+                : '';
+          const screen: Screen = {
+            name: `channel-nav-${scene}-${theme}-${width}`,
+            title: `Channel navigation, ${scene} — ${theme}, ${viewport.width}px`,
+            path: `/projects/${slug}${query}`,
+            viewport,
+            async beforeGoto(page) {
+              request = createAuthenticatedE2ERequest(page.request);
+              const createProject = async (
+                name: string,
+                projectSlug: string,
+              ) => {
+                const response = await request.post(
+                  `${resolveE2EApiBase()}/api/projects`,
+                  { data: { name, slug: projectSlug } },
+                );
+                expect(response.ok()).toBe(true);
+                created.push(projectSlug);
+                return (await response.json()).data as { id: string };
+              };
+              const project = await createProject('Onboarding revamp', slug);
+              // A second Project stays collapsed in the sidebar.
+              await createProject('Kontour site', other);
+              const room = await installProjectRoomFixture(page, {
+                slug,
+                projectId: project.id,
+                scene: 'navigation',
+              });
+              cleanups.push(room.cleanup);
+              const conversations = await installProjectConversationsFixture(
+                page,
+                { slug, projectId: project.id },
+              );
+              cleanups.push(conversations.cleanup);
+            },
+            async afterGoto(page) {
+              await page.evaluate(
+                (selected) =>
+                  document.documentElement.setAttribute('data-theme', selected),
+                theme,
+              );
+              const sidebar = page.getByRole('navigation', {
+                name: 'Primary navigation',
+              });
+              // Unread and working come from the read-marker and session
+              // fixtures; the rows below are the server's answer.
+              const expectProjectList = async (list: Locator) => {
+                await expect(
+                  list.getByRole('button', { name: 'general, 3 unread' }),
+                ).toHaveClass(/conversation-list__row--unread/);
+                await expect(
+                  list.getByRole('button', { name: 'design', exact: true }),
+                ).toBeVisible();
+                await expect(
+                  list.getByRole('button', {
+                    name: 'Fix the login redirect on Safari, Task room, agent working, 2 unread',
+                  }),
+                ).toBeVisible();
+                // A Task whose room never opened is not a Task room.
+                await expect(
+                  list.getByRole('button', { name: /Rename the onboarding/ }),
+                ).toHaveCount(0);
+              };
+              const room = page.getByRole('region', {
+                name: 'Project room',
+                exact: true,
+              });
+              if (scene === 'conversation' || scene === 'thread') {
+                await expect(room).toBeVisible();
+                if (scene === 'conversation') {
+                  await expect(
+                    room.getByText('New checkout screens are up for review.'),
+                  ).toBeVisible();
+                  if (phone) {
+                    await expect(
+                      room.getByRole('heading', { level: 2, name: 'design' }),
+                    ).toBeVisible();
+                    await expectTouchTarget(
+                      room.getByRole('button', {
+                        name: 'Back to Onboarding revamp',
+                      }),
+                      'Back',
+                    );
+                    await expectTouchTarget(
+                      room.getByRole('button', { name: 'Channel options' }),
+                      'Channel options',
+                    );
+                  } else {
+                    // Opening #design marked it read: the sidebar's row is
+                    // current and plain.
+                    const row = sidebar.getByRole('button', {
+                      name: 'design',
+                      exact: true,
+                    });
+                    await expect(row).toHaveAttribute('aria-current', 'page');
+                    await expect(row).not.toHaveClass(
+                      /conversation-list__row--unread/,
+                    );
+                  }
+                } else {
+                  await expect(
+                    room.getByText('Both numbers are fixed in the draft now.'),
+                  ).toBeVisible();
+                  await expect(
+                    room.getByRole('heading', { name: 'Thread' }),
+                  ).toBeVisible();
+                  await expect(
+                    room.getByRole('textbox', { name: 'Reply in thread' }),
+                  ).toBeVisible();
+                }
+                await page.mouse.move(0, 0);
+                return;
+              }
+              if (phone) {
+                const list = page.getByRole('main');
+                await expectProjectList(list);
+                await expectTouchTarget(
+                  list.getByRole('button', { name: 'design', exact: true }),
+                  'Channel row',
+                );
+              } else {
+                await expectProjectList(sidebar);
+                // The other Project stays collapsed: no rows of its own.
+                await expect(
+                  sidebar.getByRole('button', {
+                    name: 'Kontour site',
+                    exact: true,
+                  }),
+                ).toBeVisible();
+                await expect(
+                  sidebar.getByRole('list', { name: 'Channels' }),
+                ).toHaveCount(1);
+              }
+              await page.mouse.move(0, 0);
+            },
+            async cleanup() {
+              for (const release of cleanups.splice(0)) await release();
+              for (const projectSlug of created.splice(0)) {
+                const removed = await request.delete(
+                  `${resolveE2EApiBase()}/api/projects/${projectSlug}`,
+                );
+                expect(removed.ok()).toBe(true);
+              }
+            },
+          };
+          return screen;
+        },
+      ),
+    ),
+  );
+}
+
+/** Real dock composition with an engine-owned child transcript, under a controlled provider. */
+function childChatScreens(): Screen[] {
+  const parent = 'gallery-child-parent';
+  const child = 'review-files';
+  const item = {
+    producer: 'engine-subagent',
+    reporterThreadId: parent,
+    childId: child,
+    status: 'completed',
+    title: 'Review files',
+    transcript: { kind: 'claude-subagent', sessionId: parent, agentId: child },
+  };
+  const summary = {
+    threadId: parent,
+    conversationId: parent,
+    provider: 'claude',
+    status: 'idle',
+    lifecycleState: 'idle',
+    controlMode: 'station-owned',
+    isLoaded: true,
+    isPersisted: true,
+    answerability: { answerable: true },
+    title:
+      'Plan the change across the workspace and review every navigation boundary',
+    displayTitle:
+      'Plan the change across the workspace and review every navigation boundary',
+    createdAt: '2026-07-19T10:00:00Z',
+    updatedAt: '2026-07-19T10:05:00Z',
+    childWork: {
+      children: {
+        observability: 'reported',
+        running: [],
+        settled: [item],
+        observedAt: '2026-07-19T10:05:00Z',
+      },
+    },
+  };
+  return [
+    { width: 1440, height: 900 },
+    { width: 412, height: 915 },
+    { width: 390, height: 844 },
+  ].flatMap((viewport) =>
+    (['dark', 'light'] as const).map((theme) => {
+      let cleanups: (() => Promise<void>)[] = [];
+      return {
+        name: `child-chat-${theme}-${viewport.width}`,
+        title: `Child chat in the dock — ${theme}, ${viewport.width}px`,
+        path: `/?dock=open&chat=${parent}&surface=chat&session=${parent}&child=${child}&childTitle=Review+files&galleryTheme=${theme}`,
+        viewport,
+        beforeGoto: async (page: Page) => {
+          await clearDockGalleryStorage(page);
+          await page.addInitScript(
+            ({ theme, parent }) => {
+              const params = new URLSearchParams(location.search);
+              if (
+                params.get('chat') !== parent ||
+                params.get('galleryTheme') !== theme
+              )
+                return;
+              const key = 'station-device-settings-v1';
+              const envelope = JSON.parse(
+                localStorage.getItem(key) ?? '{"version":2,"values":{}}',
+              );
+              envelope.values = { ...envelope.values, theme };
+              localStorage.setItem(key, JSON.stringify(envelope));
+            },
+            { theme, parent },
+          );
+          await seedActiveChatSession(page, {
+            conversationId: parent,
+            agentSlug: 'demo-agent',
+            title:
+              'Plan the change across the workspace and review every navigation boundary',
+          });
+          // The real host has no execution for this controlled provider record.
+          await page.addInitScript((id) => {
+            if (new URLSearchParams(location.search).get('chat') !== id) return;
+            const original = window.fetch.bind(window);
+            window.fetch = async (input, init) => {
+              const url = input instanceof Request ? input.url : String(input);
+              if (
+                new URL(url, location.href).pathname !==
+                '/api/orchestration/events'
+              )
+                return original(input, init);
+              return new Response(
+                new ReadableStream<Uint8Array>({
+                  start(controller) {
+                    init?.signal?.addEventListener(
+                      'abort',
+                      () => controller.close(),
+                      { once: true },
+                    );
+                  },
+                }),
+                { headers: { 'Content-Type': 'text/event-stream' } },
+              );
+            };
+          }, parent);
+          await mockRuntimeConversation(page, {
+            id: parent,
+            agentSlug: 'demo-agent',
+            title:
+              'Plan the change across the workspace and review every navigation boundary',
+            provider: 'claude',
+            model: 'test-model',
+            canContinue: true,
+            turns: () =>
+              buildLongSessionTurns({
+                threadId: parent,
+                provider: 'claude',
+                turnCount: 1,
+                replyText: () => 'The review is ready.',
+              }),
+          });
+          const json = (data: unknown) => (route: Route) =>
+            route.fulfill({ json: { success: true, data } });
+          cleanups = [
+            await withRoute(page, '**/api/me/preferences', (route) => {
+              if (route.request().method() !== 'GET')
+                return rejectUnexpectedFixtureRequest(route);
+              return route.fulfill({
+                json: {
+                  success: true,
+                  data: { schemaVersion: 1, values: { theme } },
+                },
+              });
+            }),
+            await withRoute(
+              page,
+              '**/api/orchestration/sessions/read-model',
+              json([summary]),
+            ),
+            await withRoute(
+              page,
+              `**/api/orchestration/sessions/${parent}`,
+              json({ session: summary, events: [] }),
+            ),
+            await withRoute(
+              page,
+              `**/api/orchestration/sessions/${parent}/child-work/${child}/transcript**`,
+              json({
+                entries: [
+                  {
+                    message: 0,
+                    kind: 'text',
+                    role: 'user',
+                    text: 'Read the implementation and check the proposed change at phone width.',
+                  },
+                  {
+                    message: 1,
+                    kind: 'tool-call',
+                    toolCallId: 'read-1',
+                    name: 'Read',
+                    input: JSON.stringify({ file_path: 'src/navigation.ts' }),
+                  },
+                  {
+                    message: 2,
+                    kind: 'tool-result',
+                    toolCallId: 'read-1',
+                    text: 'The implementation preserves the parent conversation.',
+                  },
+                  {
+                    message: 3,
+                    kind: 'text',
+                    role: 'assistant',
+                    text: 'The navigation keeps the parent draft and header controls available.',
+                  },
+                ],
+              }),
+            ),
+          ];
+        },
+        afterGoto: async (page: Page) => {
+          await expect(page.locator('html')).toHaveAttribute(
+            'data-theme',
+            theme,
+          );
+          const dock = page.locator('#chat-dock');
+          await expect(
+            dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
+          ).toBeVisible({ timeout: 20000 });
+          await expect(
+            dock.getByText(
+              'The navigation keeps the parent draft and header controls available.',
+            ),
+          ).toBeVisible();
+          // A trusted browser Back uses the same history layer as Android system Back.
+          const reopen = new URL(page.url());
+          reopen.searchParams.set('surface', 'chat');
+          reopen.searchParams.set('session', parent);
+          reopen.searchParams.set('child', child);
+          reopen.searchParams.set('childTitle', 'Review files');
+          const beforeBack = page.url();
+          await page.goBack();
+          await expect(page, 'child Back retains the parent URL').toHaveURL(
+            beforeBack,
+          );
+          await expect(
+            dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
+          ).toBeHidden();
+          await expect(
+            dock.getByText('The review is ready.', { exact: true }),
+          ).toBeVisible();
+          await page.goto(reopen.toString());
+          await expect(
+            dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
+          ).toBeVisible();
+          // Real pointer actions prove both controls survive header clipping,
+          // including a long ancestor title at desktop and phone widths.
+          for (const name of [
+            'Back to parent chat',
+            'Plan the change across the workspace and review every navigation boundary',
+          ]) {
+            const control = dock
+              .getByRole('navigation', { name: 'Chat breadcrumb' })
+              .getByRole('button', { name, exact: true });
+            await expect(control).toBeVisible();
+            const box = (await control.boundingBox())!;
+            expect(box.width).toBeGreaterThanOrEqual(44);
+            expect(box.height).toBeGreaterThanOrEqual(44);
+            expect(
+              await control.evaluate((button) => {
+                const box = button.getBoundingClientRect();
+                return button.contains(
+                  document.elementFromPoint(
+                    box.x + box.width / 2,
+                    box.y + box.height / 2,
+                  ),
+                );
+              }),
+              `${name} is hit-testable at its center`,
+            ).toBe(true);
+            await control.click();
+            await expect(
+              dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
+            ).toBeHidden();
+            await expect(
+              dock.getByText('The review is ready.', { exact: true }),
+            ).toBeVisible();
+            await page.goto(reopen.toString());
+            await expect(
+              dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
+            ).toBeVisible();
+          }
+          if (viewport.width < 600)
+            await dock
+              .getByRole('button', { name: 'Full screen chat', exact: true })
+              .click();
+          else
+            await dock
+              .getByRole('button', {
+                name: 'Expand dock region to workspace',
+                exact: true,
+              })
+              .click();
+
+          await expect(dock.getByText('No result recorded')).toHaveCount(0);
+          const call = dock.locator('.tool-call').first();
+          await expect(call).toBeVisible();
+          const toggle = call.getByRole('button').first();
+          if ((await toggle.getAttribute('aria-expanded')) === 'false')
+            await toggle.click();
+          await expect(
+            dock.getByText(
+              'The implementation preserves the parent conversation.',
+            ),
+          ).toBeVisible();
+          await expect(
+            dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
+          ).toContainText(
+            'Plan the change across the workspace and review every navigation boundary',
+          );
+          if (viewport.width < 600)
+            await expect(
+              dock.getByRole('button', { name: 'Chat actions', exact: true }),
+            ).toBeVisible();
+          await expect(page.locator('html')).toHaveAttribute(
+            'data-theme',
+            theme,
+          );
+          if (viewport.width < 600) {
+            for (const name of ['Chat actions', 'New chat']) {
+              const control = dock.getByRole('button', { name, exact: true });
+              const hittable = await control.evaluate((button) => {
+                const box = button.getBoundingClientRect();
+                const hit = document.elementFromPoint(
+                  box.x + box.width / 2,
+                  box.y + box.height / 2,
+                );
+                return (
+                  box.width >= 44 &&
+                  box.height >= 44 &&
+                  (hit === button || button.contains(hit))
+                );
+              });
+              expect(hittable, `${name} keeps a clear 44px phone target`).toBe(
+                true,
+              );
+            }
+          }
+          if (viewport.width < 600) {
+            const titleBox = await dock
+              .locator('[aria-current="page"]')
+              .boundingBox();
+            const actionsBox = await dock
+              .getByRole('button', { name: 'Chat actions', exact: true })
+              .boundingBox();
+            expect(
+              (titleBox?.x ?? 0) + (titleBox?.width ?? 0),
+              'breadcrumb stays before actions',
+            ).toBeLessThanOrEqual(actionsBox?.x ?? 0);
+          }
+          const overflow = await dock.evaluate(
+            (element) => element.scrollWidth > element.clientWidth + 1,
+          );
+          expect(overflow, 'the actual dock fits the viewport').toBe(false);
+        },
+        cleanup: async () => {
+          for (const cleanup of cleanups.reverse()) await cleanup();
+        },
+      } satisfies Screen;
+    }),
+  );
+}
+
 const SCREENS: Screen[] = [
   ...roomConversationScreens(),
+  ...channelNavigationScreens(),
   ...appsLibraryScreens(),
   ...appsLibraryScreens(true),
   ...projectRepositorySourceScreens(),
@@ -3956,35 +4571,6 @@ const SCREENS: Screen[] = [
       },
     };
   }),
-  {
-    name: 'mobile-activity-compact',
-    title: 'Mobile — Activity opened over Chat (#2549)',
-    path: '/?surface=activity',
-    viewport: MOBILE,
-    waitFor: '.activity-filters, .split-pane__list',
-    afterGoto: async (page) => {
-      for (const control of [
-        page.getByRole('button', { name: 'New Task', exact: true }),
-      ]) {
-        await expect(control).toBeVisible();
-        expect(
-          await control.evaluate((node) => {
-            const box = node.getBoundingClientRect();
-            return (
-              box.top >= 0 &&
-              box.bottom <= window.innerHeight &&
-              node.contains(
-                document.elementFromPoint(
-                  box.x + box.width / 2,
-                  box.y + box.height / 2,
-                ),
-              )
-            );
-          }),
-        ).toBe(true);
-      }
-    },
-  },
   ...[320, 390].flatMap((width): Screen[] => [
     {
       name: `mobile-http-consent-${width}`,
@@ -4198,12 +4784,6 @@ const SCREENS: Screen[] = [
   // Flow reviews, review evidence) this spec does not stub, so pointing the
   // same entry at it would photograph an empty state under a name that claims
   // otherwise. A real capture is new work with its own fixtures.
-  {
-    name: 'sessions',
-    title: 'Activity',
-    path: '/?surface=activity',
-    viewport: DESKTOP,
-  },
   { name: 'plugins', title: 'Plugins', path: '/plugins', viewport: DESKTOP },
   (() => {
     let cleanup: () => Promise<void> = async () => {};
@@ -4426,69 +5006,6 @@ const SCREENS: Screen[] = [
     // `.settings__search` (SettingsView.tsx:599) exists only once the loaded
     // branch renders, which is the state this screen exists to capture.
     waitFor: '.settings__search',
-  },
-  {
-    name: 'sessions-filtered-empty',
-    title: 'Activity — filtered empty',
-    path: '/?surface=activity',
-    viewport: DESKTOP,
-    // archive#4501 ("the honest FilteredEmpty derivation"): `SplitPaneLayout`
-    // gained `collectionEmpty` so a typed search over a collection that was
-    // ALREADY empty renders the plain `Empty` state, never `FilteredEmpty` —
-    // deliberately (SplitPaneLayout.tsx:962-967's own comment: "a typed query
-    // over an ALREADY-empty collection is not what emptied it"), so a search
-    // can never misattribute "nothing here" to itself, and never offers a
-    // "Clear filter" that would fix nothing. `SessionsView.tsx:737` wires
-    // `collectionEmpty={projectFiltered.length === 0}`, i.e. the RAW
-    // (pre-search) session list. This screen exists to capture the
-    // FilteredEmpty branch itself, which is genuinely reachable only when
-    // the raw collection is non-empty and the typed search matches none of
-    // it — the suite's own global read-model mock (an empty array, a
-    // truthful default for a fresh temp-home) can no longer reach it after
-    // archive#4501. Override it here with a few real-shaped sessions so
-    // `collectionEmpty` is false and "missing-session" filters an actual
-    // collection down to zero.
-    beforeGoto: async (page) => {
-      await page.route(
-        '**/api/orchestration/sessions/read-model',
-        fulfillSessionsFilteredEmptyFixture,
-      );
-    },
-    afterGoto: async (page) => {
-      try {
-        await page.getByPlaceholder('Search activity…').fill('missing-session');
-        // The margin here covers the read-model fetch's own latency (>6s
-        // wall-clock has been observed under host load — that signal is
-        // archive#4466, not something this timeout fixes); a repeat-500
-        // still fails loudly via the error branch rather than at this
-        // timeout.
-        await expect(
-          page.getByText('No activity matches “missing-session”'),
-        ).toBeVisible({ timeout: 15_000 });
-        await expect(
-          page.getByRole('button', { name: 'Clear search and filters' }),
-        ).toBeVisible();
-      } finally {
-        // `page.route` handlers persist across `page.goto()` for the
-        // page's lifetime (see the resource-posture mock's doc comment in
-        // the main test body). `ProjectSidebar` (chrome-wide) reads this
-        // SAME endpoint for its own "N open chats" derivation, so leaving
-        // this fixture registered would leak 3 phantom open chats into the
-        // sidebar of every screen captured after this one in the run.
-        // Unregister regardless of whether the assertions above passed —
-        // WITH the same handler reference passed to `page.route` above, so
-        // this removes only this fixture and leaves the main test body's
-        // global empty-array mock for the same URL pattern intact (see
-        // `fulfillSessionsFilteredEmptyFixture`'s doc comment: omitting the
-        // handler argument here once tore out that global mock too, and
-        // every later screen's request fell through to the real, 500ing
-        // dev server).
-        await page.unroute(
-          '**/api/orchestration/sessions/read-model',
-          fulfillSessionsFilteredEmptyFixture,
-        );
-      }
-    },
   },
   // archive#192 converged empty-state screens — both should render the shared
   // Console Kit `Empty` visual (dashed-border card), not bespoke markup.
@@ -4754,7 +5271,7 @@ const SCREENS: Screen[] = [
       // both of which the retired offer menu could not show at all.
       await expect(menu.getByRole('menuitem', { name: /^Chat/ })).toBeVisible();
       await expect(
-        menu.getByRole('menuitem', { name: /^Activity/ }),
+        menu.getByRole('menuitem', { name: /^Agents/ }),
       ).toBeVisible();
       // The hold must not ALSO have toggled the region under the panel.
       await expect(trigger).toHaveAttribute('aria-pressed', 'false');
@@ -5078,21 +5595,16 @@ const SCREENS: Screen[] = [
   })(),
   {
     name: 'overlay-mobile-sheet',
-    title: 'Overlay — Mobile project-switcher sheet',
+    title: 'New chat — Mobile composer Project picker',
     path: '/?dock=open',
     viewport: MOBILE,
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
-      // archive#793: always rendered (bound project or not — unbound is a
-      // valid, always-reachable switcher state), so this needs no
-      // project/session seeding to be deterministic. This screen is the MOBILE
-      // header's own trigger, which #1552 D3 did not touch.
-      const trigger = page.getByRole('button', { name: /^Switch project/ });
-      await trigger.waitFor({ timeout: 10_000 });
-      await trigger.click();
+      const draft = await openGalleryNewChatDraft(page);
+      await draft.getByRole('button', { name: /^Project: / }).click();
       await expect(
-        page.locator('.chat-dock__project-switcher-panel'),
-      ).toBeVisible({ timeout: 10_000 });
+        page.getByRole('dialog', { name: 'Choose project', exact: true }),
+      ).toBeVisible();
     },
   },
   // archive#4525: no screen in the gallery otherwise stages a BOUND
@@ -5101,14 +5613,24 @@ const SCREENS: Screen[] = [
   // those states would be invisible in the build gallery. These
   // three make them visible.
   ...(['dark', 'light'] as const).flatMap((theme) =>
-    [DESKTOP, MOBILE].map(
+    [DESKTOP, MOBILE, { width: 412, height: 915 }].map(
       (viewport): Screen => ({
-        name: `new-chat-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
+        captureTheme: theme,
+        name: `new-chat-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : viewport.width === 412 ? 'phone' : 'mobile'}`,
         title: `New chat — ${theme}, ${viewport.width}px`,
         path: '/?dock=open',
         viewport,
         ...withGalleryProjectsList(
-          [{ slug: 'demo-project', name: 'Demo Project' }],
+          [
+            {
+              slug: 'demo-project',
+              name: 'Demo Project',
+              workingDirectory: '/work/station',
+              repositoryDisplay: 'github.com/kontourai/station',
+              derivedIcon:
+                'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAm0lEQVR4nO3U0QmAMAwE0E7iJM7pOA7hQvVLEEmay6VaxQTyVbh7P00p5NRtrtdlsxIAz7Ss9VgJcH6/rRgFdINIoR5ACKEFegEUohXGAFwIK4gFQAgkJAIwEUMBaEAUoCL+CZCCntwEJGD8L0gAi4gA1PJXAFAECzDLUQQDgMsRhBfgLrcQHgBd3kKggHC5BrEAXYulMe/6VwA7qPD726l6fusAAAAASUVORK5CYII=',
+            },
+          ],
           async (page) => {
             const draft = await openGalleryNewChatDraft(page);
             await chooseGalleryNewChatProject(page, draft, 'Demo Project');
@@ -5124,6 +5646,22 @@ const SCREENS: Screen[] = [
             await expect(
               draft.getByRole('textbox', { name: 'What would you like done?' }),
             ).toBeVisible();
+            const setup = draft.getByTestId('run-setup-trigger');
+            const markBox = (await setup
+              .locator('.composer-choice__icon')
+              .boundingBox())!;
+            const labelBox = (await setup
+              .locator('.chat-input__chip-stack')
+              .boundingBox())!;
+            const caretBox = (await setup
+              .locator('.choice-caret')
+              .boundingBox())!;
+            expect(
+              labelBox.x - markBox.x - markBox.width,
+            ).toBeGreaterThanOrEqual(4);
+            expect(
+              caretBox.x - labelBox.x - labelBox.width,
+            ).toBeGreaterThanOrEqual(4);
             const location = draft.locator('.start-composer__location');
             await expect(location).toBeInViewport();
             const bounds = await location.boundingBox();
@@ -5132,6 +5670,430 @@ const SCREENS: Screen[] = [
               viewport.height,
             );
           },
+        ),
+      }),
+    ),
+  ),
+  ...(['dark', 'light'] as const).flatMap((theme) =>
+    [320, 360, 390, 412, 1440].flatMap((width) =>
+      ['short', 'long'].map((names): Screen => {
+        let fixturePage: Page;
+        const id = `reply-composer-${theme}-${width}-${names}`;
+        const model =
+          names === 'long'
+            ? 'reasoning-model-with-a-very-long-version-id-2026'
+            : 'Mini';
+        const agent =
+          names === 'long'
+            ? 'Research assistant with an unusually long name'
+            : 'Station';
+        const hooks = withGalleryProjectsList(
+          [],
+          async (page) => {
+            await page.evaluate(
+              (theme) =>
+                document.documentElement.setAttribute('data-theme', theme),
+              theme,
+            );
+            const composer = page
+              .locator('.chat-input')
+              .filter({ visible: true })
+              .last();
+            await expect(
+              composer.getByRole('textbox', { name: 'Message', exact: true }),
+            ).toBeVisible();
+            await composer
+              .getByRole('textbox', { name: 'Message', exact: true })
+              .fill('Follow up on this');
+            const trigger = composer.getByTestId('run-setup-trigger');
+            await expect(trigger).toHaveAccessibleName(new RegExp(agent));
+            await expect(trigger).toHaveAttribute(
+              'title',
+              new RegExp(
+                names === 'long'
+                  ? 'Reasoning Model With A Very Long Version Id 2026'
+                  : model,
+              ),
+            );
+            const send = composer.locator('.chat-input__send-btn');
+            const controlBox = (await trigger.boundingBox())!;
+            const sendBox = (await send.boundingBox())!;
+            const composerBox = (await composer.boundingBox())!;
+            expect(
+              Math.abs(
+                controlBox.y +
+                  controlBox.height / 2 -
+                  sendBox.y -
+                  sendBox.height / 2,
+              ),
+            ).toBeLessThanOrEqual(1);
+            expect(controlBox.x + controlBox.width).toBeLessThanOrEqual(
+              sendBox.x,
+            );
+            expect(sendBox.x + sendBox.width).toBeLessThanOrEqual(
+              composerBox.x + composerBox.width,
+            );
+            expect(controlBox.width).toBeGreaterThanOrEqual(44);
+            expect(controlBox.height).toBeGreaterThanOrEqual(44);
+            expect(
+              await composer.evaluate((el) => el.scrollWidth <= el.clientWidth),
+            ).toBe(true);
+            if (width === 412 && names === 'long') {
+              // Read glyph geometry through every clipping ancestor. textContent
+              // alone includes the Agent and separator even when neither paints.
+              const firstVisibleGlyph = await trigger
+                .locator('.composer-run-control__label')
+                .evaluate((label) => {
+                  const walker = document.createTreeWalker(
+                    label,
+                    NodeFilter.SHOW_TEXT,
+                  );
+                  for (
+                    let node = walker.nextNode();
+                    node;
+                    node = walker.nextNode()
+                  ) {
+                    for (let i = 0; i < (node.textContent?.length ?? 0); i++) {
+                      const char = node.textContent![i]!;
+                      if (!char.trim()) continue;
+                      const range = document.createRange();
+                      range.setStart(node, i);
+                      range.setEnd(node, i + 1);
+                      const rect = range.getBoundingClientRect();
+                      let left = rect.left;
+                      let right = rect.right;
+                      for (
+                        let parent = node.parentElement;
+                        parent;
+                        parent = parent.parentElement
+                      ) {
+                        if (getComputedStyle(parent).overflowX !== 'visible') {
+                          const clip = parent.getBoundingClientRect();
+                          left = Math.max(left, clip.left);
+                          right = Math.min(right, clip.right);
+                        }
+                      }
+                      if (rect.width > 1 && right - left >= rect.width * 0.9)
+                        return char;
+                    }
+                  }
+                  return null;
+                });
+              expect(firstVisibleGlyph).not.toBeNull();
+              expect(firstVisibleGlyph).not.toBe('·');
+            }
+            if (width === 320)
+              await expect(
+                trigger.locator('.chat-input__chip-stack'),
+              ).toBeHidden();
+            if (width === 320 && names === 'short') {
+              await composer
+                .getByRole('button', {
+                  name: 'More draft options',
+                  exact: true,
+                })
+                .click();
+              await page
+                .getByRole('menuitem', { name: 'Saved drafts', exact: true })
+                .click();
+              const drafts = page.getByRole('dialog', {
+                name: 'Saved drafts',
+                exact: true,
+              });
+              await expect(drafts).toBeVisible();
+              await drafts
+                .getByRole('button', {
+                  name: 'Close saved drafts',
+                  exact: true,
+                })
+                .click();
+              await composer
+                .getByRole('button', {
+                  name: 'More draft options',
+                  exact: true,
+                })
+                .click();
+              await page
+                .getByRole('menuitem', { name: 'Clear message', exact: true })
+                .click();
+              await expect(
+                composer.getByRole('textbox', { name: 'Message', exact: true }),
+              ).toHaveValue('');
+              await composer
+                .getByRole('textbox', { name: 'Message', exact: true })
+                .fill('Follow up on this');
+            }
+          },
+          true,
+          false,
+          model,
+          agent,
+        );
+        return {
+          name: id,
+          title: `Reply composer — ${names} names`,
+          path: `/?dock=open&chat=${id}`,
+          viewport: { width, height: width === 1440 ? 900 : 915 },
+          captureTheme: theme,
+          ...hooks,
+          beforeGoto: async (page) => {
+            fixturePage = page;
+            await hooks.beforeGoto?.(page);
+            await page.addInitScript((conversation) => {
+              if (
+                new URLSearchParams(location.search).get('chat') !==
+                conversation
+              )
+                return;
+              const original = window.fetch.bind(window);
+              window.fetch = async (input, init) => {
+                const url =
+                  input instanceof Request ? input.url : String(input);
+                if (
+                  new URL(url, location.href).pathname !==
+                  '/api/orchestration/events'
+                )
+                  return original(input, init);
+                return new Response(
+                  new ReadableStream<Uint8Array>({
+                    start(controller) {
+                      init?.signal?.addEventListener(
+                        'abort',
+                        () => controller.close(),
+                        { once: true },
+                      );
+                    },
+                  }),
+                  { headers: { 'Content-Type': 'text/event-stream' } },
+                );
+              };
+            }, id);
+            await page.route(
+              '**/api/orchestration/sessions/read-model',
+              orchestrationSessionFixture({ threadId: id }),
+            );
+            await seedActiveChatSession(page, {
+              conversationId: id,
+              agentSlug: 'station',
+              title: 'Toolbar layout',
+            });
+            await mockRuntimeConversation(page, {
+              id,
+              agentSlug: 'station',
+              title: 'Toolbar layout',
+              provider: 'station-agent',
+              model,
+              canContinue: true,
+              turns: () =>
+                buildLongSessionTurns({
+                  threadId: id,
+                  provider: 'station-agent',
+                  turnCount: 1,
+                  replyText: () => 'Ready for your next message.',
+                }),
+            });
+          },
+          cleanup: async () => {
+            const page = fixturePage;
+            await hooks.cleanup?.();
+            await page.unroute('**/api/orchestration/sessions/read-model');
+            await page.unroute(`**/api/conversations/${id}/open`);
+            await page.unroute(
+              `**/api/orchestration/conversations/${id}/inbox`,
+            );
+            await page.unroute(
+              `**/api/orchestration/conversations/${id}/event-window**`,
+            );
+            await page.unroute(
+              `**/api/orchestration/sessions/${id}/turns/*/basis`,
+            );
+          },
+        };
+      }),
+    ),
+  ),
+  ...[390, 412].map(
+    (width): Screen => ({
+      name: `run-setup-full-access-${width}`,
+      title: 'Run setup — full access',
+      path: '/?dock=open',
+      viewport: { width, height: 915 },
+      ...withGalleryProjectsList(
+        [],
+        async (page) => {
+          const draft = await openGalleryNewChatDraft(page);
+          const trigger = draft.getByTestId('run-setup-trigger');
+          await expect(trigger).toContainText('⚠');
+          await expect(trigger).toHaveAccessibleName(/Full access/);
+          await expect(trigger).toBeInViewport();
+          const model = trigger.locator('.composer-run-control__model');
+          await expect(model).toHaveText('Mini');
+          const modelBox = await model.boundingBox();
+          const triggerBox = await trigger.boundingBox();
+          expect(modelBox).not.toBeNull();
+          expect(triggerBox).not.toBeNull();
+          expect(modelBox!.x + modelBox!.width).toBeLessThanOrEqual(
+            triggerBox!.x + triggerBox!.width,
+          );
+          expect(
+            await model.evaluate((el) => el.scrollWidth <= el.clientWidth),
+          ).toBe(true);
+          await expect(
+            draft.getByRole('button', { name: /Attach/ }).first(),
+          ).toBeInViewport();
+          await expect(
+            draft.getByRole('button', { name: 'Start', exact: true }),
+          ).toBeInViewport();
+          await expect(
+            draft.getByRole('button', {
+              name: /^(Speak message|Microphone unavailable)$/,
+            }),
+          ).toBeInViewport();
+        },
+        true,
+        true,
+        'Mini',
+      ),
+    }),
+  ),
+  ...(['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE, { width: 412, height: 915 }].map(
+      (viewport): Screen => ({
+        name: `run-setup-filled-${theme}-${viewport.width}`,
+        title: `Filled run setup — ${theme}, ${viewport.width}px`,
+        path: '/?dock=open',
+        viewport,
+        captureTheme: theme,
+        ...withGalleryProjectsList(
+          [],
+          async (page) => {
+            const draft = await openGalleryNewChatDraft(page);
+            if (theme === 'light')
+              await page.evaluate(() =>
+                document.documentElement.setAttribute('data-theme', 'light'),
+              );
+            const trigger = draft.getByTestId('run-setup-trigger');
+            await expect(trigger).toContainText('Station · Mini');
+            const setupBox = (await trigger.boundingBox())!;
+            const startBox = (await draft
+              .getByRole('button', { name: 'Start', exact: true })
+              .boundingBox())!;
+            expect(
+              Math.abs(
+                setupBox.y +
+                  setupBox.height / 2 -
+                  startBox.y -
+                  startBox.height / 2,
+              ),
+            ).toBeLessThanOrEqual(1);
+            expect(setupBox.x + setupBox.width).toBeLessThanOrEqual(startBox.x);
+            expect(
+              await draft
+                .locator('.start-composer__box')
+                .evaluate((el) => el.scrollWidth <= el.clientWidth),
+            ).toBe(true);
+
+            await expect(
+              trigger.locator('[data-brand-key="station"]'),
+            ).toHaveCount(1);
+            await expect(trigger).toBeInViewport();
+            await expect(
+              page.getByRole('dialog', { name: 'Run setup', exact: true }),
+            ).toBeHidden();
+          },
+          true,
+          false,
+          'Mini',
+        ),
+      }),
+    ),
+  ),
+  ...(['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE, { width: 412, height: 915 }].map(
+      (viewport): Screen => ({
+        captureTheme: theme,
+        name: `run-setup-${theme}-${viewport.width}`,
+        title: `Run setup — ${theme}, ${viewport.width}px`,
+        path: '/?dock=open',
+        viewport,
+        ...withGalleryProjectsList(
+          [{ slug: 'demo-project', name: 'Demo Project' }],
+          async (page) => {
+            const draft = await openGalleryNewChatDraft(page);
+            if (theme === 'light')
+              await page.evaluate(() =>
+                document.documentElement.setAttribute('data-theme', 'light'),
+              );
+            const trigger = draft.getByTestId('run-setup-trigger');
+            await expect(trigger).toBeInViewport();
+            const bounds = await trigger.boundingBox();
+            expect(bounds!.width).toBeLessThan(viewport.width);
+            await trigger.click();
+            await expect(
+              page.getByRole('dialog', { name: 'Run setup' }),
+            ).toBeVisible();
+            await expect(
+              page.getByRole('button', { name: /^Agent:/ }),
+            ).toBeVisible();
+            await expect(
+              page.getByRole('button', { name: /^Model:/ }),
+            ).toBeVisible();
+          },
+        ),
+      }),
+    ),
+  ),
+  ...(['dark', 'light'] as const).flatMap((theme) =>
+    [{ width: 412, height: 915 }].map(
+      (viewport): Screen => ({
+        captureTheme: theme,
+        name: `run-setup-model-stacked-${theme}-${viewport.width}`,
+        title: `Stacked model picker — ${theme}, ${viewport.width}px`,
+        path: '/?dock=open',
+        viewport,
+        ...withGalleryProjectsList(
+          [{ slug: 'demo-project', name: 'Demo Project' }],
+          async (page) => {
+            const draft = await openGalleryNewChatDraft(page);
+            if (theme === 'light')
+              await page.evaluate(() =>
+                document.documentElement.setAttribute('data-theme', 'light'),
+              );
+            const trigger = draft.getByTestId('run-setup-trigger');
+            await expect(trigger).toBeInViewport();
+            const bounds = await trigger.boundingBox();
+            expect(bounds!.width).toBeLessThan(viewport.width);
+            await trigger.click();
+            await expect(
+              page.getByRole('dialog', { name: 'Run setup' }),
+            ).toBeVisible();
+            await expect(
+              page.getByRole('button', { name: /^Agent:/ }),
+            ).toBeVisible();
+            await expect(
+              page.getByRole('button', { name: /^Model:/ }),
+            ).toBeVisible();
+            await page
+              .getByRole('dialog', { name: 'Run setup', exact: true })
+              .getByRole('button', { name: /^Model:/ })
+              .click();
+            const picker = page.getByRole('dialog', {
+              name: /^(Model|Engine & model)$/,
+              exact: true,
+            });
+            await expect(picker).toBeVisible();
+            await picker.evaluate(async (panel) => {
+              await Promise.allSettled(
+                panel
+                  .getAnimations({ subtree: true })
+                  .map((animation) => animation.finished),
+              );
+            });
+            const box = await picker.boundingBox();
+            expect(box!.x).toBeGreaterThanOrEqual(0);
+            expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
+          },
+          true,
         ),
       }),
     ),
@@ -5170,6 +6132,41 @@ const SCREENS: Screen[] = [
     viewport,
     ...overlayDockProjectMismatchHooks(true),
   })),
+  ...[DESKTOP, { width: 412, height: 915 }].map(
+    (viewport): Screen => ({
+      name: `detected-project-${viewport.width === 412 ? 'phone' : 'desktop'}`,
+      title: 'Project picker — detected artwork and repository identity',
+      path: '/?dock=open',
+      viewport,
+      ...withGalleryProjectsList(
+        [
+          {
+            slug: 'demo-project',
+            name: 'Demo Project',
+            workingDirectory: '/work/station',
+            repositoryDisplay: 'github.com/kontourai/station',
+            derivedIcon:
+              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAm0lEQVR4nO3U0QmAMAwE0E7iJM7pOA7hQvVLEEmay6VaxQTyVbh7P00p5NRtrtdlsxIAz7Ss9VgJcH6/rRgFdINIoR5ACKEFegEUohXGAFwIK4gFQAgkJAIwEUMBaEAUoCL+CZCCntwEJGD8L0gAi4gA1PJXAFAECzDLUQQDgMsRhBfgLrcQHgBd3kKggHC5BrEAXYulMe/6VwA7qPD726l6fusAAAAASUVORK5CYII=',
+          },
+        ],
+        async (page) => {
+          const draft = await openGalleryNewChatDraft(page);
+          await chooseGalleryNewChatProject(page, draft, 'Demo Project');
+          await draft.getByRole('button', { name: /^Project: / }).click();
+          await expect(
+            page.getByRole('dialog', { name: 'Choose project' }),
+          ).toBeVisible();
+        },
+      ),
+    }),
+  ),
+  {
+    name: 'active-chat-phone',
+    title: 'Active chat header — actions and Station identity',
+    path: '/?dock=open&chat=gallery-mismatch-conversation',
+    viewport: { width: 412, height: 915 },
+    ...overlayDockProjectMismatchHooks(true),
+  },
   {
     name: 'overlay-project-switcher-populated',
     title: 'New chat — Populated Project picker',
@@ -5388,6 +6385,7 @@ const SCREENS: Screen[] = [
     } satisfies Screen;
   })(),
   ...inventoryDrilldownScreens(),
+  ...childChatScreens(),
   ...stationSwitcherScreens(),
   ...taskCapabilityScreens(),
 ];
@@ -5950,6 +6948,17 @@ test('build gallery — capture key screens', async ({ page }) => {
             if (screen.name !== 'settings-info-tip') {
               await page.mouse.move(0, 0);
             }
+            if (screen.captureTheme) {
+              await page.evaluate(
+                (theme) =>
+                  document.documentElement.setAttribute('data-theme', theme),
+                screen.captureTheme,
+              );
+              await expect(page.locator('html')).toHaveAttribute(
+                'data-theme',
+                screen.captureTheme,
+              );
+            }
             await page.screenshot({
               path: join(GALLERY_DIR, file),
               fullPage: true,
@@ -6091,7 +7100,15 @@ test('build gallery — capture key screens', async ({ page }) => {
           screen,
           file,
           ok: false,
-          error: error instanceof Error ? error.message : String(error),
+          // Preserve the already bounded per-screen console/page errors when
+          // a render assertion fails; the fallback PNG alone cannot explain
+          // a lazy-boundary failure. Failure and capture counts stay intact.
+          error: [
+            error instanceof Error ? error.message : String(error),
+            ...(browserErrors.length
+              ? [`Browser errors: ${JSON.stringify(browserErrors)}`]
+              : []),
+          ].join('\n'),
         });
       } finally {
         await screen.cleanup?.();

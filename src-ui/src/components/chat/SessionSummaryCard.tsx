@@ -1,3 +1,4 @@
+import { isSummaryContextBoundary } from '@kontourai/station-contracts/conversation-context-boundary';
 import {
   SESSION_SUMMARY_GENERATE_MUTATION_KEY,
   useDeleteSessionSummaryMutation,
@@ -239,13 +240,15 @@ export function SessionSummaryCard({
           ) : null}
           {data.contextBoundaries?.length ? (
             <section className="session-summary__section">
-              <strong>Context boundary disclosure</strong>
+              <strong>Context resets</strong>
               <ul>
                 {data.contextBoundaries.map((boundary) => (
                   <li key={boundary.boundaryId}>
                     {boundary.policy === 'empty-next-cold-start'
-                      ? 'Prior transcript not injected. Summary separately reads canonical history.'
-                      : 'Prior transcript re-anchored and injected.'}
+                      ? 'The agent started fresh. This summary still reads the full chat.'
+                      : isSummaryContextBoundary(boundary.policy)
+                        ? 'The agent continued from a summary.'
+                        : 'The agent continued from chat history.'}
                   </li>
                 ))}
               </ul>

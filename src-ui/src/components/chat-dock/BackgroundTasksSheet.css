@@ -197,16 +197,6 @@
   white-space: nowrap;
 }
 
-.background-tasks-sheet__meta {
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: var(--k-text-sm);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .background-tasks-sheet__chevron {
   flex-shrink: 0;
   color: var(--text-tertiary);
@@ -388,8 +378,4 @@
     overflow-wrap: anywhere;
     white-space: normal;
   }
-}
-
-.background-tasks-sheet__meta > .child-work-activity {
-  flex: 1;
 }

@@ -1,7 +1,0 @@
-{
-  "revision": "eafe6607e1f8f28d7ac77df022a0be5048cefddc",
-
-  "notes": [
-    {"path":"docs/glossary.md","note":"Re-read after the connect.md checkedAt wording change in 9c14eec02887; no vocabulary affected.","inputs":["docs/glossary.md","docs/reference/connect.md"]}
-  ]
-}

@@ -230,13 +230,16 @@ export function RegistryCatalogCard({
             <McpQualificationBadge listing={item.mcpServer} />
           )}
         </div>
+        {/* A short visible label so a long name cannot overflow the card;
+            the accessible name still names the item. */}
         <Button
           variant="secondary"
           size="sm"
           aria-pressed={selected}
+          aria-label={`View ${item.displayName || item.name || id} details`}
           onClick={choose}
         >
-          View {item.displayName || item.name || id} details
+          Details
         </Button>
       </div>
     </article>

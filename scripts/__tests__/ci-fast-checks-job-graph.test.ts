@@ -23,8 +23,9 @@ import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
  * including one that was skipped. `classify` is skipped for every
  * pull_request_target, so on every same-repository pull request the plan
  * ran (it uses `always()`), the shards were skipped, and the required
- * aggregator failed (run 36308041839). Dispatch and merge_group run
- * `classify`, so nothing before merge showed it.
+ * aggregator failed (run 36308041839). Dispatch ran `classify` (merge
+ * groups did too until it was skipped there), so nothing before merge
+ * showed it.
  *
  * This model is deliberately the strict reading observed on that run:
  * - an `if` with no status function (success/always/failure/cancelled) is
@@ -327,10 +328,11 @@ const EVENTS: Array<[string, Context, Record<string, Record<string, string>>]> =
       sameRepositoryPr,
       {},
     ],
+    // classify is skipped on merge groups: no classifier output is supplied.
     [
-      'merge_group',
+      'merge_group (classify skipped)',
       { ...sameRepositoryPr, event: 'merge_group' },
-      { classify: { heavy: 'false' } },
+      {},
     ],
     [
       'workflow_dispatch',
@@ -412,6 +414,49 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     },
   );
 
+  // Merge groups no longer wait on the classifier's runner hop: classify is
+  // skipped there, and every part, the aggregator and the queue's required
+  // jobs still run from their merge_group clauses alone.
+  test('a merge group skips classify and still runs and aggregates every part', () => {
+    const state = simulate(
+      jobs,
+      { ...sameRepositoryPr, event: 'merge_group' },
+      {
+        outputs: {
+          'fast-checks-plan': { legacy: 'false', 'integration-ready': 'true' },
+        },
+        resolve: (id, current) =>
+          id === 'fast-checks'
+            ? aggregatorPartResults(jobs, current) === 0
+              ? 'success'
+              : 'failure'
+            : undefined,
+      },
+    );
+    expect(state.results.get('classify')).toBe('skipped');
+    for (const id of [
+      'actionlint-artifact',
+      ...PARTS,
+      'fast-checks',
+      'diff',
+      'merge-queue-regression',
+      'source-policy',
+      'pr-title',
+    ])
+      expect(state.results.get(id), id).toBe('success');
+    expect(state.shards.get('fast-checks-shard')).toEqual([1, 2, 3, 4]);
+    for (const id of ['full-regression', 'manual-completion-diagnostics'])
+      expect(state.results.get(id), id).toBe('skipped');
+  });
+
+  test('pushes and dispatches still run classify', () => {
+    for (const event of ['push', 'workflow_dispatch'])
+      expect(
+        simulate(jobs, { ...sameRepositoryPr, event }).results.get('classify'),
+        event,
+      ).toBe('success');
+  });
+
   test('a deferred conflict spends no plan, shard or statics runner and fails the aggregator', () => {
     const state = simulate(jobs, sameRepositoryPr, {
       outcomes: { 'pr-admission': 'failure' },
@@ -442,7 +487,9 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
   ])('%s never evaluates conflict admission', (_name, context) => {
     const state = simulate(jobs, context, {
       outputs: {
-        classify: { heavy: 'false' },
+        ...(context.event === 'merge_group'
+          ? {}
+          : { classify: { heavy: 'false' } }),
         'fast-checks-plan': { legacy: 'false' },
       },
     });
@@ -571,6 +618,85 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     expect(needsOf(readJobs()['pr-title'])).toEqual([]);
   });
 
+  // The required `Source verification policy` status for a queue head is
+  // published from inside the merge-group run once fast-checks settles,
+  // instead of only by the post-run workflow_run reconcile, which waited for
+  // a runner after the whole run (up to 8.4 minutes on the last context).
+  test.each(['success', 'failure', 'cancelled'] as const)(
+    'a merge group publishes its source status in-run after a fast-checks %s, on the queue head',
+    (outcome) => {
+      const state = simulate(
+        jobs,
+        { ...sameRepositoryPr, event: 'merge_group' },
+        {
+          outcomes: { 'fast-checks': outcome },
+          outputs: { 'fast-checks-plan': { legacy: 'false' } },
+        },
+      );
+      expect(state.results.get('fast-checks')).toBe(outcome);
+      expect(state.results.get('source-policy')).toBe('success');
+      const call = jobs['source-policy'] as Job & {
+        with?: Record<string, string>;
+      };
+      expect(call.uses).toBe(
+        './.github/workflows/source-verification-policy.yml',
+      );
+      const queueHead = 'd'.repeat(40);
+      const github: Record<string, unknown> = {
+        sha: queueHead,
+        event: {
+          merge_group: { head_sha: queueHead, base_sha: 'e'.repeat(40) },
+        },
+      };
+      expect(
+        evaluate(
+          String(call.with?.source_sha)
+            .replace(/^\$\{\{\s*/, '')
+            .replace(/\s*\}\}$/, ''),
+          ([head, ...rest]) => {
+            if (head !== 'github') throw new Error(`unmodelled ${head}`);
+            let value: unknown = github;
+            for (const key of rest)
+              value = (value as Record<string, unknown>)?.[key];
+            return value;
+          },
+          {},
+        ),
+      ).toBe(queueHead);
+    },
+  );
+
+  test('a cancelled merge-group run spends no publisher runner, while a cancelled PR run still publishes', () => {
+    const cancel = {
+      before: ['classify', 'pr-admission', 'actionlint-artifact', ...PARTS],
+      running: ['fast-checks'],
+    };
+    const queue = simulate(
+      jobs,
+      { ...sameRepositoryPr, event: 'merge_group' },
+      { cancel, outputs: { 'fast-checks-plan': { legacy: 'false' } } },
+    );
+    expect(queue.results.get('fast-checks')).toBe('cancelled');
+    expect(queue.results.get('source-policy')).toBe('skipped');
+    const pr = simulate(jobs, sameRepositoryPr, {
+      cancel,
+      outputs: { 'fast-checks-plan': { legacy: 'false' } },
+    });
+    expect(pr.results.get('source-policy')).toBe('success');
+  });
+
+  test('pushes and dispatches still publish no source status', () => {
+    for (const event of ['push', 'workflow_dispatch'])
+      expect(
+        simulate(
+          jobs,
+          { ...sameRepositoryPr, event },
+          { outputs: { classify: { heavy: 'true' } } },
+        ).results.get('source-policy'),
+        event,
+      ).toBe('skipped');
+  });
+
   test('base retarget keeps the complete source graph', () => {
     const state = simulate(
       readJobs(),
@@ -597,6 +723,32 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     expect(state.results.get('fork-smoke')).toBe('success');
     for (const id of [...PARTS, 'fast-checks'])
       expect(state.results.get(id), id).toBe('skipped');
+  });
+
+  // The repo-scans comments (ci.yml, REPO_SCAN_SUITES) say a red there is
+  // feedback that does not block landing: nothing that gates landing waits
+  // on it, and neither the merge queue nor a fork pull request runs it.
+  test('repo-scans is pull-request feedback: a red one gates nothing, and merge groups and forks skip it', () => {
+    const red = simulate(jobs, sameRepositoryPr, {
+      outcomes: { 'repo-scans': 'failure' },
+      outputs: { 'fast-checks-plan': { legacy: 'false', shards: '[1]' } },
+    });
+    expect(red.results.get('repo-scans')).toBe('failure');
+    for (const id of ['fast-checks', 'source-policy'])
+      expect(red.results.get(id), id).toBe('success');
+    for (const id of ['fast-checks', 'source-policy', 'merge-queue-regression'])
+      expect(ancestors(jobs, id).has('repo-scans'), id).toBe(false);
+    const queue = simulate(
+      jobs,
+      { ...sameRepositoryPr, event: 'merge_group' },
+      { outputs: { 'fast-checks-plan': { legacy: 'false' } } },
+    );
+    expect(queue.results.get('repo-scans')).toBe('skipped');
+    const fork = simulate(jobs, {
+      ...sameRepositoryPr,
+      headRepository: 'someone/station',
+    });
+    expect(fork.results.get('repo-scans')).toBe('skipped');
   });
 
   test('a push that is not heavy skips the fast-checks graph', () => {
@@ -833,7 +985,7 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       [
         'a merge group',
         { ...sameRepositoryPr, event: 'merge_group' },
-        { classify: { heavy: 'false' } },
+        {},
         true,
       ],
       [
@@ -922,6 +1074,54 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       .map(([id]) => id);
     expect(exposed).toEqual([]);
   });
+});
+
+/**
+ * classify's `heavy` output, evaluated with the same expression model: only
+ * a proven merge-queue verdict turns it off; anything else (verified false,
+ * an empty output, the step skipped off push) passes the classifier through.
+ * A skipped step's outputs read as empty in GitHub; both empty and absent
+ * are modelled.
+ */
+describe("classify's heavy output under the merge-group verdict", () => {
+  const heavy = String(
+    (readJobs().classify as Job & { outputs: Record<string, string> }).outputs
+      .heavy,
+  )
+    .replace(/^\$\{\{\s*/, '')
+    .replace(/\s*\}\}$/, '');
+  const evaluateHeavy = (verdict: Record<string, string>, classifier: string) =>
+    evaluate(
+      heavy,
+      ([head, id, field, name, ...rest]) => {
+        if (head !== 'steps' || field !== 'outputs' || rest.length)
+          throw new Error(`unmodelled ${head}.${id}.${field}`);
+        if (id === 'classify' && name === 'heavy') return classifier;
+        if (id === 'merge-group-verdict' && name === 'verified')
+          return verdict.verified;
+        throw new Error(`unmodelled steps.${id}.outputs.${name}`);
+      },
+      {},
+    );
+
+  test.each(['true', 'false'])(
+    'a proven verdict turns heavy off when the classifier says %s',
+    (classifier) => {
+      expect(evaluateHeavy({ verified: 'true' }, classifier)).toBe('false');
+    },
+  );
+
+  test.each([
+    ['verified=false', { verified: 'false' }],
+    ['an empty output', { verified: '' }],
+    ['the step skipped (no output)', {}],
+  ] as Array<[string, Record<string, string>]>)(
+    '%s keeps the classifier answer',
+    (_label, verdict) => {
+      for (const classifier of ['true', 'false'])
+        expect(evaluateHeavy(verdict, classifier), classifier).toBe(classifier);
+    },
+  );
 });
 
 describe('delivery work waits for required PR feedback', () => {
@@ -1572,4 +1772,171 @@ describe('the pinned actionlint provisioning text, executed (#4748)', () => {
       untouched(box);
     });
   });
+});
+
+/**
+ * The zsh provisioning step, taken verbatim from every workflow that carries
+ * it and run in real bash. Two of a week's twenty merge-group failures were
+ * `Temporary failure resolving 'archive.ubuntu.com'` inside this apt install
+ * (runs 43034809151, 43039693039), so the bootstrap invocation retries.
+ * Only the network, the privileged installer and the clock are controlled:
+ * `curl` serves a stand-in bootstrap, `sudo` is a recording stand-in that
+ * fails the first N installs with apt's DNS error and exit 100, and `sleep`
+ * records its argument. `/bin/zsh` is rewritten to a sandbox path (every
+ * occurrence, counted) so the install branch is reached on hosts that ship
+ * zsh; the installer stand-in creates that path only when it succeeds.
+ */
+describe('the zsh provisioning text, executed', () => {
+  type RunStep = { name?: string; run?: string; env?: Record<string, string> };
+  const ZSH_STEP =
+    'Provision and preflight zsh for process-heavy installer fixtures';
+  const copies = (
+    [
+      ['ci.yml', 'fast-checks-shard'],
+      ['full-regression.yml', 'ordinary'],
+      ['full-regression.yml', 'process-heavy'],
+      ['full-regression.yml', 'exclusive'],
+    ] as const
+  ).map(([file, jobId]) => {
+    const parsed = load(
+      readFileSync(resolve(root, '.github/workflows', file), 'utf8'),
+      { schema: JSON_SCHEMA },
+    ) as { jobs: Record<string, { steps?: RunStep[] }> };
+    return [
+      file,
+      jobId,
+      parsed.jobs[jobId]?.steps?.find((step) => step.name === ZSH_STEP),
+    ] as const;
+  });
+  const makeZshDir = trackTempDirs();
+
+  function zshSandbox() {
+    const dir = makeZshDir('zsh-provisioning-');
+    const bin = join(dir, 'bin');
+    const temp = join(dir, 'runner-temp');
+    mkdirSync(bin);
+    mkdirSync(temp);
+    const target = join(dir, 'installed', 'zsh');
+    const tool = (name: string, body: string) =>
+      writeFileSync(join(bin, name), `#!/usr/bin/env bash\n${body}\n`, {
+        mode: 0o755,
+      });
+    tool(
+      'curl',
+      [
+        'out=""',
+        'while [ "$#" -gt 0 ]; do case "$1" in --output) out="$2"; shift ;; esac; shift; done',
+        'printf "#!/usr/bin/env bash\\necho stand-in bootstrap\\n" > "$out"',
+      ].join('\n'),
+    );
+    tool(
+      'sudo',
+      [
+        'printf "%s\\n" "$*" >> "$FAKE_SUDO_LOG"',
+        'calls="$(wc -l < "$FAKE_SUDO_LOG" | tr -d " ")"',
+        'if [ "$calls" -le "$FAKE_SUDO_FAILURES" ]; then',
+        '  echo "E: Failed to fetch http://archive.ubuntu.com/ubuntu/dists/jammy/InRelease  Temporary failure resolving \'archive.ubuntu.com\'" >&2',
+        '  exit 100',
+        'fi',
+        'mkdir -p "$(dirname "$FAKE_ZSH_TARGET")"',
+        'printf "#!/usr/bin/env bash\\necho \\"zsh 5.9 (stand-in)\\"\\n" > "$FAKE_ZSH_TARGET"',
+        'chmod 755 "$FAKE_ZSH_TARGET"',
+        'cp "$FAKE_ZSH_TARGET" "$FAKE_BIN/zsh"',
+      ].join('\n'),
+    );
+    tool('sleep', 'echo "$*" >> "$FAKE_SLEEP_LOG"');
+    const lines = (name: string) =>
+      existsSync(join(dir, name))
+        ? readFileSync(join(dir, name), 'utf8').split('\n').filter(Boolean)
+        : [];
+    const run = (step: RunStep, failures: number) => {
+      const script = String(step.run);
+      const occurrences = script.split('/bin/zsh').length - 1;
+      const rewritten = script.replaceAll('/bin/zsh', target);
+      const result = spawnSyncBounded(
+        'bash',
+        ['--noprofile', '--norc', '-eo', 'pipefail', '-c', rewritten],
+        {
+          encoding: 'utf8',
+          timeout: 30_000,
+          windowsHide: true,
+          env: {
+            PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+            RUNNER_TEMP: temp,
+            FAKE_BIN: bin,
+            FAKE_ZSH_TARGET: target,
+            FAKE_SUDO_FAILURES: String(failures),
+            FAKE_SUDO_LOG: join(dir, 'sudo.log'),
+            FAKE_SLEEP_LOG: join(dir, 'sleep.log'),
+            ...step.env,
+          },
+        },
+      ) as SpawnSyncReturns<string>;
+      if (
+        result.error ||
+        result.signal !== null ||
+        typeof result.status !== 'number'
+      )
+        throw new Error(
+          `zsh step did not run to an exit: ${result.error ?? result.signal}`,
+        );
+      return { ...result, occurrences };
+    };
+    return { run, lines, target };
+  }
+
+  test('every workflow provisions zsh with the same step text', () => {
+    for (const [file, jobId, step] of copies)
+      expect(step?.run, `${file} ${jobId}`).toBe(copies[0][2]?.run);
+  });
+
+  test.each(copies)(
+    '%s %s installs on the first attempt without sleeping',
+    (_file, _job, step) => {
+      const box = zshSandbox();
+      const result = box.run(step as RunStep, 0);
+      expect(result.occurrences).toBe(3);
+      expect(result.status, result.stderr).toBe(0);
+      expect(box.lines('sudo.log')).toHaveLength(1);
+      expect(box.lines('sudo.log')[0]).toMatch(
+        /^bash .*install-ci-ubuntu-packages\.sh zsh$/,
+      );
+      expect(box.lines('sleep.log')).toEqual([]);
+      expect(result.stdout).toContain('zsh 5.9 (stand-in)');
+    },
+  );
+
+  test.each(copies)(
+    '%s %s retries a transient apt failure twice and then succeeds',
+    (_file, _job, step) => {
+      const box = zshSandbox();
+      const result = box.run(step as RunStep, 2);
+      expect(result.status, result.stderr).toBe(0);
+      expect(box.lines('sudo.log')).toHaveLength(3);
+      expect(box.lines('sleep.log')).toEqual(['10', '20']);
+      expect(result.stderr).toContain(
+        'zsh provisioning attempt 1 failed (exit 100)',
+      );
+      expect(result.stdout).toContain('zsh 5.9 (stand-in)');
+    },
+  );
+
+  test.each(copies)(
+    '%s %s fails with the real apt error and status when every attempt fails',
+    (_file, _job, step) => {
+      const box = zshSandbox();
+      const result = box.run(step as RunStep, 99);
+      expect(result.status).toBe(100);
+      expect(box.lines('sudo.log')).toHaveLength(3);
+      expect(box.lines('sleep.log')).toEqual(['10', '20']);
+      expect(result.stderr).toContain(
+        "Temporary failure resolving 'archive.ubuntu.com'",
+      );
+      expect(result.stderr).toContain(
+        'zsh provisioning failed after 3 attempts (exit 100)',
+      );
+      expect(existsSync(box.target)).toBe(false);
+      expect(result.stdout).not.toContain('zsh 5.9');
+    },
+  );
 });

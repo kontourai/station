@@ -208,6 +208,7 @@ describe('e2e manifest', () => {
 
     expect(PRODUCT_E2E_EXECUTION_PROFILE.parallelWorkers).toBe(2);
     expect(PRODUCT_E2E_EXECUTION_PROFILE.parallelSafetyExceptions).toEqual({
+      'tests/new-project-choices.spec.ts': expect.any(String),
       'tests/chat-history-reopen.spec.ts': expect.any(String),
       'tests/sidebar-geometry.spec.ts': expect.any(String),
       'tests/mobile-dock-clearance.spec.ts': expect.any(String),
@@ -219,7 +220,7 @@ describe('e2e manifest', () => {
       // instance; their only writes are their own browser context's
       // localStorage — the `regionArrangement` device setting and the
       // dock-chrome settings a region write mirrors.
-      'tests/activity-pane.spec.ts': expect.any(String),
+      'tests/child-transcript-chat.spec.ts': expect.any(String),
       'tests/project-architecture.spec.ts': expect.any(String),
       'tests/browser-relay-route-acceptance.spec.ts': expect.any(String),
       'tests/buffered-answer-delivery.spec.ts': expect.any(String),
@@ -229,6 +230,8 @@ describe('e2e manifest', () => {
     expect(PRODUCT_E2E_EXECUTION_PROFILE.sharedInstanceExclusive).toEqual([
       // Own paired Stations, peer grants and source preview state.
       'tests/station-connection-chat.spec.ts',
+      // Creates real Projects, channels and read markers on the instance.
+      'tests/project-channel-navigation.spec.ts',
       'tests/conversation-surfaces.spec.ts',
       'tests/owned-work-custody.spec.ts',
       // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.

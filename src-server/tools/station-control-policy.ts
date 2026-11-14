@@ -626,6 +626,33 @@ export const STATION_CONTROL_TOOL_POLICY = {
     personOnly: 'when-trust-all-tools',
     routes: [post('/api/orchestration/station-control/job-proposals')],
   },
+  // #4830: an agent proposes Automation sources and rules; a person
+  // confirms. The routes read the caller's own conversation from the
+  // verified credential, refuse a Session that acts for no one or that an
+  // automation started, refuse anything wider than the chat could dispatch
+  // itself, and create nothing: Confirm is a person's leaf no tool maps.
+  propose_automation_source: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [
+      post('/api/orchestration/station-control/automation-proposals/sources'),
+    ],
+  },
+  propose_automation_rule: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [
+      post('/api/orchestration/station-control/automation-proposals/rules'),
+    ],
+  },
+  list_automation_proposals: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/automation-proposals')],
+  },
   // #3994: an agent's command in a terminal. The route keeps it to the
   // caller's own conversation, thread binding and session Project, and runs
   // nothing: a person approves each run (`/api/terminal/runs`), so the
@@ -1989,6 +2016,7 @@ export function stationControlToolPolicy(
  * classified here. Each is a read, or a change to Station's own records
  * (boards, claims, wake-ups, Task records, knowledge records), or an action a
  * person completes or approves (`terminal_run`, `propose_job`,
+ * `propose_automation_source`, `propose_automation_rule`,
  * `propose_plugin_install`), or a notice to the person (`notify_user`).
  *
  * Withheld, because Station would act outside the session's sandbox for it:
@@ -2034,6 +2062,9 @@ export const RESTRICTED_NETWORK_STATION_CONTROL_TOOLS: ReadonlySet<string> =
     'list_wake_ups',
     'cancel_wake_up',
     'propose_job',
+    'propose_automation_source',
+    'propose_automation_rule',
+    'list_automation_proposals',
     'terminal_run',
     'terminal_read',
     'list_scheduler_providers',

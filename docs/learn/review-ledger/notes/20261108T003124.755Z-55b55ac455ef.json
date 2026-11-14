@@ -1,7 +1,0 @@
-{
-  "revision": "6d24a3afcdae185bf6a3c83de81d231783f95cc8",
-
-  "notes": [
-    {"path":"docs/design/agent-interaction-capabilities.md","note":"Edited: added a Current implementation bullet saying the Feature Preview guidance names Browser and Device tools only when the Session is offered them (browserTools, engine assurance, Codex preview in resolveStationInstructions) and grants nothing. The resolver and Claude adapter bullets still hold: browserTools is still carried by the resolver and delivered in process by the Claude adapter.","inputs":["docs/design/agent-interaction-capabilities.md","src-server/providers/adapters/claude-adapter.ts","src-server/services/orchestration/session-agent-resolution.ts"]}
-  ]
-}

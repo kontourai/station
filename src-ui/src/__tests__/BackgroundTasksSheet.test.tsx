@@ -137,9 +137,9 @@ describe('BackgroundTasksSheet', () => {
   test('renders the empty state when there are no running or finished tasks', () => {
     renderSheet({ running: [], finished: [] });
     expect(screen.getByText('Nothing to show')).not.toBeNull();
-    expect(screen.getByText(/Recent activity only/).textContent).toContain(
-      'closed-chat history may be missing.',
-    );
+    expect(
+      screen.getByText('Recent tasks only. Remote tasks are in Activity.'),
+    ).not.toBeNull();
   });
 
   test('renders a Running section with a count and the Activity disclosure', () => {
@@ -148,15 +148,13 @@ describe('BackgroundTasksSheet', () => {
       finished: [],
     });
     expect(screen.getByText('Running (2)')).not.toBeNull();
-    expect(
-      screen.getByText(/Find remote delegations in Activity\./),
-    ).not.toBeNull();
+    expect(screen.getByText(/Remote tasks are in Activity\./)).not.toBeNull();
     expect(
       screen.queryByText('Remote delegations appear on the Sessions page.'),
     ).toBeNull();
   });
 
-  test('elapsed time renders as m:ss and ticks forward with the shared 1s timer', () => {
+  test('elapsed time renders in duration words and ticks forward with the shared 1s timer', () => {
     renderSheet({
       running: [
         runningEntry({
@@ -165,12 +163,12 @@ describe('BackgroundTasksSheet', () => {
       ],
       finished: [],
     });
-    expect(screen.getByText(/Tool · 1:05/)).not.toBeNull();
+    expect(screen.getByText('Tool · 1m 5s')).not.toBeNull();
 
     act(() => {
       vi.advanceTimersByTime(2000);
     });
-    expect(screen.getByText(/Tool · 1:07/)).not.toBeNull();
+    expect(screen.getByText('Tool · 1m 7s')).not.toBeNull();
   });
 
   test('Recent activity section is collapsed by default and shows an outcome chip once expanded', () => {
@@ -322,8 +320,11 @@ describe('BackgroundTasksSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
     expect(interruptTask).toHaveBeenCalledWith({ taskId: 'task:delegate-1' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
-    expect(onOpenTranscript).toHaveBeenCalledWith('task:delegate-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+    expect(onOpenTranscript).toHaveBeenCalledWith(
+      'task:delegate-1',
+      'Run tests',
+    );
   });
 
   test.each(['running', 'completed'] as const)(
@@ -629,9 +630,7 @@ test('a peer background sheet selects its Station partition and never invokes ho
   fireEvent.click(stop);
   expect(interruptTask).not.toHaveBeenCalled();
   expect(
-    screen
-      .getByRole('button', { name: 'View transcript' })
-      .hasAttribute('disabled'),
+    screen.getByRole('button', { name: 'Open chat' }).hasAttribute('disabled'),
   ).toBe(true);
   expect(useOrchestrationSessionActivityQuery).toHaveBeenCalledWith(
     'peer-child',

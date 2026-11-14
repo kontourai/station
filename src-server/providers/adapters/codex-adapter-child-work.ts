@@ -19,6 +19,10 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
+  isCodexWebSearchCompletion,
+  markNativeWebRead,
+} from '../../services/plugins/native-web-read-marks.js';
+import {
   deriveToolName,
   extractString,
   extractTokenFigure,
@@ -776,6 +780,13 @@ export function routeCodexChildNotification(
   threadId: string,
   notification: CodexChildNotification,
 ): void {
+  // #4828: a subagent's web search is read back into its parent, so it
+  // marks the parent's conversation, whatever becomes of the child's row.
+  if (
+    threadId !== context.record.codexThreadId &&
+    isCodexWebSearchCompletion(notification)
+  )
+    markNativeWebRead([context.record.externalThreadId]);
   const state = stateOf(context.record);
   if (state.closed || context.record.stopped) return;
   if (threadId === context.record.codexThreadId) return;

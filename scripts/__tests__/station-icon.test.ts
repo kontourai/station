@@ -167,6 +167,56 @@ describe('the vector icon source', () => {
   });
 });
 
+describe('desktop icon composition', () => {
+  // Mean RGBA of a 5x5 patch centred at a fraction of the image.
+  const patch = (path: string, fx: number, fy: number) => {
+    const png = PNG.sync.read(readFileSync(resolve(root, path)));
+    const cx = Math.round(fx * (png.width - 1));
+    const cy = Math.round(fy * (png.height - 1));
+    const sum = [0, 0, 0, 0];
+    for (let dy = -2; dy <= 2; dy += 1)
+      for (let dx = -2; dx <= 2; dx += 1) {
+        const i = ((cy + dy) * png.width + (cx + dx)) * 4;
+        for (let k = 0; k < 4; k += 1) sum[k] += png.data[i + k];
+      }
+    return sum.map((value) => value / 25);
+  };
+  const luminance = ([r, g, b]: number[]) =>
+    0.2126 * r + 0.7152 * g + 0.0722 * b;
+  // The parchment face is above 200; every channel backdrop is below 60.
+  const PARCHMENT = 200;
+  const BACKDROP = 60;
+  const dirs = ['', 'beta/', 'nightly/', 'dev/'];
+
+  // Just inside the rounded body, at mid-height on the left edge, the old
+  // framed icon showed the dark channel backdrop around a small tile. The
+  // full-bleed face puts parchment there.
+  it.each(dirs)('fills the %s desktop PNGs with the map face', (dir) => {
+    for (const file of ['32x32.png', '128x128.png', '128x128@2x.png']) {
+      const edge = patch(`src-desktop/icons/${dir}${file}`, 0.1, 0.5);
+      expect(edge[3]).toBe(255);
+      expect(luminance(edge)).toBeGreaterThan(PARCHMENT);
+    }
+  });
+
+  it('fills the macOS grid body and the Windows tiles with the map face', () => {
+    // The 824 body is inset 100 in 1024; 0.15 is about 50px inside it.
+    expect(
+      luminance(patch('assets/brand/icon-1024.png', 0.15, 0.5)),
+    ).toBeGreaterThan(PARCHMENT);
+    expect(patch('assets/brand/icon-1024.png', 0.04, 0.5)[3]).toBe(0);
+    expect(
+      luminance(patch('src-desktop/icons/Square150x150Logo.png', 0.06, 0.5)),
+    ).toBeGreaterThan(PARCHMENT);
+  });
+
+  it.each(dirs)('keeps the %s tray icon framed on its backdrop', (dir) => {
+    const edge = patch(`src-desktop/icons/${dir}icon.png`, 0.1, 0.5);
+    expect(edge[3]).toBe(255);
+    expect(luminance(edge)).toBeLessThan(BACKDROP);
+  });
+});
+
 describe('in-app mark', () => {
   it('is the committed generated module, the status-bar geometry as an SVG path', () => {
     const module = readFileSync(

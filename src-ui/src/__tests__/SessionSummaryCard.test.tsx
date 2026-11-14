@@ -224,9 +224,10 @@ describe('SessionSummaryCard', () => {
   test.each([
     [
       'empty-next-cold-start',
-      'Prior transcript not injected. Summary separately reads canonical history.',
+      'The agent started fresh. This summary still reads the full chat.',
     ],
-    ['continue-from-history', 'Prior transcript re-anchored and injected.'],
+    ['continue-from-history', 'The agent continued from chat history.'],
+    ['summary-next-cold-start', 'The agent continued from a summary.'],
   ] as const)(
     'copies %s context-boundary facts exactly',
     (policy, disclosure) => {

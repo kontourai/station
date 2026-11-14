@@ -23,6 +23,7 @@ import {
 } from './orchestration.js';
 import { PRINCIPAL_UNRESOLVED_CODE } from './principal.js';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from './project-identity.js';
+import { PROJECT_ROOM_PROJECT_NOT_FOUND_CODE } from './project-room.js';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
@@ -31,6 +32,7 @@ import {
   CLIENT_TURN_IN_FLIGHT_CODE,
   CLIENT_TURN_INPUT_CONFLICT_CODE,
   CLIENT_TURN_INPUT_UNSUPPORTED_CODE,
+  ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE,
   ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
@@ -202,6 +204,9 @@ export const PROVIDER_FAILURE_KINDS = {
   [CONVERSATION_CONTEXT_UNAVAILABLE_CODE]: 'conflict',
   [PRINCIPAL_UNRESOLVED_CODE]: 'auth',
   [PROJECT_IDENTITY_NOT_PREPARED_CODE]: 'input_unsupported',
+  // No such Project on this Station (#4855): like `stage_not_found`, an
+  // absent target, not an outage; a retry cannot find it.
+  [PROJECT_ROOM_PROJECT_NOT_FOUND_CODE]: 'input_unsupported',
   [MODEL_OVERRIDE_UNSUPPORTED_CODE]: 'input_unsupported',
   [MODEL_NOT_ADVERTISED_CODE]: 'model_unavailable',
   [SESSION_REATTACH_CONFLICT_CODE]: 'conflict',
@@ -214,6 +219,7 @@ export const PROVIDER_FAILURE_KINDS = {
   // A command inside the engine's scope was killed; the engine kept running.
   [WORKLOAD_COMMAND_OOM_KILLED_CODE]: 'warning',
   [ENGINE_SIGN_IN_REQUIRED_CODE]: 'auth',
+  [ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE]: 'input_unsupported',
   [MUSE_TURN_IDLE_TIMEOUT_CODE]: 'timeout',
   [MUSE_TURN_TOTAL_TIMEOUT_CODE]: 'timeout',
   [MUSE_LINGERING_CHILD_REAPED_CODE]: 'warning',

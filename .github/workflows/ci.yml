@@ -22,14 +22,30 @@ permissions:
 jobs:
   classify:
     name: Exact full-diff classification
-    # Non-PR jobs use this full-diff result. Hosted so a GitHub-hosted
-    # outage cannot skip the rest of this workflow the way station#1931
-    # did when this classifier ran on a billing-blocked hosted image.
-    if: ${{ github.event_name != 'pull_request_target' }}
+    # Push and dispatch jobs use this full-diff result. Hosted so a
+    # GitHub-hosted outage cannot skip the rest of this workflow the way
+    # station#1931 did when this classifier ran on a billing-blocked hosted
+    # image. Skipped on merge groups as on pull requests: every consumer
+    # already admits merge_group by event, so its outputs were unread there
+    # and its runner hop only delayed every later job.
+    if: ${{ github.event_name != 'pull_request_target' && github.event_name != 'merge_group' }}
+    # `actions: read` is for merge-group-verdict's run and job listings, which
+    # work undeclared only while the repository is public. This job never
+    # runs on pull_request_target (its `if` above), so no candidate code holds
+    # it; the actionlint gate allows the grant only with that exact `if`.
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     outputs:
-      heavy: ${{ steps.classify.outputs.heavy }}
+      # The merge queue fast-forwards main to the exact candidate it tested,
+      # so a queue landing's push would repeat that verdict on the same SHA.
+      # `heavy` drops to false only when merge-group-verdict proves that
+      # exact SHA and base already passed fast-checks and Merge-queue
+      # regression; direct pushes, batches and any lookup failure keep the
+      # classifier's answer.
+      heavy: ${{ steps.merge-group-verdict.outputs.verified == 'true' && 'false' || steps.classify.outputs.heavy }}
       container: ${{ steps.classify.outputs.container }}
       classification: ${{ steps.classify.outputs.classification }}
     steps:
@@ -46,9 +62,24 @@ jobs:
       - id: classify
         name: Classify the complete before..sha diff
         env:
-          BEFORE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '0000000000000000000000000000000000000000' }}
-          AFTER: ${{ github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
+          BEFORE: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
+          AFTER: ${{ github.sha }}
         run: node scripts/classify-ci-change.mjs --before "$BEFORE" --after "$AFTER" >> "$GITHUB_OUTPUT"
+
+      # Push-only and fail-open: the step never fails the job, and anything
+      # short of a proven merge-queue verdict leaves verified unset or false
+      # (scripts/ci-merge-group-verdict.mjs). It reads Actions run data with
+      # the job's read-only token (`actions: read` above); a failed or refused
+      # lookup keeps the full lane and raises a warning annotation.
+      - id: merge-group-verdict
+        name: Reuse the merge queue verdict for this exact SHA
+        if: ${{ github.event_name == 'push' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: node scripts/ci-merge-group-verdict.mjs
 
   # Defer a same-repository pull request with a confirmed merge conflict
   # before it spends the plan, shards and statics: it cannot merge, so that
@@ -440,6 +471,10 @@ jobs:
       # Same provisioning as full-regression: the selection can include
       # tests that exec zsh (ops/nightly/macos-build-only-cleanup.test.mjs),
       # and ubuntu-22.04 ships without it.
+      # Transient apt mirror or DNS failures (`Temporary failure resolving
+      # 'archive.ubuntu.com'`) retry the idempotent bootstrap: three attempts
+      # and 30 seconds of backoff inside the five-minute step bound. The last
+      # attempt's own apt error and exit status still fail the step.
       - name: Provision and preflight zsh for process-heavy installer fixtures
         if: ${{ steps.slice.outputs.empty == 'false' }}
         timeout-minutes: 5
@@ -455,7 +490,17 @@ jobs:
               --output "$bootstrap"
             printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
             sha256sum "$bootstrap"
-            sudo bash "$bootstrap" zsh
+            attempt=1
+            until sudo bash "$bootstrap" zsh; do
+              status=$?
+              if [[ "$attempt" -ge 3 ]]; then
+                echo "::error::zsh provisioning failed after $attempt attempts (exit $status)" >&2
+                exit "$status"
+              fi
+              echo "::warning::zsh provisioning attempt $attempt failed (exit $status); retrying" >&2
+              sleep $((attempt * 10))
+              attempt=$((attempt + 1))
+            done
           fi
           command -v zsh
           test -x /bin/zsh
@@ -796,14 +841,20 @@ jobs:
         if: ${{ steps.verify.outputs.provisional == 'true' }}
         run: echo "fast-checks deferred ci-fast/test-full; full regression is deferred to main and release qualification"
 
+  # Merge groups publish in-run too: the post-run workflow_run reconcile
+  # waited for a runner after the whole run and was often the last required
+  # context. That reconcile stays the recovery publisher; both read the same
+  # completed job results, and the callee reads policy from the queue base.
+  # A cancelled queue run (the queue rebuilt) is never merged, so it spends
+  # no runner here; the reconcile still records its verdict.
   source-policy:
     name: Publish source admission
     needs: [fast-checks, fork-smoke]
-    if: ${{ always() && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) }}
+    if: ${{ always() && (github.event_name == 'merge_group' && !cancelled() || github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base)) }}
     permissions: { contents: read, actions: read, statuses: write }
     uses: ./.github/workflows/source-verification-policy.yml
     with:
-      source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      source_sha: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
 
   delivery-plan:
     name: Plan affected delivery checks
@@ -1129,8 +1180,10 @@ jobs:
     # used to surface first in the merge queue's full corpus (#2553). They run
     # here on every same-repository pull request, beside fast-checks rather
     # than inside it, so they neither spend its twelve-minute budget nor wait
-    # on it. Not a required check (yet): a red here is feedback, and the
-    # merge-queue regression still runs the same suites.
+    # on it. Not a required check (yet) and not part of the source-verification
+    # verdict: a red here is feedback that does not block landing. The merge
+    # queue runs only a bounded selection, not these suites, so a violation
+    # that lands is caught next by post-landing full qualification.
     if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       contents: read

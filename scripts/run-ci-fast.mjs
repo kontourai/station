@@ -142,6 +142,13 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
     process.execPath,
     Object.freeze(['scripts/test-realtime-wait-gate.mjs']),
   ]),
+  // The merge-queue `diff` job's `git diff --check`, judged on the lines this
+  // change adds since STATION_CI_FAST_BASE. Before this joined the lane a
+  // trailing space first failed in the queue (#4870, #4630). Well under 1s.
+  Object.freeze([
+    process.execPath,
+    Object.freeze(['scripts/diff-whitespace-gate.mjs']),
+  ]),
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
   // #2922: verify:static gates that were composed only by the merge queue and

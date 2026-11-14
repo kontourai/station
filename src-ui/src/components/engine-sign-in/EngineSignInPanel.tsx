@@ -19,6 +19,7 @@ import { Button } from '../Button';
 import { TerminalPanel } from '../coding-layout/TerminalPanel';
 import { hostActionCopy } from '../host-action/host-action-copy';
 import { SkeletonBlock } from '../state';
+import { EngineHostAuthSection } from './EngineHostAuthSection';
 import './EngineSignInPanel.css';
 
 const STATE_LABEL: Record<EngineSignInView['status']['state'], string> = {
@@ -44,6 +45,8 @@ function statusDetail(view: EngineSignInView): string {
       return `${engineName} refused a chat because it needs a sign-in${at ? ` (${at})` : ''}.`;
     case 'sign-in':
       return `${engineName} reported the sign-in from Station as complete${at ? ` at ${at}` : ''}.`;
+    case 'station-vault':
+      return `Station keeps ${engineName}'s sign-in itself.`;
     default:
       return status.checkable
         ? `Station could not tell whether ${engineName} is signed in.`
@@ -267,7 +270,9 @@ function ScopedEngineSignInPanel({
       autoChecked.current ||
       !view.data ||
       view.data.methods ||
-      view.data.methodsError
+      view.data.methodsError ||
+      // Station signs this engine in itself: it has no methods to read.
+      view.data.hostAuth?.status
     )
       return;
     autoChecked.current = true;
@@ -327,7 +332,8 @@ function ScopedEngineSignInPanel({
         </Button>
       </div>
       <small>{statusDetail(data)}</small>
-      {presentation && (
+      {/* Where the engine keeps its sign-in; not said when Station keeps it. */}
+      {presentation && data.status.source !== 'station-vault' && (
         <small>{hostActionCopy('engine-sign-in', presentation)}</small>
       )}
       {!signInAllowed && (
@@ -337,6 +343,20 @@ function ScopedEngineSignInPanel({
         </small>
       )}
       {data.termsNotice && <TermsNote notice={data.termsNotice} />}
+
+      {data.hostAuth && (
+        <EngineHostAuthSection
+          connectionId={connectionId}
+          engineName={data.engineName}
+          hostAuth={data.hostAuth}
+          signInAllowed={signInAllowed}
+          scope={scope}
+          onSignedIn={() => {
+            void view.refetch();
+            onSignedIn?.();
+          }}
+        />
+      )}
 
       {current && (
         <AttemptView

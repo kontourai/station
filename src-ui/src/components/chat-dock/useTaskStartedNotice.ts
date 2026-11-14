@@ -20,7 +20,7 @@ export function useTaskStartedNotice(beforeNavigate: () => void) {
           variant: 'primary',
           onClick: () => {
             beforeNavigate();
-            showSurface('activity', { session: task.sessionId });
+            showSurface('chat', { session: task.sessionId });
           },
         },
       ]);

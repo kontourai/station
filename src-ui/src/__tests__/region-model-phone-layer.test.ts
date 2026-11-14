@@ -125,10 +125,10 @@ describe('restorePhonePaneLayer', () => {
   // come back UNPLACED, and the record written while the layer was open (the
   // restored projection) lost it from the region the user had put it in.
   test('a pane moved over Chat from a hidden side region goes back to its slot there', () => {
-    let before = placeSurface(chatShowing(), 'activity', 'right');
+    let before = placeSurface(chatShowing(), 'workspace-agents', 'right');
     before = placeSurface(before, PR, 'right');
     before = updateRegion(before, 'right', {
-      occupant: 'activity',
+      occupant: 'workspace-agents',
       visible: false,
     });
     before = updateRegion(before, 'bottom', {
@@ -136,13 +136,13 @@ describe('restorePhonePaneLayer', () => {
       occupant: 'chat',
     });
     expect(before.right).toMatchObject({
-      panes: ['activity', PR],
-      occupant: 'activity',
+      panes: ['workspace-agents', PR],
+      occupant: 'workspace-agents',
       visible: false,
     });
     const opened = openPhonePaneLayer(before, PR, OPEN);
     if (!opened) throw new Error('open did not apply');
-    expect(opened.arrangement.right.panes).toEqual(['activity']);
+    expect(opened.arrangement.right.panes).toEqual(['workspace-agents']);
     expect(opened.layer.origin).toEqual({
       region: 'right',
       index: 1,

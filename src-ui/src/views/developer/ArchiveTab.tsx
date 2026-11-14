@@ -1,12 +1,5 @@
-import {
-  WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-  WORKSPACE_ACTIVITY_PANE_INSTANCE,
-} from '@kontourai/station-contracts/workspace-activity-pane';
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { useMutation } from '@tanstack/react-query';
-import { PageHeaderScope } from '../../components/page-frame';
-import { ActivityWorkspacePane } from '../activity/ActivityWorkspacePane';
-import { ActivityWorkspacePaneBindingProvider } from '../activity/ActivityWorkspacePaneBinding';
 import { downloadDiagnosticsBundle } from '../settings/diagnostics-download';
 
 /**
@@ -49,19 +42,6 @@ export default function ArchiveTab({ apiBase }: { apiBase: string }) {
       {diagnosticsBundle.isError ? (
         <p role="alert">Unable to generate the diagnostics bundle.</p>
       ) : null}
-      {/* Embedded, so the Activity collection is a section of this tab, not
-          the page. Without this scope its split pane would publish "Activity"
-          over the Developer route's own title. The surface is reached
-          through its pane renderer with the canonical occurrence (M3: one
-          mounter of SessionsView, ever). */}
-      <PageHeaderScope>
-        <ActivityWorkspacePaneBindingProvider binding={{ apiBase }}>
-          <ActivityWorkspacePane
-            descriptor={WORKSPACE_ACTIVITY_PANE_DESCRIPTOR}
-            instance={WORKSPACE_ACTIVITY_PANE_INSTANCE}
-          />
-        </ActivityWorkspacePaneBindingProvider>
-      </PageHeaderScope>
     </section>
   );
 }

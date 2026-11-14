@@ -1,7 +1,0 @@
-{
-  "revision": "e061d949916485224b4a88d53381ed94e0931743",
-
-  "notes": [
-    {"path":"docs/reference/session-api.md","note":"Reviewed the consumer-lag regression source newly cited by the merged record and the announced-start API contract after #4467. Real StationAgentAdapter and EchoingAdapter cases hold an earlier queued event, require the durable session.started and owner at acceptance, and retain indeterminate on the existing five-second deadline. The merged 11-file suite passed 1074 tests; consume-only detection failed the same four lag cases with 25 passes; byte-exact restoration passed 33/33. The branch changes neither settlement/startOwners nor main publication retries. No original Flow-report, provider or release qualification is claimed.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/__tests__/start-owner-publication-contention.test.ts"]}
-  ]
-}

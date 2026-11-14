@@ -1,0 +1,11 @@
+{
+  "revision": "d7e03582eee0ab35305f0ebcfedc3b1af3e34e0e",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"tests/screenshots.spec.ts only changed one run-setup full-access expectation (model segment now \"Mini\" because the separator moved to the agent segment); no motion, testing-guide or telemetry claim in this document depends on it.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"tests/screenshots.spec.ts only changed one run-setup full-access expectation (model segment now \"Mini\" because the separator moved to the agent segment); no motion, testing-guide or telemetry claim in this document depends on it.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"tests/screenshots.spec.ts only changed one run-setup full-access expectation (model segment now \"Mini\" because the separator moved to the agent segment); no motion, testing-guide or telemetry claim in this document depends on it.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}

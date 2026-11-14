@@ -81,6 +81,9 @@ export const STATION_HOME_ROOTS: Readonly<
   'delegation-attempt-claims.json': 'state',
   'create-request-claims.json': 'state',
   devices: 'state',
+  // Pinned, sha256-verified engine installs (managed-install.ts): read-only
+  // and re-acquirable from the pin, like media-tools.
+  engines: 'external',
   environments: 'state',
   feedback: 'state',
   imports: 'state',

@@ -827,12 +827,59 @@ async function evaluateAll(root, paths) {
  */
 export async function showReviewDelta({ root = process.cwd(), paths = [] }) {
   const entries = await evaluateAll(root, paths);
+  // A landed note can cover global history without reviewing this branch.
+  // Use the same outstanding-input policy as the gate before saying fresh.
+  const policy = resolveDocumentationFreshness({
+    root,
+    env: { ...process.env, STATION_DOCS_FRESHNESS: 'scoped' },
+  });
   const blobs = headBlobs(root);
   const snapshot = createRepositorySnapshot(root);
   const deltas = [];
   for (const { kind, record, evaluated } of entries) {
+    const scopedInputs = [
+      ...new Set(
+        (policy.sourceDrops ?? [])
+          .filter(
+            (item) =>
+              item.kind === kind &&
+              item.path === record.path &&
+              item.rule === 'stale',
+          )
+          .flatMap((item) => item.changed),
+      ),
+    ];
+    const scopedDiffs = [];
+    if (scopedInputs.length) {
+      const revision = policy.mergeBase;
+      const files = [...new Set(scopedInputs.map(bindingFile))];
+      scopedDiffs.push({
+        scope: 'current-change',
+        revision,
+        inputs: scopedInputs,
+        files,
+        lacksReviewedBytes: [],
+        uncommitted: [],
+        available: true,
+        diff: git(root, [
+          'diff',
+          '--no-color',
+          revision,
+          '--',
+          ...files,
+        ]).trimEnd(),
+      });
+    }
     if (!evaluated.changed.length) {
-      if (paths.length) deltas.push({ kind, path: record.path, fresh: true });
+      if (scopedDiffs.length)
+        deltas.push({
+          kind,
+          path: record.path,
+          fresh: false,
+          diffs: scopedDiffs,
+        });
+      else if (paths.length)
+        deltas.push({ kind, path: record.path, fresh: true });
       continue;
     }
     if (record.historyChanges !== undefined) {
@@ -843,25 +890,28 @@ export async function showReviewDelta({ root = process.cwd(), paths = [] }) {
         path: record.path,
         fresh: false,
         historyUnavailable: record.historyUnavailable,
-        diffs: revision
-          ? [
-              {
-                revision,
-                inputs: evaluated.changed,
-                files,
-                lacksReviewedBytes: [],
-                uncommitted: [],
-                available: true,
-                diff: git(root, [
-                  'diff',
-                  '--no-color',
+        diffs: [
+          ...scopedDiffs,
+          ...(revision
+            ? [
+                {
                   revision,
-                  '--',
-                  ...files,
-                ]).trimEnd(),
-              },
-            ]
-          : [],
+                  inputs: evaluated.changed,
+                  files,
+                  lacksReviewedBytes: [],
+                  uncommitted: [],
+                  available: true,
+                  diff: git(root, [
+                    'diff',
+                    '--no-color',
+                    revision,
+                    '--',
+                    ...files,
+                  ]).trimEnd(),
+                },
+              ]
+            : []),
+        ],
       });
       continue;
     }
@@ -908,7 +958,12 @@ export async function showReviewDelta({ root = process.cwd(), paths = [] }) {
           : undefined,
       });
     }
-    deltas.push({ kind, path: record.path, fresh: false, diffs });
+    deltas.push({
+      kind,
+      path: record.path,
+      fresh: false,
+      diffs: [...scopedDiffs, ...diffs],
+    });
   }
   return deltas;
 }
@@ -926,9 +981,9 @@ function formatReviewDelta(deltas) {
         (input) => input !== bindingFile(input),
       );
       lines.push(
-        `== ${delta.kind} ${delta.path}: git diff ${item.revision} HEAD -- ${item.files.join(' ')}${
+        `== ${delta.kind} ${delta.path}: git diff ${item.revision}${item.scope === 'current-change' ? '' : ' HEAD'} -- ${item.files.join(' ')}${
           values.length ? ` (cited values: ${values.join(', ')})` : ''
-        }`,
+        }${item.scope === 'current-change' ? ' (outstanding current-change review)' : ''}`,
       );
       for (const input of item.lacksReviewedBytes)
         lines.push(

@@ -1,7 +1,0 @@
-{
-  "revision": "3d6325c2787fcbbc582caeaba3ce0c1b18955bfe",
-
-  "notes": [
-    {"path":"docs/guides/native-releases.md","note":"#4515 integration: lifecycle.ts now carries #4519's managed host checks, #4521's telemetry-notice suppression and #4522's upgrade and installer refusals together, each reviewed on its own slice; the merge itself only reorders imports. Checked this doc's start, upgrade, service and telemetry-notice claims against the combined code and found none the combination contradicts.","inputs":["docs/guides/native-releases.md","packages/cli/src/commands/lifecycle.ts"]}
-  ]
-}

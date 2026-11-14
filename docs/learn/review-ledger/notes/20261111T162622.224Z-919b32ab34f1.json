@@ -1,7 +1,0 @@
-{
-  "revision": "ff8b820c30bf0f4b32e535382dd1ee97a8e4e28d",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Correction to the previous note: the regenerated station-docs-content.ts change is the shipped ProjectRoom architecture topic (from the module-map ProjectRoom section now describing channels), not the glossary entry. The station-docs reference's claims about the shipped topic set and how it is generated are unchanged.","inputs":["docs/reference/station-docs.md"]}
-  ]
-}
