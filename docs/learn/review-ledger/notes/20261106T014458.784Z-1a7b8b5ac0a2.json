@@ -1,7 +1,0 @@
-{
-  "revision": "3236d7de3d1635e76ac7df96c98e0938324d03c8",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Windows CI follow-up: the path-read boundary caught an unresolved module-directory anchor in windows-portable-floor.test.ts before the terminal floor ran. Replaced it with fileURLToPath(new URL(..., import.meta.url)), preserving every dependency-boundary and worker assertion. The unchanged failing boundary reproduced locally (49 pass/1 fail); after anchoring, both focused owners passed50 cases. The coordinator artifact and fail-closed floor claims remain accurate; underlying #4626 is still unresolved.","inputs":["docs/guides/testing.md","scripts/__tests__/windows-portable-floor.test.ts"]}
-  ]
-}

@@ -24,10 +24,16 @@ import type {
 } from '@agentclientprotocol/sdk/unstable';
 import type {
   ApprovalStatus,
+  TokenUsageUpdatedEvent,
   TurnCompletedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import { isValidContextObservation } from '@kontourai/station-shared/usage-fold';
 import { extensionNotificationBinding } from '../../../src-shared/extension-notification-bindings.js';
+import {
+  type AcpHandshakeIdentity,
+  type AcpIdentityHandshake,
+  matchesAcpHandshakeIdentity,
+} from '../../services/acp/acp-handshake-facts.js';
 import {
   ACP_FETCH_TOOL_KIND,
   markNativeWebRead,
@@ -45,6 +51,7 @@ import {
 } from './acp-cursor-extensions.js';
 import {
   type EngineExtensionState,
+  type EngineTurnBoundary,
   isReplayMarkedUpdate,
   mapEngineExtensionNotification,
   mapEngineSessionInfo,
@@ -179,6 +186,8 @@ export interface AcpMapperContext {
   state?: AcpMapperState;
   /** Required session-owned bounded authority for every ACP tool update. */
   toolUpdateSupervisor: AcpToolUpdateSupervisor;
+  /** Turns the engine runs on its own (`EngineTurnBoundary`). */
+  engineTurns?: EngineTurnBoundary;
   /**
    * Where a first-seen unbound extension tuple is reported (once per
    * process). Defaults to this module's logger.
@@ -512,8 +521,77 @@ export function mapAcpExtensionNotification(
     method: 'extension.notification',
     namespace,
     type,
-    payload: params,
+    payload: withoutMcpServerSecrets(params),
   });
+}
+
+/** What replaces an MCP server's environment or header value in a published payload. */
+const MCP_SECRET_REDACTED = '[redacted]';
+
+function redactedValues(value: unknown): unknown {
+  // ACP's own shape is `[{name, value}]`; a vendor may send a name-to-value map.
+  if (Array.isArray(value))
+    return value.map((entry) =>
+      entry !== null && typeof entry === 'object' && !Array.isArray(entry)
+        ? { ...entry, value: MCP_SECRET_REDACTED }
+        : MCP_SECRET_REDACTED,
+    );
+  if (value !== null && typeof value === 'object')
+    return Object.fromEntries(
+      Object.keys(value).map((key) => [key, MCP_SECRET_REDACTED]),
+    );
+  return value === undefined ? undefined : MCP_SECRET_REDACTED;
+}
+
+/** A server URL as its scheme and host only: a token can ride in the user info, path or query. */
+function urlWithoutCredentials(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return MCP_SECRET_REDACTED;
+  }
+}
+
+/**
+ * An extension payload as it is published: every MCP server it lists keeps
+ * its name, command and transport, but not what can carry a credential: its
+ * `env` and `headers` values, its `args` (a token is often passed as one) and
+ * everything in its URL after the host. The opaque envelope is durable and reaches
+ * every surface; an engine that echoes its MCP configuration (Grok's
+ * `mcp/servers_updated` lists each server's launch shape) must not put a
+ * token there.
+ */
+function withoutMcpServerSecrets(params: Record<string, unknown>): unknown {
+  // A vendor may send no params at all; the envelope carries what came.
+  const servers = params?.mcpServers;
+  if (!Array.isArray(servers)) return params;
+  return {
+    ...params,
+    mcpServers: servers.map((server) => {
+      if (
+        server === null ||
+        typeof server !== 'object' ||
+        Array.isArray(server)
+      )
+        return server;
+      const entry = server as Record<string, unknown>;
+      return {
+        ...entry,
+        ...('env' in entry ? { env: redactedValues(entry.env) } : {}),
+        ...('headers' in entry
+          ? { headers: redactedValues(entry.headers) }
+          : {}),
+        ...(Array.isArray(entry.args)
+          ? { args: entry.args.map(() => MCP_SECRET_REDACTED) }
+          : 'args' in entry
+            ? { args: MCP_SECRET_REDACTED }
+            : {}),
+        ...('url' in entry ? { url: urlWithoutCredentials(entry.url) } : {}),
+      };
+    }),
+  };
 }
 
 function splitExtensionMethod(method: string): {
@@ -574,6 +652,87 @@ export function mapAcpStopReasonToTurnCompletion(
       ? reason.trim().slice(0, MAX_ACP_STOP_REASON_LENGTH)
       : '';
   return raw ? { finishReason, stopReason: raw } : { finishReason };
+}
+
+/**
+ * The token figures of one prompt answer's `usage` (ACP's unstable
+ * `PromptResponse.usage`), as `token-usage.updated` fields. That answer is
+ * the turn's: the schema calls it "Token usage for this turn", and a recorded
+ * engine's input figure falls between consecutive turns (Antigravity 1.5.8,
+ * `antigravity-1.5.8-session-frames.jsonl`), which a running total would not.
+ * The adapter publishes it only for an engine in
+ * {@link ACP_PER_TURN_PROMPT_USAGE_ENGINES}.
+ *
+ * Each figure is carried as reported, never derived: `totalTokens` stays the
+ * engine's own total (which may include cache reads), and no cost is read.
+ * A figure that is not a finite non-negative number is left out. Nothing
+ * when the answer carries no usable figure. The context pair stays with
+ * `usage_update`; these fields never touch it.
+ */
+/**
+ * Engines whose prompt answers carry per-turn `usage`. The ACP schema
+ * contradicts itself on the field's scope ("Token usage for this turn" on the
+ * answer, "across session" on `totalTokens`), and `usage-semantics.ts`
+ * declares the one `acp` provider `per-turn`, so a prompt answer's usage is
+ * published only for an engine recorded reporting per-turn figures. Keyed on
+ * what the live handshake says about itself, never on the launch command.
+ */
+const ACP_PER_TURN_PROMPT_USAGE_ENGINES: ReadonlyArray<{
+  identity: AcpHandshakeIdentity;
+  observed: string;
+}> = [
+  {
+    // Consecutive answers' input figures fall (10377, then 8610), and the
+    // answers of a handed-off steer are separate model calls (8191 in, then
+    // 4819 in with 12734 cache reads): no running total.
+    identity: { agentInfoName: 'Antigravity ACP Server' },
+    observed:
+      'Antigravity CLI 1.5.8 `agy acp` (antigravity-1.5.8-session-frames.jsonl)',
+  },
+];
+
+/** Whether this session's engine is recorded reporting per-turn prompt usage. */
+export function acpReportsPerTurnPromptUsage(
+  handshake: AcpIdentityHandshake | null | undefined,
+): boolean {
+  return (
+    !!handshake &&
+    ACP_PER_TURN_PROMPT_USAGE_ENGINES.some(({ identity }) =>
+      matchesAcpHandshakeIdentity(handshake, identity),
+    )
+  );
+}
+
+export function mapAcpPromptUsage(
+  usage: unknown,
+): Pick<
+  TokenUsageUpdatedEvent,
+  | 'promptTokens'
+  | 'completionTokens'
+  | 'totalTokens'
+  | 'cacheReadTokens'
+  | 'cacheWriteTokens'
+  | 'reasoningTokens'
+> | null {
+  if (!usage || typeof usage !== 'object') return null;
+  const read = (key: string): number | undefined => {
+    const value = (usage as Record<string, unknown>)[key];
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0
+      ? value
+      : undefined;
+  };
+  const figures = {
+    promptTokens: read('inputTokens'),
+    completionTokens: read('outputTokens'),
+    totalTokens: read('totalTokens'),
+    cacheReadTokens: read('cachedReadTokens'),
+    cacheWriteTokens: read('cachedWriteTokens'),
+    reasoningTokens: read('thoughtTokens'),
+  };
+  const reported = Object.fromEntries(
+    Object.entries(figures).filter(([, value]) => value !== undefined),
+  ) as ReturnType<typeof mapAcpPromptUsage>;
+  return reported && Object.keys(reported).length > 0 ? reported : null;
 }
 
 /**

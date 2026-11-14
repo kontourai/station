@@ -1,9 +1,0 @@
-{
-  "revision": "4f3ddad7f344f58e43203250fa12c5dada9137d7",
-
-  "notes": [
-    {"path":"docs/learn/media/inspect-request.png","note":"#4827 fix round 1: orchestration-service.ts changed only by passing promptSource ('mcp-prompt') to ClientOriginTurnPropagation.begin when an MCP prompt origin was admitted, so the approval guardian can leave server-expanded MCP prompt text out of the person's turns. The request-inspection flow this capture shows (request.opened rendering and decision controls) is unchanged; no recapture is needed.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
-
-    {"path":"docs/learn/media/inspect-request.webm","note":"#4827 fix round 1: orchestration-service.ts changed only by passing promptSource ('mcp-prompt') to ClientOriginTurnPropagation.begin when an MCP prompt origin was admitted, so the approval guardian can leave server-expanded MCP prompt text out of the person's turns. The request-inspection flow this capture shows (request.opened rendering and decision controls) is unchanged; no recapture is needed.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

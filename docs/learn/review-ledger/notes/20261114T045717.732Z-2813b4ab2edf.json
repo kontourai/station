@@ -1,0 +1,19 @@
+{
+  "revision": "ca51627f877c3415296695a7c69634dad28560b1",
+
+  "notes": [
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"The only orchestration claim is the explicit-flowDefinition binding rule, owned by the already-cited flow-policy-sidecar.ts; the hub never references flowDefinition, and no other claim reads hub content.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The orchestration-adjacent claims are targeted-automation semantics (framed turn, recorded creator, no replay when indeterminate), owned by scheduled-conversation-runs.ts, which the doc links but the record did not cite. No claim depends on hub internals.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/scheduling/scheduled-conversation-runs.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"The hub appears only as the consumer in a header link; every disposition and transition claim is about EventStore, the ledgers and CredentialRecoveryModule, all already cited.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Continuation, adoption-ledger idempotency and target-folder handling belong to AttachedSessionAdoption, already cited; the hub only forwards the adoptSession command, so drop the hub with nothing to add.","inputs":["docs/guides/starter-work.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"None of the README's approval, dispatch-scope or child-policy claims is implemented in the hub; the already-cited dispatch-scope and policy modules own those rules.","inputs":["examples/self-configuring-agent/README.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Each 'Station binds/uses/supplies' claim lives in binding modules this record already cites; the hub only calls the deduplicator, so drop it with nothing to add.","inputs":["packages/monument/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"packages/monument/README.md","note":"The host boundary-row and steer-input binding claims are implemented in already-cited event-store and boundary/dedup binding modules; the hub is only a consumer, so drop it.","inputs":["packages/monument/README.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

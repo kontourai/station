@@ -144,7 +144,10 @@ export {
 } from './builtinWorkspacePaneCanonical';
 
 import type { ChatSession } from '../types';
-import { requestsWaitingOnUser } from '../utils/waiting-approvals';
+import {
+  chatWaitsOnUser,
+  requestsWaitingOnUser,
+} from '../utils/waiting-approvals';
 
 const LazyFilePreviewPane = lazy(() =>
   import('./FilePreviewPane').then(({ FilePreviewPane }) => ({
@@ -660,17 +663,21 @@ function CodingTerminalWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
 
 /**
  * What the plan panel shows of its chat's runtime: the status word and how
- * many approval requests still wait on the USER (a request already answered
+ * many requests of each kind still wait on the USER (a request already answered
  * from the queue stays open on the server but no longer waits on them).
  */
 export function workflowPlanRuntimeState(
   planSession: ChatSession | null | undefined,
 ) {
+  const waiting = planSession ? requestsWaitingOnUser(planSession) : [];
+  const pendingInputs = waiting.filter(
+    (id) => planSession?.pendingRequestKinds?.[id] === 'input',
+  ).length;
   return {
     status: planSession?.orchestrationStatus ?? planSession?.status ?? null,
-    pendingApprovals: planSession
-      ? requestsWaitingOnUser(planSession).length
-      : 0,
+    pendingApprovals: waiting.length - pendingInputs,
+    pendingInputs,
+    waitingOnUser: planSession ? chatWaitsOnUser(planSession) : false,
     isProcessingStep: planSession?.isProcessingStep ?? false,
   };
 }

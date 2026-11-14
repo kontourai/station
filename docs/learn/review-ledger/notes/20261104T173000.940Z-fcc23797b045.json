@@ -1,9 +1,0 @@
-{
-  "revision": "0ce78d46bba9ff23dfc350e9314b51ebbb8d7b1c",
-
-  "notes": [
-    {"path":"docs/design/agent-interaction-capabilities.md","note":"Its only touching claims are links to the Browser and Device guides for authority and control. The guides gained one sentence each (Full screen and viewer zoom) and kept their authority sections and anchors, so the links stay accurate.","inputs":["docs/design/agent-interaction-capabilities.md","docs/guides/browser-workspace.md"]},
-
-    {"path":"docs/design/verified-action-replay.md","note":"Its only touching claims are the pointers to the Browser and Device workspace guides. Both still exist with unchanged authority and evidence sections; they only gained a viewing sentence.","inputs":["docs/design/verified-action-replay.md","docs/guides/browser-workspace.md","docs/guides/mobile-device-workspace.md"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "a3833deea68b73e812064273b1c71f3ed92a156f",
-
-  "notes": [
-    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Re-recorded after merging the Kiro rewind lane into the PR: the acp-adapter.ts change adds rewind deadlines, late-answer handling and preparation tracking. This document's adapter claims (approval, extensions, connection, tool policy, API surface) were rechecked by keyword against the merged adapter and still hold.","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","src-server/providers/adapters/acp-adapter.ts"]}
-  ]
-}

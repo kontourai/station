@@ -847,7 +847,7 @@ export function assertDocumentationFresh(result) {
         (entry) =>
           `  ${entry.kind} ${entry.path}; ${entry.problem ?? `changed: ${entry.changed.join(', ')}`}`,
       ),
-      'Review the changed claims, then record them with npm run docs:review:record -- <path> --note "<what you checked>".',
+      'Review the changed claims, then record them with npm run docs:review:record -- <path> --note "<what you checked>". After checking every page that cites one changed source, npm run docs:review:record -- --input <source> --note "<what you checked>" records that note for each of them; an edited document or record still needs its own note.',
     ].join('\n'),
   );
 }

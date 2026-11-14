@@ -1,7 +1,0 @@
-{
-  "revision": "6d24a3afcdae185bf6a3c83de81d231783f95cc8",
-
-  "notes": [
-    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the added Station guidance row (links to self-configuring-agent#orchestration-instructions) and the prompt delivery row: authored prompt delivery is unchanged. The child-approval claims at the tool approval flow concern denyApprovals, which this branch did not change. The new route-level refusal is documented in the delegation guide.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/claude-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/runtime/agents/request-delegation.ts"]}
-  ]
-}

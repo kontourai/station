@@ -1,7 +1,0 @@
-{
-  "revision": "8d86c6f0cb760738c2fedfc9b9ad4ecd7ebd8a8a",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Added the Task card plan progress paragraph (#4695). Traced it to useTaskPlanProgress (latest-turn session event window via useOrchestrationSessionActivityQuery, 5s refresh for in_progress/blocked Tasks, no read for done/canceled), projectTaskPlanProgress (newest plan.updated, completed counts as done, empty/out-of-line plan hidden, aborted turn or failed/canceled Session = Stopped, blocked/needs_input/review_pending = Waiting) and the board card and Project task row consumers. Confirmed ACP adapter is the plan.updated emitter for dispatched Sessions and no gate or Task status reads plan progress. Checked by focused tests and a live isolated instance with a scripted ACP agent. Limits: Session cards and the Task room checklist are not built; a plan from an earlier turn is not shown.","inputs":["docs/user/getting-started.md","src-ui/src/utils/taskPlanProgress.ts","src-ui/src/components/TaskPlanProgress.tsx"]}
-  ]
-}

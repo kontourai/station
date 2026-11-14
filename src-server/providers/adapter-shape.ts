@@ -557,6 +557,14 @@ export interface ProviderAdapterShape {
   ): Promise<ProviderInterruptTurnResult>;
   /** Present only when the adapter has a real additive-input channel for a running turn. */
   steerTurn?(threadId: string, input: string, turnId: string): Promise<void>;
+  /**
+   * Whether this session can take a steer, for an adapter whose sessions
+   * differ (Muse: a `muse serve` session can, one on the `muse exec`
+   * fallback cannot). `false` refuses the steer as `unsupported-engine`
+   * before the adapter is called. Absent: every session of an adapter that
+   * declares steering can.
+   */
+  canSteerTurn?(threadId: string): boolean;
   /** Targets an observed child turn owned by this session, never the parent. */
   steerChildWork?(
     threadId: string,
@@ -564,6 +572,15 @@ export interface ProviderAdapterShape {
     turnId: string,
     input: string,
   ): Promise<ProviderChildSteerResult>;
+  /**
+   * A child this adapter reports running still takes a steer after the turn
+   * that launched it ended (Muse: a workflow's turn ends at launch while its
+   * children run). Orchestration then admits a child steer with no active
+   * parent turn, but only for a child the child-work projection holds
+   * running with that steer token (`controls.steer.turnId`). Absent: a child
+   * steer needs a running parent turn.
+   */
+  readonly childSteerOutlivesParentTurn?: true;
   /**
    * Stop ONE provider-reported subagent, targeted rather than a blanket
    * turn interrupt.

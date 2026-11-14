@@ -1,0 +1,7 @@
+{
+  "revision": "496bb9220b4b802e0721b503a1cbf4fe54800e53",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the first-task, approval inspection and scheduled-check sections against removed Home offers and retained Project, Notifications, Review and Automations entry points. Other user journeys outside this lane.","inputs":["docs/user/getting-started.md","docs/guides/starter-work.md","packages/contracts/src/project.ts","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/InboxScopeFilter.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

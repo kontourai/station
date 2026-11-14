@@ -1134,3 +1134,19 @@ export function inputRequestOutcome(
       return 'cancelled';
   }
 }
+
+/** Classify display requests without mistaking plan decisions for input forms.
+ * A form or a link both ask the user for input; neither approves a tool. */
+export function isInputRequestEvent(event: {
+  requestType?: string;
+  provider?: string;
+  title?: string;
+  payload?: Record<string, unknown>;
+}): boolean {
+  return (
+    event.requestType === 'input' ||
+    (event.payload?.toolName !== 'cursor/create_plan' &&
+      event.payload?.toolName !== 'ExitPlanMode' &&
+      isCardAnsweredRequestEvent(event))
+  );
+}

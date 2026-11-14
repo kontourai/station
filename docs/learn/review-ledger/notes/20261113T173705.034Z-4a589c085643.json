@@ -1,0 +1,7 @@
+{
+  "revision": "086e7bc4557ffab118e7bea4a73df424d89349eb",
+
+  "notes": [
+    {"path":"docs/design/portable-project-identity.md","note":"Bounded review of C3 display-only inventory: removed retired ChatDockProjectContext; retained new-chat-modal-utils, NewChatModal, useChatDockViewModel and useActiveProject display callers. This is stale-reference cleanup, not renewed runtime or migration-completion evidence for the historical design.","inputs":["docs/design/portable-project-identity.md"]}
+  ]
+}

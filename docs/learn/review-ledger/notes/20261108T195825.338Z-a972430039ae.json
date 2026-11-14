@@ -1,7 +1,0 @@
-{
-  "revision": "36b5e4cfe607e224c59c0275ef10c28dca171e17",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Reviewed regenerated 133-topic output against the canonical module-map amendment: only the two module sections and aggregate digest changed. Canonical lineage/indexed history and unavailable Task-chat group semantics are included; stable topic identities, credential-free static serving and live-state limitations remain accurate. No runtime protocol or physical-client claim was added.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

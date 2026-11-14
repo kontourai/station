@@ -14,6 +14,9 @@ jobs:
   reduce:
     # This workflow executes only the default-branch workflow definition; it
     # never checks out or runs pull-request code.
+    # Comments on pull requests also raise issue_comment; the reducer ignores
+    # them, so skip them before a runner starts.
+    if: ${{ !github.event.issue.pull_request }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

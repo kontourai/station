@@ -1,7 +1,0 @@
-{
-  "revision": "523494108c03f57e072ff23a8afd04562ee4e12c",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Reviewed ChildChatNavigation changes: only header geometry, label truncation and touch reachability change. Child navigation, parent restoration and read-only transcript ownership remain as documented; no new setup or runtime capability.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChildChatNavigation.tsx"]}
-  ]
-}

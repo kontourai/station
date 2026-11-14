@@ -711,6 +711,7 @@ function LiveConversationBody({
           ? [
               {
                 requestId: request.approvalId,
+                requestKind: request.requestKind,
                 threadId: request.approvalThreadId,
               },
             ]
@@ -2933,6 +2934,11 @@ function LiveConversationBody({
             fileAttachmentsSupported={fileAttachmentsSupported}
             modelProviderLabel={modelProviderLabel}
             executionEngineLabel={executionEngineLabel}
+            executionEngineId={
+              engineIdentity.configurationNamesEngine
+                ? executionBinding?.engineId
+                : activeSession.orchestrationProvider
+            }
             agentEngineMove={agentEngineMove}
             modelProviders={modelProviders}
             currentProviderId={activeSession.providerId}

@@ -1,0 +1,7 @@
+{
+  "revision": "1e60e3e22157f5ccdbadec86c7242067ea232db6",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Updated main qualification: ledger-only pushes start no run and a parent's pass is never reused for them; the scheduled failed-source skip (24-hour window, ledger-equivalent ancestors up to 30 commits, when it still runs); twelve required jobs with three process-heavy slices; the Free profile runs the slices one after another and the headroom is unmeasured. Verified against full-regression.yml, main-qualification.yml, qualification-evidence.mjs and release-pipeline.mjs runnerProfile. The repair and health paragraphs are unchanged, as are their scripts.","inputs":["docs/guides/releasing.md",".github/workflows/full-regression.yml",".github/workflows/main-qualification.yml","scripts/__tests__/merge-queue-dequeue.test.ts","scripts/__tests__/promotion-full-regression-workflow.test.ts","scripts/__tests__/qualification-evidence.test.ts","scripts/qualification-evidence.mjs"]}
+  ]
+}

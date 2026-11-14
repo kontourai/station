@@ -1,7 +1,0 @@
-{
-  "revision": "92f222218e32ba83d564165db5ccda8f74d8c40e",
-
-  "notes": [
-    {"path":"packages/telemetry-broker/README.md","note":"Reviewed the public aggregate contract and dashboard description against the page change. Publication/noise, thresholds and paginated API are unchanged. With no interpretable signal the page now gives a single explanation and publication window; private Access-session behavior belongs to deploy/telemetry-worker/README.md. Focused served-script/receiver tests pass; live browser and delivery qualification remain pending.","inputs":["packages/telemetry-broker/README.md","packages/telemetry-broker/src/public-dashboard.ts"]}
-  ]
-}

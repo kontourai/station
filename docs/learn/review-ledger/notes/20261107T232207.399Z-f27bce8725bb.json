@@ -1,7 +1,0 @@
-{
-  "revision": "ae8e7424e01da43085f107391bb83e7a305406db",
-
-  "notes": [
-    {"path":"docs/design/answer-share-permalinks.md","note":"environment-security.ts gained only the optional boolean `usageConnectionFilters` on StationCapabilityFlags (additive). Checked share routes, routingReceipt restrictions and shared-receipt claims; capability flag addition does not affect them.","inputs":["docs/design/answer-share-permalinks.md","packages/contracts/src/environment-security.ts"]}
-  ]
-}

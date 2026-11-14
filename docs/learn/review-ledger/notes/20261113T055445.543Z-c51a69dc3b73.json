@@ -1,9 +1,0 @@
-{
-  "revision": "06c9e17ac4d404b9fd3324195c237cc33dc59137",
-
-  "notes": [
-    {"path":"docs/strategy/differentiators.md","note":"scripts/public-docs-hygiene.mjs only made its promise reader module-private; the sentence parsing, surfaces and drift findings this record describes are unchanged.","inputs":["docs/strategy/differentiators.md","scripts/public-docs-hygiene.mjs"]},
-
-    {"path":"docs/guides/documentation.md","note":"scripts/public-docs-hygiene.mjs only made its promise reader module-private; docs:public:hygiene still compares the README, Pages home and corpus.json with the promise and makes no network call, as the Verify-the-change paragraph says.","inputs":["docs/guides/documentation.md","scripts/public-docs-hygiene.mjs"]}
-  ]
-}

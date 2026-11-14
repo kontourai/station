@@ -1,7 +1,0 @@
-{
-  "revision": "9065f79520a72288ebbe5ff3aa2e409c792bf6b9",
-
-  "notes": [
-    {"path":"docs/guides/self-configuring-agent.md","note":"Edited: added the delegated_tool_blocked paragraph to 'Where a child's lineage comes from' (request-delegation.ts DelegatedToolBlockedError, checked before the depth limit; orchestration.ts passes tool:'delegate_task'/'send_message'), and qualified the built-in-denial list as route-enforced for delegating/messaging further. Also corrected the delivery list: Muse (and any engine without a station-control caller assurance, per stationControlAssuranceFor) gets no instructions; only Codex and ACP use the first-turn channel. The Orchestration instructions section and receipt wording match session-agent-resolution.ts resolveStationInstructions and claude-adapter.ts.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md","src-server/providers/adapters/claude-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/runtime/agents/request-delegation.ts"]}
-  ]
-}

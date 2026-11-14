@@ -1,0 +1,7 @@
+{
+  "revision": "4019ae390a27f42301811a2baa3b64b22d4bd930",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Rechecked: the station-runtime.ts change is a comment-only correction (Muse credential profiles do get an app home, #1942); no code line changed, so no claim in this document is affected.","inputs":["docs/guides/plugins.md","src-server/providers/plugin-provider-loader.ts","src-server/providers/registries/agent-registry-provider.ts","src-server/providers/registries/filesystem-skill-registry.ts","src-server/providers/registries/json-manifest-registry.ts","src-server/providers/registries/registry-catalog-installed-state.ts","src-server/providers/registries/registry-source-configuration.ts","src-server/providers/registries/registry-source-detection.ts","src-server/providers/registries/registry-source-manager.ts","src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","src-server/routes/plugins/registry.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/plugins/plugin-install-transaction.ts","src-server/services/plugins/registry-acquisition.ts","src-ui/src/views/RegistryView.tsx"]}
+  ]
+}
