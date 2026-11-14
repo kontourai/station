@@ -2322,7 +2322,11 @@ inputs are `ProjectRoomReactionInput` (`{ emoji, reacted }`, a set state, so a
 repeat changes nothing), `ProjectRoomEditInput` and `ProjectRoomDeleteInput`, with
 their `parse…` functions. `PROJECT_ROOM_FORBIDDEN_CODE`
 (`project_room_forbidden`, a `permission_denied` failure) is the refusal of an
-edit or delete by anyone but the message's person author. `PROJECT_ROOM_LIMITS` bounds reactions
+edit or delete by anyone but the message's person author.
+`PROJECT_ROOM_FILES_UNAVAILABLE_CODE` (`project_room_files_unavailable`, an
+`unavailable` failure a later retry can clear) is the 503 refusal of a new
+attachment while the room's file store cannot read every file record.
+`PROJECT_ROOM_LIMITS` bounds reactions
 (`reactionEmojiPerMessage` 20, `reactionsPerMessage` 100, `reactionEmojiBytes`
 32) and revisions (`revisionsPerMessage` 50). `projectRoomReactionEmojiProblem`
 accepts exactly one emoji: a pictograph with optional skin tone or tag
