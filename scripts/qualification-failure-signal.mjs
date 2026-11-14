@@ -3,7 +3,7 @@
 // job logs. It changes no run's verdict and skips no test: a known failure
 // still fails its run and still blocks release. Anything a manifest does not
 // explicitly explain is a new failure.
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   JOB_MANIFEST_FILE,
@@ -143,8 +143,6 @@ export function readJobManifests(directory) {
     }
     const file = resolve(directory, entry.name, JOB_MANIFEST_FILE);
     try {
-      if (statSync(file).size > MANIFEST_BOUNDS.bytes)
-        throw new Error(`manifest exceeds ${MANIFEST_BOUNDS.bytes} bytes`);
       found.push({
         artifact: entry.name,
         manifest: parseJobManifest(readFileSync(file, 'utf8')),
