@@ -279,6 +279,14 @@ describe('release-versioning output contract', () => {
     const refusals: [string, string][] = [
       ['a description edit', json({ ...bumped, description: 'Changed claim' })],
       [
+        'an unplanned version',
+        PKG_AFTER.replace('"version": "1.1.0"', '"version": "1.2.0"'),
+      ],
+      [
+        'the version left unbumped while a range moves',
+        PKG_AFTER.replace('"version": "1.1.0"', '"version": "1.0.0"'),
+      ],
+      [
         'an external range',
         json({
           ...bumped,

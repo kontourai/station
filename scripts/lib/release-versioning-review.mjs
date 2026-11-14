@@ -231,7 +231,6 @@ function isPlannedManifest(beforeText, afterText, { release, releases }) {
     return planned && planned.type !== 'none' ? planned : undefined;
   };
   const target = release && release.type !== 'none' ? release : undefined;
-  if (target && after.version !== target.newVersion) return false;
   const a = beforeText.split('\n');
   const b = afterText.split('\n');
   if (a.length !== b.length) return false;
@@ -272,6 +271,8 @@ function isPlannedManifest(beforeText, afterText, { release, releases }) {
         expected[field][range[0][2]] = range[1][3];
     edits += 1;
   }
+  // A planned version must actually be written.
+  if (target && expected.version !== target.newVersion) return false;
   return edits > 0 && JSON.stringify(expected) === JSON.stringify(after);
 }
 
