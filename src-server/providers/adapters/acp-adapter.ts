@@ -3673,9 +3673,16 @@ export class AcpAdapter implements ProviderAdapterShape {
 
   /**
    * Remember `messageId` as the engine's id for the running Station turn's
-   * prompt, in the ledger rewind and fork resolve a turn through.
+   * prompt, in the ledger rewind and fork resolve a turn through. `startedAt`
+   * is given where the engine reports the prompt starting (Grok's queue
+   * notice), whose rewind points are matched by time and preview; only then
+   * are the start and the prompt text kept.
    */
-  private recordTurnPrompt(record: AcpSessionRecord, messageId: string): void {
+  private recordTurnPrompt(
+    record: AcpSessionRecord,
+    messageId: string,
+    startedAt?: number,
+  ): void {
     const turnId = record.activeTurnId;
     if (!turnId) return;
     record.turnMessages ??= [];
@@ -3688,11 +3695,14 @@ export class AcpAdapter implements ProviderAdapterShape {
         turnId,
         firstMessageId: messageId,
         lastMessageId: messageId,
-        ...(record.activePromptText !== undefined
-          ? { promptText: record.activePromptText }
+        ...(startedAt !== undefined
+          ? {
+              startedAt,
+              ...(record.activePromptText !== undefined
+                ? { promptText: record.activePromptText }
+                : {}),
+            }
           : {}),
-        // Recorded on the prompt's first notice, so this is when it started.
-        startedAt: Date.now(),
       });
       if (record.turnMessages.length > ACP_TURN_MESSAGES_MAX)
         record.turnMessages.splice(
@@ -5675,7 +5685,8 @@ export class AcpAdapter implements ProviderAdapterShape {
         rememberEnginePrompt(record, enginePromptId);
         // The engine started this turn's prompt: it is a rewind and fork
         // point, in the order the engine ran it.
-        if (first) this.recordTurnPrompt(record, enginePromptId);
+        // On the prompt's first notice, so now is when it started.
+        if (first) this.recordTurnPrompt(record, enginePromptId, Date.now());
       }
       return;
     }
