@@ -16924,6 +16924,50 @@ describe('OrchestrationService', () => {
     expect(recovered.sendTurn).toHaveBeenLastCalledWith(
       expect.objectContaining({ input: 'Again' }),
     );
+    // No start mark: a live engine logs the warning itself (the ACP
+    // adapter's own credential-recovery restart starts fresh between turns),
+    // and the next turn reads it from the log.
+    recovered.events.push({
+      eventId: randomUUID(),
+      provider: 'acp',
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: ACP_SESSION_STARTED_FRESH_CODE,
+      message:
+        'Gemini CLI could not reload this conversation, so Station started a new Gemini CLI session.',
+    });
+    await waitFor(
+      () => eventStore.listEvents(threadId),
+      (events) =>
+        events.filter(
+          (event) =>
+            (event.payload as { code?: string }).code ===
+            ACP_SESSION_STARTED_FRESH_CODE,
+        ).length === 2,
+    );
+    await second.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'Later' },
+    });
+    expect(recovered.startSession).toHaveBeenCalledTimes(1);
+    expect(recovered.sendTurn).toHaveBeenLastCalledWith(
+      expect.objectContaining({ input: 'Be terse.\nLater' }),
+    );
+    await waitFor(
+      () => eventStore.listEvents(threadId),
+      (events) =>
+        events.filter((event) => event.method === 'turn.started').length ===
+        4,
+    );
+    await second.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'Once more' },
+    });
+    expect(recovered.sendTurn).toHaveBeenLastCalledWith(
+      expect.objectContaining({ input: 'Once more' }),
+    );
     await Promise.all([first.shutdown(), second.shutdown()]);
   });
 

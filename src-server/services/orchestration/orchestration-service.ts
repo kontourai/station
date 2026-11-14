@@ -1664,11 +1664,6 @@ function resumesNativeTranscript(
   );
 }
 
-/** No turn has started in this session yet (the first-turn rule above). */
-function isGenuineFirstTurn(events: readonly { method?: unknown }[]): boolean {
-  return !events.some((event) => event.method === 'turn.started');
-}
-
 /**
  * Epic #4003: the Task brief the start recorded (`TASK_BRIEF_METADATA_KEY`),
  * while the session has had no turn yet. Same first-turn rule as
@@ -9424,6 +9419,11 @@ export class OrchestrationService {
           // The engine this dispatch just started began a new context: its
           // warning may not be stored yet, so it is appended here, in the
           // place the log will hold it (before this turn's turn.started).
+          // That mark is what makes a fresh start found in this dispatch;
+          // for the prompt and Task brief readers the after-start read above
+          // is belt-and-braces (a warning logged before this dispatch is in
+          // `current` too), while Station instructions need it for the
+          // engine's fresh delivery report.
           const engineEvents =
             readEngineEvents &&
             this.engineContextStartedFreshThreads.delete(
@@ -9468,6 +9468,14 @@ export class OrchestrationService {
           const genuineFirstTurn =
             !!current &&
             !current.events.some((event) => event.method === 'turn.started');
+          // The first turn since the engine began a new context (a fresh
+          // start, ACP_SESSION_STARTED_FRESH_CODE): the budget and image
+          // lines are due again, like the prompt above. The predecessor and
+          // recovery notes keep the genuine-first-turn rule.
+          const engineContextFirstTurn =
+            genuineFirstTurn ||
+            (!!engineEvents &&
+              !turnStartedSinceEngineContextBegan(engineEvents));
           // A successor whose engine resumed the predecessor's native
           // transcript already holds the budget and image line the earlier
           // first turn delivered; repeating them only grows the history
@@ -9476,7 +9484,7 @@ export class OrchestrationService {
             genuineFirstTurn &&
             resumesNativeTranscript(stationGuideEvents ?? current.events);
           const workloadLimits =
-            genuineFirstTurn &&
+            engineContextFirstTurn &&
             !resumedNativeConversation &&
             adapter.metadata.workloadScope === 'engine-process'
               ? this.options.workloadEngineLimits?.(submittedInput.threadId)
@@ -9507,9 +9515,7 @@ export class OrchestrationService {
           ].filter((part): part is string => part !== undefined);
           // The chat-host-images preview's one line, on the same first turn.
           const pendingHostImageGuide =
-            current &&
-            isGenuineFirstTurn(current.events) &&
-            !resumedNativeConversation
+            current && engineContextFirstTurn && !resumedNativeConversation
               ? await this.hostImages.instructionFor(submittedInput.threadId)
               : undefined;
           const firstTurnContext = [
@@ -13106,6 +13112,9 @@ export class OrchestrationService {
     threadId: string,
     cascade = true,
   ): Promise<void> {
+    // The engine this mark describes is being stopped; its warning stays in
+    // the log for a later turn.
+    this.engineContextStartedFreshThreads.delete(threadId);
     if (cascade && this.options.eventStore?.ownedStopTargets(threadId).length) {
       await this.requestOwnedCascade(threadId, 'stop');
       return;
@@ -14323,6 +14332,7 @@ export class OrchestrationService {
     this.sessionAdapters.delete(threadId);
     this.lastEngineActivityAt.delete(threadId);
     this.threadProviders.delete(threadId);
+    this.engineContextStartedFreshThreads.delete(threadId);
     this.sessionReadModel.delete(threadId);
     this.sessionConnectionIds.delete(threadId);
     // #484 phase A follow-up: the portable-consent verdict is per-incarnation,
