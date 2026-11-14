@@ -108,17 +108,26 @@ const APPENDED_CONSOLE_LINE = /\nBrowser errors: \[.*\]$/;
  *   `Browser errors: [...]` (console output carries bundle hashes and ports
  *   that differ between any two builds, and never fails a screen on its own);
  *   the same text anywhere else is kept, so an error whose own message
- *   embeds console output (telemetry-feedback-mobile's) is never excused;
- * - a Playwright `Call log:` and everything after it (retry attempts,
- *   timings, element snapshots), unless the message is nothing but a call
- *   log, which is then kept whole;
+ *   embeds console output (telemetry-feedback-mobile's) is never excused.
+ *   A message whose own last line is `Browser errors: [...]` cannot be told
+ *   from the appended one; no current message ends that way;
+ * - in a Playwright `Call log:`, every line after the first entry (retry
+ *   attempts, `N ×` counters, `waiting 20ms`, element snapshots). The header
+ *   and the first entry are kept: in Playwright 1.65 that entry names the
+ *   target (`- waiting for <locator>[ to be <state>]`, `- navigating to
+ *   "<url>", waiting until "<event>"`, or for expect `- Expect "<matcher>"
+ *   <locator> with timeout <n>ms`) and carries no elapsed time or counter.
+ *   A message that is nothing but a call log is kept whole;
  * - loopback URLs' ports become `<port>`;
  * - the checkout root (`root`) becomes `<repo>` where a path starts (line
  *   start, whitespace, quote or bracket), so the repo-relative path and its
  *   `:line:col` are still compared, and URL paths are untouched;
  * - a `Received...:` line whose whole value is a plain number becomes
- *   `Received...: <n>` (a measurement, as toBeLessThanOrEqual prints it).
- *   Quoted, structured or mixed values are compared exactly.
+ *   `Received...: <n>`. That covers measurements (toBeLessThanOrEqual) and
+ *   equality matchers alike (toBe, toHaveCount, `Received length:`): main
+ *   and the PR failing the SAME assertion with different actual numbers
+ *   compare equal. Quoted, structured or mixed values, and every `Expected`
+ *   line, are compared exactly.
  * An error that is empty after all of this never matches (failureKey).
  * Everything else is compared verbatim: the assertion message, matcher,
  * `Expected` bound, locator, timeout bound, routes and other paths. When in
@@ -129,9 +138,12 @@ export function normaliseFailureDetail(detail, { root, appendedConsole } = {}) {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escapes are the input.
   let text = detail.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '');
   if (appendedConsole) text = text.replace(APPENDED_CONSOLE_LINE, '');
-  const callLog = text.search(/^\s*Call log:/m);
-  if (callLog > 0 && text.slice(0, callLog).trim() !== '')
-    text = text.slice(0, callLog);
+  const callLog = text.search(/^[ \t]*Call log:/m);
+  if (callLog > 0 && text.slice(0, callLog).trim() !== '') {
+    const [header, ...entries] = text.slice(callLog).split('\n');
+    const first = entries.find((line) => line.trim() !== '');
+    text = `${text.slice(0, callLog)}${header}${first === undefined ? '' : `\n${first}`}`;
+  }
   const rootPattern = root
     ? new RegExp(
         `(^|[\\s'"\`(\\[])${root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\/+$/, '')}(?=/)`,

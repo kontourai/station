@@ -755,6 +755,25 @@ describe('a render failure is excused only by the same error on main', () => {
     );
   });
 
+  it('keeps a Browser errors last line in an audit error', () => {
+    // Only a render failure has the line appended; an audit error's own
+    // last line is its message.
+    const auditError = (error: string) =>
+      screen('home', { uiAudit: { error } });
+    const result = attributionFixture({
+      composed: [
+        auditError('axe failed\nBrowser errors: ["a"]'),
+        screen('child-chat-dark-390'),
+      ],
+      baseCapture: manifest(
+        [auditError('axe failed\nBrowser errors: ["b"]')],
+        ['home'],
+      ),
+      capture: 'success',
+    }).run();
+    expect(result.output, result.out).toBe('verdict=pr\n');
+  });
+
   it('never excuses an error that is empty once normalised', () => {
     // An empty message, and the capture's join of an empty message with
     // its appended console line.
@@ -845,9 +864,7 @@ describe('normaliseFailureDetail', () => {
         'Received: <n>',
       ].join('\n'),
     );
-    expect(normaliseFailureDetail(timeout)).toBe(
-      'locator.click: Timeout 15000ms exceeded.',
-    );
+    expect(normaliseFailureDetail(timeout)).toBe(timeout);
     expect(
       normaliseFailureDetail(
         'page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3282/agents',
@@ -881,6 +898,82 @@ describe('normaliseFailureDetail', () => {
     ).toBe(false);
     expect(same('Received: 12px', 'Received: 13px')).toBe(false);
     expect(same('Received: 12', 'Received: 13')).toBe(true);
+  });
+
+  // Playwright 1.65's own messages (scratch probe against a local page),
+  // ANSI included: an action timeout names its target only in the call log.
+  const dim = (line: string) => `\u001b[2m${line}\u001b[22m`;
+  const click = (name: string, tail: string[] = []) =>
+    [
+      'locator.click: Timeout 5000ms exceeded.',
+      'Call log:',
+      dim(`  - waiting for getByRole('button', { name: '${name}' })`),
+      ...tail.map(dim),
+      '',
+    ].join('\n');
+  const goto = (port: number, route: string) =>
+    `page.goto: Timeout 30000ms exceeded.\nCall log:\n${dim(`  - navigating to "http://localhost:${port}/${route}", waiting until "load"`)}\n`;
+  const waitFor = (id: string) =>
+    `locator.waitFor: Timeout 10000ms exceeded.\nCall log:\n${dim(`  - waiting for getByTestId('${id}') to be visible`)}\n`;
+  const expectVisible = (id: string, port: number) =>
+    [
+      'expect(locator).toBeVisible() failed',
+      '',
+      `Locator:  getByTestId('${id}')`,
+      'Expected: visible',
+      'Received: undefined',
+      'Timeout:  5000ms',
+      '',
+      'Call log:',
+      `  - Expect "toBeVisible" getByTestId('${id}') with timeout 5000ms`,
+      `  - waiting for getByTestId('${id}')`,
+      `    - waiting for "http://localhost:${port}/slow" navigation to finish...`,
+      '',
+    ].join('\n');
+
+  it('keeps the call log entry that names the target', () => {
+    expect(same(click('Open'), click('Save'))).toBe(false);
+    expect(same(goto(4000, 'settings'), goto(4000, 'chat'))).toBe(false);
+    expect(same(waitFor('a'), waitFor('b'))).toBe(false);
+    expect(same(expectVisible('a', 1), expectVisible('b', 1))).toBe(false);
+    // The same target with different retries, counters, waits and ports.
+    expect(
+      same(
+        click('Save', [
+          '  - attempting click action',
+          '    2 × waiting for element to be visible',
+          '    - waiting 20ms',
+        ]),
+        click('Save', [
+          '  - attempting click action',
+          '    5 × waiting for element to be visible',
+          '    - waiting 500ms',
+        ]),
+      ),
+    ).toBe(true);
+    expect(same(goto(4000, 'chat'), goto(5314, 'chat'))).toBe(true);
+    expect(same(waitFor('a'), waitFor('a'))).toBe(true);
+    expect(same(expectVisible('a', 1), expectVisible('a', 2))).toBe(true);
+    expect(
+      normaliseFailureDetail(click('Save', ['  - attempting click action'])),
+    ).toBe(
+      "locator.click: Timeout 5000ms exceeded.\nCall log:\n  - waiting for getByRole('button', { name: 'Save' })",
+    );
+  });
+
+  it('never masks an Expected value', () => {
+    expect(same('Expected: 5\nReceived: 1', 'Expected: 6\nReceived: 1')).toBe(
+      false,
+    );
+  });
+
+  it('does not mask a sibling of the checkout root', () => {
+    expect(normaliseFailureDetail(`at ${root}-other/a.ts:1:1`, { root })).toBe(
+      `at ${root}-other/a.ts:1:1`,
+    );
+    expect(same(`at ${root}-one/a.ts:1:1`, `at ${root}-two/a.ts:1:1`)).toBe(
+      false,
+    );
   });
 
   it('masks only the checkout root of a path, at a path start', () => {
