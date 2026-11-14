@@ -3,9 +3,17 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
-import { HYGIENE_ISSUE_TITLE, reportOutstanding } from '../hygiene-report.mjs';
+import {
+  HYGIENE_ISSUE_TITLE,
+  reportOutstanding,
+  upsertHygieneIssue,
+} from '../hygiene-report.mjs';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
-import { upsertTrackingIssue } from '../lib/tracking-issue.mjs';
+import {
+  postableReport,
+  TRACKING_BODY_LIMIT,
+  upsertTrackingIssue,
+} from '../lib/tracking-issue.mjs';
 
 // Every check runs as the real CLI child against a disposable Git tree. The
 // GitHub seam is the `gh` command itself: STATION_HYGIENE_GH points at a
@@ -855,7 +863,13 @@ describe('tracking issue upsert', () => {
     const calls: string[][] = [];
     const gh = (output: string) => (args: string[]) => {
       calls.push(args);
-      return args.includes('search/issues') ? output : '7';
+      return args.includes('search/issues')
+        ? output
+            .split('\n')
+            .filter(Boolean)
+            .map((number) => `${number}\tgithub-actions[bot]`)
+            .join('\n')
+        : '7';
     };
     const base = {
       repo: 'owner/repo',
@@ -876,5 +890,109 @@ describe('tracking issue upsert', () => {
     expect(() =>
       upsertTrackingIssue({ ...base, repo: 'bad', outstanding: 1, gh: gh('') }),
     ).toThrow('--repo must be owner/name');
+  });
+});
+
+// Every sweep's tracker goes through these: tracking-issue.mjs owns them.
+describe('tracking issue ownership and the posted body', () => {
+  const searching = (lines: string[]) => {
+    const calls: string[][] = [];
+    const gh = (args: string[]) => {
+      calls.push(args);
+      return args.includes('search/issues') ? lines.join('\n') : '11';
+    };
+    return { gh, calls };
+  };
+  const base = () => {
+    const reportPath = join(makeTemp('tracking-owner-'), 'r.md');
+    writeFileSync(reportPath, 'body');
+    return {
+      repo: 'owner/repo',
+      reportPath,
+      title: HYGIENE_ISSUE_TITLE,
+      labels: ['P2'],
+      outstanding: 1,
+    };
+  };
+
+  // Anyone can open an issue with a tracker's exact title, lower-numbered
+  // than ours; it must never be the one the write token edits.
+  it('ignores a same-titled issue someone else opened and creates its own', () => {
+    const { gh, calls } = searching(['3\tsomeone']);
+    expect(upsertTrackingIssue({ ...base(), gh })).toEqual({
+      action: 'created',
+      number: 11,
+    });
+    expect(calls.at(-1)).toEqual(expect.arrayContaining(['POST']));
+    expect(calls.flat().join(' ')).not.toContain('issues/3');
+  });
+
+  it('updates the issue the workflow bot opened, even past a foreign one', () => {
+    const { gh, calls } = searching(['3\tsomeone', '8\tgithub-actions[bot]']);
+    expect(upsertTrackingIssue({ ...base(), gh })).toEqual({
+      action: 'updated',
+      number: 8,
+    });
+    expect(calls.at(-1)).toEqual(
+      expect.arrayContaining(['PATCH', 'repos/owner/repo/issues/8']),
+    );
+  });
+
+  it('breaks plain and entity-encoded mentions in the posted copy', () => {
+    const reportPath = join(makeTemp('tracking-post-'), 'r.md');
+    writeFileSync(
+      reportPath,
+      'cc @octo &#64;octo &#x40;octo &commat;octo a && b <!-- @hidden --> [@x](https://example.invalid/?a=1)',
+    );
+    const posted = readFileSync(postableReport(reportPath), 'utf8');
+    expect(posted).not.toMatch(/@[A-Za-z0-9_-]/);
+    expect(posted).not.toMatch(/&(#|commat;)/);
+    expect(posted).toContain('&amp;#64;octo');
+    expect(posted).toContain('&amp;commat;octo');
+    // An `&` that cannot start an entity is left alone.
+    expect(posted).toContain('a && b');
+  });
+
+  // The bound applies to the text that is posted, after neutralizing; a
+  // body is refused, never truncated.
+  it('refuses posted text over the limit and accepts it at the limit', () => {
+    const write = (body: string) => {
+      const path = join(makeTemp('tracking-size-'), 'r.md');
+      writeFileSync(path, body);
+      return path;
+    };
+    expect(TRACKING_BODY_LIMIT).toBe(65_536);
+    const exact = postableReport(write('x'.repeat(TRACKING_BODY_LIMIT)));
+    expect(readFileSync(exact, 'utf8')).toHaveLength(TRACKING_BODY_LIMIT);
+    expect(() =>
+      postableReport(write('x'.repeat(TRACKING_BODY_LIMIT + 1))),
+    ).toThrow(/65537 characters to post; refusing to post more than 65536/);
+    // 60,000 characters that grow to 90,000 once every mention is broken.
+    expect(() => postableReport(write('@a'.repeat(30_000)))).toThrow(
+      /90000 characters to post/,
+    );
+  });
+
+  it('posts a hygiene report only for its own checkout, neutralized', () => {
+    const revision = 'a'.repeat(40);
+    const reportPath = join(makeTemp('hygiene-post-'), 'r.md');
+    writeFileSync(
+      reportPath,
+      `<!-- code-hygiene-sweep findings=1 not_verified=0 revision=${revision} -->\n@octo\n`,
+    );
+    const posted: string[] = [];
+    const gh = (args: string[]) => {
+      const body = args.find((arg) => arg.startsWith('body=@'));
+      if (body) posted.push(readFileSync(body.slice(6), 'utf8'));
+      return args.includes('search/issues') ? '' : '5';
+    };
+    expect(
+      upsertHygieneIssue({ repo: 'o/r', reportPath, head: revision, gh }),
+    ).toEqual({ action: 'created', number: 5 });
+    expect(posted[0]).toContain('@\u200bocto');
+    expect(() =>
+      upsertHygieneIssue({ repo: 'o/r', reportPath, head: 'b'.repeat(40), gh }),
+    ).toThrow(/refusing to post it/);
+    expect(posted).toHaveLength(1);
   });
 });
