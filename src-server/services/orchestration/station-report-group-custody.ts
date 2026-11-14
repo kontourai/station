@@ -14,6 +14,7 @@ import {
 } from '@kontourai/flow-agents/delegation-envelope-v2';
 import {
   ContinuationPublicationUncertainError,
+  ContinuationWinnerError,
   createDelegationRoundsController,
   type DelegationRoundsHost,
   type DelegationRoundsTransactionOwner,
@@ -1264,7 +1265,10 @@ export class StationReportGroupCustody {
           const writer = await HomeWriterOwner.forHome(
             this.owners.environment.getProjectHomeDir(),
           );
-          const readState = async (scope: ReportRoundsScope) => {
+          const readState = async (
+            scope: ReportRoundsScope,
+            checkRetainedWinner = false,
+          ) => {
             const authorized = { ...captured, current: scope.current };
             const before = await this.#inspect(authorized, groupId);
             const group = before?.group;
@@ -1281,6 +1285,38 @@ export class StationReportGroupCustody {
               scope.current,
             );
             if (!record || !same(record.data, before.admission)) refuse();
+            const command = {
+              kind: 'finalizeContinuation' as const,
+              groupId,
+              ...input,
+              controller: group.spec.controller,
+            };
+            if (checkRetainedWinner) {
+              const prior = before.events.find(
+                (event) =>
+                  event.kind === 'continuation_finalized' &&
+                  event.command.operationKey === input.operationKey,
+              );
+              if (
+                prior?.kind === 'continuation_finalized' &&
+                same(prior.command, command)
+              ) {
+                try {
+                  await this.owners.persistence.loadReportContinuation(
+                    groupId,
+                    prior.receipt.reference,
+                    scope.current,
+                  );
+                } catch (cause) {
+                  scope.current();
+                  throw new ContinuationWinnerError(
+                    'rounds_continuation_winner_unavailable',
+                    cause,
+                  );
+                }
+                scope.current();
+              }
+            }
             const locations: Array<{
               cwd: string;
               assertCurrent(): undefined;
@@ -1308,19 +1344,13 @@ export class StationReportGroupCustody {
             const cwd = locations[0]?.cwd;
             if (!cwd || locations.some((location) => location.cwd !== cwd))
               refuse();
-            return { before, group, root, locations, cwd };
+            return { before, group, root, locations, cwd, command };
           };
           const initial = await publication.withHome(
             { owner: writer, current: captured.current },
-            readState,
+            (scope) => readState(scope, true),
           );
-          const { group, root, cwd } = initial;
-          const command = {
-            kind: 'finalizeContinuation' as const,
-            groupId,
-            ...input,
-            controller: group.spec.controller,
-          };
+          const { group, root, cwd, command } = initial;
           const states = new WeakMap<
             ReportRoundsScope,
             Awaited<ReturnType<typeof readState>>

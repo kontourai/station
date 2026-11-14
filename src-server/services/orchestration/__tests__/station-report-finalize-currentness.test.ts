@@ -277,3 +277,190 @@ test('pass-through final transaction observer reaches body and durable return on
     await closeFinalizer(f);
   }
 }, 60_000);
+
+test('exact replay rejects unusable winners before historical source access and preserves intent checks', async ({
+  signal,
+  onTestFinished,
+}) => {
+  const f = await setupFinalizer(signal);
+  onTestFinished(() => closeFinalizer(f));
+  const finalized = await finalizeFixture(f);
+  const reference = finalized.group?.continuations[0]?.receipt?.reference;
+  assert.ok(reference);
+  const winner = join(
+    f.reportRoot,
+    'station-report-flow-observations-v1',
+    `${reference.id}.json`,
+  );
+  const winnerBytes = readFileSync(winner);
+  const sourcePaths = new Set(
+    f.prepared.envelopes.map((envelope) =>
+      join(
+        f.h.f.store,
+        `snapshot-${envelope.execution_binding.source.source_admission_receipt.id}.json`,
+      ),
+    ),
+  );
+  const locator = [...sourcePaths][0];
+  assert.ok(locator);
+  const locatorBytes = readFileSync(locator);
+  const open = fs.openSync;
+  let sourceReads = 0;
+  let winnerReads = 0;
+  const reads = vi
+    .spyOn(fs, 'openSync')
+    .mockImplementation((path, flags, mode) => {
+      if (sourcePaths.has(String(path))) sourceReads++;
+      if (String(path) === winner) winnerReads++;
+      return open(path, flags, mode);
+    });
+  syncBuiltinESMExports();
+  const noEffects = observeNoFinalizerEffects(f);
+  try {
+    writeFileSync(winner, '{}');
+    sourceReads = 0;
+    await assert.rejects(finalizeFixture(f), {
+      code: 'rounds_continuation_winner_unavailable',
+    });
+    assert.equal(
+      sourceReads,
+      0,
+      'unusable retained winner must refuse before source reads',
+    );
+
+    writeFileSync(locator, '{}');
+    sourceReads = 0;
+    await assert.rejects(finalizeFixture(f), {
+      code: 'rounds_continuation_winner_unavailable',
+    });
+    assert.equal(
+      sourceReads,
+      0,
+      'winner failure precedes source failure for this exact replay',
+    );
+    writeFileSync(locator, locatorBytes);
+
+    winnerReads = 0;
+    await assert.rejects(
+      f.h.custody.finalizeContinuation(
+        f.h.f.context(requestFor(f.h, 'POST')),
+        f.groupId,
+        {
+          operationKey: 'finish',
+          expectedRevision: f.held.revision + 1,
+          continuationOperationKey: 'lost',
+        },
+        f.dispatch,
+        f.h.f.owner,
+        f.participant,
+        (historical) => historical.group,
+      ),
+      { code: 'rounds_intent_conflict' },
+    );
+    assert.equal(
+      winnerReads,
+      0,
+      'changed replay intent must not probe winner health',
+    );
+
+    writeFileSync(winner, winnerBytes);
+    writeFileSync(locator, '{}');
+    sourceReads = 0;
+    await assert.rejects(finalizeFixture(f), {
+      code: 'flow_location_unavailable',
+    });
+    assert.ok(
+      sourceReads > 0,
+      'valid winner still requires historical source validation',
+    );
+    writeFileSync(locator, locatorBytes);
+
+    fs.unlinkSync(winner);
+    sourceReads = 0;
+    await assert.rejects(finalizeFixture(f), {
+      code: 'rounds_continuation_winner_unavailable',
+    });
+    assert.equal(
+      sourceReads,
+      0,
+      'missing retained winner must refuse before source reads',
+    );
+    noEffects();
+  } finally {
+    reads.mockRestore();
+    syncBuiltinESMExports();
+    noEffects.restore();
+    writeFileSync(locator, locatorBytes);
+    writeFileSync(winner, winnerBytes);
+  }
+}, 60_000);
+
+test('winner preflight keeps closing request authority and never supplies controller bytes', async ({
+  signal,
+  onTestFinished,
+}) => {
+  const f = await setupFinalizer(signal);
+  onTestFinished(() => closeFinalizer(f));
+  const finalized = await finalizeFixture(f);
+  const reference = finalized.group?.continuations[0]?.receipt?.reference;
+  assert.ok(reference);
+  const winner = join(
+    f.reportRoot,
+    'station-report-flow-observations-v1',
+    `${reference.id}.json`,
+  );
+  const winnerBytes = readFileSync(winner);
+  const load = f.persistence.loadReportContinuation.bind(f.persistence);
+  const noEffects = observeNoFinalizerEffects(f);
+  try {
+    writeFileSync(winner, '{}');
+    const request = requestFor(f.h, 'POST');
+    const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+    assert.ok(principal);
+    let rejectedLoadReached = false;
+    const rejecting = vi
+      .spyOn(f.persistence, 'loadReportContinuation')
+      .mockImplementationOnce(async (...args) => {
+        try {
+          return await load(...args);
+        } finally {
+          rejectedLoadReached = true;
+          setRuntimeAuthenticatedRequestPrincipal(request, principal);
+        }
+      });
+    try {
+      await assert.rejects(finalizeFixture(f, request), {
+        code: 'authorization_unavailable',
+      });
+      assert.equal(rejectedLoadReached, true);
+    } finally {
+      rejecting.mockRestore();
+      writeFileSync(winner, winnerBytes);
+    }
+
+    let winnerRemoved = false;
+    const changing = vi
+      .spyOn(f.persistence, 'loadReportContinuation')
+      .mockImplementation(async (...args) => {
+        const bytes = await load(...args);
+        if (!winnerRemoved) {
+          fs.unlinkSync(winner);
+          winnerRemoved = true;
+        }
+        return bytes;
+      });
+    try {
+      await assert.rejects(finalizeFixture(f), {
+        code: 'rounds_continuation_winner_unavailable',
+      });
+      assert.equal(winnerRemoved, true);
+    } finally {
+      changing.mockRestore();
+      writeFileSync(winner, winnerBytes);
+    }
+    noEffects();
+  } finally {
+    noEffects.restore();
+    writeFileSync(winner, winnerBytes);
+  }
+}, 60_000);
