@@ -7,7 +7,7 @@
       "advisory": "GHSA-mrhx-c7xc-m3w5",
       "severity": "high",
       "owner": "station-maintainers",
-      "reason": "zod 3.25.76 is the newest 3.x release and none is patched; the advisory's first patched version is 4.6.6. It is declared by @gitlab/gitlab-ai-provider 3.6.1 (required by @voltagent/core at ^3.1.1), @voltagent/a2a-server 2.0.3 and zod-from-json-schema 0.0.5, and no released version of those moves to zod 4. Forcing zod 4 on them changes their runtime contract and needs its own compatibility review. Owner-approved risk acceptance for this exact identity until 2026-12-13; this does not claim the path is unreachable or fixed.",
+      "reason": "zod 3.25.76 is the newest 3.x release and none is patched; the advisory's first patched version is 4.6.6. It is installed for @gitlab/gitlab-ai-provider 3.6.1 (required by @voltagent/core at ^3.1.1; its latest release still declares zod 3), @voltagent/a2a-server 2.0.3 (its latest release), autoevals 0.0.131 (pinned by @voltagent/scorers 2.1.0) and zod-from-json-schema 0.0.5, which @voltagent/core installs under the alias zod-from-json-schema-v3. Removing it needs upstream VoltAgent and GitLab provider releases; forcing zod 4 on these consumers changes their runtime contract and needs its own compatibility review. Owner-approved risk acceptance for this exact identity until 2026-12-13; this does not claim the path is unreachable or fixed.",
       "trackingIssue": "https://github.com/kontourai/station/issues/4210",
       "expires": "2026-12-13"
     }

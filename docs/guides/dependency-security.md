@@ -89,15 +89,20 @@ candidate graph under its existing policy.
 
 Zod 3.25.76 itself is blocked by
 [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) (high).
-No 3.x release is patched; the first patched version is 4.6.6. It is declared
-by `@gitlab/gitlab-ai-provider` 3.6.1 (which `@voltagent/core` requires at
-`^3.1.1`), `@voltagent/a2a-server` 2.0.3 and `zod-from-json-schema` 0.0.5, and
-no released version of those moves to Zod 4. The owner approved one exact
-exception for `root` / `zod` / that advisory on 2026-11-14, through
-**2026-12-13**, tracked by #4210. It accepts the risk; it does not claim the
-path is unreachable or fixed. The alternative, forcing Zod 4 on those three
-consumers, changes their runtime contract and needs its own compatibility
-review. Remove the exception when an upstream release drops Zod 3.
+No 3.x release is patched; the first patched version is 4.6.6. Four packages
+keep it installed: `@gitlab/gitlab-ai-provider` 3.6.1 (which `@voltagent/core`
+requires at `^3.1.1`; the provider's latest release still declares Zod 3),
+`@voltagent/a2a-server` 2.0.3 (its latest release), `autoevals` 0.0.131
+(pinned by `@voltagent/scorers` 2.1.0; newer `autoevals` releases accept Zod 4)
+and `zod-from-json-schema` 0.0.5, which `@voltagent/core` installs under the
+alias `zod-from-json-schema-v3` beside the Zod 4 line of the same package.
+Removing Zod 3 therefore needs upstream VoltAgent and GitLab provider
+releases. The owner approved one exact exception for `root` / `zod` / that
+advisory on 2026-11-14, through **2026-12-13**, tracked by #4210. It accepts
+the risk; it does not claim the path is unreachable or fixed. The alternative,
+forcing Zod 4 on these consumers, changes their runtime contract and needs its
+own compatibility review. Remove the exception when the upstream releases drop
+Zod 3.
 
 ## RSA signature verification (2026-10 backport, 2026-11 release)
 
