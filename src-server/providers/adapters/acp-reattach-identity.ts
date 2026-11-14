@@ -73,6 +73,60 @@ export function assertAcpReattachedRequestedSession(
   }
 }
 
+/**
+ * Engines that cannot reload a stored session on a sign-in route they do
+ * start new sessions on. For these, and only for the exact refusal named,
+ * a reattach is replaced by a new engine session with a visible warning
+ * rather than failing: no other route can reach the conversation, and the
+ * replacement can change nothing the person set up.
+ */
+const ACP_REATTACH_NEW_SESSION_ON_REFUSAL: ReadonlyArray<{
+  identity: AcpHandshakeIdentity;
+  refusal: { code: number; messagePrefix: string };
+  reason: string;
+  observed: string;
+}> = [
+  {
+    // Gemini CLI's `loadSession` (`prepareSessionConfig`) uses only the
+    // saved `security.auth.selectedType` and answers
+    // `RequestError.authRequired()` (-32000, "Authentication required")
+    // when none is saved, while `newSession` falls back to the API key. A
+    // key-only connection therefore creates sessions it cannot reload.
+    // Station never calls `authenticate('gemini-api-key')` to fix that: the
+    // same refusal follows a saved Google sign-in that failed to refresh,
+    // and authenticating then would clear that cached login and persist the
+    // key route to the person's own Gemini CLI settings
+    // (acpRpcDispatcher.ts authenticate). A new session uses the saved
+    // method if there is one, so a broken sign-in still fails the start.
+    identity: { agentInfoName: 'gemini-cli' },
+    refusal: { code: -32000, messagePrefix: 'Authentication required' },
+    reason:
+      'Gemini CLI reloads a conversation only with a saved sign-in, and this connection signs in with an API key',
+    observed:
+      'google-gemini/gemini-cli 4ed06ed0dd packages/cli/src/acp/acpSessionManager.ts newSession, prepareSessionConfig; acpRpcDispatcher.ts authenticate',
+  },
+];
+
+/**
+ * Why a refused reattach may be replaced by a new engine session, when the
+ * handshake identifies an engine with that reviewed refusal; else
+ * `undefined` and the refusal fails the resume as before.
+ */
+export function acpReattachRefusalStartsNewSession(
+  handshake: AcpIdentityHandshake | null | undefined,
+  error: unknown,
+): string | undefined {
+  if (!handshake || !isRecord(error)) return undefined;
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  return ACP_REATTACH_NEW_SESSION_ON_REFUSAL.find(
+    ({ identity, refusal }) =>
+      matchesAcpHandshakeIdentity(handshake, identity) &&
+      code === refusal.code &&
+      typeof message === 'string' &&
+      message.startsWith(refusal.messagePrefix),
+  )?.reason;
+}
+
 export class AcpReattachedOtherSessionError extends Error {
   constructor(
     readonly requestedSessionId: string,

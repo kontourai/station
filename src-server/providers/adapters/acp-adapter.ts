@@ -64,6 +64,7 @@ import {
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   ACP_SESSION_REWOUND_CODE,
   ACP_SESSION_REWOUND_LATE_CODE,
+  ACP_SESSION_STARTED_FRESH_CODE,
   ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
@@ -273,7 +274,10 @@ import {
   type AcpToolServerSkipReason,
   resolveAcpPassthroughMcpServers,
 } from './acp-mcp-passthrough.js';
-import { assertAcpReattachedRequestedSession } from './acp-reattach-identity.js';
+import {
+  acpReattachRefusalStartsNewSession,
+  assertAcpReattachedRequestedSession,
+} from './acp-reattach-identity.js';
 import {
   acpSessionContinuity,
   readAcpRewindAnswer,
@@ -2047,6 +2051,9 @@ export class AcpAdapter implements ProviderAdapterShape {
         agentProjection && 'meta' in agentProjection
           ? agentProjection.meta
           : undefined;
+      // Set when a reviewed engine refused the reattach in the one way that
+      // makes a new engine session the only route (acp-reattach-identity.ts).
+      let startedFreshReason: string | undefined;
       if (isAcpResumeCursor(input.resumeCursor)) {
         const reattach = acpReattachMethod(acpProcess.initResult);
         if (!reattach) {
@@ -2068,27 +2075,39 @@ export class AcpAdapter implements ProviderAdapterShape {
         // earlier answer.
         record.reattaching = true;
         try {
-          let outcome: 'resumed' | 'loaded';
+          let outcome: 'resumed' | 'loaded' = 'loaded';
           let answer: unknown;
-          if (reattach === 'resume') {
-            try {
-              answer = await acpProcess.resumeSession(
-                acpSessionId,
-                cwd,
-                passthroughMcpServers,
-              );
-              outcome = 'resumed';
-            } catch (error) {
-              // An engine that advertises `sessionCapabilities.resume` but
-              // answers "method not found" is loaded instead. Any other
-              // failure is real and propagates (fail closed: loading after
-              // an unexplained resume failure could mask it).
-              if (
-                !isAcpMethodNotFound(error) ||
-                acpProcess.initResult?.agentCapabilities?.loadSession !== true
-              ) {
-                throw error;
+          try {
+            if (reattach === 'resume') {
+              try {
+                answer = await acpProcess.resumeSession(
+                  acpSessionId,
+                  cwd,
+                  passthroughMcpServers,
+                );
+                outcome = 'resumed';
+              } catch (error) {
+                // An engine that advertises `sessionCapabilities.resume` but
+                // answers "method not found" is loaded instead. Any other
+                // failure is real and propagates (fail closed: loading after
+                // an unexplained resume failure could mask it).
+                if (
+                  !isAcpMethodNotFound(error) ||
+                  acpProcess.initResult?.agentCapabilities?.loadSession !== true
+                ) {
+                  throw error;
+                }
+                answer = await acpProcess.loadSession(
+                  acpSessionId,
+                  cwd,
+                  passthroughMcpServers,
+                  sessionMeta,
+                );
+                outcome = 'loaded';
               }
+            } else {
+              // Sent again on load: the engine registers client agents per
+              // session process and has none after a restart.
               answer = await acpProcess.loadSession(
                 acpSessionId,
                 cwd,
@@ -2097,43 +2116,46 @@ export class AcpAdapter implements ProviderAdapterShape {
               );
               outcome = 'loaded';
             }
-          } else {
-            // Sent again on load: the engine registers client agents per
-            // session process and has none after a restart.
-            answer = await acpProcess.loadSession(
-              acpSessionId,
-              cwd,
-              passthroughMcpServers,
-              sessionMeta,
-            );
-            outcome = 'loaded';
-          }
-          // An engine that answered with a new session in place of this one
-          // fails the resume: continuing would run the conversation against
-          // an engine that holds none of it.
-          try {
-            assertAcpReattachedRequestedSession(
-              acpProcess.initResult,
-              acpSessionId,
-              answer,
-            );
           } catch (error) {
+            startedFreshReason = acpReattachRefusalStartsNewSession(
+              acpProcess.initResult,
+              error,
+            );
+            if (!startedFreshReason) throw error;
             acpResumeSessions.add(1, {
               connectionId: config.id,
-              outcome: 'other-session',
+              outcome: 'started-fresh',
             });
-            throw error;
           }
-          // The SDK dispatches each notification without awaiting it before
-          // reading the next message, so the last replayed updates can still
-          // be in flight (as microtasks) when the response resolves. Yield a
-          // macrotask so they land while the replay is still suppressed.
-          await new Promise<void>((resolve) => setImmediate(resolve));
-          acpResumeSessions.add(1, { connectionId: config.id, outcome });
+          if (!startedFreshReason) {
+            // An engine that answered with a new session in place of this one
+            // fails the resume: continuing would run the conversation against
+            // an engine that holds none of it.
+            try {
+              assertAcpReattachedRequestedSession(
+                acpProcess.initResult,
+                acpSessionId,
+                answer,
+              );
+            } catch (error) {
+              acpResumeSessions.add(1, {
+                connectionId: config.id,
+                outcome: 'other-session',
+              });
+              throw error;
+            }
+            // The SDK dispatches each notification without awaiting it before
+            // reading the next message, so the last replayed updates can still
+            // be in flight (as microtasks) when the response resolves. Yield a
+            // macrotask so they land while the replay is still suppressed.
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            acpResumeSessions.add(1, { connectionId: config.id, outcome });
+          }
         } finally {
           record.reattaching = false;
         }
-      } else {
+      }
+      if (!isAcpResumeCursor(input.resumeCursor) || startedFreshReason) {
         const sessionResult = await acpProcess.newSession(
           cwd,
           passthroughMcpServers,
@@ -2170,6 +2192,21 @@ export class AcpAdapter implements ProviderAdapterShape {
             }),
           ),
         } satisfies AcpResumeCursor;
+        if (startedFreshReason) {
+          // Said in the conversation, never silent: the history Station
+          // shows is no longer the engine's context.
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId: input.threadId,
+            createdAt: new Date().toISOString(),
+            method: 'runtime.warning',
+            severity: 'warning',
+            code: ACP_SESSION_STARTED_FRESH_CODE,
+            message: `${record.engineName} could not reload this conversation (${startedFreshReason}), so Station started a new ${record.engineName} session. Earlier messages are still shown here, but ${record.engineName} does not have them.`,
+            details: { connectionId: config.id },
+          });
+        }
         // A `config_option_update` that arrived before this answer may hold
         // a model option the answer itself left out.
         const updatedBeforeAnswer = record.configOptions;

@@ -15,6 +15,7 @@ import {
   engineControlPlaneCapability,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
+  ACP_SESSION_STARTED_FRESH_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
@@ -3242,6 +3243,103 @@ describe('AcpAdapter', () => {
       await expect(
         adapter.startSession(resumeKiroCursor('thread-resume-unreviewed')),
       ).resolves.toMatchObject({ threadId: 'thread-resume-unreviewed' });
+    });
+
+    /** What Gemini CLI's `initialize` says about itself (acpRpcDispatcher.ts). */
+    const asGemini = (proc: FakeAcpProcess) => {
+      proc.initResult!.agentInfo = { name: 'gemini-cli', version: '0.68.0' };
+    };
+    /**
+     * Gemini CLI's `loadSession` with no saved sign-in method:
+     * `prepareSessionConfig` throws `acp.RequestError.authRequired()`
+     * (google-gemini/gemini-cli 4ed06ed0dd acpSessionManager.ts).
+     */
+    const geminiNoSavedSignIn = () => RequestError.authRequired();
+    const drain = async (iterator: AsyncIterator<CanonicalRuntimeEvent>) => {
+      const seen: CanonicalRuntimeEvent[] = [];
+      for (;;) {
+        const event = await nextEventOrTimeout(iterator, 150);
+        if (event === 'TIMED_OUT') return seen;
+        seen.push(event);
+      }
+    };
+
+    test('Gemini CLI that cannot reload a key-only session starts a new one and says so', async () => {
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          asGemini(proc);
+          proc.loadSessionError = geminiNoSavedSignIn();
+        },
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-gemini-key-only')),
+      ).resolves.toMatchObject({ threadId: 'thread-gemini-key-only' });
+      expect(processes[0].loadSessionCalls).toBe(1);
+      // No authenticate: the session is started on whatever Gemini uses.
+      expect(processes[0].newSessionCalls).toBe(1);
+      expect(
+        processes[0].extMethodCalls.map(({ method }) => method),
+      ).toEqual([]);
+      const warning = (await drain(iterator)).find(
+        (event) => event.method === 'runtime.warning',
+      );
+      expect(warning).toMatchObject({
+        code: ACP_SESSION_STARTED_FRESH_CODE,
+        severity: 'warning',
+      });
+      expect((warning as { message: string }).message).toContain(
+        'does not have them',
+      );
+      await adapter.stopAll();
+    });
+
+    test('a saved Gemini sign-in that is broken still fails the start', async () => {
+      // The same refusal follows a saved method that failed to refresh; the
+      // new session uses that saved method and fails too.
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          asGemini(proc);
+          proc.loadSessionError = geminiNoSavedSignIn();
+          proc.newSessionError = new RequestError(
+            -32000,
+            'Gemini API key is missing or not configured.',
+          );
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-gemini-broken')),
+      ).rejects.toThrow('Gemini API key is missing');
+      expect(processes[0].newSessionCalls).toBe(1);
+    });
+
+    test('the same refusal from an engine not identified as Gemini CLI fails the resume', async () => {
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          proc.loadSessionError = geminiNoSavedSignIn();
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-not-gemini')),
+      ).rejects.toThrow('Authentication required');
+      expect(processes[0].newSessionCalls).toBe(0);
+    });
+
+    test('Gemini CLI refusing a reattach any other way fails the resume', async () => {
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          asGemini(proc);
+          proc.loadSessionError = RequestError.resourceNotFound('session');
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-gemini-not-found')),
+      ).rejects.toThrow();
+      expect(processes[0].newSessionCalls).toBe(0);
     });
 
     /** Start a resume whose `session/load` stays open until released. */

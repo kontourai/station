@@ -118,6 +118,18 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    against an engine that holds none of it. The same check applies when the
    approval-floor relaunch reattaches. An answer without the field, or from
    another engine, decides nothing.
+   The same module names the one refusal after which Station starts a new
+   engine session instead of failing. Gemini CLI (`agentInfo.name`
+   `gemini-cli`) creates sessions with its saved sign-in method, or with the
+   API key when none is saved, but reloads them only with a saved method: a
+   key-only connection gets `Authentication required` (-32000) on
+   `session/load`. Station then starts a new Gemini session and says so in
+   the conversation (`acp.session-started-fresh`, counted `started-fresh`).
+   It never calls `authenticate` to switch Gemini to the key. The same
+   refusal follows a saved Google sign-in that failed to refresh, and
+   authenticating would clear that login and change the person's own Gemini
+   CLI settings. A new session uses the saved method when there is one, so a
+   broken sign-in still fails the start.
    On `session/load`, ACP has the agent replay the whole conversation as
    `session/update` notifications before it answers. Station already stored
    that history, so while the session reattaches the adapter does not publish
