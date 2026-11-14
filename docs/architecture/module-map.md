@@ -2961,9 +2961,12 @@ Two engines run saved ACP connection records, `acp` and `opencode`
 (`isAcpFamilyEngine`, `@kontourai/station-contracts/provider`); shared code asks it
 where a behaviour belongs to the ACP connection a session runs on (its folder, its
 Agent scoping, its usage family), never to tell the engines apart. The Adapter shape's
-optional members `rewindSession`, `sessionContinuity`, `claimsAcpConnection` and
-`listedInProviderInventory` (an Adapter behind an off Feature Preview leaves the provider
-inventory) are documented on [`ProviderAdapterShape`](../../src-server/providers/adapter-shape.ts).
+optional members `claimsAcpConnection` and `listedInProviderInventory` (an Adapter behind
+an off Feature Preview leaves the provider inventory) are documented on
+[`ProviderAdapterShape`](../../src-server/providers/adapter-shape.ts). `OpenCodeAdapter`
+answers the generic session actions (`rewindSession`, `sessionContinuity`,
+`reconnectMcpServer`) natively on OpenCode's own server and through its inner ACP
+adapter otherwise.
 **Do not reintroduce:** a generated runtime suffix, a second Adapter engine selector,
 provider-name reconciliation, or read-time identity aliases.
 

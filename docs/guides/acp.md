@@ -1024,7 +1024,9 @@ Station reads the binary's `--version` to tell the two apart
 - **Native engine.** With the `opencode-native-engine` Feature Preview on, new
   chats on an OpenCode connection run on the `opencode` engine. It drives 2.x
   over its own `opencode serve`, where Station verified the served API, and
-  governs it through the session's permission rules. That path does not
+  governs it through the session's permission rules. An edit of OpenCode's
+  own configuration asks you there under Ask and Auto, even after an
+  "allow for this session". That path does not
   need `debug agent`, so it is where #4435 is resolved. 1.x, an unverified 2.x,
   and every chat while the preview is off still run over ACP. The design,
   fallback rules and limits are in

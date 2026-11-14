@@ -129,7 +129,15 @@ findings a to f):
 [`OpenCodeServePool`](../../src-server/providers/adapters/opencode-serve-pool.ts)
 runs one server per connection, binary identity, real working directory,
 launch environment and tool-server digest. Every session with that key shares
-the server, which stops after five minutes unused.
+the server, which stops after five minutes unused. A server whose key carries
+one session's own minted credentials (Station's built-in tool servers) cannot
+be shared, so it stops with that session instead of idling.
+
+A governed start checks governance before it is claimed (`preflightStart`),
+which needs a server. The preflight keeps the lease it checked on, and the
+start moves that server to its tool-server digest's key (`rekey`, only while
+that lease alone holds it and nothing was added), so a governed start runs one
+server, not two.
 
 - The server runs as `serve --stdio --hostname 127.0.0.1 --port 0`.
   `--stdio` ties the server's life to Station's end of its stdin pipe.
@@ -148,8 +156,8 @@ the server, which stops after five minutes unused.
   added to the table by mistake still cannot reach these: credentials, provider
   sign-in, pairing, server sign-in, client MCP and terminal tokens, and config
   writes. Refusals happen before any network I/O.
-- Redaction covers configuration only: `GET /api/model` and `GET /api/mcp`
-  answers and the configuration-type feed events. Conversation content is
+- Redaction covers configuration only: `GET /api/model`, `GET /api/mcp` and
+  `GET /api/agent/{id}` answers and the configuration-type feed events. Conversation content is
   never rewritten.
 - Station's tool servers for a session are the ones the ACP path would pass,
   resolved the same way. Each is added with
@@ -172,7 +180,8 @@ execution ended while the feed was down.
 
 Ruling R1 covers OpenCode 2.x over ACP. Station's ACP approval check reads
 1.x's `debug agent <name>`, and 2.x keeps saved approvals that check cannot
-see. So when a Station approval mode is asked for on 2.x over ACP, the ACP
+see. The version is read from the binary a launch would run: the managed
+policy's `acp` pin when one is set, else the connection's command. So when a Station approval mode is asked for on 2.x over ACP, the ACP
 adapter refuses it with `acp_approval_governance_refused` and a reason naming
 the version (`openCodeAcpApprovalUnsupportedReason`). Without a Station mode,
 OpenCode's own approvals still apply. No 2.x `OPENCODE_CONFIG_CONTENT` overlay
@@ -188,11 +197,27 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   tools) and `subagent`. OpenCode appends a session's rules after the agent's
   and lets the last match win, so these asks reach Station even for actions the
   agent's own rules deny.
-- **Answering an ask** from the session's own engine: if the agent's rules
-  alone deny it, or it is `subagent`, Station rejects it without a person.
-  Otherwise, a session grant or the mode (full access answers everything, Auto
-  answers `edit`) answers `once`. Otherwise a person decides. A child session's
-  ask always goes to a person. Station never answers `always` (ruling R4).
+- **Answering an ask**: if the asking agent's rules alone deny it, or it is
+  `subagent`, Station rejects it without a person. Below host full access, an
+  `edit` of OpenCode configuration (`opencode.json(c)`, `.opencode/`, the
+  global configuration, or anything outside the project) and an
+  `external_directory` ask for a directory that is or holds OpenCode
+  configuration go to a person, whatever grant or mode would answer them:
+  OpenCode reloads that configuration and runs what it declares (MCP servers,
+  plugins) without asking (`openCodeNativeAskNeedsPerson`, the native
+  counterpart of the ACP path's `openCodeEditNeedsPerson`). Otherwise, a
+  session grant or the mode (full access answers everything, Auto answers
+  `edit`) answers `once`. Otherwise a person decides. An automatic answer
+  OpenCode refuses (other than a 404 for an ask already gone) is put to the
+  person, so the ask never waits hidden. Station never answers `always`
+  (ruling R4).
+- **Child sessions** inherit their parent's session rules
+  (`core/src/session.ts`), so a child's ask is answered as the parent's would
+  be, except that the deny check uses the child's own agent's rules
+  (`GET /api/agent/{name}`; rules that cannot be read send the ask to a
+  person). `subagent` stays rejected under Ask and Auto, but a `subtask: true`
+  command starts a child without that permission, and its asks are governed
+  this way.
   "Allow for this session" is a grant the adapter holds, scoped to the asked
   patterns, and dropped when the mode changes.
 - **Before a governed start**, the #3924 project-code scan runs, then Station
@@ -224,13 +249,20 @@ covers that turning the preview on neither widens nor narrows a policy.
 These changes widen shared abstractions instead of adding OpenCode-only
 features:
 
-- **Rewind on the adapter shape.** `ProviderAdapterShape.rewindSession` is
-  optional, gated by `metadata.continuity.rewind`. Native rewind stages a revert
-  at the first dropped user message, then commits it, and clears the revert on
-  failure. Today it is reached only through OpenCode's `/rewind` command. No
-  Station route asks an ACP session to rewind.
-  `sessionContinuity(threadId)` reports one live session's fork and rewind.
-  Nothing reads it yet.
+- **Generic session actions.** The base branch owns
+  `ProviderAdapterShape.rewindSession(threadId, turnId)`
+  (`SessionRewindOutcome`), `sessionContinuity(threadId)`
+  (`SessionLiveContinuity`) and `reconnectMcpServer`, with their routes. The
+  OpenCode adapter answers them on both transports. Natively, rewind hides the
+  named turn and every later one: it stages a revert at that turn's own user
+  message, files included, commits it, and clears the revert if the commit
+  fails. It refuses with the shared reasons (`not-live`, `turn-running`,
+  `send-preparing`, `rewind-pending`, `unknown-turn`) before anything is sent,
+  and reports the files the revert restored. `/rewind` with no turn named takes
+  back the last turn. Native continuity is rewind in place and no fork. MCP
+  reconnect is OpenCode's own disconnect then connect
+  (`/api/experimental/mcp/{server}/…`); OpenCode 2 has no MCP sign-in Station
+  can start. Over ACP the inner ACP adapter answers all three.
 - **Engine-command dispatch.**
   [`engine-command-dispatch.ts`](../../src-server/providers/engine-command-dispatch.ts)
   decides once, for every adapter, what each route kind does: prompt text, an
@@ -266,8 +298,12 @@ features:
 - **Durability provider-branch gate**: `isAcpFamilyEngine`'s hard-coded list is
   invisible to the gate (`check-durability-provider-branches.mjs`), which
   matches provider literals.
-- **Not done natively**: fork, `/log` replay, and a managed single-binary
-  install of OpenCode 2.x.
+- **Not done natively**: fork (the base has no generic fork action for it to
+  answer; OpenCode's `POST /api/session/{id}/fork` is not in the route table),
+  `/log` replay, and a managed single-binary install of OpenCode 2.x.
+- **Code Mode `opencode.worktree_create`** asserts no permission, and it can
+  run the project's configured `commands.start`. Station does not see it as an
+  ask. Accepted for this preview.
 - **OpenCode 1.x** stays ACP-only. **2.x over ACP** refuses Station approval
   modes (R1).
 - **CI coverage of the real binary**:
