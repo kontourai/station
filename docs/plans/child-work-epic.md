@@ -5434,3 +5434,30 @@ before disclosure. Full persistence, typing, fault verification and another
 unprofiled caller result remain pending at this checkpoint. Qualification flags
 remain false; portable authority, peer/SSH, native and full epic acceptance are
 not established by these owner tests.
+
+
+## Current-source finalizer and input caller checkpoint
+
+At `7db32856ab53`, the complete four-file finalizer selection passes all 11
+cases. The original lost-reappraisal caller also passes its separate named run
+in 55.03 seconds under the unchanged 60-second bound. Its preceding run reached
+the source-corruption assertion but refused the winner: after unlinking it,
+the fixture had recreated the private record with default permissions.
+`d58f77c0b7` restores winner and locator files with their required 0600 creation
+mode. Production safety checks, expected refusals, workload and deadlines are
+unchanged. Earlier timing failures remain retained; these runs are not a causal
+whole-caller performance comparison.
+
+The unchanged mixed-provider HTTP/SDK input journey and direct Flow/input,
+adoption, sync, report and accounting journey both pass on that source with
+the current fixed historical clock and provider profiles. These are controlled
+Anthropic/Google transports, not live-provider billing or two native-engine
+families. The directory-fence owner repair passes all 16 persistence cases after
+a clean, caught duplicate-flush mutation and byte-exact restoration; server-test
+typing passes at `7f8c4a7289a0`. The subsequent fixture change only adds private
+creation modes, and the SDK reference now describes its optional running poll.
+
+Documentation truth remains open. Production qualification flags remain false;
+full inherited portable authority, local/peer/SSH and native acceptance, combined
+review and protected landing remain required. No frozen Windows or Native COUNT2
+witness is refreshed by this checkpoint.
