@@ -673,10 +673,11 @@ facts; callers never supply a file path. A Session the caller cannot read, a
 missing child or absent transcript reference returns 404. A retained reference
 whose engine transcript is missing or unreadable returns 503.
 
-`useChildWorkTranscriptQuery({threadId, childId, enabled?}, apiBase?)` from the
-SDK root loads 30 messages per page and exposes `fetchNextPage` using
-`nextOffset`. It does not poll. Station's transcript component separately
-refreshes on reported child revisions. Retained Claude subagent and Codex child
+`useChildWorkTranscriptQuery({threadId, childId, enabled?, running?, requestScope?}, apiBase?)`
+from the SDK root loads 30 messages per page and exposes `fetchNextPage` using
+`nextOffset`. Setting `running` enables a two-second refetch interval; otherwise
+interval polling is off. Station's transcript component also refreshes on
+reported child revisions. Retained Claude subagent and Codex child
 thread references can be read through their respective bounded readers after
 Session authorization. A report without a supported reference has no guaranteed
 full-text recovery through this API. Source exports do not prove package
