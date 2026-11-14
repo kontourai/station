@@ -17,6 +17,7 @@ import {
 } from '../actionlint-gate.mjs';
 import { eligibleLanding } from '../landing-automation.mjs';
 import {
+  corpusExecuted,
   NO_AGENT_REASON,
   nextRepairState,
   QUALIFICATION_GATE_JOB,
@@ -986,5 +987,110 @@ describe('post-merge source qualification', () => {
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+
+  // A scheduled run that declined to repeat a failed corpus
+  // (skip_failed_source) is red but ran no tests. It must leave the open
+  // episode and its run link alone; an executed failed run still updates it.
+  describe('a scheduled run that skipped its corpus', () => {
+    const corpus = [
+      'Static and app builds',
+      'Ordinary corpus 1-2 of 8',
+      'Process-heavy corpus 1 of 3',
+      'Exclusive corpora',
+      'Mobile Playwright (Android viewport)',
+    ];
+    const jobsFor = (corpusConclusion: string) => [
+      { name: 'qualification / resolve', conclusion: 'success' },
+      ...corpus.map((name) => ({
+        name: `qualification / ${name}`,
+        conclusion: corpusConclusion,
+      })),
+      { name: QUALIFICATION_GATE_JOB, conclusion: 'failure' },
+    ];
+    async function prepare(jobs: object[]) {
+      const root = makeTempDir('station-repair-skipped-');
+      const episode = {
+        ...nextRepairState(null, { ...run, id: 41 }, { agent: false }).state,
+        lastStartedAt: '2026-10-01T00:00:00Z',
+      };
+      const writes: Array<{ method: string; url: string; body: any }> = [];
+      const server = createServer(async (req, res) => {
+        let bytes = '';
+        for await (const chunk of req) bytes += chunk;
+        res.setHeader('content-type', 'application/json');
+        if (req.method !== 'GET')
+          writes.push({
+            method: req.method ?? '',
+            url: req.url ?? '',
+            body: bytes ? JSON.parse(bytes) : null,
+          });
+        if (req.url?.includes('/actions/runs/42/jobs'))
+          res.end(JSON.stringify({ jobs }));
+        else if (req.url?.endsWith('/actions/runs/42'))
+          res.end(
+            JSON.stringify({ ...run, html_url: 'https://example.test/42' }),
+          );
+        else if (req.url?.includes('/issues?'))
+          res.end(
+            JSON.stringify([
+              {
+                number: 7,
+                state: 'open',
+                title: 'Main qualification repair',
+                user: { login: 'github-actions[bot]' },
+                body: `<!-- station-qualification:${JSON.stringify(episode)} -->`,
+              },
+            ]),
+          );
+        else res.end(JSON.stringify({ number: 7, state: 'open' }));
+      });
+      await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+      const address = server.address();
+      if (!address || typeof address === 'string')
+        throw new Error('No address');
+      const event = join(root, 'event.json');
+      writeFileSync(event, JSON.stringify({ workflow_run: { id: 42 } }));
+      const env: Record<string, string | undefined> = {
+        ...process.env,
+        GITHUB_REPOSITORY: 'owner/repo',
+        GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+        GITHUB_EVENT_PATH: event,
+        GITHUB_OUTPUT: join(root, 'output'),
+        GITHUB_RUN_ID: '99',
+        GITHUB_RUN_ATTEMPT: '1',
+      };
+      delete env.QUALIFICATION_REPAIR_AGENT;
+      try {
+        await exec(process.execPath, [script, 'prepare'], {
+          cwd: root,
+          env,
+          windowsHide: true,
+        });
+        return writes;
+      } finally {
+        await new Promise<void>((done) => server.close(() => done()));
+      }
+    }
+
+    it('leaves the episode untouched, while an executed failed run updates it', async () => {
+      expect(corpusExecuted(jobsFor('skipped'))).toBe(false);
+      expect(corpusExecuted(jobsFor('failure'))).toBe(true);
+      // A failed resolve skips the corpus too, but is itself the failure.
+      expect(
+        corpusExecuted([
+          { name: 'qualification / resolve', conclusion: 'failure' },
+          ...jobsFor('skipped').slice(1),
+        ]),
+      ).toBe(true);
+      expect(await prepare(jobsFor('skipped'))).toEqual([]);
+      const updated = await prepare(jobsFor('failure'));
+      expect(updated).toHaveLength(1);
+      expect(updated[0]).toMatchObject({
+        method: 'PATCH',
+        url: '/repos/owner/repo/issues/7',
+      });
+      expect(repairState(updated[0].body.body)?.failedRun).toBe(42);
+    });
   });
 });

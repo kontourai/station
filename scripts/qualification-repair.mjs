@@ -102,6 +102,30 @@ export function qualificationConclusion(run, jobs) {
     : run.conclusion;
 }
 
+/**
+ * Whether a canonical run executed its corpus. A scheduled run that declined
+ * to repeat a corpus already failed on its source (`skip_failed_source`)
+ * resolves successfully and skips every corpus job: it carries no new failure
+ * and no test logs, so it must not become the episode's linked run. A failed
+ * resolve also skips the corpus but is itself a failure, so it counts.
+ */
+export function corpusExecuted(jobs) {
+  const resolved = jobs.some(
+    (job) =>
+      job.name === 'qualification / resolve' && job.conclusion === 'success',
+  );
+  return (
+    !resolved ||
+    jobs.some(
+      (job) =>
+        job.name.startsWith('qualification / ') &&
+        job.name !== 'qualification / resolve' &&
+        job.name !== QUALIFICATION_GATE_JOB &&
+        job.conclusion !== 'skipped',
+    )
+  );
+}
+
 export function validateRepairRun(run, repository) {
   if (
     run.path !== '.github/workflows/main-qualification.yml' ||
@@ -191,6 +215,9 @@ async function prepare() {
   );
   output('claim', 'false');
   if (['ignore', 'stale'].includes(decision.action)) return;
+  // A red run that skipped its corpus repeats an earlier failure the episode
+  // already records; leave the episode and its run link as they are.
+  if (decision.action !== 'close' && !corpusExecuted(jobs)) return;
   if (decision.action === 'close') {
     if (issue?.state === 'open')
       await github(`issues/${issue.number}`, {

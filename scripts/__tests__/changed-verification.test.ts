@@ -125,6 +125,7 @@ const EXPECTED_GOVERNED_READERS = {
     'scripts/__tests__/issue-lifecycle-workflow.test.ts',
     'scripts/__tests__/nightly-build-identity.test.ts',
     'scripts/__tests__/node-runtime-contract.test.ts',
+    'scripts/__tests__/promotion-full-regression-workflow.test.ts',
     'scripts/__tests__/publish-oidc-exchange-status.test.ts',
     'scripts/__tests__/release-cargo-producer.test.ts',
     'scripts/__tests__/release-ring-workflow.test.ts',

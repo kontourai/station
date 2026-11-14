@@ -3865,7 +3865,7 @@ describe('hosted qualification workflow covers the full regression', () => {
     const { jobs } = document();
     const profiles = [
       ['ordinary', 4, 'ordinary'],
-      ['process-heavy', 2, 'heavy'],
+      ['process-heavy', 3, 'heavy'],
     ] as const;
     for (const [name, legs, output] of profiles) {
       const job = jobs[name];
@@ -3894,8 +3894,8 @@ describe('hosted qualification workflow covers the full regression', () => {
     for (const job of testJobs)
       expect(jobs[job].if, job).toBe(
         ['exclusive', 'android-viewport'].includes(job)
-          ? "always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == ''"
-          : "needs.resolve.outputs.reuse_run == ''",
+          ? "always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == '' && needs.resolve.outputs.failed_run == ''"
+          : "needs.resolve.outputs.reuse_run == '' && needs.resolve.outputs.failed_run == ''",
       );
     expect(jobs['android-viewport'].steps?.map(({ run }) => run)).toContain(
       'npm run test:android',
