@@ -1549,8 +1549,8 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
   });
 
   test('a long conversation with a rewind in it still resolves its turns', async () => {
-    // 300 turns, a rewind hiding the last 150, then 60 more: 210 turns
-    // remembered, and 510 prompts Grok has run.
+    // 400 turns, a rewind hiding the last 300, then 150 more: 250 turns
+    // remembered, and 550 prompts Grok has run.
     vi.useFakeTimers({ toFake: ['Date'] });
     const ambient = '[Timezone: America/Denver]';
     const t = times[0]!;
@@ -1573,18 +1573,7 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
         });
       }
     };
-    await runTurns(300, 0);
-    answerLive(session, {
-      '_x.ai/rewind/points': [
-        { rewind_points: turns.map(({ at }, index) => pointAt(index, at)) },
-      ],
-      '_x.ai/rewind/execute': [preview, commit],
-    });
-    expect(
-      await session.adapter.rewindSession(session.threadId, turns[150]!.id),
-    ).toMatchObject({ kind: 'rewound' });
-    turns.splice(150);
-    await runTurns(60, 300);
+    await runTurns(400, 0);
     answerLive(session, {
       '_x.ai/rewind/points': [
         { rewind_points: turns.map(({ at }, index) => pointAt(index, at)) },
@@ -1594,8 +1583,19 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
     expect(
       await session.adapter.rewindSession(session.threadId, turns[100]!.id),
     ).toMatchObject({ kind: 'rewound' });
+    turns.splice(100);
+    await runTurns(150, 400);
+    answerLive(session, {
+      '_x.ai/rewind/points': [
+        { rewind_points: turns.map(({ at }, index) => pointAt(index, at)) },
+      ],
+      '_x.ai/rewind/execute': [preview, commit],
+    });
+    expect(
+      await session.adapter.rewindSession(session.threadId, turns[50]!.id),
+    ).toMatchObject({ kind: 'rewound' });
     expect(session.proc.extMethodCalls.at(-1)?.params.targetPromptIndex).toBe(
-      100,
+      50,
     );
     await session.stop();
   }, 120_000);
