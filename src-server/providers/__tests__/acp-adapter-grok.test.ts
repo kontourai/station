@@ -1546,6 +1546,24 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
     await session.stop();
   });
 
+  test('points whose times run against their indexes resolve nothing', async () => {
+    const t = times[0]!;
+    const { session, turns, listed } = await ambientTurns(
+      [t, t + 4_000],
+      // Index 0 dated to turn 1, index 1 dated to turn 0.
+      [t + 4_015, t + 15],
+    );
+    answerLive(session, { '_x.ai/rewind/points': [listed] });
+    expect(
+      await session.adapter.rewindSession(session.threadId, turns[0]!),
+    ).toEqual({
+      kind: 'failed',
+      message: expect.stringContaining('do not line up'),
+    });
+    expect(session.proc.extMethodCalls).toHaveLength(1);
+    await session.stop();
+  });
+
   test('an old stamp, as a load replays, does not spoil the clock reading', async () => {
     const { session, turns } = await threeTurns();
     await session.agent.notify('session/update', {
