@@ -808,6 +808,9 @@ async function recordReviewNotes(
     notes.push({ path: entry.path, note: entry.note, inputs });
     recorded.push({ kind, path: entry.path, rebound: [] });
   }
+  // An input entry is shorthand for one ordinary note per record or capture
+  // that cites the input, each covering only that input. It is written in the
+  // existing note form, so scripts on any branch read it like any other note.
   // After the document entries, so a source this batch adds or drops is
   // judged by the dependency lists it writes.
   for (const { input, note } of entries.filter((item) => 'input' in item)) {
@@ -849,7 +852,7 @@ async function recordReviewNotes(
       );
     }
     await requireCommitted(input);
-    notes.push({ input, paths, note });
+    for (const path of paths) notes.push({ path, note, inputs: [input] });
     recorded.push({ kind: 'input', path: input, paths, rebound: [] });
   }
   const notesText = serializeNotesFile({ revision: head, notes });
@@ -876,10 +879,18 @@ async function recordReviewNotes(
       { reportMissing: true },
     );
   writeReviewFiles(root, after, before);
-  // What a fresh read would report, without a second replay: an uncommitted
-  // note covers its inputs for its entry, and only cited inputs stay pending.
+  // What a fresh replay would report, without running it again: the new,
+  // uncommitted note removes its inputs from its entry, only inputs still
+  // cited stay pending, and then, as in deriveReviewHistory, every input whose
+  // file differs from HEAD is outstanding again because a note binds only
+  // committed bytes.
   const pending = new Map(
     state.ledger.records.map((record) => [record.path, record.historyChanges]),
+  );
+  const dirty = new Set(
+    git(root, ['diff', '--no-renames', '--name-only', '-z', 'HEAD', '--'])
+      .split('\0')
+      .filter(Boolean),
   );
   return {
     revision: head,
@@ -898,9 +909,14 @@ async function recordReviewNotes(
         ]);
         return {
           path: record.path,
-          changed: (pending.get(record.path) ?? []).filter(
-            (input) => cited.has(input) && !covered.has(input),
-          ),
+          changed: [
+            ...new Set([
+              ...(pending.get(record.path) ?? []).filter(
+                (input) => cited.has(input) && !covered.has(input),
+              ),
+              ...[...cited].filter((input) => dirty.has(bindingFile(input))),
+            ]),
+          ].sort(),
         };
       })
       .filter((record) => record.changed.length),

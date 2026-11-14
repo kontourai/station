@@ -13,7 +13,7 @@ import {
   createLearningSourceReader,
   isLearningSourcePath,
 } from './learning-source-reader.mjs';
-import { bindingFile, isBindingPath } from './review-binding.mjs';
+import { isBindingPath } from './review-binding.mjs';
 import { readGitObjects } from './review-git.mjs';
 
 export { readGitObjects } from './review-git.mjs';
@@ -154,27 +154,17 @@ export function serializeCaptureReviewFile(capture) {
   ]);
 }
 
-/**
- * A notes file holds two entry forms. A document note `{ path, note, inputs? }`
- * reviews one record or capture. An input note `{ input, paths, note }` is one
- * review of one changed input for every listed record or capture that cites it,
- * so a widely cited source needs one note rather than one per citing document.
- * @param {{ revision: string, notes: ({ path: string, note: string, inputs?: string[] } | { input: string, paths: string[], note: string })[] }} run
- */
+/** @param {{ revision: string, notes: { path: string, note: string }[] }} run */
 export function serializeNotesFile(run) {
   return serializeMembers([
     ['revision', run.revision],
     [
       'notes',
-      run.notes.map((entry) =>
-        'input' in entry
-          ? { input: entry.input, paths: entry.paths, note: entry.note }
-          : {
-              path: entry.path,
-              note: entry.note,
-              ...(entry.inputs === undefined ? {} : { inputs: entry.inputs }),
-            },
-      ),
+      run.notes.map(({ path, note, inputs }) => ({
+        path,
+        note,
+        ...(inputs === undefined ? {} : { inputs }),
+      })),
     ],
   ]);
 }
@@ -395,36 +385,6 @@ function parseCaptureFile(file, text) {
   return capture;
 }
 
-/**
- * One input per note: a single note cannot clear every input a change touches.
- * It names the records and captures it judged, so a document that cites the
- * input later is not covered by a review that never considered it. It never
- * lists the input's own path: an edit to a document needs that document's note.
- */
-function parseInputNote(entry, file) {
-  exactKeys(entry, ['input', 'paths', 'note'], file);
-  const { input, paths, note } = entry;
-  if (
-    !isBindingPath(input) ||
-    !Array.isArray(paths) ||
-    !paths.length ||
-    paths.some(
-      (path, index) =>
-        !isLearningSourcePath(path) ||
-        path === input ||
-        path === bindingFile(input) ||
-        (index > 0 && paths[index - 1] >= path),
-    ) ||
-    typeof note !== 'string' ||
-    !note.trim()
-  )
-    throw reviewError(
-      'invalid-shape',
-      `Invalid input review note in ${file}: an input note names one cited input, the sorted distinct records that cite it (never the input itself) and a non-empty note`,
-      { file },
-    );
-}
-
 function parseNotesFile(file, text) {
   const name = NOTE_NAME.exec(file.slice(NOTES.length));
   if (!file.startsWith(NOTES) || !name)
@@ -447,10 +407,6 @@ function parseNotesFile(file, text) {
       { file },
     );
   for (const entry of run.notes) {
-    if (entry && typeof entry === 'object' && Object.hasOwn(entry, 'input')) {
-      parseInputNote(entry, file);
-      continue;
-    }
     exactKeys(
       entry,
       Object.hasOwn(entry, 'inputs')
@@ -565,55 +521,22 @@ export function parseReviewLedgerFiles(
   return { index, records, captures, notes, archives };
 }
 
-/**
- * Event notes by reviewed path, in file-name (time) order. An input note joins
- * each path it lists as a note covering only that input, carrying `input` so a
- * reader can tell it from a review of the whole document.
- */
+/** Event notes by reviewed path, in file-name (time) order. */
 function notesByPath(notes) {
   const byPath = new Map();
-  const add = (path, entry) => {
-    const list = byPath.get(path) ?? [];
-    list.push(entry);
-    byPath.set(path, list);
-  };
   for (const { file, data } of notes)
-    for (const entry of data.notes) {
-      const { note } = entry;
-      if (entry.input !== undefined) {
-        for (const path of entry.paths)
-          add(path, {
-            file,
-            revision: data.revision,
-            note,
-            inputs: [entry.input],
-            input: entry.input,
-          });
-        continue;
-      }
-      add(entry.path, {
+    for (const { path, note, inputs } of data.notes) {
+      const list = byPath.get(path) ?? [];
+      list.push({
         file,
         revision: data.revision,
         note,
-        ...(entry.inputs === undefined ? {} : { inputs: entry.inputs }),
+        ...(inputs === undefined ? {} : { inputs }),
       });
+      byPath.set(path, list);
     }
   return byPath;
 }
-
-/**
- * An input note covers a listed record only while that record cites its input,
- * so listing a document never reviews a citation it does not have.
- */
-const citedNotes = (data, notes = []) =>
-  notes.filter(
-    (note) =>
-      note.input === undefined ||
-      data.sources.some(
-        (source) =>
-          (typeof source === 'string' ? source : source.path) === note.input,
-      ),
-  );
 
 /**
  * The shared compiled record: old byte bindings or derived history metadata.
@@ -701,14 +624,12 @@ function joinLearningMedia(manifest, reviews) {
 export function compileReviewState(parsed, manifest) {
   const byPath = notesByPath(parsed.notes);
   const records = [...parsed.records.values()]
-    .map(({ data }) =>
-      compileRecord(data, citedNotes(data, byPath.get(data.path))),
-    )
+    .map(({ data }) => compileRecord(data, byPath.get(data.path)))
     .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   const reviews = new Map(
     [...parsed.captures.values()].map(({ data }) => [
       data.path,
-      compileCaptureReview(data, citedNotes(data, byPath.get(data.path))),
+      compileCaptureReview(data, byPath.get(data.path)),
     ]),
   );
   if (manifest === undefined && reviews.size)
