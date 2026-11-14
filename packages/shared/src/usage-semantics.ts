@@ -78,7 +78,11 @@ export const PROVIDER_USAGE_SCOPE: ReadonlyMap<string, ProviderUsageScope> =
  * scope describes an event with no totals, and declaring one would let a
  * consumer read their absent totals as zero. ACP: `session/update`'s
  * `usage_update` reports the current context window only
- * (`acp-adapter-events.ts`), so an ACP turn never has a usage total.
+ * (`acp-adapter-events.ts`), so an ACP turn never has a usage total. An
+ * engine's own cost (Kiro credits, Grok's per-turn USD) rides
+ * `reportedCost`, folded per unit apart from these totals. Grok also states
+ * token counts, but the scope is the provider's, not the engine's, so they
+ * are not published.
  */
 export const CONTEXT_OCCUPANCY_ONLY_PROVIDERS: ReadonlySet<string> =
   new Set<string>(['acp']);
