@@ -253,6 +253,11 @@ try {
           path: input.path,
           bodySha256: createHash('sha256').update(input.body).digest('hex'),
         });
+        writeFileSync(
+          join(artifacts, `native-request-${requests.length}.json`),
+          input.body,
+          { mode: 0o600, flag: 'wx' },
+        );
         const text = `CONFINED_${currentEngine.toUpperCase()}_REPLY`;
         const message = {
           id: `msg_${randomUUID()}`,
