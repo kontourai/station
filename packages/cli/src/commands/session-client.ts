@@ -180,15 +180,12 @@ async function resolveRuntimeSessionTargetForConnection(
     );
   }
 
-  const isAcp =
-    connection.type === 'acp' || connection.capabilities.includes('acp');
-  const configuredProvider = connection.config.provider;
-  if (!isAcp && typeof configuredProvider !== 'string') {
+  const provider = connectionRuntimeProvider(connection);
+  if (!provider) {
     throw new Error(
       `Connection '${connectionId}' has no runtime provider configured.`,
     );
   }
-  const provider: EngineId = isAcp ? 'acp' : (configuredProvider as string);
 
   return {
     kind: 'runtime',
@@ -199,6 +196,25 @@ async function resolveRuntimeSessionTargetForConnection(
       agentSlug,
     },
   };
+}
+
+/**
+ * The provider a new chat on an agent-runtime connection runs on, read as
+ * the server's execution-target resolver reads it (`connectionProvider`): a
+ * saved ACP connection runs on ACP, or on the ACP-backed engine its
+ * projection names (`opencode`, while the OpenCode native engine preview is
+ * on); a host that projects none means ACP. Otherwise `config.provider`;
+ * undefined when there is none.
+ */
+function connectionRuntimeProvider(
+  connection: ConnectionConfig,
+): EngineId | undefined {
+  const configured = connection.config.provider;
+  if (connection.type === 'acp' || connection.capabilities.includes('acp'))
+    return typeof configured === 'string' && isAcpFamilyEngine(configured)
+      ? configured
+      : 'acp';
+  return typeof configured === 'string' ? configured : undefined;
 }
 
 /**
@@ -853,7 +869,7 @@ function runtimeSessionMatchesTarget(
  * the OpenCode native engine preview was on; a chat keeps its provider, so
  * one connection can hold both.
  */
-function sessionProviderMatches(
+export function sessionProviderMatches(
   sessionProvider: unknown,
   targetProvider: EngineId,
 ): boolean {
@@ -899,12 +915,7 @@ async function resolveProviderForConnectionId(
   if (connection?.kind !== 'agent') {
     return null;
   }
-  const isAcp =
-    connection.type === 'acp' || connection.capabilities.includes('acp');
-  if (isAcp) return 'acp';
-  return typeof connection.config.provider === 'string'
-    ? connection.config.provider
-    : null;
+  return connectionRuntimeProvider(connection) ?? null;
 }
 
 /**
