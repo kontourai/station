@@ -1,0 +1,7 @@
+{
+  "revision": "89ec5731bedfd0a157741fd1c91b4f90871987a9",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed the origin hardening at the committed source head: KeyboardImageIntake.appScript wraps every capture, menu query, cancel and delivery in an in-document packaged-origin condition, in addition to native URL admission. The exact asset refuses foreign-document installation and uses a fixed packaged origin for capture/delivery. This closes the native-check-to-script-execution navigation race. JVM caller assertions and foreign-document DOM tests remain separate from installed WebView/device acceptance.","inputs":["docs/design/native-capabilities.md","src-desktop/plugins/media-intake/android/src/main/java/io/kontourai/station/mediaintake/MediaIntakePlugin.kt"]}
+  ]
+}

@@ -45,3 +45,25 @@ WRY_RUSTWEBVIEWCLIENT_CLASS_EXTENSION = '''
         return true
     }
 '''
+
+# Wry emits these overrides into RustWebView on every Android build.
+WRY_RUSTWEBVIEW_CLASS_EXTENSION = '''
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        io.kontourai.station.mediaintake.KeyboardImageIntake.attached(this)
+    }
+
+    override fun onDetachedFromWindow() {
+        io.kontourai.station.mediaintake.KeyboardImageIntake.detached(this)
+        super.onDetachedFromWindow()
+    }
+
+    override fun onCreateInputConnection(info: android.view.inputmethod.EditorInfo): android.view.inputmethod.InputConnection? {
+        val connection = super.onCreateInputConnection(info) ?: return null
+        return io.kontourai.station.mediaintake.KeyboardImageIntake.connection(this, connection, info)
+    }
+
+    override fun startActionMode(callback: android.view.ActionMode.Callback, type: Int): android.view.ActionMode? {
+        return super.startActionMode(io.kontourai.station.mediaintake.KeyboardImageIntake.actionMode(this, callback), type)
+    }
+'''

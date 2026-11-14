@@ -1,0 +1,17 @@
+{
+  "revision": "a61fa94d969455ebb10789454cd2a77398682604",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the reply opt-in gate and real paste handler: a reply without an attachment callback or image support no longer advertises native image intake. Existing explicit-send, draft ownership and attachment staging claims remain accurate; no presentation or transport changes.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed native intake from the Wry lifecycle hooks through plugin binding, app-origin admission, shared mixed-clipboard filter and bounded reads into the captured composer. The adapter command contract and image limits remain unchanged. Activity recreation now rebinds the retained plugin rather than shutting its executor down. JVM and DOM evidence do not qualify physical keyboards.","inputs":["docs/design/native-capabilities.md","src-desktop/plugins/media-intake/android/src/main/java/io/kontourai/station/mediaintake/MediaIntakePlugin.kt"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed the runner delta: it retains every notification known-answer-vector, duplicate, retract and identity required case and adds the keyboard class plus Wry template compilation. Notification producer, cryptography, delivery and tap-route behavior are unchanged; no new notification qualification claimed.","inputs":["docs/design/notification-delivery.md","scripts/run-agent-activity-android-unit-tests.mjs"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed Cargo extension and resolved Wry template staging in the existing PR Kotlin runner. Required hook presence and compilation with the plugin classpath are checked; JNI calls use explicit test stubs. Updated the guide to distinguish this guard from APK packaging and device acceptance.","inputs":["docs/guides/android-build.md","src-desktop/.cargo/config.toml"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Traced image Paste eligibility, Chromium item deduplication, mixed-clip filtering, app origin, view rebinding, grant timer beginning at read time, and pathname plus composer identity delivery guards. Updated those boundaries. Physical Gboard and installed-package acceptance remain explicitly separate.","inputs":["docs/guides/mobile-release.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the attachment paragraph against callback-gated replies and unchanged start, room, explicit Paste image and Attach paths. Image intake still enters the existing attachment validator and never sends automatically. Existing user instructions remain accurate; no physical keyboard claim added.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

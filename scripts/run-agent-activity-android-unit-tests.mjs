@@ -29,6 +29,7 @@ import { spawnSync } from 'node:child_process';
 import {
   copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -72,8 +73,20 @@ const REQUIRED_TEST_CASES = Object.freeze({
     'anOlderRetractCannotCancelANewerReShow',
     'onlyItsOwnStationKindAndRegistrationOpenIt',
   ],
-  // The share receiver's adoption decision, its URI guard and the contract's
-  // refusal bounds.
+  // Generated WebView input/menu hooks and native image handoff lifetime.
+  'io.kontourai.station.mediaintake.KeyboardImageIntakeTest': [
+    'keyboardCommitReachesTheInstalledReceiver',
+    'unrelatedContentFallsBackToOriginalConnection',
+    'systemPasteMenuRoutesImagesAndKeepsTextPaste',
+    'destroyRecreateKeepsCommandsAndKeyboardReadsAlive',
+    'foreignOriginsCannotReceiveImages',
+    'grantTimeoutBoundsCaptureAndQueuedRead',
+    'generatedWryViewRebindsOnAttachAndDetaches',
+    'keyboardCommitFromImeThreadNeverReadsWebViewState',
+    'detachReleasesPendingGrantBeforeCapture',
+    'activityContextCanBeWrapped',
+  ],
+  // The share receiver's adoption decision, URI guard and contract bounds.
   'io.kontourai.station.mediaintake.ImageIntakeTest': [
     'nonImageOrNonShareIntentsYieldNothing',
     'refusesMoreThanTheContractCountRatherThanTruncating',
@@ -115,6 +128,7 @@ function fail(message) {
   process.exit(1);
 }
 
+let resolvedWry;
 function tauriAndroidLibrary() {
   const result = spawnSync(
     'cargo',
@@ -136,9 +150,9 @@ function tauriAndroidLibrary() {
   if (result.error) fail(`cargo metadata did not run: ${result.error.message}`);
   if (result.status !== 0)
     fail(`cargo metadata exited ${result.status ?? result.signal}`);
-  const tauri = JSON.parse(result.stdout).packages.filter(
-    (pkg) => pkg.name === 'tauri',
-  );
+  const packages = JSON.parse(result.stdout).packages;
+  resolvedWry = packages.find((pkg) => pkg.name === 'wry');
+  const tauri = packages.filter((pkg) => pkg.name === 'tauri');
   if (tauri.length !== 1)
     fail(`expected one resolved tauri crate, found ${tauri.length}`);
   const library = join(dirname(tauri[0].manifest_path), 'mobile', 'android');
@@ -174,8 +188,74 @@ const expected = PLUGINS.flatMap((plugin) =>
 );
 const tauriAndroid = tauriAndroidLibrary();
 const root = mkdtempSync(join(tmpdir(), 'android-plugin-unit-tests-'));
+// Compile the actual resolved Wry template with Cargo's maintained extension in
+// the media-intake test source set. JNI calls are stubbed; APK packaging is not proved.
+function stageRustWebView(root) {
+  const config = readFileSync(
+    join(repoRoot, 'src-desktop/.cargo/config.toml'),
+    'utf8',
+  );
+  const extension =
+    /^WRY_RUSTWEBVIEW_CLASS_EXTENSION\s*=\s*'''([\s\S]*?)'''/m.exec(
+      config,
+    )?.[1];
+  if (
+    !extension ||
+    ![
+      'connection(this',
+      'actionMode(this',
+      'attached(this',
+      'detached(this',
+    ].every((call) => extension.includes(call))
+  )
+    fail('missing keyboard image RustWebView extension');
+  if (!resolvedWry) fail('no resolved Wry crate');
+  const template = readFileSync(
+    join(
+      dirname(resolvedWry.manifest_path),
+      'src/android/kotlin/RustWebView.kt',
+    ),
+    'utf8',
+  );
+  if (template.split(': WebView(context)').length !== 2)
+    fail('unexpected Wry superclass seam');
+  const source = template
+    // Stub only Chromium-owned superclass results; keep the generated overrides intact.
+    .replace(': WebView(context)', ': HookWebView(context)')
+    .replaceAll('{{package}}', 'station.hookcheck')
+    .replaceAll('{{class-init}}', '')
+    .replaceAll('{{class-extension}}', extension);
+  if (source.includes('{{')) fail('unsubstituted Wry template token');
+  const directory = join(root, 'hook-source');
+  mkdirSync(directory);
+  writeFileSync(join(directory, 'RustWebView.kt'), source);
+  writeFileSync(
+    join(directory, 'Stubs.kt'),
+    `package station.hookcheck
+open class HookWebView(context: android.content.Context): android.webkit.WebView(context) {
+  val originalConnection = android.view.inputmethod.BaseInputConnection(this, false)
+  var actionCallback: android.view.ActionMode.Callback? = null
+  override fun onCreateInputConnection(info: android.view.inputmethod.EditorInfo): android.view.inputmethod.InputConnection? {
+    info.inputType = android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+    return originalConnection
+  }
+  override fun startActionMode(callback: android.view.ActionMode.Callback, type: Int): android.view.ActionMode? {
+    actionCallback = callback
+    return null
+  }
+}
+object Rust {
+  fun shouldOverride(id: String, url: String) = false
+  fun onEval(id: String, request: Int, result: String) {}
+}
+object Logger { fun error(message: String) {} }
+`,
+  );
+  return directory;
+}
 let status = 1;
 try {
+  const hookSource = stageRustWebView(root);
   copyFileSync(
     join(genAndroid, 'build.gradle.kts'),
     join(root, 'build.gradle.kts'),
@@ -194,6 +274,10 @@ try {
       // Cargo registry, which tauri-plugin copies into every plugin's
       // .tauri/tauri-api. Keep it inside this throwaway root.
       'gradle.beforeProject { p ->',
+      "  if (p.name == 'tauri-plugin-station-media-intake') p.afterEvaluate {",
+      `    p.android.sourceSets.test.java.srcDir(${groovyString(hookSource)})`,
+      "    p.dependencies.add('testImplementation', 'androidx.webkit:webkit:1.14.0')",
+      '  }',
       "  if (p.path == ':tauri-android') {",
       `    p.layout.buildDirectory.set(new File(${groovyString(join(root, 'tauri-android-build'))}))`,
       '  }',

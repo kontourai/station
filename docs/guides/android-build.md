@@ -97,6 +97,18 @@ updater payloads; it is not the Android upload key.
    without the file reaching the artefact.
 8. **Upload** — debug APK/AAB uploaded as a workflow artifact
 
+The same Cargo configuration also supplies `WRY_RUSTWEBVIEW_CLASS_EXTENSION`
+for keyboard image input and the image clipboard selection menu. Its maintained
+implementation and JS asset live in the media-intake Android plugin; no generated
+`RustWebView.kt` edit is required. The PR Kotlin unit lane substitutes the
+resolved Wry template with this configuration and compiles it against the
+media-intake plugin. Missing lifecycle/input/menu hooks fail before Gradle;
+JNI calls and Chromium superclass results are stubbed. Behavioral tests call the
+generated input/menu overrides and assert that they return/pass the wrappers;
+this does not prove APK packaging or device routing.
+Build/package and physical keyboard acceptance
+remain separate; follow [the mobile verification sequence](mobile-release.md).
+
 ### Renderer recovery and network cost
 
 The [Cargo configuration](../../src-desktop/.cargo/config.toml) supplies Wry 0.57's

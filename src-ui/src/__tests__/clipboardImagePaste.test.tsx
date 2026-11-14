@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
+// @vitest-environment-options {"url":"http://tauri.localhost/"}
 /**
  * Paste image: one reader (`readClipboardImageFiles`) feeds each composer's
  * own select path. The composer cases run the real default sources: under
  * jsdom the web adapter reports `clipboard-image` unsupported, so the read
  * falls through to `navigator.clipboard.read()`, which these tests provide.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   cleanup,
   fireEvent,
@@ -12,6 +15,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { JSDOM } from 'jsdom';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ChatInputArea } from '../components/chat/ChatInputArea';
@@ -88,6 +92,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   setClipboard(undefined);
 });
 
@@ -391,5 +396,180 @@ describe('Paste image in each composer', () => {
       screen.getByRole('textbox', { name: 'Message the task room' }),
     ).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Paste image' })).toBeNull();
+  });
+});
+
+// Execute the exact asset Android evaluates, then let React's real paste handlers
+// consume it. DataTransfer/ClipboardEvent are the only missing jsdom platform APIs.
+function keyboardBridge() {
+  class Transfer {
+    files: File[] = [];
+    items: { kind: string; type: string; getAsFile: () => File }[] & {
+      add?: (file: File) => void;
+    } = Object.assign([], {
+      add: (file: File) => {
+        this.files.push(file);
+        this.items.push({
+          kind: 'file',
+          type: file.type,
+          getAsFile: () => file,
+        });
+      },
+    });
+  }
+  class PasteEvent extends Event {
+    clipboardData: unknown;
+    constructor(type: string, options: ClipboardEventInit) {
+      super(type, options);
+      this.clipboardData = options.clipboardData;
+    }
+  }
+  vi.stubGlobal('DataTransfer', Transfer);
+  vi.stubGlobal('ClipboardEvent', PasteEvent);
+  const source = readFileSync(
+    resolve(
+      import.meta.dirname,
+      '../../../src-desktop/plugins/media-intake/android/src/main/assets/station-image-paste.js',
+    ),
+    'utf8',
+  );
+  // biome-ignore lint/security/noGlobalEval: execute the trusted checked-in Android bridge asset in its WebView-like DOM.
+  window.eval(source);
+  return (
+    window as unknown as {
+      __stationImagePaste: {
+        capture(id: string): boolean;
+        deliver(id: string, payload: unknown): boolean;
+      };
+    }
+  ).__stationImagePaste;
+}
+
+const KEYBOARD_PAYLOAD = {
+  files: [
+    {
+      name: 'pasted-image-1.png',
+      mimeType: 'image/png',
+      dataUrl: PNG_DATA_URL,
+    },
+  ],
+};
+
+describe('Android keyboard image bridge into real composers', () => {
+  test('the bridge refuses installation in a foreign document', () => {
+    const foreign = new JSDOM(
+      '<textarea data-native-image-paste="foreign"></textarea>',
+      {
+        url: 'https://foreign.example/',
+        runScripts: 'outside-only',
+      },
+    );
+    try {
+      const source = readFileSync(
+        resolve(
+          import.meta.dirname,
+          '../../../src-desktop/plugins/media-intake/android/src/main/assets/station-image-paste.js',
+        ),
+        'utf8',
+      );
+      foreign.window.eval(source);
+      expect('__stationImagePaste' in foreign.window).toBe(false);
+    } finally {
+      foreign.window.close();
+    }
+  });
+
+  test('reply receives a keyboard image through its attachment select path once', () => {
+    const props = renderChatInput();
+    const field = screen.getByRole('textbox', { name: 'Message' });
+    field.focus();
+    const bridge = keyboardBridge();
+    expect(bridge.capture('reply')).toBe(true);
+    expect(bridge.deliver('reply', KEYBOARD_PAYLOAD)).toBe(true);
+    expect(props.selectAttachmentFiles).toHaveBeenCalledOnce();
+    expectOnePastedPng(props.selectAttachmentFiles.mock.calls[0][0]);
+    expect(bridge.deliver('reply', KEYBOARD_PAYLOAD)).toBe(false);
+  });
+
+  test('start receives a keyboard image through its files owner', () => {
+    const onAdd = vi.fn();
+    renderStart(onAdd);
+    screen.getByRole('textbox', { name: 'What would you like done?' }).focus();
+    const bridge = keyboardBridge();
+    expect(bridge.capture('start')).toBe(true);
+    expect(bridge.deliver('start', KEYBOARD_PAYLOAD)).toBe(true);
+    expect(onAdd).toHaveBeenCalledOnce();
+    expectOnePastedPng(onAdd.mock.calls[0][0]);
+  });
+
+  test.each(['blur', 'scope', 'disabled', 'removed'])(
+    'a late read cannot attach after %s',
+    (change) => {
+      const props = renderChatInput({ sessionId: 'first' });
+      const field = screen.getByRole('textbox', {
+        name: 'Message',
+      }) as HTMLTextAreaElement;
+      field.focus();
+      const bridge = keyboardBridge();
+      expect(bridge.capture('late')).toBe(true);
+      if (change === 'blur') field.blur();
+      if (change === 'scope')
+        field.setAttribute('data-native-image-paste', 'other');
+      if (change === 'disabled') field.disabled = true;
+      if (change === 'removed') {
+        field.remove();
+        // Keep focus identity fixed so only isConnected can reject this delivery.
+        vi.spyOn(document, 'activeElement', 'get').mockReturnValue(field);
+      }
+      expect(bridge.deliver('late', KEYBOARD_PAYLOAD)).toBe(false);
+      expect(props.selectAttachmentFiles).not.toHaveBeenCalled();
+    },
+  );
+
+  test('two quick inserts keep both pending deliveries', () => {
+    const props = renderChatInput();
+    screen.getByRole('textbox', { name: 'Message' }).focus();
+    const bridge = keyboardBridge();
+    expect(bridge.capture('first')).toBe(true);
+    expect(bridge.capture('second')).toBe(true);
+    expect(bridge.deliver('first', KEYBOARD_PAYLOAD)).toBe(true);
+    expect(bridge.deliver('second', KEYBOARD_PAYLOAD)).toBe(true);
+    expect(props.selectAttachmentFiles).toHaveBeenCalledTimes(2);
+  });
+
+  test('a reply without an attachment owner cannot capture images', () => {
+    renderChatInput({ selectAttachmentFiles: undefined });
+    screen.getByRole('textbox', { name: 'Message' }).focus();
+    expect(keyboardBridge().capture('unsupported')).toBe(false);
+  });
+
+  test('query and hash changes preserve a captured composer; pathname changes reject it', () => {
+    renderChatInput();
+    screen.getByRole('textbox', { name: 'Message' }).focus();
+    const bridge = keyboardBridge();
+    expect(bridge.capture('query')).toBe(true);
+    history.replaceState(null, '', '?image=1#draft');
+    expect(bridge.deliver('query', KEYBOARD_PAYLOAD)).toBe(true);
+    expect(bridge.capture('path')).toBe(true);
+    history.replaceState(null, '', '/elsewhere');
+    expect(bridge.deliver('path', KEYBOARD_PAYLOAD)).toBe(false);
+    history.replaceState(null, '', '/');
+  });
+
+  test('a full read queue reports busy separately from missing focus', () => {
+    renderChatInput();
+    screen.getByRole('textbox', { name: 'Message' }).focus();
+    const bridge = keyboardBridge();
+    for (let i = 0; i < 5; i++)
+      expect(bridge.capture(`queued-${i}`)).toBe(true);
+    expect(bridge.capture('overflow')).toBe('busy');
+  });
+
+  test('ordinary text fields cannot opt into native image reads', () => {
+    const field = document.createElement('textarea');
+    document.body.append(field);
+    field.focus();
+    expect(keyboardBridge().capture('not-composer')).toBe(false);
+    field.remove();
   });
 });
