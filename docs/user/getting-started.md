@@ -1364,7 +1364,9 @@ conversation with that error already attached:
 
 - a view that stopped working (under **More actions** when Station refused
   the view), and an error notification;
-- a pane that is temporarily unavailable, and a layout tab Station can't show;
+- a pane that is temporarily unavailable, and a layout tab Station can't show
+  (when Station could not read its installed plugins, the tab offers
+  **Retry** instead);
 - an engine that isn't connected, and an agent that can't run;
 - a local Station that stopped or failed when **Restart Station** isn't
   offered;

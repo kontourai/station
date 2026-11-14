@@ -58,6 +58,22 @@ bundle's download together, a stylesheet fetch and a same-origin script
 `preload` for each, then still applies and executes them one at a time in
 registry order, so each registration is read at its own script's load event.
 Each stylesheet's deadline starts at its plugin's turn, not at its download.
+Before any of that, the UI reads `GET /api/plugins` up to three times, with
+8, 16 and 24 second deadlines and a 1 second pause between reads, when a read
+times out, fails in transit or gets a 5xx. Plugin layout tabs show a loading
+state meanwhile. Against a Station that accepts the connection and then hangs,
+that is about 50 seconds before a tab reports **Extensions could not load**,
+with a **Retry** button; a Station that is down refuses at once, and the three
+reads finish in about 2 seconds. A refused read (4xx) is not retried. After
+that, while the connection stays healthy, completed health probes (every 10
+seconds, for a probed Station and for the desktop app's own managed Station
+alike) re-read an inventory that failed for one of those passing reasons. The
+re-read runs on the 1st, 3rd, 7th and 15th probe after the failure and every
+8th after that; probes during a re-read do not count. It runs in the
+background: the tab keeps showing **Extensions could not load** and **Retry**
+until a re-read succeeds, then shows the plugin. Pressing **Retry** during a
+background re-read shows the loading state at once and reads again after the
+running re-read ends, like any other reload.
 See the [registry](../../src-ui/src/core/PluginRegistry.ts).
 
 The capability is a per-launch 256-bit secret checked in constant time. It

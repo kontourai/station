@@ -4,7 +4,10 @@ import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { Component, type ReactNode, useSyncExternalStore } from 'react';
 import { Button } from '../../components/Button';
 import { StationExtensionsAccess } from '../../components/registry/StationExtensionsAccess';
-import { pluginRegistry } from '../../core/PluginRegistry';
+import {
+  PLUGIN_INVENTORY_UNAVAILABLE_MESSAGE,
+  pluginRegistry,
+} from '../../core/PluginRegistry';
 import {
   resolveClientTrustedPluginLayout,
   selectClientWorkspacePaneRenderer,
@@ -307,7 +310,7 @@ function unavailableReason(
     return 'Extensions from this Station are off on this device.';
   }
   if (loadStatus.failure === 'registry-unavailable') {
-    return 'Station could not read the installed plugin inventory.';
+    return PLUGIN_INVENTORY_UNAVAILABLE_MESSAGE;
   }
   if (
     loadStatus.failure === 'bundle-load-failure' &&
