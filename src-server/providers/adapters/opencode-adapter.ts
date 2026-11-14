@@ -36,6 +36,7 @@ import {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { ownArray, ownRecord } from '@kontourai/station-shared/input-request';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
+import type { InvocationContext } from '../../runtime/types.js';
 import {
   assertEngineAllowedByManagedPolicy,
   managedEngineLaunch,
@@ -53,6 +54,10 @@ import {
   findOpenCodeProjectCode as defaultFindProjectCode,
   openCodeProjectCodeRefusal,
 } from '../../services/acp/opencode-project-config.js';
+import {
+  sharedUntrustedContentLedger,
+  untrustedContentAncestry,
+} from '../../services/plugins/untrusted-content-policy.js';
 import { errorMessage } from '../../utils/error-message.js';
 import {
   ApprovalGovernanceRefusedError,
@@ -137,6 +142,13 @@ export const OPENCODE_NATIVE_UNAVAILABLE = 'OPENCODE_NATIVE_UNAVAILABLE';
  */
 export const OPENCODE_NATIVE_UNSUPPORTED_SETTING =
   'OPENCODE_NATIVE_UNSUPPORTED_SETTING';
+/**
+ * `runtime.warning` code: a governed native session moved (`session.moved`)
+ * to a directory whose OpenCode configuration runs its own code, which
+ * OpenCode loaded on the move; Station stopped the session.
+ */
+export const OPENCODE_SESSION_MOVED_UNGOVERNABLE =
+  'OPENCODE_SESSION_MOVED_UNGOVERNABLE';
 
 /**
  * How long an agent lookup keeps asking while the server answers 404: a
@@ -247,6 +259,11 @@ interface NativeRecord {
   readonly cursor: OpenCodeResumeCursor;
   /** The OpenCode agent the session runs (undefined: OpenCode's default). */
   agent: string | undefined;
+  /**
+   * The session's directory: the server's launch directory, or where
+   * OpenCode moved it (`session.moved`), as the resume cursor carries it.
+   */
+  cwd: string;
   /** The session ruleset last applied to the engine. */
   rules: OpenCodeNativeRule[];
   /**
@@ -423,8 +440,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     // R5′: the policy's `acp` entry governs this connection, whichever
     // transport runs it (`managedPolicyEngineId` maps `opencode` to `acp`).
     assertEngineAllowedByManagedPolicy(this.provider, config);
-    // The native path cannot honour an effort setting; ACP can.
-    if (input.modelOptions?.effort !== undefined) return undefined;
+    // The native path cannot honour these; ACP can.
+    if (this.nativeUnsupported(input)) return undefined;
     // A managed policy pins OpenCode's launch through its `acp` entry: the
     // binary and environment apply to `serve` as they do to `acp`. Pinned
     // arguments belong to the `acp` command line and are not given to
@@ -453,6 +470,29 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       cwd: await this.sessionCwd(input, config),
       env: pinned.env,
     };
+  }
+
+  /**
+   * Why a session must run over ACP whatever OpenCode serves: undefined
+   * when nothing it asks for needs ACP.
+   *
+   * - An `effort` setting: OpenCode 2's native model reference takes a
+   *   provider-defined `variant`, not a level Station can map.
+   * - Station's staged pre-tool policy (an Agent's tool policy, its
+   *   approval guardian, tool grants, the untrusted-content stages): the
+   *   ACP adapter resolves it for a session started as an Agent
+   *   (`resolvePreToolPolicy`, given `input.agent`) and runs it on each
+   *   permission request. The native transport does not run it, so such a
+   *   session runs where it is enforced.
+   */
+  private nativeUnsupported(
+    input: ProviderSessionStartInput,
+  ): string | undefined {
+    if (input.modelOptions?.effort !== undefined)
+      return "its effort setting is not available on OpenCode's own server";
+    if (input.agent && this.options.acp?.resolvePreToolPolicy)
+      return "its Agent's Station tool policy runs only over ACP";
+    return undefined;
   }
 
   /**
@@ -676,15 +716,12 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       throw new Error('This OpenCode resume cursor is not one Station wrote.');
     const config = await this.connection(input);
     const plan = await this.nativePlan(input, config);
-    if (
-      !plan &&
-      this.nativeEnabled() &&
-      input.modelOptions?.effort !== undefined
-    )
+    const unsupported = this.nativeUnsupported(input);
+    if (!plan && this.nativeEnabled() && unsupported)
       this.warn(
         input.threadId,
         OPENCODE_NATIVE_UNSUPPORTED_SETTING,
-        "Station runs this OpenCode chat over ACP: its effort setting is not available on OpenCode's own server.",
+        `Station runs this OpenCode chat over ACP: ${unsupported}.`,
       );
     // Station's tool servers decide which server the session may share.
     let mcp: OpenCodeNativeMcp | undefined;
@@ -935,6 +972,9 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     const agent = requestedAcpSessionMode(input.modelOptions);
     let sessionId: string;
     let stored: string | undefined;
+    // Where the session is: the server's directory, unless OpenCode moved it
+    // (a resumed session is where its last move put it).
+    let cwd = lease.cwd;
     if (cursor) {
       sessionId = cursor.sessionId;
       // The session must exist in this server's store.
@@ -943,6 +983,9 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         `/api/session/${sessionId}`,
       );
       stored = readString(ownRecord(existing?.data)?.agent);
+      cwd =
+        readString(ownRecord(ownRecord(existing?.data)?.location)?.directory) ??
+        cwd;
     }
     // A governed session runs a named agent, whose denies its rules keep.
     const sessionAgent = agent ?? stored ?? (floor ? 'build' : undefined);
@@ -954,12 +997,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     // Station's confined rules govern it.
     const agentRules =
       floor === 'confined' && sessionAgent
-        ? await this.assertGovernable(
-            lease.client,
-            lease.cwd,
-            floor,
-            sessionAgent,
-          )
+        ? await this.assertGovernable(lease.client, cwd, floor, sessionAgent)
         : undefined;
     const permissions = floor ? openCodeNativeApprovalRules(floor) : undefined;
     const model = readModelRef(input.modelId);
@@ -992,6 +1030,16 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       if (!id) throw new Error('OpenCode did not name the session it created.');
       sessionId = id;
     }
+    // Read as the ACP adapter reads it (`AcpAdapter` session record).
+    const delegation =
+      input.metadata?.delegation &&
+      typeof input.metadata.delegation === 'object'
+        ? (input.metadata.delegation as InvocationContext['delegation'])
+        : undefined;
+    const ledger =
+      this.options.acp?.untrustedContentLedger ?? sharedUntrustedContentLedger;
+    let onMoved: (move: { sessionId: string; directory: string }) => void =
+      () => undefined;
     const native = new OpenCodeNativeSession({
       threadId: input.threadId,
       provider: this.provider,
@@ -1001,9 +1049,18 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       publish: (event) => this.publish(event),
       ...(mode ? { approvalMode: mode } : {}),
       ...(agentRules ? { agentRules } : {}),
-      cwd: lease.cwd,
+      cwd,
       configEnv: plan.env,
       agentRulesFor: (name) => this.agentRules(lease.client, name),
+      // #4828: the ledger and ancestry the ACP path asks (acp-adapter.ts).
+      untrustedRead: () =>
+        ledger.conversationHasRead(
+          ...untrustedContentAncestry({
+            conversationId: input.threadId,
+            delegation,
+          }),
+        ),
+      onMoved: (move) => onMoved(move),
       ...(this.options.reconnectFirstMs
         ? { reconnectFirstMs: this.options.reconnectFirstMs }
         : {}),
@@ -1021,7 +1078,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       kind: 'opencode',
       connectionId: plan.config.id,
       sessionId,
-      cwd: plan.cwd,
+      cwd: cwd === lease.cwd ? plan.cwd : cwd,
       bindingKey,
       transport: 'native',
     };
@@ -1030,7 +1087,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       provider: this.provider,
       threadId: input.threadId,
       status: 'ready',
-      cwd: plan.cwd,
+      cwd: resumeCursor.cwd,
       ...(input.modelId ? { model: input.modelId } : {}),
       resumeCursor,
       ...(input.persistSession !== undefined
@@ -1045,12 +1102,14 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       session,
       cursor: resumeCursor,
       agent: sessionAgent,
+      cwd,
       rules: permissions ?? [],
       dirty: false,
       busy: false,
       serverIsSessions: mcp.sessionScoped,
     };
     this.native.set(input.threadId, record);
+    onMoved = (move) => void this.onSessionMoved(input.threadId, record, move);
     void lease.exited.then(() => this.onServerExit(input.threadId, record));
     this.publish({
       eventId: crypto.randomUUID(),
@@ -1067,6 +1126,53 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       },
     });
     return session;
+  }
+
+  /**
+   * A session of this tree moved (`session.moved`). OpenCode loads the
+   * destination's own configuration and plugins while it resolves the
+   * move, before it says so (2.3.0 `core/src/session/move.ts`; `move`
+   * capture), so in a governed session (Ask, Auto) the destination is
+   * scanned as a start is (#3924): code there stops the session, with a
+   * warning that says why. Station's rules deny the agent's own move tool
+   * (`openCodeNativeApprovalRules`), so this is the backstop for a move made
+   * otherwise. A move of the session itself (not a child) is otherwise
+   * followed: the directory the configuration guard and the resume cursor
+   * use.
+   */
+  private async onSessionMoved(
+    threadId: string,
+    record: NativeRecord,
+    move: { sessionId: string; directory: string },
+  ): Promise<void> {
+    if (this.native.get(threadId) !== record) return;
+    const own = move.sessionId === record.cursor.sessionId;
+    if (own) {
+      record.cwd = move.directory;
+      record.cursor.cwd = move.directory;
+      record.session = { ...record.session, cwd: move.directory };
+    }
+    if (acpApprovalFloor(record.native.approvalMode) !== 'confined') return;
+    let code: string[];
+    try {
+      code = await (this.options.findProjectCode ?? defaultFindProjectCode)(
+        move.directory,
+      );
+    } catch (error) {
+      code = [
+        `the new directory could not be scanned (${errorMessage(error)})`,
+      ];
+    }
+    if (code.length === 0 || this.native.get(threadId) !== record) return;
+    this.warn(
+      threadId,
+      OPENCODE_SESSION_MOVED_UNGOVERNABLE,
+      `Station stopped this OpenCode chat: ${own ? 'it' : 'one of its subagents'} moved to ${move.directory}, where ${openCodeProjectCodeRefusal(code)}. OpenCode loaded that configuration on the move, so Station's approval mode no longer covers what the chat runs.`,
+      { directory: move.directory, sessionId: move.sessionId },
+    );
+    // The usual stop: OpenCode's execution is interrupted, its asks
+    // rejected, and the session released.
+    await this.stopSession(threadId);
   }
 
   /** The server died under a live session: its turn aborts and the session exits. */
@@ -1278,12 +1384,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     const newAgentRules =
       sessionAgent && (floor === 'confined' || currentFloor === 'confined')
         ? floor === 'confined'
-          ? await this.assertGovernable(
-              client,
-              record.lease.cwd,
-              floor,
-              sessionAgent,
-            )
+          ? await this.assertGovernable(client, record.cwd, floor, sessionAgent)
           : await this.agentRules(client, sessionAgent)
         : undefined;
     const rules = floor ? openCodeNativeApprovalRules(floor) : [];

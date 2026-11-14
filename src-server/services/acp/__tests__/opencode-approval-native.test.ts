@@ -3,11 +3,13 @@ import { loadOpenCodeFixture } from '../../../providers/__tests__/opencode-serve
 import type { AcpAppliedApprovalMode } from '../../../providers/adapters/acp-approval-mode.js';
 import {
   evaluateOpenCodeRules,
+  OPENCODE_SESSION_MOVE_ACTION,
   type OpenCodeNativeRule,
   openCodeGrantCovers,
   openCodeNativeApprovalRules,
   openCodeNativeAskAnswer,
   openCodeNativeModeAllows,
+  openCodeNativePersistenceTarget,
   openCodeSavedApprovalOverrides,
 } from '../opencode-approval-native.js';
 import { openCodeNativeAskNeedsPerson } from '../opencode-project-config.js';
@@ -142,11 +144,25 @@ describe('evaluateOpenCodeRules (OpenCode 2.3.0 evaluateInput)', () => {
     ).toBe('reject');
   });
 
-  test("Station's rules are asks only, and none at full access", () => {
+  test("Station's rules ask for every governed action, deny only Code Mode's session move, and are none at full access", () => {
     expect(openCodeNativeApprovalRules('full')).toEqual([]);
     const confined = openCodeNativeApprovalRules('confined');
     expect(confined.length).toBeGreaterThan(0);
-    expect(confined.every((rule) => rule.effect === 'ask')).toBe(true);
+    // The move tool is denied last, so no earlier `*_*` ask outranks it.
+    expect(confined.at(-1)).toEqual({
+      action: 'opencode_session_move',
+      resource: '*',
+      effect: 'deny',
+    });
+    expect(OPENCODE_SESSION_MOVE_ACTION).toBe('opencode_session_move');
+    expect(confined.slice(0, -1).every((rule) => rule.effect === 'ask')).toBe(
+      true,
+    );
+    // No governed action is denied by it.
+    for (const action of ['shell', 'edit', 'webfetch', 'station_echo'])
+      expect(
+        evaluateOpenCodeRules({ action, resources: ['x'] }, confined, []),
+      ).toBe('ask');
   });
 
   test('a saved allow for subagent refuses a governed start', () => {
@@ -404,5 +420,35 @@ describe('evaluateOpenCodeRules (OpenCode 2.3.0 evaluateInput)', () => {
       expect(needs('shell', ['echo opencode.json'])).toBe(false);
       expect(needs('read', ['opencode.json'])).toBe(false);
     });
+  });
+});
+
+describe('openCodeNativePersistenceTarget (#4828 on the native transport)', () => {
+  test('an edit ask naming an instruction or hook file, as a resource or in its metadata, is a target', () => {
+    expect(
+      openCodeNativePersistenceTarget({
+        action: 'edit',
+        resources: ['AGENTS.md'],
+      }),
+    ).toBe('AGENTS.md');
+    expect(
+      openCodeNativePersistenceTarget({
+        action: 'edit',
+        resources: ['notes.txt'],
+        files: ['.git/hooks/pre-commit'],
+      }),
+    ).toBe('.git/hooks/pre-commit');
+  });
+
+  test('an ordinary edit, and any other action, is not', () => {
+    expect(
+      openCodeNativePersistenceTarget({ action: 'edit', resources: ['a.ts'] }),
+    ).toBeUndefined();
+    expect(
+      openCodeNativePersistenceTarget({
+        action: 'shell',
+        resources: ['echo x > AGENTS.md'],
+      }),
+    ).toBeUndefined();
   });
 });

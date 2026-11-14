@@ -55,7 +55,15 @@
 //     approval modes on 2.x (ruling R1) rather than rebuild the check there.
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -240,6 +248,30 @@ function plan(body) {
       chunks: [`TOOL_UNAVAILABLE station-echo (${tools.join(',')})`],
     };
   }
+  // Code Mode's `opencode.session_move` (2.3.0 `tool/plugin/opencode.ts`),
+  // to a directory inside the project: no ask.
+  if (user.includes('DO_MOVE'))
+    return call('execute', {
+      code: `return await tools.opencode.session_move({ directory: ${JSON.stringify(/DO_MOVE (\S+)/.exec(user)?.[1] ?? 'sub')} });`,
+    });
+  // A child that starts a grandchild, whose shell asks (`subagent-gap`).
+  if (user.includes('DO_TASK_DEEP'))
+    return call('subagent', {
+      agent: 'general',
+      description: 'deep child',
+      prompt: 'CHILD_DEEP start a grandchild',
+    });
+  if (user.includes('CHILD_DEEP'))
+    return call('subagent', {
+      agent: 'general',
+      description: 'grandchild probe',
+      prompt: 'GRANDCHILD_BASH run it',
+    });
+  if (user.includes('GRANDCHILD_BASH'))
+    return call('shell', {
+      command: 'echo grandchild',
+      description: 'grandchild echo',
+    });
   if (user.includes('DO_TASK'))
     return call('subagent', {
       agent: 'general',
@@ -270,6 +302,9 @@ function plan(body) {
   return { kind: 'text', chunks: ['mock ', 'reply: ', user.slice(-60)] };
 }
 
+/** What each model request offered, for findings (never written as is). */
+const MODEL_REQUESTS = [];
+
 function startMockModel() {
   let requestNo = 0;
   const server = http.createServer(async (req, res) => {
@@ -291,6 +326,14 @@ function startMockModel() {
       body = JSON.parse(raw || '{}');
     } catch {}
     const p = plan(body);
+    MODEL_REQUESTS.push({
+      user: textOf((body.messages ?? []).at(-1)?.content).slice(0, 80),
+      tools: (body.tools ?? []).map((t) => t.function?.name).filter(Boolean),
+      // Code Mode lists its tools in the `execute` tool's description.
+      offersSessionMove: JSON.stringify(body.tools ?? []).includes(
+        'session_move',
+      ),
+    });
     const base = {
       id: `chatcmpl-${id}`,
       object: 'chat.completion.chunk',
@@ -522,6 +565,9 @@ function prepareWorkspace() {
     model: 'mock/mock-1',
     update: 'disable',
     share: 'manual',
+    // A child may start its own child (`subagent-gap`); 2.3.0 allows one
+    // level unless this is raised (`tool/plugin/subagent.ts`).
+    experimental: { subagent_depth: 2 },
     // `--config plain` keeps OpenCode's own agent rules in force (no global
     // allow after them), so an agent's configured deny is what decides.
     ...(args.config === 'plain'
@@ -1562,6 +1608,153 @@ S['mcp-add'] = async (rec) => {
   }
 };
 
+/** A read the capture makes for itself, not recorded (it would be replayed). */
+async function unrecorded(rec, apiPath) {
+  const res = await fetch(rec.base + apiPath, {
+    headers: { authorization: AUTH },
+  });
+  return res.status === 200 ? res.json() : undefined;
+}
+
+/**
+ * A sub-directory of the project holding OpenCode project code: a plugin
+ * that writes `marker` (the time it ran) when OpenCode loads it.
+ */
+function plantNestedPlugin(name, marker) {
+  const dir = path.join(PROJ, name);
+  mkdirSync(path.join(dir, '.opencode', 'plugin'), { recursive: true });
+  writeFileSync(
+    path.join(dir, '.opencode', 'plugin', 'planted.ts'),
+    `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, String(Date.now()));\nexport const Planted = async () => ({});\n`,
+  );
+  return dir;
+}
+
+/**
+ * Code Mode's `opencode.session_move` to a sub-directory inside the
+ * project under Station's confined (Ask) rules: no ask, the session moves
+ * (`session.moved`), and OpenCode loads the destination's own project code
+ * (a planted plugin) while it resolves the destination
+ * (`core/src/session/move.ts` `resolveDestination` builds the location's
+ * context before anything is published).
+ */
+S.move = async (rec) => {
+  const marker = path.join(WORK, 'move-plugin-ran');
+  const sub = plantNestedPlugin('sub', marker);
+  try {
+    const A = await rec.tap('A');
+    const s = await createSession(rec, 'move', {
+      agent: 'build',
+      permissions: CONFINED_RULES,
+    });
+    await rec.api('POST', `/api/session/${s}/prompt`, { text: 'DO_MOVE sub' });
+    const moved = await A.waitFor(is('session.moved', s));
+    await settled(A, s);
+    const ran = existsSync(marker) ? Number(readFileSync(marker, 'utf8')) : 0;
+    rec.finding(
+      `session_move inside the project under the confined rules: ${A.count(is('permission.asked', s))} ask(s); session.moved names location.directory ${JSON.stringify(moved.data.location?.directory)}; the nested plugin ${ran ? (ran <= moved.created ? 'ran before the event was published' : 'ran after the event was published') : 'never ran'}`,
+    );
+    await rec.api('GET', `/api/session/${s}`);
+  } finally {
+    rmSync(sub, { recursive: true, force: true });
+  }
+};
+
+/**
+ * The same move with Station's deny for the Code Mode tool after the
+ * confined rules: OpenCode leaves a wholly denied tool out of the catalog
+ * (`core/src/tool.ts` `whollyDisabled`), so the call fails, nothing moves
+ * and the plugin never loads.
+ */
+S['move-denied'] = async (rec) => {
+  const marker = path.join(WORK, 'move-denied-plugin-ran');
+  const sub = plantNestedPlugin('sub-denied', marker);
+  try {
+    const A = await rec.tap('A');
+    const s = await createSession(rec, 'move-denied', {
+      agent: 'build',
+      permissions: [
+        ...CONFINED_RULES,
+        { action: 'opencode_session_move', resource: '*', effect: 'deny' },
+      ],
+    });
+    const before = MODEL_REQUESTS.length;
+    await rec.api('POST', `/api/session/${s}/prompt`, {
+      text: 'DO_MOVE sub-denied',
+    });
+    await settled(A, s);
+    const offered = MODEL_REQUESTS.slice(before).filter((r) =>
+      r.user.includes('DO_MOVE'),
+    );
+    rec.finding(
+      `with opencode_session_move denied: session.moved ${A.count(is('session.moved', s))} time(s); the plugin ${existsSync(marker) ? 'ran' : 'never ran'}; the model was offered session_move in ${offered.filter((r) => r.offersSessionMove).length} of ${offered.length} request(s)`,
+    );
+    await rec.api('GET', `/api/session/${s}`);
+  } finally {
+    rmSync(sub, { recursive: true, force: true });
+  }
+};
+
+/**
+ * A child, and a grandchild (a child's own child, `parentID` the child),
+ * started while the feed was down, the grandchild's shell asking: what a
+ * client reads on reconnect to find them and the ask (the session list by
+ * `parentID`, the location's pending asks and forms), then the ask
+ * answered on the new feed.
+ */
+S['subagent-gap'] = async (rec) => {
+  const A = await rec.tap('A');
+  const s = await createSession(rec, 'subagent-gap');
+  await rec.api('POST', `/api/session/${s}/prompt`, {
+    text: 'DO_TASK_DEEP now',
+  });
+  await A.waitFor(is('session.execution.started', s));
+  A.close();
+  // Wait, unseen, for an ask from a session that is not this one.
+  const deadline = Date.now() + 30_000;
+  let ask;
+  while (!ask) {
+    if (Date.now() > deadline) {
+      const kids = await unrecorded(rec, `/api/session?parentID=${s}`);
+      const kid = kids?.data?.[0]?.id;
+      const said = kid
+        ? await unrecorded(rec, `/api/session/${kid}/message?order=asc`)
+        : undefined;
+      throw new Error(
+        `no descendant ask: children ${JSON.stringify(kids?.data?.map((k) => k.id))}; child said ${JSON.stringify(said?.data?.map((m) => [m.type, m.content?.map((c) => c.text ?? c.type)]))}`.slice(
+          0,
+          2000,
+        ),
+      );
+    }
+    await sleep(200);
+    const listed = await unrecorded(rec, '/api/permission/request');
+    ask = (listed?.data ?? []).find((item) => item.sessionID !== s);
+  }
+  const B = await rec.tap('B');
+  await rec.api('GET', '/api/session/active');
+  await rec.api('GET', `/api/session/${s}/message?order=asc`);
+  const children = await rec.api('GET', `/api/session?parentID=${s}`);
+  const child = children.json?.data?.[0]?.id;
+  const grandchildren = await rec.api('GET', `/api/session?parentID=${child}`);
+  const grandchild = grandchildren.json?.data?.[0]?.id;
+  await rec.api('GET', `/api/session?parentID=${grandchild}`);
+  await rec.api('GET', '/api/permission/request');
+  await rec.api('GET', '/api/form');
+  await rec.api('GET', `/api/session/${s}/inbox`);
+  rec.finding(
+    `the ask raised during the gap came from ${ask.sessionID === grandchild ? 'the grandchild' : ask.sessionID === child ? 'the child' : 'another session'}; the grandchild's parentID is ${grandchildren.json?.data?.[0]?.parentID === child ? 'the child' : 'something else'}`,
+  );
+  await rec.api(
+    'POST',
+    `/api/session/${ask.sessionID}/permission/${ask.id}/reply`,
+    { decision: 'once' },
+  );
+  await B.waitFor(is('session.execution.succeeded', s), 60_000);
+  await sleep(1500);
+  await rec.api('GET', `/api/session?parentID=${s}`);
+};
+
 const ORDER = [
   'basic',
   'tools',
@@ -1587,6 +1780,9 @@ const ORDER = [
   'history',
   'attachment',
   'mcp-add',
+  'move',
+  'move-denied',
+  'subagent-gap',
 ];
 // Captured separately, with `--config plain --only plan-deny`.
 const PLAIN_ONLY = new Set(['plan-deny']);

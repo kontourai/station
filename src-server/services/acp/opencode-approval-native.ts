@@ -19,6 +19,7 @@
  * a session grant stays in the adapter and is answered `once` (ruling R4).
  */
 import type { AcpAppliedApprovalMode } from '../../providers/adapters/acp-approval-mode.js';
+import { untrustedPersistenceTarget } from '../plugins/untrusted-persistence-protection.js';
 
 export type OpenCodeRuleEffect = 'allow' | 'deny' | 'ask';
 
@@ -115,9 +116,11 @@ export type OpenCodeNativeFloor = 'confined' | 'full';
 
 /**
  * The session ruleset for a floor (the v2 counterpart of
- * `stationOpenCodeApprovalConfig`). Station only ever adds `ask` rules: an
- * `allow` would let an action past the agent's own rules, and a `deny`
- * appended after them would change what they decide for other resources.
+ * `stationOpenCodeApprovalConfig`). For the actions the agent's rules
+ * govern, Station only ever adds `ask` rules: an `allow` would let an
+ * action past the agent's own rules, and a `deny` appended after them
+ * would change what they decide for other resources. The one `deny` is
+ * for a tool no agent rule governs ({@link OPENCODE_SESSION_MOVE_ACTION}).
  *
  * - `confined` (Ask, Auto, and full access confined to Auto): each governed
  *   action asks, and `subagent` asks and Station rejects it
@@ -129,6 +132,14 @@ export type OpenCodeNativeFloor = 'confined' | 'full';
  *   Because OpenCode lets the last matching rule decide, these asks also
  *   reach Station for actions the agent's own rules deny; Station rejects
  *   those itself ({@link openCodeNativeStationRejects}).
+ *   Last, Code Mode's `opencode.session_move` is denied: it moves the
+ *   session to another directory without asking when the destination is
+ *   inside the project, and OpenCode loads the destination's own
+ *   configuration and plugins while it resolves it, before anything is
+ *   published (2.3.0 `core/src/session/move.ts`; `move` capture), so no
+ *   check after the event can keep that code from running. A wholly denied
+ *   tool is left out of the catalog (`core/src/tool.ts` `whollyDisabled`;
+ *   `move-denied` capture), and a child inherits the rule.
  * - `full` (full access in a host session): none. The agent's rules decide,
  *   OpenCode asks only where they say ask, and Station answers `once`.
  */
@@ -136,11 +147,48 @@ export function openCodeNativeApprovalRules(
   floor: OpenCodeNativeFloor,
 ): OpenCodeNativeRule[] {
   if (floor === 'full') return [];
-  return [...OPENCODE_NATIVE_ASK_ACTIONS, 'subagent'].map((action) => ({
-    action,
-    resource: '*',
-    effect: 'ask' as const,
-  }));
+  return [
+    ...[...OPENCODE_NATIVE_ASK_ACTIONS, 'subagent'].map((action) => ({
+      action,
+      resource: '*',
+      effect: 'ask' as const,
+    })),
+    { action: OPENCODE_SESSION_MOVE_ACTION, resource: '*', effect: 'deny' },
+  ];
+}
+
+/**
+ * The permission action of Code Mode's `opencode.session_move` (a tool's
+ * action is its effective name, `<namespace>_<tool>`: 2.3.0
+ * `core/src/tool/runtime.ts` `effectiveName`). It asserts no permission of
+ * its own for a destination inside the project, and no agent's rules name
+ * it, so a governed session denies it outright
+ * ({@link openCodeNativeApprovalRules}).
+ */
+export const OPENCODE_SESSION_MOVE_ACTION = 'opencode_session_move';
+
+/**
+ * #4828 on the native transport: the file an OpenCode ask would change at a
+ * known agent-instruction or git-hook location, or undefined. OpenCode asks
+ * `edit` for every write, edit and patch (moves and deletes included), naming
+ * the files as its resources (relative to the session's directory) and in
+ * `metadata.files[].file`; they are classified as the ACP path classifies a
+ * write's locations (`acpPersistenceTarget`). A shell command's ask is not:
+ * ACP declines only file changes, and leaves a command to the staged
+ * evaluator, which the native transport does not run (an Agent's session
+ * runs over ACP).
+ */
+export function openCodeNativePersistenceTarget(ask: {
+  readonly action: string;
+  readonly resources: readonly string[];
+  readonly files?: readonly string[];
+}): string | undefined {
+  if (ask.action !== 'edit') return undefined;
+  for (const file of [...ask.resources, ...(ask.files ?? [])]) {
+    const verdict = untrustedPersistenceTarget('edit', { path: file });
+    if (verdict) return verdict.target;
+  }
+  return undefined;
 }
 
 /**

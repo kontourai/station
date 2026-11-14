@@ -64,7 +64,6 @@ describe('OpenCodeServeClient requests', () => {
     '/api/info#frag',
     // Real routes the transport never calls.
     '/api/config',
-    '/api/session',
     '/api/provider',
     '/api/experimental/client-mcp',
     '/api/fs/read/etc/passwd',
@@ -160,9 +159,9 @@ describe('OpenCodeServeClient requests', () => {
     await expect(
       client.request('DELETE', '/api/session/ses_1'),
     ).rejects.toBeInstanceOf(OpenCodeServeDeniedPathError);
-    await expect(client.request('GET', '/api/session')).rejects.toBeInstanceOf(
-      OpenCodeServeDeniedPathError,
-    );
+    await expect(
+      client.request('DELETE', '/api/permission/request'),
+    ).rejects.toBeInstanceOf(OpenCodeServeDeniedPathError);
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -467,7 +466,7 @@ describe('OpenCodeServeClient requests', () => {
     await expect(
       client.request('POST', '/api/session/ses_1/prompt', { text: 'hi' }),
     ).resolves.toEqual({ data: 1 });
-    await client.request('GET', '/api/session/ses_1/permission');
+    await client.request('GET', '/api/session/ses_1/inbox');
     const [url, init] = fetch.mock.calls[0]!;
     expect(url).toBe(`${BASE}/api/session/ses_1/prompt`);
     expect(init?.method).toBe('POST');

@@ -56,6 +56,8 @@ describe('OpenCode serve captures', () => {
         'mcp',
         'mcp-add',
         'mode-switch',
+        'move',
+        'move-denied',
         'permission-allow',
         'permission-reject',
         'permission-saved',
@@ -66,6 +68,7 @@ describe('OpenCode serve captures', () => {
         'steer',
         'stop-pending',
         'subagent',
+        'subagent-gap',
         'tools',
       ]
         .map((name) => `${PREFIX}${name}.jsonl`)

@@ -83,6 +83,15 @@ export const OPENCODE_NATIVE_ROUTES: readonly OpenCodeServeRoute[] = [
     template: '/api/permission/saved',
   },
   { operationId: 'session.create', method: 'POST', template: '/api/session' },
+  // A reconnect's descendant lookup (`?parentID=`) and the location's
+  // pending asks and forms, every session's at once.
+  { operationId: 'session.list', method: 'GET', template: '/api/session' },
+  {
+    operationId: 'permission.request.list',
+    method: 'GET',
+    template: '/api/permission/request',
+  },
+  { operationId: 'form.list', method: 'GET', template: '/api/form' },
   {
     operationId: 'session.active',
     method: 'GET',
@@ -139,19 +148,9 @@ export const OPENCODE_NATIVE_ROUTES: readonly OpenCodeServeRoute[] = [
     template: '/api/session/{sessionID}/inbox/{inboxID}',
   },
   {
-    operationId: 'session.permission.list',
-    method: 'GET',
-    template: '/api/session/{sessionID}/permission',
-  },
-  {
     operationId: 'session.permission.reply',
     method: 'POST',
     template: '/api/session/{sessionID}/permission/{requestID}/reply',
-  },
-  {
-    operationId: 'session.form.list',
-    method: 'GET',
-    template: '/api/session/{sessionID}/form',
   },
   {
     operationId: 'session.form.reply',
