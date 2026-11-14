@@ -344,9 +344,11 @@ observation windows end two hours behind the cadence boundary; unfinished or
 unattributed work remains explicitly incomplete. A window that is incomplete
 only because work was still running (unfinished jobs, which also lack runner
 attribution) is recorded with a warning annotation and does not fail the
-report job; any collection failure (an API error, a pagination cap, an
-unresolved PR or merge base, finished work without runner attribution, or an
-unavailable ledger) still fails it.
+report job. A read GitHub answers with a 5xx is retried up to three
+attempts with a short backoff (the `--record` write is not); any collection
+failure that remains (an API error, a pagination cap, an unresolved PR or
+merge base, finished work without runner attribution, or an unavailable
+ledger) still fails it.
 Snapshots are retained for 30 days. This reporting does not establish a speedup,
 close the issue automatically or replace manual-intervention outcome review.
 

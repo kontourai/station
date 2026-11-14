@@ -514,8 +514,38 @@ async function command(executable, args) {
     });
   }
 }
-const api = async (endpoint, extra = []) =>
-  JSON.parse(await command('gh', ['api', endpoint, ...extra]));
+/** Attempts for one API call that GitHub answers with a 5xx. */
+export const API_ATTEMPTS = 3;
+const API_RETRY_DELAY_MS = 2_000;
+/**
+ * One gh API call. A 5xx (gh prints `Server Error (HTTP 502)` and the like)
+ * is retried with a short growing backoff: about one scheduled window in
+ * seven failed on one, which is GitHub's transient state, not a collection
+ * gap. A 5xx that persists through every attempt, and every other error,
+ * still throws.
+ */
+export async function retryServerErrors(
+  call,
+  { attempts = API_ATTEMPTS, delayMs = API_RETRY_DELAY_MS } = {},
+) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await call();
+    } catch (error) {
+      if (attempt >= attempts || !/\(HTTP 5\d\d\)/.test(error.message))
+        throw error;
+      await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+    }
+  }
+}
+// Reads only: a 5xx on the --record POST may still have created the
+// comment, so a write is never repeated.
+const api = async (endpoint, extra = []) => {
+  const call = () => command('gh', ['api', endpoint, ...extra]);
+  return JSON.parse(
+    await (extra.includes('--method') ? call() : retryServerErrors(call)),
+  );
+};
 async function pages(request, endpoint, field, limit = 100) {
   const items = [];
   for (let page = 1; page <= limit; page++) {

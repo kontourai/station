@@ -5,6 +5,7 @@ import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
+  API_ATTEMPTS,
   buildSnapshot,
   capacityMetrics,
   classifyReentry,
@@ -21,6 +22,7 @@ import {
   readHistory,
   renderHistory,
   renderSnapshot,
+  retryServerErrors,
   setupMetrics,
   shardFamily,
   snapshotComment,
@@ -1178,37 +1180,43 @@ describe('CI health collection bounds and command interface', () => {
 
 // The scheduled workflow fails when the CLI exits non-zero. Driven as the
 // real CLI against a stand-in `gh` (the CLI's only API transport) and a
-// non-shallow repository whose origin names the measured repository.
+// non-shallow repository whose origin names the measured repository. Times
+// are relative to now, because stuck work is judged at collection time.
 describe.skipIf(process.platform === 'win32')(
   'CI health CLI exit status',
   () => {
     const cli = join(import.meta.dirname, '../ci-health.mjs');
     const fakeGh = `#!/usr/bin/env node
+const { existsSync, writeFileSync } = require('node:fs');
 const [, , verb, endpoint] = process.argv;
 const mode = process.env.FAKE_GH_MODE;
+const t = JSON.parse(process.env.FAKE_GH_TIMES);
 if (verb !== 'api') process.exit(2);
-if (mode === 'error') {
-  // The real transport failure seen on scheduled runs.
+// The real transport failure seen on scheduled runs: always, or only on the
+// first call (FAKE_GH_STATE records that it happened).
+if (mode === 'error' || (mode === 'flaky' && !existsSync(process.env.FAKE_GH_STATE))) {
+  if (mode === 'flaky') writeFileSync(process.env.FAKE_GH_STATE, 'failed once');
   process.stderr.write('gh: Server Error (HTTP 502)\\n');
   process.exit(1);
 }
+const done = mode === 'complete' || mode === 'flaky';
 const job = {
   id: 1, name: 'test', labels: ['ubuntu-latest'], steps: [],
-  created_at: '${at(10)}',
-  ...(mode === 'complete'
-    ? { status: 'completed', conclusion: 'success', started_at: '${at(11)}', completed_at: '${at(20)}', runner_id: 2, runner_name: 'runner-2' }
-    : { status: 'in_progress', conclusion: null, started_at: null, completed_at: null, runner_id: null, runner_name: null }),
+  created_at: t.created,
+  ...(done
+    ? { status: 'completed', conclusion: 'success', started_at: t.started, completed_at: t.completed, runner_id: 2, runner_name: 'runner-2' }
+    : { status: 'queued', conclusion: null, started_at: null, completed_at: null, runner_id: null, runner_name: null }),
 };
 if (/\\/actions\\/runs\\?created=/.test(endpoint))
   console.log(JSON.stringify({ total_count: 1, workflow_runs: [{
     id: 7, run_attempt: 1, name: 'Main: Container smoke', event: 'push',
-    status: mode === 'complete' ? 'completed' : 'in_progress',
-    conclusion: mode === 'complete' ? 'success' : null,
-    created_at: '${at(10)}', head_sha: 'a'.repeat(40), head_branch: 'main',
+    status: done ? 'completed' : 'queued',
+    conclusion: done ? 'success' : null,
+    created_at: t.created, head_sha: 'a'.repeat(40), head_branch: 'main',
     pull_requests: [],
   }] }));
 else if (/\\/actions\\/runs\\/7\\/attempts\\/1\\/jobs/.test(endpoint))
-  console.log(JSON.stringify({ total_count: 1, jobs: [job] }));
+  console.log(JSON.stringify({ total_count: mode === 'stuckRun' ? 0 : 1, jobs: mode === 'stuckRun' ? [] : [job] }));
 else {
   process.stderr.write('unexpected endpoint ' + endpoint + '\\n');
   process.exit(1);
@@ -1245,22 +1253,37 @@ else {
         'https://github.com/kontourai/station.git',
       ]);
       git(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
-      return (mode: string) =>
-        spawnSync(
+      return (mode: string, { createdHoursAgo = 1.5 } = {}) => {
+        const now = Date.now();
+        const ago = (hours: number) =>
+          new Date(now - hours * 3_600_000).toISOString();
+        return spawnSync(
           process.execPath,
-          [cli, '--json', `--since=${at(0)}`, `--until=${at(60)}`],
+          [
+            cli,
+            '--json',
+            `--since=${ago(createdHoursAgo + 0.5)}`,
+            `--until=${ago(1)}`,
+          ],
           {
             cwd: repo,
             env: {
               ...env,
               PATH: `${bin}:${process.env.PATH ?? ''}`,
               FAKE_GH_MODE: mode,
+              FAKE_GH_STATE: join(root, 'failed-once'),
+              FAKE_GH_TIMES: JSON.stringify({
+                created: ago(createdHoursAgo),
+                started: ago(createdHoursAgo - 0.05),
+                completed: ago(createdHoursAgo - 0.1),
+              }),
             },
             encoding: 'utf8',
-            timeout: 30_000,
+            timeout: 60_000,
             windowsHide: true,
           },
         );
+      };
     };
 
     it('exits 0 for a complete window', () => {
@@ -1276,24 +1299,59 @@ else {
       expect(snapshot).toMatchObject({
         incomplete: true,
         unfinishedOnly: true,
-        reasons: [
-          'window includes 1 jobs with unavailable runner attribution',
-          'window includes 1 unfinished jobs',
-        ],
+        reasons: ['window includes 1 unfinished jobs'],
       });
       expect(result.stderr).toContain(
-        '::warning title=CI health window incomplete::window includes 1 jobs with unavailable runner attribution; window includes 1 unfinished jobs',
+        '::warning title=CI health window incomplete::window includes 1 unfinished jobs',
       );
       expect(result.status).toBe(0);
     });
 
-    it('still fails when the API cannot be read', () => {
+    it('retries a transient 5xx and measures the window', () => {
+      const result = setup()('flaky');
+      expect(JSON.parse(result.stdout).incomplete).toBe(false);
+      expect(result.status).toBe(0);
+    }, 60_000);
+
+    it('still fails when a 5xx persists through every attempt', () => {
       const result = setup()('error');
       const snapshot = JSON.parse(result.stdout);
       expect(snapshot.incomplete).toBe(true);
       expect(snapshot.unfinishedOnly).toBe(false);
       expect(snapshot.reasons.join('\n')).toContain('HTTP 502');
       expect(result.status).toBe(1);
-    });
+    }, 60_000);
   },
 );
+
+describe('bounded retry of GitHub server errors', () => {
+  const failing = (messages: string[]) => {
+    let calls = 0;
+    const call = async () => {
+      const message = messages[calls++];
+      if (message) throw new Error(message);
+      return 'ok';
+    };
+    return { call, calls: () => calls };
+  };
+  it('retries a 5xx up to the attempt bound, then throws', async () => {
+    const flaky = failing(['gh: Server Error (HTTP 502)']);
+    await expect(retryServerErrors(flaky.call, { delayMs: 0 })).resolves.toBe(
+      'ok',
+    );
+    expect(flaky.calls()).toBe(2);
+    const down = failing(Array(API_ATTEMPTS).fill('gh: HTTP 503 (HTTP 503)'));
+    await expect(retryServerErrors(down.call, { delayMs: 0 })).rejects.toThrow(
+      'HTTP 503',
+    );
+    expect(down.calls()).toBe(API_ATTEMPTS);
+    expect(API_ATTEMPTS).toBe(3);
+  });
+  it('does not retry anything that is not a 5xx', async () => {
+    const missing = failing(['gh: Not Found (HTTP 404)']);
+    await expect(
+      retryServerErrors(missing.call, { delayMs: 0 }),
+    ).rejects.toThrow('HTTP 404');
+    expect(missing.calls()).toBe(1);
+  });
+});
