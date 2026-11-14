@@ -1,0 +1,36 @@
+{
+  "engine": "kiro-v2",
+  "provenance": "recorded: kiro-cli 3.3.0 `acp --agent-engine v2` initialize and the `_kiro.dev/commands/execute` help answer (2026-11-13, help text shortened). session/new modes are left out (they list the host agents). The fake refuses every other extension request -32601.",
+  "registry": null,
+  "initialize": {
+    "protocolVersion": 1,
+    "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": {
+        "image": true,
+        "audio": false,
+        "embeddedContext": false
+      },
+      "mcpCapabilities": {
+        "http": true,
+        "sse": false
+      },
+      "sessionCapabilities": {},
+      "auth": {}
+    },
+    "authMethods": [],
+    "agentInfo": {
+      "name": "Kiro CLI Agent",
+      "title": "Kiro CLI Agent",
+      "version": "3.3.0"
+    }
+  },
+  "extMethodAnswers": {
+    "_kiro.dev/commands/execute": {
+      "result": {
+        "success": true,
+        "message": "Available Commands:\n\n  /agent                    Select or list available agents\n    Usage: /agent [agent-name|create <name>|edit [name]|swap <name>]\n\n  /chat                     Load a previous session or start a new one"
+      }
+    }
+  }
+}

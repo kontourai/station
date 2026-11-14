@@ -5,6 +5,8 @@ import {
   inputRequestFromRequestEvent,
   inputRequestOutcome,
   inputRequestSummary,
+  inputRequestUrlFromRequestEvent,
+  isCardAnsweredRequestEvent,
   isInputRequestEvent,
 } from '@kontourai/station-shared/input-request';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
@@ -116,6 +118,21 @@ function openLiveInputRequestRecord(
     );
     return;
   }
+  const link = inputRequestUrlFromRequestEvent(event);
+  if (link) {
+    openInputRequestRecordPart(
+      event,
+      {
+        ...base,
+        kind: 'url',
+        requester: link.requester,
+        message: inputRequestSummary(link.message),
+      },
+      undefined,
+      station,
+    );
+    return;
+  }
   if (event.requestType !== 'approval' && event.requestType !== 'permission')
     return;
   const toolCallId = event.payload?.toolCallId;
@@ -150,8 +167,9 @@ export function raiseRequestOpenedToast(
   const chatStore = activeChatsStore.forStation(station);
   const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat || event.blocking === false) return;
-  // A form has no one-click answer; the pending-requests card collects it.
-  if (inputRequestFromRequestEvent(event)) return;
+  // A form or a link has no one-click answer; the pending-requests card
+  // collects it (a link's Allow would claim it was opened).
+  if (isCardAnsweredRequestEvent(event)) return;
 
   const agentName = chat.agentName || chat.agentSlug || event.provider;
   // #1545: the tool name alone ("Codex wants to use Bash") is not a decision an

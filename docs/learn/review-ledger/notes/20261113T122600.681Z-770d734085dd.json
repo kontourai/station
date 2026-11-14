@@ -1,0 +1,7 @@
+{
+  "revision": "5c3a844955ef18e877ffbf88e37d904204c04010",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Links to the contracts reference only; the contracts.md edit names two ACP runtime-warning codes among the failure-inventory exclusions and changes no term or routing this document states.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]}
+  ]
+}

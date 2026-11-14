@@ -1,11 +1,17 @@
+import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
+import { foldEngineMcpStatus } from '@kontourai/station-contracts/runtime';
 import {
   StationHttpError,
   useConversationUsageTreeQuery,
+  useReconnectEngineMcpServerMutation,
 } from '@kontourai/station-sdk';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import type { ChatEngineMcpServer } from '../../contexts/active-chats-state';
 import { useStats } from '../../contexts/StatsContext';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { LazyBoundary } from '../LazyBoundary';
+import type { EngineMcpReconnect } from './EngineMcpStatusPanel';
 
 // The stats panel is opened from a toolbar toggle and closed most of the time,
 // so its body loads on first open rather than riding the first-paint bundle.
@@ -26,6 +32,28 @@ const STATS_REFRESH_MS = 2_000;
  */
 const USAGE_TREE_REFRESH_MS = 15_000;
 
+/** What a reconnect came to, said as the panel's status line. */
+export function engineMcpReconnectNotice(
+  serverName: string,
+  startOAuth: boolean,
+  outcome: EngineCommandOutcome,
+): string {
+  switch (outcome.kind) {
+    case 'answered':
+      if (outcome.success === false)
+        return outcome.text?.trim() || `${serverName} did not reconnect.`;
+      return startOAuth
+        ? `Asked the engine to sign in to ${serverName}. Its sign-in link appears in the chat.`
+        : `Asked the engine to reconnect ${serverName}.`;
+    case 'failed':
+      return outcome.message;
+    case 'not-declared':
+      return "This engine can't reconnect its MCP servers.";
+    case 'unsupported':
+      return "This Station can't reconnect an engine's MCP servers. Updating Station may add it.";
+  }
+}
+
 const loadConversationStatsModal = () =>
   import('./ConversationStatsModal').then((m) => ({
     default: m.ConversationStatsModal,
@@ -38,6 +66,26 @@ interface ConversationStatsProps {
   isVisible: boolean;
   onToggle: () => void;
   messageCount?: number;
+  /** The engine's MCP servers for this session, shown in the panel. */
+  engineMcpServers?: readonly ChatEngineMcpServer[];
+  /**
+   * The live execution Session those servers belong to; a reconnect is a
+   * command on it. Absent hides the panel's Reconnect and Sign in actions.
+   */
+  executionThreadId?: string;
+  /**
+   * The session's engine can reconnect its MCP servers (its last
+   * `engine-mcp.status` said `reconnect: true`). Without it the panel offers
+   * no Reconnect or Sign in action: Codex, for one, has no reconnect.
+   */
+  engineMcpReconnect?: boolean;
+  /**
+   * `engineMcpServers` came from a complete report and is the whole list;
+   * otherwise it holds partial reports that update the stored list.
+   */
+  engineMcpComplete?: boolean;
+  /** The session's engine connection name, for the panel's wording. */
+  engineName?: string;
 }
 
 export function ConversationStats({
@@ -47,6 +95,11 @@ export function ConversationStats({
   isVisible,
   onToggle,
   messageCount,
+  engineMcpServers,
+  executionThreadId,
+  engineMcpReconnect,
+  engineMcpComplete,
+  engineName,
 }: ConversationStatsProps) {
   // Same defect shape as SHELL-09's SkillsView: `useStats` already derives a
   // loading flag and this discarded it for a hardcoded `false`, so the modal's
@@ -80,6 +133,48 @@ export function ConversationStats({
     }
   }, [messageCount, refetch]);
 
+  // The stats carry every report folded on the server; a reopened
+  // conversation's live state is empty, or holds only the partial reports
+  // that arrived since, which update the stored list. Once a complete live
+  // report has arrived the live list is the whole list and replaces it.
+  // The reconnect bit is the live one when there is one.
+  const liveMcp = engineMcpServers !== undefined;
+  const mcpServers = liveMcp
+    ? stats?.engineMcp && !engineMcpComplete
+      ? foldEngineMcpStatus(stats.engineMcp, { servers: engineMcpServers })
+          .servers
+      : engineMcpServers
+    : stats?.engineMcp?.servers;
+  const mcpReconnectable = liveMcp
+    ? engineMcpReconnect === true
+    : stats?.engineMcp?.reconnect === true;
+
+  const reconnect = useReconnectEngineMcpServerMutation(apiBase);
+  const [mcpReconnect, setMcpReconnect] = useState<{
+    pendingServer?: string;
+    notice?: string;
+  }>({});
+  const { mutateAsync: reconnectMcpServer } = reconnect;
+  const onReconnectMcpServer = useCallback<EngineMcpReconnect>(
+    (serverName, { startOAuth }) => {
+      if (!executionThreadId) return;
+      setMcpReconnect({ pendingServer: serverName });
+      void reconnectMcpServer({
+        threadId: executionThreadId,
+        serverName,
+        startOAuth,
+      }).then(
+        (outcome) =>
+          setMcpReconnect({
+            notice: engineMcpReconnectNotice(serverName, startOAuth, outcome),
+          }),
+        (error: unknown) =>
+          setMcpReconnect({ notice: userFacingErrorMessage(error) }),
+      );
+    },
+    [executionThreadId, reconnectMcpServer],
+  );
+
   useEffect(() => {
     if (!isVisible) return;
 
@@ -110,6 +205,13 @@ export function ConversationStats({
         usageTreeLoading:
           usageTree.isPending && usageTree.fetchStatus !== 'idle',
         usageTreeError: usageTreeMissing ? undefined : usageTree.error,
+        engineMcpServers: mcpServers,
+        ...(engineName ? { engineName } : {}),
+        ...(executionThreadId && mcpReconnectable
+          ? { onReconnectMcpServer }
+          : {}),
+        mcpReconnectPendingServer: mcpReconnect.pendingServer,
+        mcpReconnectNotice: mcpReconnect.notice,
       }}
       pending={null}
     />

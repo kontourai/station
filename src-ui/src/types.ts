@@ -16,6 +16,7 @@ import type { ClientOriginSender } from '@kontourai/station-contracts/client-ori
 import type {
   InputRequestForm,
   InputRequestRecord,
+  InputRequestUrl,
 } from '@kontourai/station-contracts/input-request';
 import type {
   ApprovalMode,
@@ -36,6 +37,7 @@ import type { ChatStationBindingV1 } from './connections/station-connection';
 import type {
   ChatActivityHint,
   ChatBackgroundTask,
+  ChatEngineMcpServer,
   ChatLiveUsage,
   FlowGateVerdictInfo,
   FlowRunBinding,
@@ -207,6 +209,11 @@ export interface ChatMessage {
    */
   stationRestartContinuation?: boolean;
   /**
+   * An in-place engine rewind hid this turn from the engine. The row stays
+   * in the transcript, shown dimmed with a Rewound badge.
+   */
+  rewound?: boolean;
+  /**
    * The interrupted-turn boundary this row reports: the restart notice, or
    * the stopped row that says "Station restarted mid-turn" in its place.
    * Continue keys its send on it.
@@ -280,6 +287,11 @@ export interface ChatMessage {
     /** Semantic kind retained even before a form body is loaded. */
     requestKind?: 'input' | 'approval';
     inputRequest?: InputRequestForm;
+    /**
+     * An open link request (an MCP server's sign-in page, a URL-mode
+     * elicitation, an engine's link), opened from the pending-requests card.
+     */
+    inputRequestUrl?: InputRequestUrl;
     /** #3390: an `input-request` part's record; see `MessagePart`. */
     inputRequestRecord?: InputRequestRecord;
     cancelled?: boolean;
@@ -526,6 +538,12 @@ export interface ChatSession {
   backgroundTasks?: ChatBackgroundTask[];
   /** Latest provider-reported usage observation for the live context meter. */
   liveUsage?: ChatLiveUsage;
+  /** See ChatUIState.engineMcpServers — the engine's MCP servers. */
+  engineMcpServers?: ChatEngineMcpServer[];
+  /** See ChatUIState.engineMcpReconnect. */
+  engineMcpReconnect?: true;
+  /** See ChatUIState.engineMcpComplete. */
+  engineMcpComplete?: true;
   /** Synthetic event-replay chat; absent on ordinary sessions. */
   replay?: {
     mode?: 'timeline';

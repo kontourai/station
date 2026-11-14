@@ -119,6 +119,7 @@ import type {
 import { preloadMarkdownRenderer } from '../chat/LazyMarkdown';
 import { outboxNeedsReview } from '../chat/pendingMessages';
 import type { OutboxRows } from '../chat/QueuedMessages';
+import { SessionRewindProvider } from '../chat/SessionRewind';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
 import { StationSessionTitlesProvider } from '../chat/station-session-titles';
 import { preloadToolCallBatch } from '../chat/ToolCallBatchBoundary';
@@ -1870,7 +1871,14 @@ function LiveConversationBody({
       }
     : undefined;
   return (
-    <>
+    <SessionRewindProvider
+      executionThreadId={
+        activeSession.replay || connectionRecord?.readOnly
+          ? undefined
+          : (activeSession.currentSessionId ?? activeSession.id)
+      }
+      openTurnId={activeSession.conversationActivity?.openTurn?.turnId}
+    >
       {!activeSession.replay && (
         <CoordinatorToolsNotice
           conversationId={activeSession.conversationId ?? activeSession.id}
@@ -1884,6 +1892,15 @@ function LiveConversationBody({
           isVisible={showStatsPanel}
           onToggle={() => setShowStatsPanel(!showStatsPanel)}
           messageCount={activeSession.messages.length}
+          engineMcpServers={activeSession.engineMcpServers}
+          engineMcpReconnect={activeSession.engineMcpReconnect === true}
+          engineMcpComplete={activeSession.engineMcpComplete === true}
+          engineName={activeAcpConnection?.name}
+          executionThreadId={
+            activeSession.replay || connectionRecord?.readOnly
+              ? undefined
+              : (activeSession.currentSessionId ?? activeSession.id)
+          }
           key={`${activeSession.conversationId || activeSession.agentSlug}-${activeSession.orchestrationStatus || activeSession.status}`}
         />
       )}
@@ -3086,6 +3103,6 @@ function LiveConversationBody({
           />
         </>
       )}
-    </>
+    </SessionRewindProvider>
   );
 }

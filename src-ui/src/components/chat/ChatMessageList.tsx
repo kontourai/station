@@ -399,7 +399,9 @@ function ChatMessageListComponent({
             (approvalEvents ?? [])
               .map((item) => item.event)
               .filter((event) => Boolean(event.eventId)),
-          ).filter((request) => !request.inputRequest),
+          ).filter(
+            (request) => !request.inputRequest && !request.inputRequestUrl,
+          ),
     [activeSession.replay, approvalEvents, target?.record?.readOnly],
   );
   // The store is already live at the shell; reading its scalar snapshot here

@@ -1,0 +1,29 @@
+{
+  "revision": "ed0965d2bb2dfd4f89a8092536f1189a7591da32",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Dependent of docs/architecture/module-map.md, whose only change adds one sentence on the ACP subagent cell's perConnection fallback. Nothing this document says depends on it; rechecked.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Dependent of docs/architecture/module-map.md, whose only change adds one sentence on the ACP subagent cell's perConnection fallback. Nothing this document says depends on it; rechecked.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Dependent of docs/architecture/module-map.md, whose only change adds one sentence on the ACP subagent cell's perConnection fallback. Nothing this document says depends on it; rechecked.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Dependent of docs/architecture/module-map.md, whose only change adds one sentence on the ACP subagent cell's perConnection fallback. Nothing this document says depends on it; rechecked.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Dependent of docs/architecture/module-map.md, whose only change adds one sentence on the ACP subagent cell's perConnection fallback. Nothing this document says depends on it; rechecked.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Dependent of docs/architecture/module-map.md, whose only change adds one sentence on the ACP subagent cell's perConnection fallback. Nothing this document says depends on it; rechecked.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/deploy-ledger.md","note":"Dependent of docs/architecture/module-map.md, whose only change adds one sentence on the ACP subagent cell's perConnection fallback. Nothing this document says depends on it; rechecked.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Dependent of docs/architecture/module-map.md, whose only change adds one sentence on the ACP subagent cell's perConnection fallback. Nothing this document says depends on it; rechecked.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Dependent of docs/architecture/module-map.md, whose only change adds one sentence on the ACP subagent cell's perConnection fallback. Nothing this document says depends on it; rechecked.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Dependent of docs/architecture/module-map.md, whose only change adds one sentence on the ACP subagent cell's perConnection fallback. Nothing this document says depends on it; rechecked.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Dependent of docs/architecture/module-map.md, whose only change adds one sentence on the ACP subagent cell's perConnection fallback. Nothing this document says depends on it; rechecked.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Dependent of docs/architecture/module-map.md, whose only change adds one sentence on the ACP subagent cell's perConnection fallback. Nothing this document says depends on it; rechecked.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

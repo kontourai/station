@@ -5,12 +5,16 @@ import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRe
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { InputRequestCard } from './InputRequestCard';
+import { InputRequestUrlCard } from './InputRequestUrlCard';
 
 /**
  * #3390: answers one open form request — a harness question or a tool
  * server's elicitation — through the orchestration `respondToRequest`
  * command, pinned to the exact opened event the person saw. The server
  * validates accepted content against that event's form again.
+ *
+ * A link request (an MCP sign-in page, a URL-mode elicitation) goes the same
+ * way with no content: `accept` once the person opened it, or `cancel`.
  */
 export function InputRequestRequest({
   request,
@@ -25,6 +29,7 @@ export function InputRequestRequest({
   const { namespace, status } = useAuthorityPersistence();
   const {
     inputRequest,
+    inputRequestUrl,
     approvalId,
     approvalThreadId,
     approvalEventId,
@@ -37,7 +42,7 @@ export function InputRequestRequest({
       (!target.station.isCurrent() ||
         target.station.capabilities.inputAnswer.state !== 'allowed')) ||
     !scope ||
-    !inputRequest ||
+    (!inputRequest && !inputRequestUrl) ||
     !approvalId ||
     !approvalThreadId ||
     !approvalEventId
@@ -57,6 +62,28 @@ export function InputRequestRequest({
   ]
     .map(encodeURIComponent)
     .join(':');
+  if (!inputRequest)
+    return inputRequestUrl ? (
+      <InputRequestUrlCard
+        key={requestKey}
+        request={inputRequestUrl}
+        onRespond={async (action) => {
+          if (target?.record?.readOnly)
+            throw new Error('This session is read only.');
+          await answer.input(
+            {
+              threadId: approvalThreadId,
+              requestId: approvalId,
+              requestEventId: approvalEventId,
+            },
+            action,
+            undefined,
+            scope,
+          );
+          target?.record?.onAnswered?.();
+        }}
+      />
+    ) : null;
   // Drafts are kept for an engine's own questions, as they were before
   // #3390, and only under a verified authority namespace. A tool server's
   // form is not drafted: MCP has no way to mark a field private.

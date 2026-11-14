@@ -7,6 +7,8 @@ import {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   inputRequestFromRequestEvent,
+  inputRequestUrlFromRequestEvent,
+  isCardAnsweredRequestEvent,
   isInputRequestEvent,
 } from '@kontourai/station-shared/input-request';
 import {
@@ -150,13 +152,14 @@ export function unansweredApprovalRequests(
   }
   const unanswered = open.filter(
     (request) =>
-      inputRequestFromRequestEvent(request) !== null ||
+      isCardAnsweredRequestEvent(request) ||
       !bound.has(requestKey(request.threadId, request.requestId)),
   );
   if (unanswered.length === 0) return NO_REQUESTS;
   return unanswered.map((request) => {
     const { toolName, toolInput } = toolRequestFromPayload(request.payload);
     const inputRequest = inputRequestFromRequestEvent(request);
+    const inputRequestUrl = inputRequestUrlFromRequestEvent(request);
     // docs/design/event-content-spill.md: a request that names its call
     // only by id (a Codex file change) is approved over that call's
     // arguments, which may be stored out of line; the card shows and loads
@@ -190,6 +193,7 @@ export function unansweredApprovalRequests(
       approvalId: request.requestId,
       requestKind: isInputRequestEvent(request) ? 'input' : 'approval',
       ...(inputRequest ? { inputRequest } : {}),
+      ...(inputRequestUrl ? { inputRequestUrl } : {}),
       approvalThreadId: request.threadId,
       approvalEventId: request.eventId,
       // docs/design/event-content-spill.md: loaded whole before Allow.
@@ -203,9 +207,12 @@ export function unansweredApprovalRequests(
   });
 }
 
-/** The event kind wins; old in-memory rows still carry validated form bodies. */
+/** The event kind wins; old in-memory rows still carry validated form or link bodies. */
 export function pendingRequestKind(
   request: PendingApprovalRequest,
 ): 'input' | 'approval' {
-  return request.requestKind ?? (request.inputRequest ? 'input' : 'approval');
+  return (
+    request.requestKind ??
+    (request.inputRequest || request.inputRequestUrl ? 'input' : 'approval')
+  );
 }

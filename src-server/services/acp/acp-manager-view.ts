@@ -110,7 +110,7 @@ interface ACPProbeLike {
   isProbeInFlight?(): boolean;
   lastProbeAt: number;
   /** Why the most recent probe failed; `null`/absent when the last probe succeeded or never ran. */
-  lastError?: { message: string; phase: string } | null;
+  lastError?: { message: string; phase: string; code?: string } | null;
 }
 
 export function getACPManagerStatus(
@@ -159,7 +159,7 @@ export function getACPManagerStatus(
      * failure. Absent whenever the connection is available or no probe has
      * failed.
      */
-    lastError?: { message: string; phase: string };
+    lastError?: { message: string; phase: string; code?: string };
   }>;
   activeSessions: number;
 } {
