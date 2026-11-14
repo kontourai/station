@@ -24,12 +24,12 @@ import { isRecord } from '../../utils/is-record.js';
 import { type CliCommandResult, runCliCommand } from '../auth/cli-auth.js';
 
 /** Servers one report carries; the ACP producer bounds its reports the same way. */
-export const MUSE_MCP_STATUS_MAX_SERVERS = 64;
+const MUSE_MCP_STATUS_MAX_SERVERS = 64;
 /** `muse mcp list` reads local files only; observed well under a second. */
-export const MUSE_MCP_LIST_TIMEOUT_MS = 10_000;
+const MUSE_MCP_LIST_TIMEOUT_MS = 10_000;
 const MUSE_MCP_LIST_MAX_BUFFER = 1_048_576;
 
-export const MUSE_MCP_LIST_ARGS = ['mcp', 'list', '--json'] as const;
+const MUSE_MCP_LIST_ARGS = ['mcp', 'list', '--json'] as const;
 
 /** Runs `muse mcp list --json` in the session's folder under the session's env. */
 export type MuseMcpListRunner = (input: {

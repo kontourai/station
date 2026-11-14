@@ -134,13 +134,6 @@ import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
 type MuseServeLogger = Pick<Logger, 'warn' | 'info'>;
 
 /**
- * The verdict on a host by its fingerprint alone (verified, or refused);
- * see `muse-serve-schema.ts` for the policy and the structural check a
- * session runs on a fingerprint nobody verified.
- */
-export { museServeKnownSchemaVerdict } from './muse-serve-schema.js';
-
-/**
  * Station's bound on an unanswered Muse approval. `muse serve` never expires
  * one itself; past this Station declines it (`abort`, with feedback) and the
  * request resolves `expired`, so the turn or subagent that asked continues.

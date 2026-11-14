@@ -377,7 +377,7 @@ export interface MuseServeAdapterOptions {
  */
 export const MUSE_LINGERING_CHILD_REAP_MS = 30 * 60_000;
 /** How long one successful `model/list` read is reused. */
-export const MUSE_MODEL_CATALOG_CACHE_MS = 60_000;
+const MUSE_MODEL_CATALOG_CACHE_MS = 60_000;
 /** Bound on catalog rows kept from one `model/list`. */
 const MUSE_MODEL_CATALOG_MAX_ENTRIES = 200;
 export const MUSE_MAX_SUPERVISION_TIMEOUT_MS = 24 * 60 * 60_000;
@@ -486,7 +486,7 @@ export const MUSE_CANCELLED_TOOL_OUTPUT =
  * turn runs and `compaction_unavailable` on a model without a summarizer
  * (`muse-serve-1.4.18-background-task-stop.jsonl`).
  */
-export const MUSE_SERVE_COMMANDS = [
+const MUSE_SERVE_COMMANDS = [
   {
     name: 'compact',
     description:
@@ -598,7 +598,7 @@ export class MuseTurnSlotReleasingError extends SendTurnRefusedError {
  * on muse's sandbox, which this machine's serve host said it cannot
  * enforce. A pre-effect refusal: nothing was spawned.
  */
-export class MuseExecSandboxUnavailableError extends SendTurnRefusedError {
+class MuseExecSandboxUnavailableError extends SendTurnRefusedError {
   constructor(readonly reason: string | undefined) {
     super(
       `Muse cannot enforce its sandbox on this machine${
@@ -869,7 +869,7 @@ function museLaunch(args: readonly string[], envOverrides: NodeJS.ProcessEnv) {
  * engine (`input_unsupported`), never coerced to a nearby tier and never
  * dropped while the turn runs as if it had applied.
  */
-export function readMuseReasoningEffort(
+function readMuseReasoningEffort(
   modelOptions: Record<string, unknown> | undefined,
 ): MuseReasoningEffort | undefined {
   const value = modelOptions?.effort;
@@ -890,7 +890,7 @@ export function readMuseReasoningEffort(
  * `XDG_CONFIG_HOME` override), the ambient `META_API_KEY` is removed, so the
  * run signs in as the profile and never bills the key's account.
  */
-export function museChildEnv(
+function museChildEnv(
   launchEnv: Record<string, string | undefined>,
   tmpDir: string | undefined,
   profileEnv: Record<string, string> | undefined,

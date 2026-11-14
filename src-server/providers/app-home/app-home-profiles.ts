@@ -435,7 +435,7 @@ export function museAppHomeEnv(dir: string): Record<string, string> {
 }
 
 /** Muse's own config folder inside its XDG config root (see {@link museAppHomeEnv}). */
-export const MUSE_APP_HOME_CONFIG_SUBDIR = 'muse';
+const MUSE_APP_HOME_CONFIG_SUBDIR = 'muse';
 
 interface AppHomeProfileMarker {
   version: typeof PROFILE_MARKER_VERSION;

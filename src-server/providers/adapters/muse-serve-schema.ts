@@ -36,17 +36,16 @@ import { type CliCommandResult, runCliCommand } from '../auth/cli-auth.js';
  * 1.4.20, whose stable export differs from 1.4.18's only by the optional
  * `SessionStartParams.clear`, which Station does not send.
  */
-export const MUSE_SERVE_VERIFIED_SCHEMA_FINGERPRINTS: ReadonlySet<string> =
-  new Set([
-    'sha256:7469c9e352e67def4a59df7e439984d7194fa351e1c8b7abb34060fd977ced81',
-    'sha256:77dda18550adef14e257b015fe4e6490b722723f7d526df5ba4867939fff68a3',
-    'sha256:283b1b125dcc9172928fb5d6711a92a353796d030a7c186988ed527a13cf07f0',
-  ]);
+const MUSE_SERVE_VERIFIED_SCHEMA_FINGERPRINTS: ReadonlySet<string> = new Set([
+  'sha256:7469c9e352e67def4a59df7e439984d7194fa351e1c8b7abb34060fd977ced81',
+  'sha256:77dda18550adef14e257b015fe4e6490b722723f7d526df5ba4867939fff68a3',
+  'sha256:283b1b125dcc9172928fb5d6711a92a353796d030a7c186988ed527a13cf07f0',
+]);
 
 /** The only MSP schema major the structural check understands. */
-export const MUSE_SERVE_SCHEMA_VERSION = 1;
+const MUSE_SERVE_SCHEMA_VERSION = 1;
 /** Bound on the whole export: two `--version` runs and the export itself. */
-export const MUSE_SERVE_SCHEMA_EXPORT_TIMEOUT_MS = 15_000;
+const MUSE_SERVE_SCHEMA_EXPORT_TIMEOUT_MS = 15_000;
 /** A 1.4.20 stable export is ~480 KB; anything far larger is refused. */
 const MUSE_SCHEMA_EXPORT_MAX_BYTES = 8 * 1024 * 1024;
 const MUSE_VERSION_OUTPUT_MAX_BYTES = 4_096;
@@ -743,7 +742,7 @@ export const runMuseSchemaCommand: MuseSchemaCommandRunner = ({
     ...(omitEnv?.length ? { omitEnv } : {}),
   });
 
-export const MUSE_SCHEMA_EXPORT_ARGS = [
+const MUSE_SCHEMA_EXPORT_ARGS = [
   'schema',
   'generate-json-schema',
   '--out',

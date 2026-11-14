@@ -44,7 +44,7 @@ export interface MuseDiscoveryDeps {
 }
 
 /** A host that answered but whose schema this adapter does not accept. */
-export class MuseDiscoveryUnverifiedError extends Error {
+class MuseDiscoveryUnverifiedError extends Error {
   constructor(readonly reason: string) {
     super(`The muse serve host reported an unverified MSP schema (${reason}).`);
     this.name = 'MuseDiscoveryUnverifiedError';
@@ -122,7 +122,7 @@ function boundedLabel(value: unknown, max: number): string | undefined {
  * out rather than squeezed into another field. An entry whose `variants`
  * is `"unknown"` claims no effort control at all.
  */
-export function museCatalogModelOption(entry: unknown): ModelOption | null {
+function museCatalogModelOption(entry: unknown): ModelOption | null {
   if (!isRecord(entry)) return null;
   const id = typeof entry.modelId === 'string' ? entry.modelId : '';
   if (!MUSE_CATALOG_MODEL_ID.test(id)) return null;
