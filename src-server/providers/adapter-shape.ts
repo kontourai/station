@@ -589,6 +589,13 @@ export interface ProviderAdapterShape {
    * False hands the connection to the ACP adapter.
    */
   claimsAcpConnection?(config: ACPConnectionConfig): boolean;
+  /**
+   * Whether the provider inventory (`GET /api/orchestration/providers`)
+   * lists this adapter now. Absent: always. An adapter behind a Feature
+   * Preview answers false while it is off, so turning the preview on is the
+   * only thing that adds its row.
+   */
+  listedInProviderInventory?(): boolean;
   respondToRequest(
     threadId: string,
     requestId: string,

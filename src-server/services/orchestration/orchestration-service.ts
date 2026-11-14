@@ -4821,6 +4821,8 @@ export class OrchestrationService {
       this.options.adapterRegistry
         .list()
         .filter((adapter) => adapter.provider !== 'station-agent')
+        // An adapter behind an off Feature Preview is not inventory.
+        .filter((adapter) => adapter.listedInProviderInventory?.() !== false)
         .map(async (adapter) => {
           const [sessions, prerequisites] = await Promise.all([
             adapter.listSessions(),

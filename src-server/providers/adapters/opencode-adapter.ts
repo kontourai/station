@@ -295,6 +295,11 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
    * Preview is on; otherwise the ACP adapter keeps them, as before this
    * engine existed.
    */
+  /** Listed as a provider only while its Feature Preview is on. */
+  listedInProviderInventory(): boolean {
+    return this.nativeEnabled();
+  }
+
   claimsAcpConnection(config: ACPConnectionConfig): boolean {
     return this.nativeEnabled() && isOpenCodeConnection(config);
   }
