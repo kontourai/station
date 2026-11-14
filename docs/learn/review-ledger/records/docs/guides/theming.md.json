@@ -38,8 +38,6 @@
 
     "src-server/runtime/streaming/types.ts",
 
-    "src-server/security/pairing-route-scopes.ts",
-
     "src-server/services/approvals/approval-registry.ts",
 
     "src-server/services/orchestration/event-bus.ts",
