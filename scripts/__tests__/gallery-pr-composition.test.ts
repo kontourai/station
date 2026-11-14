@@ -537,6 +537,7 @@ function attributionFixture({
           ? `case " $* " in *' plan '*) echo screens=child-chat-dark-390 ;; *' compare '*) printf 'FORGED\\nverdict=main\\n' ;; *) printf home ;; esac`
           : [
               `if [[ " $* " == *' plan '* ]]; then`,
+              // biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion.
               '  for arg in "$@"; do case "$arg" in --out=*) out="${arg#--out=}" ;; esac; done',
               `  printf '%s' '${forgedPlan}' > "$out"`,
               '  echo screens=child-chat-dark-390',
@@ -563,6 +564,7 @@ function attributionFixture({
         `'${realGit}' "$@"`,
         'status=$?',
         'if [[ " $* " == *" worktree add "* && $status -eq 0 ]]; then',
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion.
         '  wt="${@: -2:1}"',
         `  (cd "$wt" && REAL_GIT='${realGit}' bash -c '${gitTamper.replaceAll("'", "'\\''")}')`,
         'fi',
