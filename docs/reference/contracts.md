@@ -415,7 +415,6 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs, remote OAuth client selection (`oauthClient`). `ToolDef.contentTrust`, `untrustedContentPermissions` (`ask`/`allow`/`deny`, absent means ask; a person's entry wins over a server's read-only hint), `trustReadOnlyHints` and config-writer-owned `untrustedContentChanges` carry the untrusted-content permission ([design](../design/mcp-subregistry-curation.md#untrusted-content-and-outbound-tools)). `ToolMetadata.trustReview` (`IntegrationTrustReview`) lists legacy settings waiting for a person, and `engineCoverage` (`IntegrationEngineCoverage`) says per external engine whether Station gates its calls. `NativeWebReadCoverage` says per engine whether its own web reads mark the conversation |
 | `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
-| `@kontourai/station-contracts/workspace-activity-review-pane` | Canonical Activity review Pane descriptor, `activity-review:` plus 32 lowercase hexadecimal occurrence identity, instance constructor and pure canonical-instance check. These grant no source access or review authority. |
 | `@kontourai/station-contracts/workspace-terminal-pane` | Canonical terminal session Pane descriptor (`pane:builtin:workspace-terminal`), `terminal-pane:` plus 32 lowercase hexadecimal occurrence identity bound to one Project, instance constructor and pure canonical-instance check. The session it shows is the occurrence's stored record; nothing here grants terminal access. |
 | `@kontourai/station-contracts/workspace-pane-host-contract` | The transport-independent Pane-host capability interface: navigation, notices, confirmation, device facts, the optional Skill experience and the optional, occurrence-bound related-pane capability (`PaneRelatedPanesHost`, see [Related panes](sdk.md#related-panes)) |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
@@ -2691,3 +2690,7 @@ declaration with a nonempty unique allowlist. It is separate from Agent audience
 and Project execute permission. It neither provides compute consent by itself
 nor establishes runtime confinement. Shared routes and admission are not
 implemented by these declarations.
+
+The retired Activity pane and Activity review pane subpaths are no longer exported.
+Child transcript tool calls and results carry an optional engine-issued `toolCallId`;
+readers join only matching IDs, leaving legacy unkeyed results readable.

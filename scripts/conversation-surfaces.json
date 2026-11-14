@@ -169,11 +169,6 @@
       "reason": "P2.4 mobile Inbox adapter."
     },
     {
-      "file": "src-ui/src/views/SessionsView.tsx",
-      "requires": ["stop"],
-      "reason": "P2.1/P2.2 Activity work controls."
-    },
-    {
       "file": "src-ui/src/components/acp-connections/ACPChatPanel.tsx",
       "requires": ["body"],
       "reason": "P2.6 remaining ACP conversation surface adoption."
@@ -245,7 +240,9 @@
     "src-ui/src/hooks/orchestration/approvalHandlers.ts",
     "src-ui/src/components/conversation/ConversationReader.tsx",
     "src-ui/src/components/conversation/useRecordConversationController.ts",
-    "src-ui/src/components/conversation/task-conversation-actions.ts"
+    "src-ui/src/components/conversation/task-conversation-actions.ts",
+    "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+    "src-ui/src/components/chat-dock/ChildChatNavigation.tsx"
   ],
   "contracts": [
     {
@@ -565,13 +562,6 @@
       "symbols": ["raw failure sink"],
       "fingerprints": ["598f5cc0d95f81e6ddee"],
       "reason": "DeviceCodeLoginRefusal carries locally authored protocol refusal copy; unknown outcomes keep the sign-in recovery warning."
-    },
-    {
-      "file": "src-ui/src/views/SessionsView.tsx",
-      "rule": "G1",
-      "symbols": ["useAgents"],
-      "fingerprints": ["11197e6de9c1b1f756f5", "11165bb14189ab6ab359"],
-      "reason": "Host Activity inventory shell; individual conversations mount the resolved record boundary."
     },
     {
       "file": "src-ui/src/views/SettingsView.tsx",
@@ -984,10 +974,6 @@
       "reason": "Safe visible request failures and durable error publishers consume the shared translator."
     },
     {
-      "file": "src-ui/src/views/SessionsView.tsx",
-      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
-    },
-    {
       "file": "src-ui/src/views/SkillsView.tsx",
       "reason": "Safe visible request failures and durable error publishers consume the shared translator."
     },
@@ -1117,10 +1103,6 @@
     },
     {
       "file": "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
-      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
-    },
-    {
-      "file": "src-ui/src/workspace-panes/RegionActivityReviewPane.tsx",
       "reason": "Safe visible request failures and durable error publishers consume the shared translator."
     },
     {

@@ -132,7 +132,7 @@ test('one real host bar aggregates multiple pane occupants and routes explicit s
     mocks.isCurrent,
   );
   fireEvent.click(screen.getByRole('button', { name: 'View result' }));
-  expect(mocks.showSurface).toHaveBeenCalledWith('activity', {
+  expect(mocks.showSurface).toHaveBeenCalledWith('chat', {
     session: 'execution-one',
     focus: 'evidence',
   });
@@ -209,7 +209,7 @@ test('missing Agent on canonical open falls back to the created Session evidence
   await act(async () =>
     fireEvent.click(screen.getByRole('button', { name: 'Open conversation' })),
   );
-  expect(mocks.showSurface).toHaveBeenCalledExactlyOnceWith('activity', {
+  expect(mocks.showSurface).toHaveBeenCalledExactlyOnceWith('chat', {
     session: 'created-session',
     focus: 'evidence',
   });

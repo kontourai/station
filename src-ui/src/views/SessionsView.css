@@ -1,207 +1,17 @@
-/* Activity filter bar: Kind / Project / Started from, in the shared
-   `.choice-trigger` picker treatment on native selects (BrowserPane's
-   viewport picker shape). */
-.activity-filters {
-  display: grid;
-  gap: var(--space-2);
-  /* The list pane's own gutter, so the filters align with the search box. */
-  margin: var(--space-2) 0.75rem var(--space-1);
-  min-width: 0;
-}
-
-.activity-filters__row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.activity-filter {
-  display: grid;
-  flex: 1 1 7rem;
-  gap: 2px;
-  min-width: 0;
-}
-
-.activity-filter__label {
-  color: var(--text-secondary);
-  font-size: var(--k-text-sm);
-  font-weight: 600;
-}
-
-.activity-filter__control {
-  position: relative;
-  display: block;
-  min-width: 0;
-}
-
+/* Shared SessionDetail reader styles. The Activity page is retired; these live
+ * reader rules retain their existing responsive-policy owner and cascade. */
 /* Height is `.choice-trigger`'s, including its shared coarse-pointer 44px
    floor (components/chat/chat.css). */
-.activity-filter__select {
-  width: 100%;
-  padding-right: calc(var(--space-4) + 14px);
-  appearance: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.activity-filter__select:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-}
-
-.activity-filter__caret {
-  position: absolute;
-  top: 50%;
-  right: var(--space-2);
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.activity-filters__chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1) var(--space-2);
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.activity-filters__chip,
-.activity-filters__clear {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-width: 0;
-  max-width: 100%;
-  min-height: 28px;
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-pill);
-  font: inherit;
-  font-size: var(--k-text-sm);
-  cursor: pointer;
-}
-
-.activity-filters__chip {
-  border: 1px solid var(--border-primary);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-}
-
-.activity-filters__chip > span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.activity-filters__clear {
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--accent-primary);
-  text-decoration: underline;
-}
-
-.activity-filters__chip:hover {
-  border-color: var(--accent-primary);
-}
-
-.activity-filters__chip:focus-visible,
-.activity-filters__clear:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-}
-
-/* Row line 2: state (glyph + words) first, then who / where / from what,
-   as one inline run so the subtitle's single-line ellipsis trims the
-   quietest segment first. Colours inherit from the row, so the selected
-   treatment owns contrast. */
-/* Line 2 wraps whole segments rather than clipping mid-word, and is clamped
-   to two lines: state and its detail come first, so in a narrow pane the
-   quieter segments (agent, project, origin) are what fall off. */
-.activity-row-meta {
-  display: -webkit-box;
-  overflow: hidden;
-  white-space: normal;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-}
-
-.activity-row-meta [data-segment] {
-  white-space: nowrap;
-}
-
-/* Directory context needs room for the recorded origin too. */
-.activity-row-meta--directory {
-  -webkit-line-clamp: 4;
-  line-clamp: 4;
-}
-
-.activity-row-meta--directory [data-segment="directory"] {
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-/* #4695: the agent-reported plan, one fixed-height line under the meta. */
-.activity-row__plan {
-  margin-top: var(--k-space-1);
-}
-
-.activity-row__actions {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.activity-header-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin: var(--space-2) 0.75rem 0;
-}
 
 /* Inline, not inline-flex: an atomic inline box counts as one line to the
    clamp above however many lines it wraps to, which let a long failure cause
    push the row to three lines. */
-.activity-row-meta__state {
-  display: inline;
-}
 
 /* The status ladder's glyph and line, in the row's four tones
    (InboxRow.css, C6). The glyph is drawn at the row's text size. */
-.activity-row-meta__state .inbox-row__status-glyph {
-  width: 13px;
-  height: 13px;
-  vertical-align: -2px;
-}
-.activity-row-meta__state[data-tone="attention"] {
-  color: var(--accent-primary);
-}
-.activity-row-meta__state[data-tone="caution"] {
-  color: var(--warning-text);
-}
-.activity-row-meta__state[data-tone="active"] {
-  color: var(--success-text);
-}
-.activity-row-meta__state[data-tone="broken"] {
-  color: var(--status-error);
-}
 
 /* The row's time, on its first line and outside the row button. Tabular so
    a column of times aligns, and never shrunk: the title yields first. */
-.activity-row__time {
-  flex: 0 0 auto;
-  color: var(--text-secondary);
-  font-size: var(--k-text-xs);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
 
 /* archive#3305: a flex column with one dedicated scroll region
    (`__scroll`) between the pinned header and the pinned request/compose
@@ -696,37 +506,6 @@
   height: 100%;
   padding: 0;
   gap: 0;
-}
-/* #2312: "Discard draft" in a Drafts row's trailing slot, beside the row's
-   "More actions" menu; sized for a glyph rather than a word. */
-.session-discard-draft {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  padding: 0.15rem 0.3rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 4px;
-  background: var(--bg-elevated);
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-
-.session-discard-draft:hover {
-  border-color: var(--accent-primary);
-  color: var(--text-primary);
-}
-
-.session-discard-draft:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-}
-
-.activity-show-more {
-  min-height: 44px;
-  width: 100%;
-  margin-top: var(--space-2);
 }
 
 .session-parent-navigation {

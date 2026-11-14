@@ -22,6 +22,9 @@ import {
 import { Hono } from 'hono';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { createTelemetryCompanionRoutes } from '../../../../../src-server/routes/system/telemetry-companion-routes';
+import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsContext';
+import { NavigationProvider } from '../../../contexts/NavigationContext';
+import { RegionModelProvider } from '../../../contexts/RegionModelContext';
 import TelemetryTab from '../TelemetryTab';
 
 vi.mock('../../MonitoringView', () => ({
@@ -174,7 +177,13 @@ function mount(
   clients.push(client);
   const tree = () => (
     <QueryClientProvider client={client}>
-      <TelemetryTab />
+      <KeyboardShortcutsProvider>
+        <NavigationProvider>
+          <RegionModelProvider>
+            <TelemetryTab />
+          </RegionModelProvider>
+        </NavigationProvider>
+      </KeyboardShortcutsProvider>
     </QueryClientProvider>
   );
   const rendered = render(tree());

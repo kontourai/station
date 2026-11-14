@@ -1,0 +1,7 @@
+{
+  "revision": "66e1c3a57078ecd25502368fdd85ac99685e2979",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Validated all current historical deploy-ledger entries with validateEntry and compared exact renderLedgerMarkdown output to the committed Markdown. Inspected the generated-output compiler boundary: this is schema and deterministic projection evidence only, not publication, artifact availability, completeness, provider or native execution. No release record was changed.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}
