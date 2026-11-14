@@ -56,6 +56,24 @@ describe('resolveAcpSteerChannel', () => {
     });
   });
 
+  test('OpenCode 1.x, named the same but declaring no steering, is not matched', () => {
+    const handshake = openCodeInitialize();
+    const { _meta: _dropped, ...withoutMeta } = handshake;
+    expect(
+      resolveAcpSteerChannel({
+        ...withoutMeta,
+        agentInfo: { name: 'OpenCode', version: '1.18.18' },
+      }),
+    ).toEqual({ channel: 'cancel-reprompt', methods: [], basis: 'none' });
+    // A flag that is not `{supported: true}` is not a declaration.
+    expect(
+      resolveAcpSteerChannel({
+        ...withoutMeta,
+        _meta: { steering: { supported: false } },
+      }).channel,
+    ).toBe('cancel-reprompt');
+  });
+
   test('a declared native method is used whoever declares it', () => {
     expect(
       resolveAcpSteerChannel({

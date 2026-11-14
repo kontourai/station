@@ -6977,6 +6977,7 @@ describe('AcpAdapter.steerTurn', () => {
         connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
         onProcess: (proc) => {
           proc.initResult!.agentInfo = { name: 'OpenCode', version: '2.3.0' };
+          proc.initResult!._meta = { steering: { supported: true } };
           proc.extMethod = async (method, params) => {
             proc.extMethodCalls.push({ method, params });
             return { outcome: 'injected' };
@@ -7008,6 +7009,7 @@ describe('AcpAdapter.steerTurn', () => {
         connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
         onProcess: (proc) => {
           proc.initResult!.agentInfo = { name: 'OpenCode', version: '2.3.0' };
+          proc.initResult!._meta = { steering: { supported: true } };
           proc.extMethod = async (method, params) => {
             proc.extMethodCalls.push({ method, params });
             return { outcome: 'promptRequired', reason: 'noRunningTurn' };
@@ -7021,6 +7023,51 @@ describe('AcpAdapter.steerTurn', () => {
     ).rejects.toBeInstanceOf(ProviderTurnEndedError);
     expect(processes[0]?.cancelCalls).toBe(0);
     expect(processes[0]?.promptContents).toHaveLength(1);
+    await adapter.stopAll();
+  });
+
+  test('OpenCode 1.x, which declares no steering, keeps cancel + re-prompt', async () => {
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-opencode-1x-steer',
+      {
+        connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+        onProcess: (proc) => {
+          proc.initResult!.agentInfo = { name: 'OpenCode', version: '1.18.18' };
+          proc.extMethod = async (method, params) => {
+            proc.extMethodCalls.push({ method, params });
+            return { outcome: 'injected' };
+          };
+        },
+      },
+    );
+
+    await adapter.steerTurn('thread-opencode-1x-steer', 'go left', turn.turnId);
+    expect(processes[0]?.extMethodCalls).toEqual([]);
+    expect(processes[0]?.cancelCalls).toBe(1);
+    await adapter.stopAll();
+  });
+
+  test("another engine's steer answer is never read as OpenCode's decline", async () => {
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-kiro-promptrequired',
+      {
+        connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+        onProcess: (proc) => {
+          proc.initResult!.agentInfo = { name: 'Kiro CLI Agent' };
+          proc.extMethod = async (method, params) => {
+            proc.extMethodCalls.push({ method, params });
+            return { outcome: 'promptRequired' };
+          };
+        },
+      },
+    );
+
+    await expect(
+      adapter.steerTurn('thread-kiro-promptrequired', 'go', turn.turnId),
+    ).resolves.toBeUndefined();
+    expect(processes[0]?.extMethodCalls.map((call) => call.method)).toEqual([
+      '_session/steer',
+    ]);
     await adapter.stopAll();
   });
 

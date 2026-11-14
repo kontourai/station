@@ -5409,7 +5409,8 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (!isAcpMethodNotFound(error)) throw error;
         continue;
       }
-      if (acpSteerDeclined(result)) throw new ProviderTurnEndedError();
+      if (acpSteerDeclined(selection.channel, result))
+        throw new ProviderTurnEndedError();
       return true;
     }
     return false;

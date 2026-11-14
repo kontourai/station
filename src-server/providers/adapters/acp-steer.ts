@@ -81,11 +81,12 @@ const ACP_UNDECLARED_STEER_ENGINES: ReadonlyArray<{
     observed: 'grok 1.0.50 `agent stdio`',
   },
   {
-    // OpenCode 2.x flags `_meta.steering.supported` but lists no method. A
-    // second `session/prompt` mid-turn is refused -32603; this one is not.
-    // An OpenCode without it answers -32601 and degrades to cancel +
-    // re-prompt.
-    identity: { agentInfoName: 'OpenCode' },
+    // OpenCode 2.x declares `_meta.steering: {supported: true}` on its
+    // `initialize` result but lists no method. Keyed on that declaration,
+    // not on `agentInfo.name`: OpenCode 1.x names itself the same and has no
+    // `_session/steering`, so it keeps cancel + re-prompt. A second
+    // `session/prompt` mid-turn is refused -32603; this method is not.
+    identity: { initializeMetaFeature: 'steering' },
     channel: 'session-steering',
     methods: ['_session/steering'],
     observed:
@@ -175,11 +176,17 @@ export function acpSteerParams(
 
 /**
  * Whether an engine's answer to a native steer says it did not take the
- * input: OpenCode answers `{outcome: 'promptRequired'}` once no turn runs,
- * so the steer reached nothing and the turn it was meant for has ended.
+ * input. Only the `session-steering` channel (OpenCode 2.x) has such an
+ * answer: `{outcome: 'promptRequired'}` once no turn runs, so the steer
+ * reached nothing and the turn it was meant for has ended. Another
+ * channel's answer is never read this way.
  */
-export function acpSteerDeclined(result: unknown): boolean {
+export function acpSteerDeclined(
+  channel: AcpSteerChannel,
+  result: unknown,
+): boolean {
   return (
+    channel === 'session-steering' &&
     result !== null &&
     typeof result === 'object' &&
     (result as { outcome?: unknown }).outcome === 'promptRequired'
