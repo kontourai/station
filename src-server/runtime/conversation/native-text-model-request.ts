@@ -119,11 +119,16 @@ export function prepareNativeTextModelRequest(
 ): NativeModelRequest {
   try {
     count.parse(policy.maxOutputTokens);
+    const path =
+      policy.provider === 'anthropic' ? '/v1/messages' : '/v1/responses';
     if (
       !['anthropic', 'openai'].includes(policy.provider) ||
       input.method !== 'POST' ||
-      input.path !==
-        (policy.provider === 'anthropic' ? '/v1/messages' : '/v1/responses') ||
+      (input.path !== path &&
+        !(
+          policy.provider === 'anthropic' &&
+          input.path === '/v1/messages?beta=true'
+        )) ||
       input.body.length > NATIVE_MODEL_CHANNEL_LIMITS.bodyBytes ||
       input.headers.some(
         ([name, value]) =>
@@ -201,8 +206,18 @@ export function prepareNativeTextModelRequest(
     if (bytes.length > NATIVE_MODEL_CHANNEL_LIMITS.bodyBytes) throw new Error();
     return {
       ...input,
+      path,
       body: bytes,
-      headers: input.headers.map(([name, value]) => [name, value]),
+      headers: [
+        ['content-type', 'application/json'],
+        ...input.headers
+          .filter(
+            ([name]) =>
+              policy.provider === 'anthropic' &&
+              name.toLowerCase() === 'anthropic-version',
+          )
+          .map(([name, value]): [string, string] => [name, value]),
+      ],
     };
   } catch {
     throw new Error('native_text_model_request_refused');

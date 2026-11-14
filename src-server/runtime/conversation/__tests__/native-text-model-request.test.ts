@@ -57,6 +57,33 @@ function request(
 }
 const policy = { modelId: 'fixture', maxOutputTokens: 2048 };
 
+test('native beta routing and provider state headers never survive text preparation', () => {
+  const native = request('anthropic');
+  native.path = '/v1/messages?beta=true';
+  native.headers = [
+    ['anthropic-version', '2023-06-01'],
+    ['anthropic-beta', 'native-feature'],
+  ];
+  const final = prepareNativeTextModelRequest(native, {
+    ...policy,
+    provider: 'anthropic',
+  });
+  expect(final.path).toBe('/v1/messages');
+  expect(final.headers).toEqual([
+    ['content-type', 'application/json'],
+    ['anthropic-version', '2023-06-01'],
+  ]);
+  const responses = request('openai');
+  responses.headers = [
+    ['x-codex-turn-state', 'hidden-state'],
+    ['openai-beta', 'native-feature'],
+  ];
+  expect(
+    prepareNativeTextModelRequest(responses, { ...policy, provider: 'openai' })
+      .headers,
+  ).toEqual([['content-type', 'application/json']]);
+});
+
 test.each(['anthropic', 'openai'] as const)(
   '%s final native text bytes have a finite cap and no advertised provider tools',
   (provider) => {
