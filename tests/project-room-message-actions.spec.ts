@@ -462,11 +462,15 @@ test.describe
         expect(operatorMessage).toBeTruthy();
         // Account binding starts read-only: a room write is refused by the
         // device's transport scope until the operator grants operate to it.
-        const readOnly = await asGuest(`/api/projects/${SLUG}/room/messages`, {
+        const draft = {
           ...guards,
           intentId: randomUUID(),
           text: 'Before the grant.',
-        });
+        };
+        const readOnly = await asGuest(
+          `/api/projects/${SLUG}/room/messages`,
+          draft,
+        );
         expect(readOnly.status, readOnly.text).toBe(403);
         expect(readOnly.text).toContain('insufficient_scope');
         const devices = await operatorJson('/api/pairing/devices');
@@ -490,6 +494,29 @@ test.describe
           },
         );
         expect(granted.status, JSON.stringify(granted.body)).toBe(200);
+        // The refused draft, retried after the grant with its exact intent,
+        // settles once: a second retry replays the same message.
+        const retried = await asGuest(
+          `/api/projects/${SLUG}/room/messages`,
+          draft,
+        );
+        expect(retried.status, retried.text).toBe(200);
+        const replayed = await asGuest(
+          `/api/projects/${SLUG}/room/messages`,
+          draft,
+        );
+        expect(replayed.status, replayed.text).toBe(200);
+        expect(JSON.parse(replayed.text).data.messageId).toBe(
+          JSON.parse(retried.text).data.messageId,
+        );
+        const afterRetry = await asGuest(
+          `/api/projects/${SLUG}/room/messages?after=0&limit=100`,
+        );
+        expect(
+          (
+            JSON.parse(afterRetry.text).data.messages as { text: string }[]
+          ).filter((message) => message.text === 'Before the grant.'),
+        ).toHaveLength(1);
         const posted = await asGuest(`/api/projects/${SLUG}/room/messages`, {
           ...guards,
           intentId: randomUUID(),
