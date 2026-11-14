@@ -56,7 +56,8 @@ and [mobile-release.md](./mobile-release.md). Listing copy lives in
   and the workflow together, never in one alone. A missing key (the normal
   first-run state) fails before any tag or provider mutation.
 - Tag overlay derives Android `versionCode` and iOS `CFBundleVersion` from the
-  tag. Do not hand-edit `1` / `1.0` fallbacks in Gradle for a store upload.
+  tag, and refuses a base with minor above 999 or patch above 99
+  ([native releases](native-releases.md)). Do not hand-edit `1` / `1.0` fallbacks in Gradle for a store upload.
 
 Before starting a release train, query current GitHub releases/tags and compare
 them with `package.json`; never choose the next version from examples in a
