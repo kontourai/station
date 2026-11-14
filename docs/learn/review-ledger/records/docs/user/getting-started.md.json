@@ -346,7 +346,9 @@
 
     "src-ui/src/__tests__/activity-retirement.test.ts",
 
-    "src-ui/src/components/chat-dock/__tests__/useChatDockOverlays.child-intents.test.tsx"
+    "src-ui/src/components/chat-dock/__tests__/useChatDockOverlays.child-intents.test.tsx",
+
+    "tests/child-transcript-chat.spec.ts"
   ],
 
   "checks": [
