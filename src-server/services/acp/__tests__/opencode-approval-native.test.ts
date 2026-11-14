@@ -166,8 +166,9 @@ describe('evaluateOpenCodeRules (OpenCode 2.3.0 evaluateInput)', () => {
 
   /** The plan agent's rules as 2.3.0 answered them with no global allow. */
   const planRules = (): OpenCodeNativeRule[] => {
+    // The capture's first lookup can be the booting server's 404.
     const record = loadOpenCodeFixture('plan-deny').find(
-      (line) => line.path === '/api/agent/plan',
+      (line) => line.path === '/api/agent/plan' && line.status === 200,
     );
     if (!record) throw new Error('plan-deny recorded no plan agent');
     return (record.response as { data: { permissions: OpenCodeNativeRule[] } })
