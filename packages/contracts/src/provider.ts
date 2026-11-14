@@ -665,6 +665,8 @@ export function readApprovalMode(
 export const PROVIDER_ACP = 'acp';
 export const PROVIDER_OLLAMA = 'ollama';
 export const PROVIDER_MUSE = 'muse';
+/** GitHub Copilot through the Copilot SDK (Feature Preview `copilot-sdk-engine`). */
+export const PROVIDER_COPILOT_SDK = 'copilot-sdk';
 
 /**
  * archive#978 — the per-provider `modelOptions` keys each adapter actually
@@ -738,6 +740,9 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
     // applied, beside a `muse-serve-unavailable` warning. Nothing else in
     // `modelOptions` is read, so nothing else is listed.
     [PROVIDER_MUSE]: ['approvalMode'],
+    // `copilot-sdk-adapter.ts` reads `approvalMode` at session start and
+    // answers each permission request with it (`copilot-sdk-approval.ts`).
+    [PROVIDER_COPILOT_SDK]: ['approvalMode'],
   };
 
 /**

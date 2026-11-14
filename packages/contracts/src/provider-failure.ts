@@ -80,6 +80,11 @@ export const SESSION_START_IN_FLIGHT_CODE = 'session_start_in_flight';
 export const RESOURCE_ENGINE_START_CAPACITY_CODE =
   'resource_engine_start_capacity';
 export const ADOPTION_ENGINE_NOT_READY_CODE = 'continuation_engine_not_ready';
+/**
+ * A start or turn refused because the Feature Preview that gates the engine
+ * is off (docs/guides/feature-previews.md). Same code as the HTTP refusal.
+ */
+export const FEATURE_PREVIEW_DISABLED_CODE = 'feature_preview_disabled';
 export const ADOPTION_CONTINUATION_IN_PROGRESS_CODE =
   'adoption_continuation_in_progress';
 
@@ -174,6 +179,7 @@ export const PROVIDER_FAILURE_KINDS = {
   [RESOURCE_ENGINE_START_CAPACITY_CODE]: 'busy',
   [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',
   [ADOPTION_ENGINE_NOT_READY_CODE]: 'unavailable',
+  [FEATURE_PREVIEW_DISABLED_CODE]: 'unavailable',
   // A second consumer violates Station's internal queue-ownership invariant.
   async_event_queue_consumer_conflict: 'conflict',
   foreground_invocation_unavailable: 'conflict',
