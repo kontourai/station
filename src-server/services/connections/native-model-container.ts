@@ -367,13 +367,16 @@ export class NativeModelContainer {
           if (!this.#createSubmitted) this.#removed = true;
           else if (this.#id) await this.#remove();
           else {
-            await this.#journal('create-unconfirmed');
-            throw new Error('native_container_creation_unconfirmed');
+            await this.#recoverCreatedIdentity();
+            await this.#remove();
           }
         }
         await this.#journal(failure ? 'removed-channel-failed' : 'removed');
         if (failure) throw failure;
-      })();
+      })().catch((error) => {
+        this.#closing = undefined;
+        throw error;
+      });
     return this.#closing;
   }
 
@@ -468,6 +471,37 @@ export class NativeModelContainer {
       )
     )
       throw new Error('native_container_isolation_mismatch');
+  }
+
+  async #recoverCreatedIdentity(): Promise<void> {
+    const daemon = this.#daemon;
+    if (!this.#createSubmitted || !daemon || this.#id)
+      throw new Error('native_container_creation_unconfirmed');
+    if ((await this.#run(['info', '--format', '{{.ID}}'])).trim() !== daemon)
+      throw new Error('native_container_daemon_changed');
+    // A name locates a candidate; original daemon, image and nonce establish ownership.
+    const candidate = ownedContainer.parse(
+      JSON.parse(
+        await this.#run([
+          'inspect',
+          '--type',
+          'container',
+          '--format',
+          '{{json .}}',
+          this.#name,
+        ]),
+      ),
+    );
+    if (
+      !containerId.test(candidate.Id) ||
+      candidate.Image !== this.options.imageId ||
+      candidate.Config.Labels?.[label] !== this.#nonce
+    )
+      throw new Error('native_container_ownership_mismatch');
+    if ((await this.#run(['info', '--format', '{{.ID}}'])).trim() !== daemon)
+      throw new Error('native_container_daemon_changed');
+    this.#id = candidate.Id;
+    await this.#journal('created-recovered');
   }
 
   #remove(): Promise<void> {

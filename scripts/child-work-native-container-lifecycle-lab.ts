@@ -209,6 +209,14 @@ async function run(
   const value = await fixture(name, control);
   try {
     await body(value);
+    await assert.rejects(
+      value.container.start(),
+      /native_container_already_retiring/,
+    );
+    assert.throws(
+      () => value.container.connection(),
+      /native_container_not_engaged/,
+    );
     assert.equal(value.read().starts, 0);
     assert.equal(value.read().creates.length, 1);
     assert.equal(receipt.modelRequests, 0);
