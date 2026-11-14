@@ -391,18 +391,40 @@ claims that need source review.
 The version PR's own output has a second contract,
 [`release-versioning-review.mjs`](../../scripts/lib/release-versioning-review.mjs),
 which the scoped check and the history replay apply to each change unit (a
-PR's merge base..HEAD, or one landed commit). It applies only when the unit
-deletes at least one `.changeset/*.md` note, and to committed bytes only. A
-whole-file `package.json` citation needs no note when the manifest's only
-edits are its `version` and dependency ranges moved, with the same `^`, `~` or
-exact operator, to the new version of another package bumped in that unit. A
-`historical` record's own `CHANGELOG.md` needs no note when the change adds exactly
-one `## <version>` section, for its sibling manifest's new version, above the
-unchanged older entries, and every entry in it is a consumed note's summary
-under that note's bump type or a dependency-update line naming bumped packages
-at their new versions. Any other edit, a value citation such as
-`package.json#/version` or a dependency range, an uncommitted edit, and every other
-document still need a note. The contract proves that the text came from the
-consumed notes, not that those notes are accurate or that anything was published.
+PR's merge base..HEAD, or one landed commit), to committed bytes only. The
+unit must be exactly `changeset version` on its starting tree:
+
+- It deletes exactly the pending notes changesets deletes (every
+  `.changeset/*.md` it reads, except the ones naming a private or ignored
+  package, which stay untouched), adds or edits nothing else under
+  `.changeset/`, and does not edit the contract's owners
+  (`release-versioning-review.mjs`, `scripts/changeset-changelog.mjs`,
+  `.changeset/config.json`). Every note must parse and name only workspace
+  packages. Pre mode, a non-empty `ignore` list and workspace globs are not
+  reproduced and recognise nothing.
+- The expected versions come from changesets' own planner
+  (`@changesets/assemble-release-plan`) fed the starting tree's workspace
+  manifests, config and notes, read from Git.
+- Every package the plan versions must carry its exact planned manifest and
+  changelog output; if any one does not, nothing in the unit is recognised.
+
+Within such a unit, a whole-file `package.json` citation needs no note for a
+planned package's manifest, or the root manifest, when only its `"version"`
+line (old to planned version) and dependency lines of versioned packages
+(same `^`, `~` or exact operator, planned version) change, byte for byte. Any
+other byte, including reformatting, reordered keys or a duplicate key, is
+refused. A `historical` record's own `CHANGELOG.md` needs no note when the
+change adds exactly one `## <planned version>` section above the unchanged
+older entries, and that section holds exactly the planned notes for the
+package under their bump types, plus dependency-update lines naming planned
+packages at their planned versions (`No changes in this release.` only when
+the plan gives it no note). A value citation such as `package.json#/version`
+or a dependency range, an uncommitted edit, and every other document still
+need a note. There is no actor check: a human PR that produces the same
+output is treated the same way. A landed release is recognised in history
+only when its landing commit is exactly that operation on its parent; a
+release that landed after newer notes reached `main` is reported as needing
+review. The contract proves where the changelog text came from, not that the
+notes are accurate or that anything was published.
 New generated owners need their own reviewed contract and refusal tests;
 `kind: generated` alone never exempts a file.

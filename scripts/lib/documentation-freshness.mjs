@@ -452,7 +452,7 @@ export function resolveDocumentationFreshness({
   );
   const head = git(root, ['rev-parse', 'HEAD']).trim();
   // Committed release-versioning output (version bumps and generated changelog
-  // sections from consumed notes) needs no note; dirty edits are still judged.
+  // sections from consumed notes) needs no note. A dirty input is re-added below.
   const release = releaseVersioningOutputsBetween(
     root,
     selection.mergeBase,
@@ -461,7 +461,6 @@ export function resolveDocumentationFreshness({
   );
   const releaseOutput = (kind, entry, input) =>
     input === bindingFile(input) &&
-    !dirty.has(input) &&
     ((input !== entry.path && release.manifests.has(input)) ||
       (kind === 'review' &&
         input === entry.path &&

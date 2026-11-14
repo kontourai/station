@@ -1,3 +1,5 @@
+import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import changelog from '../changeset-changelog.mjs';
 import { releaseVersioningOutputs } from '../lib/release-versioning-review.mjs';
@@ -11,9 +13,11 @@ import {
   entryPaths,
   fixture,
   git,
+  gitEnv,
   record_,
   run,
   scoped,
+  scripts,
   strict,
 } from './helpers/documentation-freshness-fixture.js';
 import { forbidAmbientFreshnessMode } from './helpers/freshness-env.js';
@@ -21,8 +25,22 @@ import { forbidAmbientFreshnessMode } from './helpers/freshness-env.js';
 forbidAmbientFreshnessMode();
 
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
-const NOTE =
+const WRAPPER = join(scripts, 'changeset-changelog.mjs');
+const CONFIG = json({
+  changelog: WRAPPER,
+  commit: false,
+  fixed: [],
+  linked: [],
+  access: 'public',
+  baseBranch: 'main',
+  updateInternalDependencies: 'patch',
+  ignore: [],
+  privatePackages: { version: false, tag: false },
+});
+const WORKSPACE = 'packages:\n  - packages/pkg\n  - packages/dep\n';
+const NOTE_PKG =
   '---\n"@x/pkg": minor\n---\n\nAdd a thing.\n\nIts second paragraph.\n';
+const NOTE_DEP = '---\n"@x/dep": patch\n---\n\nFix the dep.\n';
 const PKG = {
   name: '@x/pkg',
   version: '1.0.0',
@@ -30,32 +48,46 @@ const PKG = {
   dependencies: { '@x/dep': '^1.0.0', other: '^2.0.0' },
 };
 const DEP = { name: '@x/dep', version: '1.0.0' };
-const OLD_CHANGELOG =
-  '# @x/pkg\n\n## 1.0.0\n\n### Patch Changes\n\n- Initial release.\n';
-const SECTION =
+const changelogOf = (name: string) =>
+  `# ${name}\n\n## 1.0.0\n\n### Patch Changes\n\n- Initial release.\n`;
+// The bytes `changeset version` writes for this workspace (commit ids fixed).
+const PKG_SECTION =
   '## 1.1.0\n\n### Minor Changes\n\n- abc1234: Add a thing.\n\n  Its second paragraph.\n\n### Patch Changes\n\n- Updated dependencies [def5678]\n  - @x/dep@1.0.1\n\n';
-const NEW_CHANGELOG = OLD_CHANGELOG.replace('## 1.0.0', `${SECTION}## 1.0.0`);
+const DEP_SECTION =
+  '## 1.0.1\n\n### Patch Changes\n\n- def5678: Fix the dep.\n\n';
+const prepend = (name: string, section: string) =>
+  changelogOf(name).replace('## 1.0.0', `${section}## 1.0.0`);
+const PKG_AFTER = json({
+  ...PKG,
+  version: '1.1.0',
+  dependencies: { ...PKG.dependencies, '@x/dep': '^1.0.1' },
+});
 
 type Files = Record<string, string | undefined>;
 
-/** A `changeset version` unit: one note consumed, pkg and dep bumped. */
+/** One `changeset version` unit over a two-package workspace. */
 function unit(overrides: { before?: Files; after?: Files } = {}) {
   const before: Files = {
-    '.changeset/one.md': NOTE,
+    'package.json': json({ name: 'root', private: true }),
+    'pnpm-workspace.yaml': WORKSPACE,
+    '.changeset/config.json': CONFIG,
+    '.changeset/README.md': '# Changesets\n',
+    '.changeset/one.md': NOTE_PKG,
+    '.changeset/two.md': NOTE_DEP,
     'packages/pkg/package.json': json(PKG),
     'packages/dep/package.json': json(DEP),
-    'packages/pkg/CHANGELOG.md': OLD_CHANGELOG,
+    'packages/pkg/CHANGELOG.md': changelogOf('@x/pkg'),
+    'packages/dep/CHANGELOG.md': changelogOf('@x/dep'),
     ...overrides.before,
   };
   const after: Files = {
+    ...before,
     '.changeset/one.md': undefined,
-    'packages/pkg/package.json': json({
-      ...PKG,
-      version: '1.1.0',
-      dependencies: { ...PKG.dependencies, '@x/dep': '^1.0.1' },
-    }),
+    '.changeset/two.md': undefined,
+    'packages/pkg/package.json': PKG_AFTER,
     'packages/dep/package.json': json({ ...DEP, version: '1.0.1' }),
-    'packages/pkg/CHANGELOG.md': NEW_CHANGELOG,
+    'packages/pkg/CHANGELOG.md': prepend('@x/pkg', PKG_SECTION),
+    'packages/dep/CHANGELOG.md': prepend('@x/dep', DEP_SECTION),
     ...overrides.after,
   };
   const changes = Object.keys({ ...before, ...after })
@@ -73,92 +105,328 @@ function unit(overrides: { before?: Files; after?: Files } = {}) {
     changes,
     read: (side: 'before' | 'after', file: string) =>
       (side === 'before' ? before : after)[file],
+    listBefore: (dir: string) =>
+      Object.keys(before).filter(
+        (file) => file.startsWith(dir) && before[file] !== undefined,
+      ),
   });
   return {
-    manifests: [...result.manifests],
-    changelogs: [...result.changelogs],
+    manifests: [...result.manifests].sort(),
+    changelogs: [...result.changelogs].sort(),
+    refused: result.refused as string | undefined,
   };
 }
+const ALL = {
+  manifests: ['packages/dep/package.json', 'packages/pkg/package.json'],
+  changelogs: ['packages/dep/CHANGELOG.md', 'packages/pkg/CHANGELOG.md'],
+};
+const refused = (reason: RegExp) => ({
+  manifests: [],
+  changelogs: [],
+  refused: expect.stringMatching(reason),
+});
 
 describe('release-versioning output contract', () => {
-  it('recognises the version bumps and the changelog section generated from the consumed note', () => {
-    expect(unit()).toEqual({
-      manifests: ['packages/pkg/package.json', 'packages/dep/package.json'],
-      changelogs: ['packages/pkg/CHANGELOG.md'],
-    });
+  it('recognises the complete planned output of consuming every pending note', () => {
+    expect(unit()).toEqual({ ...ALL, refused: undefined });
   });
 
-  it('recognises nothing when the change consumes no note', () => {
-    expect(unit({ after: { '.changeset/one.md': NOTE } })).toEqual({
-      manifests: [],
-      changelogs: [],
-    });
+  it('recognises nothing unless the change is exactly `changeset version` on its starting tree', () => {
+    const NOT_CONSUMED = /not the set changeset version deletes/;
+    const SHAPE = /contract owner or a non-note/;
+    const MISSING = /missing its exact planned/;
+    const refusals: [string, ReturnType<typeof unit>, RegExp][] = [
+      [
+        'no note consumed',
+        unit({
+          after: {
+            '.changeset/one.md': NOTE_PKG,
+            '.changeset/two.md': NOTE_DEP,
+          },
+        }),
+        /consumes no pending note/,
+      ],
+      [
+        'a pending note kept',
+        unit({ after: { '.changeset/two.md': NOTE_DEP } }),
+        NOT_CONSUMED,
+      ],
+      [
+        'a note renamed, not consumed',
+        unit({ after: { '.changeset/moved.md': NOTE_PKG } }),
+        SHAPE,
+      ],
+      [
+        'a note added',
+        unit({ after: { '.changeset/three.md': NOTE_DEP } }),
+        SHAPE,
+      ],
+      [
+        'a non-note .changeset file removed',
+        unit({ after: { '.changeset/README.md': undefined } }),
+        SHAPE,
+      ],
+      [
+        'a malformed note',
+        unit({ before: { '.changeset/one.md': 'no front matter\n' } }),
+        /does not parse/,
+      ],
+      [
+        'an empty file as a note',
+        unit({ before: { '.changeset/one.md': '' } }),
+        /does not parse/,
+      ],
+      [
+        'a note naming a package outside the workspace',
+        unit({
+          before: {
+            '.changeset/one.md': '---\n"@x/ghost": minor\n---\n\nGhost.\n',
+          },
+        }),
+        /outside the workspace/,
+      ],
+      [
+        'the config edited in the same change',
+        unit({
+          after: {
+            '.changeset/config.json': CONFIG.replace('"patch"', '"minor"'),
+          },
+        }),
+        SHAPE,
+      ],
+      [
+        'the contract owner edited in the same change',
+        unit({
+          before: { 'scripts/lib/release-versioning-review.mjs': 'a' },
+          after: { 'scripts/lib/release-versioning-review.mjs': 'b' },
+        }),
+        SHAPE,
+      ],
+      [
+        'pre mode',
+        unit({ before: { '.changeset/pre.json': '{}' } }),
+        /pre mode/,
+      ],
+      [
+        'a downgrade',
+        unit({
+          after: {
+            'packages/pkg/package.json': PKG_AFTER.replace('1.1.0', '0.0.1'),
+            'packages/pkg/CHANGELOG.md': prepend(
+              '@x/pkg',
+              PKG_SECTION.replace('1.1.0', '0.0.1'),
+            ),
+          },
+        }),
+        MISSING,
+      ],
+      [
+        'a major bump for a minor note',
+        unit({
+          after: {
+            'packages/pkg/package.json': PKG_AFTER.replace('1.1.0', '2.0.0'),
+            'packages/pkg/CHANGELOG.md': prepend(
+              '@x/pkg',
+              PKG_SECTION.replace('1.1.0', '2.0.0'),
+            ),
+          },
+        }),
+        MISSING,
+      ],
+      [
+        'a planned package left unversioned',
+        unit({
+          after: {
+            'packages/dep/package.json': json(DEP),
+            'packages/dep/CHANGELOG.md': changelogOf('@x/dep'),
+          },
+        }),
+        MISSING,
+      ],
+      [
+        'a planned changelog missing',
+        unit({ after: { 'packages/dep/CHANGELOG.md': changelogOf('@x/dep') } }),
+        MISSING,
+      ],
+    ];
+    for (const [label, result, reason] of refusals)
+      expect(result, label).toEqual(refused(reason));
   });
 
-  it('refuses a manifest with any edit beyond the version and bumped workspace ranges', () => {
-    const bumped = { ...PKG, version: '1.1.0' };
-    for (const after of [
-      { ...bumped, description: 'Changed claim' },
-      { ...bumped, dependencies: { ...PKG.dependencies, other: '^3.0.0' } },
-      { ...bumped, dependencies: { ...PKG.dependencies, '@x/dep': '^9.0.0' } },
-      { ...bumped, dependencies: { ...PKG.dependencies, '@x/dep': '~1.0.1' } },
-      { ...bumped, name: '@x/renamed' },
-    ])
+  it('requires a note for a skipped private package to be kept, as changesets keeps it', () => {
+    const before = {
+      'pnpm-workspace.yaml': `${WORKSPACE}  - packages/private\n`,
+      'packages/private/package.json': json({
+        name: '@x/private',
+        private: true,
+        version: '0.1.0',
+      }),
+      '.changeset/three.md':
+        '---\n"@x/private": minor\n---\n\nPrivate change.\n',
+    };
+    expect(unit({ before })).toEqual({ ...ALL, refused: undefined });
+    expect(
+      unit({ before, after: { '.changeset/three.md': undefined } }),
+    ).toEqual(refused(/not the set changeset version deletes/));
+  });
+
+  it('refuses every manifest edit other than the planned version and planned ranges, byte for byte', () => {
+    const bumped = {
+      ...PKG,
+      version: '1.1.0',
+      dependencies: { ...PKG.dependencies, '@x/dep': '^1.0.1' },
+    };
+    const refusals: [string, string][] = [
+      ['a description edit', json({ ...bumped, description: 'Changed claim' })],
+      [
+        'an external range',
+        json({
+          ...bumped,
+          dependencies: { ...bumped.dependencies, other: '^3.0.0' },
+        }),
+      ],
+      [
+        'a range to an unplanned version',
+        json({
+          ...bumped,
+          dependencies: { ...bumped.dependencies, '@x/dep': '^9.0.0' },
+        }),
+      ],
+      [
+        'a range operator change',
+        json({
+          ...bumped,
+          dependencies: { ...bumped.dependencies, '@x/dep': '~1.0.1' },
+        }),
+      ],
+      ['a rename', json({ ...bumped, name: '@x/renamed' })],
+      [
+        'reordered keys',
+        json({
+          version: '1.1.0',
+          name: '@x/pkg',
+          description: 'Pkg',
+          dependencies: bumped.dependencies,
+        }),
+      ],
+      ['reformatting', `${JSON.stringify(bumped)}\n`],
+      [
+        'a duplicate key hiding text',
+        PKG_AFTER.replace(
+          '"description": "Pkg",',
+          '"description": "EVIL", "description": "Pkg",',
+        ),
+      ],
+    ];
+    for (const [label, text] of refusals)
       expect(
-        unit({ after: { 'packages/pkg/package.json': json(after) } }).manifests,
-      ).not.toContain('packages/pkg/package.json');
+        unit({ after: { 'packages/pkg/package.json': text } }),
+        label,
+      ).toEqual(refused(/@x\/pkg is missing its exact planned/));
   });
 
-  it('refuses a changelog section that is not exactly the consumed notes', () => {
+  it('gives no exemption to a manifest outside the planned release set', () => {
+    // A same-named manifest outside the workspace and a private one beside it.
+    const result = unit({
+      before: {
+        'tools/dep/package.json': json({
+          name: '@x/dep',
+          version: '1.0.0',
+          dependencies: { other: '^2.0.0' },
+        }),
+        'tools/private/package.json': json({
+          name: '@x/tool',
+          private: true,
+          version: '1.0.0',
+        }),
+      },
+      after: {
+        'tools/dep/package.json': json({
+          name: '@x/dep',
+          version: '1.0.1',
+          dependencies: { other: '^3.0.0' },
+        }),
+        'tools/private/package.json': json({
+          name: '@x/tool',
+          private: true,
+          version: '1.0.1',
+        }),
+      },
+    });
+    expect(result).toEqual({ ...ALL, refused: undefined });
+  });
+
+  it('refuses a changelog section that is not exactly the planned notes', () => {
+    const PKG_CHANGELOG = prepend('@x/pkg', PKG_SECTION);
     const refusals: [string, string][] = [
       [
         'an added sentence',
-        NEW_CHANGELOG.replace('Its second', 'New claim. Its second'),
+        PKG_CHANGELOG.replace('Its second', 'New claim. Its second'),
       ],
       [
         'an untraced entry',
-        NEW_CHANGELOG.replace(
+        PKG_CHANGELOG.replace(
           '### Patch Changes\n\n',
           '### Patch Changes\n\n- Unreviewed claim.\n',
         ),
       ],
-      ['a different version', NEW_CHANGELOG.replace('## 1.1.0', '## 1.2.0')],
+      ['a different version', PKG_CHANGELOG.replace('## 1.1.0', '## 1.2.0')],
       [
         'the wrong bump block',
-        NEW_CHANGELOG.replace('### Minor Changes', '### Major Changes'),
+        PKG_CHANGELOG.replace('### Minor Changes', '### Major Changes'),
       ],
+      // Same length, so only the byte-identical tail check can refuse it.
       [
-        // Same length, so only the byte-identical tail check can refuse it.
         'an edited older tail',
-        NEW_CHANGELOG.replace('Initial release.', 'Altered release.'),
+        PKG_CHANGELOG.replace('Initial release.', 'Altered release.'),
       ],
       [
-        'a dependency at an unreleased version',
-        NEW_CHANGELOG.replace('@x/dep@1.0.1', '@x/dep@7.0.0'),
+        'a dependency at an unplanned version',
+        PKG_CHANGELOG.replace('@x/dep@1.0.1', '@x/dep@7.0.0'),
       ],
       [
-        'a dropped consumed note',
-        NEW_CHANGELOG.replace(
+        'prose disguised as a dependency item',
+        PKG_CHANGELOG.replace(
+          '  - @x/dep@1.0.1',
+          '  - @x/dep@1.0.1\n  - Unreviewed prose',
+        ),
+      ],
+      [
+        'a dropped planned note',
+        PKG_CHANGELOG.replace(
           /### Minor Changes\n\n[\s\S]*?paragraph\.\n\n/,
           '',
         ),
       ],
       [
         'text above the section',
-        NEW_CHANGELOG.replace('# @x/pkg\n\n', '# @x/pkg\n\nPreface.\n\n'),
+        PKG_CHANGELOG.replace('# @x/pkg\n\n', '# @x/pkg\n\nPreface.\n\n'),
+      ],
+      [
+        'a second section',
+        PKG_CHANGELOG.replace(
+          '## 1.0.0',
+          '## 1.0.5\n\n### Patch Changes\n\n- Updated dependencies\n  - @x/dep@1.0.1\n\n## 1.0.0',
+        ),
+      ],
+      [
+        'another package’s note',
+        PKG_CHANGELOG.replace(
+          'Add a thing.\n\n  Its second paragraph.',
+          'Fix the dep.',
+        ),
+      ],
+      [
+        'no changes, though notes were planned',
+        prepend('@x/pkg', '## 1.1.0\n\nNo changes in this release.\n\n'),
       ],
     ];
+    // All or nothing: one unrecognised planned output voids the rest.
     for (const [label, text] of refusals)
       expect(
-        unit({ after: { 'packages/pkg/CHANGELOG.md': text } }).changelogs,
+        unit({ after: { 'packages/pkg/CHANGELOG.md': text } }),
         label,
-      ).toEqual([]);
-  });
-
-  it('refuses every changelog when a consumed note cannot be read', () => {
-    expect(
-      unit({ before: { '.changeset/one.md': 'no front matter\n' } }).changelogs,
-    ).toEqual([]);
+      ).toEqual(refused(/@x\/pkg is missing its exact planned/));
   });
 });
 
@@ -175,33 +443,35 @@ describe('generated changelog whitespace', () => {
     expect(await upstream.getReleaseLine(changeset, 'minor', null)).toMatch(
       /\n {2}\n/,
     );
-    const line = await changelog.getReleaseLine(changeset, 'minor', null);
-    expect(line).toBe('- abc1234: Add a thing.\n\n  Its second paragraph.');
-    // And the contract traces that exact output to its note.
-    const section = `## 1.1.0\n\n### Minor Changes\n\n${line}\n\n`;
-    expect(
-      unit({
-        after: {
-          'packages/pkg/CHANGELOG.md': OLD_CHANGELOG.replace(
-            '## 1.0.0',
-            `${section}## 1.0.0`,
-          ),
-        },
-      }).changelogs,
-    ).toEqual(['packages/pkg/CHANGELOG.md']);
+    expect(await changelog.getReleaseLine(changeset, 'minor', null)).toBe(
+      '- abc1234: Add a thing.\n\n  Its second paragraph.',
+    );
   });
 });
 
 describe('release versioning in the documentation freshness gate', () => {
+  /** A repository whose release output comes from the real `changeset version`. */
   function releaseFixture() {
     const f = fixture();
     expect(
       run(f.root, 'migrate-review-ledger.mjs', ['--path-only']).status,
     ).toBe(0);
+    f.write(
+      'package.json',
+      json({
+        name: 'root',
+        private: true,
+        scripts: { docs: 'node docs.mjs', other: 'node other.mjs' },
+      }),
+    );
+    f.write('pnpm-workspace.yaml', WORKSPACE);
+    f.write('.changeset/config.json', CONFIG);
+    f.write('.changeset/one.md', NOTE_PKG);
+    f.write('.changeset/two.md', NOTE_DEP);
     f.write('packages/pkg/package.json', json(PKG));
     f.write('packages/dep/package.json', json(DEP));
-    f.write('packages/pkg/CHANGELOG.md', OLD_CHANGELOG);
-    f.write('.changeset/one.md', NOTE);
+    f.write('packages/pkg/CHANGELOG.md', changelogOf('@x/pkg'));
+    f.write('packages/dep/CHANGELOG.md', changelogOf('@x/dep'));
     f.write('docs/pkgref.md', '# Pkg reference\n');
     f.write('docs/ver.md', '# Pkg is at its current version\n');
     const records = [
@@ -223,6 +493,12 @@ describe('release versioning in the documentation freshness gate', () => {
         state: 'classified',
         sources: [],
       },
+      {
+        path: 'packages/dep/CHANGELOG.md',
+        kind: 'historical',
+        state: 'classified',
+        sources: [],
+      },
     ];
     for (const record of records)
       f.write(
@@ -234,36 +510,32 @@ describe('release versioning in the documentation freshness gate', () => {
           checks: [],
         }),
       );
-    commit(f.root, 'add a released package');
+    commit(f.root, 'add released packages');
     // Land reviews of the new pages so main starts with no review gap.
     for (const { path } of records)
       expect(
         record_(f.root, [path, '--note', 'Reviewed the fixture.', '--rereview'])
           .status,
       ).toBe(0);
-    commit(f.root, 'review the released package');
+    commit(f.root, 'review the released packages');
     git(f.root, ['switch', '-qc', 'release']);
     const release = () => {
-      git(f.root, ['rm', '-q', '.changeset/one.md']);
-      f.write(
-        'packages/pkg/package.json',
-        json({
-          ...PKG,
-          version: '1.1.0',
-          dependencies: { ...PKG.dependencies, '@x/dep': '^1.0.1' },
-        }),
+      const result = spawnSync(
+        process.execPath,
+        [join(scripts, '..', 'node_modules/@changesets/cli/bin.js'), 'version'],
+        { cwd: f.root, env: gitEnv(), encoding: 'utf8', windowsHide: true },
       );
-      f.write('packages/dep/package.json', json({ ...DEP, version: '1.0.1' }));
-      f.write('packages/pkg/CHANGELOG.md', NEW_CHANGELOG);
+      expect(result.status, result.stderr).toBe(0);
     };
     return { ...f, release };
   }
   const blockingPaths = (root: string, env: Record<string, string>) =>
     entryPaths(check(root, env).blocking).sort();
 
-  it('needs no note for the generated output but still blocks a record that cites the version value', () => {
+  it('needs no note for real `changeset version` output but still blocks a record that cites the version value', () => {
     const f = releaseFixture();
     f.release();
+    expect(f.read('packages/pkg/CHANGELOG.md')).not.toMatch(/[ \t]$/m);
     commit(f.root, 'chore: version packages');
     const result = check(f.root, scoped);
     expect(result.mode).toBe('scoped');
@@ -275,46 +547,33 @@ describe('release versioning in the documentation freshness gate', () => {
     ]);
   });
 
-  it('still blocks the citing pages when a release edit carries another change', () => {
+  it('blocks every citing page when the release carries another edit', () => {
     const f = releaseFixture();
     f.release();
     f.write(
-      'packages/pkg/package.json',
-      json({
-        ...PKG,
-        version: '1.1.0',
-        description: 'A changed claim',
-        dependencies: { ...PKG.dependencies, '@x/dep': '^1.0.1' },
-      }),
-    );
-    f.write(
       'packages/pkg/CHANGELOG.md',
-      NEW_CHANGELOG.replace('Add a thing.', 'Add a thing nobody reviewed.'),
+      f
+        .read('packages/pkg/CHANGELOG.md')
+        .replace('Add a thing.', 'Add a thing nobody reviewed.'),
     );
     commit(f.root, 'chore: version packages, edited');
     expect(blockingPaths(f.root, scoped)).toEqual([
       'docs/pkgref.md',
       'docs/ver.md',
+      'packages/dep/CHANGELOG.md',
       'packages/pkg/CHANGELOG.md',
     ]);
   });
 
-  it('blocks a version bump that consumes no note and an uncommitted edit to generated output', () => {
+  it('blocks an uncommitted edit to committed release output', () => {
     const f = releaseFixture();
     f.release();
-    git(f.root, ['checkout', 'HEAD', '--', '.changeset/one.md']);
-    commit(f.root, 'bump without consuming a note');
-    expect(blockingPaths(f.root, scoped)).toEqual([
-      'docs/pkgref.md',
-      'docs/ver.md',
+    commit(f.root, 'chore: version packages');
+    f.write(
       'packages/pkg/CHANGELOG.md',
-    ]);
-
-    const g = releaseFixture();
-    g.release();
-    commit(g.root, 'chore: version packages');
-    g.write('packages/pkg/CHANGELOG.md', `${NEW_CHANGELOG}Edited.\n`);
-    expect(blockingPaths(g.root, scoped)).toEqual([
+      `${f.read('packages/pkg/CHANGELOG.md')}Edited.\n`,
+    );
+    expect(blockingPaths(f.root, scoped)).toEqual([
       'docs/ver.md',
       'packages/pkg/CHANGELOG.md',
     ]);
