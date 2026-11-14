@@ -106,7 +106,9 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    ACP's load and resume answers carry no session id, so the protocol cannot
    say when an engine answered by starting a new, empty session instead.
    Where an engine names the session it attached in its own `_meta`, a small
-   table in `acp-reattach-identity.ts` reads that name, keyed on the engine's
+   table in
+   [acp-reattach-identity.ts](../../src-server/providers/adapters/acp-reattach-identity.ts)
+   reads that name, keyed on the engine's
    handshake: Hermes (`agentInfo.name` `hermes-agent`) names it in
    `_meta.hermes.sessionProvenance.acpSessionId`. Hermes up to v0.22.0
    answers a resume of an unknown id by creating a session and returning
