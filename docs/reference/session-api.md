@@ -2560,7 +2560,7 @@ fields, and the [HTTP leaves](api.md#station-control-work-discovery).
 ### Blocking request kinds and background elapsed time
 
 Session summaries include `openRequestKinds`, keyed by unresolved request ID,
-with `input` for questions and elicitation forms, and `approval` for tool
+with `input` for questions, elicitation forms and links to open, and `approval` for tool
 permissions and plan review that gates leaving plan mode (including Claude
 ExitPlanMode and ACP plan approval). These are display hints only: adapters
 retain their existing request types and lifecycle/Attention routing. Structured

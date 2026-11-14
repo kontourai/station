@@ -875,7 +875,7 @@ or not a `request.resolved` was recorded for it; the
 requests.
 
 `blockingOpenRequestIds` lists the requests that suspend progress. The additive
-`openRequestKinds` map distinguishes `input` (questions and forms) from `approval`
+`openRequestKinds` map distinguishes `input` (questions, forms and links to open) from `approval`
 (tool permissions and plan approval) for unresolved IDs, including after reload.
 This display hint never changes request types, lifecycle folding, or exact request
 routing. Unknown request kinds retain conservative approval display.
