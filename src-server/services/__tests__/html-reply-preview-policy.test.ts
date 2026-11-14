@@ -1,9 +1,28 @@
-import { expect, test, vi } from 'vitest';
+import { rm } from 'node:fs/promises';
+import { beforeEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { installLoggerLineSink } from '../../utils/logger.js';
 import type { CdpTransport } from '../browser/browser-host.js';
 import type { ChromiumServerHostOptions } from '../browser/hosts/chromium-server-host.js';
 
-const probe = vi.hoisted(() => ({ authored: false, policyRead: false }));
+const probe = vi.hoisted(() => ({
+  authored: false,
+  policyRead: false,
+  restrictive: false,
+  cleanupFailure: false,
+  flood: false,
+  late: undefined as (() => void) | undefined,
+  cleanup: undefined as (() => Promise<void>) | undefined,
+  removeProfile: undefined as (() => Promise<void>) | undefined,
+}));
+beforeEach(() => {
+  probe.authored = false;
+  probe.policyRead = false;
+  probe.restrictive = false;
+  probe.cleanupFailure = false;
+  probe.flood = false;
+  probe.late = undefined;
+});
 vi.mock('../browser/chromium-acquisition.js', () => ({
   ChromiumAcquisition: class {
     resolveExecutable() {
@@ -95,46 +114,162 @@ vi.mock('../browser/hosts/chromium-server-host.js', async (importOriginal) => {
                 probe.policyRead = true;
                 // Resolved browser value overrides the restrictive profile file.
                 return {
-                  result: { value: { policy: 'default', urlOverrides: false } },
+                  result: {
+                    value: {
+                      policy: probe.restrictive
+                        ? 'disable_non_proxied_udp'
+                        : 'default',
+                      urlOverrides: false,
+                    },
+                  },
                 } as R;
               }
               probe.authored = true;
+              if (probe.flood) {
+                for (let i = 0; i < 65_600; i++)
+                  for (const callback of listeners.get(
+                    'Target.targetDestroyed',
+                  ) ?? [])
+                    callback({ targetId: `secret-native-id-${i}` });
+              }
               throw new Error('Authored content reached an unverified browser');
             }
+            if (method === 'Runtime.evaluate')
+              return { result: { objectId: 'fixture-global' } } as R;
             return {} as R;
           },
         };
         super({
           ...options,
-          launcher: () => ({
-            transport,
-            pid: undefined,
-            exited,
-            terminate: async () => {
-              resolveExit('terminated');
-            },
-          }),
+          launcher: (request) => {
+            const directory = request.args
+              .find((arg) => arg.startsWith('--user-data-dir='))
+              ?.slice('--user-data-dir='.length);
+            probe.removeProfile = directory
+              ? () => rm(directory, { recursive: true, force: true })
+              : undefined;
+            probe.late = () =>
+              request.onDiagnostic?.({
+                type: 'child-exit',
+                code: null,
+                signal: 'SIGABRT',
+              });
+            return {
+              transport,
+              pid: undefined,
+              exited,
+              terminate: async () => {
+                if (probe.cleanupFailure)
+                  throw new Error('fixture cleanup failure');
+                resolveExit('terminated');
+              },
+            };
+          },
         });
+        probe.cleanup = () => this.shutdown();
       }
     },
   };
+});
+
+test('render keeps primary rejection separate from cleanup failure, late exit and capped close facts', async () => {
+  const lines: string[] = [];
+  installLoggerLineSink({ writeLine: (line) => lines.push(line) });
+  probe.restrictive = true;
+  probe.cleanupFailure = true;
+  probe.flood = true;
+  try {
+    const service = new HtmlReplyPreview(makeTempDir('html-preview-cleanup-'));
+    await expect(
+      service.render(
+        { html: 'secret-authored-canary', height: 400 },
+        800,
+        'dark',
+      ),
+    ).rejects.toThrow('fixture cleanup failure');
+    const receipts = () =>
+      lines
+        .map((line) => JSON.parse(line))
+        .filter((line) => line.previewTerminalReceipt)
+        .map((line) => line.previewTerminalReceipt);
+    const initial = receipts()[0];
+    expect(initial.terminal.phases).toMatchObject({
+      primary: 'REJECTED',
+      surfaced: 'REJECTED',
+      shutdown: 'REJECTED',
+      terminate: 'REJECTED',
+      proxyClose: 'NOT_REACHED',
+      workSettlement: 'NOT_REACHED',
+      profileRemoval: 'NOT_REACHED',
+      slotRelease: 'NOT_REACHED',
+    });
+    expect(initial.terminal.child).toBe('UNOBSERVED');
+    expect(initial.closes).toHaveLength(16);
+    expect(initial.closeFactsDropped).toBe(65535);
+    expect(initial.identityExhausted).toBe(true);
+    expect(initial.countersSaturated).toBe(true);
+    expect(
+      initial.closes.some(
+        (fact: { target: string | null }) => fact.target === null,
+      ),
+    ).toBe(false);
+    expect(Buffer.byteLength(JSON.stringify(initial))).toBeLessThanOrEqual(
+      6144,
+    );
+    expect(
+      Buffer.byteLength(JSON.stringify(initial.terminal)),
+    ).toBeLessThanOrEqual(2048);
+    for (const fact of initial.closes)
+      expect(Buffer.byteLength(JSON.stringify(fact))).toBeLessThanOrEqual(128);
+    probe.late?.();
+    probe.late?.();
+    const all = receipts();
+    expect(all).toHaveLength(2);
+    expect(all[1].terminal.child).toEqual({
+      type: 'child-exit',
+      code: null,
+      signal: 'SIGABRT',
+    });
+    expect(all[1].late).toBe(true);
+    expect(all[1].sequence).toBeGreaterThanOrEqual(initial.sequence);
+    expect(all[0].terminal.child).toBe('UNOBSERVED');
+    expect(JSON.stringify(all)).not.toMatch(
+      /secret-authored-canary|secret-native-id|fixture-global/,
+    );
+  } finally {
+    probe.cleanupFailure = false;
+    await probe.cleanup?.();
+    await probe.removeProfile?.();
+    installLoggerLineSink(undefined);
+  }
 });
 
 import { HtmlReplyPreview } from '../html-reply-preview.js';
 
 const makeTempDir = trackTempDirs();
 test('preview refuses a managed effective-policy override before author code and reports the fixed refusal', async () => {
-  const service = new HtmlReplyPreview(makeTempDir('html-preview-policy-'));
-  await expect(
-    service.render(
-      { html: '<script>secret()</script>', height: 400 },
-      800,
-      'dark',
-    ),
-  ).rejects.toMatchObject({
-    name: 'HtmlReplyRefusal',
-    reason: expect.stringContaining('enterprise policy overrides the profile'),
-  });
-  expect(probe.policyRead).toBe(true);
-  expect(probe.authored).toBe(false);
+  const lines: string[] = [];
+  installLoggerLineSink({ writeLine: (line) => lines.push(line) });
+  try {
+    const service = new HtmlReplyPreview(makeTempDir('html-preview-policy-'));
+    await expect(
+      service.render(
+        { html: '<script>secret()</script>', height: 400 },
+        800,
+        'dark',
+      ),
+    ).rejects.toMatchObject({
+      name: 'HtmlReplyRefusal',
+      reason: expect.stringContaining(
+        'enterprise policy overrides the profile',
+      ),
+    });
+    expect(probe.policyRead).toBe(true);
+    expect(probe.authored).toBe(false);
+    expect(lines.some((line) => line.includes('previewTerminalReceipt'))).toBe(
+      true,
+    );
+  } finally {
+    installLoggerLineSink(undefined);
+  }
 });

@@ -1,9 +1,10 @@
 import { createSocket } from 'node:dgram';
 import { createServer } from 'node:http';
 import { networkInterfaces } from 'node:os';
-import { expect, test, vi } from 'vitest';
+import { PassThrough } from 'node:stream';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
-import { createLogger } from '../../utils/logger.js';
+import { createLogger, installLoggerLineSink } from '../../utils/logger.js';
 import { CdpPipeTransport } from '../browser/cdp-pipe-transport.js';
 import { ChromiumServerHost } from '../browser/hosts/chromium-server-host.js';
 import { HtmlReplyPreview } from '../html-reply-preview.js';
@@ -11,7 +12,7 @@ import { HtmlReplyPreview } from '../html-reply-preview.js';
 const makeTempDir = trackTempDirs();
 
 /** Diagnostic-only observer: forwards real CDP calls and retains no page content. */
-function observePreviewPhases() {
+function observePreviewPhases(caseOrdinal: number) {
   const logger = createLogger({ name: 'preview-phase-diagnostic' });
   const started = performance.now();
   const entries: Record<string, unknown>[] = [];
@@ -19,13 +20,32 @@ function observePreviewPhases() {
   const transports = new WeakSet<CdpPipeTransport>();
   const unsubscribe: (() => void)[] = [];
   let truncated = false;
+  let identityExhausted = false;
+  let entriesDropped = 0;
+  let finished = false;
+  let renderCount = 0;
+  const attempts: {
+    state: 'NOT_REACHED' | 'STARTED' | 'RESOLVED' | 'REJECTED';
+    terminal?: unknown;
+  }[] = [{ state: 'NOT_REACHED' }];
+  const attemptBindings = new Map<string, number>();
   const object = (value: unknown): value is Record<string, unknown> =>
     value !== null && typeof value === 'object' && !Array.isArray(value);
-  const identity = (value: unknown) => {
+  const identity = (
+    value: unknown,
+    kind: 'session' | 'target' | 'frame' | 'loader' = 'session',
+  ) => {
     if (typeof value !== 'string') return undefined;
-    if (!identities.has(value) && identities.size < 96)
-      identities.set(value, `opaque-${identities.size + 1}`);
-    return identities.get(value) ?? 'overflow';
+    if (value.length > 128) {
+      identityExhausted = true;
+      return null;
+    }
+    const key = `${kind}:${value}`;
+    if (!identities.has(key) && identities.size < 96)
+      identities.set(key, `opaque-${identities.size + 1}`);
+    const alias = identities.get(key);
+    if (!alias) identityExhausted = true;
+    return alias ?? null;
   };
   const urlKind = (value: unknown) =>
     value === 'about:blank'
@@ -35,9 +55,19 @@ function observePreviewPhases() {
         ? 'prefs-internals'
         : 'other';
   const record = (entry: Record<string, unknown>) => {
-    if (entries.length < 96)
-      entries.push({ atMs: Math.round(performance.now() - started), ...entry });
-    else truncated = true;
+    const projected = {
+      atMs: Math.round(performance.now() - started),
+      ...entry,
+    };
+    if (
+      entries.length < 96 &&
+      Buffer.byteLength(JSON.stringify(projected)) <= 384
+    )
+      entries.push(projected);
+    else {
+      truncated = true;
+      entriesDropped = Math.min(65535, entriesDropped + 1);
+    }
   };
   const methods = new Set([
     'Browser.getVersion',
@@ -74,8 +104,8 @@ function observePreviewPhases() {
             record({
               event: 'frame-navigated',
               session: identity(session),
-              frame: identity(frame?.id),
-              loader: identity(frame?.loaderId),
+              frame: identity(frame?.id, 'frame'),
+              loader: identity(frame?.loaderId, 'loader'),
               urlKind: urlKind(frame?.url),
             });
           }),
@@ -104,12 +134,12 @@ function observePreviewPhases() {
                   ? answer.product
                   : 'other';
             if (method === 'Target.createTarget')
-              safe.target = identity(answer.targetId);
+              safe.target = identity(answer.targetId, 'target');
             if (method === 'Target.attachToTarget')
               safe.attachedSession = identity(answer.sessionId);
             if (method === 'Page.navigate') {
-              safe.frame = identity(answer.frameId);
-              safe.loader = identity(answer.loaderId);
+              safe.frame = identity(answer.frameId, 'frame');
+              safe.loader = identity(answer.loaderId, 'loader');
               safe.navigationError = typeof answer.errorText === 'string';
             }
             if (
@@ -163,6 +193,44 @@ function observePreviewPhases() {
         throw error;
       }
     });
+  installLoggerLineSink({
+    writeLine(line) {
+      const parsed: unknown = JSON.parse(line);
+      if (!object(parsed) || !object(parsed.previewTerminalReceipt)) return;
+      const terminal = parsed.previewTerminalReceipt;
+      if (
+        typeof terminal.attempt !== 'string' ||
+        !/^[a-f0-9]{16}$/.test(terminal.attempt)
+      )
+        return;
+      if (!attemptBindings.has(terminal.attempt) && attemptBindings.size < 3)
+        attemptBindings.set(terminal.attempt, renderCount - 1);
+      const index = attemptBindings.get(terminal.attempt);
+      if (index !== undefined && attempts[index])
+        attempts[index].terminal = terminal;
+    },
+  });
+  const originalRender = HtmlReplyPreview.prototype.render;
+  const renderSpy = vi
+    .spyOn(HtmlReplyPreview.prototype, 'render')
+    .mockImplementation(async function (this: HtmlReplyPreview, ...args) {
+      const index = renderCount++;
+      attempts[index] = { state: 'STARTED' };
+      try {
+        const result = await originalRender.apply(this, args);
+        attempts[index].state = 'RESOLVED';
+        return result;
+      } catch (error) {
+        attempts[index].state = 'REJECTED';
+        if (error instanceof Error)
+          Object.defineProperty(error, 'previewPhaseReceipt', {
+            value: JSON.stringify(receipt()),
+            enumerable: true,
+            configurable: true,
+          });
+        throw error;
+      }
+    });
   const receipt = () => ({
     schemaVersion: 1,
     platform: process.platform,
@@ -170,8 +238,21 @@ function observePreviewPhases() {
     node: process.versions.node,
     entries,
     truncated,
+    caseOrdinal,
+    identityExhausted,
+    entriesDropped,
+    attempts,
   });
   return {
+    planCalls(count: number) {
+      attempts.splice(
+        0,
+        attempts.length,
+        ...Array.from({ length: count }, () => ({
+          state: 'NOT_REACHED' as const,
+        })),
+      );
+    },
     attachFailure(error: unknown) {
       if (error instanceof Error)
         Object.defineProperty(error, 'previewPhaseReceipt', {
@@ -181,17 +262,78 @@ function observePreviewPhases() {
         });
     },
     finish() {
+      if (finished) return;
+      finished = true;
       spy.mockRestore();
+      renderSpy.mockRestore();
       for (const off of unsubscribe) off();
+      installLoggerLineSink(undefined);
       logger.info('HTML preview safe phase receipt', {
         previewPhaseReceipt: receipt(),
       });
+      expect(
+        attempts
+          .slice(0, renderCount)
+          .every((attempt) => attempt.terminal !== undefined),
+        'every reached real render must emit a terminal receipt',
+      ).toBe(true);
     },
   };
 }
 
+let caseOrdinal = 0;
+let activeObservation: ReturnType<typeof observePreviewPhases>;
+beforeEach(() => {
+  activeObservation = observePreviewPhases(++caseOrdinal);
+});
+afterEach(() => activeObservation.finish());
+
+test('phase trace exhaustion retains real admission terminal facts and identity overflow stays null', async () => {
+  const writable = new PassThrough();
+  const readable = new PassThrough();
+  const transport = new CdpPipeTransport(writable, readable);
+  try {
+    for (let i = 1; i <= 97; i++) {
+      const pending = transport.send('Target.createTarget');
+      readable.emit(
+        'data',
+        Buffer.from(
+          `${JSON.stringify({ id: i, result: { targetId: `secret-target-${i}` } })}\0`,
+        ),
+      );
+      await pending;
+    }
+    const service = new HtmlReplyPreview(makeTempDir('html-preview-trace-'));
+    await expect(
+      service.render({ html: 'secret-authored', height: 400 }, 1, 'dark'),
+    ).rejects.toThrow('width');
+    const error = new Error('diagnostic witness');
+    activeObservation.attachFailure(error);
+    const receipt = JSON.parse(
+      Object.getOwnPropertyDescriptor(error, 'previewPhaseReceipt')?.value,
+    );
+    expect(receipt.entries).toHaveLength(96);
+    expect(
+      receipt.entries.every(
+        (entry: unknown) => Buffer.byteLength(JSON.stringify(entry)) <= 384,
+      ),
+    ).toBe(true);
+    expect(receipt.entriesDropped).toBeGreaterThan(0);
+    expect(receipt.identityExhausted).toBe(true);
+    expect(receipt.attempts[0].terminal.terminal.phases.surfaced).toBe(
+      'REJECTED',
+    );
+    expect(receipt.attempts[0].terminal.terminal.child).toBe('UNOBSERVED');
+    expect(JSON.stringify(receipt)).not.toMatch(
+      /secret-target|secret-authored|"overflow"/,
+    );
+  } finally {
+    await transport.close();
+  }
+});
+
 test('Chromium preview returns PNG, measured height and console stacks inside the opaque page', async () => {
-  const observation = observePreviewPhases();
+  const observation = activeObservation;
   try {
     const service = new HtmlReplyPreview(makeTempDir('html-preview-'));
     const result = await service.render(
@@ -274,6 +416,7 @@ test('preview delivers script delimiters, Unicode separators and template syntax
 }, 30_000);
 
 test('preview rejects oversized layout, overflowing console and invalid viewport instead of returning partial output', async () => {
+  activeObservation.planCalls(3);
   const service = new HtmlReplyPreview(makeTempDir('html-preview-limits-'));
   await expect(
     service.render(
@@ -298,6 +441,7 @@ test('preview rejects oversized layout, overflowing console and invalid viewport
 }, 40_000);
 
 test('preview navigation and fetch cannot reach a loopback listener', async () => {
+  activeObservation.planCalls(2);
   let hits = 0;
   const server = createServer((_request, response) => {
     hits++;
