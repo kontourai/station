@@ -1,0 +1,7 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Antigravity row updated to agy acp --process-per-session with the 1.5.0 floor and agy update; checked against builtin-acp-engines.ts and engine-version-floor.ts. Sign-in, catalogue and effort text elsewhere unaffected: effort now comes from the advertised thought_level, which this guide does not describe per engine.","inputs":["docs/guides/connections.md","src-server/providers/adapters/acp-adapter.ts","src-server/services/connections/connection-service-helpers.ts"]}
+  ]
+}

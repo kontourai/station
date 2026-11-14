@@ -274,6 +274,8 @@ export interface AcpEffortConfigOption {
   id: string;
   currentValue?: string;
   values: string[];
+  /** The engine's display name for each value that has one. */
+  names: Record<string, string>;
 }
 
 export function findAcpEffortConfigOption(
@@ -296,6 +298,24 @@ export function findAcpEffortConfigOption(
               : [],
         )
       : [],
+    names: Object.fromEntries(
+      Array.isArray(option.options)
+        ? option.options.flatMap((entry) =>
+            entry &&
+            typeof entry === 'object' &&
+            typeof (entry as { value?: unknown }).value === 'string' &&
+            typeof (entry as { name?: unknown }).name === 'string' &&
+            (entry as { name: string }).name.trim()
+              ? [
+                  [
+                    (entry as { value: string }).value,
+                    (entry as { name: string }).name,
+                  ],
+                ]
+              : [],
+          )
+        : [],
+    ),
   });
   const usable = configOptions.filter(
     (option): option is Record<string, unknown> =>
@@ -322,6 +342,14 @@ export function requestedAcpEffort(
 }
 
 /**
+ * The engine would not take a setting Station asked for: it did not
+ * advertise it, or answered with another value. Distinct from a failed
+ * request (a closed connection, an exited engine), which a caller may treat
+ * differently.
+ */
+export class AcpSettingUnverifiedError extends Error {}
+
+/**
  * Apply `effort` through the session's effort option and read the answer
  * back. Throws, naming the connection, when the session has no such option,
  * the option does not list the value, or the engine reports another value.
@@ -334,11 +362,11 @@ export async function applyAcpEffort(
 ): Promise<{ configOptions?: unknown[] }> {
   const option = findAcpEffortConfigOption(configOptions);
   if (!option)
-    throw new Error(
+    throw new AcpSettingUnverifiedError(
       `ACP effort option unavailable: connection '${connectionId}' did not advertise a reasoning-effort configuration option for this session.`,
     );
   if (option.values.length > 0 && !option.values.includes(effort))
-    throw new Error(
+    throw new AcpSettingUnverifiedError(
       `ACP effort value unsupported: connection '${connectionId}' did not advertise '${effort}' for this session.`,
     );
   if (option.currentValue === effort) return {};
@@ -351,7 +379,7 @@ export async function applyAcpEffort(
       : undefined;
   const applied = findAcpEffortConfigOption(next);
   if (applied?.currentValue !== effort)
-    throw new Error(
+    throw new AcpSettingUnverifiedError(
       `ACP effort application unverified: connection '${connectionId}' reported '${applied?.currentValue ?? 'no current value'}' after '${effort}' was requested.`,
     );
   return { configOptions: next };
