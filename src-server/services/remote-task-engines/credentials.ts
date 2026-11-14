@@ -23,7 +23,7 @@ const CREDENTIAL_MAX_CHARS = 4096;
  * vendor error that quotes it back is redacted by exact match, and a short
  * value would also match unrelated text.
  */
-export const REMOTE_TASK_CREDENTIAL_MIN_CHARS = 16;
+const REMOTE_TASK_CREDENTIAL_MIN_CHARS = 16;
 
 export const REMOTE_TASK_CONNECTION_ID = /^remote-task-[a-z0-9]{12,32}$/;
 

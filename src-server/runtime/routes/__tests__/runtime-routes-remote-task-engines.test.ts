@@ -5,10 +5,7 @@
  * the service. A composition that passed no policy, or bound another preview
  * id, would fail here even though the route suites pass.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import {
   type ManagedPolicyDocument,
@@ -16,6 +13,7 @@ import {
 } from '@kontourai/station-contracts/managed-policy';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
@@ -47,13 +45,9 @@ function deepStub<T extends object>(overrides: T): T {
 }
 
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-remote-tasks';
-/**
- * The composed runtime keeps files open in its home until the process ends,
- * which Windows refuses to delete, so removal here is best effort.
- */
-function makeTempDir(prefix: string): string {
-  return mkdtempSync(join(tmpdir(), prefix));
-}
+// Created before the suite's close hook, so each home is removed after the
+// runtime it served has closed (after-hooks run in reverse order).
+const makeTempDir = trackTempDirs();
 
 function managed(document: ManagedPolicyDocument) {
   return { document, summary: summarizeManagedPolicy(document) };
@@ -67,13 +61,6 @@ describe('configureRuntimeRoutes: remote task engines', () => {
 
   async function setup(policy: ReturnType<typeof managed> | null) {
     const homeDir = makeTempDir('station-remote-task-routes-');
-    closers.push(() => {
-      try {
-        rmSync(homeDir, { recursive: true, force: true });
-      } catch {
-        // Left for the OS temp cleanup; see makeTempDir.
-      }
-    });
     __resetStationServerSelfAttestationForTests();
     const registry = new FeaturePreviewRegistry(homeDir, {
       debug() {},
@@ -107,6 +94,8 @@ describe('configureRuntimeRoutes: remote task engines', () => {
       memoryAdapters: new Map(),
       metricsLog: [],
       monitoringEvents: [],
+      // Subscribers unsubscribe when the runtime closes.
+      eventBus: deepStub({ subscribe: () => () => {} }),
       // Inert orchestration: these routes never reach it.
       orchestrationEventStore: deepStub({
         sessionTurnBoundaryAuthority: () => ({
@@ -150,6 +139,9 @@ describe('configureRuntimeRoutes: remote task engines', () => {
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
     );
     await result.kitLifecycleReady;
+    // Its stores hold files in the home open until closed (Windows refuses to
+    // remove them otherwise).
+    closers.push(() => result.projectRoomRuntime?.close());
     let resolvePort!: (port: number) => void;
     const listening = new Promise<number>((resolve) => {
       resolvePort = resolve;

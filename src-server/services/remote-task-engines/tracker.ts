@@ -28,7 +28,7 @@ import { RemoteTaskError } from './remote-task-error.js';
 import type { RemoteTaskEngineService } from './service.js';
 
 /** How long one read keeps a task polled. */
-export const REMOTE_TASK_INTEREST_WINDOW_MS = 15 * 60_000;
+const REMOTE_TASK_INTEREST_WINDOW_MS = 15 * 60_000;
 
 export interface RemoteTaskTrackerOptions {
   readonly service: Pick<
