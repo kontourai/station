@@ -7,8 +7,10 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { builtinModules } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
+import { transformSync } from 'esbuild';
 import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 import {
@@ -1066,13 +1068,35 @@ function resolveModulePath(base: string) {
  * processes and readFileSync reads are not import edges and are not seen.
  */
 function importEdges(file: string, viteAliases: boolean) {
-  const text = readFileSync(join(repoRoot, file), 'utf8');
+  // Comments are prose, and prose says "from 'somewhere'" too. Compile the
+  // file first, as the bundler does: esbuild drops comments and type-only
+  // imports, so what is left is what a build actually loads.
+  // A declaration file is types only; no build loads its imports.
+  if (/\.d\.[cm]?ts$/.test(file))
+    return { files: [], packages: [], unresolved: [] };
+  const extension = file.slice(file.lastIndexOf('.') + 1);
+  const text = transformSync(readFileSync(join(repoRoot, file), 'utf8'), {
+    loader:
+      extension === 'tsx' || extension === 'jsx'
+        ? extension
+        : extension === 'ts' || extension === 'mts'
+          ? 'ts'
+          : 'js',
+    legalComments: 'none',
+    // Whitespace minification is what removes every comment.
+    minifyWhitespace: true,
+  }).code;
   const files: string[] = [];
   const packages: string[] = [];
   const unresolved: string[] = [];
   for (const match of text.matchAll(
-    /(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+|\brequire\(\s*)['"]([^'"]+)['"]/g,
+    // Import shapes in esbuild's minified output: `}from"x"`, `x from"x"`,
+    // `*from"x"`, `import"x"`, `import("x")`, `require("x")`. A specifier
+    // never contains a comma, paren or space, which keeps string data out.
+    /(?:(?<=[}\s*])from|\bimport\s*\(|\bimport|\brequire\()\s*["'`]([\w@./~$][^"'`\s,;()]*)["'`]/g,
   )) {
+    // A specifier interpolated into generated code is not an import here.
+    if (match[1].includes('${')) continue;
     const specifier = match[1].replace(/\?.*$/, '');
     const aliased = viteAliases ? applyViteAlias(specifier) : null;
     const base = aliased
@@ -1083,7 +1107,21 @@ function importEdges(file: string, viteAliases: boolean) {
     const name = specifier.split('/').slice(0, 2).join('/');
     const dir = WORKSPACE_PACKAGES.get(name);
     if (dir) packages.push(dir);
-    if (base === null) continue;
+    if (base === null) {
+      // A bare specifier must be a workspace package, a Node built-in, or an
+      // installed dependency. Anything else is an alias this walk did not
+      // apply (e.g. `@shared/...` without Vite's aliases), so it is refused
+      // like an unresolved path rather than skipped.
+      const bare = specifier.startsWith('@') ? name : specifier.split('/')[0];
+      if (
+        !dir &&
+        !specifier.startsWith('node:') &&
+        !builtinModules.includes(bare) &&
+        !existsSync(join(repoRoot, 'node_modules', bare))
+      )
+        unresolved.push(`${file} -> ${match[1]}`);
+      continue;
+    }
     const target = resolveModulePath(base);
     if (target) files.push(relative(repoRoot, target).split('\\').join('/'));
     else unresolved.push(`${file} -> ${match[1]}`);
