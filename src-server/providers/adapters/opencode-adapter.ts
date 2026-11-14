@@ -30,6 +30,8 @@ import {
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   type EngineId,
   readApprovalMode,
+  type SessionLiveContinuity,
+  type SessionRewindOutcome,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { ownArray, ownRecord } from '@kontourai/station-shared/input-request';
@@ -1131,9 +1133,10 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         if (adapterAction === 'compact') return native.compact(turnId);
         if (adapterAction === 'rewind') {
           const target = this.rewindTarget(native, invocation.args);
-          return target
-            ? this.rewindSession(input.threadId, target)
-            : { kind: 'answered', text: 'Nothing to rewind.' };
+          if (!target) return { kind: 'answered', text: 'Nothing to rewind.' };
+          return rewindCommandOutcome(
+            await native.rewind(target, { commandTurnId: turnId }),
+          );
         }
         return { kind: 'unsupported' };
       },
@@ -1278,8 +1281,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
   ): string | undefined {
     const named = args.trim();
     if (named) return named;
-    const turns = native.rewindPoints();
-    return turns.at(-2);
+    // No turn named: take back the last one.
+    return native.rewindPoints().at(-1);
   }
 
   private async listedCommands(
@@ -1396,28 +1399,69 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     });
   }
 
+  /**
+   * Rewind to before `turnId` (upstream's generic session action). Native:
+   * OpenCode's revert stage and commit (`OpenCodeNativeSession.rewind`).
+   * Over ACP: the inner ACP adapter's rewind, by what the engine declared.
+   */
   async rewindSession(
     threadId: string,
-    toTurnId: string,
-  ): Promise<EngineCommandOutcome> {
+    turnId: string,
+  ): Promise<SessionRewindOutcome> {
     if (this.overAcp.has(threadId))
       return (
-        this.inner.rewindSession?.(threadId, toTurnId) ?? {
-          kind: 'not-declared',
+        this.inner.rewindSession?.(threadId, turnId) ?? {
+          kind: 'refused',
+          reason: 'unsupported',
         }
       );
-    return this.requireNative(threadId).native.rewind(toTurnId);
+    const record = this.native.get(threadId);
+    if (!record) return { kind: 'refused', reason: 'not-live' };
+    if (record.busy) return { kind: 'refused', reason: 'send-preparing' };
+    return record.native.rewind(turnId);
   }
 
-  sessionContinuity(threadId: string) {
+  /**
+   * This session's continuity. Native: rewind in place; no fork, since
+   * Station has no generic fork action for one to answer. Over ACP: what
+   * the engine declared at `initialize`.
+   */
+  sessionContinuity(threadId: string): SessionLiveContinuity {
     if (this.overAcp.has(threadId))
       return (
         this.inner.sessionContinuity?.(threadId) ?? {
-          fork: 'none' as const,
-          rewind: 'none' as const,
+          live: false,
+          rewind: 'none',
+          fork: 'none',
         }
       );
-    return { fork: 'none' as const, rewind: 'in-place' as const };
+    const record = this.native.get(threadId);
+    if (!record || record.native.isStopped)
+      return { live: false, rewind: 'none', fork: 'none' };
+    return { live: true, rewind: 'in-place', fork: 'none' };
+  }
+
+  /**
+   * Reconnect one of the session's MCP servers. Native: OpenCode's own
+   * disconnect then connect (`/api/experimental/mcp/{server}/…`), which
+   * restarts a configured server; OpenCode 2 has no OAuth step Station can
+   * start. Over ACP: the inner ACP adapter's, by what the engine declared.
+   */
+  async reconnectMcpServer(
+    threadId: string,
+    serverName: string,
+    options: { startOAuth: boolean },
+  ): Promise<EngineCommandOutcome> {
+    if (this.overAcp.has(threadId))
+      return (
+        this.inner.reconnectMcpServer?.(threadId, serverName, options) ?? {
+          kind: 'not-declared',
+        }
+      );
+    return this.requireNative(threadId).native.reconnectMcp(
+      serverName,
+      options,
+    );
   }
 
   nativeSessionIdentity(
@@ -1544,3 +1588,30 @@ function readModelRef(
   if (slash <= 0 || slash === modelId.length - 1) return undefined;
   return { providerID: modelId.slice(0, slash), id: modelId.slice(slash + 1) };
 }
+
+/** A `/rewind` command's rewind, as the line its turn shows. */
+function rewindCommandOutcome(
+  outcome: SessionRewindOutcome,
+): EngineCommandOutcome {
+  if (outcome.kind === 'rewound')
+    return {
+      kind: 'answered',
+      success: true,
+      text: `${ENGINE_NAME} rewound to before that turn.`,
+    };
+  if (outcome.kind === 'failed') return outcome;
+  return { kind: 'failed', message: REWIND_REFUSAL_TEXT[outcome.reason] };
+}
+
+const REWIND_REFUSAL_TEXT: Record<
+  Extract<SessionRewindOutcome, { kind: 'refused' }>['reason'],
+  string
+> = {
+  unsupported: 'this session declared no rewind.',
+  'not-live': 'no engine process holds this session.',
+  'turn-running': 'a turn is running; stop it before rewinding.',
+  'send-preparing': 'a message is being sent; try again once it runs.',
+  'rewind-pending': 'an earlier rewind is still with the engine.',
+  'unknown-turn':
+    'that turn has no OpenCode message on this session, so it cannot be a rewind point.',
+};

@@ -40,6 +40,8 @@ import {
   ACP_SESSION_REWOUND_CODE,
   ENGINE_TURN_FAILED_CODE,
   type EngineId,
+  SESSION_REWIND_AFFECTED_PATHS_MAX,
+  type SessionRewindOutcome,
 } from '@kontourai/station-contracts/provider';
 import {
   type ApprovalStatus,
@@ -260,6 +262,27 @@ type EventBody = DistributiveOmit<
   'eventId' | 'provider' | 'threadId' | 'createdAt'
 >;
 
+/**
+ * The files a staged revert restores (its answer's `data.files[].file`), as
+ * a rewind outcome carries them: the exact count, at most
+ * {@link SESSION_REWIND_AFFECTED_PATHS_MAX} paths. Undefined when the answer
+ * names none in a shape Station reads.
+ */
+function openCodeRevertFiles(
+  answer: unknown,
+): { count: number; paths: string[] } | undefined {
+  const files = ownArray(ownRecord(ownRecord(answer)?.data)?.files);
+  if (!files) return undefined;
+  const paths = files
+    .map((entry) => ownRecord(entry)?.file)
+    .filter((file): file is string => typeof file === 'string');
+  if (paths.length === 0) return undefined;
+  return {
+    count: paths.length,
+    paths: paths.slice(0, SESSION_REWIND_AFFECTED_PATHS_MAX),
+  };
+}
+
 function delay(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const timer = setTimeout(done, ms);
@@ -296,6 +319,8 @@ export class OpenCodeNativeSession {
   private lastAgent: string | undefined;
   private connections = 0;
   private stopped = false;
+  /** A rewind is with the engine (between its stage and its commit). */
+  private rewinding = false;
   private feedReady!: () => void;
   private readonly ready: Promise<void>;
   private loop: Promise<void> | undefined;
@@ -319,6 +344,11 @@ export class OpenCodeNativeSession {
   /** Children still running: they end with the server, past the turn. */
   hasOpenWork(): boolean {
     return [...this.children.values()].some((child) => child.running);
+  }
+
+  /** Stopped: no engine process holds this session any more. */
+  get isStopped(): boolean {
+    return this.stopped;
   }
 
   /** Turns that can be rewound to, oldest first. */
@@ -345,6 +375,11 @@ export class OpenCodeNativeSession {
 
   /** Refuse, before anything reaches the engine, while a turn runs. */
   assertIdle(): void {
+    if (this.rewinding)
+      throw new SendTurnRefusedError(
+        'This OpenCode session is rewinding; send again once it has.',
+        'busy',
+      );
     const live = this.turn ?? this.pendingStart;
     if (live && !live.settled) {
       if (live.kind === 'provider') throw new ProviderTurnInProgressError();
@@ -563,58 +598,110 @@ export class OpenCodeNativeSession {
   }
 
   /**
-   * Move the engine back to the end of `toTurnId` (PLAN B rewind): stage a
-   * revert to the first later turn's user message, files included, then
-   * commit it. A failed commit clears the staged revert.
+   * Rewind the engine to before `turnId` (`ProviderAdapterShape.
+   * rewindSession`): stage a revert to that turn's own user message, files
+   * included, then commit it, so that turn and every later one are hidden
+   * from the engine. A failed commit clears the staged revert. Refused,
+   * before anything reaches the engine, while a turn runs, while another
+   * rewind is with the engine, and for a turn whose message this process
+   * never saw. The caller refuses a session that is not live or is still
+   * preparing a send.
    */
-  async rewind(toTurnId: string): Promise<EngineCommandOutcome> {
-    if (this.turn?.executing && !this.turn.settled)
-      return {
-        kind: 'failed',
-        message: 'A turn is running; stop it before rewinding.',
-      };
+  async rewind(
+    turnId: string,
+    options: { commandTurnId?: string } = {},
+  ): Promise<SessionRewindOutcome> {
+    if (this.stopped) return { kind: 'refused', reason: 'not-live' };
+    // `/rewind` runs on a turn of its own, which runs nothing on the engine.
+    const live = this.turn ?? this.pendingStart;
+    if (
+      live &&
+      !live.settled &&
+      (live.turnId !== options.commandTurnId || live.executing)
+    )
+      return { kind: 'refused', reason: 'turn-running' };
+    if (this.rewinding) return { kind: 'refused', reason: 'rewind-pending' };
     const index = this.turnMessages.findIndex(
-      (entry) => entry.turnId === toTurnId,
+      (entry) => entry.turnId === turnId,
     );
-    if (index < 0)
-      return {
-        kind: 'failed',
-        message:
-          'That turn has no OpenCode message on this session, so it cannot be a rewind point.',
-      };
-    const dropped = this.turnMessages.slice(index + 1);
-    const first = dropped[0];
-    if (!first) return { kind: 'answered', text: 'Nothing to rewind.' };
+    const point = this.turnMessages[index];
+    if (!point) return { kind: 'refused', reason: 'unknown-turn' };
+    const hidden = this.turnMessages.slice(index);
     const base = `/api/session/${this.sessionId}/revert`;
+    // `assertIdle` refuses a turn while this is set, so no prompt reaches
+    // the engine (or the ledger) between the stage and the commit.
+    this.rewinding = true;
+    let affectedFiles: { count: number; paths: string[] } | undefined;
     try {
-      await this.deps.client.request('POST', `${base}/stage`, {
-        messageID: first.messageId,
-        files: true,
-      });
-    } catch (error) {
-      return { kind: 'failed', message: errorMessage(error) };
+      let staged: unknown;
+      try {
+        staged = await this.deps.client.request('POST', `${base}/stage`, {
+          messageID: point.messageId,
+          files: true,
+        });
+      } catch (error) {
+        return { kind: 'failed', message: errorMessage(error) };
+      }
+      affectedFiles = openCodeRevertFiles(staged);
+      try {
+        await this.deps.client.request('POST', `${base}/commit`);
+      } catch (error) {
+        await this.deps.client.request('DELETE', base).catch(() => undefined);
+        return { kind: 'failed', message: errorMessage(error) };
+      }
+    } finally {
+      this.rewinding = false;
     }
-    try {
-      await this.deps.client.request('POST', `${base}/commit`);
-    } catch (error) {
-      await this.deps.client.request('DELETE', base).catch(() => undefined);
-      return { kind: 'failed', message: errorMessage(error) };
-    }
-    this.turnMessages.splice(index + 1);
+    this.turnMessages.splice(index);
+    const hiddenTurnIds = hidden.map((entry) => entry.turnId);
     this.emit({
       method: 'runtime.warning',
       severity: 'warning',
       code: ACP_SESSION_REWOUND_CODE,
-      message: `${this.deps.engineName} rewound this session to an earlier turn; the ${dropped.length === 1 ? 'later turn is' : `${dropped.length} later turns are`} hidden from the engine.`,
+      message: `${this.deps.engineName} rewound this conversation; ${hiddenTurnIds.length === 1 ? 'one turn is' : `${hiddenTurnIds.length} turns are`} hidden from it${affectedFiles ? ` and it restored ${affectedFiles.count === 1 ? 'one file' : `${affectedFiles.count} files`}` : ''}.`,
       details: {
-        toTurnId,
-        hiddenTurnIds: dropped.map((entry) => entry.turnId),
+        beforeTurnId: turnId,
+        hiddenTurnIds,
+        ...(affectedFiles ? { affectedFileCount: affectedFiles.count } : {}),
       },
     });
     return {
+      kind: 'rewound',
+      beforeTurnId: turnId,
+      hiddenTurnIds,
+      ...(affectedFiles ? { affectedFiles } : {}),
+    };
+  }
+
+  /**
+   * Restart one of the server's MCP servers: OpenCode's disconnect, then
+   * connect. A server added by name for this session (Station's) and one
+   * from OpenCode's own configuration restart alike. OpenCode 2 has no MCP
+   * sign-in Station can start, so `startOAuth` is refused before anything
+   * is sent.
+   */
+  async reconnectMcp(
+    name: string,
+    options: { startOAuth: boolean },
+  ): Promise<EngineCommandOutcome> {
+    if (options.startOAuth)
+      return {
+        kind: 'failed',
+        message: `${this.deps.engineName} has no MCP sign-in Station can start; reconnect without it.`,
+      };
+    const base = `/api/experimental/mcp/${encodeURIComponent(name)}`;
+    try {
+      await this.deps.client.request('POST', `${base}/disconnect`);
+      await this.deps.client.request('POST', `${base}/connect`);
+    } catch (error) {
+      return { kind: 'failed', message: errorMessage(error) };
+    } finally {
+      void this.refreshMcp();
+    }
+    return {
       kind: 'answered',
       success: true,
-      text: `${this.deps.engineName} rewound to an earlier turn.`,
+      text: `${this.deps.engineName} reconnected MCP server ${name}.`,
     };
   }
 
@@ -1753,6 +1840,9 @@ export class OpenCodeNativeSession {
           method: 'engine-mcp.status',
           servers: openCodeMcpStatus(answer?.data),
           complete: true,
+          // Every server can be restarted (`reconnectMcp`), so a surface
+          // offers the action.
+          reconnect: true,
         });
       } catch {
         // Status is informational; the next change asks again.

@@ -67,6 +67,17 @@ export const OPENCODE_NATIVE_ROUTES: readonly OpenCodeServeRoute[] = [
     template: '/api/experimental/mcp/{server}',
   },
   {
+    // A person's reconnect (`reconnectMcpServer`): disconnect, then connect.
+    operationId: 'experimental.mcp.disconnect',
+    method: 'POST',
+    template: '/api/experimental/mcp/{server}/disconnect',
+  },
+  {
+    operationId: 'experimental.mcp.connect',
+    method: 'POST',
+    template: '/api/experimental/mcp/{server}/connect',
+  },
+  {
     operationId: 'permission.saved.list',
     method: 'GET',
     template: '/api/permission/saved',

@@ -539,8 +539,11 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     expect(h.events.some(completedFor(turnId))).toBe(false);
   });
 
-  test('rewind stages a revert to the first dropped turn and commits it', async () => {
-    const h = await setup({ scenario: 'revert' });
+  /** Two finished turns on the revert capture: a write, then an edit. */
+  async function twoRevertTurns(
+    overrides: Partial<OpenCodeServeReplayOptions> = {},
+  ) {
+    const h = await setup({ scenario: 'revert', ...overrides });
     await h.start();
     const first = await h.adapter.sendTurn({
       threadId: 'thread-1',
@@ -552,9 +555,18 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
       input: 'DO_EDIT second',
     });
     await h.waitFor(completedFor(second.turnId));
-    expect(
-      await h.adapter.rewindSession('thread-1', first.turnId),
-    ).toMatchObject({ kind: 'answered', success: true });
+    return { h, first, second };
+  }
+
+  test('rewindSession hides the named turn and later ones: a revert staged at its own message, then committed', async () => {
+    const { h, second } = await twoRevertTurns();
+    expect(await h.adapter.rewindSession('thread-1', second.turnId)).toEqual({
+      kind: 'rewound',
+      beforeTurnId: second.turnId,
+      hiddenTurnIds: [second.turnId],
+      affectedFiles: { count: 1, paths: ['edit-me.txt'] },
+    });
+    // The second turn's own prompt (the capture's staged message).
     expect(
       h.replay.made('POST', '/api/session/:id/revert/stage')[0]?.body,
     ).toEqual({ messageID: 'msg_1d71b155b001aSHsV3kqKgeSj7', files: true });
@@ -564,7 +576,129 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     expect(h.replay.made('DELETE', '/api/session/:id/revert')).toHaveLength(0);
     expect(
       await h.waitFor((event) => event.code === 'acp.session-rewound'),
+    ).toMatchObject({
+      details: {
+        beforeTurnId: second.turnId,
+        hiddenTurnIds: [second.turnId],
+        affectedFileCount: 1,
+      },
+    });
+    // The hidden turn is no longer a rewind point.
+    expect(await h.adapter.rewindSession('thread-1', second.turnId)).toEqual({
+      kind: 'refused',
+      reason: 'unknown-turn',
+    });
+  });
+
+  test('a failed revert commit clears the staged revert and reports the failure', async () => {
+    const { h, second } = await twoRevertTurns({
+      respond: (request) =>
+        request.method === 'POST' && request.path.endsWith('/revert/commit')
+          ? { status: 500, body: { error: 'commit broke' } }
+          : undefined,
+    });
+    expect(
+      await h.adapter.rewindSession('thread-1', second.turnId),
+    ).toMatchObject({ kind: 'failed' });
+    expect(h.replay.made('DELETE', '/api/session/:id/revert')).toHaveLength(1);
+    expect(h.events.some((event) => event.code === 'acp.session-rewound')).toBe(
+      false,
+    );
+  });
+
+  test('rewindSession refuses, sending nothing, for an unknown turn, a running turn and a session not held', async () => {
+    const h = await setup({ scenario: 'interrupt' });
+    expect(await h.adapter.rewindSession('thread-1', 'nope')).toEqual({
+      kind: 'refused',
+      reason: 'not-live',
+    });
+    expect(h.adapter.sessionContinuity('thread-1')).toEqual({
+      live: false,
+      rewind: 'none',
+      fork: 'none',
+    });
+    await h.start();
+    expect(h.adapter.sessionContinuity('thread-1')).toEqual({
+      live: true,
+      rewind: 'in-place',
+      fork: 'none',
+    });
+    expect(await h.adapter.rewindSession('thread-1', 'nope')).toEqual({
+      kind: 'refused',
+      reason: 'unknown-turn',
+    });
+    const { turnId } = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'DO_SLOW stream',
+    });
+    await h.waitFor(
+      (event) =>
+        event.method === 'content.text-delta' && event.turnId === turnId,
+    );
+    expect(await h.adapter.rewindSession('thread-1', turnId)).toEqual({
+      kind: 'refused',
+      reason: 'turn-running',
+    });
+    expect(h.replay.made('POST', '/api/session/:id/revert/stage')).toHaveLength(
+      0,
+    );
+  });
+
+  test('/rewind with no turn named takes back the last turn', async () => {
+    const { h, second } = await twoRevertTurns();
+    const command = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: '/rewind',
+    });
+    await h.waitFor(completedFor(command.turnId));
+    expect(turnText(h.events, command.turnId)).toBe(
+      'OpenCode rewound to before that turn.',
+    );
+    expect(
+      h.replay.made('POST', '/api/session/:id/revert/stage')[0]?.body,
+    ).toEqual({ messageID: 'msg_1d71b155b001aSHsV3kqKgeSj7', files: true });
+    expect(
+      await h.waitFor((event) => event.code === 'acp.session-rewound'),
     ).toMatchObject({ details: { hiddenTurnIds: [second.turnId] } });
+  });
+
+  test('reconnectMcpServer disconnects then connects the server on OpenCode, and refuses a sign-in', async () => {
+    const h = await setup({
+      scenario: 'basic',
+      respond: (request) =>
+        request.method === 'POST' &&
+        /\/api\/experimental\/mcp\/[^/]+\/(connect|disconnect)$/.test(
+          request.path,
+        )
+          ? { status: 204 } // 2.3.0 answers both with 204 (live probe)
+          : undefined,
+    });
+    await h.start();
+    expect(
+      await h.adapter.reconnectMcpServer('thread-1', 'station-echo', {
+        startOAuth: true,
+      }),
+    ).toMatchObject({ kind: 'failed' });
+    expect(
+      h.replay.requests.filter((r) => r.path.includes('/experimental/mcp/')),
+    ).toEqual([]);
+    expect(
+      await h.adapter.reconnectMcpServer('thread-1', 'station-echo', {
+        startOAuth: false,
+      }),
+    ).toMatchObject({ kind: 'answered', success: true });
+    expect(
+      h.replay.requests
+        .filter((r) => r.path.includes('/experimental/mcp/'))
+        .map((r) => `${r.method} ${r.path}`),
+    ).toEqual([
+      'POST /api/experimental/mcp/station-echo/disconnect',
+      'POST /api/experimental/mcp/station-echo/connect',
+    ]);
+    // The status a surface offers the action from says it can.
+    expect(
+      await h.waitFor((event) => event.method === 'engine-mcp.status'),
+    ).toMatchObject({ reconnect: true });
   });
 
   test('an image goes to OpenCode as a prompt file, as a data URI, and reaches the model', async () => {
