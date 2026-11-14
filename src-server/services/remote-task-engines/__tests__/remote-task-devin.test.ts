@@ -55,7 +55,9 @@ describe('Devin binding', () => {
 
   test('sends a follow-up and pages messages from the cursor across pages', async () => {
     const { devin, h, connectionId } = await setup();
-    const { taskId } = await h.service.createTask(connectionId, { prompt: 'Go' });
+    const { taskId } = await h.service.createTask(connectionId, {
+      prompt: 'Go',
+    });
     await h.service.sendMessage(connectionId, taskId, 'Also update the docs');
     const [send] = devin.fake.matching('POST', /\/messages$/);
     expect(send?.body).toEqual({ message: 'Also update the docs' });
@@ -64,7 +66,9 @@ describe('Devin binding', () => {
     devin.setStatus(taskId, 'running', 'working');
     const result = await h.service.syncTask(connectionId, taskId);
     // Prompt + follow-up + 150 replies, plus Station's status line.
-    const vendorEvents = result.appended.filter((e) => !e.id.startsWith('station:'));
+    const vendorEvents = result.appended.filter(
+      (e) => !e.id.startsWith('station:'),
+    );
     expect(vendorEvents).toHaveLength(152);
     expect(vendorEvents.map((e) => e.sequence)).toEqual(
       [...vendorEvents.keys()].map((i) => vendorEvents[0]!.sequence + i),
@@ -79,7 +83,9 @@ describe('Devin binding', () => {
 
   test('catches up after a restart from the stored cursor, without duplicates', async () => {
     const { devin, h, connectionId } = await setup();
-    const { taskId } = await h.service.createTask(connectionId, { prompt: 'Go' });
+    const { taskId } = await h.service.createTask(connectionId, {
+      prompt: 'Go',
+    });
     devin.setStatus(taskId, 'running', 'working');
     await h.service.syncTask(connectionId, taskId);
     // Station is off; Devin keeps working.
@@ -96,7 +102,10 @@ describe('Devin binding', () => {
       'opened a PR',
     ]);
     expect(
-      devin.fake.matching('GET', /\/messages$/).at(-1)?.url.searchParams.get('after'),
+      devin.fake
+        .matching('GET', /\/messages$/)
+        .at(-1)
+        ?.url.searchParams.get('after'),
     ).toBe('c0');
 
     // A cursor lost in a crash replays the page: stored ids drop it.
@@ -112,12 +121,17 @@ describe('Devin binding', () => {
 
   test('terminates through DELETE and reports ACUs, USD overage and pull requests', async () => {
     const { devin, h, connectionId } = await setup();
-    const { taskId } = await h.service.createTask(connectionId, { prompt: 'Go' });
+    const { taskId } = await h.service.createTask(connectionId, {
+      prompt: 'Go',
+    });
     Object.assign(devin.sessions.get(taskId) as object, {
       acus_consumed: 3.5,
       on_demand_usage: 1.25,
       pull_requests: [
-        { pr_url: 'https://github.com/example/widgets/pull/7', pr_state: 'open' },
+        {
+          pr_url: 'https://github.com/example/widgets/pull/7',
+          pr_state: 'open',
+        },
       ],
     });
     await h.service.cancelTask(connectionId, taskId);
@@ -194,7 +208,9 @@ describe('Devin binding', () => {
 
   test('a finished session stops polling until the next sync', async () => {
     const { devin, h, connectionId } = await setup();
-    const { taskId } = await h.service.createTask(connectionId, { prompt: 'Go' });
+    const { taskId } = await h.service.createTask(connectionId, {
+      prompt: 'Go',
+    });
     devin.setStatus(taskId, 'running', 'finished');
     const result = await h.service.syncTask(connectionId, taskId);
     expect(result.quiescent).toBe(true);

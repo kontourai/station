@@ -61,7 +61,9 @@ function taskPath(taskId: string): string {
 export function copilotTask(connectionId: string, body: unknown): RemoteTask {
   const record = asRecord(body);
   const id =
-    typeof record.id === 'number' ? String(record.id) : stringField(record, 'id');
+    typeof record.id === 'number'
+      ? String(record.id)
+      : stringField(record, 'id');
   const state = stringField(record, 'state');
   if (!id || !state) throw malformed(VENDOR, 'a task');
   const outputs: RemoteTaskOutput[] = [];
@@ -183,7 +185,9 @@ export const githubCopilotBinding: RemoteTaskBinding = {
     const record = asRecord(body);
     if (!Array.isArray(record.tasks)) throw malformed(VENDOR, 'a task list');
     return {
-      tasks: record.tasks.map((task) => copilotTask(context.connectionId, task)),
+      tasks: record.tasks.map((task) =>
+        copilotTask(context.connectionId, task),
+      ),
       cursor: record.tasks.length === PAGE_SIZE ? String(page + 1) : null,
     };
   },

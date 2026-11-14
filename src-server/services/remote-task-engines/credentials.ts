@@ -53,7 +53,8 @@ export class RemoteTaskCredentials {
 
   get #vault(): EngineHostAuthVault {
     const vault = this.#resolveVault();
-    if (!vault) throw new Error('The engine credential vault is not available.');
+    if (!vault)
+      throw new Error('The engine credential vault is not available.');
     return vault;
   }
 

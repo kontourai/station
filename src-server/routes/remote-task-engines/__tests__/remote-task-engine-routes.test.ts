@@ -56,7 +56,10 @@ function setup() {
     const response = await app.request(path, {
       method,
       ...(body !== undefined
-        ? { body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }
+        ? {
+            body: JSON.stringify(body),
+            headers: { 'content-type': 'application/json' },
+          }
         : {}),
     });
     return {
@@ -119,7 +122,8 @@ function featureRoutes(id: string, taskId: string) {
 
 /** Routes that only reach a vendor once the connection is acknowledged. */
 function vendorRoutes(id: string, taskId: string) {
-  return featureRoutes(id, taskId).filter(([, path]) => path.includes('/tasks'))
+  return featureRoutes(id, taskId)
+    .filter(([, path]) => path.includes('/tasks'))
     .filter(([, path]) => !path.endsWith('/events?after=0'));
 }
 
@@ -133,19 +137,23 @@ describe('remote task engine routes', () => {
     expect(created.status).toBe(201);
     const taskId = (created.body.data as { taskId: string }).taskId;
     s.devinA.reply(taskId, 'On it');
-    const synced = await s.call('POST', `/connections/${id}/tasks/${taskId}/sync`);
+    const synced = await s.call(
+      'POST',
+      `/connections/${id}/tasks/${taskId}/sync`,
+    );
     expect(synced.status).toBe(200);
     const events = await s.call(
       'GET',
       `/connections/${id}/tasks/${taskId}/events?after=0`,
     );
-    const texts = (events.body.data as { events: Array<{ text: string }> }).events.map(
-      (e) => e.text,
-    );
+    const texts = (
+      events.body.data as { events: Array<{ text: string }> }
+    ).events.map((e) => e.text);
     expect(texts).toContain('On it');
     // Resume: only what follows the sequence a client holds.
-    const last = (events.body.data as { events: Array<{ sequence: number }> }).events.at(-1)
-      ?.sequence as number;
+    const last = (
+      events.body.data as { events: Array<{ sequence: number }> }
+    ).events.at(-1)?.sequence as number;
     s.devinA.reply(taskId, 'Done');
     await s.call('POST', `/connections/${id}/tasks/${taskId}/sync`);
     const resumed = await s.app.request(
@@ -153,9 +161,8 @@ describe('remote task engine routes', () => {
       { headers: { 'last-event-id': String(last) } },
     );
     const resumedTexts = (
-      ((await resumed.json()) as { data: { events: Array<{ text: string }> } }).data
-        .events
-    ).map((e) => e.text);
+      (await resumed.json()) as { data: { events: Array<{ text: string }> } }
+    ).data.events.map((e) => e.text);
     expect(resumedTexts).toEqual(['Done']);
   });
 
@@ -164,20 +171,28 @@ describe('remote task engine routes', () => {
     const id = await readyConnection(s);
     const before = s.vendorRequests();
     s.h.switches.preview = false;
-    for (const [method, path, body] of featureRoutes(id, 'devin-000000000001')) {
+    for (const [method, path, body] of featureRoutes(
+      id,
+      'devin-000000000001',
+    )) {
       const answer = await s.call(method, path, body);
       expect(answer.status, `${method} ${path}`).toBe(404);
       expect(answer.body, `${method} ${path}`).toMatchObject({
         success: false,
         code: 'feature_preview_disabled',
         previewId: 'remote-task-engines',
-        settingsPath: '/settings?view=feature-previews&highlight=feature-previews',
+        settingsPath:
+          '/settings?view=feature-previews&highlight=feature-previews',
       });
     }
     expect(s.vendorRequests()).toBe(before);
     // Retained maintenance: withdrawing and removing still work.
-    expect((await s.call('DELETE', `/connections/${id}/acknowledgement`)).status).toBe(200);
-    expect((await s.call('DELETE', `/connections/${id}/credential`)).status).toBe(200);
+    expect(
+      (await s.call('DELETE', `/connections/${id}/acknowledgement`)).status,
+    ).toBe(200);
+    expect(
+      (await s.call('DELETE', `/connections/${id}/credential`)).status,
+    ).toBe(200);
     expect((await s.call('DELETE', `/connections/${id}`)).status).toBe(200);
     s.h.switches.preview = true;
     expect((await s.call('GET', '/connections')).body.data).toEqual([]);
@@ -190,25 +205,30 @@ describe('remote task engine routes', () => {
     // A managed machine whose policy says nothing about remote tasks.
     s.h.switches.policy = { engines: {} };
     const refused = featureRoutes(id, 'devin-000000000001').filter(
-      ([method, path]) => !(method === 'GET' && /^\/connections(\/[^/]+)?$/.test(path)),
+      ([method, path]) =>
+        !(method === 'GET' && /^\/connections(\/[^/]+)?$/.test(path)),
     );
     for (const [method, path, body] of refused) {
       const answer = await s.call(method, path, body);
       expect(answer.status, `${method} ${path}`).toBe(403);
-      expect(answer.body.code, `${method} ${path}`).toBe('remote-task-policy-refused');
+      expect(answer.body.code, `${method} ${path}`).toBe(
+        'remote-task-policy-refused',
+      );
       expect(String(answer.body.error)).toContain('Example Corp');
     }
     expect(s.vendorRequests()).toBe(before);
     // Allowing another vendor does not allow this one.
     s.h.switches.policy = { engines: { remoteTasks: ['cursor'] } };
     expect(
-      (await s.call('POST', `/connections/${id}/tasks`, { prompt: 'Go' })).body.code,
+      (await s.call('POST', `/connections/${id}/tasks`, { prompt: 'Go' })).body
+        .code,
     ).toBe('remote-task-policy-refused');
     // Naming it does.
     s.h.switches.policy = { engines: { remoteTasks: ['devin'] } };
-    expect((await s.call('POST', `/connections/${id}/tasks`, { prompt: 'Go' })).status).toBe(
-      201,
-    );
+    expect(
+      (await s.call('POST', `/connections/${id}/tasks`, { prompt: 'Go' }))
+        .status,
+    ).toBe(201);
   });
 
   test('nothing is sent before the vendor-naming acknowledgement', async () => {
@@ -220,7 +240,9 @@ describe('remote task engine routes', () => {
       acknowledgement: { vendor: 'devin' },
     });
     const id = (created.body.data as { id: string; acknowledged: boolean }).id;
-    expect((created.body.data as { acknowledged: boolean }).acknowledged).toBe(false);
+    expect((created.body.data as { acknowledged: boolean }).acknowledged).toBe(
+      false,
+    );
     await s.call('PUT', `/connections/${id}/credential`, { token: TOKEN_A });
     for (const [method, path, body] of vendorRoutes(id, 'devin-000000000001')) {
       const answer = await s.call(method, path, body);
@@ -234,22 +256,28 @@ describe('remote task engine routes', () => {
       remoteTaskAcknowledgementStatement('cursor'),
       `${remoteTaskAcknowledgementStatement('devin')} `,
     ]) {
-      const answer = await s.call('POST', `/connections/${id}/acknowledgement`, {
-        statement,
-      });
+      const answer = await s.call(
+        'POST',
+        `/connections/${id}/acknowledgement`,
+        {
+          statement,
+        },
+      );
       expect(answer.status).toBe(400);
     }
     expect(s.vendorRequests()).toBe(0);
     await s.call('POST', `/connections/${id}/acknowledgement`, {
       statement: remoteTaskAcknowledgementStatement('devin'),
     });
-    expect((await s.call('POST', `/connections/${id}/tasks`, { prompt: 'Go' })).status).toBe(
-      201,
-    );
+    expect(
+      (await s.call('POST', `/connections/${id}/tasks`, { prompt: 'Go' }))
+        .status,
+    ).toBe(201);
     // Withdrawing it stops sending again.
     await s.call('DELETE', `/connections/${id}/acknowledgement`);
     expect(
-      (await s.call('POST', `/connections/${id}/tasks`, { prompt: 'Go' })).body.code,
+      (await s.call('POST', `/connections/${id}/tasks`, { prompt: 'Go' })).body
+        .code,
     ).toBe('remote-task-acknowledgement-required');
   });
 
@@ -276,12 +304,12 @@ describe('remote task engine routes', () => {
     const b = await readyConnection(s, ORG_B, TOKEN_B);
     await s.call('POST', `/connections/${a}/tasks`, { prompt: 'A' });
     await s.call('POST', `/connections/${b}/tasks`, { prompt: 'B' });
-    expect(s.devinA.fake.requests.map((r) => r.headers.get('authorization'))).toEqual([
-      `Bearer ${TOKEN_A}`,
-    ]);
-    expect(s.devinB.fake.requests.map((r) => r.headers.get('authorization'))).toEqual([
-      `Bearer ${TOKEN_B}`,
-    ]);
+    expect(
+      s.devinA.fake.requests.map((r) => r.headers.get('authorization')),
+    ).toEqual([`Bearer ${TOKEN_A}`]);
+    expect(
+      s.devinB.fake.requests.map((r) => r.headers.get('authorization')),
+    ).toEqual([`Bearer ${TOKEN_B}`]);
     const listing = JSON.stringify((await s.call('GET', '/connections')).body);
     expect(listing).not.toContain(TOKEN_A);
     expect(listing).not.toContain(TOKEN_B);
@@ -302,7 +330,8 @@ describe('remote task engine routes', () => {
     await s.call('DELETE', `/connections/${b}/credential`);
     const sent = s.vendorRequests();
     expect(
-      (await s.call('POST', `/connections/${b}/tasks`, { prompt: 'B' })).body.code,
+      (await s.call('POST', `/connections/${b}/tasks`, { prompt: 'B' })).body
+        .code,
     ).toBe('remote-task-credential-missing');
     expect(s.vendorRequests()).toBe(sent);
   });
@@ -329,13 +358,20 @@ describe('remote task engine routes', () => {
   test('a rate-limited vendor answers 429 with Retry-After', async () => {
     const s = setup();
     const id = await readyConnection(s);
-    s.devinA.fake.inject(1, () =>
-      new Response(JSON.stringify({ title: 'Too Many Requests', status: 429 }), {
-        status: 429,
-        headers: { 'retry-after': '12' },
-      }),
+    s.devinA.fake.inject(
+      1,
+      () =>
+        new Response(
+          JSON.stringify({ title: 'Too Many Requests', status: 429 }),
+          {
+            status: 429,
+            headers: { 'retry-after': '12' },
+          },
+        ),
     );
-    const answer = await s.call('POST', `/connections/${id}/tasks`, { prompt: 'Go' });
+    const answer = await s.call('POST', `/connections/${id}/tasks`, {
+      prompt: 'Go',
+    });
     expect(answer.status).toBe(429);
     expect(answer.headers.get('retry-after')).toBe('12');
     expect(answer.body).toMatchObject({

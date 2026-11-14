@@ -452,7 +452,6 @@ import {
 } from '../../routes/chat/conversations.js';
 import { createACPRoutes } from '../../routes/connections/acp.js';
 import { createACPSignInRoutes } from '../../routes/connections/acp-sign-in.js';
-import { createRemoteTaskEngineRoutes } from '../../routes/remote-task-engines/remote-task-engine-routes.js';
 import { createAppHomeRoutes } from '../../routes/connections/app-home.js';
 import { createBedrockRoutes } from '../../routes/connections/bedrock.js';
 import { createConnectionRoutes } from '../../routes/connections/connections.js';
@@ -613,6 +612,7 @@ import { createUICommandRoutes } from '../../routes/projects/ui-commands.js';
 import { createConversationPullRequestLinkRoutes } from '../../routes/pull-requests/conversation-pull-request-links.js';
 import { createPullRequestRoutes } from '../../routes/pull-requests/pull-request-routes.js';
 import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
+import { createRemoteTaskEngineRoutes } from '../../routes/remote-task-engines/remote-task-engine-routes.js';
 import { createSearchRoutes } from '../../routes/search.js';
 import { createSecretBindingRoutes } from '../../routes/secret-bindings.js';
 import { createSetupImportRoutes } from '../../routes/setup-imports.js';
@@ -730,6 +730,7 @@ import type { ConnectionService } from '../../services/connections/connection-se
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
 import type { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
+import { engineHostAuth } from '../../services/engine-host-auth/service.js';
 import {
   ANSWER_ASSESSMENT_UPDATED_EVENT,
   AnswerAssessmentModule,
@@ -763,10 +764,6 @@ import { TrustBundleService } from '../../services/evidence/trust-bundle-service
 import { VeritasReadinessService } from '../../services/evidence/veritas-readiness-service.js';
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
 import type { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
-import { engineHostAuth } from '../../services/engine-host-auth/service.js';
-import { RemoteTaskCredentials } from '../../services/remote-task-engines/credentials.js';
-import { RemoteTaskEngineService } from '../../services/remote-task-engines/service.js';
-import { RemoteTaskTracker } from '../../services/remote-task-engines/tracker.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
 import { createFeedbackRatingTarget } from '../../services/feedback/feedback-target.js';
 import { FlowMcpUiEvidenceBridge } from '../../services/flow/flow-mcp-ui-evidence-bridge.js';
@@ -930,6 +927,9 @@ import {
   taskRoomVersionSource,
 } from '../../services/read-markers/room-version-sources.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
+import { RemoteTaskCredentials } from '../../services/remote-task-engines/credentials.js';
+import { RemoteTaskEngineService } from '../../services/remote-task-engines/service.js';
+import { RemoteTaskTracker } from '../../services/remote-task-engines/tracker.js';
 import {
   conversationAutomationsFrom,
   readStoredScheduledTurnTerminal,

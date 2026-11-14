@@ -53,9 +53,9 @@ describe('GitHub Copilot binding', () => {
     await expect(
       h.service.sendMessage(connectionId, 'task_1', 'more'),
     ).rejects.toMatchObject({ code: 'remote-task-capability-unsupported' });
-    await expect(h.service.cancelTask(connectionId, 'task_1')).rejects.toMatchObject(
-      { code: 'remote-task-capability-unsupported' },
-    );
+    await expect(
+      h.service.cancelTask(connectionId, 'task_1'),
+    ).rejects.toMatchObject({ code: 'remote-task-capability-unsupported' });
     expect(github.fake.requests).toHaveLength(0);
   });
 
@@ -68,17 +68,42 @@ describe('GitHub Copilot binding', () => {
     Object.assign(github.tasks.get(taskId) as object, {
       state: 'completed',
       artifacts: [
-        { provider: 'github', type: 'pull', data: { id: 42, global_id: 'PR_x' } },
-        { provider: 'github', type: 'branch', data: { head_ref: 'copilot/fix', base_ref: 'main' } },
+        {
+          provider: 'github',
+          type: 'pull',
+          data: { id: 42, global_id: 'PR_x' },
+        },
+        {
+          provider: 'github',
+          type: 'branch',
+          data: { head_ref: 'copilot/fix', base_ref: 'main' },
+        },
       ],
       sessions: [
-        { id: 's1', state: 'completed', created_at: '2026-11-14T10:00:00Z', usage: { type: 'ai_credits', amount: 1.5 } },
-        { id: 's2', state: 'completed', created_at: '2026-11-14T10:05:00Z', usage: { type: 'ai_credits', amount: 2 } },
-        { id: 's3', state: 'completed', created_at: '2026-11-14T10:09:00Z', usage: { type: 'premium_requests', amount: 1 } },
+        {
+          id: 's1',
+          state: 'completed',
+          created_at: '2026-11-14T10:00:00Z',
+          usage: { type: 'ai_credits', amount: 1.5 },
+        },
+        {
+          id: 's2',
+          state: 'completed',
+          created_at: '2026-11-14T10:05:00Z',
+          usage: { type: 'ai_credits', amount: 2 },
+        },
+        {
+          id: 's3',
+          state: 'completed',
+          created_at: '2026-11-14T10:09:00Z',
+          usage: { type: 'premium_requests', amount: 1 },
+        },
       ],
     });
     const result = await h.service.syncTask(connectionId, taskId);
-    expect(github.fake.requests.at(-1)?.url.pathname).toBe(`/agents/tasks/${taskId}`);
+    expect(github.fake.requests.at(-1)?.url.pathname).toBe(
+      `/agents/tasks/${taskId}`,
+    );
     expect(result.task.usage).toEqual([
       { unit: 'ai-credits', quantity: 3.5 },
       { unit: 'premium-requests', quantity: 1 },
@@ -107,7 +132,10 @@ describe('GitHub Copilot binding', () => {
     const error = await h.service
       .listTasks(connectionId, null)
       .catch((caught: unknown) => caught);
-    expect(error).toMatchObject({ code: 'remote-task-rate-limited', status: 429 });
+    expect(error).toMatchObject({
+      code: 'remote-task-rate-limited',
+      status: 429,
+    });
     const wait = (error as { details: { retryAfterMs: number } }).details
       .retryAfterMs;
     expect(wait).toBeGreaterThan(100_000);

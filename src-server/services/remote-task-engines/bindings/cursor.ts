@@ -59,7 +59,8 @@ const AGENT_STATES: Readonly<Record<string, RemoteTaskStatus>> = {
 };
 
 function agentPath(taskId: string): string {
-  if (!AGENT_ID.test(taskId)) throw new Error('A Cursor agent id starts with "bc-".');
+  if (!AGENT_ID.test(taskId))
+    throw new Error('A Cursor agent id starts with "bc-".');
   return `/v1/agents/${encodeURIComponent(taskId)}`;
 }
 
@@ -277,7 +278,8 @@ export const cursorBinding: RemoteTaskBinding = {
       } catch {
         continue;
       }
-      if (typeof text === 'string') events.push({ id: event.id, author: 'agent', text });
+      if (typeof text === 'string')
+        events.push({ id: event.id, author: 'agent', text });
     }
     return {
       events,
@@ -306,6 +308,8 @@ export const cursorBinding: RemoteTaskBinding = {
       path: `${agentPath(taskId)}/usage`,
     });
     const total = asRecord(asRecord(body).totalUsage).totalTokens;
-    return typeof total === 'number' ? [{ unit: 'tokens', quantity: total }] : [];
+    return typeof total === 'number'
+      ? [{ unit: 'tokens', quantity: total }]
+      : [];
   },
 };

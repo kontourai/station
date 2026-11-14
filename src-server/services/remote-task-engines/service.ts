@@ -18,8 +18,8 @@
  */
 import { randomBytes } from 'node:crypto';
 import {
-  managedPolicyDenial,
   type ManagedPolicySummary,
+  managedPolicyDenial,
 } from '@kontourai/station-contracts/managed-policy';
 import {
   type ManagedPolicyEngineLimits,
@@ -58,7 +58,6 @@ import {
   appendRemoteTaskEvents,
   type RemoteTaskConnectionRecord,
   RemoteTaskConnectionStore,
-  type RemoteTaskRecord,
   RemoteTaskStore,
 } from './stores.js';
 import { VendorHttp } from './vendor-http.js';
@@ -68,7 +67,9 @@ export const REMOTE_TASK_SETTINGS_PATH =
 
 /** The managed policy as the gate reads it; null: no policy installed. */
 export interface RemoteTaskManagedPolicy {
-  readonly document: { readonly limits?: { engines?: ManagedPolicyEngineLimits } };
+  readonly document: {
+    readonly limits?: { engines?: ManagedPolicyEngineLimits };
+  };
   readonly summary: ManagedPolicySummary;
 }
 
@@ -107,7 +108,10 @@ function invalid(message: string): RemoteTaskError {
   return new RemoteTaskError('remote-task-invalid', message, 400);
 }
 
-function unsupported(vendor: RemoteTaskVendorId, what: string): RemoteTaskError {
+function unsupported(
+  vendor: RemoteTaskVendorId,
+  what: string,
+): RemoteTaskError {
   return new RemoteTaskError(
     'remote-task-capability-unsupported',
     `${REMOTE_TASK_VENDOR_LABELS[vendor]} does not offer ${what}.`,
@@ -393,7 +397,8 @@ export class RemoteTaskEngineService {
         : REMOTE_TASK_VENDOR_LABELS[vendor];
     if (label.length > LABEL_MAX_CHARS) throw invalid('label is too long');
     const settings = cleanSettings(binding, record.settings);
-    const polling = (record.polling ?? binding.defaultPolling) as RemoteTaskPolling;
+    const polling = (record.polling ??
+      binding.defaultPolling) as RemoteTaskPolling;
     const problems = remoteTaskPollingProblems(polling);
     if (problems.length > 0) throw invalid(problems.join('; '));
     const id = `remote-task-${randomBytes(8).toString('hex')}`;
@@ -402,7 +407,10 @@ export class RemoteTaskEngineService {
       vendor,
       label,
       settings,
-      polling: { intervalMs: polling.intervalMs, maxBackoffMs: polling.maxBackoffMs },
+      polling: {
+        intervalMs: polling.intervalMs,
+        maxBackoffMs: polling.maxBackoffMs,
+      },
       // Never carried over from the request: a person accepts it separately.
       acknowledgement: null,
       createdAt: new Date(this.#now()).toISOString(),
@@ -442,7 +450,10 @@ export class RemoteTaskEngineService {
       const problems = remoteTaskPollingProblems(record.polling);
       if (problems.length > 0) throw invalid(problems.join('; '));
       const next = record.polling as RemoteTaskPolling;
-      polling = { intervalMs: next.intervalMs, maxBackoffMs: next.maxBackoffMs };
+      polling = {
+        intervalMs: next.intervalMs,
+        maxBackoffMs: next.maxBackoffMs,
+      };
     }
     const updated = await this.#connections.mutate(connectionId, (entry) =>
       entry ? { ...entry, label, settings, polling } : undefined,
@@ -546,7 +557,8 @@ export class RemoteTaskEngineService {
 
   async getTask(connectionId: string, taskId: string): Promise<RemoteTask> {
     const { connection, binding } = this.gate(connectionId);
-    if (!binding.getTask) throw unsupported(connection.vendor, 'reading a task');
+    if (!binding.getTask)
+      throw unsupported(connection.vendor, 'reading a task');
     const getTask = binding.getTask;
     return this.#call(connectionId, (context) => getTask(context, taskId));
   }
@@ -556,7 +568,8 @@ export class RemoteTaskEngineService {
     cursor: string | null,
   ): Promise<{ tasks: readonly RemoteTask[]; cursor: string | null }> {
     const { connection, binding } = this.gate(connectionId);
-    if (!binding.listTasks) throw unsupported(connection.vendor, 'listing tasks');
+    if (!binding.listTasks)
+      throw unsupported(connection.vendor, 'listing tasks');
     const listTasks = binding.listTasks;
     return this.#call(connectionId, (context) => listTasks(context, cursor));
   }
@@ -602,7 +615,11 @@ export class RemoteTaskEngineService {
     connectionId: string,
     taskId: string,
     after: number,
-  ): { events: RemoteTaskStoredEvent[]; task: RemoteTask | null; tracking: string } {
+  ): {
+    events: RemoteTaskStoredEvent[];
+    task: RemoteTask | null;
+    tracking: string;
+  } {
     this.#requirePreview();
     const connection = this.#connection(connectionId);
     this.#requirePolicy(connection.vendor);
@@ -660,22 +677,30 @@ export class RemoteTaskEngineService {
           ...(task.updatedAt ? { createdAt: task.updatedAt } : {}),
         });
       const appended: RemoteTaskStoredEvent[] = [];
-      let record = await this.#tasks.mutate(connection.id, taskId, (current) => {
-        const next = appendRemoteTaskEvents(current, statusEvents);
-        appended.push(...next.appended);
-        return { ...next.record, snapshot: task };
-      });
+      let record = await this.#tasks.mutate(
+        connection.id,
+        taskId,
+        (current) => {
+          const next = appendRemoteTaskEvents(current, statusEvents);
+          appended.push(...next.appended);
+          return { ...next.record, snapshot: task };
+        },
+      );
       let more = false;
       if (binding.capabilities.events && binding.pageEvents) {
         let cursor = record.vendorCursor;
         for (let page = 0; page < EVENT_PAGES_PER_SYNC; page += 1) {
           const result = await binding.pageEvents(context, taskId, cursor);
           cursor = result.cursor;
-          record = await this.#tasks.mutate(connection.id, taskId, (current) => {
-            const next = appendRemoteTaskEvents(current, result.events);
-            appended.push(...next.appended);
-            return { ...next.record, vendorCursor: result.cursor };
-          });
+          record = await this.#tasks.mutate(
+            connection.id,
+            taskId,
+            (current) => {
+              const next = appendRemoteTaskEvents(current, result.events);
+              appended.push(...next.appended);
+              return { ...next.record, vendorCursor: result.cursor };
+            },
+          );
           more = result.hasMore;
           if (!result.hasMore) break;
         }

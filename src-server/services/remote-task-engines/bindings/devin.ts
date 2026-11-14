@@ -90,10 +90,7 @@ function epochToIso(value: unknown): string | undefined {
   return new Date(ms).toISOString();
 }
 
-export function devinSession(
-  connectionId: string,
-  body: unknown,
-): RemoteTask {
+export function devinSession(connectionId: string, body: unknown): RemoteTask {
   const record = asRecord(body);
   const sessionId = stringField(record, 'session_id');
   const status = stringField(record, 'status');
@@ -186,8 +183,7 @@ export const devinBinding: RemoteTaskBinding = {
     const title = stringField(record, 'title');
     const detail = stringField(record, 'detail');
     const code = stringField(record, 'error_code');
-    const message =
-      title && detail ? `${title}: ${detail}` : (detail ?? title);
+    const message = title && detail ? `${title}: ${detail}` : (detail ?? title);
     return { ...(message ? { message } : {}), ...(code ? { code } : {}) };
   },
 
@@ -221,7 +217,9 @@ export const devinBinding: RemoteTaskBinding = {
     if (!Array.isArray(record.items)) throw malformed(VENDOR, 'a session list');
     const next = stringField(record, 'end_cursor');
     return {
-      tasks: record.items.map((item) => devinSession(context.connectionId, item)),
+      tasks: record.items.map((item) =>
+        devinSession(context.connectionId, item),
+      ),
       cursor: record.has_next_page === true && next ? next : null,
     };
   },

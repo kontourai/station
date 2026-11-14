@@ -42,10 +42,14 @@ describe('remote task polling bounds', () => {
 
 describe('nextRemoteTaskPollDelay', () => {
   test('success polls after the interval', () => {
-    expect(nextRemoteTaskPollDelay(POLLING, 40_000, { kind: 'ok' })).toBe(10_000);
+    expect(nextRemoteTaskPollDelay(POLLING, 40_000, { kind: 'ok' })).toBe(
+      10_000,
+    );
   });
   test('failure doubles up to the ceiling', () => {
-    expect(nextRemoteTaskPollDelay(POLLING, 0, { kind: 'failed' })).toBe(20_000);
+    expect(nextRemoteTaskPollDelay(POLLING, 0, { kind: 'failed' })).toBe(
+      20_000,
+    );
     expect(nextRemoteTaskPollDelay(POLLING, 40_000, { kind: 'failed' })).toBe(
       60_000,
     );
@@ -74,7 +78,7 @@ describe('nextRemoteTaskPollDelay', () => {
 
 describe('remote task acknowledgement', () => {
   test.each(REMOTE_TASK_VENDOR_IDS)(
-    "the %s statement names the vendor and says code leaves the computer",
+    'the %s statement names the vendor and says code leaves the computer',
     (vendor) => {
       const statement = remoteTaskAcknowledgementStatement(vendor);
       expect(statement).toContain(REMOTE_TASK_VENDOR_LABELS[vendor]);
@@ -116,7 +120,9 @@ describe('limits.engines.remoteTasks', () => {
 
   test('refuses unknown and repeated vendors and a non-list', () => {
     expect(
-      engineLimitProblems({ engines: { remoteTasks: ['factory', 'devin', 'devin'] } }),
+      engineLimitProblems({
+        engines: { remoteTasks: ['factory', 'devin', 'devin'] },
+      }),
     ).toEqual([
       {
         path: 'limits.engines.remoteTasks[0]',
@@ -138,7 +144,9 @@ describe('limits.engines.remoteTasks', () => {
   test('without a policy every vendor is allowed; with one only those listed', () => {
     expect(managedRemoteTaskVendorAllowed(null, 'devin')).toBe(true);
     expect(managedRemoteTaskVendorAllowed({}, 'devin')).toBe(false);
-    expect(managedRemoteTaskVendorAllowed({ engines: {} }, 'devin')).toBe(false);
+    expect(managedRemoteTaskVendorAllowed({ engines: {} }, 'devin')).toBe(
+      false,
+    );
     expect(
       managedRemoteTaskVendorAllowed(
         { engines: { remoteTasks: ['devin'] } },

@@ -67,7 +67,9 @@ export class VendorFake {
   readonly fetch: typeof fetch = async (input, init) => {
     const url = new URL(String(input));
     if (url.origin !== this.#origin)
-      throw new TypeError(`fake ${this.#origin} got a request for ${url.origin}`);
+      throw new TypeError(
+        `fake ${this.#origin} got a request for ${url.origin}`,
+      );
     const headers = new Headers(init?.headers);
     const raw = init?.body;
     const body = typeof raw === 'string' ? JSON.parse(raw) : undefined;
@@ -93,7 +95,9 @@ export class VendorFake {
 }
 
 /** A fetch that routes each origin to its fake. */
-export function routedFetch(...fakes: Array<[string, VendorFake]>): typeof fetch {
+export function routedFetch(
+  ...fakes: Array<[string, VendorFake]>
+): typeof fetch {
   return async (input, init) => {
     const origin = new URL(String(input)).origin;
     const fake = fakes.find(([o]) => o === origin)?.[1];
@@ -117,7 +121,8 @@ export function devinFake(orgId: string) {
   const messages = new Map<string, DevinMessage[]>();
   let next = 1;
   const base = `/v3/organizations/${orgId}/sessions`;
-  const sessionResponse = (id: string) => sessions.get(id) as Record<string, unknown>;
+  const sessionResponse = (id: string) =>
+    sessions.get(id) as Record<string, unknown>;
 
   fake.on('POST', new RegExp(`^${base}$`), (request) => {
     const id = `devin-${String(next).padStart(12, '0')}`;
@@ -160,35 +165,47 @@ export function devinFake(orgId: string) {
     const session = sessions.get(match[1] as string);
     return session
       ? json(200, session)
-      : json(404, { title: 'Not Found', status: 404, detail: 'No such session' });
+      : json(404, {
+          title: 'Not Found',
+          status: 404,
+          detail: 'No such session',
+        });
   });
-  fake.on('POST', new RegExp(`^${base}/(devin-[^/]+)/messages$`), (request, match) => {
-    const id = match[1] as string;
-    const list = messages.get(id);
-    if (!list) return json(404, { title: 'Not Found', status: 404 });
-    list.push({
-      event_id: `${id}-evt-${list.length}`,
-      source: 'user',
-      message: (request.body as { message: string }).message,
-      created_at: 1_763_000_100,
-    });
-    return json(200, sessionResponse(id));
-  });
-  fake.on('GET', new RegExp(`^${base}/(devin-[^/]+)/messages$`), (request, match) => {
-    const list = messages.get(match[1] as string);
-    if (!list) return json(404, { title: 'Not Found', status: 404 });
-    // Opaque cursors over the message index.
-    const after = request.url.searchParams.get('after');
-    const start = after ? Number(after.replace('c', '')) + 1 : 0;
-    const first = Number(request.url.searchParams.get('first') ?? 100);
-    const items = list.slice(start, start + first);
-    const end = start + items.length - 1;
-    return json(200, {
-      items,
-      end_cursor: items.length > 0 ? `c${end}` : null,
-      has_next_page: end + 1 < list.length,
-    });
-  });
+  fake.on(
+    'POST',
+    new RegExp(`^${base}/(devin-[^/]+)/messages$`),
+    (request, match) => {
+      const id = match[1] as string;
+      const list = messages.get(id);
+      if (!list) return json(404, { title: 'Not Found', status: 404 });
+      list.push({
+        event_id: `${id}-evt-${list.length}`,
+        source: 'user',
+        message: (request.body as { message: string }).message,
+        created_at: 1_763_000_100,
+      });
+      return json(200, sessionResponse(id));
+    },
+  );
+  fake.on(
+    'GET',
+    new RegExp(`^${base}/(devin-[^/]+)/messages$`),
+    (request, match) => {
+      const list = messages.get(match[1] as string);
+      if (!list) return json(404, { title: 'Not Found', status: 404 });
+      // Opaque cursors over the message index.
+      const after = request.url.searchParams.get('after');
+      const start = after ? Number(after.replace('c', '')) + 1 : 0;
+      const first = Number(request.url.searchParams.get('first') ?? 100);
+      const items = list.slice(start, start + first);
+      const end = start + items.length - 1;
+      return json(200, {
+        items,
+        end_cursor: items.length > 0 ? `c${end}` : null,
+        has_next_page: end + 1 < list.length,
+      });
+    },
+  );
   fake.on('DELETE', new RegExp(`^${base}/(devin-[^/]+)$`), (_r, match) => {
     const session = sessions.get(match[1] as string);
     if (!session) return json(404, { title: 'Not Found', status: 404 });
@@ -223,32 +240,28 @@ export function githubFake() {
   const fake = new VendorFake('https://api.github.com');
   const tasks = new Map<string, Record<string, unknown>>();
   let next = 1;
-  fake.on(
-    'POST',
-    /^\/agents\/repos\/([^/]+)\/([^/]+)\/tasks$/,
-    (request) => {
-      const id = `task_${next}`;
-      next += 1;
-      const body = request.body as Record<string, unknown>;
-      tasks.set(id, {
-        id,
-        url: `https://api.github.com/agents/tasks/${id}`,
-        html_url: `https://github.com/copilot/tasks/${id}`,
-        name: String(body.prompt).slice(0, 40),
-        creator: { id: 1 },
-        creator_type: 'user',
-        owner: { id: 2 },
-        repository: { id: 3 },
-        state: 'queued',
-        session_count: 1,
-        artifacts: [],
-        archived_at: null,
-        created_at: '2026-11-14T10:00:00Z',
-        updated_at: '2026-11-14T10:00:00Z',
-      });
-      return json(201, tasks.get(id));
-    },
-  );
+  fake.on('POST', /^\/agents\/repos\/([^/]+)\/([^/]+)\/tasks$/, (request) => {
+    const id = `task_${next}`;
+    next += 1;
+    const body = request.body as Record<string, unknown>;
+    tasks.set(id, {
+      id,
+      url: `https://api.github.com/agents/tasks/${id}`,
+      html_url: `https://github.com/copilot/tasks/${id}`,
+      name: String(body.prompt).slice(0, 40),
+      creator: { id: 1 },
+      creator_type: 'user',
+      owner: { id: 2 },
+      repository: { id: 3 },
+      state: 'queued',
+      session_count: 1,
+      artifacts: [],
+      archived_at: null,
+      created_at: '2026-11-14T10:00:00Z',
+      updated_at: '2026-11-14T10:00:00Z',
+    });
+    return json(201, tasks.get(id));
+  });
   fake.on('GET', /^\/agents\/tasks$/, () =>
     json(200, {
       tasks: [...tasks.values()],
@@ -354,7 +367,10 @@ export function cursorFake() {
   const fake = new VendorFake('https://api.cursor.com');
   const agentId = CURSOR_CREATE_RESPONSE.agent.id;
   const state = {
-    agent: structuredClone(CURSOR_CREATE_RESPONSE.agent) as Record<string, unknown>,
+    agent: structuredClone(CURSOR_CREATE_RESPONSE.agent) as Record<
+      string,
+      unknown
+    >,
     run: structuredClone(CURSOR_CREATE_RESPONSE.run) as Record<string, unknown>,
     busy: false,
     /** The agent stream as Cursor retains it; `status` without id leads. */
@@ -362,22 +378,27 @@ export function cursorFake() {
     expiredBefore: undefined as string | undefined,
   };
   fake.on('POST', /^\/v1\/agents$/, () => json(200, CURSOR_CREATE_RESPONSE));
-  fake.on('GET', /^\/v1\/agents$/, () =>
-    json(200, { items: [state.agent] }),
-  );
+  fake.on('GET', /^\/v1\/agents$/, () => json(200, { items: [state.agent] }));
   fake.on('GET', /^\/v1\/agents\/([^/]+)$/, (_r, match) =>
     match[1] === agentId
       ? json(200, state.agent)
-      : json(404, { error: { code: 'agent_not_found', message: 'Agent not found' } }),
+      : json(404, {
+          error: { code: 'agent_not_found', message: 'Agent not found' },
+        }),
   );
-  fake.on('GET', /^\/v1\/agents\/[^/]+\/runs\/([^/]+)$/, () => json(200, state.run));
+  fake.on('GET', /^\/v1\/agents\/[^/]+\/runs\/([^/]+)$/, () =>
+    json(200, state.run),
+  );
   fake.on('POST', /^\/v1\/agents\/[^/]+\/runs$/, (request) => {
     const body = request.body as Record<string, unknown>;
     if (body.delivery === 'steer')
       return json(202, { delivery: 'steered', runId: state.run.id });
     if (state.busy)
       return json(409, {
-        error: { code: 'agent_busy', message: 'Agent already has an active run' },
+        error: {
+          code: 'agent_busy',
+          message: 'Agent already has an active run',
+        },
       });
     return json(200, {
       run: {
@@ -389,10 +410,14 @@ export function cursorFake() {
       },
     });
   });
-  fake.on('POST', /^\/v1\/agents\/[^/]+\/runs\/([^/]+)\/cancel$/, (_r, match) => {
-    state.run.status = 'CANCELLED';
-    return json(200, { id: match[1] });
-  });
+  fake.on(
+    'POST',
+    /^\/v1\/agents\/[^/]+\/runs\/([^/]+)\/cancel$/,
+    (_r, match) => {
+      state.run.status = 'CANCELLED';
+      return json(200, { id: match[1] });
+    },
+  );
   fake.on('GET', /^\/v1\/agents\/[^/]+\/usage$/, () => json(200, CURSOR_USAGE));
   fake.on('GET', /^\/v1\/agents\/[^/]+\/stream$/, (request) => {
     const last = request.headers.get('last-event-id');

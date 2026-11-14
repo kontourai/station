@@ -116,7 +116,10 @@ export class RemoteTaskTracker {
         next = nextRemoteTaskPollDelay(polling, entry.delayMs, { kind: 'ok' });
     } catch (error) {
       const code = error instanceof RemoteTaskError ? error.code : undefined;
-      if (code === 'feature_preview_disabled' || code === 'remote-task-policy-refused')
+      if (
+        code === 'feature_preview_disabled' ||
+        code === 'remote-task-policy-refused'
+      )
         next = polling.maxBackoffMs;
       else if (code === 'remote-task-rate-limited')
         next = nextRemoteTaskPollDelay(polling, entry.delayMs, {

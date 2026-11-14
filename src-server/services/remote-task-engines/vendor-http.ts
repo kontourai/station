@@ -101,12 +101,15 @@ export class VendorHttp {
     signal?: AbortSignal,
   ): Promise<Response> {
     const options = this.#options;
-    const timeout = AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    const timeout = AbortSignal.timeout(
+      options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    );
     const headers: Record<string, string> = {
       ...options.headers,
       ...extraHeaders,
     };
-    if (request.body !== undefined) headers['content-type'] = 'application/json';
+    if (request.body !== undefined)
+      headers['content-type'] = 'application/json';
     try {
       return await options.fetch(this.#url(request.path, request.query), {
         method: request.method,

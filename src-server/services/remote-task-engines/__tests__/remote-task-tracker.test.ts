@@ -75,7 +75,13 @@ describe('RemoteTaskTracker', () => {
   });
 
   test('failures double the delay up to the ceiling, and success resets it', async () => {
-    const t = setup([unavailable(), unavailable(), unavailable(), unavailable(), 'ok']);
+    const t = setup([
+      unavailable(),
+      unavailable(),
+      unavailable(),
+      unavailable(),
+      'ok',
+    ]);
     t.tracker.track('c', 'task');
     const delays: number[] = [];
     for (let i = 0; i < 5; i += 1) {
@@ -125,10 +131,13 @@ describe('RemoteTaskTracker', () => {
   });
 
   test('resume schedules every stored active task at once', () => {
-    const t = setup([], [
-      ['c1', 'a'],
-      ['c2', 'b'],
-    ]);
+    const t = setup(
+      [],
+      [
+        ['c1', 'a'],
+        ['c2', 'b'],
+      ],
+    );
     t.tracker.resume();
     expect(t.pending()).toEqual([0, 0]);
     expect(t.tracker.isTracking('c1', 'a')).toBe(true);

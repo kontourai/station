@@ -57,7 +57,10 @@ export function harness(fetchImpl: typeof fetch, home?: string) {
     settings: Record<string, string> = {},
   ) {
     const view = await service.createConnection({ vendor, settings });
-    await service.acknowledge(view.id, remoteTaskAcknowledgementStatement(vendor));
+    await service.acknowledge(
+      view.id,
+      remoteTaskAcknowledgementStatement(vendor),
+    );
     await service.setCredential(view.id, token);
     return view.id;
   }
