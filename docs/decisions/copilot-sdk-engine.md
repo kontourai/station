@@ -50,6 +50,11 @@ platform packages were not opened, and none is installed either way.
   mapped to the package's `npm-loader.js`, which the SDK runs with Node. A
   managed policy cannot pin this engine's binary, arguments or environment:
   its engine ids do not name `copilot-sdk`.
+- **Bundled as an external package.** The server bundle keeps
+  `@github/copilot-sdk` external, as it does `@anthropic-ai/claude-agent-sdk`.
+  Inlined, the SDK's lazily imported in-process transport put a static
+  `import koffi` at the top of the bundle, and a packaged server off Windows,
+  where `koffi` ships no loadable code, failed at startup.
 - **No proprietary package installed or shipped.** `pnpm-workspace.yaml`
   lists all eight platform packages in `ignoredOptionalDependencies`, so no
   install, lockfile, or Station build contains them. The SDK's `koffi` pin is
@@ -104,7 +109,7 @@ Copilot-only path.
 | `abort()` | `interruptTurn`, confirmed by the turn's own `session.idle` |
 | `onPermissionRequest` | `request.opened` / `respondToRequest` (below) |
 | `session.history.rewind` | `rewindSession` / `sessionContinuity` (`rewind: 'in-place'`) |
-| `subagent.started` / `completed` / `failed` | `child-work.updated` upsert and settle |
+| `subagent.started` / `completed` / `failed`, and the task tool's `tool.execution_complete` | `child-work.updated`: a snapshot of running children on each start, then settles carrying status, usage and the task tool's reply as a `tool-return` result; no nesting depth is claimed |
 | `assistant.usage` | `token-usage.updated`, one per model call (scope `per-turn`) |
 | `session.mcp_servers_loaded`, `session.mcp_server_status_changed` | `engine-mcp.status` |
 | `session.mcp.restartServer` | `reconnectMcpServer` |
