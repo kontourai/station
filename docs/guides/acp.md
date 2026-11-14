@@ -128,8 +128,9 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    `gemini-cli`) creates sessions with its saved sign-in method, or with the
    API key when none is saved, but reloads them only with a saved method: a
    key-only connection gets `Authentication required` (-32000) on
-   `session/load`. When the connection has a `GEMINI_API_KEY` (stored in
-   Station or inherited from the host environment) and Gemini refuses
+   `session/load`. When the engine process actually received a non-empty
+   `GEMINI_API_KEY` (stored in Station or inherited from the host
+   environment, and not emptied by a locked managed pin) and Gemini refuses
    exactly that way, Station starts a new Gemini session and says so in the
    conversation (`acp.session-started-fresh`, counted `started-fresh`). The
    notice names the fix: choose Gemini's API key sign-in once, after which
@@ -145,8 +146,12 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    The new engine session holds none of the conversation, including what its
    first turn delivered. Orchestration therefore treats the notice as a new
    start of the engine's context: the next turn carries the Agent's authored
-   prompt, Station's instructions and any Task brief again, once
-   (`turnStartedSinceEngineContextBegan`). The approval-floor relaunch has no
+   prompt, Station's instructions, any Task brief, the workload budget and
+   the chat-host-images line again, once
+   (`turnStartedSinceEngineContextBegan`). The notice says the instructions
+   follow only when the start carries any. The note about work a previous
+   engine left running keeps its own rule, since it describes a predecessor
+   Session, not this engine's context. The approval-floor relaunch has no
    such fallback: a key-only Gemini session refused there keeps its old
    engine process and the switch fails visibly.
    On `session/load`, ACP has the agent replay the whole conversation as
