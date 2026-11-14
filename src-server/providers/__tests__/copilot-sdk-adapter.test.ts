@@ -19,7 +19,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import type {
   MessageOptions,
   ModelInfo,
@@ -38,7 +38,10 @@ import {
   CopilotSdkAdapter,
   resolveCopilotCliLaunchPath,
 } from '../adapters/copilot-sdk-adapter.js';
-import { copilotRealPath } from '../adapters/copilot-sdk-approval.js';
+import {
+  type CopilotRealPathFs,
+  copilotRealPath,
+} from '../adapters/copilot-sdk-approval.js';
 import type {
   CopilotHistoryRewindRequest,
   CopilotHistoryRewindResult,
@@ -65,6 +68,27 @@ writeFileSync(join(OUTSIDE, 'secret'), 'secret');
 symlinkSync(OUTSIDE, join(CWD, 'link'), 'junction');
 // A dangling link: it points outside, at a directory that does not exist yet.
 symlinkSync(join(OUTSIDE, 'not-yet'), join(CWD, 'dangling'), 'junction');
+// `up` leads to <root>/a/b, so up/../x.txt is <root>/a/x.txt to the kernel.
+mkdirSync(join(ROOT, 'a', 'b'), { recursive: true });
+symlinkSync(join(ROOT, 'a', 'b'), join(CWD, 'up'), 'junction');
+// Relative symlinks need POSIX, or symlink privilege on Windows. Where they
+// work: p/q/l -> s, and s/d -> ../../escaped.txt (dangling), which the kernel
+// reads from the real s, so a write through p/q/l/d lands beside the repo.
+const RELATIVE_LINKS = (() => {
+  try {
+    symlinkSync(`..${sep}probe-target`, join(ROOT, 'probe-link'), 'file');
+    rmSync(join(ROOT, 'probe-link'));
+    return true;
+  } catch {
+    return false;
+  }
+})();
+if (RELATIVE_LINKS) {
+  mkdirSync(join(CWD, 'p', 'q'), { recursive: true });
+  mkdirSync(join(CWD, 's'), { recursive: true });
+  symlinkSync(join(CWD, 's'), join(CWD, 'p', 'q', 'l'), 'junction');
+  symlinkSync(`..${sep}..${sep}escaped.txt`, join(CWD, 's', 'd'), 'file');
+}
 const COPILOT_HOME = join(ROOT, 'copilot-home');
 const BINDING = nativeResumeBindingKey('copilot-sdk', COPILOT_HOME, null);
 
@@ -917,6 +941,57 @@ describe('Copilot SDK adapter: turns', () => {
     expect(h.adapter.hasOpenEngineWork('thread-1')).toBe(false);
   });
 
+  test("a subagent's policy block that names the root message leaves the root turn running", async () => {
+    const h = harness();
+    const { session, turnId } = await startedTurn(h);
+    session.emit({
+      type: 'session.warning',
+      id: session.nextEventId(),
+      parentId: null,
+      timestamp: at(2),
+      agentId: 'sub-1',
+      data: {
+        warningType: 'policy_blocked',
+        message: 'A prompt hook blocked the subagent.',
+        originatingMessageId: `m-${turnId}`,
+      },
+    } as SessionEvent);
+    await h.settle();
+    expect(
+      h.events.some((e) => e.method === 'turn.aborted' && e.turnId === turnId),
+    ).toBe(false);
+    expect(h.adapter.hasOpenEngineWork('thread-1')).toBe(true);
+  });
+
+  test('a held signal for another message does not carry into the next turn', async () => {
+    const h = harness();
+    const session = await start(h);
+    // Before turn one's send() returns, an error names msg-2: a message this
+    // turn never sends, which the next turn's send() will return.
+    session.onSend = (messageId) => {
+      if (messageId === 'msg-1')
+        session.emit(sessionError(session, { originatingMessageId: 'msg-2' }));
+    };
+    const first = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'one',
+    });
+    session.onSend = undefined;
+    session.emit(userMessage(session, first.turnId, 'one'));
+    session.emit(idle(session));
+    const second = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'two',
+    });
+    await h.settle();
+    expect(
+      h.events.some(
+        (e) => e.method === 'turn.aborted' && e.turnId === second.turnId,
+      ),
+    ).toBe(false);
+    expect(h.adapter.hasOpenEngineWork('thread-1')).toBe(true);
+  });
+
   test('a recoverable root error is a warning and the turn runs on', async () => {
     const h = harness();
     const { session, turnId } = await startedTurn(h);
@@ -1106,6 +1181,29 @@ describe('Copilot SDK adapter: approvals', () => {
     await h.settle();
     expect(opened(h)).toHaveLength(2);
   });
+
+  test('a write through `..` after a link asks where the kernel would land', async () => {
+    const h = harness();
+    const session = await start(h, {
+      modelOptions: { approvalMode: 'auto' },
+    });
+    void session.ask(write('up/../x.txt', `${CWD}${sep}up${sep}..${sep}x.txt`));
+    await h.settle();
+    expect(opened(h)).toHaveLength(1);
+  });
+
+  test.skipIf(!RELATIVE_LINKS)(
+    'a write through a link chain whose dangling target escapes asks a person',
+    async () => {
+      const h = harness();
+      const session = await start(h, {
+        modelOptions: { approvalMode: 'auto' },
+      });
+      void session.ask(write('p/q/l/d', `${CWD}${sep}p${sep}q${sep}l${sep}d`));
+      await h.settle();
+      expect(opened(h)).toHaveLength(1);
+    },
+  );
 
   test('a write whose edits reach outside the directory asks a person', async () => {
     const h = harness();
@@ -1511,45 +1609,115 @@ describe('Copilot SDK adapter: rewind', () => {
   });
 });
 
-describe('Copilot SDK approvals: real-path resolution fails closed', () => {
-  const missing = (code: string) =>
+describe('Copilot SDK approvals: real-path resolution', () => {
+  const failure = (code: string) =>
     Object.assign(new Error(code), { code }) as NodeJS.ErrnoException;
+  // A fake filesystem root, so these cases run alike on every platform.
+  const FAKE = resolve('/copilot-fake-fs');
+  const at_ = (...parts: string[]) => join(FAKE, ...parts);
+
+  /**
+   * Directories and files that exist, symlinks (some dangling) and errors to
+   * raise. `realpath` succeeds only for an existing path with no symlink in
+   * it, which is how the walk has to discover each link itself.
+   */
+  function fakeFs(spec: {
+    exist: string[];
+    links?: Record<string, string>;
+    errors?: Record<string, string>;
+  }): CopilotRealPathFs {
+    const exist = new Set<string>();
+    for (const path of spec.exist) {
+      let current = path;
+      while (!exist.has(current)) {
+        exist.add(current);
+        const parent = dirname(current);
+        if (parent === current) break;
+        current = parent;
+      }
+    }
+    const links = spec.links ?? {};
+    const errors = spec.errors ?? {};
+    return {
+      realpath: (path) => {
+        if (errors[path]) throw failure(errors[path]);
+        if (exist.has(path)) return path;
+        throw failure('ENOENT');
+      },
+      // Errors are realpath's alone: lstat answers "absent", so treating a
+      // realpath error as absence would resolve the name.
+      lstat: (path) => {
+        if (path in links) return { isSymbolicLink: () => true };
+        if (exist.has(path)) return { isSymbolicLink: () => false };
+        throw failure('ENOENT');
+      },
+      readlink: (path) => links[path]!,
+    };
+  }
+
+  test("a dangling link's relative target is read from the link's real directory", () => {
+    // repo/p/q/l -> repo/s, and repo/s/d -> ../../escaped.txt (dangling): the
+    // kernel reads d's target from repo/s, so a write lands beside repo.
+    const fs = fakeFs({
+      exist: [at_('repo', 'p', 'q'), at_('repo', 's')],
+      links: {
+        [at_('repo', 'p', 'q', 'l')]: at_('repo', 's'),
+        [at_('repo', 's', 'd')]: `..${sep}..${sep}escaped.txt`,
+      },
+    });
+    expect(
+      copilotRealPath(at_('repo', 'p', 'q', 'l', 'd'), at_('repo'), fs),
+    ).toBe(at_('escaped.txt'));
+  });
+
+  test('`..` leaves the real directory, not the lexical one', () => {
+    // repo/up -> <root>/a/b: repo/up/../x.txt is <root>/a/x.txt.
+    const fs = fakeFs({
+      exist: [at_('repo'), at_('a', 'b')],
+      links: { [at_('repo', 'up')]: at_('a', 'b') },
+    });
+    expect(
+      copilotRealPath(
+        `${at_('repo')}${sep}up${sep}..${sep}x.txt`,
+        at_('repo'),
+        fs,
+      ),
+    ).toBe(at_('a', 'x.txt'));
+  });
+
+  test('a name not created yet is kept as named under its real parent', () => {
+    const fs = fakeFs({ exist: [at_('repo', 'src')] });
+    expect(copilotRealPath(`src${sep}new.ts`, at_('repo'), fs)).toBe(
+      at_('repo', 'src', 'new.ts'),
+    );
+  });
 
   test('a path that cannot be resolved for any reason but absence is unresolvable', () => {
     // Only the target is unreadable; its parent resolves. Read as "absent",
     // the error would let the target resolve through that parent.
-    const target = join(CWD, 'x');
-    const denied = {
-      realpath: (path: string) => {
-        if (path === target) throw missing('EACCES');
-        return path;
-      },
-      lstat: () => ({ isSymbolicLink: () => false }),
-      readlink: () => '',
-    };
-    expect(copilotRealPath('x', CWD, denied)).toBeUndefined();
-    const lstatDenied = {
-      realpath: () => {
-        throw missing('ENOENT');
-      },
-      lstat: () => {
-        throw missing('EACCES');
-      },
-      readlink: () => '',
-    };
-    expect(copilotRealPath('x', CWD, lstatDenied)).toBeUndefined();
+    expect(
+      copilotRealPath(
+        'x',
+        at_('repo'),
+        fakeFs({
+          exist: [at_('repo')],
+          errors: { [at_('repo', 'x')]: 'EACCES' },
+        }),
+      ),
+    ).toBeUndefined();
   });
 
   test('a chain of links longer than the bound is unresolvable', () => {
-    let hop = 0;
-    const endless = {
-      realpath: () => {
-        throw missing('ENOENT');
-      },
-      lstat: () => ({ isSymbolicLink: () => true }),
-      readlink: () => `link-${++hop}`,
-    };
-    expect(copilotRealPath('start', CWD, endless)).toBeUndefined();
+    const links: Record<string, string> = {};
+    for (let hop = 0; hop < 40; hop += 1)
+      links[at_('repo', `link-${hop}`)] = `link-${hop + 1}`;
+    expect(
+      copilotRealPath(
+        'link-0',
+        at_('repo'),
+        fakeFs({ exist: [at_('repo')], links }),
+      ),
+    ).toBeUndefined();
   });
 });
 
@@ -1597,6 +1765,27 @@ describe('Copilot SDK port: connection watch', () => {
       stop();
       await vi.advanceTimersByTimeAsync(COPILOT_CONNECTION_CHECK_MS * 2);
       expect(quiet).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('Copilot SDK port: stopping the watch', () => {
+  test('stopping during an unanswered ping clears its deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const lost = vi.fn();
+      const stop = copilotSdkClientPort({
+        ping: () => new Promise<never>(() => undefined),
+      } as never).watchConnection(lost);
+      await vi.advanceTimersByTimeAsync(COPILOT_CONNECTION_CHECK_MS);
+      // The interval and the in-flight ping's deadline.
+      expect(vi.getTimerCount()).toBe(2);
+      stop();
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(COPILOT_PING_TIMEOUT_MS);
+      expect(lost).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
