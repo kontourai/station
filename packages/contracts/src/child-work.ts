@@ -176,7 +176,10 @@ export type ChildWorkModelSource =
    * Agent tool's model choice.
    */
   | 'subagent-reply'
-  /** Codex: `model` on the completed `spawnAgent` call that created the child. */
+  /**
+   * The engine's report of the spawn that created the child: Codex's `model`
+   * on the completed `spawnAgent` call, Grok's `model` on `subagent_spawned`.
+   */
   | 'spawn-result'
   /** Codex: `thread.model` on the child thread's own `thread/started`. */
   | 'child-thread';
@@ -1155,6 +1158,21 @@ export function childWorkForReporter(
   return Object.values(state.items).filter(
     (item) => item.reporterThreadId === reporterThreadId,
   );
+}
+
+/**
+ * Drops a reporter's statement that it reports no child work, keeping its
+ * items: a new session start on the same thread makes its own statement (or
+ * reports), so an earlier one must not outlive it.
+ */
+export function clearChildWorkNotReported(
+  state: ChildWorkRegistryState,
+  reporterThreadId: string,
+): ChildWorkRegistryState {
+  if (!(reporterThreadId in state.notReported)) return state;
+  const notReported = { ...state.notReported };
+  delete notReported[reporterThreadId];
+  return { ...state, notReported };
 }
 
 /** Drops everything a reporter held, e.g. when its session exits. */

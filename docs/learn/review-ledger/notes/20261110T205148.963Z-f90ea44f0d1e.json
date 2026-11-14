@@ -1,7 +1,0 @@
-{
-  "revision": "ea7a72218027623efdabb2eb2375379d1d9e77fd",
-
-  "notes": [
-    {"path":"docs/user/concepts.md","note":"Still accurate: a failed inbox read still yields Couldn't load + Retry and never zero; it now appears only after two silent retries keep the last rows. Held-by-Station, Remove and Queue admission claims unchanged.","inputs":["docs/user/concepts.md","src-ui/src/hooks/useConversationInbox.ts"]}
-  ]
-}

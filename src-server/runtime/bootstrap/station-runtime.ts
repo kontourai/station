@@ -173,9 +173,12 @@ import { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
 import { CopilotSdkAdapter } from '../../providers/adapters/copilot-sdk-adapter.js';
 import { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
+import { runMuseMcpList } from '../../providers/adapters/muse-mcp-status.js';
+import { runMuseSchemaCommand } from '../../providers/adapters/muse-serve-schema.js';
 import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import {
   type CredentialProfileAppHomeEnvOptions,
+  createCredentialProfileAppHomeEnvPeek,
   createCredentialProfileAppHomeEnvResolver,
 } from '../../providers/app-home/credential-profile-env.js';
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
@@ -1175,13 +1178,31 @@ export class StationRuntime {
   });
   // Muse Code runs one `muse serve` host per session (#2452), so approvals
   // reach Station and workflow subagents appear as child work; a session
-  // whose host cannot be used falls back to one `muse exec` per turn. Muse's
-  // config (credential, settings, model) and data home (memory, plugins,
-  // session log) are the user's own either way — no `dataHome` override here
-  // — so there is no app-home/credential-profile closure to wire. The logger closure reads `this.logger` lazily for the same
-  // reason the Codex one above does.
+  // whose host cannot be used falls back to one `muse exec` per turn. A
+  // connection's credential profile gives Muse its own app home (#1942), read
+  // through these settings; the default profile keeps the user's own Muse
+  // home. The logger closure reads `this.logger` lazily for the same reason
+  // the Codex one above does.
+  private readonly museAppHomeSettings: CredentialProfileAppHomeEnvOptions = {
+    engine: 'muse',
+    loadConnectionSettings: async () =>
+      (await this.configLoader.loadAppConfig()).agentConnections?.muse,
+    warn: (message) =>
+      (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(message),
+  };
   private museAdapter = new MuseAdapter({
-    serve: {},
+    // A host on a schema fingerprint nobody verified is checked against its
+    // own schema export (`muse-serve-schema.ts`).
+    serve: { schemaCommandRunner: runMuseSchemaCommand },
+    // #1942: Muse's credential profiles, through the same resolver as the
+    // Claude and Codex adapters (lazy: invoked at session start only).
+    getAppHomeEnv: createCredentialProfileAppHomeEnvResolver(
+      this.museAppHomeSettings,
+    ),
+    peekAppHomeEnv: () =>
+      createCredentialProfileAppHomeEnvPeek(this.museAppHomeSettings)(),
+    // The engine's own MCP servers, read at session start (`muse mcp list`).
+    listMcpServers: runMuseMcpList,
     logger: {
       warn: (msg: string, context?: unknown) =>
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(

@@ -1,7 +1,0 @@
-{
-  "revision": "5032b9a87664a580d1cca890e36b98454b02baec",
-
-  "notes": [
-    {"path":"docs/design/cli-triage.md","note":"Reviewed #4483 shared contextual-redaction change against triage redaction claims. Known credential shapes remain pattern-based and are removed before persistence; harmless error prefixes now permit later credential matching. No command dispatch, artifact authorization, or terminal-output change; existing prose remains accurate.","inputs":["docs/design/cli-triage.md","packages/shared/src/redaction.ts"]}
-  ]
-}

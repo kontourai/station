@@ -1,5 +1,15 @@
 # Station API Documentation
 
+## Project display metadata
+
+Operator Project list and detail reads, and create and update responses,
+include `repositoryDisplay` from the
+manifest's primary Git resource, or acquisition metadata when no manifest exists.
+Detected repository artwork is `derivedIcon` (at most 12 KiB before base64), not
+saved `icon`. Clearing `icon` through the update route saves `iconDisabled: true`;
+choosing an explicit icon clears that flag. Member views omit detected artwork
+and repository metadata.
+
 ## Paired Station conversation tunnel
 
 On a personal host with **Paired Station chats** enabled,
@@ -57,6 +67,12 @@ comes from the request.
 
 The first Codex implementation saves objectives paused and preserves native
 accounting when the engine does. It does not advertise activation/resume.
+A Muse Session on `muse serve` advertises `read`, `pause` and `clear` only:
+Muse's `goal/set` and `goal/resume` start a goal turn outside Station's turn
+admission. Its capability declares `tokenBudget: 'unsupported'`, and its Goal
+omits `tokenBudget`, `tokensUsed` and `timeUsedSeconds`; an absent figure is
+unreported, never zero. After a Station restart its Goal reads unavailable
+until Muse states it again.
 Results distinguish applied, refused, unsupported and indeterminate. A timeout
 after invocation is indeterminate; pending native acknowledgement blocks another
 mutation. Refresh is observation, not permission to retry an uncertain write.
@@ -1307,8 +1323,8 @@ POST /api/starter-work/launch
 DELETE /api/starter-work/:starterId/binding
 ```
 
-Starter Work links a bounded onboarding catalog to real Work owners. Its five
-IDs are `start-task`, `continue-session`, `inspect-approval`, `inspect-receipt`,
+Starter Work links a bounded onboarding catalog to real Work owners. The catalog
+offers `start-task` and `continue-session`. The five accepted endpoint IDs remain `start-task`, `continue-session`, `inspect-approval`, `inspect-receipt`,
 and `run-scheduled-check`. Binding/launch and inspection candidates require the
 home's completed first-run decision. Catalog/status reads describe readiness
 and correlation; they do not make a browser checklist authoritative.
@@ -6704,7 +6720,7 @@ for freshness, refusal and provider-observation limits.
 ## Engine accounts and usage
 
 `GET /api/connections/agent/:id/accounts` projects the default account plus saved
-profiles for Claude and Codex: opaque references, labels, CLI-verified auth state,
+profiles for Claude, Codex and Muse: opaque references, labels, CLI-verified auth state,
 observed login mechanism and the account in use. It requires `engine:login`,
 credential-management access or a verified operator. It returns no paths,
 commands, environment or CLI diagnostics.
@@ -6714,6 +6730,8 @@ selected profile's provider quota. Omit the reference to inspect the connection'
 default account. This token-backed read requires `access:manage`; an engine-login
 grant alone does not admit it. The result is either normalized quota windows,
 plan, fetched time and provider exhaustion verdict, or an explicit unknown reason.
+Muse profiles always answer unknown: no Muse allowance shape has been observed
+to map.
 Both variants can include optional `metadata`: Codex identity/credits/model and
 reset-credit facts, Claude extra usage/spending/weekly breakdown/limit annotations, and bounded response-shape `capture`
 (source, credential storage kind, unmapped/excluded field paths, truncation). Windows optionally carry

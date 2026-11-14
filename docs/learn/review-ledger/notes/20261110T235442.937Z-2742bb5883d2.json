@@ -1,7 +1,0 @@
-{
-  "revision": "f6ed5605da81fcd45a1cddbb9c46168f12dcad4d",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Re-checked the host-bound required-tests section against scripts/check-required-tests-ran.mjs after the second fix round: exit 2 now also covers a report or profile path that is a FIFO, socket or device (refused before reading; a directory still exits 2 via EISDIR) and a flag given more than once; flag names, runtime-skip rule and exit 0/1 wording unchanged and still match the script. The vitest-resource-manifest change is a comment on this check's own test entry. Headings and anchors unchanged.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
-  ]
-}

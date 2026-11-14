@@ -1,7 +1,0 @@
-{
-  "revision": "d5e3c3757b2dfb3fd2d38d801292f5c5a3bbfed6",
-
-  "notes": [
-    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed theming guide addition (Density and motion); shell plugin and distribution claims do not depend on it.","inputs":["docs/design/shell-plugins-distributions.md","docs/guides/theming.md"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "744db210a71fad425c522ed476d7862c1803e3c1",
-
-  "notes": [
-    {"path":"docs/design/connections-onboarding.md","note":"After merging main: main's #4547 removed one restart-notice test from OnboardingGate.test.tsx and this branch only adds pairing tests there; this design doc's toast/notice and onboarding claims are unaffected.","inputs":["docs/design/connections-onboarding.md","src-ui/src/__tests__/OnboardingGate.test.tsx"]}
-  ]
-}

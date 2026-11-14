@@ -27,6 +27,7 @@ export function buildProjectSavePayload(
     defaultApprovalModeSelection,
     defaultApprovalMode,
     icon,
+    iconDisabled,
     ...rest
   } = form;
   return {
@@ -36,7 +37,11 @@ export function buildProjectSavePayload(
     // legacy value the icon rule now refuses. `''` is sent as is: it is the
     // route's "clear the icon", which `JSON.stringify` would drop as
     // `undefined`.
-    ...(savedForm && icon === savedForm.icon ? {} : { icon }),
+    ...(savedForm &&
+    icon === savedForm.icon &&
+    iconDisabled === savedForm.iconDisabled
+      ? {}
+      : { icon, iconDisabled: iconDisabled ?? false }),
     // `'inherit'` is the form's spelling of "this project makes no choice";
     // `null` is the route's, which drops the override rather than storing it
     // (#2144 slice 2). Sent explicitly rather than omitted: `JSON.stringify`
@@ -65,6 +70,7 @@ export function buildProjectForm(project: ProjectConfig): ProjectForm {
   return {
     name: project.name,
     icon: project.icon ?? '',
+    iconDisabled: project.iconDisabled ?? false,
     description: project.description ?? '',
     defaultAgent: project.defaultAgent,
     defaultModel: project.defaultModel ?? '',

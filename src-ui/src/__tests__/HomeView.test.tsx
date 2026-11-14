@@ -641,7 +641,9 @@ describe('HomeView', () => {
     expect(screen.queryByText(/Default Model/i)).toBeNull();
     // The Agent chip names what Start sends, and Start sends exactly it.
     expect(
-      screen.getByRole('button', { name: 'Agent: Codex · gpt-5.3-codex' }),
+      screen.getByRole('button', {
+        name: /^Codex · gpt-5.3-codex/,
+      }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
     expect(newChat).toHaveBeenCalledTimes(1);
@@ -712,7 +714,7 @@ describe('HomeView', () => {
     ).toBeNull();
   });
 
-  test('keeps inspection and Scheduler self-test cards off default Home and admits them only in developer mode', () => {
+  test('keeps retired starter cards off Home, including developer mode', () => {
     const defaultHome = renderHomeView({
       continuation: null,
       onNavigate: vi.fn(),
@@ -724,9 +726,10 @@ describe('HomeView', () => {
 
     fixtures.developerToolsEnabled = true;
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
-    expect(screen.getByText('Inspect an approval')).toBeTruthy();
-    expect(screen.getByText('Inspect review evidence')).toBeTruthy();
-    expect(screen.getByText('Run a scheduled readiness check')).toBeTruthy();
+    expect(screen.queryByText('Inspect an approval')).toBeNull();
+    expect(screen.queryByText('Inspect review evidence')).toBeNull();
+    expect(screen.queryByText('Run a scheduled readiness check')).toBeNull();
+    expect(screen.queryByText('Start your first task')).toBeNull();
   });
 
   test('degrades a still-pending recent-work lane to an actionable host-slow state', () => {
@@ -954,18 +957,27 @@ describe('HomeView', () => {
     eventCount: 3,
   });
   test.each([
-    ['gpt-5.3-codex', 'Agent: Codex · gpt-5.3-codex'],
-    ['gpt-5.4', 'Agent: Codex · gpt-5.4'],
-    ['Model not reported', 'Agent: Codex'],
+    ['gpt-5.3-codex', 'Codex · gpt-5.3-codex'],
+    ['gpt-5.4', 'Codex · gpt-5.4'],
+    ['Model not reported', 'Codex'],
   ])(
-    'the compact start composer names the default selection (%s) on its Agent chip',
+    'the compact start composer names the default selection (%s) on Run setup',
     (modelLabel, expected) => {
       fixtures.defaultModelLabel = modelLabel;
       fixtures.sessions = [workSession()];
       renderHomeView({ continuation: null, onNavigate: vi.fn() });
       const form = screen.getByRole('form', { name: 'Start work' });
       expect(form.classList.contains('start-composer--compact')).toBe(true);
-      expect(within(form).getByRole('button', { name: expected })).toBeTruthy();
+      expect(
+        within(form)
+          .getByTestId('run-setup-trigger')
+          .querySelector('.composer-choice__value')?.textContent,
+      ).toBe(expected);
+      expect(
+        within(form)
+          .getByTestId('run-setup-trigger')
+          .getAttribute('aria-label'),
+      ).toContain(expected);
     },
   );
 
@@ -988,7 +1000,9 @@ describe('HomeView', () => {
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     const form = screen.getByRole('form', { name: 'Start work' });
     expect(
-      within(form).getByRole('button', { name: 'Agent: Choose an agent' }),
+      within(form).getByRole('button', {
+        name: /^Choose agent/,
+      }),
     ).toBeTruthy();
     fireEvent.change(
       within(form).getByRole('textbox', { name: 'What would you like done?' }),
@@ -1977,7 +1991,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     renderHomeView({ continuation: null, onNavigate });
     const recent = screen.getByRole('region', { name: 'Recent work' });
 
-    expect(within(recent).getByText('Home media')).toBeTruthy();
+    expect(within(recent).getByText('Station: Home media')).toBeTruthy();
     expect(within(recent).getByText('Office box')).toBeTruthy();
     // The local session's own row must still render, unmarked by any
     // machine: exactly two rows carry one.

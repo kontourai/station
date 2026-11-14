@@ -1233,8 +1233,9 @@ session start, then retain the accepted selector for an omitted resume or turn.
 An explicit replacement is catalog-validated before execution.
 Claude and Codex accept only lifecycle points their adapters declare. ACP can
 apply a start-time selection only when the new session's option catalog offers
-it and the engine confirms the exact selected value. ACP resume and per-turn
-model changes remain unsupported. Requested, applied and reported model facts
+it and the engine confirms the exact selected value. On a resume, ACP applies the
+conversation's model again where the resumed session offers it and differs;
+per-turn model changes remain unsupported. Requested, applied and reported model facts
 remain separate; see [model launch behavior](api.md#orchestration-model-launch-behavior).
 
 `--cwd=<path>` binds a **new** runtime session's `cwd` to an explicit

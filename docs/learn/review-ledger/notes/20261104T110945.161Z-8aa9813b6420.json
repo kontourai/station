@@ -1,7 +1,0 @@
-{
-  "revision": "ef05ce6eaad69bc38a46478cee4f6446f17b0ef6",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Reviewed only Gallery owner fixture and typecheck-boundary claims against this test-only typing delta. Module-local geometry/browser declarations and three Playwright callback annotations preserve actual expressions/assertions/helper bytes and Node-only scripts compiler libs; no global DOM reference, tsconfig/baseline/skip or runtime policy change. Exact652 hosted typecheck:scripts17DOM diagnostics are the failure baseline; changed6FA source passes scoped read-only lint and the single canonical typecheck:scripts run (498compiled/56existingdeferred, no new exemptions). Retained57rendered-owner and canonical652Gallery evidence was not rerun or silently renewed. No prose update required. Exact652codehealthVFzGOZ completedPASS with four file-scoped styling warnings whose rules are byte-identical in base1b639..652, not advisoryzero; final-head hosted qualification remains required.","inputs":["docs/guides/testing.md","scripts/__tests__/gallery-ui-audit.browser.test.ts"]}
-  ]
-}

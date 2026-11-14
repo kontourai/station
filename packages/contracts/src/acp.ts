@@ -101,6 +101,13 @@ export interface ACPConnectionRegistryEntry {
    */
   managedRuntime?: ACPManagedRuntimeDescriptor;
   /**
+   * The oldest engine version this entry's `args` work with. Read only from
+   * built-in entries, and only after a check of the engine has failed for a
+   * reason other than sign-in, so an older install is named as one instead of
+   * a startup that never answers.
+   */
+  minimumVersion?: ACPEngineMinimumVersion;
+  /**
    * Server projection: `install` for the platform Station runs on. Not part
    * of a descriptor; producers leave it unset.
    */
@@ -204,6 +211,39 @@ export interface ACPEngineInstallRecipe {
 export type ACPEngineInstallRecipes = Partial<
   Record<ACPEngineInstallPlatform, ACPEngineInstallRecipe>
 >;
+
+/**
+ * How Station tells an engine install is too old for its built-in entry.
+ * The version is the first `major.minor.patch` the command prints on stdout;
+ * output without one leaves the version unknown, never "too old".
+ */
+export interface ACPEngineMinimumVersion {
+  /** A non-interactive command (argv, no shell) documented to print the installed version. */
+  versionCommand: string[];
+  /** The oldest working version, `major.minor.patch`. */
+  minimum: string;
+  /** How to update, in one sentence. Shown, never run. */
+  updateHint: string;
+}
+
+/** `major.minor.patch` with plain decimal parts. */
+const PLAIN_SEMVER = /^(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})$/;
+
+/** The first `major.minor.patch` in a version command's output, or undefined. */
+export function readEngineVersion(output: string): string | undefined {
+  return /\b\d{1,6}\.\d{1,6}\.\d{1,6}\b/.exec(output)?.[0];
+}
+
+/** Negative when `a` is older than `b`; both must be plain `major.minor.patch`. */
+export function compareEngineVersions(a: string, b: string): number {
+  const left = a.split('.').map(Number);
+  const right = b.split('.').map(Number);
+  for (let index = 0; index < 3; index++) {
+    const difference = (left[index] ?? 0) - (right[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
 
 export interface ACPEngineAuthDescriptor {
   /**
@@ -492,6 +532,7 @@ export function validateACPEngineDescriptor(
       | 'auth'
       | 'homepageUrl'
       | 'managedRuntime'
+      | 'minimumVersion'
     >
   >,
 ): string[] {
@@ -636,7 +677,30 @@ export function validateACPEngineDescriptor(
   if (entry.managedRuntime !== undefined) {
     validateManagedRuntime(entry.managedRuntime, errors);
   }
+  if (entry.minimumVersion !== undefined) {
+    validateMinimumVersion(entry.minimumVersion, errors);
+  }
   return errors;
+}
+
+function validateMinimumVersion(value: unknown, errors: string[]): void {
+  if (!isObjectRecord(value)) {
+    errors.push('minimumVersion must be an object');
+    return;
+  }
+  const { versionCommand, minimum, updateHint, ...rest } = value;
+  if (Object.keys(rest).length > 0) {
+    errors.push(
+      `minimumVersion: unknown field ${Object.keys(rest).join(', ')}`,
+    );
+  }
+  boundedStringList(versionCommand, 'minimumVersion.versionCommand', errors);
+  if (typeof minimum !== 'string' || !PLAIN_SEMVER.test(minimum)) {
+    errors.push('minimumVersion.minimum must be major.minor.patch');
+  }
+  if (!isBoundedText(updateHint)) {
+    errors.push('minimumVersion.updateHint is not valid');
+  }
 }
 
 function validateManagedRuntime(value: unknown, errors: string[]): void {

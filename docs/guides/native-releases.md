@@ -114,12 +114,26 @@ distribution-readiness claim. The release workflow retains the archive as a
 diagnostic/smoke input, not an end-user install channel. That historical
 observation was not rerun in this documentation audit. All other variants
 marked distributable must satisfy the platform-signing contract for that
-operating system. Desktop updater signing is tracked separately: macOS and
-Windows tagged releases require both a valid platform signature and a Tauri updater signature;
+operating system. Desktop updater signing is tracked separately: macOS tagged
+releases require both a valid platform signature and a Tauri updater signature;
 Linux AppImage has no platform-signing mechanism but still requires its updater
-signature. The validator rejects false or conflated signing claims, missing
-bytes, duplicate variants, source/tag disagreement, invalid checksums, and
-missing updater signatures.
+signature. Windows always requires its updater signature, but its Authenticode
+claim is recorded rather than assumed
+([#3591](https://github.com/kontourai/station/issues/3591)): the
+`desktop-windows` job stages `station-<tag>-windows-x86_64-signing.json`, an
+attested receipt bound to the MSI checksum with `platformSigningState`
+`VERIFIED` (a `Valid` signature by the imported certificate) or `NOT_SIGNED`.
+The job's PowerShell step only records what `Get-AuthenticodeSignature`
+reported; `scripts/lib/windows-release-signing.mjs` decides, and refuses every
+other status (`HashMismatch`, `NotTrusted`, `UnknownError`, ...). The inventory's
+`windows-x86_64` `platformSigning` claim (`signed`/`platform-signature` or
+`unsigned`/`not-applicable`) must match it. Until Windows signing is
+provisioned, tagged MSIs ship `NOT_SIGNED`, as Nightly does, and users see the
+SmartScreen prompt once; `release-artifacts.mjs draft-notes` derives the draft
+signing notice from the inventory and appends it to the generated changelog and installation instructions before creating the draft. The validator rejects false or conflated signing
+claims, a Windows claim that differs from its receipt, missing bytes, duplicate
+variants, source/tag disagreement, invalid checksums, and missing updater
+signatures.
 
 The release tag is also the native application version authority. The root
 `package.json` records one stable release-train base (`X.Y.Z`); preflight
@@ -654,9 +668,12 @@ signing and API-key notarization data
 `APPLE_API_ISSUER_ID`, `APPLE_API_PRIVATE_KEY`), iOS distribution data
 (`APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64`,
 `APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`, `APPLE_DEVELOPMENT_TEAM`,
-`APPLE_IOS_SIGNING_IDENTITY`, `APPLE_PROVISIONING_PROFILE_BASE64`), and Windows
-Authenticode certificate data
-(`WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD`).
+`APPLE_IOS_SIGNING_IDENTITY`, `APPLE_PROVISIONING_PROFILE_BASE64`), and
+optional Windows Authenticode certificate data
+(`WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD`). With neither
+Windows value set, the tagged MSI ships unsigned and records `NOT_SIGNED`;
+with both set it must verify as `Valid`, signed by that certificate. Setting only one, or setting
+`WINDOWS_SIGN_COMMAND` (which only Nightly implements so far), fails the job.
 Each protected platform job checks only its own credentials before it starts
 its signing operation. There is no shared credential-aggregator job and no
 desktop matrix with cross-platform secrets: macOS receives Apple plus Tauri
@@ -673,16 +690,17 @@ Nightly-on-main and Release-on-version-tag workflow identities, and scope Secret
 Manager access to the two Android upload-key secrets. Those account policies
 must be checked by the owner; workflow variables alone do not establish them. iOS similarly treats
 `APPLE_API_KEY_ID`/`APPLE_API_ISSUER_ID`/`APPLE_API_PRIVATE_KEY` as the
-required macOS-notary credential and required Stable TestFlight credential. Every signing secret listed above remains required
-and fails closed. See [mobile-release.md](./mobile-release.md) for the trust
+required macOS-notary credential and required Stable TestFlight credential. Every signing secret listed above except
+the optional Windows pair remains required and fails closed. See [mobile-release.md](./mobile-release.md) for the trust
 configuration and store-side first-run steps. Never commit certificate,
 provisioning, keystore, updater-key, or store credential files.
 
 The tag workflow fails closed when a required credential is absent. It verifies
-macOS code signing and the notarization staple, Windows Authenticode, Android
-APK/AAB signatures, and Tauri updater signatures before inventory assembly. An
-unsigned APK, IPA, desktop bundle, or updater is never uploaded as a
-distributable release asset. Tagged Android releases require the configured
+macOS code signing and the notarization staple, Windows Authenticode when it is
+configured, Android APK/AAB signatures, and Tauri updater signatures before
+inventory assembly. An unsigned APK, IPA, macOS or Linux desktop bundle, or
+updater is never uploaded as a distributable release asset; the Windows MSI is
+the one recorded exception above. Tagged Android releases require the configured
 keyless Play path and fail closed if signing retrieval or upload fails; the
 Nightly staging also fails when its required signing setup is absent.
 Stable, Beta, and Nightly App Store upload is required and fail-closed once a

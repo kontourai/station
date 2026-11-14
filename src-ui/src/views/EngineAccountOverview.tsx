@@ -1,4 +1,5 @@
 import type {
+  EngineAccountEngine,
   EngineAccountProviderMoney,
   EngineAccountUsageHistory,
   EngineAccountUsageMetadata,
@@ -23,15 +24,22 @@ import { Empty, SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useCoarseNow } from '../hooks/useCoarseNow';
 import { openExternalLink } from '../platform/openExternalLink';
+import { formatDuration } from '../utils/relativeTime';
 import { describeStationFailure } from '../utils/stationFailure';
 import './EngineAccountOverview.css';
+
+const ENGINE_ACCOUNT_LABELS: Record<EngineAccountEngine, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  muse: 'Muse Code',
+};
 
 export function EngineAccountOverview({
   connectionId,
   engine,
 }: {
   connectionId: string;
-  engine: 'claude' | 'codex';
+  engine: EngineAccountEngine;
 }) {
   const scope = useHostRequestAuthorityScope();
   const authority = useQuery({
@@ -86,7 +94,7 @@ function AccountPage({
   canReadActivity,
 }: {
   connectionId: string;
-  engine: 'claude' | 'codex';
+  engine: EngineAccountEngine;
   scope: NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
   canManage: boolean;
   canLogin: boolean;
@@ -152,7 +160,7 @@ function AccountPage({
   return (
     <section
       className="engine-account-overview"
-      aria-label={`${engine === 'codex' ? 'Codex' : 'Claude'} account and usage`}
+      aria-label={`${ENGINE_ACCOUNT_LABELS[engine]} account and usage`}
     >
       <div className="engine-account-overview__toolbar">
         <label>
@@ -902,15 +910,7 @@ function historyWindowKey(
 }
 function historyDuration(seconds: number | undefined): string {
   if (seconds === undefined) return 'duration unknown';
-  const [value, unit]: [number, string] =
-    seconds >= 86400
-      ? [seconds / 86400, 'd']
-      : seconds >= 3600
-        ? [seconds / 3600, 'h']
-        : seconds >= 60
-          ? [seconds / 60, 'm']
-          : [seconds, 's'];
-  return `${percentFormatter.format(value)}${unit}`;
+  return formatDuration(seconds * 1000);
 }
 function AllowanceHistory({
   history,

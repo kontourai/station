@@ -1,7 +1,0 @@
-{
-  "revision": "0b93fffbca9c3aceb63bdb7e741a7c2fdbcb32fa",
-
-  "notes": [
-    {"path":"docs/user/concepts.md","note":"Module-map change is limited to one added paragraph in the ProductTelemetryReceiver section (lite-core and the Worker receiver). Checked this document: it makes no claim about the telemetry receiver, Lite storage or its routes, so its claims are unaffected.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]}
-  ]
-}

@@ -1,0 +1,33 @@
+{
+  "revision": "7bda39f7d29d1a2a649bfbc4943f6c4b050406cd",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Added one sentence beside the bundle-loading paragraph: the UI reads GET /api/plugins up to three times with 8, 16 and 24 s deadlines on a timeout, transport failure or 5xx, and plugin layout tabs show a loading state until it answers or the last read fails. Checked against PluginRegistry.readInventory (attempt n gets PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS * n, 1 s pause, 4xx and aborts not retried) and UnsupportedLayoutComponent (SkeletonBlock while load state is loading). The rest of the paragraph (prefetch, sequential apply, stylesheet deadline at the plugin's turn) is unchanged by this commit. Executed: PluginRegistry.timeout suite (deadlines 8/16/24 s, retry registers a plugin's components, 403 not retried); a live isolated instance with the first inventory read delayed 9 s rendered the knowledge-docs Sources tab instead of Unsupported layout tab.","inputs":["docs/guides/plugins.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"docs/design/plugin-authority-model.md","note":"PluginRegistry.ts changed only the GET /api/plugins inventory read (bounded retry with growing deadlines). This document cites the registry for nonce-free bundle loading, which the change does not touch. No prose change. Limits: source inspection of the citing passage.","inputs":["docs/design/plugin-authority-model.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"PluginRegistry.ts changed only the inventory read (up to three attempts on timeout, transport failure or 5xx). This document cites the registry for refusing nonce'd/cross-origin bundle loading and the CSP tests; script/CSS loading, admission and remote-isolation paths are unchanged. No prose change. Limits: source inspection of the citing passages.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"PluginRegistry.ts change is limited to the GET /api/plugins inventory retry. This guide cites the registry for same-origin plain <script src> loading under script-src 'self'; executeBundleByUrl and loadScript are unchanged. No prose change. Limits: source inspection.","inputs":["docs/guides/desktop-build.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"docs/guides/android-build.md","note":"Re-checked after PluginRegistry.ts gained a bounded inventory retry. This guide's plugin mentions concern native Tauri plugins and bridges, not the UI plugin registry; no claim depends on inventory reads. No prose change. Limits: source inspection.","inputs":["docs/guides/android-build.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Re-checked after PluginRegistry.ts gained a bounded inventory retry. This guide's plugin mentions are Tauri log/updater plugins; no claim concerns the UI plugin registry. No prose change. Limits: source inspection.","inputs":["docs/guides/desktop-tray.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Re-checked after PluginRegistry.ts gained a bounded inventory retry. The guide covers channel ports, homes and identities; it makes no plugin-registry claim. No prose change. Limits: source inspection.","inputs":["docs/guides/release-channel-ports.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Re-checked after PluginRegistry.ts gained a bounded GET /api/plugins retry in the UI. The SDK's authenticatedFetch and listPlugins contracts are unchanged; the registry only passes a larger timeoutMs per attempt. No prose change. Limits: source inspection.","inputs":["docs/reference/sdk.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Re-checked the claim that PluginRegistry awaits shared-runtime readiness before injecting a bundle: loadScript still awaits ensurePluginSharedRuntimeReady; this change only retries the inventory read before that. No prose change. Limits: source inspection.","inputs":["docs/reference/shared.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"examples/elevenlabs-voice/README.md","note":"Re-checked after PluginRegistry.ts gained a bounded inventory retry. The README's activation and settings claims do not depend on how the inventory read is retried. No prose change. Limits: source inspection.","inputs":["examples/elevenlabs-voice/README.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"examples/shared-providers/README.md","note":"Re-checked after PluginRegistry.ts gained a bounded inventory retry. Provider loading and settings claims are unchanged by the inventory read policy. No prose change. Limits: source inspection.","inputs":["examples/shared-providers/README.md","src-ui/src/core/PluginRegistry.ts"]},
+
+    {"path":"README.md","note":"Re-checked after docs/guides/plugins.md gained the inventory-retry sentence. README links the plugin guide as a route only; no README claim concerns plugin loading timing. No prose change. Limits: source inspection.","inputs":["README.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-checked after docs/guides/plugins.md gained the inventory-retry sentence. This guide links the plugin guide for the workspace-experience route and its evidence list; neither depends on loading timing. No prose change. Limits: source inspection.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Re-checked after docs/guides/plugins.md gained the inventory-retry sentence. The guide's plugin mentions (Registry install, plugin-served skills, plugin page context) do not describe registry loading or the unsupported-tab state. No prose change. Limits: source inspection.","inputs":["docs/user/getting-started.md","docs/guides/plugins.md"]}
+  ]
+}

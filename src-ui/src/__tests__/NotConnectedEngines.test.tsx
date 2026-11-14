@@ -121,6 +121,28 @@ describe('a saved engine that never connected', () => {
     ).toBeNull();
   });
 
+  test('an engine install older than Station supports says which version and how to update', () => {
+    const original = unregistered[0];
+    const message =
+      'Google Antigravity 1.4.4 is installed, and Station needs 1.5.0 or later. Run agy update on the computer Station runs on, then check again.';
+    unregistered[0] = {
+      ...unregistered[0],
+      name: 'Google Antigravity',
+      lastError: {
+        phase: 'initialize',
+        code: 'engine-update-required',
+        message,
+      },
+    } as never;
+    try {
+      render(<Page index={0} custom={false} />);
+      expect(screen.getByText(message)).toBeTruthy();
+      expect(screen.queryByText('Try again in a moment.')).toBeNull();
+    } finally {
+      unregistered[0] = original!;
+    }
+  });
+
   test('a managed engine that is not installed says so, rather than "try again"', () => {
     const original = unregistered[0];
     unregistered[0] = {

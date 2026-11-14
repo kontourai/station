@@ -1,7 +1,0 @@
-{
-  "revision": "b6a80a1f397cea97456dee12ad9c16c11a20633d",
-
-  "notes": [
-    {"path":"docs/guides/theming.md","note":"#4688 main.tsx now imports UndoableActionShortcut from components/undo/UndoableActionShortcut (the entry-bundle half of General Undo) and nests it inside InboxDismissUndo around App; provider order, share mount, theme/accent application, document publisher and env reads that this document cites are unchanged.","inputs":["docs/guides/theming.md","src-ui/src/main.tsx"]}
-  ]
-}

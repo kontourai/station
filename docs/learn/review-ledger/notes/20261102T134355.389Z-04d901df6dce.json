@@ -1,7 +1,0 @@
-{
-  "revision": "bf6e9ce281b744749f7bb11c2e97c6c6936031dd",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Scoped durability delta: inspected cascade recheck invalidation and delete-time stale-evidence refusal, conservative unbound settlement, concurrent health invocation, unknown-profile queued steering, credential readiness reason transitions and usage-limit retry display. Owner-bound service and UI focused tests pass; eight exact source mutations fail and restore. No provider, power-loss, release or full-epic claim.","inputs":["docs/architecture/module-map.md","src-server/runtime/bootstrap/runtime-health.ts","src-server/services/orchestration/__tests__/ownership-cascade-review.test.ts","src-server/services/orchestration/__tests__/ownership-cascade.test.ts","src-server/services/orchestration/credential-recovery-module.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/thread-inbox.ts","src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]}
-  ]
-}

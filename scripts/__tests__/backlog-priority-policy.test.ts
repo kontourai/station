@@ -1,15 +1,21 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterAll, describe, expect, test } from 'vitest';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { load } from 'js-yaml';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
+  BACKLOG_ISSUE_OFFENDERS,
+  BACKLOG_ISSUE_TITLE,
   BACKLOG_POLICY,
   backlogIssueFromNode,
   backlogReadIsComplete,
+  buildBacklogReport,
   evaluateBacklogPriorityPolicy,
+  upsertBacklogIssue,
 } from '../backlog-priority-policy.mjs';
 
+const makeTempDir = trackTempDirs();
 const [p1, p2, p3] = BACKLOG_POLICY.priorities;
 const [blocked, epic, decisionNeeded, acceptanceNeeded] =
   BACKLOG_POLICY.nonActionableDispositions;
@@ -140,7 +146,7 @@ describe('backlog priority policy', () => {
     const result = spawnSync(
       process.execPath,
       ['scripts/backlog-priority-policy.mjs'],
-      { encoding: 'utf8', env },
+      { encoding: 'utf8', env, windowsHide: true },
     );
     expect(result.status).not.toBe(0);
     // The remedy, not just the mechanism: a reader who has only ever run this
@@ -161,12 +167,6 @@ describe('backlog priority policy', () => {
   });
 
   describe('completeness of the live read', () => {
-    const directories: string[] = [];
-    afterAll(() => {
-      for (const directory of directories)
-        rmSync(directory, { recursive: true, force: true });
-    });
-
     function connection(nodes: object[], totalCount: number) {
       return JSON.stringify({
         data: {
@@ -191,21 +191,29 @@ describe('backlog priority policy', () => {
      * exit status: the summary is printed from `main`, and the refusal only
      * exists there.
      */
-    function runWithStubbedGh(response: string) {
-      const directory = mkdtempSync(join(tmpdir(), 'backlog-gate-'));
-      directories.push(directory);
+    function runWithStubbedGh(
+      response: string,
+      { failure = false, summary = '', args = [] as string[] } = {},
+    ) {
+      const directory = makeTempDir('backlog-gate-');
       writeFileSync(
         join(directory, 'gh'),
-        `#!/bin/sh\ncat <<'JSON'\n${response}\nJSON\n`,
+        failure
+          ? // The transport failure shape gh prints for a 5xx answer.
+            `#!/bin/sh\necho 'gh: Server Error (HTTP 502)' >&2\nexit 1\n`
+          : `#!/bin/sh\ncat <<'JSON'\n${response}\nJSON\n`,
         { mode: 0o755 },
       );
+      const { GITHUB_STEP_SUMMARY: _dropped, ...env } = process.env;
       return spawnSync(
         process.execPath,
-        ['scripts/backlog-priority-policy.mjs'],
+        ['scripts/backlog-priority-policy.mjs', ...args],
         {
           encoding: 'utf8',
+          windowsHide: true,
           env: {
-            ...process.env,
+            ...env,
+            ...(summary ? { GITHUB_STEP_SUMMARY: summary } : {}),
             GITHUB_REPOSITORY: 'kontourai/station',
             PATH: `${directory}:${process.env.PATH}`,
           },
@@ -234,17 +242,97 @@ describe('backlog priority policy', () => {
       expect(result.stderr).toContain('Read 1 of 361');
     });
 
-    test('a complete read is still accepted, with its findings', () => {
-      // Without this, the two above are satisfied by a gate that refuses
-      // everything. An unclassified issue also has to still be REPORTED, so
-      // the completeness check cannot be swallowing the findings it guards.
+    // Report-only: findings are reported (annotation and job summary) and
+    // exit 0. Without this, the two above are satisfied by a gate that
+    // refuses everything; an unclassified issue also has to still be
+    // REPORTED, so the completeness check cannot swallow the findings.
+    test('a complete read reports its findings and exits 0', () => {
+      const directory = makeTempDir('backlog-summary-');
+      const summary = join(directory, 'summary.md');
+      const report = join(directory, 'report.md');
       const result = runWithStubbedGh(
         connection([node(1, [p2]), node(2, [])], 2),
+        { summary, args: ['--report', report] },
+      );
+      const head = spawnSync('git', ['rev-parse', 'HEAD'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      }).stdout.trim();
+      expect(readFileSync(report, 'utf8')).toContain(
+        `<!-- backlog-policy findings=1 revision=${head} -->`,
       );
 
       expect(result.stdout).toContain('"open":2');
-      expect(result.stderr).toContain('Unclassified open issues: #2');
+      expect(result.stderr).toContain(
+        '::warning title=Backlog policy::Unclassified open issues: #2.',
+      );
+      const written = readFileSync(summary, 'utf8');
+      expect(written).toContain('Unclassified: 1.');
+      expect(written).toContain('- Unclassified open issues: #2.');
+      expect(result.status).toBe(0);
+    });
+
+    test('an API failure still fails', () => {
+      const result = runWithStubbedGh('', { failure: true });
+
+      expect(result.stderr).toContain('HTTP 502');
+      expect(result.stdout).toBe('');
       expect(result.status).not.toBe(0);
+    });
+
+    // The workflow runs the label check first in the same `bash -e` step;
+    // live-label drift and a malformed manifest exit non-zero there, before
+    // the report-only policy runs.
+    test('label drift and a malformed manifest still fail the label check', () => {
+      const directory = makeTempDir('backlog-labels-');
+      const manifest = JSON.parse(
+        readFileSync('.github/labels.json', 'utf8'),
+      ) as { labels: { name: string; color: string; description: string }[] };
+      // The shape the labels API returns, as the workflow saves it.
+      const live = manifest.labels.map((label, index) => ({
+        id: index + 1,
+        node_id: `LA_${index + 1}`,
+        url: `https://api.github.com/repos/kontourai/station/labels/${encodeURIComponent(label.name)}`,
+        default: false,
+        ...label,
+      }));
+      const check = (labels: object[]) => {
+        const input = join(directory, `live-${labels.length}.json`);
+        writeFileSync(input, JSON.stringify(labels));
+        return spawnSync(
+          process.execPath,
+          ['scripts/label-manifest.mjs', `--input=${input}`],
+          { encoding: 'utf8', windowsHide: true },
+        );
+      };
+      expect(check(live).status).toBe(0);
+      const drifted = check([
+        ...live,
+        { ...live[0], id: 999, name: 'surprise' },
+      ]);
+      expect(drifted.status).not.toBe(0);
+      expect(drifted.stderr).toContain('Unexpected live labels: surprise.');
+      const truncated = check(live.slice(1));
+      expect(truncated.status).not.toBe(0);
+      expect(truncated.stderr).toContain('Missing live labels: P1.');
+      // The manifest itself is read from the working directory.
+      const root = makeTempDir('backlog-manifest-');
+      mkdirSync(join(root, '.github'));
+      writeFileSync(join(root, '.github', 'labels.json'), '{"labels": 1}');
+      const malformed = spawnSync(
+        process.execPath,
+        [resolve('scripts/label-manifest.mjs')],
+        { cwd: root, encoding: 'utf8', windowsHide: true },
+      );
+      expect(malformed.status).not.toBe(0);
+      expect(malformed.stderr).toContain('schemaVersion 1');
+      const workflow = readFileSync(
+        '.github/workflows/backlog-priority-policy.yml',
+        'utf8',
+      );
+      expect(workflow.indexOf('node scripts/label-manifest.mjs')).toBeLessThan(
+        workflow.indexOf('node scripts/backlog-priority-policy.mjs'),
+      );
     });
 
     test('a complete and fully classified read exits clean', () => {
@@ -274,6 +362,138 @@ describe('backlog priority policy', () => {
       );
       expect(backlogReadIsComplete([], 2)).toBe(false);
       expect(backlogReadIsComplete([{ number: 1 }], 2)).toBe(false);
+    });
+  });
+
+  describe('tracking issue', () => {
+    const revision = 'a'.repeat(40);
+    const many = Array.from({ length: 120 }, (_, index) =>
+      issue(1000 + index, []),
+    );
+    const write = (body: string) => {
+      const directory = makeTempDir('backlog-issue-');
+      const path = join(directory, 'report.md');
+      writeFileSync(path, body);
+      return path;
+    };
+
+    test('lists counts and the first offenders without cross-referencing them', () => {
+      const result = evaluateBacklogPriorityPolicy([
+        ...many,
+        issue(7, [p1, blocked]),
+      ]);
+      const body = buildBacklogReport(result, { revision });
+      expect(body).toContain(
+        `<!-- backlog-policy findings=2 revision=${revision} -->`,
+      );
+      expect(body).toContain('Unclassified: 120.');
+      expect(body).toContain(
+        `## Unclassified (${BACKLOG_ISSUE_OFFENDERS} of 120)`,
+      );
+      expect(body).toContain('`#1049`');
+      expect(body).not.toContain('#1050');
+      expect(body).toContain('- `#7` is P1 but also blocked.');
+      // Every issue number sits in a code span, so no timeline backlinks.
+      expect(body.replace(/`#\d+`/g, '')).not.toMatch(/#\d/);
+      expect(BACKLOG_ISSUE_OFFENDERS).toBe(50);
+    });
+
+    test('posts only a bounded, mention-free report for the checked-out revision', () => {
+      const posted: string[] = [];
+      const gh = (existing: string) => (args: string[]) => {
+        const body = args.find((arg) => arg.startsWith('body=@'));
+        if (body) posted.push(readFileSync(body.slice(6), 'utf8'));
+        return args.includes('GET')
+          ? existing && `${existing}\tgithub-actions[bot]`
+          : '9';
+      };
+      const report = buildBacklogReport(
+        evaluateBacklogPriorityPolicy([issue(1, [])]),
+        { revision },
+      ).replace('# Backlog', '@octocat # Backlog');
+      const path = write(report);
+      expect(
+        upsertBacklogIssue({
+          repo: 'o/r',
+          reportPath: path,
+          head: revision,
+          gh: gh(''),
+        }),
+      ).toEqual({ action: 'created', number: 9 });
+      expect(posted[0]).toContain('@\u200boctocat');
+      expect(posted[0]).toContain(BACKLOG_ISSUE_TITLE);
+      expect(() =>
+        upsertBacklogIssue({
+          repo: 'o/r',
+          reportPath: path,
+          head: 'b'.repeat(40),
+          gh: gh(''),
+        }),
+      ).toThrow(/refusing to post it/);
+      const huge = write(`${report}${'x'.repeat(65_536)}`);
+      expect(() =>
+        upsertBacklogIssue({
+          repo: 'o/r',
+          reportPath: huge,
+          head: revision,
+          gh: gh(''),
+        }),
+      ).toThrow(/refusing to post more than 65536/);
+      expect(posted).toHaveLength(1);
+      const clean = write(
+        buildBacklogReport(evaluateBacklogPriorityPolicy([issue(1, [p2])]), {
+          revision,
+        }),
+      );
+      expect(
+        upsertBacklogIssue({
+          repo: 'o/r',
+          reportPath: clean,
+          head: revision,
+          gh: gh('4'),
+        }),
+      ).toEqual({ action: 'closed', number: 4 });
+    });
+
+    test('the audit job writes the report and a dependency-free job posts it', () => {
+      type Step = {
+        run?: string;
+        uses?: string;
+        with?: Record<string, unknown>;
+      };
+      type Job = {
+        needs?: string;
+        if?: string;
+        permissions?: Record<string, string>;
+        steps: Step[];
+      };
+      const workflow = load(
+        readFileSync('.github/workflows/backlog-priority-policy.yml', 'utf8'),
+      ) as { permissions: Record<string, string>; jobs: Record<string, Job> };
+      expect(workflow.permissions).toEqual({
+        contents: 'read',
+        issues: 'read',
+      });
+      const { enforce, 'backlog-issue': poster } = workflow.jobs;
+      const runs = (job: Job) =>
+        job.steps.map((step) => step.run ?? '').join('\n');
+      expect(enforce.permissions).toBeUndefined();
+      expect(runs(enforce)).toContain(
+        'node scripts/backlog-priority-policy.mjs --report .artifacts/backlog-policy-report.md',
+      );
+      expect(
+        enforce.steps.find((step) =>
+          step.uses?.startsWith('actions/upload-artifact@'),
+        )?.with,
+      ).toMatchObject({ name: 'backlog-policy-report' });
+      expect(poster.needs).toBe('enforce');
+      expect(poster.if).toBeUndefined();
+      expect(poster.permissions).toEqual({ contents: 'read', issues: 'write' });
+      expect(runs(poster)).not.toMatch(/dependencies:ci|npm |pnpm|curl/);
+      expect(runs(poster)).toContain(
+        'node scripts/backlog-priority-policy.mjs --upsert --report .artifacts/backlog-policy-report.md',
+      );
+      expect(poster.steps[0].with?.['persist-credentials']).toBe(false);
     });
   });
 });

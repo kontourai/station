@@ -33,6 +33,10 @@ import { PORTABLE_SERVER_TARGETS } from '../../packages/shared/src/portable-serv
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import { taggedStoreIdentity } from '../lib/native-release-config.mjs';
+import {
+  createWindowsReleaseSigningReceipt,
+  windowsSigningReceiptAsset,
+} from '../lib/windows-release-signing.mjs';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
 const TAG = 'v0.1.11-rc.1';
@@ -326,7 +330,11 @@ function hostStreamProducer(artifacts: string, sha: string) {
  * the names release.yml's own `cp` lines give them, and a throwaway updater
  * key signs the updater bundles.
  */
-function nativeProducers(artifacts: string, iosBundleVersion: string) {
+function nativeProducers(
+  artifacts: string,
+  iosBundleVersion: string,
+  sha: string,
+) {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519');
   const keyId = Buffer.from('12345678');
   const write = (artifact: string, file: string, signed = false) => {
@@ -351,6 +359,40 @@ function nativeProducers(artifacts: string, iosBundleVersion: string) {
     write(artifact, `station-${TAG}-${stem}.${primary}`);
     write(artifact, `station-${TAG}-${stem}.${updater}`, true);
   }
+  // Native files and their OS observations are fixtures; the inventory owner
+  // must still validate the receipt against the candidate MSI's actual bytes.
+  const installer = `station-${TAG}-windows-x86_64.msi`;
+  const installerPath = join(
+    artifacts,
+    'station-desktop-windows-x86_64',
+    installer,
+  );
+  const installerSha256 = createHash('sha256')
+    .update(readFileSync(installerPath))
+    .digest('hex');
+  writeFileSync(
+    join(
+      artifacts,
+      'station-desktop-windows-x86_64',
+      windowsSigningReceiptAsset(TAG),
+    ),
+    JSON.stringify(
+      createWindowsReleaseSigningReceipt({
+        tag: TAG,
+        sourceSha: sha,
+        mode: 'unsigned',
+        installer,
+        installerSha256,
+        observation: {
+          installer: installerPath,
+          installerSha256,
+          authenticodeStatus: 'NotSigned',
+          statusMessage: null,
+          signerThumbprint: null,
+        },
+      }),
+    ),
+  );
   write('station-android', `station-${TAG}-android-universal.apk`);
   write('station-android', `station-${TAG}-android-universal.aab`);
   write(
@@ -438,7 +480,7 @@ function stageCandidate() {
   const sha = portableProducer(artifacts);
   containerProducer(artifacts, sha);
   hostStreamProducer(artifacts, sha);
-  const updaterPublicKey = nativeProducers(artifacts, bundleVersion);
+  const updaterPublicKey = nativeProducers(artifacts, bundleVersion, sha);
   const work = workDir('station-rc-assemble-');
   const env = {
     RUNNER_TEMP: runnerTemp,
@@ -537,6 +579,14 @@ describe('a release candidate stages through release.yml to a validated draft in
       channel: 'stable',
       container: { tag: TAG, tags: [TAG, `sha-${inventory.sourceSha}`] },
     });
+    expect(
+      inventory.variants.find(
+        (variant: { id: string }) => variant.id === 'windows-x86_64',
+      ),
+    ).toMatchObject({
+      platformSigning: { state: 'unsigned', proof: 'not-applicable' },
+      updaterSigning: { state: 'signed', proof: 'tauri-updater-signature' },
+    });
     expect(inventory.container.tags).not.toContain('latest');
     expect(inventory.container.tags).not.toContain(BASE_VERSION);
     // Location: every native asset is named for the candidate tag, iOS too.
@@ -575,6 +625,57 @@ describe('a release candidate stages through release.yml to a validated draft in
     });
     expect(readdirSync(assets)).not.toContain('station-client-build.json');
     expect(readdirSync(assets)).not.toContain('station-container-source.json');
+
+    // Execute draft creation with the real notes CLIs. Only the GitHub API and
+    // gh transport are replaced; inspect the body actually handed to create.
+    const bin = join(work, 'bin');
+    mkdirSync(bin);
+    const publishedNotes = join(work, 'published-notes.md');
+    writeFileSync(
+      join(bin, 'gh'),
+      `#!${process.execPath}
+const args = process.argv.slice(2);
+if (args[0] !== 'release') process.exit(2);
+if (args[1] === 'view') process.exit(1);
+if (args[1] === 'create') {
+  const { copyFileSync } = await import('node:fs');
+  copyFileSync(args[args.indexOf('--notes-file') + 1], process.env.PUBLISHED_NOTES);
+} else if (args[1] !== 'upload') process.exit(2);
+`,
+      { mode: 0o755 },
+    );
+    const preload = join(work, 'github-fixture.mjs');
+    writeFileSync(
+      preload,
+      `globalThis.fetch = async (url) => {
+  if (url.includes('/releases?')) return Response.json([{tag_name: 'v0.1.10'}]);
+  if (url.includes('/tags?')) return Response.json([]);
+  if (url.includes('/commits/v0.1.10')) return Response.json({sha: '${'b'.repeat(40)}'});
+  if (url.endsWith('/generate-notes')) return Response.json({body: ${JSON.stringify('## What Changed\n* Candidate changelog fixture')}});
+  throw new Error('Unexpected GitHub request: ' + url);
+};`,
+    );
+    const draft = bash(
+      stepRun(
+        'assemble-draft',
+        named('Create exactly one draft and upload validated assets'),
+      ),
+      work,
+      {
+        ...env,
+        PATH: `${bin}:${process.env.PATH ?? ''}`,
+        GITHUB_REPOSITORY: REPOSITORY,
+        GH_TOKEN: 'fixture-token',
+        NODE_OPTIONS: `--import=${preload}`,
+        PUBLISHED_NOTES: publishedNotes,
+      },
+    );
+    expect(draft.status, draft.stderr).toBe(0);
+    const body = readFileSync(publishedNotes, 'utf8');
+    expect(body).toContain('## What Changed\n* Candidate changelog fixture');
+    expect(body).toContain('STATION_CHANNEL=stable sh');
+    expect(body).toContain('is not Authenticode-signed yet (#3591)');
+    expect(body).toContain(windowsSigningReceiptAsset(TAG));
   }, 240_000);
 
   it('refuses the same producer set staged under a retired -preview.N tag', () => {

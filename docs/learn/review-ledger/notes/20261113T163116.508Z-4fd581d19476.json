@@ -1,0 +1,7 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"ACP usage row now includes per-turn tokens from prompt-answer usage for engines in ACP_PER_TURN_PROMPT_USAGE_ENGINES (Antigravity); context-only observations still produce no token receipt. Checked against acp-adapter-events.ts, acp-adapter.ts and usage-semantics.ts.","inputs":["docs/guides/monitoring.md","packages/shared/src/usage-semantics.ts"]}
+  ]
+}

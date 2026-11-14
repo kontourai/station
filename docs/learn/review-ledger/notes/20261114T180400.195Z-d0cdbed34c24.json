@@ -1,0 +1,11 @@
+{
+  "revision": "cd534970fc3b40df3f7485e7b30884bb6c260257",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Cites tests/screenshots.spec.ts; the only change flips the child-chat phone order assertion so Chat actions lead the breadcrumb; this document's claims are unaffected.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Cites tests/screenshots.spec.ts; the only change flips the child-chat phone order assertion so Chat actions lead the breadcrumb; this document's claims are unaffected.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Cites tests/screenshots.spec.ts; the only change flips the child-chat phone order assertion so Chat actions lead the breadcrumb; this document's claims are unaffected.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}
