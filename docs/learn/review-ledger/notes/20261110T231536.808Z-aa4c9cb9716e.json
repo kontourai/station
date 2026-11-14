@@ -1,7 +1,0 @@
-{
-  "revision": "6bc7def49a95b758fe1675f43dea7713620dc96f",
-
-  "notes": [
-    {"path":"docs/design/settings-launch-triage.md","note":"Copy and comment tightening only on 2026-11-10: re-read the changed sentences against conversation-root-bootstrap.ts, the Knowledge root delete and index rebuild routes, and the Flow preview gates; no behaviour or claim changed.","inputs":["docs/design/settings-launch-triage.md","packages/contracts/src/settings-registry.ts"]}
-  ]
-}

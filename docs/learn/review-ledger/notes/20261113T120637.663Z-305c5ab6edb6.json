@@ -1,7 +1,0 @@
-{
-  "revision": "b132f710c2249ba8f8c1cfbe1fa25e47f6ab834d",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"runtime.ts change in b132f71 only replaces an as-unknown assertion on the truncated stats response with a direct assertion; parseConversationStatsResponse still validates the same fields and keeps the first 16 reported cost units, so the documented stats contract is unchanged.","inputs":["docs/reference/api.md","packages/contracts/src/runtime.ts"]}
-  ]
-}

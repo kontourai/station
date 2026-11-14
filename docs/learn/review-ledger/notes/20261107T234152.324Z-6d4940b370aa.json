@@ -1,7 +1,0 @@
-{
-  "revision": "aef9ae03457e2ce46a29bc0d388d1821cd6ca165",
-
-  "notes": [
-    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked 'Connections -> Engines -> Check connection runs the same bounded turn' and the disabled-connection attempt rules against AgentConnectionView diff: Check connection stays the Ready-engine action, Retry check remains the non-ready action; the smoke turn itself and readinessEvidence projection (connection-readiness-evidence.ts) are untouched. Doc has no claim about the Status tile or row text.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/components/SplitPaneLayout.tsx","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ProviderSettingsView.tsx"]}
-  ]
-}

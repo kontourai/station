@@ -1,7 +1,0 @@
-{
-  "revision": "990a15d71adab69c5a06050063864e3104bda49b",
-
-  "notes": [
-    {"path":"docs/guides/code-quality.md","note":"Added scripts/lib/floor-worker-exits.mjs to .fallowrc.json dynamicallyLoaded: windows-portable-floor.mjs loads it with node --import (a real entrypoint), as scripts/lib/vitest-error-reporter.mjs is listed. That matches this guide's rule to identify a real entrypoint before changing configuration; no prose changes.","inputs":["docs/guides/code-quality.md",".fallowrc.json#/dynamicallyLoaded"]}
-  ]
-}

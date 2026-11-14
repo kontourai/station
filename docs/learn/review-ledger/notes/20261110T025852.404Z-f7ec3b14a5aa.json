@@ -1,7 +1,0 @@
-{
-  "revision": "779278102ef8b25b309cad378c29a7d18eb798c1",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"Scoped source review at 779278102ef8b25b309cad378c29a7d18eb798c1 of the Room polish human-message focus paragraph and the sole stale input TaskRoomComposer.test.tsx since covering note 20261108T230508.852Z-26a971280909 at bd3a36955737. The four test-only edits replace the impossible refused append result with typed ProjectTaskRoomAppendOutcome rejected/unsupported; the unknown acknowledgement rejection and all focus/draft assertions are unchanged. Current public append contract and SDK parser accept rejected/unsupported; unchanged Composer production queues focus and clears draft only after committed/duplicate, with current-owner/authority, original-element, unlock and competing-focus checks. The documented refusal/uncertainty semantics remain accurate; no prose change is needed. ROOT557 executed the full owner once: 57/57 passed on product8fc457ee/testf474c1be, retained solely as source-byte-scoped jsdom proof, not execution at merged7792781. This review does not qualify native Chrome continued typing or 100/500ms timing, actual React Query mutation scope, authority/revocation, committed-reply loss/Retry/history persistence, provider/device/hosted/release behavior. Other design, shared-runtime, transport and historical claims are not renewed.","inputs":["docs/design/task-room-agent-requests.md","src-ui/src/__tests__/TaskRoomComposer.test.tsx"]}
-  ]
-}

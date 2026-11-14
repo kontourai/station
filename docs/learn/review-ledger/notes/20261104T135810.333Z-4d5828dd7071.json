@@ -1,7 +1,0 @@
-{
-  "revision": "23a5d76673bba2ca16117d82a7adcf3a26181ebf",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Bounded review of the Gallery asset-load troubleshooting paragraph and unchanged repeated-evidence limits against the actual screenshots caller and passive collector. Confirmed same-origin public-JavaScript metadata redaction/caps, emitted-file hashes/references, allowlisted server lifecycle fields, retention-write versus completeness distinction, and explicit UNKNOWN cache/UI-process/checkout identity. The collector catches synchronous metadata failures; its one privacy/cap/filesystem test passed, as did E2E typecheck and fixture policy after canonical Connect declaration build. These establish collector/static boundaries, not real hosted 95-screen capture or the cause of the preserved 73b1 failure. Hosted candidate identity must come from checkout metadata; workflowEventSha is event identity. No provider/native/installed Capture-feedback claim and no universal total-size guarantee; future run still needs actual diagnostic byte/incomplete inspection. Historical guide claims and unrelated source changes are not recertified.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts","tests/helpers/gallery-asset-diagnostics.ts","scripts/__tests__/gallery-asset-diagnostics.test.ts"]}
-  ]
-}

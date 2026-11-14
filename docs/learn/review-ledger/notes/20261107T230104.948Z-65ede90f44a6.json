@@ -1,7 +1,0 @@
-{
-  "revision": "598a1ea600239bd093662c2bc01eb34b0ed3e801",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"ColorThemes: reviewed the applier, appearance cache and store changes (density and motion now follow the same binding and cache); the entry's precedence and evidence claims stay accurate, and the theming guide owns the density description.","inputs":["docs/architecture/module-map.md","src-ui/src/lib/appearance-cache.ts","src-ui/src/lib/color-theme-apply.ts","src-ui/src/lib/device-settings-store.ts"]}
-  ]
-}

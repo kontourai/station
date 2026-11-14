@@ -1,7 +1,0 @@
-{
-  "revision": "25d7315de743ef9bfb07e8912bafa6cdd4a9ce69",
-
-  "notes": [
-    {"path":"docs/guides/integrating-station.md","note":"Reviewed only the authentication-adapter routing row against the added invitation-management walkthrough in deployment-authentication.md. Its public provider/current-session/refusal/revocation guidance and separate Project membership claim remain accurate; no change to hosted availability, cloud architecture or pricing claims was made or requalified.","inputs":["docs/guides/integrating-station.md","docs/guides/deployment-authentication.md"]}
-  ]
-}

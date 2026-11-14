@@ -1,7 +1,0 @@
-{
-  "revision": "ae8e7424e01da43085f107391bb83e7a305406db",
-
-  "notes": [
-    {"path":"docs/architecture.md","note":"orchestration-service.ts gained only an optional type-only `filter?: UsageReceiptFilter` on the readUsageReceipts options signature (no runtime change). Checked chat-request data flow, OrchestrationService coordination, and the usage paragraph (~line 385: UsageAggregator reads retained observations, coverage explicit, links to monitoring guide); additive connection attribution does not change them.","inputs":["docs/architecture.md","packages/shared/src/usage-fold.ts","packages/shared/src/usage-semantics.ts","src-server/analytics/usage-aggregator.ts","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

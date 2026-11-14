@@ -1,7 +1,0 @@
-{
-  "revision": "972a0f52ebe35c401a8b3a70cdc71392a093a735",
-
-  "notes": [
-    {"path":"docs/guides/browser-workspace.md","note":"Rechecked annotation entry, person-only picker, scoped file intake and network redaction after the route authority repair; the isolated Mac selection and failed-Fetch observation predate that repair, and full chat delivery and recording remain unverified.","inputs":["docs/guides/browser-workspace.md","src-server/routes/browser.ts"]}
-  ]
-}

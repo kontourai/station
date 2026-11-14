@@ -1,7 +1,0 @@
-{
-  "revision": "80eab4a73ff69eb9843b9f851f681221892772d4",
-
-  "notes": [
-    {"path":"docs/reference/verification-receipts.md","note":"Reviewed behavior environment digest and receipt reuse against test-reliability.mjs; uncached and ordinary diagnostic runs have distinct identities. Reviewed behavior environment digest and receipt reuse against test-reliability.mjs; uncached and ordinary diagnostic runs have distinct identities. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias. Reviewed environment digest against the performance-only toggle and regression test; distinct selection has a distinct receipt identity. Reviewed the receipt environment allowlist against test-reliability.mjs and its policy test: both cache diagnostic toggles change request identity, while receipts retain only their digest.","inputs":["docs/reference/verification-receipts.md","scripts/lib/test-reliability.mjs"]}
-  ]
-}

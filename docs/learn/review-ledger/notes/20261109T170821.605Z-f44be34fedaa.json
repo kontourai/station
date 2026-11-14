@@ -1,7 +1,0 @@
-{
-  "revision": "c384cd4a2b9bd497fe4fb5b650ee2f3e55796863",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"#4738 changes only the runtime.error message text the Ollama adapter publishes for a failed stream (server message plus HTTP status, redacted via redactSecrets). Checked every Ollama mention in api.md: the catalog-validated start/resume/per-turn model override claim (sendTurn model resolution untouched), the model-capabilities note that an absent row does not show an Ollama attachment rejection (untouched), and the usage-export terminal-outcome section, which states error text is not representable (still true: only the outcome class is exported). No API shape, route, or event field changed; prose remains accurate.","inputs":["docs/reference/api.md","src-server/providers/adapters/ollama-adapter.ts"]}
-  ]
-}

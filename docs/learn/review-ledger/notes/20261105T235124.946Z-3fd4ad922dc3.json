@@ -1,7 +1,0 @@
-{
-  "revision": "395462fd4b684fd7cae9e4cc6a288222c563bd75",
-
-  "notes": [
-    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed the generated ledger against its JSON input: the newest Android entry is partial, npm gitHead qualification is separate, and unresolved macOS/Windows outcomes remain NOT_VERIFIED in the JSON. The surrounding ledger explanation correctly says publication and ledger updates can fail independently. This review checks the retained record projection, not fresh provider delivery.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
-  ]
-}

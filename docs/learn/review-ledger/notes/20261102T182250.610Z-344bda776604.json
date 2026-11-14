@@ -1,7 +1,0 @@
-{
-  "revision": "00ac8be2970ef0212e22842b6a62b1690607a424",
-
-  "notes": [
-    {"path":"docs/design/verified-action-replay.md","note":"After merging main (#4444), rechecked the Device guide and decision: device_input is still coordinate-based; added that device_record_to_task clips are evidence, not executable steps, and that a clip's observed app at start does not identify the build.","inputs":["docs/design/verified-action-replay.md","docs/decisions/device-agent-control.md","docs/guides/browser-workspace.md","docs/guides/mobile-device-workspace.md"]}
-  ]
-}

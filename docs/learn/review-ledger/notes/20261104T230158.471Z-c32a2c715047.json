@@ -1,7 +1,0 @@
-{
-  "revision": "29d5c9958f72b60cbea41ecc1fc209820161050b",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Regenerated MCP topics carry only the fix-round module-map ProductTelemetryReceiver changes (channel lists, Worker erasure limits); checked the generated diff in station-docs-content.ts. The manual's own topics make no telemetry receiver claim.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "e32e10550aef3555f306c1c9e70f78f53c35756a",
-
-  "notes": [
-    {"path":"docs/guides/machine-relationships.md","note":"Phone pairing UX lane: re-read after the connections guide's welcome-screen sentence changed; its machine relationship claims do not depend on that wording.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
-  ]
-}

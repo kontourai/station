@@ -1,7 +1,0 @@
-{
-  "revision": "9065f79520a72288ebbe5ff3aa2e409c792bf6b9",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Edited: engine capability matrix paragraph now says Station's own orchestration guidance is separate from authored content, travels on the Claude append or the first message, and has its own receipt. Verified against session-agent-resolution.ts. Content feeds src-server/tools/station-docs-content.ts, regenerated with docs:mcp:generate.","inputs":["docs/reference/station-docs.md","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-agent-resolution.ts","src-server/tools/station-docs-content.ts"]}
-  ]
-}

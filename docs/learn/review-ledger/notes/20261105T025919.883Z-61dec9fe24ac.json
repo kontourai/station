@@ -1,7 +1,0 @@
-{
-  "revision": "afc5075dffd45ae320b2c811bb563f5b597aad98",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"The fixed public domain now includes each publisher's provisioned channels: checked public-domain.ts publicDomain (channel values from config channels), lite-core.ts LitePublicationCatalog, lite-store.ts publishWeeks catalog query and receiver.ts catalogs. Covered by lite-weekly.test.ts (published channel cells) and lifecycle.test.ts.","inputs":["docs/architecture/module-map.md","packages/telemetry-broker/src/lite-store.ts","packages/telemetry-broker/src/public-domain.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "7c4638da3a4c7875f7abf37dfe32211a57075bb0",
-
-  "notes": [
-    {"path":"docs/guides/documentation.md","note":"Re-read 'Keep external product content current' after the @kontourai/corpus devDependency moved from a codeload URL to github:kontourai/corpus#<same pin>. gate:for and docs:impact still import the public @kontourai/corpus/content interface (scripts/documentation-impact.mjs); verified the import resolves after dependencies:ci. No claim depends on the fetch spec; no text change needed.","inputs":["docs/guides/documentation.md","package.json#/devDependencies/@kontourai~1corpus"]}
-  ]
-}

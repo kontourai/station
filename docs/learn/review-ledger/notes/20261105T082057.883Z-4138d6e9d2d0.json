@@ -1,7 +1,0 @@
-{
-  "revision": "32d5ceaf15a05b15626f3e8a6a0e322033ca9cd3",
-
-  "notes": [
-    {"path":"docs/design/placement.md","note":"Scoped visual repair review at 32d5ceaf15a0: the missing-summary span now has block layout through the existing note/usage rule. Paragraphs preserve block layout; provenance, status, retention and controls are unchanged. Inspected all four 390/1440 light/dark production-row renders. A browser geometry assertion checks the note starts below the optional model metadata; 27 cases passed in 3.35s wall. The existing CSS source binding remains. Controlled fixtures do not renew live provider/native or whole-epic qualification.","inputs":["docs/design/placement.md","src-ui/src/workspace-panes/agents/ChildWorkRow.css"]}
-  ]
-}

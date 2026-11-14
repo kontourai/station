@@ -1,7 +1,0 @@
-{
-  "revision": "1adf4880d7803fee28ad3dd6b7ffff361e7aa1bc",
-
-  "notes": [
-    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Scoped review at 1adf4880d7803fee28ad3dd6b7ffff361e7aa1bc of only the Task draft recovery row against its existing task-room-reload-recovery spec. The row identifies the owning isolated Station/paired-browser reload and exact-proposal retry journey; it does not report a new successful run. The same case now includes actual receipt equality and authenticated stable-history assertions before lost reply, after Retry and final reload; beforeAll now requests normal readiness for both cases. No new case, bucket or manifest ownership change was made, so the row remains accurate without a prose edit. ROOT610 typecheck:e2e and fixture-policy checks exited0, but E2E is UNEXECUTED and managed engine assets/install0 are prerequisites only. No coverage result, native/live-Agent/public-sharing/Basis geometry or other matrix row is recertified.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-room-reload-recovery.spec.ts"]}
-  ]
-}

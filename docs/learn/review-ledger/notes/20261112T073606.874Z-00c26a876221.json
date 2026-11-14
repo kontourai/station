@@ -1,9 +1,0 @@
-{
-  "revision": "5aaeda7f70ac3a6c6e3d2395adf963d9c4e689d8",
-
-  "notes": [
-    {"path":"patches/android-native-keyring-store/README.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this README for native header, allowlist, If-Match and idempotency claims: none affected.","inputs":["patches/android-native-keyring-store/README.md","src-desktop/src/lib.rs"]},
-
-    {"path":"src-server/services/connections/pion-peer/README.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this README for native header, allowlist, If-Match and idempotency claims: none affected.","inputs":["src-server/services/connections/pion-peer/README.md","src-desktop/src/lib.rs"]}
-  ]
-}

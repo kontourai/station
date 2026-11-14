@@ -1,7 +1,0 @@
-{
-  "revision": "1a855f17424e9b3cdf6db26f8d4acf177cca9c88",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Read every scan hit (lines 3, 153: credential-free docs MCP and local models, unrelated). Changed source: station-docs-content.ts regenerated; its only change is the module-map LiveSurfaceCanvas line saying the codec is a data-codec diagnostic, which this page does not restate.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

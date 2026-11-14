@@ -1,7 +1,0 @@
-{
-  "revision": "dcc354cb9fe14f586ef72597af30399119ec94fa",
-
-  "notes": [
-    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Wording tightening only on 2026-11-10: the dependency's shortened sentences still state the same behaviour (root registered at personal startup, searchable after an operator reindex, not removable; conversation root skipped by adapter id); this document's claims are unchanged.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","docs/guides/knowledge.md"]}
-  ]
-}

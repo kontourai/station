@@ -1,7 +1,0 @@
-{
-  "revision": "7949b6be8af58212d3a183480d52fef346addf8c",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed diagnostic-only changes after hosted shard 1 at ba13adb: 3081 tests passed and one room-request fixture failed its initial empty-failures assertion before the request-state check. Both retained Vitest reports omit the captured Error value, so its message and cause remain unverified. Extended inspect-based assertion messages throughout the fixture; dispatch, publication, journal identity and assertion conditions are unchanged. The instrumented standalone module passed 21/21 at 7949b6be8. This does not establish a repair of the intermittent failure tracked in #4480 or a clean hosted shard. Existing design claims remain accurate; no prose or provider-acceptance claim changes.","inputs":["docs/design/task-room-agent-requests.md","src-server/services/projects/__tests__/task-room-conversation-module.test.ts"]}
-  ]
-}

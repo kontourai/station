@@ -1,9 +1,0 @@
-{
-  "revision": "4140e3526b75eb23e55c8dc6195bd7723964dc2a",
-
-  "notes": [
-    {"path":"docs/design/station-connection.md","note":"Bounded EOF-only repair after merge-group diff check rejected a trailing blank line at line 615. Inspected the exact committed delta: one empty terminal line removed; every nonblank line, contract, owner link, historical receipt and browser/native evidence limit is unchanged. The full branch whitespace check and a read-only synthesized candidate against main 0b06c7283b both pass. Queue candidate ab1d1bfb0532 passed all four test shards and statics; its aggregate failed only because the diff check failed. No runtime or documentation claim is upgraded by this whitespace repair.","inputs":["docs/design/station-connection.md"]},
-
-    {"path":"docs/README.md","note":"Reviewed the Station connections index entry and target after the EOF-only design-file repair. The linked path, description of relay/delivery/shared surface contracts, document status and qualification limits are unchanged; the exact delta removes only an empty terminal line. No navigation, source claim, public route or generated-content semantic change. No prose update needed.","inputs":["docs/README.md","docs/design/station-connection.md"]}
-  ]
-}

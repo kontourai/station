@@ -1,7 +1,0 @@
-{
-  "revision": "aef9ae03457e2ce46a29bc0d388d1821cd6ca165",
-
-  "notes": [
-    {"path":"examples/self-configuring-agent/README.md","note":"Example README covers the station-control Agent and child policy; checked its engine mentions (lines 11, 16, 47) which are about worker engine policy delivery, not Connections UI. The changed UI sources do not affect it.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/app-shell/routing.ts","src-ui/src/views/ConnectionsHub.tsx","src-ui/src/views/connections-hub/connection-sections.ts","src-ui/src/views/provider-settings/providerCatalog.tsx"]}
-  ]
-}

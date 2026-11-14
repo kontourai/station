@@ -1,7 +1,0 @@
-{
-  "revision": "71808cb8ce4ba255a150862863200c9c5e702a5c",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"SkillsView.tsx moved Commands only and Import .md from the list footer to the top of the Skills list (above the rows). The guide names Import .md and what it does, not where it sits, so its claims still hold.","inputs":["docs/user/getting-started.md","src-ui/src/views/SkillsView.tsx"]}
-  ]
-}

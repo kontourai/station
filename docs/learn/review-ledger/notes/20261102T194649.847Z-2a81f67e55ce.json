@@ -1,7 +1,0 @@
-{
-  "revision": "be5a6e9622c9aa166611813051e21f988fbf1e05",
-
-  "notes": [
-    {"path":"docs/learn/README.md","note":"Only change in learning-atlas.browser.test.ts is the beforeAll liveness bound (60 s -> scaleLivenessMs(180 s)) for the full-repo atlas build; the browser checks this document lists (lazy loading, source drill-down, search/history, mobile keyboard navigation, Mermaid diagrams) are unchanged. No prose change needed.","inputs":["docs/learn/README.md","scripts/__tests__/learning-atlas.browser.test.ts"]}
-  ]
-}

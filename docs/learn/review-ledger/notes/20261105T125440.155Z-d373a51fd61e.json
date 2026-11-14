@@ -1,7 +1,0 @@
-{
-  "revision": "1bad2b67d19a19a3a7789d6456f9203b92fba2c9",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"chat-request-preparation.ts now keeps isFirstTurn module-private (it had no caller outside the file; the code-health gate flagged the export). No route, body or response the API reference describes changes; the chat preparation behavior is the same as the one reviewed in the previous note.","inputs":["docs/reference/api.md","src-server/routes/chat/chat-request-preparation.ts"]}
-  ]
-}

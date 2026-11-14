@@ -1,7 +1,0 @@
-{
-  "revision": "375e48f43a8f2df0d4f7864a790c89e017e6b5b9",
-
-  "notes": [
-    {"path":"docs/conformance/tool-policy-delivery.md","note":"Added the server-side child fan-out paragraph. Checked against request-delegation.ts (deriveCallerChildDelegation refuses delegate_task/send_message from a delegated caller before the depth check, using the caller's recorded context plus the built-in denial list) and orchestration.ts (the /delegations route and the shared /chat, /chat/delegated, /chat/background handler pass the tool; DELEGATION_REFUSAL_CODES maps delegated_tool_blocked to 403). Scope limit stated: a verified station-control caller is required.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/claude-adapter.ts"]}
-  ]
-}

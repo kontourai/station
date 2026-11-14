@@ -1,7 +1,0 @@
-{
-  "revision": "6cc2c1a1f750922101031f356c8465c8efc04fd5",
-
-  "notes": [
-    {"path":"docs/guides/knowledge.md","note":"Reviewed rebuild provider capability and migration refusal against the route, index provider, migration checks and focused tests. Unresolvable paths and registration changes fail closed; fault probes cover both migration race phases and provider admission.","inputs":["docs/guides/knowledge.md","src-server/knowledge-index/migrate-pre-index-knowledge.ts","src-server/knowledge-index/sqlite-vec-index-provider.ts","src-server/routes/knowledge/knowledge-index-routes.ts"]}
-  ]
-}

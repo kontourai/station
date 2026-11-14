@@ -1,7 +1,0 @@
-{
-  "revision": "2d13c4e1811a47fd78ef778a787f99bcf1adb1f3",
-
-  "notes": [
-    {"path":"docs/learn/media/project-invitation-after-1440-dark.png","note":"Reasoned, not re-captured: the project-settings browser test only gained stubs for useManagedPolicyStatusQuery (no data, i.e. no managed policy) and useApiBase, matching the state this capture was taken in; the invitation section it shows does not read managed policy.","inputs":["docs/learn/media/project-invitation-after-1440-dark.png","src-ui/src/__tests__/project-settings.browser.test.tsx"]}
-  ]
-}

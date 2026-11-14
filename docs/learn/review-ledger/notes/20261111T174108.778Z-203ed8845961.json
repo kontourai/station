@@ -1,7 +1,0 @@
-{
-  "revision": "773f1840d93dc7d456098053451b2d24cdda1a27",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Re-checked after RoomConversation's final visual changes (an empty room centers its invitation; on phones the jump pill sits in the corner). The guide's claims about following the newest message, keeping the reader's place, the New marker and N new messages are unchanged by these layout tweaks. No prose change.","inputs":["docs/user/getting-started.md","src-ui/src/components/room/RoomConversation.tsx"]}
-  ]
-}

@@ -28,7 +28,12 @@ description = "Prose phrase 'expiry/revocation' in documentation review notes (n
 condition = "AND"
 regexTarget = "secret"
 regexes = ['''^expiry/revocation$''']
-paths = ['''(^|/)docs/learn/review-ledger/notes/[^/]+\.json$''']
+# A baseline advance moves notes, byte for byte, into a note archive; the
+# exact-secret condition still applies there.
+paths = [
+  '''(^|/)docs/learn/review-ledger/notes/[^/]+\.json$''',
+  '''(^|/)docs/learn/review-ledger/notes/archive/[0-9a-f]{40}\.json$''',
+]
 
 [[allowlists]]
 description = "Self-signed logical.test TLS private key used only by the plugin dev transport test fixture"

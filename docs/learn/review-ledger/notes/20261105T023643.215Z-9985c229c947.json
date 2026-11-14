@@ -1,7 +1,0 @@
-{
-  "revision": "19680ee709d2401051e5c92cb4f72c718b0cd263",
-
-  "notes": [
-    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Frozen ADR; its session record still lists the viewport, which remains a per-session field. The shared-viewport answer is recorded in docs/decisions/browser-viewport-is-shared-fit-is-per-viewer.md. Browser pane phone UX (fix/browser-pane-phone-ux): reviewed against BrowserPane.tsx/CSS changes (narrow-pane open sizing, shared-viewport menu heading and Match this pane, viewport-change notice, local-server empty/error states, blur on submit, coarse-pointer shortcut hints). This document makes no claim about those behaviors; no prose change.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]}
-  ]
-}

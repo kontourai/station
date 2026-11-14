@@ -1,9 +1,0 @@
-{
-  "revision": "a7e562129b13f73c4941c302c11f4d54a8cfd5e8",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the personal v1 context decoder restoration and the shared lookup and withdrawal intent capture against the SDK seam and focused tests. Existing personal snapshot extension behavior remains accepted; shared operations retain their original intent. No hosted, provider or UI qualification is implied.","inputs":["docs/design/task-room-agent-requests.md","packages/sdk/src/__tests__/task-room-work.test.ts","packages/sdk/src/client/task-room-work.ts"]},
-
-    {"path":"docs/reference/sdk.md","note":"Reviewed the personal v1 context decoder restoration and the shared lookup and withdrawal intent capture against the SDK seam and focused tests. Existing personal snapshot extension behavior remains accepted; shared operations retain their original intent. No hosted, provider or UI qualification is implied.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/task-room-work.ts"]}
-  ]
-}

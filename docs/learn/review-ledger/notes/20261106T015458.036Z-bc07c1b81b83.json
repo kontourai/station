@@ -1,9 +1,0 @@
-{
-  "revision": "50146e7d1acb0b3169aace0725fd64a05bfee543",
-
-  "notes": [
-    {"path":"docs/guides/development.md","note":"#4478: traced the unbound Codex workspace paragraph through startReservedSession, scratch preparation, canonical path helpers and the provider regression. The existing one-private-folder claim is restored when Station home is an alias; strict scratch-root/sibling rejection and fail-closed resolution remain. Baseline main had one intended cwd failure; the explicit alias extension had two; fixed owner/classification/path-containment suites passed 169 tests. No prose change is needed for the restored contract. No live provider, installed shell or Windows execution qualification is claimed.","inputs":["docs/guides/development.md","src-server/providers/__tests__/codex-adapter.test.ts","src-server/services/orchestration/no-project-chat-folder.ts"]},
-
-    {"path":"docs/guides/connections.md","note":"#4478: reviewed engine confinement, explicit/adopted folders and start-failure handling against the canonical scratch recognizer and Codex start caller. This repair retains the already prepared no-project scratch cwd through a Station-home alias. Permission profiles, approvals, config trust, credentials, provider routing and Project cwd admission are unchanged. The provider and classification/path-containment owners passed 169 tests; this is local fixture/filesystem evidence, not provider or native-shell proof. Existing prose remains accurate.","inputs":["docs/guides/connections.md","src-server/providers/__tests__/codex-adapter.test.ts"]}
-  ]
-}

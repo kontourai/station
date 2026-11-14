@@ -1,7 +1,0 @@
-{
-  "revision": "2c87ba3b1e0cd7d1ed71fa028cd9b30607e6bc5f",
-
-  "notes": [
-    {"path":"docs/testing/browser-smoke.md","note":"csp-shell row still describes the journey; the assertion now picks the visible copy of the chip's Station name.","inputs":["docs/testing/browser-smoke.md","tests/csp-shell.spec.ts"]}
-  ]
-}

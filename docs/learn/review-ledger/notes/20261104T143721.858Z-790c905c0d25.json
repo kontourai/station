@@ -1,7 +1,0 @@
-{
-  "revision": "0298c809e1a41e685018d2d8a439437fb6029b4b",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Bounded review of the changed Gallery asset diagnostic unit-test cleanup ownership only. The test now registers trackTempDirs at module collection time and creates its fixture through makeTempDir; its existing try/finally immediate rmSync and all privacy, cap, metadata-throw and emitted-file assertions remain unchanged. The focused owner passed 1/1 on E29187CB and the read-only test-temp-dir ratchet passed without updating its baseline. This changes cleanup ownership, not the guide paragraph, screenshot caller, collector semantics or earlier hosted failure evidence. The remaining optional verification-policy chain was not exercised by these focused checks; no full-readiness, hosted Gallery, provider/native or installed UI claim is added. Prior negative receipts and scoped historical notes remain preserved.","inputs":["docs/guides/testing.md","scripts/__tests__/gallery-asset-diagnostics.test.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "7da0828c8b1f325954cbfc1b24cd22ec5eb391ad",
-
-  "notes": [
-    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","src-desktop/src/lib.rs"]}
-  ]
-}

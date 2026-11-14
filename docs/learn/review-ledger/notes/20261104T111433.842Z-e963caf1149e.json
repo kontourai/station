@@ -1,7 +1,0 @@
-{
-  "revision": "c3d5d242c7a742e1133a336e347ec863ef990e83",
-
-  "notes": [
-    {"path":"docs/guides/feature-previews.md","note":"docs/user/settings.md: added one sentence to Settings your organization manages: a managed value fixes the Station-wide setting only; Agent, per-conversation and own-account values (chat font size) still apply, per MANAGED_SETTING_NARROWER_SCOPES traced resolvers. This guide only links settings.md#feature-previews, which did not change; link targets verified.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]}
-  ]
-}
