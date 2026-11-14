@@ -44,6 +44,7 @@ import {
 } from '../adapters/opencode-adapter.js';
 import { openCodeMcpDigest } from '../adapters/opencode-native-mcp.js';
 import {
+  OPENCODE_REFUSED_ASKS_OVERFLOW,
   OpenCodeRequestClosedError,
   openCodeAskFitsTool,
 } from '../adapters/opencode-serve-session.js';
@@ -3764,6 +3765,545 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     ]);
     expect(opened(h.events).filter((event) => event.requestId === ASK)).toEqual(
       [],
+    );
+  });
+
+  // --- A rejection OpenCode will not take: round 10 -------------------------
+
+  const PENDING_ROOT = 'ses_e27c529baffeFpf9G6OQE3JiGp';
+  const PENDING_ASK = 'per_1d83ad6780014FVNv2y9PTAy9R';
+  const isFrame = (type: string) => (record: OpenCodeReplayRecord) =>
+    record.kind === 'sse' && record.event?.type === type;
+  const isChildFrame = (type: string) => (record: OpenCodeReplayRecord) =>
+    isFrame(type)(record) && record.event?.data?.sessionID === CHILD;
+  const isRootEnd = (record: OpenCodeReplayRecord) =>
+    isFrame('session.execution.succeeded')(record) &&
+    record.event?.data?.sessionID === SUBAGENT_ROOT;
+  /** `record` (a frame of the interrupt-pending capture) made another ask of its session. */
+  const pendingAsk =
+    (id: string, action: string) =>
+    (record: OpenCodeReplayRecord): OpenCodeReplayRecord => ({
+      ...record,
+      event: {
+        type: 'permission.asked',
+        data: {
+          id,
+          sessionID: PENDING_ROOT,
+          action,
+          resources: ['notes.txt'],
+          save: ['*'],
+        },
+      },
+    });
+  const replyPaths = (h: { replay: OpenCodeServeReplay }) =>
+    h.replay
+      .made('POST', '/api/session/:id/permission/:id/reply')
+      .map((request) => request.path);
+  const replyPath = (session: string, ask: string) =>
+    `/api/session/${session}/permission/${ask}/reply`;
+  /** The capture's prompt ids, then more for turns it never had. */
+  const morePromptIds = (scenario: string) => {
+    const ids = recordedPromptIds(scenario);
+    let extra = 0;
+    return () => ids.shift() ?? `msg_extra${extra++}`;
+  };
+  const isInterrupt = (request: OpenCodeReplayRequest) =>
+    request.method === 'POST' && request.path.endsWith('/interrupt');
+  const pause = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
+  test('stopping the session while a subagent may still hold an ask Station refused interrupts that subagent again, with this session, and rejects the ask again', async () => {
+    const h = await setup({
+      scenario: 'subagent',
+      rewrite: childAsk('edit', ['notes.txt']),
+      respond: childRejectionRefused(),
+      // The child never ends: OpenCode may still hold its ask.
+      holdFrame: (record) =>
+        isChildFrame('session.execution.succeeded')(record)
+          ? () => false
+          : undefined,
+    });
+    await h.start({ approvalMode: 'auto' });
+    const { turnId } = await h.turn('DO_TASK now');
+    const failure = await h.waitFor(
+      (event) => event.method === 'runtime.error' && event.turnId === turnId,
+    );
+    expect(String(failure.message)).toContain(
+      'had not confirmed its execution ended',
+    );
+    const childInterrupts = () =>
+      interruptPaths(h).filter(
+        (path) => path === `/api/session/${CHILD}/interrupt`,
+      );
+    expect(childInterrupts()).toHaveLength(1);
+    const rejected = repliesTo(h, CHILD).length;
+    await h.adapter.stopSession('thread-1');
+    expect(childInterrupts()).toHaveLength(2);
+    expect(
+      interruptPaths(h).filter(
+        (path) => path === `/api/session/${SUBAGENT_ROOT}/interrupt`,
+      ),
+    ).toHaveLength(2);
+    expect(repliesTo(h, CHILD)).toHaveLength(rejected + 1);
+  });
+
+  test("once OpenCode reports this session's execution ended, stopping the session neither interrupts it nor rejects the refused ask again", async () => {
+    const h = await setup({
+      scenario: 'interrupt-pending',
+      respond: repliesFail(Number.POSITIVE_INFINITY),
+    });
+    await h.start({ approvalMode: 'ask' }, { metadata: DENY_APPROVALS });
+    const { turnId } = await h.turn('DO_BASH wait');
+    const failure = await h.waitFor(
+      (event) => event.method === 'runtime.error' && event.turnId === turnId,
+    );
+    expect(String(failure.message)).toContain('so Station stopped the turn.');
+    expect(interrupts(h)).toHaveLength(1);
+    expect(replies(h)).toHaveLength(2);
+    await h.adapter.stopSession('thread-1');
+    expect(interrupts(h)).toHaveLength(1);
+    expect(replies(h)).toHaveLength(2);
+  });
+
+  test("once OpenCode reports the asking subagent's execution ended, stopping the session neither interrupts it nor rejects its refused ask again", async () => {
+    let interrupted = 0;
+    const refused = childRejectionRefused();
+    const h = await setup({
+      scenario: 'subagent',
+      rewrite: childAsk('edit', ['notes.txt']),
+      respond: (request) => {
+        if (isInterrupt(request)) interrupted += 1;
+        return refused(request);
+      },
+      // The child ends only after Station has refused its ask.
+      holdFrame: (record) =>
+        isChildFrame('session.execution.succeeded')(record)
+          ? () => interrupted >= 2
+          : undefined,
+    });
+    await h.start({ approvalMode: 'auto' });
+    const { turnId } = await h.turn('DO_TASK now');
+    const failure = await h.waitFor(
+      (event) => event.method === 'runtime.error' && event.turnId === turnId,
+    );
+    expect(String(failure.message)).toContain('so Station stopped the turn.');
+    await h.waitFor(
+      (event) =>
+        event.method === 'child-work.updated' &&
+        (event.delta as { kind?: string }).kind === 'settle',
+    );
+    const rejected = repliesTo(h, CHILD).length;
+    expect(interrupts(h)).toHaveLength(2);
+    await h.adapter.stopSession('thread-1');
+    expect(interrupts(h)).toHaveLength(2);
+    expect(repliesTo(h, CHILD)).toHaveLength(rejected);
+  });
+
+  test('a reconnect that finds the stopped session running nothing ends the turn as stopped, and stopping the session then neither interrupts nor rejects again', async () => {
+    let interrupted = false;
+    const fail = repliesFail(Number.POSITIVE_INFINITY);
+    const h = await setup(
+      {
+        scenario: 'reconnect',
+        fallbacks: ['basic', 'catalog', 'mcp'],
+        // An ask in place of the reply's first token; tap B shows nothing,
+        // and the reads after it find the session idle (`basic`'s).
+        rewrite: (record) =>
+          isFrame('session.step.first-token')(record) && record.tap === 'A'
+            ? {
+                ...record,
+                event: {
+                  type: 'permission.asked',
+                  data: {
+                    id: 'per_gap',
+                    sessionID: 'ses_e28b1fc17fferh6a5WrnQhzEcF',
+                    action: 'shell',
+                    resources: ['echo hi'],
+                    save: ['*'],
+                  },
+                },
+              }
+            : record,
+        omit: (record) =>
+          (record.tap === 'B' &&
+            record.kind === 'sse' &&
+            record.event?.type !== 'server.connected') ||
+          (record.kind === 'http' &&
+            record.method === 'GET' &&
+            record.t < 6000 &&
+            (record.path === '/api/session/active' ||
+              record.path?.includes('/message?order=asc') === true)),
+        respond: (request) => {
+          if (isInterrupt(request)) interrupted = true;
+          return fail(request);
+        },
+        // The feed drops only once Station has stopped the turn.
+        holdFrame: (record) =>
+          record.kind === 'sse-close' && record.tap === 'A'
+            ? () => interrupted
+            : undefined,
+      },
+      { failCloseSettleMs: 5_000 },
+    );
+    await h.start({ approvalMode: 'ask' }, { metadata: DENY_APPROVALS });
+    const { turnId } = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'DO_SLOW stream',
+    });
+    const failure = await h.waitFor(
+      (event) => event.method === 'runtime.error' && event.turnId === turnId,
+      10_000,
+    );
+    expect(h.replay.made('GET', '/api/session/active')).toHaveLength(1);
+    expect(String(failure.message)).toContain('so Station stopped the turn.');
+    expect(interrupts(h)).toHaveLength(1);
+    expect(replies(h)).toHaveLength(2);
+    await h.adapter.stopSession('thread-1');
+    expect(interrupts(h)).toHaveLength(1);
+    expect(replies(h)).toHaveLength(2);
+  });
+
+  test('a turn stopped on a refused rejection whose end OpenCode never reports withdraws its queued steer and closes its open tool when the wait runs out', async () => {
+    let steered = false;
+    const fail = repliesFail(Number.POSITIVE_INFINITY);
+    const h = await setup(
+      {
+        scenario: 'interrupt-pending',
+        respond: (request) =>
+          request.method === 'DELETE' ? { status: 204 } : fail(request),
+        holdFrame: (record) =>
+          isFrame('permission.asked')(record)
+            ? () => steered
+            : // Neither the tool's end nor the execution's is reported.
+              isFrame('session.tool.failed')(record)
+              ? () => false
+              : undefined,
+      },
+      {
+        failCloseSettleMs: 400,
+        newMessageId: morePromptIds('interrupt-pending'),
+      },
+    );
+    await h.start({ approvalMode: 'ask' }, { metadata: DENY_APPROVALS });
+    const { turnId } = await h.turn('DO_BASH wait');
+    await h.waitFor(
+      (event) => event.method === 'tool.started' && event.turnId === turnId,
+    );
+    // Queued before Station has to refuse anything.
+    const steer = h.adapter
+      .steerTurn('thread-1', 'one more thing', turnId)
+      .then(
+        () => 'delivered',
+        (error: unknown) => error,
+      );
+    await h.waitFor(
+      () => h.replay.made('POST', '/api/session/:id/prompt').length === 2,
+    );
+    steered = true;
+    const failure = await h.waitFor(
+      (event) => event.method === 'runtime.error' && event.turnId === turnId,
+    );
+    expect(String(failure.message)).toContain(
+      'had not confirmed its execution ended',
+    );
+    expect(
+      h.events.filter(
+        (event) =>
+          event.method === 'tool.completed' &&
+          event.turnId === turnId &&
+          event.toolCallId === 'call_14',
+      ),
+    ).toEqual([expect.objectContaining({ status: 'unresolved' })]);
+    await h.waitFor(
+      () =>
+        h.replay
+          .made('DELETE', '/api/session/:id/inbox/:id')
+          .some(
+            (request) =>
+              request.path === `/api/session/${PENDING_ROOT}/inbox/msg_extra0`,
+          ),
+      1_000,
+    );
+    expect(await steer).toBeInstanceOf(ProviderTurnEndedError);
+  });
+
+  test("this session's ask refused after its turn ended, while a later turn runs, interrupts with a warning and does not end the later turn", async () => {
+    let next = false;
+    const h = await setup(
+      {
+        scenario: 'interrupt-pending',
+        respond: repliesFail(Number.POSITIVE_INFINITY),
+        // The rejection answers only once a later turn is live; the
+        // execution's end flows without Station's interrupt.
+        holdUntil: (request) =>
+          request.method === 'POST' && request.path.endsWith('/reply')
+            ? () => next
+            : undefined,
+        ungated: (record) =>
+          record.kind === 'http' &&
+          record.path?.endsWith('/interrupt') === true,
+      },
+      { newMessageId: morePromptIds('interrupt-pending') },
+    );
+    await h.start({ approvalMode: 'ask' }, { metadata: DENY_APPROVALS });
+    const first = await h.turn('DO_BASH wait');
+    await h.waitFor(completedFor(first.turnId));
+    next = true;
+    const second = await h.turn('DO_BASH next');
+    const warning = await h.waitFor(
+      (event) =>
+        event.method === 'runtime.warning' &&
+        String(event.message).includes('The turn that asked had ended'),
+    );
+    expect(String(warning.message)).toContain(
+      'so Station interrupted OpenCode.',
+    );
+    expect(interrupts(h)).toHaveLength(1);
+    await pause(150);
+    expect(
+      h.events.filter(
+        (event) =>
+          event.turnId === second.turnId &&
+          ['runtime.error', 'turn.aborted', 'turn.completed'].includes(
+            event.method,
+          ),
+      ),
+    ).toEqual([]);
+    expect(h.replay.made('DELETE', '/api/session/:id/inbox/:id')).toEqual([]);
+    // Its execution ended before the refusal: nothing holds the ask.
+    await h.adapter.stopSession('thread-1');
+    expect(replyPaths(h)).toEqual([
+      replyPath(PENDING_ROOT, PENDING_ASK),
+      replyPath(PENDING_ROOT, PENDING_ASK),
+    ]);
+  });
+
+  test('a turn stopped on a refused rejection before anything ran it takes its prompt back out of the inbox, once its POST lands, and says so', async () => {
+    const fail = repliesFail(Number.POSITIVE_INFINITY);
+    const [promptId] = recordedPromptIds('interrupt-pending');
+    const h = await setup({
+      scenario: 'interrupt-pending',
+      // The execution's start is never seen, and the prompt's answer comes
+      // only once OpenCode has asked.
+      omit: isFrame('session.execution.started'),
+      holdUntil: (request) =>
+        request.method === 'POST' && request.path.endsWith('/prompt')
+          ? isFrame('permission.asked')
+          : undefined,
+      respond: (request) =>
+        request.method === 'DELETE' ? { status: 204 } : fail(request),
+    });
+    await h.start({ approvalMode: 'ask' }, { metadata: DENY_APPROVALS });
+    const { turnId } = await h.turn('DO_BASH wait');
+    const failure = await h.waitFor(
+      (event) => event.method === 'runtime.error' && event.turnId === turnId,
+    );
+    expect(String(failure.message)).toContain(
+      "took its prompt back out of OpenCode's queue before OpenCode ran it",
+    );
+    expect(String(failure.message)).not.toContain(
+      'so Station stopped the turn.',
+    );
+    expect(
+      h.replay.made('DELETE', '/api/session/:id/inbox/:id').map((r) => r.path),
+    ).toEqual([`/api/session/${PENDING_ROOT}/inbox/${promptId}`]);
+  });
+
+  test("a subagent's refused ask whose interrupt fails, still running when this session's execution ends, ends the turn saying OpenCode may still run it", async () => {
+    let interrupted = 0;
+    const refused = childRejectionRefused();
+    const h = await setup({
+      scenario: 'subagent',
+      rewrite: childAsk('edit', ['notes.txt']),
+      // The child is never seen to end.
+      omit: isChildFrame('session.execution.succeeded'),
+      respond: (request) => {
+        if (isInterrupt(request)) {
+          interrupted += 1;
+          if (request.path === `/api/session/${CHILD}/interrupt`)
+            return { status: 500, body: { error: 'child interrupt broke' } };
+        }
+        return refused(request);
+      },
+      holdFrame: (record) =>
+        isRootEnd(record) ? () => interrupted >= 2 : undefined,
+    });
+    await h.start({ approvalMode: 'auto' });
+    const { turnId } = await h.turn('DO_TASK now');
+    const failure = await h.waitFor(
+      (event) => event.method === 'runtime.error' && event.turnId === turnId,
+    );
+    expect(String(failure.message)).toContain(
+      `could not stop subagent session ${CHILD} in OpenCode`,
+    );
+    expect(String(failure.message)).toContain('may still be running it');
+  });
+
+  test('a second refused rejection in the same turn keeps the first reason and the first interrupt failure', async () => {
+    let interrupted = 0;
+    const fail = repliesFail(Number.POSITIVE_INFINITY);
+    const h = await setup(
+      {
+        scenario: 'interrupt-pending',
+        // After Station's first interrupt, OpenCode asks again.
+        rewrite: (record) =>
+          isFrame('session.tool.failed')(record)
+            ? pendingAsk('per_second', 'edit')(record)
+            : record,
+        respond: (request) => {
+          if (isInterrupt(request)) {
+            interrupted += 1;
+            return interrupted === 1
+              ? { status: 500, body: { error: 'interrupt broke' } }
+              : { status: 204 };
+          }
+          return fail(request);
+        },
+        holdFrame: (record) =>
+          isFrame('session.execution.interrupted')(record)
+            ? () => false
+            : undefined,
+      },
+      { failCloseSettleMs: 800 },
+    );
+    await h.start({ approvalMode: 'ask' }, { metadata: DENY_APPROVALS });
+    const { turnId } = await h.turn('DO_BASH wait');
+    await h.waitFor(() => interrupts(h).length === 2);
+    const failure = await h.waitFor(
+      (event) => event.method === 'runtime.error' && event.turnId === turnId,
+    );
+    expect(replies(h)).toHaveLength(4);
+    expect(String(failure.message)).toContain('request to shell');
+    expect(String(failure.message)).not.toContain('request to edit');
+    expect(String(failure.message)).toContain(
+      'Station could not stop the turn in OpenCode',
+    );
+    await pause(100);
+    expect(
+      h.events.filter(
+        (event) => event.method === 'runtime.error' && event.turnId === turnId,
+      ),
+    ).toHaveLength(1);
+  });
+
+  test("this session's ask refused with no turn live refuses a next turn as busy until the interrupt answers or the wait runs out", async () => {
+    let releaseInterrupt = false;
+    const h = await setup(
+      {
+        scenario: 'interrupt-pending',
+        respond: repliesFail(Number.POSITIVE_INFINITY),
+        // The rejection answers once the execution has ended (so no turn is
+        // live), and the interrupt only when released.
+        holdUntil: (request) =>
+          request.method === 'POST' && request.path.endsWith('/reply')
+            ? isFrame('session.execution.interrupted')
+            : isInterrupt(request)
+              ? () => releaseInterrupt
+              : undefined,
+        ungated: (record) =>
+          record.kind === 'http' &&
+          record.path?.endsWith('/interrupt') === true,
+      },
+      {
+        failCloseSettleMs: 400,
+        newMessageId: morePromptIds('interrupt-pending'),
+      },
+    );
+    await h.start({ approvalMode: 'ask' }, { metadata: DENY_APPROVALS });
+    const first = await h.turn('DO_BASH wait');
+    await h.waitFor(completedFor(first.turnId));
+    await h.waitFor(() => interrupts(h).length === 1);
+    await expect(h.turn('DO_BASH next')).rejects.toMatchObject({
+      name: 'SendTurnRefusedError',
+      kind: 'busy',
+    });
+    await pause(600);
+    // The wait ran out with the interrupt still unanswered.
+    releaseInterrupt = true;
+    await expect(h.turn('DO_BASH later')).resolves.toMatchObject({
+      threadId: 'thread-1',
+    });
+    const failure = await h.waitFor(
+      (event) =>
+        event.method === 'runtime.error' &&
+        String(event.message).includes('so Station interrupted it.'),
+    );
+    expect(failure.turnId).toBeUndefined();
+  });
+
+  test('a refused ask OpenCode may still hold is never forgotten to make room: stopping the session rejects every one again', async () => {
+    const h = await setup(
+      {
+        scenario: 'interrupt-pending',
+        rewrite: (record) =>
+          isFrame('session.tool.failed')(record)
+            ? pendingAsk('per_second', 'edit')(record)
+            : record,
+        respond: repliesFail(Number.POSITIVE_INFINITY),
+        holdFrame: (record) =>
+          isFrame('session.execution.interrupted')(record)
+            ? () => false
+            : undefined,
+      },
+      {
+        failCloseSettleMs: 5_000,
+        refusedAsksBounds: { evictAbove: 1, stopAbove: 10 },
+      },
+    );
+    await h.start({ approvalMode: 'ask' }, { metadata: DENY_APPROVALS });
+    await h.turn('DO_BASH wait');
+    await h.waitFor(() => interrupts(h).length === 2);
+    expect(replies(h)).toHaveLength(4);
+    await h.adapter.stopSession('thread-1');
+    expect(replyPaths(h).slice(4).sort()).toEqual(
+      [
+        replyPath(PENDING_ROOT, PENDING_ASK),
+        replyPath(PENDING_ROOT, 'per_second'),
+      ].sort(),
+    );
+  });
+
+  test('past the bound on refused asks OpenCode may still hold, the session is stopped with a warning, and every one is rejected again', async () => {
+    const h = await setup(
+      {
+        scenario: 'interrupt-pending',
+        rewrite: (record) =>
+          isFrame('session.tool.failed')(record)
+            ? pendingAsk('per_second', 'edit')(record)
+            : isFrame('session.step.failed')(record)
+              ? pendingAsk('per_third', 'edit')(record)
+              : record,
+        respond: repliesFail(Number.POSITIVE_INFINITY),
+        holdFrame: (record) =>
+          isFrame('session.execution.interrupted')(record)
+            ? () => false
+            : undefined,
+      },
+      {
+        failCloseSettleMs: 5_000,
+        refusedAsksBounds: { evictAbove: 1, stopAbove: 2 },
+      },
+    );
+    await h.start({ approvalMode: 'ask' }, { metadata: DENY_APPROVALS });
+    await h.turn('DO_BASH wait');
+    const warning = await h.waitFor(
+      (event) =>
+        event.method === 'runtime.warning' &&
+        event.code === OPENCODE_REFUSED_ASKS_OVERFLOW,
+    );
+    expect(String(warning.message)).toContain(
+      'Station stopped this OpenCode chat',
+    );
+    await h.waitFor(
+      (event) =>
+        event.method === 'session.exited' && event.reason === 'stopped',
+    );
+    expect(replyPaths(h).slice(6).sort()).toEqual(
+      [
+        replyPath(PENDING_ROOT, PENDING_ASK),
+        replyPath(PENDING_ROOT, 'per_second'),
+        replyPath(PENDING_ROOT, 'per_third'),
+      ].sort(),
     );
   });
 });

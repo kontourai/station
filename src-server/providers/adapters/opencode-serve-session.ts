@@ -134,6 +134,19 @@ const DESCENDANT_LOOKUPS_PARALLEL = 4;
  * delivered to it).
  */
 const FAIL_CLOSE_SETTLE_MS = 3_000;
+/**
+ * Refused asks remembered (so a re-list never reopens one): past the first
+ * bound the oldest OpenCode no longer holds is forgotten; one it may still
+ * hold never is, and past the second bound the session is stopped instead.
+ */
+const REFUSED_ASKS_EVICT_ABOVE = CLOSED_REQUESTS_MAX;
+const REFUSED_ASKS_STOP_ABOVE = 1_000;
+
+/**
+ * The warning a session stopped because it could no longer remember every
+ * ask it refused that OpenCode may still hold carries.
+ */
+export const OPENCODE_REFUSED_ASKS_OVERFLOW = 'OPENCODE_REFUSED_ASKS_OVERFLOW';
 
 /**
  * The permission actions a 2.3.0 tool asks for other than its own name
@@ -304,6 +317,14 @@ export interface OpenCodeNativeSessionDeps {
   readonly heartbeatTimeoutMs?: number;
   /** Tests: {@link FAIL_CLOSE_SETTLE_MS}. */
   readonly failCloseSettleMs?: number;
+  /** Tests: {@link REFUSED_ASKS_EVICT_ABOVE} and {@link REFUSED_ASKS_STOP_ABOVE}. */
+  readonly refusedAsksBounds?: { evictAbove: number; stopAbove: number };
+  /**
+   * The session can no longer be governed and must stop (after a
+   * `runtime.warning` saying why): the adapter stops it as a person would.
+   * Without one it stops itself.
+   */
+  readonly onMustStop?: () => void;
   /** Tests: the ids Station gives its prompts (default {@link newOpenCodeMessageId}). */
   readonly newMessageId?: () => string;
 }
@@ -332,6 +353,8 @@ interface NativeTurn {
    * OpenCode confirms its execution ended or the wait for that runs out.
    */
   failClose?: FailClose;
+  /** Its prompt's POST has settled (a turn `sendTurn` began). */
+  posted?: Promise<void>;
   outputText: string;
   readonly openTools: Map<string, string>;
   readonly done: Promise<void>;
@@ -339,12 +362,19 @@ interface NativeTurn {
 }
 
 interface FailClose {
-  /** What Station had to reject, and what OpenCode answered. */
+  /** What Station had to reject, and what OpenCode answered (the first refusal's). */
   readonly reason: string;
-  /** OpenCode reported the execution ended. */
+  /** OpenCode reported this session's execution ended. */
   confirmed: boolean;
-  /** Why an interrupt Station sent for it failed, if one did. */
+  /** Why an interrupt of this session Station sent failed, if one did. */
   interruptFailed?: string;
+  /** Why the interrupt of an asking descendant failed, by its session. */
+  readonly subagentInterruptFailed: Map<string, string>;
+  /**
+   * Nothing ran the turn yet, so its prompt was taken back out of the inbox
+   * instead: `failed` says why that did not work, if it did not.
+   */
+  withdrawal?: { failed?: string };
   timer?: ReturnType<typeof setTimeout>;
 }
 
@@ -407,6 +437,14 @@ interface NativeAsk {
   readonly files: readonly string[];
   /** The ask's own metadata, the tool's arguments when its input is not known. */
   readonly metadata: unknown;
+  /** The turn live when it arrived, if one was. */
+  readonly turnId: string | undefined;
+  /**
+   * How many times its session's execution had been seen to end when it
+   * arrived ({@link OpenCodeNativeSession.releaseRefusedAsks}): one more
+   * since, and OpenCode no longer holds it.
+   */
+  readonly releases: number;
 }
 
 interface SessionGrant {
@@ -500,9 +538,17 @@ export class OpenCodeNativeSession {
   /**
    * Asks Station had to reject and OpenCode would not take, by native id:
    * their execution was interrupted instead, and a re-list never shows them
-   * to a person. Oldest first, at most {@link CLOSED_REQUESTS_MAX}.
+   * to a person. Oldest first, bounded by {@link rememberRefused}.
    */
   private readonly refusedAsks = new Map<string, RefusedAsk>();
+  /** Times each session's execution was seen to end, by session. */
+  private readonly releases = new Map<string, number>();
+  /**
+   * Refusals of this session's own asks, raised with no turn live, whose
+   * interrupt has not answered and whose wait has not run out: a next turn
+   * is refused as busy meanwhile.
+   */
+  private stoppingRefused = 0;
   /** Requests closed unanswered (their execution ended), oldest first. */
   private readonly closedRequests = new Set<string>();
   private readonly steers = new Map<string, PendingSteer>();
@@ -580,6 +626,11 @@ export class OpenCodeNativeSession {
         'busy',
       );
     }
+    if (this.stoppingRefused > 0)
+      throw new SendTurnRefusedError(
+        'This OpenCode session is still being stopped after a request Station had to reject.',
+        'busy',
+      );
   }
 
   private newMessageId(): string {
@@ -629,6 +680,10 @@ export class OpenCodeNativeSession {
     // engine can report it (a delivery, or history read after a feed gap).
     // `POST /command` takes no id; its turn is bound when it is delivered.
     if (!input.command) turn.messageId = this.newMessageId();
+    let posted!: () => void;
+    turn.posted = new Promise((resolve) => {
+      posted = resolve;
+    });
     try {
       if (input.command) {
         await this.deps.client.request(
@@ -651,6 +706,7 @@ export class OpenCodeNativeSession {
       if (this.pendingStart === turn) this.pendingStart = undefined;
       turn.settled = true;
       turn.resolveDone();
+      posted();
       if (error instanceof OpenCodeServeHttpError)
         throw new SendTurnRefusedError(
           `OpenCode refused the prompt (${error.status}).`,
@@ -658,6 +714,9 @@ export class OpenCodeNativeSession {
         );
       throw error;
     }
+    // A turn stopped while this was in flight takes its item back out now
+    // ({@link withdrawUnstarted}).
+    posted();
     if (turn.messageId) this.recordRewindPoint(turn);
     this.publishStart(turn, {
       prompt: input.displayText,
@@ -1544,6 +1603,8 @@ export class OpenCodeNativeSession {
         outcome = readString(message.outcome);
     }
     this.closeOpenTools(turn);
+    // OpenCode says the session runs nothing: the execution Station stopped ended.
+    if (turn.failClose) turn.failClose.confirmed = true;
     if (outcome === 'failed') this.settleFailed(turn, undefined);
     else if (outcome === 'interrupted') this.settleInterrupted(turn);
     else
@@ -2161,6 +2222,7 @@ export class OpenCodeNativeSession {
     const resources = (ownArray(data.resources) ?? []).filter(
       (item): item is string => typeof item === 'string',
     );
+    const live = this.turn ?? this.pendingStart;
     const ask: NativeAsk = {
       nativeId,
       sessionId,
@@ -2178,6 +2240,8 @@ export class OpenCodeNativeSession {
         },
       ),
       metadata: data.metadata,
+      turnId: live && !live.settled ? live.turnId : undefined,
+      releases: this.releases.get(sessionId) ?? 0,
     };
     // #4828, first: after an untrusted read, a change to a known
     // agent-instruction or git-hook file is rejected, whatever a grant, the
@@ -2491,65 +2555,87 @@ export class OpenCodeNativeSession {
    * it. It is never shown to a person, and a later re-list does not reopen
    * it.
    *
-   * The ask of this session, or of a descendant started for the live turn,
-   * stops that turn: the asking descendant is interrupted (a 2.3.0
-   * subagent is a background job of its own, which the root's interrupt
-   * does not stop) and this session too. The turn ends with a
-   * `runtime.error` saying why once OpenCode reports the execution ended,
-   * or after {@link FAIL_CLOSE_SETTLE_MS} if it does not; until then it is
-   * still the live turn, so a next turn is refused as busy and a steer as
-   * too late rather than delivered into the execution being stopped. An
-   * ask of a descendant some other turn started (one still running in the
-   * background) interrupts only that descendant, with a warning: the live
-   * turn is not its work. An interrupt that fails is reported in a warning
-   * of its own; stopping the session interrupts again and repeats the
-   * rejection ({@link dropEngineWork}).
+   * This session's ask stops the turn it was raised in, and a descendant's
+   * stops the live turn if that turn started it: the asking descendant is
+   * interrupted (a 2.3.0 subagent is a background job of its own, which the
+   * root's interrupt does not stop) and this session too. The turn ends
+   * with a `runtime.error` saying why once OpenCode reports the execution
+   * ended, or after {@link FAIL_CLOSE_SETTLE_MS} if it does not; until then
+   * it is still the live turn, so a next turn is refused as busy and a steer
+   * as too late rather than delivered into the execution being stopped. A
+   * second refusal in that turn adds its interrupts to the first's record,
+   * whose reason and wait stand. A turn nothing runs yet has its prompt
+   * taken back out of the inbox instead ({@link withdrawUnstarted}).
+   *
+   * An ask that is not the live turn's (a descendant some other turn
+   * started, or this session's from a turn that has ended) interrupts the
+   * session that asked, with a warning: the live turn is not settled for it.
+   * This session's ask with no turn live at all ends in a `runtime.error` of
+   * its own, and a next turn is refused as busy until the interrupt answers
+   * or the same wait runs out. An interrupt that fails is reported in a
+   * warning of its own; stopping the session interrupts again and repeats
+   * the rejection while OpenCode may still hold the ask ({@link
+   * dropEngineWork}).
    */
   private failClosed(
     ask: NativeAsk,
     error: unknown,
     why: string | undefined,
   ): void {
-    this.refusedAsks.set(ask.nativeId, {
-      sessionId: ask.sessionId,
-      held: true,
-    });
-    if (this.refusedAsks.size > CLOSED_REQUESTS_MAX) {
-      const oldest = this.refusedAsks.keys().next().value;
-      if (oldest !== undefined) this.refusedAsks.delete(oldest);
-    }
+    // Its execution ended before the refusal came back: nothing holds it.
+    const held = (this.releases.get(ask.sessionId) ?? 0) === ask.releases;
+    if (!this.rememberRefused(ask.nativeId, { sessionId: ask.sessionId, held }))
+      return;
     const engine = this.deps.engineName;
     const own = ask.sessionId === this.sessionId;
     const reason = `Station had to reject ${engine}'s request${own ? '' : ` from subagent session ${ask.sessionId}`} to ${ask.action}${why ? ` (${redactSecrets(why).slice(0, 1000)})` : ''}, but ${engine} did not take the rejection (${redactSecrets(errorMessage(error))})`;
     const live = this.turn ?? this.pendingStart;
     const turn = live && !live.settled ? live : undefined;
     const ofTurn =
-      own ||
-      (turn !== undefined &&
-        this.children.get(ask.sessionId)?.item?.parent?.turnId === turn.turnId);
-    if (!ofTurn) {
-      // A background descendant's: its own job stops, the live turn goes on.
+      turn !== undefined &&
+      (own
+        ? ask.turnId === turn.turnId
+        : this.children.get(ask.sessionId)?.item?.parent?.turnId ===
+          turn.turnId);
+    if (!ofTurn && (turn || !own)) {
+      // Not the live turn's work: the session that asked stops, the live
+      // turn (if any) is not ended for it.
       void this.interruptFor(ask.sessionId).then((failure) =>
         this.emit({
           method: 'runtime.warning',
           severity: 'warning',
-          message: failure
-            ? `${reason}, and Station could not stop that subagent (${failure}); ${engine} may still be running it.`
-            : `${reason}, so Station stopped that subagent.`,
+          message: own
+            ? failure
+              ? `${reason}, and Station could not interrupt ${engine} (${failure}); ${engine} may still hold it. The turn that asked had ended; the turn now running was not stopped for it.`
+              : `${reason}, so Station interrupted ${engine}. The turn that asked had ended; the turn now running was not stopped for it.`
+            : failure
+              ? `${reason}, and Station could not stop that subagent (${failure}); ${engine} may still be running it.`
+              : `${reason}, so Station stopped that subagent.`,
         }),
       );
       return;
     }
-    const failClose: FailClose = { reason, confirmed: false };
-    const interrupts = [
-      ...(own ? [] : [this.interruptFor(ask.sessionId)]),
-      this.interruptFor(this.sessionId),
-    ];
+    const subagent = own ? [] : [ask.sessionId];
+    const interrupts = [...subagent, this.sessionId].map((sessionId) =>
+      this.interruptFor(sessionId).then((failure) => ({ sessionId, failure })),
+    );
+    const settleMs = this.deps.failCloseSettleMs ?? FAIL_CLOSE_SETTLE_MS;
     if (!turn) {
-      // No turn to end: the error stands on its own, once the interrupt
-      // has answered.
-      void Promise.all(interrupts).then((failures) => {
-        const failure = failures.find(Boolean);
+      // This session's, with no turn to end: the error stands on its own,
+      // once the interrupt has answered. Until then (or the wait runs out)
+      // a next turn would be delivered into the execution being stopped.
+      let busy = true;
+      this.stoppingRefused += 1;
+      const idle = () => {
+        if (!busy) return;
+        busy = false;
+        this.stoppingRefused -= 1;
+      };
+      const timer = setTimeout(idle, settleMs);
+      void Promise.all(interrupts).then((answers) => {
+        clearTimeout(timer);
+        idle();
+        const failure = answers.find((answer) => answer.failure)?.failure;
         this.emit({
           method: 'runtime.error',
           ...providerFailure('provider_error'),
@@ -2563,17 +2649,105 @@ export class OpenCodeNativeSession {
       return;
     }
     turn.stopRequested = true;
-    turn.failClose = failClose;
+    // A second refusal in the turn adds to the first's record: its reason
+    // and its wait stand.
+    const first = turn.failClose === undefined;
+    turn.failClose ??= {
+      reason,
+      confirmed: false,
+      subagentInterruptFailed: new Map(),
+    };
+    const failClose = turn.failClose;
     for (const pending of interrupts)
-      void pending.then((failure) => {
-        failClose.interruptFailed ??= failure;
+      void pending.then(({ sessionId, failure }) => {
+        if (!failure) return;
+        if (sessionId === this.sessionId) failClose.interruptFailed ??= failure;
+        else if (!failClose.subagentInterruptFailed.has(sessionId))
+          failClose.subagentInterruptFailed.set(sessionId, failure);
       });
+    if (!first) return;
     if (!turn.executing) {
-      // Nothing runs it yet: it ends here, as an interrupt ends it.
-      failClose.confirmed = true;
-      this.settle(turn, { method: 'turn.aborted', reason: 'interrupted' });
+      void this.withdrawUnstarted(turn, failClose);
       return;
     }
+    this.armFailCloseWait(turn, failClose);
+  }
+
+  /**
+   * Remember a refused ask. Past {@link REFUSED_ASKS_EVICT_ABOVE} the oldest
+   * one OpenCode no longer holds is forgotten; one it may still hold is
+   * never, since stopping the session must reject it again. Past {@link
+   * REFUSED_ASKS_STOP_ABOVE} the session is stopped instead, with a warning
+   * (false: it is stopping).
+   */
+  private rememberRefused(nativeId: string, refused: RefusedAsk): boolean {
+    this.refusedAsks.set(nativeId, refused);
+    const bounds = this.deps.refusedAsksBounds ?? {
+      evictAbove: REFUSED_ASKS_EVICT_ABOVE,
+      stopAbove: REFUSED_ASKS_STOP_ABOVE,
+    };
+    if (this.refusedAsks.size > bounds.evictAbove) {
+      for (const [id, entry] of this.refusedAsks) {
+        if (entry.held) continue;
+        this.refusedAsks.delete(id);
+        break;
+      }
+    }
+    if (this.refusedAsks.size <= bounds.stopAbove) return true;
+    this.emit({
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: OPENCODE_REFUSED_ASKS_OVERFLOW,
+      message: `Station stopped this ${this.deps.engineName} chat: ${this.deps.engineName} would not take ${this.refusedAsks.size} of Station's rejections and may still hold them, more than Station keeps track of.`,
+    });
+    if (this.deps.onMustStop) this.deps.onMustStop();
+    else void this.stop('stopped');
+    return false;
+  }
+
+  /**
+   * Stopped before anything ran it: its prompt is taken back out of the
+   * inbox (once its POST has landed), so it cannot start after Station has
+   * said the turn ended. If an execution started for it meanwhile, the turn
+   * waits for that execution's end instead.
+   */
+  private async withdrawUnstarted(
+    turn: NativeTurn,
+    failClose: FailClose,
+  ): Promise<void> {
+    // Its execution started after all: the interrupt sent before it may
+    // not have reached it, so it is sent again, and its end waited for.
+    const started = () => {
+      failClose.withdrawal = undefined;
+      void this.interruptFor(this.sessionId).then((failure) => {
+        if (failure) failClose.interruptFailed ??= failure;
+      });
+      this.armFailCloseWait(turn, failClose);
+    };
+    await turn.posted;
+    if (turn.settled) return;
+    if (turn.executing) return started();
+    if (turn.messageId && this.pendingStart === turn) {
+      try {
+        await this.deps.client.request(
+          'DELETE',
+          `/api/session/${this.sessionId}/inbox/${turn.messageId}`,
+          undefined,
+          { timeoutMs: STOP_REQUEST_MS },
+        );
+        failClose.withdrawal = {};
+      } catch (error) {
+        failClose.withdrawal = { failed: redactSecrets(errorMessage(error)) };
+      }
+      if (turn.settled) return;
+      if (turn.executing) return started();
+    }
+    this.closeOpenTools(turn);
+    this.settle(turn, { method: 'turn.aborted', reason: 'interrupted' });
+  }
+
+  /** Wait for OpenCode to say the stopped execution ended, at most {@link FAIL_CLOSE_SETTLE_MS}. */
+  private armFailCloseWait(turn: NativeTurn, failClose: FailClose): void {
     failClose.timer = setTimeout(() => {
       if (turn.settled) return;
       // OpenCode did not say the execution ended: the turn ends anyway, and
@@ -2613,15 +2787,27 @@ export class OpenCodeNativeSession {
 
   /** The error a turn {@link failClosed} stopped ends with. */
   private failCloseMessage(failClose: FailClose): string {
+    const engine = this.deps.engineName;
+    // A descendant whose interrupt failed, and that has not been seen to
+    // end, may still run whatever this session's execution did.
+    for (const [sessionId, failure] of failClose.subagentInterruptFailed) {
+      if (this.children.get(sessionId)?.running)
+        return `${failClose.reason}, and Station could not stop subagent session ${sessionId} in ${engine} (${failure}): ${engine} may still be running it.`;
+    }
+    if (failClose.withdrawal)
+      return failClose.withdrawal.failed
+        ? `${failClose.reason}, and Station could not take the turn's prompt back out of ${engine}'s queue (${failClose.withdrawal.failed}): ${engine} may still run it.`
+        : `${failClose.reason}, so Station stopped the turn and took its prompt back out of ${engine}'s queue before ${engine} ran it.`;
     if (failClose.confirmed)
       return `${failClose.reason}, so Station stopped the turn.`;
     if (failClose.interruptFailed)
-      return `${failClose.reason}, and Station could not stop the turn in ${this.deps.engineName} (${failClose.interruptFailed}): ${this.deps.engineName} may still be running it.`;
-    return `${failClose.reason}, so Station stopped the turn; ${this.deps.engineName} had not confirmed its execution ended.`;
+      return `${failClose.reason}, and Station could not stop the turn in ${engine} (${failClose.interruptFailed}): ${engine} may still be running it.`;
+    return `${failClose.reason}, so Station stopped the turn; ${engine} had not confirmed its execution ended.`;
   }
 
   /** OpenCode no longer holds `sessionId`'s refused asks: its execution ended. */
   private releaseRefusedAsks(sessionId: string): void {
+    this.releases.set(sessionId, (this.releases.get(sessionId) ?? 0) + 1);
     for (const refused of this.refusedAsks.values()) {
       if (refused.sessionId === sessionId) refused.held = false;
     }

@@ -155,6 +155,8 @@ export class OpenCodeServeReplay {
   private readonly fallbackAnswers = new Map<string, OpenCodeReplayRecord[]>();
   private readonly counts = new Map<string, number>();
   private readonly waiters: Array<() => void> = [];
+  /** The poll timers of held frames' waits, cleared on close. */
+  private readonly polls = new Set<ReturnType<typeof setTimeout>>();
   private readonly taps: string[] = [];
   private readonly written: OpenCodeReplayRecord[] = [];
   private connections = 0;
@@ -238,6 +240,8 @@ export class OpenCodeServeReplay {
 
   async close(): Promise<void> {
     this.closed = true;
+    for (const poll of this.polls) clearTimeout(poll);
+    this.polls.clear();
     for (const wake of this.waiters.splice(0)) wake();
     this.server.closeAllConnections();
     await new Promise<void>((resolve) => this.server.close(() => resolve()));
@@ -325,6 +329,26 @@ export class OpenCodeServeReplay {
     res.end(JSON.stringify(record.response));
   }
 
+  /**
+   * Wait for the next request or frame, or 10ms: whichever comes first
+   * takes the other back out, so a held frame's polling leaves nothing
+   * behind (and close clears a poll still pending).
+   */
+  private poll(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const wake = () => {
+        clearTimeout(timer);
+        this.polls.delete(timer);
+        const index = this.waiters.indexOf(wake);
+        if (index >= 0) this.waiters.splice(index, 1);
+        resolve();
+      };
+      const timer = setTimeout(wake, 10);
+      this.polls.add(timer);
+      this.waiters.push(wake);
+    });
+  }
+
   private async gate(key: string, count: number): Promise<void> {
     while (!this.closed && (this.counts.get(key) ?? 0) < count) {
       await new Promise<void>((resolve) => this.waiters.push(resolve));
@@ -345,11 +369,7 @@ export class OpenCodeServeReplay {
       if (record.tap !== tap) continue;
       const held = this.holdFrame?.(record);
       if (held)
-        while (!this.closed && !res.destroyed && !held())
-          await new Promise<void>((resolve) => {
-            this.waiters.push(resolve);
-            setTimeout(resolve, 10);
-          });
+        while (!this.closed && !res.destroyed && !held()) await this.poll();
       if (this.closed || res.destroyed) return;
       if (record.kind === 'sse' && record.event) {
         res.write(`data: ${JSON.stringify(record.event)}\n\n`);

@@ -253,6 +253,8 @@ export interface OpenCodeAdapterOptions {
   reconnectFirstMs?: number;
   /** Tests: how long a turn stopped on a refused rejection waits for OpenCode. */
   failCloseSettleMs?: number;
+  /** Tests: how many refused asks a native session remembers before forgetting, then stopping. */
+  refusedAsksBounds?: { evictAbove: number; stopAbove: number };
   /** Tests: the ids native sessions give their prompts. */
   newMessageId?: () => string;
 }
@@ -1085,6 +1087,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       this.options.acp?.untrustedContentLedger ?? sharedUntrustedContentLedger;
     let onMoved: (move: { sessionId: string; directory: string }) => void =
       () => undefined;
+    let onMustStop: () => void = () => undefined;
     const native = new OpenCodeNativeSession({
       threadId: input.threadId,
       provider: this.provider,
@@ -1110,11 +1113,15 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       // As the ACP adapter reads it (`record.delegation?.denyApprovals`).
       ...(delegation?.denyApprovals ? { denyApprovals: true } : {}),
       onMoved: (move) => onMoved(move),
+      onMustStop: () => onMustStop(),
       ...(this.options.reconnectFirstMs
         ? { reconnectFirstMs: this.options.reconnectFirstMs }
         : {}),
       ...(this.options.failCloseSettleMs
         ? { failCloseSettleMs: this.options.failCloseSettleMs }
+        : {}),
+      ...(this.options.refusedAsksBounds
+        ? { refusedAsksBounds: this.options.refusedAsksBounds }
         : {}),
       ...(this.options.newMessageId
         ? { newMessageId: this.options.newMessageId }
@@ -1162,6 +1169,11 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     };
     this.native.set(input.threadId, record);
     onMoved = (move) => void this.onSessionMoved(input.threadId, record, move);
+    // The usual stop, as for a move it cannot govern (the session warned).
+    onMustStop = () => {
+      if (this.native.get(input.threadId) === record)
+        void this.stopSession(input.threadId);
+    };
     void lease.exited.then(() => this.onServerExit(input.threadId, record));
     this.publish({
       eventId: crypto.randomUUID(),
