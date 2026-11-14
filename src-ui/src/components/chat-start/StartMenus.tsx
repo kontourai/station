@@ -283,7 +283,17 @@ export function StartProjectMenu({
         // One line: the folder's parent gives way, its leaf stays readable.
         <p className="start-menu__hint start-menu__hint--path">
           <span className="start-menu__hint-lead">Runs in</span>
-          <CwdBreadcrumb path={workspaceHint.path} />
+          {workspaceHint.kind === 'project' && workspaceHint.repository ? (
+            <span
+              title={[workspaceHint.repositoryRemote, workspaceHint.path]
+                .filter(Boolean)
+                .join(' · ')}
+            >
+              {workspaceHint.repository}
+            </span>
+          ) : (
+            <CwdBreadcrumb path={workspaceHint.path} />
+          )}
           {workspaceHint.kind === 'unverified' && (
             <span className="start-menu__hint-lead">(not checked yet)</span>
           )}

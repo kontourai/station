@@ -4997,11 +4997,11 @@ while preserving unrelated interruption messages.
 
 ## StarterWorkRegistry
 
-Starter Work guides a newly configured personal Station through five real actions. It remembers which exact Task, Session, approval, or receipt the action refers to, then reads the owning service for its outcome. The [registry](../../src-server/services/starter-work/starter-registry.ts) does not manufacture tutorial success.
+Starter Work correlates first-use actions on a personal Station. Home no longer advertises starter cards. It remembers which exact Task, Session, approval, or receipt the action refers to, then reads the owning service for its outcome. The [registry](../../src-server/services/starter-work/starter-registry.ts) does not manufacture tutorial success.
 
-**Interface.** `StarterRegistry` is the bounded Module for the five
-post-first-run journeys: start a Task, continue a Session, inspect an approval,
-inspect a review receipt, and run a scheduled readiness check. Its catalog,
+**Interface.** `StarterRegistry` catalogs Task creation and Session continuation.
+Existing approval, review and scheduled-check endpoints retain compatibility
+with saved bindings. Its
 candidate, launch, observation, and
 clear Interfaces accept intent-shaped typed references; clients cannot add
 starter IDs, hrefs, owner payloads, evidence, or completion facts.
@@ -5020,8 +5020,8 @@ becomes a pass verdict.
 
 **Code and evidence.** Runtime composition builds the
 registry only after the shared Notification, Run, and ReviewEvidence Modules
-exist, then mounts one personal-only route family. The SDK owns HTTP and Home
-offers guided actions with exact operation correlation; Notifications and Review Queue resolve server-built
+exist, then mounts one personal-only route family. The SDK owns HTTP and
+Project Tasks retain guided actions with exact operation correlation; Notifications and Review Queue resolve server-built
 deep links to the exact owner row. Contract, module, owner, route, runtime,
 SDK, Home, Notifications, and Review Queue tests live beside those seams.
 **Do not reintroduce:** a tutorial checklist store, synthetic approvals or

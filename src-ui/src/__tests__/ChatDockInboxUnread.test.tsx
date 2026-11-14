@@ -28,6 +28,12 @@ import { deviceSettingsStore } from '../lib/device-settings-store';
 import { withConversationInventory } from '../views/home/conversation-inventory-facts';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 
+// The app supplies connection authority; these isolated row tests supply the
+// project catalogue used by the scope labels without starting remote reads.
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
+}));
+
 const NOW = Date.parse('2026-11-11T12:00:00Z');
 const UPDATED_AT = '2026-11-11T11:58:00.000Z';
 const VERSION = Date.parse(UPDATED_AT);

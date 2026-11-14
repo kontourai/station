@@ -26,6 +26,11 @@ import {
 } from '@testing-library/react';
 import { createRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [{ slug: 'alpha', name: 'Alpha' }] }),
+}));
+
 import { FOLD_FIXTURES } from '../../../tests/helpers/session-summary-fold-fixtures';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import {
@@ -400,13 +405,35 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     },
   );
 
-  it('defaults to all work; a chosen Current project follows the project page on screen (#4405 A36)', () => {
+  it('describes the effective all-work empty state when Current project resolves outside a project', () => {
+    act(() => navigationStore.navigate('/'));
+    render(
+      <MobileInboxPanel
+        open
+        tasks={[]}
+        openChatSessionIds={[]}
+        activeChatSessionId={null}
+        triggerRef={createRef<HTMLButtonElement>()}
+        onClose={vi.fn()}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={vi.fn()}
+        now={NOW}
+      />,
+    );
+
+    expect(screen.getByText('No chats yet.')).toBeTruthy();
+    expect(screen.queryByText('No work in this filter.')).toBeNull();
+  });
+
+  it('defaults to the project page and respects explicit All work (#4405 A36)', () => {
     const items = [
       workItem({
         id: 'alpha-chat',
         title: 'Alpha project work',
         projectSlug: 'alpha',
-        projectLabel: 'Alpha',
+        projectLabel: undefined as any,
         chatSessionId: 'alpha-chat',
       }),
       workItem({
@@ -429,30 +456,66 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       />
     );
     try {
-      act(() => navigationStore.navigate('/projects/alpha'));
+      act(() => navigationStore.navigate('/projects/alpha/layouts/coding'));
       const mounted = render(panel());
       const scope = () =>
         screen.getByRole('combobox', {
           name: 'Inbox scope',
         }) as HTMLSelectElement;
-      // Unchosen, every open chat stays listed: the open conversation is
-      // never filtered out of its own Inbox.
-      expect(scope().value).toBe('all');
-      expect(screen.getByText('No project chat')).toBeTruthy();
-      fireEvent.change(scope(), { target: { value: 'current-project' } });
+      // With no stored setting a project route scopes the inbox.
+      expect(scope().value).toBe('current-project');
+      expect(scope().selectedOptions[0].textContent).toBe(
+        'This project: Alpha',
+      );
       expect(screen.getByText('Alpha project work')).toBeTruthy();
       expect(screen.queryByText('No project chat')).toBeNull();
       act(() => navigationStore.navigate('/'));
       mounted.rerender(panel());
       expect(screen.getByText('No project chat')).toBeTruthy();
       expect(screen.getByText('Alpha project work')).toBeTruthy();
+      expect(scope().selectedOptions[0].textContent).toBe('All work');
+      expect(
+        [...scope().options].filter(
+          (option) => !option.hidden && option.text === 'All work',
+        ),
+      ).toHaveLength(1);
+      expect(screen.queryByRole('option', { name: 'Follow page' })).toBeNull();
+      expect(
+        [...scope().options]
+          .filter((option) => !option.hidden)
+          .slice(0, 2)
+          .map((option) => option.text),
+      ).toEqual(['All work', 'This Station']);
+      expect(scope().value).toBe('current-project');
+      fireEvent.change(scope(), { target: { value: 'all' } });
+      act(() => navigationStore.navigate('/projects/alpha'));
+      mounted.rerender(panel());
+      expect(scope().value).toBe('all');
+      expect(screen.getByText('No project chat')).toBeTruthy();
+      fireEvent.change(scope(), { target: { value: 'current-project' } });
+
       // Back on a project page the chosen scope filters again; "All work"
       // undoes it.
       act(() => navigationStore.navigate('/projects/alpha'));
       mounted.rerender(panel());
       expect(screen.queryByText('No project chat')).toBeNull();
+      expect(
+        screen.getByRole('option', { name: 'Always Alpha · This Station' }),
+      ).toBeTruthy();
+      fireEvent.change(scope(), {
+        target: { value: 'project:["station:local","alpha"]' },
+      });
+      act(() => navigationStore.navigate('/'));
+      mounted.rerender(panel());
+      expect(screen.queryByText('No project chat')).toBeNull();
       fireEvent.change(scope(), { target: { value: 'all' } });
       expect(screen.getByText('No project chat')).toBeTruthy();
+      expect(scope().selectedOptions[0].textContent).toBe('All work');
+      expect(
+        [...scope().options].filter(
+          (option) => !option.hidden && option.text === 'All work',
+        ),
+      ).toHaveLength(1);
     } finally {
       act(() => navigationStore.navigate('/'));
     }

@@ -807,3 +807,12 @@
   min-height: 44px;
   font-size: var(--k-text-sm);
 }
+
+/* Station provenance has the same mark for peer and SSH work. */
+.inbox-row__chip--remote,
+.inbox-row__slim-remote {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: color-mix(in srgb, var(--k-action) 10%, transparent);
+  color: var(--k-text);
+}
