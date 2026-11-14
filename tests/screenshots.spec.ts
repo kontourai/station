@@ -4164,6 +4164,332 @@ function channelNavigationScreens(): Screen[] {
   );
 }
 
+/** Real dock composition with an engine-owned child transcript, under a controlled provider. */
+function childChatScreens(): Screen[] {
+  const parent = 'gallery-child-parent';
+  const child = 'review-files';
+  const item = {
+    producer: 'engine-subagent',
+    reporterThreadId: parent,
+    childId: child,
+    status: 'completed',
+    title: 'Review files',
+    transcript: { kind: 'claude-subagent', sessionId: parent, agentId: child },
+  };
+  const summary = {
+    threadId: parent,
+    conversationId: parent,
+    provider: 'claude',
+    status: 'idle',
+    lifecycleState: 'idle',
+    controlMode: 'station-owned',
+    isLoaded: true,
+    isPersisted: true,
+    answerability: { answerable: true },
+    title:
+      'Plan the change across the workspace and review every navigation boundary',
+    displayTitle:
+      'Plan the change across the workspace and review every navigation boundary',
+    createdAt: '2026-07-19T10:00:00Z',
+    updatedAt: '2026-07-19T10:05:00Z',
+    childWork: {
+      children: {
+        observability: 'reported',
+        running: [],
+        settled: [item],
+        observedAt: '2026-07-19T10:05:00Z',
+      },
+    },
+  };
+  return [
+    { width: 1440, height: 900 },
+    { width: 412, height: 915 },
+    { width: 390, height: 844 },
+  ].flatMap((viewport) =>
+    (['dark', 'light'] as const).map((theme) => {
+      let cleanups: (() => Promise<void>)[] = [];
+      return {
+        name: `child-chat-${theme}-${viewport.width}`,
+        title: `Child chat in the dock — ${theme}, ${viewport.width}px`,
+        path: `/?dock=open&chat=${parent}&surface=chat&session=${parent}&child=${child}&childTitle=Review+files&galleryTheme=${theme}`,
+        viewport,
+        beforeGoto: async (page: Page) => {
+          await clearDockGalleryStorage(page);
+          await page.addInitScript(
+            ({ theme, parent }) => {
+              const params = new URLSearchParams(location.search);
+              if (
+                params.get('chat') !== parent ||
+                params.get('galleryTheme') !== theme
+              )
+                return;
+              const key = 'station-device-settings-v1';
+              const envelope = JSON.parse(
+                localStorage.getItem(key) ?? '{"version":2,"values":{}}',
+              );
+              envelope.values = { ...envelope.values, theme };
+              localStorage.setItem(key, JSON.stringify(envelope));
+            },
+            { theme, parent },
+          );
+          await seedActiveChatSession(page, {
+            conversationId: parent,
+            agentSlug: 'demo-agent',
+            title:
+              'Plan the change across the workspace and review every navigation boundary',
+          });
+          // The real host has no execution for this controlled provider record.
+          await page.addInitScript((id) => {
+            if (new URLSearchParams(location.search).get('chat') !== id) return;
+            const original = window.fetch.bind(window);
+            window.fetch = async (input, init) => {
+              const url = input instanceof Request ? input.url : String(input);
+              if (
+                new URL(url, location.href).pathname !==
+                '/api/orchestration/events'
+              )
+                return original(input, init);
+              return new Response(
+                new ReadableStream<Uint8Array>({
+                  start(controller) {
+                    init?.signal?.addEventListener(
+                      'abort',
+                      () => controller.close(),
+                      { once: true },
+                    );
+                  },
+                }),
+                { headers: { 'Content-Type': 'text/event-stream' } },
+              );
+            };
+          }, parent);
+          await mockRuntimeConversation(page, {
+            id: parent,
+            agentSlug: 'demo-agent',
+            title:
+              'Plan the change across the workspace and review every navigation boundary',
+            provider: 'claude',
+            model: 'test-model',
+            canContinue: true,
+            turns: () =>
+              buildLongSessionTurns({
+                threadId: parent,
+                provider: 'claude',
+                turnCount: 1,
+                replyText: () => 'The review is ready.',
+              }),
+          });
+          const json = (data: unknown) => (route: Route) =>
+            route.fulfill({ json: { success: true, data } });
+          cleanups = [
+            await withRoute(page, '**/api/me/preferences', (route) => {
+              if (route.request().method() !== 'GET')
+                return rejectUnexpectedFixtureRequest(route);
+              return route.fulfill({
+                json: {
+                  success: true,
+                  data: { schemaVersion: 1, values: { theme } },
+                },
+              });
+            }),
+            await withRoute(
+              page,
+              '**/api/orchestration/sessions/read-model',
+              json([summary]),
+            ),
+            await withRoute(
+              page,
+              `**/api/orchestration/sessions/${parent}`,
+              json({ session: summary, events: [] }),
+            ),
+            await withRoute(
+              page,
+              `**/api/orchestration/sessions/${parent}/child-work/${child}/transcript**`,
+              json({
+                entries: [
+                  {
+                    message: 0,
+                    kind: 'text',
+                    role: 'user',
+                    text: 'Read the implementation and check the proposed change at phone width.',
+                  },
+                  {
+                    message: 1,
+                    kind: 'tool-call',
+                    toolCallId: 'read-1',
+                    name: 'Read',
+                    input: JSON.stringify({ file_path: 'src/navigation.ts' }),
+                  },
+                  {
+                    message: 2,
+                    kind: 'tool-result',
+                    toolCallId: 'read-1',
+                    text: 'The implementation preserves the parent conversation.',
+                  },
+                  {
+                    message: 3,
+                    kind: 'text',
+                    role: 'assistant',
+                    text: 'The navigation keeps the parent draft and header controls available.',
+                  },
+                ],
+              }),
+            ),
+          ];
+        },
+        afterGoto: async (page: Page) => {
+          await expect(page.locator('html')).toHaveAttribute(
+            'data-theme',
+            theme,
+          );
+          const dock = page.locator('#chat-dock');
+          await expect(
+            dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
+          ).toBeVisible({ timeout: 20000 });
+          await expect(
+            dock.getByText(
+              'The navigation keeps the parent draft and header controls available.',
+            ),
+          ).toBeVisible();
+          // A trusted browser Back uses the same history layer as Android system Back.
+          const reopen = new URL(page.url());
+          reopen.searchParams.set('surface', 'chat');
+          reopen.searchParams.set('session', parent);
+          reopen.searchParams.set('child', child);
+          reopen.searchParams.set('childTitle', 'Review files');
+          const beforeBack = page.url();
+          await page.goBack();
+          await expect(page, 'child Back retains the parent URL').toHaveURL(
+            beforeBack,
+          );
+          await expect(
+            dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
+          ).toBeHidden();
+          await expect(
+            dock.getByText('The review is ready.', { exact: true }),
+          ).toBeVisible();
+          await page.goto(reopen.toString());
+          await expect(
+            dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
+          ).toBeVisible();
+          // Real pointer actions prove both controls survive header clipping,
+          // including a long ancestor title at desktop and phone widths.
+          for (const name of [
+            'Back to parent chat',
+            'Plan the change across the workspace and review every navigation boundary',
+          ]) {
+            const control = dock
+              .getByRole('navigation', { name: 'Chat breadcrumb' })
+              .getByRole('button', { name, exact: true });
+            await expect(control).toBeVisible();
+            const box = (await control.boundingBox())!;
+            expect(box.width).toBeGreaterThanOrEqual(44);
+            expect(box.height).toBeGreaterThanOrEqual(44);
+            expect(
+              await control.evaluate((button) => {
+                const box = button.getBoundingClientRect();
+                return button.contains(
+                  document.elementFromPoint(
+                    box.x + box.width / 2,
+                    box.y + box.height / 2,
+                  ),
+                );
+              }),
+              `${name} is hit-testable at its center`,
+            ).toBe(true);
+            await control.click();
+            await expect(
+              dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
+            ).toBeHidden();
+            await expect(
+              dock.getByText('The review is ready.', { exact: true }),
+            ).toBeVisible();
+            await page.goto(reopen.toString());
+            await expect(
+              dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
+            ).toBeVisible();
+          }
+          if (viewport.width < 600)
+            await dock
+              .getByRole('button', { name: 'Full screen chat', exact: true })
+              .click();
+          else
+            await dock
+              .getByRole('button', {
+                name: 'Expand dock region to workspace',
+                exact: true,
+              })
+              .click();
+
+          await expect(dock.getByText('No result recorded')).toHaveCount(0);
+          const call = dock.locator('.tool-call').first();
+          await expect(call).toBeVisible();
+          const toggle = call.getByRole('button').first();
+          if ((await toggle.getAttribute('aria-expanded')) === 'false')
+            await toggle.click();
+          await expect(
+            dock.getByText(
+              'The implementation preserves the parent conversation.',
+            ),
+          ).toBeVisible();
+          await expect(
+            dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
+          ).toContainText(
+            'Plan the change across the workspace and review every navigation boundary',
+          );
+          if (viewport.width < 600)
+            await expect(
+              dock.getByRole('button', { name: 'Chat actions', exact: true }),
+            ).toBeVisible();
+          await expect(page.locator('html')).toHaveAttribute(
+            'data-theme',
+            theme,
+          );
+          if (viewport.width < 600) {
+            for (const name of ['Chat actions', 'New chat']) {
+              const control = dock.getByRole('button', { name, exact: true });
+              const hittable = await control.evaluate((button) => {
+                const box = button.getBoundingClientRect();
+                const hit = document.elementFromPoint(
+                  box.x + box.width / 2,
+                  box.y + box.height / 2,
+                );
+                return (
+                  box.width >= 44 &&
+                  box.height >= 44 &&
+                  (hit === button || button.contains(hit))
+                );
+              });
+              expect(hittable, `${name} keeps a clear 44px phone target`).toBe(
+                true,
+              );
+            }
+          }
+          if (viewport.width < 600) {
+            const titleBox = await dock
+              .locator('[aria-current="page"]')
+              .boundingBox();
+            const actionsBox = await dock
+              .getByRole('button', { name: 'Chat actions', exact: true })
+              .boundingBox();
+            expect(
+              (titleBox?.x ?? 0) + (titleBox?.width ?? 0),
+              'breadcrumb stays before actions',
+            ).toBeLessThanOrEqual(actionsBox?.x ?? 0);
+          }
+          const overflow = await dock.evaluate(
+            (element) => element.scrollWidth > element.clientWidth + 1,
+          );
+          expect(overflow, 'the actual dock fits the viewport').toBe(false);
+        },
+        cleanup: async () => {
+          for (const cleanup of cleanups.reverse()) await cleanup();
+        },
+      } satisfies Screen;
+    }),
+  );
+}
+
 const SCREENS: Screen[] = [
   ...roomConversationScreens(),
   ...channelNavigationScreens(),
@@ -6013,6 +6339,7 @@ const SCREENS: Screen[] = [
     } satisfies Screen;
   })(),
   ...inventoryDrilldownScreens(),
+  ...childChatScreens(),
   ...stationSwitcherScreens(),
   ...taskCapabilityScreens(),
 ];

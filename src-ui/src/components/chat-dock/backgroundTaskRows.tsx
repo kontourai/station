@@ -22,7 +22,6 @@ import type {
 } from '../../contexts/background-tasks-store';
 import {
   CHILD_WORK_STATUS_LABEL,
-  formatChildWorkElapsed,
   latestChildTool,
 } from '../../utils/child-work-display';
 import { formatDateTime } from '../../utils/relativeTime';
@@ -30,29 +29,12 @@ import {
   type SessionIconAgent,
   sessionIconAgent,
 } from '../../utils/sessionDisplay';
-import { ChildWorkActivity } from '../chat/ChildWorkActivity';
+import { BackgroundTaskActivity } from '../chat/BackgroundTaskActivity';
 import { ChildWorkIdentity } from '../chat/ChildWorkIdentity';
 import { AgentGlyph, TerminalGlyph } from '../icons/Glyph';
 import './BackgroundTasksSheet.css';
 
-/**
- * #2459: a card's elapsed time, or undefined when no start was reported —
- * a running card counts to `now`, a settled one to its end.
- */
-export function backgroundTaskElapsedMs(
-  entry: BackgroundTaskEntry,
-  now: number,
-): number | undefined {
-  if (entry.startedAt === undefined) return undefined;
-  return entry.state === 'running'
-    ? now - entry.startedAt
-    : (entry.endedAt ?? entry.startedAt) - entry.startedAt;
-}
-
-const KIND_LABEL: Record<BackgroundTaskEntry['kind'], string> = {
-  tool: 'Tool',
-  agent: 'Agent',
-};
+export { backgroundTaskElapsedMs } from '../chat/BackgroundTaskActivity';
 
 const OUTCOME_LABEL: Partial<Record<BackgroundTaskState, string>> = {
   completed: 'Completed',
@@ -204,20 +186,11 @@ export function TaskRow({
               Via {station.stationName}
             </span>
           )}
-          <span className="background-tasks-sheet__meta">
-            {entry.state === 'running' && (entry.latestTool || latestTool) ? (
-              <ChildWorkActivity
-                tool={entry.latestTool ?? latestTool}
-                progress={
-                  entry.source === 'provider-task' ? entry.detail : undefined
-                }
-              />
-            ) : (
-              KIND_LABEL[entry.kind]
-            )}
-            {elapsedMs !== undefined &&
-              ` · ${formatChildWorkElapsed(elapsedMs)}`}
-          </span>
+          <BackgroundTaskActivity
+            entry={entry}
+            latestTool={latestTool}
+            elapsedMs={elapsedMs}
+          />
         </span>
         {outcomeChip && (
           <span
