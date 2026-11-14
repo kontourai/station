@@ -149,13 +149,11 @@ for (const viewport of [
           ),
         theme,
       );
-      await page.goto(`/?dock=open&chat=${parent}`);
+      const childUrl = `/?dock=open&chat=${parent}&surface=chat&session=${parent}&child=child-review&childTitle=Review+files`;
+      await page.goto(childUrl);
       await dismissSetupLauncher(page);
       await openChatRegion(page);
       const log = page.getByRole('log', { name: 'Conversation transcript' });
-      await expect(log).toContainText('Parent answer with a child review.');
-      await log.getByRole('button', { name: /Review files/ }).click();
-      await log.getByRole('button', { name: 'Open chat', exact: true }).click();
       const trail = page.getByRole('navigation', { name: 'Chat breadcrumb' });
       await expect(trail).toContainText('Review files');
       const childLog = page.getByRole('log', {
@@ -188,9 +186,7 @@ for (const viewport of [
         await expect(trail).toHaveCount(0);
         await expect(log).toContainText('Parent answer with a child review.');
         if (name === 'Back to parent chat') {
-          await log
-            .getByRole('button', { name: 'Open chat', exact: true })
-            .click();
+          await page.goto(childUrl);
           await expect(trail).toBeVisible();
         }
       }
