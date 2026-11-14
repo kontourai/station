@@ -266,7 +266,12 @@ describe('engine capability matrix', () => {
       skills: { state: 'unsupported' },
       commands: { state: 'unsupported' },
       modelSelection: { state: 'session', channel: 'wire' },
-      toolPolicy: { state: 'unsupported', adapterModule: 'opencode-adapter' },
+      // An Agent's session (the only one with a staged policy) runs over ACP.
+      toolPolicy: {
+        state: 'partial',
+        permissionHook: 'requestPermission',
+        adapterModule: 'acp-adapter',
+      },
       imageInput: {
         state: 'session',
         channel: 'native-content',

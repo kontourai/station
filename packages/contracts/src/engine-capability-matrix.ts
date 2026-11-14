@@ -1374,11 +1374,22 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // (`readModelRef`); ACP: the session's catalog, as for `acp`. Start
     // time only on both.
     modelSelection: { state: 'session', channel: 'wire' },
-    // Native permissions are answered by OpenCode's own rules plus Station's
-    // session ruleset (`opencode-approval-native.ts`); nothing enters the
-    // shared staged policy there. The ACP fallback's `requestPermission`
-    // does (`acp` row: partial), the native path does not.
-    toolPolicy: { state: 'unsupported', adapterModule: 'opencode-adapter' },
+    // Station's staged policy exists only for a session started as an
+    // Agent, and such a session always runs over ACP
+    // (`OpenCodeAdapter.nativeUnsupported`), where it enters at
+    // `requestPermission` exactly as on the `acp` row. The native transport
+    // runs no staged evaluator: it carries only sessions without an Agent,
+    // whose asks OpenCode's own rules plus Station's session ruleset answer
+    // (`opencode-approval-native.ts`).
+    toolPolicy: {
+      state: 'partial',
+      permissionHook: 'requestPermission',
+      evidence: 'sharedStagedPolicy',
+      toolIdentity: 'self-reported',
+      coverageLimit:
+        'A session started as an Agent runs over ACP; only calls that invoke requestPermission and report a tool name enter this policy seam.',
+      adapterModule: 'acp-adapter',
+    },
     // Native: images go as `POST .../prompt` `files` (data URIs), as
     // OpenCode's own ACP layer sends them (fixture
     // `opencode-serve-2.3.0-attachment.jsonl`); other files are refused.
@@ -1393,8 +1404,8 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // `inbox.delivered` (fixture `opencode-serve-2.3.0-steer.jsonl`); ACP:
     // OpenCode's `_session/steering` row in `acp-steer.ts`.
     midTurnSteer: true,
-    // Native only: a child session (`parentID` equal to this session's id)
-    // becomes `child-work.updated` with its start and terminal status
+    // Native only: a descendant session (`parentID` this session's id, or a
+    // descendant's) becomes `child-work.updated` with its start and terminal status
     // (`opencode-serve-session.ts`; fixture
     // `opencode-serve-2.3.0-subagent.jsonl`). No progress, usage or result
     // is mapped. A session on the ACP fallback names no reporting engine and

@@ -106,7 +106,11 @@ limit: only calls that invoke that callback and report a tool name enter the
 policy check, and the external engine reports that identity. Which calls
 invoke the callback is the engine's own configuration; for OpenCode, Station
 sets that configuration from the chat's approval mode
-([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)). Codex
+([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
+The `opencode` engine runs a session started as an Agent over ACP, so its
+policy is delivered as on ACP; its native transport runs no staged evaluator
+and carries only sessions without an Agent
+([OpenCode native transport](../decisions/opencode-native-transport.md#governance)). Codex
 has no general Station pre-tool interception seam. Its preview bound browser
 and device dynamic calls pass through the staged evaluator and Station's
 approval path before execution; that narrow path does not cover other Codex
@@ -254,7 +258,8 @@ takes its ancestors' marks, and a child's read marks its parent when the
 result returns. The stage reads a loaded MCP tool's original name from loader
 provenance. It runs wherever the staged evaluator runs (Station engine, Claude
 `PreToolUse`, ACP permission requests). ACP edit, move and delete requests are
-also checked by kind when unnamed. It does not run for Codex's own file
+also checked by kind when unnamed, and the OpenCode native transport checks
+its `edit` asks' files the same way. It does not run for Codex's own file
 changes and commands.
 
 Claude's staged evaluator returns a required Ask as a `PreToolUse` permission
