@@ -1416,6 +1416,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // announced and answered.
   'src-server/providers/__tests__/acp-kiro-announce.process.test.ts',
   'src-server/providers/__tests__/acp-kiro-parity.process.test.ts',
+  // The fake ACP agent, driven by the recorded Antigravity profile, through
+  // the real adapter and ACPProcess: what session and prompt answers carry.
+  'src-server/providers/__tests__/acp-session-answers.process.test.ts',
   // #3924: runs the real `opencode` (when this host has one) with fresh XDG
   // directories against a planted project plugin; skips loudly where no
   // opencode binary resolves.

@@ -19,7 +19,8 @@
  *    an engine that no longer advertises it is refused rather than invoked
  *    with a flag it will reject.
  *  - Put anything in the child's environment except the engine's own
- *    config-home override.
+ *    config-home override and its launcher's no-prompt, no-download
+ *    switches (`enrolmentLauncherEnv`; never a credential).
  *  - Report completion from an exit code. `credential-enrolment.ts` says why:
  *    a user who closes the browser tab gets a clean exit and no credential.
  *    The engine is asked, and its answer decides.
@@ -32,6 +33,7 @@ import { augmentedSpawnEnv } from '../../providers/auth/cli-auth.js';
 import {
   type EnrolmentAuthState,
   type EnrolmentEngine,
+  enrolmentChildEnv,
   enrolmentHomeEnv,
   enrolmentLoginArgs,
   verifyEnrolment,
@@ -456,7 +458,11 @@ export class DeviceCodeLoginManager {
         // The engine's own config-home override is the ONLY thing Station
         // adds. `credential-enrolment.ts`'s invariant, at a spawn instead of
         // a printed command.
-        env: { ...baseEnv, ...enrolmentHomeEnv(engine, profileDir) },
+        env: enrolmentChildEnv(
+          engine,
+          baseEnv,
+          enrolmentHomeEnv(engine, profileDir),
+        ),
         windowsHide: true,
       });
     } catch {

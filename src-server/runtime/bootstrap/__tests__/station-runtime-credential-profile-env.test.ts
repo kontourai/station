@@ -6,7 +6,7 @@
  * captures the options the real adapters were built with, and calls the
  * captured closures against a real `config/app.json`.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { describe, expect, it, vi } from 'vitest';
@@ -26,6 +26,12 @@ const hoisted = vi.hoisted(() => ({
     | {
         getAppHomeEnv?: (ref?: string) => Promise<unknown>;
         resolveMcpOAuth?: EngineMcpOAuthResolver;
+      },
+  muse: undefined as
+    | undefined
+    | {
+        getAppHomeEnv?: (ref?: string) => Promise<unknown>;
+        peekAppHomeEnv?: () => Promise<unknown>;
       },
 }));
 
@@ -91,6 +97,27 @@ vi.mock(
   },
 );
 
+vi.mock(
+  '../../../providers/adapters/muse-adapter.js',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../providers/adapters/muse-adapter.js')
+      >();
+    return {
+      ...actual,
+      MuseAdapter: class extends actual.MuseAdapter {
+        constructor(
+          options: ConstructorParameters<typeof actual.MuseAdapter>[0],
+        ) {
+          super(options);
+          hoisted.muse = options;
+        }
+      },
+    };
+  },
+);
+
 vi.mock('../../../services/discord/discord-gateway-service.js', () => ({
   DiscordGatewayService: class {
     constructor() {
@@ -130,6 +157,14 @@ describe('StationRuntime wires the credential profile env resolver per engine (#
               OPENAI_BASE_URL: 'http://127.0.0.1:9000',
             }),
           },
+          // #1942: Muse reads its own connection's profiles.
+          muse: {
+            credentialRecovery: {
+              profiles: [{ ref: 'work' }],
+              group: { profileRefs: ['work'], enrolledProfileRefs: [] },
+              activeProfileRef: 'work',
+            },
+          },
         },
       }),
     );
@@ -156,6 +191,19 @@ describe('StationRuntime wires the credential profile env resolver per engine (#
         ),
       },
     });
+    // #1942: the peek names the active Muse profile without creating it;
+    // the resolver a session uses names the same home.
+    const museHome = credentialProfileAppHomeDir('muse', 'work');
+    await expect(hoisted.muse?.peekAppHomeEnv?.()).resolves.toEqual({
+      profileRef: 'work',
+      env: { XDG_CONFIG_HOME: museHome },
+    });
+    expect(existsSync(museHome)).toBe(false);
+    await expect(hoisted.muse?.getAppHomeEnv?.()).resolves.toEqual({
+      profileRef: 'work',
+      env: { XDG_CONFIG_HOME: museHome },
+    });
+    expect(existsSync(museHome)).toBe(true);
     await expect(hoisted.codex?.getAppHomeEnv?.('proxy')).resolves.toEqual({
       profileRef: 'proxy',
       env: {

@@ -50,6 +50,7 @@
         "StationOrchestrationInstructions",
         "SessionQueryModule",
         "SessionGoalModule",
+        "MuseCodeAdapter",
         "ConversationSessionLineage",
         "SessionCommandModule",
         "SkillExperienceRuntime",
