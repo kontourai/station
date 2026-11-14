@@ -1,0 +1,7 @@
+{
+  "revision": "4019ae390a27f42301811a2baa3b64b22d4bd930",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Rechecked: child-work-projection.ts now restores a session's not-reported statement from history (child-work-projection.test.ts restart cases); the ACP child-work paragraph now says so. The station-runtime.ts change is comment-only.","inputs":["docs/architecture/module-map.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/orchestration/child-work-projection.ts","src-server/services/orchestration/child-work-history.ts"]}
+  ]
+}

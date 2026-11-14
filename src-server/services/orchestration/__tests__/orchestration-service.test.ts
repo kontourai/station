@@ -27694,6 +27694,149 @@ describe('OrchestrationService', () => {
     }
   });
 
+  describe('child steering after the launching turn ended', () => {
+    const THREAD_ID = 'outliving-parent';
+    const key = {
+      producer: 'engine-subagent' as const,
+      reporterThreadId: THREAD_ID,
+    };
+    function setup(options: { declares: boolean }) {
+      const muse = new FakeAdapter('muse');
+      if (options.declares)
+        Object.assign(muse, { childSteerOutlivesParentTurn: true });
+      muse.sessions.set(THREAD_ID, {
+        provider: 'muse',
+        threadId: THREAD_ID,
+        status: 'ready',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      muse.steerChildWork.mockResolvedValue({
+        outcome: 'steered',
+        turnId: 'launch-turn',
+      });
+      // The parent turn launched the child and ended; nothing runs on the
+      // parent now.
+      eventStore.appendEvent({
+        eventId: 'outliving-turn-started',
+        provider: 'muse',
+        threadId: THREAD_ID,
+        turnId: 'launch-turn',
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+        prompt: 'launch a workflow',
+      });
+      eventStore.appendEvent({
+        eventId: 'outliving-turn-completed',
+        provider: 'muse',
+        threadId: THREAD_ID,
+        turnId: 'launch-turn',
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+        outputText: 'launched',
+      });
+      const service = new OrchestrationService({
+        adapterRegistry: createRegistry([muse]),
+        eventBus,
+        eventStore,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      const publish = (event: CanonicalRuntimeEvent) =>
+        (
+          service as unknown as {
+            projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
+          }
+        ).projectAndPublishEvent(event);
+      publish({
+        eventId: 'outliving-child',
+        provider: 'muse',
+        threadId: THREAD_ID,
+        createdAt: new Date().toISOString(),
+        method: 'child-work.updated',
+        delta: {
+          kind: 'snapshot',
+          ...key,
+          running: [
+            {
+              ...key,
+              childId: 'child',
+              status: 'running',
+              parent: { turnId: 'launch-turn' },
+              backgrounded: true,
+              controls: {
+                stop: 'provider-task-stop',
+                steer: { turnId: 'launch-turn' },
+              },
+            },
+          ],
+        },
+      });
+      return { muse, service, publish };
+    }
+    const command = (clientInputId: string, childId = 'child') => ({
+      type: 'steerChildWork' as const,
+      threadId: THREAD_ID,
+      childId,
+      turnId: 'launch-turn',
+      input: 'redirect',
+      clientInputId,
+    });
+    const context = { requestCurrent: () => true };
+
+    test('an adapter whose children outlive the turn steers a running child with no parent turn', async () => {
+      const { muse, service } = setup({ declares: true });
+      expect(await service.dispatch(command('outliving-1'), context)).toEqual({
+        outcome: 'steered',
+        threadId: THREAD_ID,
+        childId: 'child',
+        turnId: 'launch-turn',
+      });
+      expect(muse.steerChildWork).toHaveBeenCalledWith(
+        THREAD_ID,
+        'child',
+        'launch-turn',
+        'redirect',
+      );
+    });
+
+    test('without the declaration the same steer is refused as before, and nothing reaches the adapter', async () => {
+      const { muse, service } = setup({ declares: false });
+      expect(await service.dispatch(command('outliving-2'), context)).toEqual({
+        outcome: 'no-active-task',
+        threadId: THREAD_ID,
+      });
+      expect(muse.steerChildWork).not.toHaveBeenCalled();
+    });
+
+    test('a child the projection does not hold running under that token is refused', async () => {
+      const { muse, service, publish } = setup({ declares: true });
+      expect(
+        await service.dispatch(command('outliving-3', 'other-child'), context),
+      ).toEqual({ outcome: 'no-active-task', threadId: THREAD_ID });
+      // The running child, under a token it does not advertise.
+      expect(
+        await service.dispatch(
+          { ...command('outliving-5'), turnId: 'other-turn' },
+          context,
+        ),
+      ).toEqual({ outcome: 'no-active-task', threadId: THREAD_ID });
+      publish({
+        eventId: 'outliving-child-settled',
+        provider: 'muse',
+        threadId: THREAD_ID,
+        createdAt: new Date().toISOString(),
+        method: 'child-work.updated',
+        delta: { kind: 'settle', ...key, childId: 'child', status: 'completed' },
+      });
+      expect(await service.dispatch(command('outliving-4'), context)).toEqual({
+        outcome: 'no-active-task',
+        threadId: THREAD_ID,
+      });
+      expect(muse.steerChildWork).not.toHaveBeenCalled();
+    });
+  });
+
   test('child steering retains an uncertain effect and refuses a stale request', async () => {
     claude.sessions.set('child-uncertain', {
       provider: 'claude',

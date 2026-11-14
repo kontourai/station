@@ -1760,7 +1760,11 @@
 
     "src-server/providers/registries/agent-registry-provider.ts",
 
-    "src-server/providers/registries/confined-local-read.ts"
+    "src-server/providers/registries/confined-local-read.ts",
+
+    "src-server/providers/adapters/muse-serve-schema.ts",
+
+    "src-server/services/orchestration/child-work-history.ts"
   ],
 
   "checks": [
