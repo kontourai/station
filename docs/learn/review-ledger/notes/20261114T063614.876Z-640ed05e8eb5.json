@@ -1,0 +1,49 @@
+{
+  "revision": "8ef79a73143c3d6634cb7b06c654910a1a4e759e",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Delta is docs/guides/testing.md workflow-inventory and CI-automation prose (supersession warnings, CI health incomplete windows, main-health filter and watch list, advisory review removal) plus Vitest/test-impact manifest entries for the removed advisory review test; nothing this page states changed. No prose change.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"Checked the Nightly sweep section against the split docs-freshness-sweep.yml: the hygiene and hygiene-issue jobs are unchanged and the freshness sweep now uses the same read-only report / dependency-free issue-writer pattern the section names. No prose change.","inputs":["docs/guides/code-hygiene.md",".github/workflows/docs-freshness-sweep.yml"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Delta is docs/guides/testing.md workflow-inventory and CI-automation prose (supersession warnings, CI health incomplete windows, main-health filter and watch list, advisory review removal) plus Vitest/test-impact manifest entries for the removed advisory review test; nothing this page states changed. No prose change.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Delta is the landing-automation reviewed-topology digest pin in scripts/actionlint-gate.mjs; no rule this page describes changed. No prose change.","inputs":["docs/guides/delegation-attempt-claims.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Checked the Main: Health claims: Dependency advisory and PR: Security analysis scheduled main runs still open trackers; the new branches: [main] filter only drops non-main runs the jobs already skipped, and the two added watched workflows do not change these claims. Gate delta is the landing digest pin only. No prose change.","inputs":["docs/guides/dependency-security.md",".github/workflows/main-health.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Checked the Nightly freshness sweep paragraph: the sweep still keeps one tracking issue on main and never fails a required check; the report now runs in a read-only job that installs dependencies and a dependency-free job upserts the issue. No prose change.","inputs":["docs/guides/documentation-review-ledger.md",".github/workflows/docs-freshness-sweep.yml","scripts/docs-freshness-sweep.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Delta is the landing-automation reviewed-topology digest pin in scripts/actionlint-gate.mjs; no rule this page describes changed. No prose change.","inputs":["docs/guides/home-transfer-controller.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Delta is the landing-automation reviewed-topology digest pin in scripts/actionlint-gate.mjs; no rule this page describes changed. No prose change.","inputs":["docs/guides/private-runner-partition.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Delta is the landing-automation reviewed-topology digest pin in scripts/actionlint-gate.mjs; no rule this page describes changed. No prose change.","inputs":["docs/guides/product-law-authoring.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Delta is the landing-automation reviewed-topology digest pin in scripts/actionlint-gate.mjs; no rule this page describes changed. No prose change.","inputs":["docs/guides/release-rings.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Added that arm runs for one PR branch are serialized and skipped events never replace a pending arm run, matching the job-level concurrency now in landing-automation.yml (keyed by head branch) and the replay test in merge-queue-dequeue.test.ts. Qualify-landed-repair prose still matches: the new branches: [main] trigger filter only drops runs its job skipped.","inputs":["docs/guides/releasing.md",".github/workflows/landing-automation.yml",".github/workflows/qualification-after-repair.yml","scripts/__tests__/merge-queue-dequeue.test.ts","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Delta is the landing-automation reviewed-topology digest pin in scripts/actionlint-gate.mjs; no rule this page describes changed. No prose change.","inputs":["docs/guides/repository-layout.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Updated: supersession now reports runs that do not settle (assigned runner, HTTP 409, non-terminal force-cancel) as warnings and continues, other errors stay fatal (pr-ci-supersession.mjs); CI throughput health exits 0 with a warning for unfinished-only incomplete windows and fails on collection reasons (ci-health.mjs unfinishedOnly); inventory rows for issue-lifecycle PR-comment skip, main-health main-only filter and two new watched workflows, qualify-landed-repair main filter; removed the advisory review workflow rows. Checked against the scripts and tests named.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-health.test.ts","scripts/__tests__/ci-workflow-contract.test.ts","scripts/__tests__/pr-ci-supersession.test.ts","scripts/actionlint-gate.mjs","scripts/ci-health.mjs","scripts/pr-ci-supersession.mjs","scripts/test-impact-manifest.mjs","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Delta is the landing-automation reviewed-topology digest pin in scripts/actionlint-gate.mjs; no rule this page describes changed. No prose change.","inputs":["docs/guides/work-board-security.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Delta is the landing-automation reviewed-topology digest pin in scripts/actionlint-gate.mjs; no rule this page describes changed. No prose change.","inputs":["docs/guides/workspace-packages.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/reference/backlog-disposition-policy.md","note":"Updated for report-only findings: backlog-priority-policy.mjs now emits warning annotations and a job summary and exits 0 on findings, while label drift, a malformed manifest, an API failure or an incomplete read still exit non-zero (child-process tests in backlog-priority-policy.test.ts). Reworded 'gate' to 'audit' where it described failing on findings.","inputs":["docs/reference/backlog-disposition-policy.md",".github/workflows/backlog-priority-policy.yml","scripts/__tests__/backlog-priority-policy.test.ts","scripts/backlog-priority-policy.mjs"]},
+
+    {"path":"docs/reference/issue-lifecycle.md","note":"labels.json gained five live labels (agent-context-increase and four multiplayer labels); the two handoff labels and the reducer contract this page describes are unchanged. No prose change.","inputs":["docs/reference/issue-lifecycle.md",".github/labels.json"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Delta is removal of the advisory review test entries from the Vitest resource and test-impact manifests; nothing this page states changed. No prose change.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/test-impact-manifest.mjs","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Delta is testing.md CI-automation prose and removal of one child-process test from the Vitest resource manifest; the manifest classification rule this page states still holds. No prose change.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Delta is docs/guides/testing.md workflow-inventory and CI-automation prose (supersession warnings, CI health incomplete windows, main-health filter and watch list, advisory review removal) plus Vitest/test-impact manifest entries for the removed advisory review test; nothing this page states changed. No prose change.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Delta is docs/guides/testing.md workflow-inventory and CI-automation prose (supersession warnings, CI health incomplete windows, main-health filter and watch list, advisory review removal) plus Vitest/test-impact manifest entries for the removed advisory review test; nothing this page states changed. No prose change.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Delta is docs/guides/testing.md workflow-inventory and CI-automation prose (supersession warnings, CI health incomplete windows, main-health filter and watch list, advisory review removal) plus Vitest/test-impact manifest entries for the removed advisory review test; nothing this page states changed. No prose change.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}
