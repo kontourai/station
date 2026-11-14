@@ -66,8 +66,6 @@
 
     "src-server/runtime/bootstrap/station-control-runtime-env.ts",
 
-    "src-server/runtime/bootstrap/station-runtime.ts",
-
     "src-server/runtime/mcp/mcp-manager.ts",
 
     "src-server/services/orchestration/__tests__/home-reference-recovery.test.ts",

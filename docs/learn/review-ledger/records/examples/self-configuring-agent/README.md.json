@@ -74,8 +74,6 @@
 
     "src-server/runtime/bootstrap/runtime-startup.ts",
 
-    "src-server/runtime/bootstrap/station-runtime.ts",
-
     "src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts",
 
     "src-server/runtime/mcp/mcp-manager.ts",

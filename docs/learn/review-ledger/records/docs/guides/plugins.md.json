@@ -66,8 +66,6 @@
 
     "src-server/routes/plugins/registry.ts",
 
-    "src-server/runtime/bootstrap/station-runtime.ts",
-
     "src-server/runtime/mcp/mcp-apps-metadata.ts",
 
     "src-server/runtime/mcp/mcp-ui-frame-server.ts",

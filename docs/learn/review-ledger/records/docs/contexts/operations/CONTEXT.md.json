@@ -32,8 +32,6 @@
 
     "src-server/runtime/bootstrap/runtime-service-bootstrap.ts",
 
-    "src-server/runtime/bootstrap/station-runtime.ts",
-
     "src-server/runtime/conversation/runtime-event-log.ts",
 
     "src-server/runtime/routes/runtime-route-support.ts",
