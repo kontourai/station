@@ -134,6 +134,7 @@ function sessionView(
 
 type Route = (init: RequestInit & { url: string }) =>
   | Response
+  | Promise<Response>
   | {
       status?: number;
       body: unknown;
@@ -154,7 +155,7 @@ function fakeStation(routes: Record<string, Route>) {
       return new Response(JSON.stringify({ success: false, code: 'nope' }), {
         status: 599,
       });
-    const answer = route({
+    const answer = await route({
       ...init,
       url: String(input),
     });
@@ -1687,6 +1688,169 @@ describe('BrowserPane wave 2 fix round', () => {
       name: 'Full history of https://example.com/',
     });
     expect(within(full).getAllByRole('listitem')).toHaveLength(12);
+  });
+
+  test('a failed full-history read keeps Retry focused while pending and recovers in Sessions', async () => {
+    let failing = true;
+    let finishRetry!: (response: Response) => void;
+    const pendingRetry = new Promise<Response>((resolve) => {
+      finishRetry = resolve;
+    });
+    let retryResponse: Response | Promise<Response> = pendingRetry;
+    const entries = [1, 2].map((seq) => ({
+      seq,
+      at: '2026-09-22T12:00:00.000Z',
+      kind: 'navigated',
+      actor: { kind: 'operator' as const },
+      url: `https://example.com/${seq}`,
+    }));
+    const { calls } = renderPane({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+      'GET /api/browser/sessions?projectSlug=alpha': ok([
+        sessionView({
+          browserSessionId: OTHER,
+          history: {
+            entries: entries.slice(-1),
+            total: 2,
+            omittedFromSummary: 1,
+          },
+        }),
+      ]),
+      [`GET /api/browser/sessions/${OTHER}`]: () =>
+        failing ? refuse(500, 'internal')() : retryResponse,
+    });
+    await chooseFromMenu('Sessions');
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Show all 2 kept entries' }),
+    );
+    const error = await screen.findByRole('alert');
+    expect(
+      within(error).getByText('The full history could not be read'),
+    ).toBeTruthy();
+    const retry = within(error).getByRole('button', { name: 'Try again' });
+    retry.focus();
+    failing = false;
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(
+        calls.filter((call) => call.path === `/api/browser/sessions/${OTHER}`),
+      ).toHaveLength(2),
+    );
+    try {
+      expect(retry.isConnected).toBe(true);
+      expect(document.activeElement).toBe(retry);
+      expect(retry.getAttribute('aria-busy')).toBe('true');
+      expect(retry).toHaveProperty('disabled', false);
+      await act(async () => fireEvent.click(retry));
+      expect(
+        calls.filter((call) => call.path === `/api/browser/sessions/${OTHER}`),
+      ).toHaveLength(2);
+    } finally {
+      await act(async () =>
+        finishRetry(
+          new Response(
+            JSON.stringify({ success: false, code: 'access-denied' }),
+            { status: 403 },
+          ),
+        ),
+      );
+    }
+    expect(
+      await screen.findByText(
+        'You do not have access to this browser session.',
+      ),
+    ).toBeTruthy();
+    expect(retry.isConnected).toBe(true);
+    expect(document.activeElement).toBe(retry);
+    expect(retry.getAttribute('aria-busy')).toBe('false');
+    expect(retry.getAttribute('aria-disabled')).toBe('false');
+    retryResponse = new Response(
+      JSON.stringify({
+        success: true,
+        data: sessionView({
+          browserSessionId: OTHER,
+          history: { entries, total: 2 },
+        }),
+      }),
+    );
+    fireEvent.click(retry);
+    const history = await screen.findByRole('list', {
+      name: 'Full history of https://example.com/',
+    });
+    expect(within(history).getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.queryByText('The full history could not be read')).toBeNull();
+    expect(
+      calls.filter((call) => call.path === `/api/browser/sessions/${OTHER}`),
+    ).toHaveLength(3);
+  });
+
+  test('a failed session list keeps Retry focused while pending and recovers in place', async () => {
+    let failing = true;
+    let finishRetry!: (response: Response) => void;
+    const pendingRetry = new Promise<Response>((resolve) => {
+      finishRetry = resolve;
+    });
+    let retryResponse: Response | Promise<Response> = pendingRetry;
+    const { calls } = renderPane(
+      {
+        'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+        'GET /api/browser/sessions?projectSlug=alpha': () =>
+          failing ? refuse(500, 'internal')() : retryResponse,
+      },
+      { kind: 'new' },
+    );
+    const error = await screen.findByRole('alert');
+    expect(
+      within(error).getByText('Browser sessions could not be listed'),
+    ).toBeTruthy();
+    const retry = within(error).getByRole('button', { name: 'Try again' });
+    retry.focus();
+    failing = false;
+    fireEvent.click(retry);
+    const sessionReads = () =>
+      calls.filter(
+        (call) => call.path === '/api/browser/sessions?projectSlug=alpha',
+      ).length;
+    await waitFor(() => expect(sessionReads()).toBe(2));
+    try {
+      expect(retry.isConnected).toBe(true);
+      expect(document.activeElement).toBe(retry);
+      expect(retry.getAttribute('aria-busy')).toBe('true');
+      expect(retry).toHaveProperty('disabled', false);
+      await act(async () => fireEvent.click(retry));
+      expect(sessionReads()).toBe(2);
+    } finally {
+      await act(async () =>
+        finishRetry(
+          new Response(
+            JSON.stringify({ success: false, code: 'access-denied' }),
+            { status: 403 },
+          ),
+        ),
+      );
+    }
+    expect(
+      await screen.findByText(
+        'You do not have access to this browser session.',
+      ),
+    ).toBeTruthy();
+    expect(retry.isConnected).toBe(true);
+    expect(document.activeElement).toBe(retry);
+    expect(retry.getAttribute('aria-busy')).toBe('false');
+    expect(retry.getAttribute('aria-disabled')).toBe('false');
+    retryResponse = new Response(
+      JSON.stringify({ success: true, data: [sessionView()] }),
+    );
+    fireEvent.click(retry);
+    expect(
+      await screen.findByRole('button', { name: 'Open https://example.com/' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('Browser sessions could not be listed'),
+    ).toBeNull();
+    expect(screen.getByLabelText('Address')).toBeTruthy();
+    expect(sessionReads()).toBe(3);
   });
 
   test('a pane opened from the Add-pane grid asks for a page, then attaches (D3)', async () => {
