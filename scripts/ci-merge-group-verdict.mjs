@@ -167,10 +167,17 @@ export async function runVerdictStep({
   }
   // A step output is one line; a multi-line reason must not forge another key.
   const reason = result.reason.replace(/[\r\n]+/g, ' ');
-  // A refused or unreadable lookup (a token without `actions: read`, an API
-  // outage, an unexpected body) still fails closed, but as a warning: as a
-  // notice, a lookup that always fails would end the saving unnoticed.
-  const lookupBroken = /^(?:lookup-failed|malformed-)/.test(reason);
+  // Only the answers an ordinary push can produce stay a notice: a direct or
+  // bot push with no queue run, a queue run that did not succeed, a queue
+  // base that is not this push's parent. Every other reason (a refused or
+  // unreadable lookup, an unexpected body, a truncated listing, a renamed
+  // required job) would repeat on every push and end the saving unnoticed,
+  // so it still fails closed but as a warning.
+  const lookupBroken =
+    !result.verified &&
+    !/^(?:not-a-main-push$|no-merge-group-run$|queue-base-differs-from-push-before$|merge-group-run-|required-job-not-success:)/.test(
+      reason,
+    );
   log(
     result.verified
       ? `::notice::Merge queue already verified this exact SHA (${reason}); the heavy push lane is skipped.`

@@ -402,6 +402,23 @@ describe('runVerdictStep (fail open)', () => {
     ]);
   });
 
+  it('warns on a truncated run listing, which would repeat on every push', async () => {
+    const lines: string[] = [];
+    const result = await runVerdictStep({
+      env: mainPush(outputFile()),
+      log: (line: string) => lines.push(line),
+      fetchImpl: async () => respond({ total_count: 2, workflow_runs: [] }),
+    });
+    expect(result).toEqual({
+      verified: false,
+      reason: 'run-listing-truncated',
+    });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(
+      /^::warning title=Merge-queue verdict lookup failed::Could not read the merge-queue verdict \(run-listing-truncated\)/,
+    );
+  });
+
   it('escapes a percent sign in the warning text', async () => {
     const lines: string[] = [];
     await runVerdictStep({
