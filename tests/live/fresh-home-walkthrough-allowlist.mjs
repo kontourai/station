@@ -58,6 +58,6 @@ export const WALKTHROUGH_ALLOWLIST = [
     // hooks/__tests__/useFocusReporter.test.tsx pins the client behaviour.
     pattern: /^request-error POST 429 \/api\/presence\/focus$/,
     reason:
-      "TRACKING: <to be filled by the orchestrator with the PR number> — focus presence rate limit refusing the sweep's page-load churn (17-20 fresh documents a minute on one device, two reports each, 30 a minute budget); duplicate per-document reports still fail via checkFocusReports",
+      "kontourai/station#4953 — focus presence rate limit refusing the sweep's page-load churn (17-20 fresh documents a minute on one device, two reports each, 30 a minute budget); duplicate per-document reports still fail via checkFocusReports",
   },
 ];
