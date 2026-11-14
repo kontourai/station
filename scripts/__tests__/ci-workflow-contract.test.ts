@@ -1862,6 +1862,7 @@ describe('CI verification workflow contracts', () => {
     );
     expect(attribution?.env).toEqual({
       BASE_SHA: `\${{ steps.compose.outputs.base }}`,
+      CAPTURE: `\${{ steps.capture.outcome }}`,
     });
     // The rule that excuses a failure comes from the base worktree.
     expect(attribution?.run).toContain(

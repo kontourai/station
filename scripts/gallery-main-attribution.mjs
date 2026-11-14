@@ -10,10 +10,13 @@
 //
 // `plan` judges the composed capture and prints `screens=<a,b>`: the failing
 // screens to capture again on the bare base. It prints
-// `unattributable=<reason>` when that cannot settle it: no screen-level
-// failure (a crash, or a test-level assertion), a failing screen main does
-// not have, or more than --max failing screens (default 40, about four
-// minutes of capture).
+// `unattributable=<reason>` when that cannot settle it: a capture that is
+// not complete (a targeted selection, or fewer screens than it expected), no
+// screen-level failure (a crash, or a test-level assertion), a failing
+// screen main does not have, or more than --max failing screens (default 40,
+// about four minutes of capture). The plan file also lists the screens that
+// rendered and passed, so the workflow can still run the comparison's
+// integrity checks over them.
 //
 // `compare` judges the base's targeted capture of exactly those screens and
 // prints `verdict=main` only when every composed failure also fails on the
@@ -151,6 +154,22 @@ const key = ({ screen, identity, signature }) =>
   `${screen}\u0000${identity}\u0000${signature ?? ''}`;
 
 /**
+ * Why a composed capture cannot support an excuse, or null when it is a
+ * complete full run: every declared screen recorded, no targeted selection.
+ */
+export function incompleteCapture(capture) {
+  if (capture.selection !== null)
+    return `the capture is a targeted run (selection: ${JSON.stringify(capture.selection)})`;
+  if (
+    !Number.isInteger(capture.expected) ||
+    capture.expected < 1 ||
+    capture.screens.length !== capture.expected
+  )
+    return `the capture recorded ${capture.screens.length} of ${JSON.stringify(capture.expected)} expected screens`;
+  return null;
+}
+
+/**
  * What to capture again on the base, from the composed capture's verdict.
  * Pure: `baseScreens` is the base's declared screen list.
  */
@@ -194,22 +213,24 @@ const listFailures = (failures) =>
   );
 
 function runPlan(options) {
-  const verdict = judge(
-    readCapture(options.gallery),
-    readAllowlist(options.allowlist),
-  );
+  const capture = readCapture(options.gallery);
+  const verdict = judge(capture, readAllowlist(options.allowlist));
   const failures = verdict.failures.map(failureKey);
   const map = JSON.parse(
     readFileSync(join(options['base-root'], SCREEN_MAP), 'utf8'),
   );
-  const plan = planAttribution(
-    failures,
-    Object.keys(map?.screens ?? {}),
-    options.max,
-  );
+  const incomplete = incompleteCapture(capture);
+  const plan = incomplete
+    ? { reason: incomplete }
+    : planAttribution(failures, Object.keys(map?.screens ?? {}), options.max);
+  const failing = new Set(failures.map(({ screen }) => screen));
+  const passing = capture.screens
+    .map(({ name }) => name)
+    .filter((name) => !failing.has(name))
+    .sort();
   writeFileSync(
     options.out,
-    `${JSON.stringify({ failures, screens: plan.screens ?? null }, null, 2)}\n`,
+    `${JSON.stringify({ failures, screens: plan.screens ?? null, passing }, null, 2)}\n`,
   );
   console.log(
     plan.screens

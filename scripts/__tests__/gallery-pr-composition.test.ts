@@ -427,8 +427,14 @@ function attributionFixture({
   baseScreens = ['child-chat-dark-390', 'home'],
   baseAllowlist = {},
   composedAllowlist = baseAllowlist,
+  composedManifest,
+  capture = 'failure',
+  diffStatus = 0,
 }: {
   composed: unknown[];
+  composedManifest?: string;
+  capture?: string;
+  diffStatus?: number;
   baseCapture: string | null;
   baseScreens?: string[];
   baseAllowlist?: Record<string, string[]>;
@@ -470,7 +476,10 @@ function attributionFixture({
   );
   commitFile(root, 'feature.txt', 'pr\n', 'composed');
   mkdirSync(join(root, 'gallery'));
-  writeFileSync(join(root, 'gallery/capture.json'), manifest(composed));
+  writeFileSync(
+    join(root, 'gallery/capture.json'),
+    composedManifest ?? manifest(composed),
+  );
 
   const bin = makeTempDir('gallery-attribution-bin-');
   const calls = join(bin, 'calls.log');
@@ -485,13 +494,19 @@ function attributionFixture({
       `  if [[ -f '${fixture}' ]]; then mkdir -p gallery && cp '${fixture}' gallery/capture.json; fi`,
       '  exit 1',
       'fi',
+      `if [[ "$*" == *screenshot:diff* ]]; then exit ${diffStatus}; fi`,
       'exit 0',
       '',
     ].join('\n'),
   );
   chmodSync(join(bin, 'npm'), 0o755);
   const run = () => {
-    const result = runStep(ATTRIBUTION, root, { BASE_SHA: base }, bin);
+    const result = runStep(
+      ATTRIBUTION,
+      root,
+      { BASE_SHA: base, CAPTURE: capture },
+      bin,
+    );
     return {
       ...result,
       base,
@@ -646,7 +661,10 @@ const browserErrors = (port: number) =>
 describe('a render failure is excused only by the same error on main', () => {
   const failingOnBoth = (composedError: string, baseError: string) =>
     attributionFixture({
-      composed: [failedCapture('child-chat-dark-390', composedError)],
+      composed: [
+        failedCapture('child-chat-dark-390', composedError),
+        screen('home'),
+      ],
       baseCapture: manifest(
         [failedCapture('child-chat-dark-390', baseError)],
         ['child-chat-dark-390'],
@@ -696,8 +714,10 @@ describe('a render failure is excused only by the same error on main', () => {
       screen('home', { uiAudit: { error } });
     const run = (composed: string, base: string) =>
       attributionFixture({
-        composed: [auditError(composed)],
+        composed: [auditError(composed), screen('child-chat-dark-390')],
         baseCapture: manifest([auditError(base)], ['home']),
+        // An audit error does not fail the capture; the assertions do.
+        capture: 'success',
       }).run().output;
     expect(
       run('axe failed: frame detached', 'axe failed: frame detached'),
@@ -737,6 +757,81 @@ describe('normaliseFailureDetail', () => {
     expect(normaliseFailureDetail('GET /api/agents failed; Expected: 3')).toBe(
       'GET /api/agents failed; Expected: 3',
     );
+  });
+});
+
+describe('an excuse needs a complete capture and a sound comparison', () => {
+  const mainAlsoFails = manifest(
+    [failedCapture('child-chat-dark-390')],
+    ['child-chat-dark-390'],
+  );
+  const composed = [failedCapture('child-chat-dark-390'), screen('home')];
+
+  it('refuses a capture that recorded fewer screens than it expected', () => {
+    const partial = JSON.parse(manifest(composed));
+    partial.expected = 181;
+    const result = attributionFixture({
+      composed,
+      composedManifest: JSON.stringify(partial),
+      baseCapture: mainAlsoFails,
+    }).run();
+    expect(result.output).toBe('verdict=pr\n');
+    expect(result.out).toContain('recorded 2 of 181 expected screens');
+    expect(result.calls).toBe('');
+  });
+
+  it('refuses a targeted composed capture', () => {
+    const result = attributionFixture({
+      composed,
+      composedManifest: manifest(composed, ['child-chat-dark-390', 'home']),
+      baseCapture: mainAlsoFails,
+    }).run();
+    expect(result.output).toBe('verdict=pr\n');
+    expect(result.out).toContain('the capture is a targeted run');
+  });
+
+  it('runs the comparison over the screens that rendered before excusing', () => {
+    const result = attributionFixture({
+      composed,
+      baseCapture: mainAlsoFails,
+    }).run();
+    expect(result.output, result.out).toBe('verdict=main\n');
+    expect(result.calls).toMatch(
+      /\|run screenshot:diff -- --report-only --screens=home --summary=/,
+    );
+  });
+
+  it('does not excuse a run whose rendered screens fail integrity', () => {
+    const result = attributionFixture({
+      composed,
+      baseCapture: mainAlsoFails,
+      diffStatus: 1,
+    }).run();
+    expect(result.output).toBe('verdict=pr\n');
+    expect(result.out).toContain('::error title=Gallery comparison::');
+  });
+
+  it('does not excuse a run in which no screen rendered', () => {
+    const result = attributionFixture({
+      composed: [failedCapture('child-chat-dark-390')],
+      baseCapture: mainAlsoFails,
+    }).run();
+    expect(result.output).toBe('verdict=pr\n');
+    expect(result.calls).not.toContain('screenshot:diff');
+  });
+
+  it('does not repeat the comparison when only the assertions failed', () => {
+    const result = attributionFixture({
+      composed: [withFinding('home', 'overflow:document')],
+      baseCapture: manifest(
+        [withFinding('home', 'overflow:document')],
+        ['home'],
+      ),
+      capture: 'success',
+      diffStatus: 1,
+    }).run();
+    expect(result.output, result.out).toBe('verdict=main\n');
+    expect(result.calls).not.toContain('screenshot:diff');
   });
 });
 
