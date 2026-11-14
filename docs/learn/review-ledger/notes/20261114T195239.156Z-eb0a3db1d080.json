@@ -1,0 +1,7 @@
+{
+  "revision": "cb05ed8ff340ccce58be0cb863a131a7abebaf94",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Corrected the Zod 3 exception paragraph after an independent registry and lockfile check: four packages keep zod 3.25.76 installed (gitlab-ai-provider 3.6.1, a2a-server 2.0.3, autoevals 0.0.131 via @voltagent/scorers 2.1.0, and zod-from-json-schema 0.0.5 under @voltagent/core's zod-from-json-schema-v3 alias), and the earlier claim that no release of them moves to Zod 4 was false for zod-from-json-schema and autoevals. Matched the text to the exception record's reason at this change; identity, tracking issue and expiry are unchanged.","inputs":["docs/guides/dependency-security.md","scripts/dependency-advisory-exceptions.json"]}
+  ]
+}
