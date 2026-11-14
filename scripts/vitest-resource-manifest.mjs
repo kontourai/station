@@ -141,6 +141,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real Node sidecars verify native model relay framing, queued delivery and cancellation settlement.
+  'src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts',
   // #4828: short-lived `git init`, `git config` and `git status` children
   // prove the persistence protection reads the effective core.hooksPath from
   // git and runs no repository-named program; no wall-clock assertion.
