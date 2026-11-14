@@ -465,9 +465,7 @@ describe('release.yml desktop-windows Authenticode steps', () => {
     const notes =
       'node scripts/release-artifacts.mjs draft-notes --inventory release-assets/station-release-inventory.json --output "$RUNNER_TEMP/station-release-notes.md"';
     expect(create.run).toContain(notes);
-    expect(create.run).toContain(
-      '--notes-file "$RUNNER_TEMP/station-release-notes.md"',
-    );
+    expect(create.run).toContain('--notes-file "$RUNNER_TEMP/server-notes.md"');
     expect((create.run as string).indexOf(notes)).toBeLessThan(
       (create.run as string).indexOf('gh release create'),
     );

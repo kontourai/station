@@ -889,8 +889,12 @@ describe('release artifact inventory: the host stream (#2959)', () => {
         allowSignedHostManifest: true,
       }),
     ).toThrow('unexpected asset station-portable-preview-manifest.json');
-    expect(signedHostManifestAsset('v1.2.3-preview.4')).toBe(
-      'station-portable-preview-manifest.json',
+    // A candidate is the Stable ring, so it signs the Stable manifest name.
+    expect(signedHostManifestAsset('v1.2.3-rc.4')).toBe(
+      signedHostManifestAsset('v1.2.3'),
+    );
+    expect(() => signedHostManifestAsset('v1.2.3-preview.4')).toThrow(
+      'is not a vX.Y.Z or vX.Y.Z-rc.N release tag',
     );
   });
 });

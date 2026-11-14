@@ -1,8 +1,10 @@
 name: "Release: Stage"
 
-# Preview and stable tags share one preflight-bound source. The reusable
-# full-regression job must succeed on that exact SHA before any platform or
-# container producer is eligible to run.
+# Release-candidate (vX.Y.Z-rc.N) and final (vX.Y.Z) tags share one
+# preflight-bound source and both build with Stable identity and the bare base
+# version, so a candidate's bytes can later be promoted unchanged (#4929). The
+# reusable full-regression job must succeed on that exact SHA before any
+# platform or container producer is eligible to run.
 
 on:
   push:
@@ -24,15 +26,14 @@ jobs:
       sha: ${{ steps.source.outputs.sha }}
       tag: ${{ steps.source.outputs.tag }}
       version: ${{ steps.source.outputs.version }}
+      release_kind: ${{ steps.source.outputs.release_kind }}
       channel: ${{ steps.source.outputs.channel }}
       desktop_updater_tag: ${{ steps.source.outputs.desktop_updater_tag }}
       desktop_updater_endpoint: ${{ steps.source.outputs.desktop_updater_endpoint }}
-      beta_desktop_config: ${{ steps.source.outputs.beta_desktop_config }}
       android_package: ${{ steps.source.outputs.android_package }}
       android_product_name: ${{ steps.source.outputs.android_product_name }}
       android_version_code: ${{ steps.source.outputs.android_version_code }}
       ios_bundle_version: ${{ steps.source.outputs.ios_bundle_version }}
-      ios_marketing_version: ${{ steps.source.outputs.ios_marketing_version }}
       macos_bundle_version: ${{ steps.source.outputs.macos_bundle_version }}
       created_at: ${{ steps.source.outputs.created_at }}
     steps:
@@ -44,29 +45,25 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-preview\.([1-9][0-9]*))?$ ]]
-          release_version="${RELEASE_TAG#v}"
-          desktop_updater_tag=$(node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --print-desktop-updater-tag)
-          if [[ "$RELEASE_TAG" == *-preview.* ]]; then
-            release_channel=preview
-            beta_desktop_config=src-desktop/tauri.beta.conf.json
-            android_package=io.kontourai.station.beta
-            android_product_name='Station Beta'
-          else
-            release_channel=stable
-            beta_desktop_config=
-            android_package=io.kontourai.station
-            android_product_name=Station
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]]; then
+            echo "::error::$RELEASE_TAG is not a vX.Y.Z or vX.Y.Z-rc.N release tag." >&2
+            exit 1
           fi
+          desktop_updater_tag=$(node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --print-desktop-updater-tag)
+          release_channel=stable
+          android_package=io.kontourai.station
+          android_product_name=Station
           node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --check-package-json package.json
           node scripts/product-version.mjs --check
           store_identity=$(RELEASE_TAG="$RELEASE_TAG" node --input-type=module -e '
             import { taggedStoreIdentity } from "./scripts/lib/native-release-config.mjs";
             process.stdout.write(JSON.stringify(taggedStoreIdentity(process.env.RELEASE_TAG)));
           ')
+          # Every artifact carries the bare base version; only the tag names the candidate.
+          release_version=$(STORE_IDENTITY="$store_identity" node -p 'JSON.parse(process.env.STORE_IDENTITY).marketingVersion')
+          release_kind=$(STORE_IDENTITY="$store_identity" node -p 'JSON.parse(process.env.STORE_IDENTITY).releaseKind')
           android_version_code=$(STORE_IDENTITY="$store_identity" node -p 'JSON.parse(process.env.STORE_IDENTITY).versionCode')
           ios_bundle_version=$(STORE_IDENTITY="$store_identity" node -p 'JSON.parse(process.env.STORE_IDENTITY).bundleVersion')
-          ios_marketing_version="${release_version%-preview.*}"
           macos_bundle_version=$(STORE_IDENTITY="$store_identity" node -p 'JSON.parse(process.env.STORE_IDENTITY).bundleVersion')
           release_sha=$(git rev-list -n 1 "$RELEASE_TAG")
           test "$release_sha" = "$(git rev-parse HEAD)"
@@ -75,15 +72,14 @@ jobs:
             echo "sha=$release_sha"
             echo "tag=$RELEASE_TAG"
             echo "version=$release_version"
+            echo "release_kind=$release_kind"
             echo "channel=$release_channel"
             echo "desktop_updater_tag=$desktop_updater_tag"
             echo "desktop_updater_endpoint=https://github.com/${GITHUB_REPOSITORY}/releases/download/${desktop_updater_tag}/latest.json"
-            echo "beta_desktop_config=$beta_desktop_config"
             echo "android_package=$android_package"
             echo "android_product_name=$android_product_name"
             echo "android_version_code=$android_version_code"
             echo "ios_bundle_version=$ios_bundle_version"
-            echo "ios_marketing_version=$ios_marketing_version"
             echo "macos_bundle_version=$macos_bundle_version"
             echo "created_at=$created_at"
           } >> "$GITHUB_OUTPUT"
@@ -246,11 +242,11 @@ jobs:
         working-directory: src-desktop
         env:
           STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
-          STATION_CHANNEL: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}
+          STATION_CHANNEL: ${{ needs.preflight.outputs.channel }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           STATION_CLIENT_BUILD_REUSE: '1'
-        run: npx tauri build --no-sign --target ${{ matrix.target }} ${{ needs.preflight.outputs.beta_desktop_config && format('--config {0}', needs.preflight.outputs.beta_desktop_config) }} --config ${{ runner.temp }}/tauri.release.conf.json
+        run: npx tauri build --no-sign --target ${{ matrix.target }} --config ${{ runner.temp }}/tauri.release.conf.json
       - name: Seal, notarize, and derive canonical macOS artifacts
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -274,7 +270,7 @@ jobs:
           app="${app_candidates[0]}"
           printf '%s' "$APPLE_API_PRIVATE_KEY" > "$notary_key"
           chmod 600 "$notary_key"
-          bundle_id="${{ needs.preflight.outputs.beta_desktop_config && 'io.kontourai.station.beta' || 'io.kontourai.station' }}"
+          bundle_id=io.kontourai.station
           node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir release-assets --release-tag "$RELEASE_TAG" --architecture "${{ matrix.target == 'aarch64-apple-darwin' && 'aarch64' || 'x86_64' }}" --bundle-id "$bundle_id" --deadline-epoch "${{ steps.macos_release_deadline.outputs.epoch }}" --dmgbuild "$RUNNER_TEMP/station-dmgbuild/bin/dmgbuild"
           archive="release-assets/station-${RELEASE_TAG}-macos-${{ matrix.target == 'aarch64-apple-darwin' && 'aarch64' || 'x86_64' }}.app.tar.gz"
           manifest_path=$(tar -tzf "$archive" | grep '/Contents/Resources/dist-server/station-build.json$')
@@ -387,12 +383,12 @@ jobs:
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
         env:
           STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
-          STATION_CHANNEL: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}
+          STATION_CHANNEL: ${{ needs.preflight.outputs.channel }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           STATION_CLIENT_BUILD_REUSE: '1'
         with:
-          args: --target x86_64-pc-windows-msvc ${{ needs.preflight.outputs.beta_desktop_config && format('--config {0}', needs.preflight.outputs.beta_desktop_config) }} --config ${{ runner.temp }}/tauri.windows.release.conf.json --config ${{ runner.temp }}/tauri.release.conf.json
+          args: --target x86_64-pc-windows-msvc --config ${{ runner.temp }}/tauri.windows.release.conf.json --config ${{ runner.temp }}/tauri.release.conf.json
       # Observation only: this step records what Get-AuthenticodeSignature
       # returned for the MSI. Which status and signer each mode accepts is
       # decided by scripts/lib/windows-release-signing.mjs, here and again when
@@ -515,20 +511,20 @@ jobs:
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
         env:
           STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
-          STATION_CHANNEL: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}
+          STATION_CHANNEL: ${{ needs.preflight.outputs.channel }}
           STATION_CLIENT_BUILD_REUSE: '1'
         with:
-          args: --target x86_64-unknown-linux-gnu --bundles deb,rpm ${{ needs.preflight.outputs.beta_desktop_config && format('--config {0}', needs.preflight.outputs.beta_desktop_config) }} --config ${{ runner.temp }}/tauri.version.conf.json
+          args: --target x86_64-unknown-linux-gnu --bundles deb,rpm --config ${{ runner.temp }}/tauri.version.conf.json
       - name: Build signed AppImage with the contained runtime overlay
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
         env:
           STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
-          STATION_CHANNEL: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}
+          STATION_CHANNEL: ${{ needs.preflight.outputs.channel }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           STATION_CLIENT_BUILD_REUSE: '1'
         with:
-          args: --target x86_64-unknown-linux-gnu --bundles appimage ${{ needs.preflight.outputs.beta_desktop_config && format('--config {0}', needs.preflight.outputs.beta_desktop_config) }} --config src-desktop/tauri.linux-appimage.conf.json --config ${{ runner.temp }}/tauri.release.conf.json
+          args: --target x86_64-unknown-linux-gnu --bundles appimage --config src-desktop/tauri.linux-appimage.conf.json --config ${{ runner.temp }}/tauri.release.conf.json
       - name: Verify emitted Linux package metadata
         run: |
           find src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/appimage -maxdepth 1 -type f -name "*${RELEASE_VERSION}*.AppImage" | grep -q .
@@ -608,7 +604,6 @@ jobs:
       ANDROID_PACKAGE_NAME: ${{ needs.preflight.outputs.android_package }}
       ANDROID_PRODUCT_NAME: ${{ needs.preflight.outputs.android_product_name }}
       ANDROID_VERSION_CODE: ${{ needs.preflight.outputs.android_version_code }}
-      BETA_DESKTOP_CONFIG: ${{ needs.preflight.outputs.beta_desktop_config }}
       # Secret-free keyless identity. The Google provider independently
       # restricts this service account to this repository's Release workflow
       # on immutable version tags.
@@ -623,7 +618,7 @@ jobs:
       VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
       # The channel is part of the signed app identity, not provider-managed
       # feed configuration. Keep it valid even when no optional feed exists.
-      VITE_NATIVE_APP_UPDATE_CHANNEL: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || 'stable' }}
+      VITE_NATIVE_APP_UPDATE_CHANNEL: ${{ needs.preflight.outputs.channel }}
       # Firebase client identity for agent-activity push (public values that
       # ship in every APK; repository variables keep them out of source so
       # secret scanners do not flag the API key). All four or none: the
@@ -636,22 +631,18 @@ jobs:
       NATIVE_APP_UPDATE_ACTION_KIND: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
       NATIVE_APP_UPDATE_ACTION_ORIGINS: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
     steps:
-      - name: Select the channel's Firebase app
-        # An `a && b || c` expression would fall back to the stable app when
-        # the beta variable is empty, building the beta package against a
-        # Firebase app registered to another package: green here, broken on
-        # every phone. Choose explicitly and refuse a missing id.
+      - name: Select the Stable Firebase app
+        # Tagged releases ship only the Stable package (#4929). Refuse a
+        # configured Firebase project without its Stable app id rather than
+        # building a package whose push registration cannot work.
         env:
-          RELEASE_CHANNEL: ${{ needs.preflight.outputs.channel }}
-          FIREBASE_APP_ID_BETA: ${{ vars.STATION_FIREBASE_APP_ID_BETA }}
           FIREBASE_APP_ID_STABLE: ${{ vars.STATION_FIREBASE_APP_ID_STABLE }}
         run: |
-          if [ "$RELEASE_CHANNEL" = preview ]; then app_id="$FIREBASE_APP_ID_BETA"; else app_id="$FIREBASE_APP_ID_STABLE"; fi
-          if [ -n "$STATION_FIREBASE_API_KEY" ] && [ -z "$app_id" ]; then
-            echo "::error::Firebase is configured but no app id is set for the $RELEASE_CHANNEL channel."
+          if [ -n "$STATION_FIREBASE_API_KEY" ] && [ -z "$FIREBASE_APP_ID_STABLE" ]; then
+            echo "::error::Firebase is configured but no app id is set for the stable channel."
             exit 1
           fi
-          echo "STATION_FIREBASE_APP_ID=$app_id" >> "$GITHUB_ENV"
+          echo "STATION_FIREBASE_APP_ID=$FIREBASE_APP_ID_STABLE" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -716,25 +707,15 @@ jobs:
             --artifact release-client-build-provenance/station-client-build.json
       - run: STATION_CLIENT_BUILD_REUSE=1 npm run build:native-client
       - run: node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json"
-      - name: Initialize Android with the channel overlay before the tag overlay
+      - name: Initialize Android with the tag overlay
         working-directory: src-desktop
-        run: |
-          beta_config=()
-          if [ -n "$BETA_DESKTOP_CONFIG" ]; then
-            beta_config=(--config "$GITHUB_WORKSPACE/$BETA_DESKTOP_CONFIG")
-            node ../scripts/reset-android-generated-project.mjs
-          fi
-          npx tauri android init --ci --skip-targets-install "${beta_config[@]}" --config "$RUNNER_TEMP/tauri.release.conf.json"
+        run: npx tauri android init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.release.conf.json"
       - name: Apply release signing to the generated channel project
         run: node scripts/apply-android-release-signing.mjs
       - name: Apply the channel launcher icon to every Android source set
         run: |
-          icon_channel=stable
-          if [ -n "$BETA_DESKTOP_CONFIG" ]; then
-            icon_channel=beta
-          fi
-          node scripts/apply-android-channel-icons.mjs "$icon_channel"
-          node scripts/apply-android-pairing-scheme.mjs "$icon_channel"
+          node scripts/apply-android-channel-icons.mjs stable
+          node scripts/apply-android-pairing-scheme.mjs stable
       - name: Apply native credential bootstrap to the channel namespace
         run: |
           node scripts/apply-android-native-bootstrap.mjs
@@ -779,11 +760,7 @@ jobs:
           keystore="$RUNNER_TEMP/station-release.keystore"
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
           export TAURI_ANDROID_KEYSTORE_PATH="$keystore"
-          beta_config=()
-          if [ -n "$BETA_DESKTOP_CONFIG" ]; then
-            beta_config=(--config "$GITHUB_WORKSPACE/$BETA_DESKTOP_CONFIG")
-          fi
-          RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" npx tauri android build --apk --aab "${beta_config[@]}" --config "$RUNNER_TEMP/tauri.release.conf.json"
+          RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" npx tauri android build --apk --aab --config "$RUNNER_TEMP/tauri.release.conf.json"
       # Observational only: runs even when the build failed so the hosted log
       # reveals post-build/failure headroom. It never affects job outcome.
       - name: Report disk headroom after Android build
@@ -855,7 +832,7 @@ jobs:
           status: completed
   ios-simulator:
     needs: [preflight, full-regression]
-    if: ${{ needs['full-regression'].result == 'success' && needs.preflight.outputs.channel == 'stable' }}
+    if: ${{ needs['full-regression'].result == 'success' }}
     runs-on: macos-15
     timeout-minutes: 120
     permissions:
@@ -892,7 +869,7 @@ jobs:
           test -n "$simulator_app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$simulator_app/Info.plist")" = "$RELEASE_VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$simulator_app/Info.plist")" = "$IOS_BUNDLE_VERSION"
-          node scripts/ios-channel-icons.mjs verify '${{ needs.preflight.outputs.channel == 'preview' && 'beta' || 'stable' }}' --app "$simulator_app" --receipt "$RUNNER_TEMP/ios-simulator-icon-receipt.json"
+          node scripts/ios-channel-icons.mjs verify stable --app "$simulator_app" --receipt "$RUNNER_TEMP/ios-simulator-icon-receipt.json"
           mkdir release-assets
           tar -C "$(dirname "$simulator_app")" -czf "release-assets/station-${RELEASE_TAG}-ios-simulator.app.tar.gz" "$(basename "$simulator_app")"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -910,10 +887,10 @@ jobs:
       attestations: write
     uses: ./.github/workflows/testflight-delivery.yml
     with:
-      channel: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || 'stable' }}
+      channel: ${{ needs.preflight.outputs.channel }}
       source_sha: ${{ needs.preflight.outputs.sha }}
       source_ref: refs/tags/${{ needs.preflight.outputs.tag }}
-      marketing_version: ${{ needs.preflight.outputs.ios_marketing_version }}
+      marketing_version: ${{ needs.preflight.outputs.version }}
       web_build_version: ${{ needs.preflight.outputs.version }}
       bundle_version: ${{ needs.preflight.outputs.ios_bundle_version }}
       release_label: ${{ needs.preflight.outputs.tag }}
@@ -1062,6 +1039,9 @@ jobs:
       RELEASE_RING: ${{ needs.preflight.outputs.channel }}
       RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
       RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
+      # The payload names the base version; its URLs name this tag's release,
+      # where a candidate's archives are staged (#4929).
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1077,7 +1057,7 @@ jobs:
           path: ${{ runner.temp }}/archives
       - id: locations
         name: Name the versioned release and the rolling manifest
-        run: node scripts/portable-release-publication.mjs locations --ring "$RELEASE_RING" --repository "$GITHUB_REPOSITORY" --version "$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+        run: node scripts/portable-release-publication.mjs locations --ring "$RELEASE_RING" --repository "$GITHUB_REPOSITORY" --version "$RELEASE_VERSION" --tag "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
       - name: Assemble the schema v2 payload from the archive descriptors
         env:
           BASE_URL: ${{ steps.locations.outputs.base_url }}
@@ -1088,8 +1068,8 @@ jobs:
           protocol_max=$(node --input-type=module -e 'import { PORTABLE_LAUNCHER_PROTOCOL as p } from "./scripts/lib/portable-publication.mjs"; process.stdout.write(String(p.max))')
           mkdir -p "$RUNNER_TEMP/host-publication"
           # Every target is required: a partial host stream is not assembled.
-          node scripts/ecosystem-manifest.mjs assemble --descriptors "$RUNNER_TEMP/archives" --version "$RELEASE_VERSION" --channel "$RELEASE_RING" --source-sha "$RELEASE_SHA" --base-url "$BASE_URL" --node-version "$node_version" --launcher-protocol-min "$protocol_min" --launcher-protocol-max "$protocol_max" --output "$RUNNER_TEMP/host-publication/payload.json"
-          node scripts/portable-release-publication.mjs check-payload --ring "$RELEASE_RING" --payload "$RUNNER_TEMP/host-publication/payload.json" --version "$RELEASE_VERSION" --source-sha "$RELEASE_SHA" --repository "$GITHUB_REPOSITORY"
+          node scripts/ecosystem-manifest.mjs assemble --descriptors "$RUNNER_TEMP/archives" --version "$RELEASE_VERSION" --channel "$RELEASE_RING" --source-sha "$RELEASE_SHA" --base-url "$BASE_URL" --location-tag "$RELEASE_TAG" --node-version "$node_version" --launcher-protocol-min "$protocol_min" --launcher-protocol-max "$protocol_max" --output "$RUNNER_TEMP/host-publication/payload.json"
+          node scripts/portable-release-publication.mjs check-payload --ring "$RELEASE_RING" --payload "$RUNNER_TEMP/host-publication/payload.json" --version "$RELEASE_VERSION" --source-sha "$RELEASE_SHA" --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG"
       - name: Sign with a throwaway key and verify
         run: |
           set -euo pipefail
@@ -1134,8 +1114,8 @@ jobs:
         needs.host-manifest.result == 'success' &&
         needs.android.result == 'success' &&
         needs.container.result == 'success' &&
-        ((needs.preflight.outputs.channel == 'preview' && needs.ios-simulator.result == 'skipped' && needs.ios-device.result == 'success') ||
-         (needs.preflight.outputs.channel == 'stable' && needs.ios-simulator.result == 'success' && needs.ios-device.result == 'success'))
+        needs.ios-simulator.result == 'success' &&
+        needs.ios-device.result == 'success'
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -1219,6 +1199,8 @@ jobs:
             echo "Refusing to replace assets under existing release $RELEASE_TAG" >&2
             exit 1
           fi
+          node scripts/server-release-notes.mjs "$RELEASE_TAG" "$RELEASE_SHA" "$RUNNER_TEMP/server-notes.md" "Install with: curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/install.sh | STATION_CHANNEL=$RELEASE_CHANNEL sh"
           node scripts/release-artifacts.mjs draft-notes --inventory release-assets/station-release-inventory.json --output "$RUNNER_TEMP/station-release-notes.md"
-          gh release create "$RELEASE_TAG" --draft --verify-tag --title "Station $RELEASE_TAG" --notes-file "$RUNNER_TEMP/station-release-notes.md"
+          cat "$RUNNER_TEMP/station-release-notes.md" >> "$RUNNER_TEMP/server-notes.md"
+          gh release create "$RELEASE_TAG" --draft --verify-tag --title "Station $RELEASE_TAG" --notes-file "$RUNNER_TEMP/server-notes.md"
           gh release upload "$RELEASE_TAG" release-assets/*

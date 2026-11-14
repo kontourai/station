@@ -115,7 +115,7 @@ async function mountReload() {
 }
 
 describe('what the server answered decides what the reload shows', () => {
-  test('a 500 keeps the Activity reveal — the pointer is unresolved, not dead', async () => {
+  test('a 500 keeps the Chat reveal — the pointer is unresolved, not dead', async () => {
     setUrl('/?chat=real-conversation&dock=open');
     stubConversationLookup(500, {
       success: false,
@@ -126,9 +126,9 @@ describe('what the server answered decides what the reload shows', () => {
 
     await waitFor(
       () =>
-        expect(model?.regions.right).toMatchObject({
-          panes: ['activity'],
-          occupant: 'activity',
+        expect(model?.regions.bottom).toMatchObject({
+          panes: ['chat'],
+          occupant: 'chat',
           visible: true,
         }),
       { timeout: 4000 },
@@ -149,10 +149,6 @@ describe('what the server answered decides what the reload shows', () => {
         new URLSearchParams(window.location.search).get('chat'),
       ).toBeNull(),
     );
-    expect(
-      Object.values(model?.regions ?? {}).some(
-        (region) => region.occupant === 'activity',
-      ),
-    ).toBe(false);
+    expect(Boolean(model?.surfaceIntents.chat)).toBe(false);
   });
 });

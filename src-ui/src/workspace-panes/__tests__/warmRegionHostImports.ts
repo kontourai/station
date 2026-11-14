@@ -8,7 +8,7 @@
 export const REGION_HOST_WARM_TIMEOUT_MS = 90_000;
 
 /**
- * The region host, its built-in pane renderer and the Activity shell arrive
+ * The region host and its built-in pane renderer arrive
  * through staged dynamic imports (`RegionShells` -> `RegionPaneHost` ->
  * `RegionBuiltinPane`), and the FIRST mount in a test file pays every stage's
  * transform cost in this runner. That cost is host load, not product
@@ -26,6 +26,5 @@ export async function warmRegionHostImports(): Promise<void> {
   await Promise.all([
     import('../RegionPaneHost'),
     import('../RegionBuiltinPane'),
-    import('../../app-shell/ActivityRegionShell'),
   ]);
 }

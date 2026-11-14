@@ -10,10 +10,18 @@ on:
       - "Main: Container smoke"
       - "PR: Secret scan"
       - "Repo: Dependency advisory"
+      # Its PR and merge-group runs are not on main and are filtered out by
+      # the head_branch guard below; only the daily scheduled run (or a
+      # dispatch) on main reports. Its push run went red unnoticed for 8 days.
+      - "PR: Security analysis"
       # Chained: Main: Android tests is itself a workflow_run of the Android build
       # (two levels, within GitHub's limit of three). Its green runs have no
       # skipped jobs, so the close guard below can clear its tracker (#1315).
       - "Main: Android tests"
+      # Its main push run is the only iOS build of a UI-only change (see
+      # build-ios.yml). PR and merge-group runs fail the head_branch guard below;
+      # a push run that skipped its build never closes the tracker.
+      - "PR: iOS build"
     types: [completed]
 
 permissions:
@@ -224,6 +232,11 @@ jobs:
               // API image review is optional; only the capture and exact diff
               // settle a pixel-drift tracker.
               if (!jobs.some((job) => job.name === 'Capture and diff screenshot gallery' && job.conclusion === 'success')) return;
+            } else if (workflowName === 'PR: Security analysis') {
+              // Dependency review runs only on PR and merge-group events, so a
+              // main run always skips it. Only the analysis itself settles a
+              // CodeQL tracker.
+              if (!jobs.some((job) => job.name === 'CodeQL JavaScript and TypeScript' && job.conclusion === 'success')) return;
             } else if (!hasSuccessfulJob || hasSkippedJob) return;
             const issues = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,

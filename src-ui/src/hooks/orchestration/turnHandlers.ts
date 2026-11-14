@@ -1,6 +1,9 @@
 import { isStationCheckBackTurn } from '@kontourai/station-contracts/agent-schedule';
 import {
+  ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
+  ACP_SESSION_REWOUND_CODE,
+  ACP_SESSION_REWOUND_LATE_CODE,
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
   ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
@@ -824,6 +827,20 @@ export function handleRuntimeErrorEvent(
 const SESSION_POSTURE_WARNING_CODES: ReadonlySet<string> = new Set([
   MUSE_SERVE_UNAVAILABLE_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
+  // The engine runs its own default agent rather than the one this chat was
+  // started with: part of the conversation, not a passing toast.
+  ACP_AGENT_PROJECTION_UNAPPLIED_CODE,
+]);
+
+/**
+ * Warnings the transcript projection itself draws, from the stored event, as
+ * a marker row: an in-place engine rewind (`sessionRewoundMarker`), which
+ * also marks the turns it hid. Neither a toast nor a second notice.
+ */
+const TRANSCRIPT_DRAWN_WARNING_CODES: ReadonlySet<string> = new Set([
+  ACP_SESSION_REWOUND_CODE,
+  // A rewind applied late: the projection draws its own marker row.
+  ACP_SESSION_REWOUND_LATE_CODE,
 ]);
 
 /**
@@ -856,6 +873,11 @@ export function handleRuntimeWarningEvent(
   station?: StationStateScope,
 ) {
   const chatStore = activeChatsStore.forStation(station);
+  if (
+    event.code !== undefined &&
+    TRANSCRIPT_DRAWN_WARNING_CODES.has(event.code)
+  )
+    return;
   if (
     !isReplayThread(event.threadId) &&
     !(

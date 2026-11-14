@@ -191,3 +191,17 @@ export function describeStationFailure(
     recovery: refused ? 'retry' : 'check',
   };
 }
+
+/**
+ * Why a saved engine has not connected, from its last probe. A failure the
+ * probe could name (`code`) is said in Station's words; any other probe text
+ * is not shown, and the reason reads as the request-failure fallback.
+ */
+export function describeEngineProbeFailure(
+  lastError: { message: string; phase: string; code?: string },
+  engineName: string,
+): string {
+  if (lastError.code === 'managed-runtime-not-installed')
+    return `${engineName} isn't installed yet. Install it from its sign-in panel.`;
+  return describeStationFailure(lastError).body;
+}

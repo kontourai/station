@@ -260,6 +260,18 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'tests/builder-delivery-viewer.spec.ts',
   'tests/session-inventory-mcp-interop.spec.ts',
   'tests/survey-review-workbench.spec.ts',
+  // Kiro parity suites read the fake ACP agent's request record from a
+  // trackTempDirs directory and captured handshake frames under fixtures/
+  // (test data, excluded from source pins). Their direct adapter, probe and
+  // handshake-fact imports select them for changes.
+  'src-server/providers/__tests__/acp-engine-extension-events.test.ts',
+  'src-server/providers/__tests__/acp-host-auth.process.test.ts',
+  'src-server/providers/__tests__/acp-kiro-announce.process.test.ts',
+  'src-server/providers/__tests__/acp-kiro-parity.process.test.ts',
+  'src-server/providers/__tests__/acp-kiro-parity.test.ts',
+  'src-server/services/acp/__tests__/acp-client-announcements.process.test.ts',
+  'src-server/services/acp/__tests__/acp-handshake-facts.test.ts',
+  'src-server/services/acp/__tests__/acp-probe-terminal-facts.process.test.ts',
 ]);
 
 /**

@@ -4,7 +4,9 @@ The [release process](releasing.md) owns integration, scheduled qualification,
 repair sweeps and promotion decisions. This guide owns platform operations.
 
 Station stages every supported package from one immutable `vMAJOR.MINOR.PATCH`
-or `vMAJOR.MINOR.PATCH-preview.N` tag. The tag workflow never publishes the
+or release-candidate `vMAJOR.MINOR.PATCH-rc.N` tag; Beta `-preview.N` tags are
+retired ([#4929](https://github.com/kontourai/station/issues/4929)) and
+`Release: Publish` refuses rc tags until rc publication exists. The tag workflow never publishes the
 GitHub Release. It uploads workflow artifacts while each platform builds, then
 one assembler creates a draft only after the deterministic inventory and every
 checksum validate. `Release: Publish` is a separately approved manual
@@ -37,9 +39,13 @@ comes from the ledger-writing path. Missing cells remain `NOT_VERIFIED` or
 The [variant owner](../../scripts/lib/release-variants.mjs) and checked-in
 [inventory schema](../../schemas/release-artifact-manifest.schema.json)
 cover portable server, macOS arm64 and x86_64, Windows x86_64, Linux x86_64,
-and Android universal APK/AAB. Stable additionally inventories the iOS simulator
-archive and device IPA. Preview excludes iOS from this GitHub asset inventory
-while its separate Beta TestFlight job remains required by draft assembly.
+and Android universal APK/AAB, plus the iOS simulator archive and device IPA.
+A final `vX.Y.Z` and a candidate `vX.Y.Z-rc.N` inventory the same variants:
+asset names carry the tag (`station-v0.2.0-rc.1-…`), while the inventory's
+`version` is the base `X.Y.Z` and its `channel` is `stable`. One parser,
+[`release-tag.mjs`](../../scripts/lib/release-tag.mjs), reads the tag for every
+staging script and refuses retired `-preview.N` tags
+([#4929](https://github.com/kontourai/station/issues/4929)).
 Every desktop updater bundle must have its
 matching Tauri `.sig` file, and that signature must name the manifest's
 version in its trusted comment (`version:`): assembling `latest.json`
@@ -64,7 +70,8 @@ and container fragments in a separate scratch directory with fixed predicates
 (`runtime`, `native`, and `image`). The generator rejects traversal, symlinks, duplicate component IDs,
 cross-scope subjects, source/predicate disagreement, non-canonical JSON, and
 invalid UTF-8 before the existing inventory authority recomputes the four asset
-digests and binds them to the exact stable or preview tag.
+digests and binds them to the exact release tag; each SBOM names the base
+version as its component version.
 
 The production JavaScript fragment now comes from
 [`generate-pnpm-sbom.mjs`](../../scripts/generate-pnpm-sbom.mjs), which reads
@@ -130,12 +137,15 @@ signatures.
 
 The release tag is also the native application version authority. The root
 `package.json` records one stable release-train base (`X.Y.Z`); preflight
-requires both `vX.Y.Z-preview.N` and `vX.Y.Z` to match that base, then creates
-a release-only Tauri overlay from the tag's exact version. Preview-to-Stable
-promotion can therefore retain the exact reviewed commit.
+requires both `vX.Y.Z-rc.N` and `vX.Y.Z` to match that base, then creates a
+release-only Tauri overlay with Stable identity and the bare base version
+`X.Y.Z` for both, so a candidate's bytes can later be promoted unchanged.
 The overlay also derives Android `versionCode` and iOS `CFBundleVersion` from
-the tag (`major * 10_000_000 + minor * 10_000 + patch * 100 + channel`, where
-channel is the preview number 1–98 or `99` for the stable tag). That integer is
+the tag (`major * 10_000_000 + minor * 10_000 + patch * 100 + slot`, where
+slot is the candidate number 1–98 or `99` for the final tag). Minor is limited
+to 0–999 and patch to 0–99, and a tag outside those bounds is refused, because
+an overflowing component would collide with or outrank a later release
+(`v0.1.100-rc.1` and `v0.2.0-rc.1` would both be `20001`). That integer is
 what Play and App Store Connect use as the monotonic build number; do not
 fall back to Gradle's `1` / `1.0` defaults for a store upload. Nightly
 Android uses a different application id and its own day-based numbering. Before

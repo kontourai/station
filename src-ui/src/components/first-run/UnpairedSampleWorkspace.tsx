@@ -173,11 +173,9 @@ export function UnpairedSampleWorkspace({
           <h2>
             {step.anchor === 'notifications'
               ? 'Review the draft'
-              : step.anchor === 'activity'
-                ? 'Conversation details'
-                : step.anchor === 'schedule'
-                  ? 'Weekly digest'
-                  : 'Find anything'}
+              : step.anchor === 'schedule'
+                ? 'Weekly digest'
+                : 'Find anything'}
           </h2>
           {step.anchor === 'notifications' && (
             <>
@@ -203,24 +201,6 @@ export function UnpairedSampleWorkspace({
               </p>
             </>
           )}
-          {step.anchor === 'activity' && (
-            <>
-              <p>
-                Inspect the work behind the answer. Open the tool calls in the
-                conversation to see what was read.
-              </p>
-              <dl>
-                <dt>Started in</dt>
-                <dd>Claude Code</dd>
-                <dt>Status</dt>
-                <dd>Waiting for review</dd>
-                <dt>Files read</dt>
-                <dd>4 sample files</dd>
-                <dt>Output</dt>
-                <dd>Research digest.md</dd>
-              </dl>
-            </>
-          )}
           {step.anchor === 'schedule' && (
             <>
               <p>
@@ -231,7 +211,7 @@ export function UnpairedSampleWorkspace({
                 <span>Prepare a digest from the latest research notes.</span>
               </div>
               <p>
-                Each run appears in Activity. This sample schedule is not
+                Each run appears in the inbox. This sample schedule is not
                 enabled.
               </p>
             </>
@@ -243,9 +223,7 @@ export function UnpairedSampleWorkspace({
                 <strong>Agents · Skills · Engines · Plugins</strong>
                 <span>Available after pairing a Station</span>
               </div>
-              <Button onClick={() => setStepIndex(1)}>
-                Open sample Activity
-              </Button>
+              <Button onClick={() => setStepIndex(1)}>Open sample inbox</Button>
               <Button onClick={() => setStepIndex(2)}>
                 Open sample Schedule
               </Button>

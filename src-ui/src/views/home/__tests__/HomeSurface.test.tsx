@@ -318,10 +318,7 @@ describe('HomeSurface composition', () => {
     expect(
       within(region).getByRole('heading', { level: 2, name: 'Continue' }),
     ).toBeTruthy();
-    fireEvent.click(
-      within(region).getByRole('button', { name: 'View Activity' }),
-    );
-    expect(showSurfacePage).toHaveBeenCalledWith('activity');
+    expect(screen.queryByRole('button', { name: 'View Activity' })).toBeNull();
     // The skip link still lands on the work.
     expect(
       screen
@@ -348,8 +345,8 @@ describe('HomeSurface composition', () => {
     renderHome({ workItems: [newest, older], primaryWorkItem: newest });
     const recent = screen.getByRole('region', { name: 'Recent work' });
     expect(
-      within(recent).getByRole('button', { name: 'View Activity' }),
-    ).toBeTruthy();
+      within(recent).queryByRole('button', { name: 'View Activity' }),
+    ).toBeNull();
     expect(
       within(screen.getByRole('region', { name: 'Continue' })).queryByRole(
         'button',
@@ -490,8 +487,7 @@ describe('HomeSurface composition', () => {
   test('a failed load sends the reader to Activity rather than counting nothing', () => {
     const { model: m } = renderHome({ workItems: [], workError: true });
     expect(screen.getByText('Recent work unavailable')).toBeTruthy();
-    screen.getByRole('button', { name: 'Open Activity' }).click();
-    expect(showSurfacePage).toHaveBeenCalledWith('activity');
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
     expect(m.retryWork).not.toHaveBeenCalled();
     expect(
       screen.queryAllByRole('button', { name: LEGACY_SURFACE_LABEL }),
@@ -523,23 +519,14 @@ describe('HomeSurface: what is clickable', () => {
     showSurfacePage.mockClear();
   });
 
-  test('View Activity opens the Activity page, and promises nothing more', () => {
+  test('Recent work offers no retired global Activity page', () => {
     const { onNavigate } = renderHome({
       workItems: [item('a', 'Some work', 'Station', 3, 'Running')],
     });
-    const recent = screen.getByRole('region', { name: 'Recent work' });
-    within(recent).getByRole('button', { name: 'View Activity' }).click();
-    // No session: a generic "show me Activity", so no intent is minted and
-    // nothing routes (#928 — there is no Activity route left to route to).
-    // It is the page verb (Activity takes `main`), not the dock reveal.
-    expect(showSurfacePage).toHaveBeenCalledWith('activity');
-    expect(showSurface).not.toHaveBeenCalled();
+    expect(screen.getByRole('region', { name: 'Recent work' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'View Activity' })).toBeNull();
+    expect(showSurfacePage).not.toHaveBeenCalled();
     expect(onNavigate).not.toHaveBeenCalled();
-    // Activity is the surface's only name here: no retired "Sessions"
-    // affordance renders beside the right one.
-    expect(
-      screen.queryAllByRole('button', { name: LEGACY_SURFACE_LABEL }),
-    ).toEqual([]);
   });
 
   test('a chart bar opens the newest item in that bucket', () => {

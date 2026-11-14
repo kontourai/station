@@ -183,8 +183,28 @@ vi.mock('../hooks/useIsMobile', async (importActual) => ({
   ...(await importActual<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => presentation.isMobile,
 }));
+// No Station is ready here, so the footer's Updates control stays icon-only.
+vi.mock('../hooks/useConnectedServerUpdateContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../hooks/useConnectedServerUpdateContext')
+  >()),
+  useConnectedServerUpdateContext: () => ({
+    apiBase: '',
+    scopeKey: 'sidebar-test',
+    connectionName: 'Test Station',
+    kind: 'remote-server',
+    reachability: 'unknown',
+    identity: null,
+    identityReady: false,
+    identitySettled: false,
+    nativeObservationPending: false,
+    claimedOwnerUnresolved: false,
+    isCurrent: () => false,
+  }),
+}));
 vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionsQuery: () => ({ data: sessions }),
+  useCoreUpdateStatusQuery: () => ({ data: undefined }),
   useProjectLayoutsQuery: () => ({ data: [] }),
   useReorderProjectsMutation: () => ({ mutate: vi.fn() }),
   // archive#3313 routed the sidebar's visibility flags through
@@ -445,7 +465,7 @@ describe('ProjectSidebar panel order (#2059)', () => {
     // The header is above the body and is its own control, so it anchors the
     // order rather than joining the row list.
     expect(screen.getByRole('button', { name: 'Station home' })).toBeTruthy();
-    expect(panelRowLabels()).toEqual(['Home', 'Activity', 'Station', 'Ferry']);
+    expect(panelRowLabels()).toEqual(['Home', 'Station', 'Ferry']);
   });
 
   test('keeps individual customization destinations out of the panel', () => {
@@ -794,7 +814,6 @@ describe('a project wears the same colour everywhere', () => {
         remoteUnavailable={[]}
         remoteAuthenticationRequired={[]}
         onOpen={vi.fn()}
-        onViewActivity={vi.fn()}
         onRetry={vi.fn()}
       />
     );

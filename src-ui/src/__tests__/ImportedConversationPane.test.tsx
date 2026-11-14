@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
 import ImportedConversationPane from '../components/chat-dock/ImportedConversationPane';
+import { SessionReaderBindingProvider } from '../components/conversation/SessionReaderBinding';
 import { AuthorityHarness } from '../contexts/__tests__/paneRelationsHarness';
 import {
   handOffAttachedContinuation,
@@ -34,6 +35,7 @@ vi.mock('../components/session-detail/SessionDetail', () => ({
   SessionDetail: ({
     onAdopted,
     getSelectionIntent,
+    evidenceReveal,
   }: {
     onAdopted: (
       child: { threadId: string },
@@ -41,9 +43,15 @@ vi.mock('../components/session-detail/SessionDetail', () => ({
       message: string,
     ) => void;
     getSelectionIntent: () => number;
+    evidenceReveal?: { threadId: string; token: number };
   }) => (
     <div>
       <p>Original conversation</p>
+      {evidenceReveal && (
+        <output aria-label="Evidence activation">
+          {evidenceReveal.threadId}:{evidenceReveal.token}
+        </output>
+      )}
       <button
         type="button"
         onClick={() =>
@@ -176,7 +184,7 @@ describe('imported conversation in the dock', () => {
     ).toBeTruthy();
     expect(
       screen.getByText(/Station has no Claude Code agent/).textContent,
-    ).toContain('Open it from Activity');
+    ).toContain('Set up Claude Code in New Chat');
     expect(screen.queryByText('Could not open the continuation')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry opening' })).toBeNull();
     expect(screen.getByText('Original conversation')).toBeTruthy();
@@ -261,4 +269,37 @@ test('a failed refresh preserves history and explains that updates are unavailab
   );
   expect(screen.getByText('Original conversation')).toBeTruthy();
   expect(screen.queryByText('Could not load this conversation')).toBeNull();
+});
+
+test('the imported reader forwards the consumed evidence intent for the matching Session', () => {
+  query.mockImplementation(() => ({
+    data: { session: { threadId: 'source', controlMode: 'station-owned' } },
+    isError: false,
+  }));
+  const renderReader = (token: number) => (
+    <SessionReaderBindingProvider
+      binding={{
+        apiBase: 'http://station.test',
+        sessionId: 'source',
+        focus: 'evidence',
+        intentToken: token,
+      }}
+    >
+      <AuthorityHarness initial={{ station: 'station-a' }}>
+        <ImportedConversationPane
+          threadId="source"
+          apiBase="http://station.test"
+          onContinueInDock={async () => true}
+        />
+      </AuthorityHarness>
+    </SessionReaderBindingProvider>
+  );
+  const view = render(renderReader(12));
+  expect(
+    screen.getByRole('status', { name: 'Evidence activation' }).textContent,
+  ).toBe('source:12');
+  view.rerender(renderReader(13));
+  expect(
+    screen.getByRole('status', { name: 'Evidence activation' }).textContent,
+  ).toBe('source:13');
 });

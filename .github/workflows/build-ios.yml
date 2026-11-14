@@ -7,25 +7,65 @@ name: "PR: iOS build"
 # verification lane (workflow_dispatch-only) and iOS had none at all — the
 # first iOS build of any kind ran on a real release tag.
 #
-# Station is public, so standard GitHub-hosted runners are free and unlimited.
-# Every PR emits the stable build-ios-verification check so the repository
-# ruleset can require it. The classifier keeps the macOS build path-filtered:
-# iOS/native/frontend changes get a fresh unsigned simulator build and
-# packaged-WKWebView runtime assertion, while unrelated PRs consume only a
-# small hosted Linux classification job.
+# Station is public, so standard GitHub-hosted runners are free, but the org
+# shares 5 concurrent macOS jobs and this one is the long pole of every merge
+# group. Every PR emits the stable build-ios-verification check so the
+# repository ruleset can require it; a job skipped by its `if` reports
+# `skipped`, which the ruleset accepts, and the merge group still decides.
 #
-# No push trigger. The merge queue lands one entry at a time and fast-forwards
-# main to the candidate it tested, so a push run rebuilt the identical commit:
-# run 35781390232 (push, 0015690b7) repeated merge_group run 35778933116 on the
-# same SHA, as push run 35768638682 repeated 35766058181 for e2c2d2a60. That
-# was ~20 macOS minutes per iOS-relevant merge for no new verdict. A commit
-# that reaches main without the queue is the gap this leaves; dispatch this
-# workflow on main to build one.
+# Before landing (pull_request_target, merge_group) the classifier builds
+# only for NATIVE inputs: src-desktop, the iOS project and configs, Rust and
+# Cargo, dependency manifests, the runtime smoke and its fixtures, this
+# workflow, vite.config.ts and every executed file named for iOS or the
+# native client, and the slice of src-ui that is the native shell.
+#
+# After landing, a `push` to main builds the POST-MERGE inputs: every source
+# root the UI bundle can import (src-ui/, src-shared/, and the workspace
+# packages it reaches) and the generic tooling this job executes (dependency
+# install, bundle budget, vite plugins, shared script libraries). The exact
+# sets, and the rule that splits them, live in scripts/classify-ci-change.mjs;
+# classify-ci-change.test.ts derives what this job executes and what the UI
+# imports, and fails on a reached file neither set covers. Not seen by that
+# derivation: files read at run time (readFileSync, child processes, dynamic
+# import specifiers) unless listed by hand.
+#
+# The push trigger was removed once because it rebuilt the identical commit:
+# the merge queue lands one entry at a time and fast-forwards main to the
+# candidate it tested (push run 35781390232 on 0015690b7 repeated merge_group
+# run 35778933116; push 35768638682 repeated 35766058181 for e2c2d2a60), about
+# 20 macOS minutes per merge for no new verdict. That reasoning still holds,
+# so the push run never builds what a merge group built: it builds only when
+# its `before..after` range touches a post-merge (broad) input and NO native
+# one (`--scope ios-post-merge`). That range is the landed candidate's own
+# range, because main is fast-forwarded to it, so "native input present"
+# means "the merge group already built this exact tree". The push has no
+# `paths` filter on purpose: GitHub's path filters see at most 300 changed
+# files and then skip the run, which would silently drop a large landing's
+# post-merge build. The minute-long Linux classifier decides instead.
+#
+# Post-merge builds coalesce: the build job shares one concurrency group on
+# push with cancel-in-progress off, so at most one runs and one waits, a
+# newer pending build replaces an older pending one (the newer tree contains
+# it), and a running build is never cancelled. A red push run on main opens
+# a tracker through main-health.yml.
+#
+# The acknowledged gap: a commit pushed to main WITHOUT the merge queue gets
+# no pre-landing build, and if its range has a native input the push run
+# also skips it, because it cannot tell that commit from a queue landing the
+# merge group already built. Dispatch this workflow on main to build one.
+#
+# Draft pull requests, and the same-repository release PR the automation app
+# regenerates on every main push, do not build on PR events (see the build
+# job's `if`). Marking a draft ready for review (`ready_for_review`) builds
+# it; both still build in the merge queue.
 on:
   pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     branches: [main]
     types: [checks_requested]
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       push_extensions:
@@ -36,8 +76,10 @@ on:
 permissions:
   contents: read
 
+# Push runs get a per-commit group so one push never cancels another's
+# classification; the build job's own group below serializes their builds.
 concurrency:
-  group: build-ios-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: build-ios-${{ github.workflow }}-${{ github.event.pull_request.number || github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -56,7 +98,7 @@ jobs:
       - id: relevance
         name: Classify iOS verification inputs
         env:
-          BASE_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
+          BASE_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event_name == 'push' && github.event.before || '' }}
           HEAD_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
         run: |
           fail_closed() {
@@ -65,16 +107,30 @@ jobs:
             exit 0
           }
 
-          if [ "$GITHUB_EVENT_NAME" != "pull_request_target" ] && [ "$GITHUB_EVENT_NAME" != "merge_group" ]; then
-            echo "relevant=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          # Candidates are judged by the native scope from their merge base.
+          # A main push is judged by the post-merge scope over exactly what it
+          # added; its classifier comes from `before`, the previous main.
+          # Anything else (dispatch) always builds.
+          case "$GITHUB_EVENT_NAME" in
+            pull_request_target|merge_group)
+              scope=ios
+              mode=candidate
+              ;;
+            push)
+              scope=ios-post-merge
+              mode=direct
+              ;;
+            *)
+              echo "relevant=true" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
 
           classifier="$RUNNER_TEMP/classify-ci-change.mjs"
           git show "$BASE_SHA:scripts/classify-ci-change.mjs" > "$classifier" || \
             fail_closed "base-controlled classifier unavailable"
           output="$RUNNER_TEMP/ios-change-classification"
-          node "$classifier" --scope ios --mode candidate \
+          node "$classifier" --scope "$scope" --mode "$mode" \
             --before "$BASE_SHA" --after "$HEAD_SHA" > "$output" || \
             fail_closed "classifier execution failed"
           classification=$(cat "$output")
@@ -89,7 +145,27 @@ jobs:
 
   build-ios-verification:
     needs: classify
-    if: needs.classify.outputs.relevant == 'true'
+    # On PR events only, a draft and the automation app's same-repository
+    # release PR skip the build (scripts/__tests__/ci-workflow-contract.test.ts
+    # pins this guard, identical in the Windows and Gallery heavy jobs).
+    # `ready_for_review` and later pushes to a non-draft PR build; the merge
+    # group always does. The release PR is matched by its branch AND by its
+    # head living in this repository (a fork can name a branch anything) AND
+    # by its author being the app's bot account (a `[bot]` login no person can
+    # register), so a human PR from that branch name still builds.
+    # `!cancelled()` lets the build run when the classify JOB failed (a
+    # checkout or runner failure, which the step's fail_closed cannot answer):
+    # an unknown answer builds, as everywhere else in this workflow. It is not
+    # `always()`, which would also start a 25-minute build in a run that was
+    # cancelled (a superseded PR head, a dropped merge group).
+    if: "!cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.relevant == 'true') && (github.event_name != 'pull_request_target' || (!github.event.pull_request.draft && (github.event.pull_request.head.ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login != 'station-automation[bot]')))"
+    # One running plus one pending post-merge build on main; a newer push
+    # replaces the pending one and never cancels the running one. A job whose
+    # `if` is false never joins the group. Every other event gets a group of
+    # its own run, so this changes nothing for PRs and merge groups.
+    concurrency:
+      group: ${{ github.event_name == 'push' && 'build-ios-main-post-merge' || format('build-ios-verification-{0}', github.run_id) }}
+      cancel-in-progress: false
     runs-on: macos-26
     timeout-minutes: 60
     steps:

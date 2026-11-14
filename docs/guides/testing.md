@@ -254,6 +254,17 @@ The [manual workflow](../../.github/workflows/server-scenario.yml) runs this
 scenario on a hosted Linux worker and uploads receipts/logs for 30 days.
 It has only `workflow_dispatch`, no schedule and no merge-blocking latency gate.
 
+### Idle weight and request overhead
+
+`npm run perf:station-weight` is the per-PR check for Station's weight at rest
+and the text and tools it adds to the Claude engine's first request. It runs
+the real launcher against a loopback model stub, so it costs no model spend.
+It compares with a committed baseline and fails on growth past headroom or on
+any budget it could not compare; `--report-only` serves hosts without a
+baseline. Its end-to-end test is process-heavy, so the full-regression
+workflow runs it on Linux. The [reference](../reference/station-weight.md)
+owns its metrics, budgets, baseline recording and gaps.
+
 ### Mutation safety and interpretation
 
 `test:mutation:smoke` runs curated source and fixture defects covering rendering, scope and engine identity, repeated reads, storage migration, indexed-event selection, API-base publication, readiness-fixture premises. The readiness cases prove that missing or mismatched decoys fail the fixture premise instead of passing while testing nothing. Select one with `--case=<id>`. The runner registry owns the case inventory; new cases must name the mutation and exact failing assertion. Budget three runs of the target file per case: baseline, injected, and restored.
@@ -340,7 +351,7 @@ The sweep checks out only the workflow's trusted revision and installs no
 dependencies. Its owner is `scripts/pr-ci-supersession.mjs`.
 
 The sidebar names below describe the primary trigger or delivery family.
-`PR:` checks can also run on main pushes; `Main:` qualification runs after main
+`PR:` checks can also run on main pushes or a main schedule; `Main:` qualification runs after main
 pushes, every six hours, or by manual dispatch. `Repo:` identifies housekeeping even when scheduled
 or driven by PR events. `Tool:` identifies dispatch-only diagnostics and
 maintenance. Manual publication retains `Release:`; `Nightly` keeps its name.
@@ -363,7 +374,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`backlog-priority-policy.yml`](../../.github/workflows/backlog-priority-policy.yml) | Backlog disposition policy | **Repo: Backlog policy** | UTC schedule: `23 13 * * *`; manual dispatch. |
 | [`bubblewrap-kernel.yml`](../../.github/workflows/bubblewrap-kernel.yml) | — | **Tool: bubblewrap kernel legs** | manual dispatch. |
 | [`build-android.yml`](../../.github/workflows/build-android.yml) | Build Android verification artifact | **Main: Android build** | main pushes (path filtered); manual dispatch. |
-| [`build-ios.yml`](../../.github/workflows/build-ios.yml) | Build iOS verification artifact | **PR: iOS build** | PR events; merge queue; manual dispatch. |
+| [`build-ios.yml`](../../.github/workflows/build-ios.yml) | Build iOS verification artifact | **PR: iOS build** | PR events (build skipped for drafts and the release PR); merge queue; main pushes (classifier-filtered: UI-only landings); manual dispatch. |
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
 | [`ci-throughput-health.yml`](../../.github/workflows/ci-throughput-health.yml) | — | **Repo: CI throughput health** | UTC schedule: `41 */6 * * *`; manual dispatch; reports only while #3101 is open. |
 | [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes; manual dispatch. |
@@ -379,14 +390,14 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`ecosystem-packaging.yml`](../../.github/workflows/ecosystem-packaging.yml) | Ecosystem packaging dry-run | **PR: Ecosystem packaging** | reused by `Delivery validation`; manual dispatch. |
 | [`fresh-home-walkthrough.yml`](../../.github/workflows/fresh-home-walkthrough.yml) | Fresh-home walkthrough | **Nightly: Fresh-home walkthrough** | UTC schedule: `0 10 * * *`; manual dispatch. |
 | [`full-regression.yml`](../../.github/workflows/full-regression.yml) | Hosted full regression | **Main: Full qualification** | reused by `Main: Publish packages`, `Main: Qualification`, `PR: CI`, `Release: Publish`, `Release: Stage`. |
-| [`gallery-pr-check.yml`](../../.github/workflows/gallery-pr-check.yml) | Gallery PR check | **PR: Gallery** | PR events; merge queue. |
+| [`gallery-pr-check.yml`](../../.github/workflows/gallery-pr-check.yml) | Gallery PR check | **PR: Gallery** | PR events (capture skipped for drafts and the release PR); merge queue (capture skipped). |
 | [`install-smoke.yml`](../../.github/workflows/install-smoke.yml) | Portable Install Smoke | **PR: Install smoke** | reused by `Delivery validation`; manual dispatch. |
 | [`interactive-workspace-performance.yml`](../../.github/workflows/interactive-workspace-performance.yml) | Interactive Workspace Performance | **Tool: Interactive workspace performance** | manual dispatch. |
 | [`internal-testflight.yml`](../../.github/workflows/internal-testflight.yml) | Internal iOS TestFlight cohort | **Release: Internal TestFlight cohort** | manual dispatch. |
 | [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new issue comments. |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
-| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
+| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | main pushes (source qualification only); UTC schedule: `17 */6 * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic (manual): Merge integration** | manual full-corpus diagnosis, never a required check; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
@@ -409,11 +420,11 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`release.yml`](../../.github/workflows/release.yml) | Stage Station release | **Release: Stage** | `v*` tag pushes. |
 | [`seatbelt-kernel.yml`](../../.github/workflows/seatbelt-kernel.yml) | Tool: Seatbelt kernel legs | **Main: Seatbelt kernel legs** | main pushes (path filtered); manual dispatch. |
 | [`secret-scan.yml`](../../.github/workflows/secret-scan.yml) | Secret Scan | **PR: Secret scan** | PR events; main pushes; manual dispatch. |
-| [`security-analysis.yml`](../../.github/workflows/security-analysis.yml) | Security analysis | **PR: Security analysis** | PR events; merge queue; main pushes; manual dispatch. |
+| [`security-analysis.yml`](../../.github/workflows/security-analysis.yml) | Security analysis | **PR: Security analysis** | PR events (dependency review; CodeQL only when the PR changes `.github/`, otherwise reported skipped); merge queue; UTC schedule: `11 9 * * *`; manual dispatch. |
 | [`source-availability.yml`](../../.github/workflows/source-availability.yml) | Source availability | **Main: Source availability** | main pushes. |
 | [`starved-pr-report.yml`](../../.github/workflows/starved-pr-report.yml) | Starved pull request report | **Repo: Starved PR report** | UTC schedule: `17 * * * *`; manual dispatch. |
 | [`testflight-delivery.yml`](../../.github/workflows/testflight-delivery.yml) | Deliver iOS TestFlight channel | **Release: TestFlight delivery** | reused by `Nightly: Native cohort`, `Nightly: Native staging`, `Release: Stage`, `Release: Internal TestFlight cohort`. |
-| [`windows-pr-verification.yml`](../../.github/workflows/windows-pr-verification.yml) | Windows PR Verification | **PR: Windows** | PR events; merge queue. |
+| [`windows-pr-verification.yml`](../../.github/workflows/windows-pr-verification.yml) | Windows PR Verification | **PR: Windows** | PR events (floor skipped for drafts and the release PR); merge queue. |
 | [`windows-vitest-diagnostic.yml`](../../.github/workflows/windows-vitest-diagnostic.yml) | Windows Full Vitest Diagnostic | **Tool: Windows full vitest diagnostic** | manual dispatch. |
 
 ### Retirement candidates for owner review
@@ -478,7 +489,11 @@ human summary and fenced JSON snapshot to that issue through REST. There is no
 default issue. The [throughput health workflow](../../.github/workflows/ci-throughput-health.yml)
 records six-hour windows on issue #3101 while it remains open; it starts no
 verification builds. `--history --issue=<n>` reads these
-comments into a trend table; `--json` also works for history.
+comments into a trend table; `--json` also works for history. The trend table
+adds runner-hours per landing, last-entry-to-merge median/p90 and the
+cancelled-run share; snapshots recorded before those fields show
+`n/a (legacy snapshot)`. New fields are additive under the same
+`station-ci-health/v1` schema, so older comments still parse.
 
 | Measure | Definition |
 | --- | --- |
@@ -493,6 +508,11 @@ comments into a trend table; `--json` also works for history.
 | Shard setup versus tests | Up to 20 executed jobs per family: `fast-checks shard`, `Ordinary corpus`, `Process-heavy corpus`. Named test/corpus/regression/shard steps count as tests; installation, planning, downloads and uploads do not. Remaining job duration counts as overhead, including teardown and gaps. This is a step-name estimate, not a profiler measurement. |
 | Main qualification and recovery | Every available push, scheduled or manual attempt of `Main: Qualification` (including its historical name) on `main`; non-success conclusions count as failed or incomplete. Restore time runs from the first terminal failure's creation to the next successful attempt's update. An episode with no observed success remains unresolved. Repair-step executions are reported separately and do not establish qualification success. |
 | PR merges touching the review ledger | First-parent `origin/main` commits with a PR number in the subject and changed paths under `docs/learn/review-ledger/`; count, median and maximum changed record/note files. A note archive and the loose notes a baseline advance deleted into it (#3394) are not counted; notes the same merge adds are. |
+| Lane ledger | One row per workflow file, normalized job name and event among the capacity population: executed jobs, runner-minutes clipped to the window and their share of the total, median/p90 full job minutes, median/p90 wait minutes (creation to start) of executed jobs, failed or timed-out jobs, and runner-minutes of executed jobs whose run attempt concluded `cancelled` (superseded runs, including legs that finished first). Counters in job names become `N`, so shard and matrix legs share a lane: `X of Y` ranges (`1-2 of 8`, `ordinary-1-of-8`) and numbers standing alone after a space, `(`, `,` or `/` (`shard 3`, `test (1, 4)`, `1/4`). A number joined to a word by a hyphen (`macos-14`, `windows-2022`, `ubuntu-22`), inside a token (`linux-x64`, `ubuntu-22.04`) or leading the name as a stage ordinal (`1 · Source gate`) names a platform or step and stays; a version written after a space, such as `node 20`, is indistinguishable from a counter and merges. Lane runner-minutes sum to the capacity runner-hours. Rows with unfinished or unattributed jobs carry `incomplete: true`; those jobs already make the snapshot incomplete. A lane whose jobs were all cancelled before runner assignment has no row. The top 25 lanes by runner-minutes are kept; the rest fold into one `other` row. |
+| Cancelled-run share | Runner-minutes in run attempts that concluded `cancelled` divided by all lane runner-minutes. |
+| PR-level unique catch | Per lane on `pull_request`/`pull_request_target` runs, excluding `ci.yml` itself and `landing-automation.yml` and `pr-ci-supersession.yml`, whose PR triggers are label, dequeue and close events rather than `opened` or `synchronize` and so verify nothing about the head (a test pins this list against the checked-in trigger types): head SHAs with a verdict, SHAs where the lane failed, and of those the SHAs whose `ci.yml` run-level verdict passed. A lane attempt fails when any leg failed or timed out and passes when every leg concluded success, skipped or neutral with at least one success; cancelled or unfinished attempts give no verdict. Any passing attempt on a SHA supersedes failed attempts on that SHA, on both sides, regardless of order. `ci.yml` runs titled `PR metadata` (body edits) verify nothing and give no reference verdict. Both sides see only runs created in the window. The count includes real defects and flakes: an upper bound on a lane's value, not a defect count. The top 25 lanes are kept; `omittedLanes` counts the rest. |
+| Cost per landing | Landings are PRs whose `merged_at` lies in the half-open window, from one GitHub search (`is:pr is:merged merged:since..until`, refiltered because search ranges are inclusive). Queue squash commits carry the time their group was built, hours before some reach `main`, so commit dates cannot place a landing in the window; the review-ledger measure above still selects by commit date. Runner-hours per landing divides capacity runner-hours by landings, `null`/`n/a` with no landings or when the search failed. Runner-hours are also split by event: `pull_request` (with `pull_request_target`), `merge_group`, `push`, `schedule`, `workflow_run` and `other`; each is rounded to two decimals separately, so they need not sum exactly to the total. Search errors, incomplete search results, a result without a parseable `merged_at` and more than 1,000 results set `incomplete: true`. |
+| Landing latency | For each landed PR, minutes from its last and from its first `added_to_merge_queue` timeline event before `merged` to `merged`, median/p90; their difference is dequeue and re-entry cost. The last entry must still be live at the merge: GitHub logs a `removed_from_merge_queue` with every queue merge, up to a second before it, so only a removal more than one minute before `merged` ends that entry. PRs with no entry, or whose last entry was removed that way and then merged outside the queue, count as not queued at merge and are excluded from the distributions. PRs with more than one queue entry are counted. Each landed PR costs one paginated timeline request unless a failed group already fetched it. A landed PR without a timeline `merged` event sets `incomplete: true`. |
 
 Runs are selected by creation time in the half-open window, including available
 attempts. Capacity intervals are clipped to the window and exclude jobs created
@@ -513,10 +533,22 @@ caps remain visible as `listingCapHits`. History errors also exit nonzero;
 incomplete recorded snapshots are flagged in the trend table. Recording writes
 only an issue comment; no snapshot file or workflow is added to `main`.
 
+The recorded comment carries the snapshot as indented JSON. GitHub refuses
+comments over 65,536 characters; the lane and unique-catch caps keep a busy
+window well under it, and an oversized snapshot falls back to unindented JSON.
+A snapshot too large for either form fails recording with its size instead of
+posting a truncated record. The snapshot is printed before recording is
+attempted, so a refused or failed comment still leaves the measurement in the
+output the workflow retains, and the command exits nonzero.
+
 Fixture coverage lives in
 [`scripts/__tests__/ci-health.test.ts`](../../scripts/__tests__/ci-health.test.ts).
 The mutation cases `ci-health-concurrency-threshold`, `ci-health-reentry-commits`,
-`ci-health-bot-login` and `ci-health-listing-cap` use `npm run test:mutation:smoke -- --case=<id>`.
+`ci-health-bot-login`, `ci-health-listing-cap`, `ci-health-lane-shard-normalization`,
+`ci-health-lane-cancelled-run`, `ci-health-unique-catch-supersede`,
+`ci-health-unique-catch-non-verifying`, `ci-health-landing-last-entry`,
+`ci-health-landing-bypass` and `ci-health-landing-window-end` use
+`npm run test:mutation:smoke -- --case=<id>`.
 
 ## Philosophy
 
@@ -1415,9 +1447,13 @@ resolve at the caller's workflow commit, while `inputs.source_sha` continues to
 select only the application source being qualified.
 
 `.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
-on pull requests and synthesized merge-queue candidates, in the same container
-(#2428, #3342). PRs compare their exact head; the queue compares the combined
-candidate. Pixel differences are advisory in both workflows: `--report-only` retains the
+on ready (non-draft) pull requests, in the same container (#2428, #3342). PRs
+compare their exact head. Merge-queue candidates still report the workflow's
+contexts, but the capture job skips there: Gallery is not a required context,
+so a candidate's capture could not stop a landing. Combined changes are
+captured after landing by `Nightly: Gallery` once a day, which checks capture
+integrity and reports pixel differences but does not run the product
+assertions below. Pixel differences are advisory in both workflows: `--report-only` retains the
 exact changed rows and diff PNGs, but exits successfully for visual changes.
 The job summary includes the comparison table and the PR artifact link. An
 unchanged capture has no `REVIEW` advisory. Capture failures, missing screens,
@@ -1438,8 +1474,8 @@ The baseline writer refuses a capture whose screen name is
 not a slug or whose file resolves outside the gallery directory, because for a
 fork PR the artifact is produced by the fork's code. A capture that did not
 complete is reported separately and must not be re-baselined. The check compares
-each PR head against its own baseline and checks combinations again on the
-merge-queue candidate. Exact pixels are advisory visual evidence, not a required exact-pixel merge gate;
+each PR head against its own baseline; combinations are first captured by the
+next day's `Nightly: Gallery` on `main`. Exact pixels are advisory visual evidence, not a required exact-pixel merge gate;
 the product assertions below fail the job. Read the live `main` ruleset: when Gallery is absent from required contexts,
 a red Gallery job does not hold a PR on its own.
 `Main: Health` tracks failed `Nightly: Gallery` capture/comparison integrity;

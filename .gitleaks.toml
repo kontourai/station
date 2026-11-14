@@ -174,9 +174,26 @@ targetRules = ["generic-api-key"]
 condition = "AND"
 regexTarget = "secret"
 regexes = ['''^SSH/delegation$''']
+# A baseline advance moved both notes, byte for byte, into a note archive;
+# the exact-secret condition still applies there.
 paths = [
   '''(^|/)docs/learn/review-ledger/notes/20261004T072744\.891Z-91c3555a3247\.json$''',
   '''(^|/)docs/learn/review-ledger/notes/20261004T072744\.891Z-eef52c1ee93b\.json$''',
+  '''(^|/)docs/learn/review-ledger/notes/archive/[0-9a-f]{40}\.json$''',
+]
+
+[[allowlists]]
+# The same prose the two #3495/#3514 fingerprints in .gitleaksignore cover at
+# the note's own path. A fingerprint names one commit and line, so it cannot
+# follow the note into an archive; this pins the exact phrase instead.
+description = "Verified security-model review prose; catalogue/knowledge is not a credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^catalogue/knowledge$''']
+paths = [
+  '''(^|/)docs/learn/review-ledger/notes/20261007T183700\.092Z-5b40e95b2203\.json$''',
+  '''(^|/)docs/learn/review-ledger/notes/archive/[0-9a-f]{40}\.json$''',
 ]
 
 [[allowlists]]

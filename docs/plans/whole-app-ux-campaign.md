@@ -1,5 +1,11 @@
 # Whole-app UX campaign
 
+> **Activity retirement amendment:** Activity and its Quick review pane are
+> removed. Home and the inbox list work; Session links and child transcripts
+> open in Chat. The Activity-specific delivery notes below describe the earlier
+> design. See [placement](../design/placement.md) for migration and URL compatibility.
+
+
 This execution plan belongs to [#4506](https://github.com/kontourai/station/issues/4506).
 The issue owns changing runner grants, journey results, prerequisites, findings and
 PR state. This document owns scope, source routing, acceptance and handoff rules.

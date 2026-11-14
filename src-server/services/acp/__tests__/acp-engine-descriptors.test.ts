@@ -4,6 +4,7 @@ import {
   registerACPConnectionRegistryProvider,
 } from '../../../providers/registries/registry.js';
 import {
+  listValidatedACPRegistryEntries,
   nameSkeleton,
   registryLaunchEnvFor,
 } from '../acp-engine-descriptors.js';
@@ -69,5 +70,67 @@ describe('nameSkeleton', () => {
     ]) {
       expect(nameSkeleton(name)).toBe('goose');
     }
+  });
+});
+
+describe('managedRuntime admission', () => {
+  afterEach(() => clearAll());
+
+  const managedRuntime = {
+    installId: 'example-engine',
+    argv: ['--experimental-wasm-modules', '{script}', '--transport=stdio'],
+  };
+
+  test('a built-in entry may name a managed runtime; a plugin entry may not', () => {
+    registerACPConnectionRegistryProvider(
+      {
+        listAvailable: () => [
+          {
+            id: 'managed-builtin',
+            name: 'Managed',
+            command: 'node',
+            managedRuntime,
+          },
+        ],
+      },
+      'builtin-acp-connections',
+      true,
+    );
+    registerACPConnectionRegistryProvider(
+      {
+        listAvailable: () => [
+          {
+            id: 'managed-plugin',
+            name: 'Plugin Engine',
+            command: 'node',
+            managedRuntime,
+          },
+          { id: 'plain-plugin', name: 'Plain Engine', command: 'plain' },
+        ],
+      },
+      'example-plugin',
+      false,
+    );
+    expect(
+      listValidatedACPRegistryEntries().map(({ entry }) => entry.id),
+    ).toEqual(['managed-builtin', 'plain-plugin']);
+  });
+
+  test('a built-in entry with an invalid managed runtime is refused whole', () => {
+    registerACPConnectionRegistryProvider(
+      {
+        listAvailable: () => [
+          {
+            id: 'managed-builtin',
+            name: 'Managed',
+            command: 'node',
+            managedRuntime: { installId: 'example-engine', argv: ['run'] },
+          },
+        ],
+      },
+      'builtin-acp-connections',
+      true,
+    );
+    expect(listValidatedACPRegistryEntries()).toEqual([]);
   });
 });

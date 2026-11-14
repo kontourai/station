@@ -5363,7 +5363,9 @@ describe('#225 a delegated task usage event keeps every canonical usage field', 
       serviceTier: 'standard',
       contextTokens: 62000,
       contextWindowTokens: 200000,
+      contextPercent: 31,
       reportedCostUsd: 0.42,
+      reportedCost: { amount: 0.07, unit: 'credit', scope: 'turn' },
       pricingSnapshot: {
         id: 'catalog-1',
         capturedAt: '2026-10-11T00:00:00.000Z',
@@ -5391,7 +5393,11 @@ describe('#225 a delegated task usage event keeps every canonical usage field', 
       serviceTier: 'standard',
       contextTokens: 62000,
       contextWindowTokens: 200000,
+      contextPercent: 31,
     });
+    expect(
+      projectDelegatedTaskEvent(11, { ...usageEvent, contextPercent: 100.5 }),
+    ).not.toHaveProperty('contextPercent');
 
     const longTier = projectDelegatedTaskEvent(8, {
       ...usageEvent,

@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import {
   generateDesktopReleaseNotes,
+  generateServerReleaseNotes,
   publishDesktopReleaseNotes,
 } from '../lib/desktop-release-notes.mjs';
 
@@ -98,7 +99,7 @@ test.each([401, 403, 503])(
         manifest: { version, notes: '- Notes' },
       }),
     ).rejects.toThrow(`HTTP ${status}`);
-    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(status === 503 ? 2 : 1);
   },
 );
 
@@ -275,3 +276,419 @@ test('a tag lookup validation error never authorizes a release creation', async 
   ).rejects.toThrow('HTTP 422 GET /git/ref/tags/');
   expect(request).toHaveBeenCalledTimes(2);
 });
+
+test.each(['v0.1.12', 'v0.1.12-nightly.2500', 'v0.1.12-preview.2'])(
+  'server notes for %s exclude desktop, rolling, other rings and newer releases',
+  async (serverTag) => {
+    const priorTag = serverTag.replace('0.1.12', '0.1.11');
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json([
+          { tag_name: 'v99.0.0', draft: false },
+          { tag_name: 'nightly-server', draft: false },
+          { tag_name: `desktop-${priorTag}`, draft: false },
+          {
+            tag_name: serverTag.includes('nightly')
+              ? 'v0.1.11-preview.1'
+              : 'v0.1.11-nightly.2499',
+            draft: false,
+          },
+          { tag_name: priorTag, draft: true },
+          { tag_name: priorTag, draft: false },
+        ]),
+      )
+      .mockResolvedValueOnce(Response.json({ sha: previous }))
+      .mockResolvedValueOnce(
+        Response.json({
+          body: `- Server changes\n/compare/${priorTag}...${serverTag}`,
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ sha: previous }));
+    vi.stubGlobal('fetch', request);
+    const notes = await generateServerReleaseNotes({
+      tag: serverTag,
+      source,
+      repository: options.repository,
+      token: options.token,
+    });
+    expect(notes).toContain('- Server changes');
+    expect(notes).toContain(`/compare/${previous}...${source}`);
+    expect(JSON.parse(request.mock.calls[2][1].body)).toMatchObject({
+      tag_name: serverTag,
+      previous_tag_name: priorTag,
+      target_commitish: source,
+    });
+  },
+);
+
+test('server notes fail closed without a previous release', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json([])),
+  );
+  await expect(
+    generateServerReleaseNotes({
+      tag: 'v0.1.12',
+      source,
+      repository: options.repository,
+      token: options.token,
+    }),
+  ).rejects.toThrow('Previous server release');
+});
+
+test('the first stable release spans the highest preceding base version regardless of API order', async () => {
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce(
+      Response.json([
+        { tag_name: 'v0.1.12-preview.1', draft: false },
+        { tag_name: 'v0.1.9-nightly.99' },
+        { tag_name: 'v0.1.11-nightly.2' },
+        { tag_name: 'v0.1.10-nightly.99' },
+      ]),
+    )
+    .mockResolvedValueOnce(Response.json([]))
+    .mockResolvedValueOnce(Response.json({ sha: previous }))
+    .mockResolvedValueOnce(Response.json({ body: '- Stable server changes' }))
+    .mockResolvedValueOnce(Response.json({ sha: previous }));
+  vi.stubGlobal('fetch', request);
+  await generateServerReleaseNotes({
+    tag: 'v0.1.12',
+    source,
+    repository: options.repository,
+    token: options.token,
+  });
+  expect(JSON.parse(request.mock.calls[3][1].body).previous_tag_name).toBe(
+    'v0.1.11-nightly.2',
+  );
+});
+
+test.each(['self', 'empty'])(
+  'stable server notes describe %s comparisons',
+  async (mode) => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(Response.json([{ tag_name: 'v0.1.10' }]))
+        .mockResolvedValueOnce(
+          Response.json({ sha: mode === 'self' ? source : previous }),
+        )
+        .mockResolvedValueOnce(
+          Response.json({
+            body: '## What Changed\n**Full Changelog**: https://github.com/a/b/compare/v0.1.10...v0.1.11',
+          }),
+        )
+        .mockResolvedValueOnce(Response.json({ sha: previous })),
+    );
+    await expect(
+      generateServerReleaseNotes({
+        tag: 'v0.1.11',
+        source,
+        repository: options.repository,
+        token: options.token,
+      }),
+    ).resolves.toBe('No changes since v0.1.10.');
+  },
+);
+test.each([503, 429, 403, 'timeout'])(
+  'note generation retries transient %s once',
+  async (status) => {
+    const request = vi.fn();
+    if (status === 'timeout')
+      request.mockRejectedValueOnce(
+        new DOMException('timeout', 'TimeoutError'),
+      );
+    else
+      request.mockResolvedValueOnce(
+        new Response('', {
+          status: Number(status),
+          headers: { 'retry-after': '1' },
+        }),
+      );
+    request
+      .mockResolvedValueOnce(Response.json({ sha: previous }))
+      .mockResolvedValueOnce(Response.json({ body: '- Changes' }))
+      .mockResolvedValueOnce(Response.json({ sha: previous }));
+    vi.stubGlobal('fetch', request);
+    await expect(generateDesktopReleaseNotes(options)).resolves.toBe(
+      '- Changes',
+    );
+    expect(request).toHaveBeenCalledTimes(4);
+  },
+);
+
+test.each([
+  ['v0.1.11-nightly.999', 'v0.1.11'],
+  ['v0.1.11-preview.1', 'v0.1.11-nightly.999'],
+])('new-channel fallback orders %s and %s by semver', async (first, second) => {
+  const tags = [first, second];
+  const expected = tags.includes('v0.1.11') ? 'v0.1.11' : 'v0.1.11-preview.1';
+  const request = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.includes('/releases?'))
+      return Response.json(tags.map((tag_name) => ({ tag_name })));
+    if (url.includes('/tags?')) return Response.json([]);
+    if (url.includes('/commits/')) return Response.json({ sha: previous });
+    if (url.endsWith('/generate-notes')) {
+      expect(JSON.parse(String(init?.body)).previous_tag_name).toBe(expected);
+      return Response.json({ body: '- Changes' });
+    }
+    throw new Error(url);
+  });
+  vi.stubGlobal('fetch', request);
+  await expect(
+    generateServerReleaseNotes({
+      tag: 'v0.1.12-preview.1',
+      source,
+      repository: options.repository,
+      token: options.token,
+    }),
+  ).resolves.toBe('- Changes');
+});
+
+test('real-history stable promotion uses an older plain git tag when Releases contain only same-base nightlies', async () => {
+  const request = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.includes('/releases?'))
+      return Response.json([{ tag_name: 'v0.1.11-nightly.2026111300' }]);
+    if (url.includes('/tags?'))
+      return Response.json([
+        { name: 'v0.1.11-nightly.2026111300' },
+        { name: 'v0.1.10' },
+      ]);
+    if (url.includes('/commits/v0.1.10'))
+      return Response.json({ sha: previous });
+    if (url.endsWith('/releases/generate-notes')) {
+      expect(JSON.parse(String(init?.body)).previous_tag_name).toBe('v0.1.10');
+      return Response.json({ body: '- Stable changes' });
+    }
+    throw new Error(`Unexpected request ${url}`);
+  });
+  vi.stubGlobal('fetch', request);
+  await expect(
+    generateServerReleaseNotes({
+      tag: 'v0.1.11',
+      source,
+      repository: options.repository,
+      token: options.token,
+    }),
+  ).resolves.toBe('- Stable changes');
+  expect(request).toHaveBeenCalledTimes(5);
+});
+
+test.each([
+  ['2', 2000],
+  ['120', 30000],
+  ['invalid', 250],
+])(
+  'retry-after %s delays the second request by %s ms',
+  async (header, delay) => {
+    vi.useFakeTimers();
+    try {
+      const request = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response('', {
+            status: 429,
+            headers: { 'retry-after': String(header) },
+          }),
+        )
+        .mockResolvedValueOnce(Response.json({ sha: previous }))
+        .mockResolvedValueOnce(Response.json({ body: '- Changes' }))
+        .mockResolvedValueOnce(Response.json({ sha: previous }));
+      vi.stubGlobal('fetch', request);
+      const result = generateDesktopReleaseNotes(options);
+      await vi.advanceTimersByTimeAsync(Number(delay) - 1);
+      expect(request).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(result).resolves.toBe('- Changes');
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+
+test.each([
+  [2000, 150, 100],
+  [30, 6000, 8],
+])(
+  'large generated release bodies (%s entries, %s characters) retain header and immutable compare under the publication budget',
+  async (count, width, shown) => {
+    const body =
+      '## What Changed\n' +
+      Array.from(
+        { length: count },
+        (_, i) => `* Change ${i} ${'x'.repeat(width)}`,
+      ).join('\n');
+    expect(body.length).toBeGreaterThan(125000);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/releases?'))
+          return Response.json([{ tag_name: 'v0.1.10' }]);
+        if (url.includes('/commits/')) return Response.json({ sha: previous });
+        if (url.endsWith('/generate-notes')) return Response.json({ body });
+        throw new Error(url);
+      }),
+    );
+    const notes = await generateServerReleaseNotes({
+      tag: 'v0.1.11',
+      source,
+      repository: options.repository,
+      token: options.token,
+    });
+    expect(notes.length).toBeLessThan(50000);
+    expect(notes).toContain('## What Changed');
+    expect(notes).toContain(`${count - shown} changes omitted.`);
+    expect(notes).toContain(`/compare/${previous}...${source}`);
+    expect((notes.match(/^\* Change/gm) ?? []).length).toBe(shown);
+  },
+);
+
+test('fallback picks the newest older version across Releases and git tags', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes('/releases?'))
+        return Response.json([{ tag_name: 'v0.1.8-nightly.1' }]);
+      if (url.includes('/tags?')) return Response.json([{ name: 'v0.1.10' }]);
+      if (url.includes('/commits/v0.1.10'))
+        return Response.json({ sha: previous });
+      if (url.endsWith('/generate-notes')) {
+        expect(JSON.parse(String(init?.body)).previous_tag_name).toBe(
+          'v0.1.10',
+        );
+        return Response.json({ body: '- Changes' });
+      }
+      throw new Error(url);
+    }),
+  );
+  await expect(
+    generateServerReleaseNotes({
+      tag: 'v0.1.11',
+      source,
+      repository: options.repository,
+      token: options.token,
+    }),
+  ).resolves.toBe('- Changes');
+});
+
+test.each([
+  [5, 5000],
+  [120, 30000],
+])(
+  'rate-limit reset in %s seconds waits %s ms without retry-after',
+  async (seconds, delay) => {
+    vi.useFakeTimers();
+    try {
+      const reset = Math.floor(Date.now() / 1000) + seconds;
+      vi.setSystemTime((reset - seconds) * 1000);
+      const request = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response('', {
+            status: 403,
+            headers: {
+              'x-ratelimit-remaining': '0',
+              'x-ratelimit-reset': String(reset),
+            },
+          }),
+        )
+        .mockResolvedValueOnce(Response.json({ sha: previous }))
+        .mockResolvedValueOnce(Response.json({ body: '- Changes' }))
+        .mockResolvedValueOnce(Response.json({ sha: previous }));
+      vi.stubGlobal('fetch', request);
+      const result = generateDesktopReleaseNotes(options);
+      await vi.advanceTimersByTimeAsync(delay - 1);
+      expect(request).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(result).resolves.toBe('- Changes');
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+
+test('a server error with quota remaining ignores the rate-limit reset', async () => {
+  vi.useFakeTimers();
+  try {
+    // GitHub sends x-ratelimit-reset on ordinary responses too; waiting for it
+    // here would stall a transient 502 for up to the 30s cap.
+    const reset = Math.floor(Date.now() / 1000) + 120;
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('', {
+          status: 502,
+          headers: {
+            'x-ratelimit-remaining': '4999',
+            'x-ratelimit-reset': String(reset),
+          },
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ sha: previous }))
+      .mockResolvedValueOnce(Response.json({ body: '- Changes' }))
+      .mockResolvedValueOnce(Response.json({ sha: previous }));
+    vi.stubGlobal('fetch', request);
+    const result = generateDesktopReleaseNotes(options);
+    await vi.advanceTimersByTimeAsync(249);
+    expect(request).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(result).resolves.toBe('- Changes');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test.each([
+  ['v0.1.11-rc.1', 'v0.1.10'],
+  ['v0.1.11-rc.3', 'v0.1.11-rc.2'],
+  ['v0.1.11', 'v0.1.10'],
+])(
+  'server notes for %s compare against %s across RC promotion',
+  async (tag, prior) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes('/releases?'))
+          return Response.json([
+            { tag_name: 'v0.1.11-rc.2' },
+            { tag_name: 'v0.1.11-rc.4', draft: true },
+            { tag_name: 'v0.1.10' },
+          ]);
+        if (url.includes(`/commits/${prior}`))
+          return Response.json({ sha: previous });
+        if (url.endsWith('/generate-notes')) {
+          expect(JSON.parse(String(init?.body)).previous_tag_name).toBe(prior);
+          return Response.json({ body: '* RC promotion changes' });
+        }
+        throw new Error(`Unexpected request ${url}`);
+      }),
+    );
+    await expect(
+      generateServerReleaseNotes({
+        tag,
+        source,
+        repository: options.repository,
+        token: options.token,
+      }),
+    ).resolves.toBe('* RC promotion changes');
+  },
+);
+
+test.each(['v0.1.11-rc.0', 'v0.1.11-rc.99', 'v0.1.11-rc.1.2'])(
+  'server notes refuse invalid release identity %s before contacting GitHub',
+  async (tag) => {
+    const request = vi.fn();
+    vi.stubGlobal('fetch', request);
+    await expect(
+      generateServerReleaseNotes({
+        tag,
+        source,
+        repository: options.repository,
+        token: options.token,
+      }),
+    ).rejects.toThrow('exact-source');
+    expect(request).not.toHaveBeenCalled();
+  },
+);

@@ -9,7 +9,7 @@
  * `@kontourai/station-shared/input-request`, used by the browser and run again
  * by the server against the exact request it opened.
  *
- * Two body kinds, deliberately separate:
+ * Three body kinds, deliberately separate:
  *
  * - `form` collects data that goes back to its source. The field vocabulary
  *   is MCP elicitation's restricted schema (a flat object of primitive
@@ -19,6 +19,10 @@
  *   approve-capable authority; a form answer never is. A form can carry no
  *   option effect, and a stored request can carry no decision body: decision
  *   bodies are derived from an approval request by Station itself.
+ * - `url` asks the person to open a link the source supplied (an MCP
+ *   server's sign-in page, MCP URL-mode elicitation, an engine's link). It
+ *   carries no data back: the answer says only whether the person opened it.
+ *   Station never opens the link itself.
  */
 
 export const INPUT_REQUEST_SCHEMA = 'station.input-request/v1' as const;
@@ -45,9 +49,51 @@ export interface InputRequest<
   body: Body;
 }
 
-export type InputRequestBody = InputRequestFormBody | InputRequestDecisionBody;
+export type InputRequestBody =
+  | InputRequestFormBody
+  | InputRequestDecisionBody
+  | InputRequestUrlBody;
 
 export type InputRequestForm = InputRequest<InputRequestFormBody>;
+
+export type InputRequestUrl = InputRequest<InputRequestUrlBody>;
+
+/** The longest `url` a URL body may carry; a longer one is refused. */
+export const INPUT_REQUEST_URL_MAX_CHARS = 2048;
+
+/**
+ * What a URL request is for.
+ * - `mcp-sign-in`: an MCP server's OAuth consent page.
+ * - `elicitation`: MCP URL-mode elicitation (`elicitation/create`, `mode: 'url'`).
+ * - `engine-link`: a link the engine asked the client to open.
+ */
+export type InputRequestUrlPurpose =
+  | 'mcp-sign-in'
+  | 'elicitation'
+  | 'engine-link';
+
+/**
+ * A link for the person to open. `url` is https, carries no user info, and
+ * is at most {@link INPUT_REQUEST_URL_MAX_CHARS} characters; validation is
+ * `readInputRequestUrl` in `@kontourai/station-shared/input-request`.
+ */
+export interface InputRequestUrlBody {
+  kind: 'url';
+  url: string;
+  purpose: InputRequestUrlPurpose;
+  /** MCP URL-mode elicitation's id, echoed in its completion notice. */
+  elicitationId?: string;
+}
+
+/**
+ * The answer to a URL request, in the same vocabulary as every other answer
+ * (MCP elicitation's, and the `respondToRequest` decision): `accept` records
+ * that the person opened the link from Station, and says nothing about what
+ * they did there. Its transcript outcome is `opened`.
+ */
+export type InputRequestUrlResponse =
+  | { action: 'accept' }
+  | { action: 'cancel' };
 
 export interface InputRequestFormBody {
   kind: 'form';
@@ -194,8 +240,9 @@ export type InputRequestResponse =
 /**
  * What became of a request, for its transcript record. A form is
  * `accepted`, `declined` or `cancelled`; a decision is `allowed` or
- * `denied` (or `cancelled`). `expired` is a request Station closed because
- * the turn that asked could not continue.
+ * `denied` (or `cancelled`); a URL request is `opened` (or `cancelled`).
+ * `expired` is a request Station closed because the turn that asked could
+ * not continue.
  */
 export type InputRequestOutcome =
   | 'pending'
@@ -204,6 +251,7 @@ export type InputRequestOutcome =
   | 'cancelled'
   | 'allowed'
   | 'denied'
+  | 'opened'
   | 'expired';
 
 /**

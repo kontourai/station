@@ -1,5 +1,6 @@
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ConversationContextBoundaryProjection } from '@kontourai/station-contracts/conversation-context-boundary';
+import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
 import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
 import type { InputRequestContent } from '@kontourai/station-contracts/input-request';
 import type {
@@ -13,6 +14,10 @@ import {
   COOPERATIVE_STOP_BUDGET_MS,
   withNormalizedAnswerability,
 } from '@kontourai/station-contracts/orchestration';
+import type {
+  SessionLiveContinuity,
+  SessionRewindOutcome,
+} from '@kontourai/station-contracts/provider';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { useContext } from 'react';
@@ -32,6 +37,7 @@ import {
   type ProviderTaskStopResult,
   stopProviderTask as stopProviderTaskClient,
 } from '../client/delegations';
+import { reconnectEngineMcpServer as reconnectEngineMcpServerClient } from '../client/engine-mcp-servers';
 import {
   continueExecutionMessage,
   getConversationContextBoundaryStatus,
@@ -67,6 +73,10 @@ import {
   hasRecordedTurnFailure,
   rememberSentTurnKey,
 } from '../client/sent-turn-key';
+import {
+  getSessionLiveContinuity,
+  rewindSessionToTurn as rewindSessionToTurnClient,
+} from '../client/session-rewind';
 import { isStationAnswer } from '../client/station-envelope';
 import {
   type ConnectionReadTarget,
@@ -575,20 +585,125 @@ export function useStopProviderTaskMutation(apiBase?: string) {
   });
 }
 
+export interface ReconnectEngineMcpServerInput {
+  threadId: string;
+  serverName: string;
+  /** Begin the server's sign-in; its consent link arrives as a URL request. */
+  startOAuth: boolean;
+}
+
+/**
+ * Ask a Session's engine to restart one MCP server it runs itself (or begin
+ * its sign-in). Answers the engine's `EngineCommandOutcome`; a host without
+ * the route answers `unsupported`.
+ */
+export async function reconnectOrchestrationEngineMcpServer(
+  input: ReconnectEngineMcpServerInput & { apiBase?: string },
+): Promise<EngineCommandOutcome> {
+  const resolvedApiBase = await resolveApiBase(input.apiBase);
+  return reconnectEngineMcpServerClient(
+    resolvedApiBase,
+    input.threadId,
+    input.serverName,
+    { startOAuth: input.startOAuth },
+  );
+}
+
+export function useReconnectEngineMcpServerMutation(apiBase?: string) {
+  return useMutation({
+    mutationFn: (input: ReconnectEngineMcpServerInput) =>
+      reconnectOrchestrationEngineMcpServer({ ...input, apiBase }),
+  });
+}
+
+/**
+ * What a Session's live engine declared it can do natively (`live: false`
+ * when nothing holds it). A host without the read answers nothing offered.
+ */
+export function useSessionLiveContinuityQuery(
+  threadId: string | undefined,
+  apiBase?: string,
+  config?: QueryConfig<SessionLiveContinuity>,
+) {
+  const target = captureConnectionReadTarget(config?.readTarget);
+  apiBase = target?.targetApiBase ?? apiBase;
+  return useApiQuery(
+    [
+      'orchestration-session-continuity',
+      ...(target
+        ? [target.requestScope.authorityKey, target.runtimeKey ?? '']
+        : []),
+      apiBase ?? 'default',
+      threadId ?? '',
+    ],
+    async (signal) =>
+      getSessionLiveContinuity(await resolveApiBase(apiBase), threadId ?? '', {
+        signal,
+        requestScope: target?.requestScope,
+      }),
+    {
+      enabled: Boolean(threadId) && (config?.enabled ?? true),
+      staleTime: config?.staleTime ?? 30_000,
+      gcTime: config?.gcTime,
+      refetchOnMount: config?.refetchOnMount,
+      refetchInterval: config?.refetchInterval,
+      retry: config?.retry ?? false,
+      cancelWhenInactive: config?.cancelWhenInactive ?? true,
+    },
+  );
+}
+
+export interface RewindSessionToTurnInput {
+  threadId: string;
+  /** The turn to rewind to before; it and every later turn are hidden. */
+  turnId: string;
+}
+
+/**
+ * Rewind a Session's engine context in place to before one turn. Answers the
+ * typed `SessionRewindOutcome`; a host without the route answers
+ * `unsupported`.
+ */
+export async function rewindOrchestrationSessionToTurn(
+  input: RewindSessionToTurnInput & {
+    apiBase?: string;
+    requestScope?: ApiRequestScope;
+  },
+): Promise<SessionRewindOutcome> {
+  return rewindSessionToTurnClient(
+    await resolveApiBase(input.apiBase),
+    input.threadId,
+    input.turnId,
+    input.requestScope ? { requestScope: input.requestScope } : undefined,
+  );
+}
+
+export function useRewindSessionToTurnMutation(
+  apiBase?: string,
+  requestScope?: ApiRequestScope,
+) {
+  return useMutation({
+    mutationFn: (input: RewindSessionToTurnInput) =>
+      rewindOrchestrationSessionToTurn({ ...input, apiBase, requestScope }),
+  });
+}
+
 /** #3163: one page of transcript messages per fetch. */
 const CHILD_WORK_TRANSCRIPT_PAGE_SIZE = 30;
 
 /**
  * #3163: an engine subagent's own read-only transcript, paged by message.
  * `fetchNextPage` continues where the last page ended. Off until `enabled`,
- * so a closed row reads nothing; a transcript is history, so it is fetched
- * once and not polled.
+ * so a closed row reads nothing. Running children poll every two seconds;
+ * the live child-work owner disables polling when the child settles.
  */
 export function useChildWorkTranscriptQuery(
   input: {
     threadId: string;
     childId: string;
     enabled?: boolean;
+    /** Re-read a live child through the query owner; stops when the reader unmounts. */
+    running?: boolean;
     requestScope?: ApiRequestScope;
   },
   apiBase?: string,
@@ -620,6 +735,7 @@ export function useChildWorkTranscriptQuery(
     getNextPageParam: (page) => page.nextOffset,
     retry: false,
     staleTime: 30_000,
+    refetchInterval: input.running ? 2_000 : false,
   });
 }
 

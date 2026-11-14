@@ -13,7 +13,37 @@
 //                             answer that request with the SDK's
 //                             auth_required error (-32000)
 // `--record` appends one JSON line per request received and per permission
-// outcome, so a test can see what reached the engine.
+// outcome, so a test can see what reached the engine. The initialize line
+// carries any announced `clientCapabilities._meta` (`clientMeta`) and
+// `elicitation` (`clientElicitation`); a session/new line carries the
+// request's `_meta` (`meta`).
+//
+// Scripted engine-to-client requests (the profile's, so a recorded engine's
+// own order is kept). Each is recorded as `{ clientRequest, phase, result }`
+// or `{ clientRequest, phase, error: { code, message } }`, and a `"$sessionId"`
+// string in its params is replaced by the session's id:
+//   initializeRequests   sent before the initialize answer, as an engine
+//                        asking for its token does
+//   sessionNewRequests   sent before the session/new answer (Kiro's
+//                        `_kiro/terminal/shell_type`)
+//   lateModelOptionMs    the session/new answer leaves out the `model`
+//                        config option, which arrives that many ms later in
+//                        a `config_option_update` (an engine whose model list
+//                        loads after it answers)
+//   requestDelaysMs      { "<core method>": ms } for session/set_mode and
+//                        session/set_config_option: answer that much later
+//   --prompt-steps <path>  a JSON step list replacing the default turn. Extra
+//                        step kinds: `client-request` {method, params},
+//                        `user-message-id` (a Kiro `user_message_id_assigned`
+//                        session_info_update, ids `msg-1`, `msg-2`, ...),
+//                        `wait-ms` {ms}, `session-update` {update} (one
+//                        `session/update` sent as given)
+// Client-to-engine extension requests are answered from the profile's
+// `extMethodAnswers` ({ "<method>": { result } | { error }, optional
+// `delayMs` before answering, or `exitAfterMs` to exit with it unanswered })
+// and recorded as
+// `{ extMethod, params }`; any other is refused -32601. `session/load`,
+// `session/fork` and `session/delete` are answered and recorded too.
 //
 // Sign-in:
 //   --record-env <NAME>          record NAME's value in this process's
@@ -49,6 +79,10 @@ const record = (entry) => {
 const recordEnv = flag('record-env');
 if (recordEnv)
   record({ env: recordEnv, value: process.env[recordEnv] ?? null });
+const promptStepsPath = flag('prompt-steps');
+const promptSteps = promptStepsPath
+  ? JSON.parse(readFileSync(promptStepsPath, 'utf8'))
+  : undefined;
 const authenticateStderr = flag('authenticate-stderr');
 const authenticateDelayMs = Number(flag('authenticate-delay-ms') ?? 0);
 
@@ -93,6 +127,7 @@ function defaultSteps() {
 const state = {
   sessions: 0,
   toolCalls: 0,
+  userMessages: 0,
   modes: new Map(),
   config: new Map(),
 };
@@ -106,6 +141,36 @@ function sessionShape(sessionId) {
     if (value !== undefined) option.currentValue = value;
   }
   return shape;
+}
+
+function withSessionId(value, sessionId) {
+  if (value === '$sessionId') return sessionId;
+  if (Array.isArray(value))
+    return value.map((item) => withSessionId(item, sessionId));
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        withSessionId(item, sessionId),
+      ]),
+    );
+  return value;
+}
+
+async function clientRequest(client, phase, request, sessionId) {
+  try {
+    const result = await client.request(
+      request.method,
+      withSessionId(request.params ?? {}, sessionId),
+    );
+    record({ clientRequest: request.method, phase, result });
+  } catch (error) {
+    record({
+      clientRequest: request.method,
+      phase,
+      error: { code: error?.code, message: error?.message },
+    });
+  }
 }
 
 async function runStep(step, sessionId, client) {
@@ -124,6 +189,22 @@ async function runStep(step, sessionId, client) {
       return update({ sessionUpdate: 'plan', entries: step.entries });
     case 'notification':
       return client.notify(step.method, step.params ?? {});
+    case 'client-request':
+      return clientRequest(client, 'prompt', step, sessionId);
+    case 'user-message-id':
+      return update({
+        sessionUpdate: 'session_info_update',
+        _meta: {
+          kiro: {
+            userMessageId: `msg-${++state.userMessages}`,
+            kind: 'user_message_id_assigned',
+          },
+        },
+      });
+    case 'wait-ms':
+      return new Promise((resolve) => setTimeout(resolve, step.ms));
+    case 'session-update':
+      return update(step.update);
     case 'tool': {
       const toolCallId = `call_fake_${++state.toolCalls}`;
       await update({
@@ -169,6 +250,12 @@ async function runStep(step, sessionId, client) {
   }
 }
 
+/** The profile's `requestDelaysMs[<method>]`: wait that long before answering. */
+const requestDelay = (method) =>
+  new Promise((resolve) =>
+    setTimeout(resolve, profile.requestDelaysMs?.[method] ?? 0),
+  );
+
 const authRequired = () =>
   acp.RequestError.authRequired(
     undefined,
@@ -177,13 +264,21 @@ const authRequired = () =>
 
 const app = acp
   .agent({ name: `fake-${profile.engine}` })
-  .onRequest('initialize', async ({ params }) => {
+  .onRequest('initialize', async ({ params, client }) => {
     record({
       method: 'initialize',
       ...(params?.clientCapabilities?.auth
         ? { clientAuth: params.clientCapabilities.auth }
         : {}),
+      ...(params?.clientCapabilities?._meta
+        ? { clientMeta: params.clientCapabilities._meta }
+        : {}),
+      ...(params?.clientCapabilities?.elicitation
+        ? { clientElicitation: params.clientCapabilities.elicitation }
+        : {}),
     });
+    for (const request of profile.initializeRequests ?? [])
+      await clientRequest(client, 'initialize', request, undefined);
     if (initializeDelayMs > 0)
       await new Promise((resolve) => setTimeout(resolve, initializeDelayMs));
     return profile.initialize;
@@ -199,30 +294,121 @@ const app = acp
       throw acp.RequestError.internalError(undefined, 'Pairing was declined');
     return {};
   })
-  .onRequest('session/new', () => {
-    record({ method: 'session/new' });
+  .onRequest('session/new', async ({ params, client }) => {
+    record({
+      method: 'session/new',
+      ...(params?._meta ? { meta: params._meta } : {}),
+    });
     if (fail === 'auth-required-on-session-new') throw authRequired();
     const sessionId = `fake-${profile.engine}-${process.pid}-${++state.sessions}`;
-    return { sessionId, ...sessionShape(sessionId) };
+    for (const request of profile.sessionNewRequests ?? [])
+      await clientRequest(client, 'session/new', request, sessionId);
+    const modeId = params?._meta?.kiro?.modeId;
+    const shape = sessionShape(sessionId);
+    // Kiro's agent service registers `_meta.kiro.customAgents` as modes of
+    // client origin and starts in `_meta.kiro.modeId`.
+    for (const agent of params?._meta?.kiro?.customAgents ?? []) {
+      shape.modes?.availableModes?.push({
+        id: agent.id,
+        name: agent.id,
+        description: agent.description,
+        _meta: {
+          kiro: {
+            source: 'bundled',
+            resource: { resourceType: 'agent', source: { origin: 'client' } },
+          },
+        },
+      });
+    }
+    const modeOption = shape.configOptions?.find(
+      (option) => option.category === 'mode',
+    );
+    for (const agent of params?._meta?.kiro?.customAgents ?? [])
+      modeOption?.options?.push({
+        value: agent.id,
+        name: agent.id,
+        description: agent.description,
+      });
+    if (typeof modeId === 'string') {
+      if (shape.modes) shape.modes.currentModeId = modeId;
+      if (modeOption) modeOption.currentValue = modeId;
+    }
+    if (typeof profile.lateModelOptionMs === 'number') {
+      const full = structuredClone(shape.configOptions ?? []);
+      setTimeout(() => {
+        client.notify(acp.methods.client.session.update, {
+          sessionId,
+          update: {
+            sessionUpdate: 'config_option_update',
+            configOptions: full,
+          },
+        });
+      }, profile.lateModelOptionMs);
+      shape.configOptions = (shape.configOptions ?? []).filter(
+        (option) => option.category !== 'model',
+      );
+    }
+    return { sessionId, ...shape };
   })
-  .onRequest('session/set_mode', ({ params }) => {
+  .onRequest('session/load', ({ params }) => {
+    record({
+      method: 'session/load',
+      sessionId: params.sessionId,
+      ...(params?._meta ? { meta: params._meta } : {}),
+    });
+    return sessionShape(params.sessionId);
+  })
+  .onRequest('session/fork', ({ params }) => {
+    record({
+      method: 'session/fork',
+      sessionId: params.sessionId,
+      ...(params?._meta ? { meta: params._meta } : {}),
+    });
+    return { sessionId: `${params.sessionId}-fork` };
+  })
+  .onRequest('session/delete', ({ params }) => {
+    record({ method: 'session/delete', sessionId: params.sessionId });
+    return {};
+  })
+  .onRequest('session/set_mode', async ({ params }) => {
     record({ method: 'session/set_mode', modeId: params.modeId });
+    await requestDelay('session/set_mode');
     state.modes.set(params.sessionId, params.modeId);
     return {};
   })
-  .onRequest('session/set_config_option', ({ params }) => {
+  .onRequest('session/set_config_option', async ({ params }) => {
     record({ method: 'session/set_config_option', configId: params.configId });
+    await requestDelay('session/set_config_option');
     state.config.set(`${params.sessionId}\0${params.configId}`, params.value);
     return {
       configOptions: sessionShape(params.sessionId).configOptions ?? [],
     };
   })
   .onRequest('session/prompt', async ({ params, client }) => {
-    record({ method: 'session/prompt' });
+    record({ method: 'session/prompt', prompt: params.prompt });
     if (fail === 'auth-required-on-prompt') throw authRequired();
-    for (const step of defaultSteps())
+    for (const step of promptSteps ?? defaultSteps())
       await runStep(step, params.sessionId, client);
     return { stopReason: 'end_turn' };
+  })
+  .onRequest('*', async ({ method, params }) => {
+    record({ extMethod: method, params });
+    const answer = profile.extMethodAnswers?.[method];
+    if (!answer) throw acp.RequestError.methodNotFound(method);
+    if (answer.exitAfterMs) {
+      // The engine process ends with the request unanswered.
+      setTimeout(() => process.exit(0), answer.exitAfterMs);
+      return new Promise(() => {});
+    }
+    if (answer.delayMs)
+      await new Promise((resolve) => setTimeout(resolve, answer.delayMs));
+    if (answer.error)
+      throw new acp.RequestError(
+        answer.error.code,
+        answer.error.message,
+        answer.error.data,
+      );
+    return answer.result;
   });
 
 app.connect(

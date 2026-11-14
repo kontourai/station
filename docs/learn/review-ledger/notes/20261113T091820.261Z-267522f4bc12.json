@@ -1,0 +1,13 @@
+{
+  "revision": "8323610d184c14c0d7886ae270502f1199c5e61f",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked this branch's one-line addition to responsive-action-surfaces.txt (the URL input-request card, registered as an exception with no 390px fixture) against the guide's description of the action inventory: action surfaces are recorded there and action inventories allow explicit deferred cases. Both still hold.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked this branch's one-line addition to responsive-action-surfaces.txt (the URL input-request card as an exception) against the guide. It names the inventory only through the responsive UI guide and makes no claim about its entries or counts.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked this branch's one-line addition to responsive-action-surfaces.txt (the URL input-request card as an exception) against the pattern. It makes no claim about responsive action inventory entries or counts.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked this branch's one-line addition to responsive-action-surfaces.txt (the URL input-request card as an exception, reusing the form card's ActionRow) against the styling and responsive-behavior section. It points to the responsive guide and lists no inventory entries or counts, so it still holds.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

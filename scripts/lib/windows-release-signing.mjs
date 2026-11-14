@@ -113,6 +113,10 @@ export function parseWindowsAuthenticodeObservation(observation) {
  * certificate release.yml imported; unsigned mode accepts only NotSigned with
  * no signer. Every other status (HashMismatch, NotTrusted, UnknownError, ...)
  * refuses in both modes.
+ * @param {object} options
+ * @param {string} options.mode
+ * @param {ReturnType<typeof parseWindowsAuthenticodeObservation>} options.observation
+ * @param {string | null} [options.expectedThumbprint]
  */
 export function decideWindowsAuthenticode({
   mode,
@@ -148,7 +152,17 @@ export function decideWindowsAuthenticode({
   };
 }
 
-/** Bind the decided Authenticode observation to the release and MSI bytes. */
+/**
+ * Bind the decided Authenticode observation to the release and MSI bytes.
+ * @param {object} options
+ * @param {string} options.tag
+ * @param {string} options.sourceSha
+ * @param {string} options.mode
+ * @param {ReturnType<typeof parseWindowsAuthenticodeObservation>} options.observation
+ * @param {string | null} [options.expectedThumbprint]
+ * @param {string} options.installer
+ * @param {string} options.installerSha256
+ */
 export function createWindowsReleaseSigningReceipt({
   tag,
   sourceSha,
