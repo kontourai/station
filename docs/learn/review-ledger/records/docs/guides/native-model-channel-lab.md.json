@@ -34,7 +34,13 @@
 
     "src-server/runtime/conversation/__tests__/native-text-model-request.test.ts",
 
-    "src-server/runtime/conversation/bounded-api-provider-contract.ts"
+    "src-server/runtime/conversation/bounded-api-provider-contract.ts",
+
+    "src-server/services/orchestration/delegation-group-sdk-source-wire-owner.ts",
+
+    "src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts",
+
+    "src-server/services/orchestration/delegation-group-source-admission.ts"
   ],
 
   "checks": []
