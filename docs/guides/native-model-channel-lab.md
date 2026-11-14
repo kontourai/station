@@ -197,6 +197,9 @@ ancestor-to-root fallback and skipped per-file authority. The last fault reads
 one extra source file after a committed revocation and fails its zero-read
 assertion. Each source is restored byte-exactly. Two empty table-case selections
 are retained as invalid mutation attempts, not catches.
+The later legacy-row control passes with the complete eight-case native suite:
+an old unmarked record permits ordinary callback entry but cannot infer native
+server-mint provenance.
 
 Earlier fixture failures remain separate: repeated filesystem spies recurse,
 and the first revocation control does not establish a committed independent
