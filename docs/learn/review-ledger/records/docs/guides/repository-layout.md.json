@@ -62,8 +62,6 @@
 
     "src-server/routes/environments/home-authority-routes.ts",
 
-    "src-server/routes/orchestration/orchestration.ts",
-
     "src-server/routes/spatial-board.ts",
 
     "src-server/runtime/bootstrap/personal-home-authority-database.ts",
