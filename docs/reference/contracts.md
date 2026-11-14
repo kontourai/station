@@ -1143,8 +1143,9 @@ including private constants and newly added files. Known out-of-scope constants
 are explicitly allowed by file, name and value: directory/command grants and
 Station Control containment are caller authority, Flow unreachable-gate claims
 are evidence governance, the ACP `acp.session-rewound`,
-`acp.session-rewound-late` and `acp.agent-projection-unapplied` runtime
-warnings mark a session that kept running, and person/native-title control codes do not represent
+`acp.session-rewound-late`, `acp.agent-projection-unapplied` and
+`acp.session-started-fresh` runtime warnings mark a session that kept
+running, and person/native-title control codes do not represent
 turn execution or session startup. Class-field exclusions separately name application
 configuration, storage, policy, and non-provider lifecycle failures. The guard refuses
 a new unclassified constant or class-field code. Object-literal API/validation codes
