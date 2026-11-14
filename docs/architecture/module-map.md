@@ -3685,10 +3685,14 @@ incarnation, room and uploader. Deleting a message releases its files, and an
 upload first releases its uploader's day-old unsent files. Uploads, releases
 and messages naming files hold one store-wide cross-process file lock (the
 yielding form, taken before the request's authority check so access revoked
-while waiting refuses); a release deletes only
-bytes no binding names, and the store never evicts by age or size, so
-referenced bytes are never lost. Task rooms keep age and size retention
-(#4947). Persisted records are validated
+while waiting refuses). Records are written whole (staging, then rename). A
+release reads every record first and deletes only bytes no record names,
+counting references recovered from damaged records; if any record's
+reference cannot be known it fails closed (nothing removed, a
+`reclamation-blocked.json` marker, new uploads refused with
+`project_room_files_unavailable` until a scan reads every record). The store
+never evicts by age or size. Task rooms keep age and size retention (#4947)
+and share only the whole-record write. Persisted records are validated
 against their row identities before use. History reads use a deferred transaction;
 discovery is lookup-only. Explicit opening requires current discussion authority.
 

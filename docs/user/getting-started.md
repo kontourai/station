@@ -1085,7 +1085,9 @@ images the same way, including messages with only an image. You can attach up to
 each and 15 MiB combined. Keep unsent local files in the open draft; reloading
 does not restore them. In chats and the Task room, an older image in history may
 become unavailable after the server's attachment retention expires; a Project
-channel keeps a file for as long as its message stands.
+channel keeps a file for as long as its message stands. If a Project channel
+pauses attachments while its file store is repaired, it says so; remove the
+files and your text still sends.
 
 An existing chat can become a Task through **New Task from this** in its More menu.
 The **Add to Task** picker also offers **New Task from this** for an answer or input.

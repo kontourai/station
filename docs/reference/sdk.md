@@ -799,7 +799,11 @@ delete or reaction reaches them too. It reads at most
 retires kept rows older than that instead of showing them stale.
 `useProjectRoomHistorySpan` reads one span right away: give it the rows that
 just left the live windows, so a history read cancelled as the tail moved
-does not leave them stale until the next event. Named `changed` events
+does not leave them stale until the next event. Every history result (each
+live window page, the retained re-read and the span read) carries `readSeq`,
+one order taken when its read started across all three; keep, per message,
+the `readSeq` that last set it, and never let a lower one replace it, so a
+slow earlier response cannot bring back text a later read replaced. Named `changed` events
 invalidate queries, `presence` updates participants, and `revoked` or terminal
 401/403 stops the stream and clears retained query content. Cache identities
 include the API authority, local Project ID, and room ID for history.
