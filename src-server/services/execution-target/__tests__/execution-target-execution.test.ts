@@ -18,6 +18,7 @@ import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/te
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { PERSON_AUTHORED_TURN_REQUIRED_CODE } from '../../../providers/adapter-shape.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import { CreateRequestClaims } from '../../orchestration/create-request-claims.js';
 import { WorktreeProvisioningService } from '../../projects/worktree-provisioning-service.js';
@@ -2450,5 +2451,115 @@ describe('executeForegroundMessage', () => {
       }),
       undefined,
     );
+  });
+
+  describe("an engine that takes only a person's own chat", () => {
+    function personOnly(repoPath: string) {
+      const deps = dependencies();
+      const adapter = deps.getProviderAdapter('station-agent')!;
+      deps.getProviderAdapter = () => ({
+        ...adapter,
+        metadata: { ...adapter.metadata, turnAuthorship: 'person-only' },
+      });
+      deps.getProject = vi.fn(async () => ({
+        workingDirectory: repoPath,
+        defaultWorkspaceIsolation: 'worktree' as const,
+      }));
+      deps.provisionWorktree = vi.fn(async () => {
+        throw new Error('provisioned');
+      });
+      const recordApprovalMode = vi.fn(() => undefined);
+      return { deps: { ...deps, recordApprovalMode }, recordApprovalMode };
+    }
+    const dispatchInput = {
+      userId: 'test-user',
+      target: {
+        environment: { kind: 'current' as const },
+        agent: agentId('station'),
+        workspace: {
+          kind: 'project' as const,
+          projectSlug: 'station',
+          workspaceIsolation: { mode: 'worktree' as const },
+        },
+      },
+      message: 'Fix the flaky test',
+      setApprovalMode: 'default' as never,
+      setApprovalModeBasedOn: null,
+    };
+
+    test.each([
+      ['a delegated or dispatched start (neither mark)', {}],
+      [
+        'a person-typed message that a delegation starts',
+        { personAuthored: true as const },
+      ],
+      [
+        'a person start whose message the person did not type',
+        { personChatStart: true as const },
+      ],
+    ])(
+      '%s is refused before an approval receipt, a worktree or the engine',
+      async (_label, marks) => {
+        const repoPath = createRepo();
+        try {
+          const { deps, recordApprovalMode } = personOnly(repoPath);
+          await expect(
+            executeForegroundMessage({ ...dispatchInput, ...marks }, deps),
+          ).rejects.toMatchObject({ code: PERSON_AUTHORED_TURN_REQUIRED_CODE });
+          expect(recordApprovalMode).not.toHaveBeenCalled();
+          expect(deps.provisionWorktree).not.toHaveBeenCalled();
+          expect(deps.startSession).not.toHaveBeenCalled();
+          expect(deps.sendTurn).not.toHaveBeenCalled();
+        } finally {
+          rmSync(repoPath, { recursive: true, force: true });
+        }
+      },
+    );
+
+    test('a follow-up the person did not type is refused on an existing conversation', async () => {
+      const repoPath = createRepo();
+      try {
+        const { deps } = personOnly(repoPath);
+        deps.readSessionBinding = vi.fn(async () => ({
+          environmentId: 'environment-kontour',
+          agentId: 'station',
+          userId: 'test-user',
+        }));
+        await expect(
+          executeForegroundMessage(
+            {
+              userId: 'test-user',
+              conversationId: 'conversation:test',
+              target: {
+                environment: { kind: 'current' },
+                agent: agentId('station'),
+              },
+              message: 'push this off the machine',
+            },
+            deps,
+          ),
+        ).rejects.toMatchObject({ code: PERSON_AUTHORED_TURN_REQUIRED_CODE });
+        expect(deps.sendTurn).not.toHaveBeenCalled();
+      } finally {
+        rmSync(repoPath, { recursive: true, force: true });
+      }
+    });
+
+    test("a person's own chat start goes on to provision its worktree", async () => {
+      const repoPath = createRepo();
+      try {
+        const { deps, recordApprovalMode } = personOnly(repoPath);
+        await expect(
+          executeForegroundMessage(
+            { ...dispatchInput, personChatStart: true, personAuthored: true },
+            deps,
+          ),
+        ).rejects.toThrow('provisioned');
+        expect(recordApprovalMode).toHaveBeenCalled();
+        expect(deps.provisionWorktree).toHaveBeenCalledTimes(1);
+      } finally {
+        rmSync(repoPath, { recursive: true, force: true });
+      }
+    });
   });
 });

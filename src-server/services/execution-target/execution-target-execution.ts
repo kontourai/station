@@ -42,7 +42,10 @@ import type {
   WorkspaceIsolationConfig,
   WorktreeSessionMetadata,
 } from '@kontourai/station-contracts/workspace-isolation';
-import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
+import {
+  ClientTurnInputConflictError,
+  PersonAuthoredTurnRequiredError,
+} from '../../providers/adapter-shape.js';
 import {
   type FullAccessGrant,
   FullAccessNotGrantedError,
@@ -1183,6 +1186,19 @@ export async function executeForegroundMessage(
       'A session start requires the principal it belongs to (userId).',
     );
   }
+  // An engine whose work leaves this computer takes only a person's own chat
+  // (`turnAuthorship: 'person-only'`). A delegation, a Task dispatch or any
+  // other start that is not the person's, or a message they did not type, is
+  // refused here: before an approval receipt, a worktree or an engine effect.
+  // Orchestration refuses the same at the engine start and send.
+  if (
+    deps.getProviderAdapter(resolved.provider)?.metadata.turnAuthorship ===
+      'person-only' &&
+    (input.personAuthored !== true ||
+      ((!binding || continuation?.startRequired) &&
+        input.personChatStart !== true))
+  )
+    throw new PersonAuthoredTurnRequiredError();
   // #2436 MEDIUM-1: a carried pick is recorded before anything starts, so the
   // session this send starts (or continues) is already in it, and it is
   // ordered by this receipt against every other decision (compare-and-set).
