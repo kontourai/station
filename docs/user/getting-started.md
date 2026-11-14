@@ -447,7 +447,9 @@ New Chat does not run it.
 
 For a credential-free first path, use a supported local model service and then
 return to Connections. Startup can register detected Claude Code, Codex, and
-Muse engines and their default Agents. An engine you explicitly removed is
+Muse engines and their default Agents; with the `copilot-sdk-engine` Feature
+Preview on, it also registers GitHub Copilot (SDK) when `copilot` is on `PATH`,
+from the next start. An engine you explicitly removed is
 not automatically added again. Registration does not prove that the engine is
 signed in or ready. The discovery screen also offers other local suggestions
 that you can choose to configure. The
@@ -938,8 +940,8 @@ When the engine transcript is open, sent instructions are collapsed in the
 Station list; open one to read its attributed copy. Unconfirmed instructions
 remain visible, and the engine's prompts remain available in its transcript.
 
-Keep typing during a turn. With Claude Code and Codex, which take native
-steering, **Send** defaults to **Steer**; elsewhere it defaults to **Queue**,
+Keep typing during a turn. With Claude Code, Codex and GitHub Copilot (SDK,
+a Feature Preview), which take native steering, **Send** defaults to **Steer**; elsewhere it defaults to **Queue**,
 which delivers after the turn finishes. The dropdown switches between them. Other engines hold steering until a safe boundary can be proven;
 currently they wait until the turn finishes. Each pending row shows its mode.
 For a locally queued message, **Send now** stops the active turn and sends the

@@ -110,6 +110,7 @@ describe('runtime composition: an engine connection’s default working director
         claudeAdapter: fakeAdapter('claude'),
         codexAdapter: fakeAdapter('codex'),
         museAdapter: fakeAdapter('muse'),
+        copilotSdkAdapter: fakeAdapter('copilot-sdk'),
         bedrockAdapter: fakeAdapter('bedrock'),
         ollamaAdapter: fakeAdapter('ollama'),
         activeAgents: new Map(),

@@ -490,6 +490,76 @@ describe('orchestration-session-state', () => {
     );
   });
 
+  test('startRecoveredOrchestrationSession hands its recorded binding key only to an adapter that requires it', async () => {
+    const adapterFor = (provider: string, requiresBinding: boolean) => {
+      const startSession = vi.fn(async (input: { threadId: string }) => ({
+        provider,
+        threadId: input.threadId,
+        status: 'ready' as const,
+        createdAt: '2026-11-14T00:00:00.000Z',
+        updatedAt: '2026-11-14T00:00:00.000Z',
+      }));
+      const adapter = {
+        provider,
+        metadata: {
+          continuity: {
+            resume: 'same-session',
+            fork: 'none',
+            rewind: 'none',
+            ...(requiresBinding ? { recoveryBinding: 'required' } : {}),
+          },
+        },
+        startSession,
+      } as unknown as ProviderAdapterShape;
+      return { adapter, startSession };
+    };
+    const readNativeResumeBindingKey = vi.fn(() => 'b'.repeat(64));
+    const session = (
+      provider: string,
+      resumeCursor?: unknown,
+    ): ProviderSession => ({
+      provider,
+      threadId: resumeCursor ? `${provider}-resumed` : `${provider}-fresh`,
+      status: 'ready',
+      ...(resumeCursor ? { resumeCursor } : {}),
+      createdAt: '2026-11-14T00:00:00.000Z',
+      updatedAt: '2026-11-14T00:00:00.000Z',
+    });
+
+    const required = adapterFor('copilot-sdk', true);
+    await startRecovered({
+      session: session('copilot-sdk', { copilotSessionId: 'native-1' }),
+      adapter: required.adapter,
+      options: { readNativeResumeBindingKey },
+    });
+    await startRecovered({
+      session: session('copilot-sdk'),
+      adapter: required.adapter,
+      options: { readNativeResumeBindingKey },
+    });
+    expect(required.startSession.mock.calls[0]![0]).toMatchObject({
+      threadId: 'copilot-sdk-resumed',
+      nativeResumeBindingKey: 'b'.repeat(64),
+    });
+    // Nothing to resume, so no binding to check.
+    expect(required.startSession.mock.calls[1]![0]).not.toHaveProperty(
+      'nativeResumeBindingKey',
+    );
+
+    // An adapter that does not opt in (Claude, Codex) recovers exactly as
+    // before, even with a recorded key: its key can change legitimately.
+    const legacy = adapterFor('claude', false);
+    await startRecovered({
+      session: session('claude', { claudeSessionId: 'native-2' }),
+      adapter: legacy.adapter,
+      options: { readNativeResumeBindingKey },
+    });
+    expect(legacy.startSession.mock.calls[0]![0]).not.toHaveProperty(
+      'nativeResumeBindingKey',
+    );
+    expect(readNativeResumeBindingKey).toHaveBeenCalledTimes(1);
+  });
+
   test('scopes recovery readiness to the persisted external connection', async () => {
     const adapter = {
       provider: 'acp',

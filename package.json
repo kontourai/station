@@ -355,6 +355,7 @@
     "@aws-sdk/client-s3": "^3.1165.0",
     "@aws-sdk/credential-providers": "^3.1165.0",
     "@cedar-policy/cedar-wasm": "4.14.0",
+    "@github/copilot-sdk": "1.0.32",
     "@hono/node-server": "^2.1.7",
     "@kontourai/conduit": "0.8.0",
     "@kontourai/console-core": "^0.4.0",

@@ -15,6 +15,7 @@ import type { AcpAdapterOptions } from '../../providers/adapters/acp-adapter.js'
 import type { BedrockAdapter } from '../../providers/adapters/bedrock-adapter.js';
 import type { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import type { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
+import type { CopilotSdkAdapter } from '../../providers/adapters/copilot-sdk-adapter.js';
 import type { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import type { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import type { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
@@ -151,6 +152,7 @@ interface RuntimeInitializationContext {
   claudeAdapter: ClaudeAdapter;
   codexAdapter: CodexAdapter;
   museAdapter: MuseAdapter;
+  copilotSdkAdapter: CopilotSdkAdapter;
   ollamaAdapter: OllamaAdapter;
   createVoltAgentInstance: (slug: string) => Promise<Agent>;
   configureRoutes: (app: any) => void;
@@ -242,6 +244,7 @@ export function createRuntimeInitializationDeps(
     claudeAdapter: context.claudeAdapter,
     codexAdapter: context.codexAdapter,
     museAdapter: context.museAdapter,
+    copilotSdkAdapter: context.copilotSdkAdapter,
     ollamaAdapter: context.ollamaAdapter,
     createVoltAgentInstance: context.createVoltAgentInstance,
     configureRoutes: context.configureRoutes,

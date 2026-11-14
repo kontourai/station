@@ -93,6 +93,7 @@ describe('createRuntimeInitializationDeps', () => {
       claudeAdapter: { kind: 'claude' } as any,
       codexAdapter: { kind: 'codex' } as any,
       museAdapter: { kind: 'muse' } as any,
+      copilotSdkAdapter: { kind: 'copilot-sdk' } as any,
       ollamaAdapter: { kind: 'ollama' } as any,
       createVoltAgentInstance,
       configureRoutes,

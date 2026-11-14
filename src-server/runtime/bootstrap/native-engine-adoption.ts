@@ -34,6 +34,18 @@ export const NATIVE_ENGINE_CANDIDATES = [
   { id: 'muse', cli: 'muse' },
 ] as const;
 
+/**
+ * A native engine behind a Feature Preview. It is adopted only through
+ * `previewCandidates`, and only while `allowed()` (the preview's selector,
+ * read again on every attempt) says so; a caller that passes none adopts
+ * none.
+ */
+export interface PreviewNativeEngineCandidate {
+  id: string;
+  cli: string;
+  allowed: () => boolean;
+}
+
 /** Gallery-only request to keep native host CLIs out of screenshot fixtures. */
 export const SUPPRESS_NATIVE_ENGINE_ADOPTION_ENV =
   'STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION';
@@ -111,6 +123,8 @@ interface NativeEngineAdoptionDeps {
   delaysMs?: readonly number[];
   /** Injectable only so containment is unit-testable without process globals. */
   env?: NodeJS.ProcessEnv;
+  /** Engines behind a Feature Preview, after the built-in candidates. */
+  previewCandidates?: readonly PreviewNativeEngineCandidate[];
 }
 
 /**
@@ -145,6 +159,10 @@ interface NativeEngineAdoptionDeps {
  *
  * 'suppressed' is the screenshot containment: no probe was made, by policy.
  * It used to report 'absent' for a host nothing looked at.
+ *
+ * 'disabled' is a preview candidate whose `allowed()` said no (its Feature
+ * Preview is off): no probe was made, and it stays eligible for a later
+ * attempt in the same window.
  */
 interface NativeEngineAdoptionSummary {
   outcomes: Record<
@@ -154,6 +172,7 @@ interface NativeEngineAdoptionSummary {
     | 'error'
     | 'interrupted'
     | 'suppressed'
+    | 'disabled'
   >;
 }
 
@@ -166,6 +185,9 @@ export async function adoptDetectedNativeEngines(
 ): Promise<NativeEngineAdoptionSummary> {
   const detect = deps.detect ?? detectCliOnPath;
   const delays = deps.delaysMs ?? ADOPTION_ATTEMPT_DELAYS_MS;
+  const candidates: ReadonlyArray<
+    (typeof NATIVE_ENGINE_CANDIDATES)[number] | PreviewNativeEngineCandidate
+  > = [...NATIVE_ENGINE_CANDIDATES, ...(deps.previewCandidates ?? [])];
   const outcomes: NativeEngineAdoptionSummary['outcomes'] = {};
   // Station itself is an engine too. Persist its ordinary editable definition
   // at the same seam as detected engines, rather than projecting a special
@@ -177,7 +199,7 @@ export async function adoptDetectedNativeEngines(
   try {
     await loadOrCreateAgentRegistry(deps.configLoader);
   } catch (error) {
-    for (const candidate of NATIVE_ENGINE_CANDIDATES) {
+    for (const candidate of candidates) {
       outcomes[candidate.id] = 'error';
       deps.logger.warn('Native engine adoption failed', {
         engine: candidate.id,
@@ -210,7 +232,7 @@ export async function adoptDetectedNativeEngines(
   // to exist on its capture host. Keep the ordinary Station Agent setup above
   // intact, but close the adoption window before any host probe can run.
   if (nativeEngineAdoptionSuppressed(deps.env ?? process.env)) {
-    for (const candidate of NATIVE_ENGINE_CANDIDATES) {
+    for (const candidate of candidates) {
       // 'suppressed', not 'absent' (station#1815): `detect` is
       // called zero times here, so an absence would be a claim about a host
       // nothing looked at.
@@ -218,7 +240,7 @@ export async function adoptDetectedNativeEngines(
     }
     return { outcomes };
   }
-  const unresolved = new Set(NATIVE_ENGINE_CANDIDATES.map((c) => c.id));
+  const unresolved = new Set(candidates.map((c) => c.id));
 
   for (const delayMs of delays) {
     if (unresolved.size === 0) break;
@@ -239,7 +261,7 @@ export async function adoptDetectedNativeEngines(
       });
       if (deps.signal?.aborted) break;
     }
-    for (const candidate of NATIVE_ENGINE_CANDIDATES) {
+    for (const candidate of candidates) {
       if (!unresolved.has(candidate.id)) continue;
       // Covers the one window neither the abort inside a probe nor the check
       // after one reaches: an abort landing during the PREVIOUS candidate's
@@ -260,6 +282,10 @@ export async function adoptDetectedNativeEngines(
       // either nothing or as load-bearing, and both readings outran the
       // measurement.
       if (deps.signal?.aborted) break;
+      if ('allowed' in candidate && !candidate.allowed()) {
+        outcomes[candidate.id] = 'disabled';
+        continue;
+      }
       try {
         const found = await detect(candidate.cli, {
           signal: deps.signal,
@@ -345,7 +371,7 @@ export async function adoptDetectedNativeEngines(
   // a host fact nothing looked at, in the same field where 'absent' means an
   // uncancelled probe said no.
   const interrupted = deps.signal?.aborted === true;
-  for (const candidate of NATIVE_ENGINE_CANDIDATES) {
+  for (const candidate of candidates) {
     if (!unresolved.has(candidate.id)) continue;
     outcomes[candidate.id] ??= interrupted ? 'interrupted' : 'absent';
   }

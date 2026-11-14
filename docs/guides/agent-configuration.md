@@ -375,8 +375,8 @@ whole plan as a form, labelled **Plan review** rather than **Question**, to
 approve or reject; only an approved plan replaces the
 Session's plan. Station doesn't resume the engine after approval: send a
 message to continue. A plan too long to show whole lists its todos as a count,
-and only as a last resort is cut with a note saying how much was left out. ACP reports no other escalation signal. Codex and Muse do not
-honour `autoApprove`. Station reads why Claude Code asks from the engine's
+and only as a last resort is cut with a note saying how much was left out. ACP reports no other escalation signal. Codex, Muse and the
+GitHub Copilot (SDK) preview engine do not honour `autoApprove`. Station reads why Claude Code asks from the engine's
 own request, and a request it cannot read counts as an escalation, so a
 pattern never answers one. A pattern such as `Bash` covers chained commands
 too, and the engine does not report what their parts raise. So the first

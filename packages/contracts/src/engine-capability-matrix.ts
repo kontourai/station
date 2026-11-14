@@ -1188,6 +1188,48 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     builtInTools: { state: 'unenumerated' },
     builtInToolControl: { state: 'none' },
   },
+  // GitHub Copilot through the Copilot SDK (Feature Preview
+  // `copilot-sdk-engine`; docs/decisions/copilot-sdk-engine.md). Every cell is
+  // declared from the pinned SDK's own types (`@github/copilot-sdk` 1.0.32);
+  // no live Copilot session has been captured yet, so nothing here is an
+  // observation.
+  'copilot-sdk': {
+    engineId: toEngineId('copilot-sdk'),
+    // `send({ mode: 'immediate' })` joins a running turn (`steerTurn`).
+    durability: STEERING_ENGINE_DURABILITY,
+    // The SDK's `systemMessage` option is not bound yet.
+    systemPrompt: { state: 'unsupported' },
+    instructionsInFirstTurn: { state: 'session', channel: 'first-turn' },
+    // Station Control MCP passthrough is not bound yet; the engine's own MCP
+    // servers report through `engine-mcp.status`.
+    toolServers: { state: 'unsupported' },
+    skills: { state: 'unsupported' },
+    commands: { state: 'unsupported' },
+    // `SessionConfig.model` at create and resume, over the SDK's JSON-RPC.
+    modelSelection: { state: 'session', channel: 'wire' },
+    // Approvals are answered per request (`copilot-sdk-approval.ts`); the
+    // staged pre-tool policy is not bound to the SDK's `onPreToolUse` yet.
+    toolPolicy: { state: 'unsupported', adapterModule: 'copilot-sdk-adapter' },
+    imageInput: {
+      state: 'unsupported',
+      reason: 'Attachments are not supported on the Copilot SDK engine yet.',
+    },
+    midTurnSteer: true,
+    subagentObservability: {
+      state: 'declared',
+      signals: ['lifecycle', 'usage', 'result'],
+      evidence:
+        'SDK session events subagent.started / subagent.completed / subagent.failed (toolCallId, totalTokens, totalToolCalls, durationMs, error)',
+      adapterModule: 'copilot-sdk-events.ts',
+    },
+    subagentControl: {
+      state: 'none',
+      reason:
+        'The SDK has no per-subagent stop or resume; only the whole turn can be aborted.',
+    },
+    builtInTools: { state: 'unenumerated' },
+    builtInToolControl: { state: 'none' },
+  },
   acp: {
     engineId: toEngineId('acp'),
     durability: ACP_ENGINE_DURABILITY,

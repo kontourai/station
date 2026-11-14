@@ -261,8 +261,8 @@ Claude's staged evaluator returns a required Ask as a `PreToolUse` permission
 ask; `canUseTool` also excludes it from automatic, guardian and session grants.
 Adapter tests exercise both callbacks, including repeated calls after a session
 answer. This is not fresh live-provider proof of every Claude permission mode;
-the earlier quota-blocked live run did not execute a tool. Codex, Muse and ACP
-cannot deliver this contract and refuse resolved Agents with nonempty Ask rules.
+the earlier quota-blocked live run did not execute a tool. Codex, Muse, ACP
+and the GitHub Copilot (SDK) preview engine cannot deliver this contract and refuse resolved Agents with nonempty Ask rules.
 Their picker labels approval as **Engine controlled**.
 
 ## Selected MCP tools

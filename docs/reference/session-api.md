@@ -1224,8 +1224,9 @@ as `acknowledgement`:
   and no `acknowledgement`; a later decision on it is refused. A close that
   crosses Station's reply in flight still reads `acknowledged`, although
   Codex discarded that reply: its close does not say which came first.
-- `in-process` (Station's own engine): consumed in-process; no delivery
-  event follows.
+- `in-process` (Station's own engine, and the GitHub Copilot (SDK)
+  engine's permission callback): consumed in-process; no delivery event
+  follows.
 - `none` (Claude Code, ACP): the protocol has no acknowledgement, so
   delivery is not reported.
 
