@@ -1138,6 +1138,31 @@ const ACP_REWIND_NOTICE_LAG_MS = 250;
  */
 const ACP_ENGINE_CLOCK_MAX_OFFSET_MS = 500;
 
+/** Prompt starts a session keeps at most (a remembered turn's bound, wakes included). */
+const ACP_ENGINE_PROMPT_STARTS_MAX = 4 * ACP_TURN_MESSAGES_MAX;
+
+/**
+ * Forget prompt starts that can no longer bound a remembered turn's window:
+ * those before the oldest turn the ledger holds. A start a remembered turn
+ * still needs is dropped only past `ACP_ENGINE_PROMPT_STARTS_MAX`, and then
+ * that turn's window holds more than one point and refuses.
+ */
+function pruneEnginePromptStarts(
+  record: Pick<AcpSessionRecord, 'enginePromptStarts' | 'turnMessages'>,
+): void {
+  const starts = record.enginePromptStarts;
+  if (!starts) return;
+  const oldest = record.turnMessages?.[0]?.startedAt;
+  for (const [id, at] of starts) {
+    if (
+      starts.size <= ACP_ENGINE_PROMPT_STARTS_MAX &&
+      (oldest === undefined || at >= oldest)
+    )
+      break;
+    starts.delete(id);
+  }
+}
+
 /** Clock readings a session keeps; the largest of them is the estimate. */
 const ACP_ENGINE_CLOCK_SAMPLES_MAX = 32;
 
@@ -5659,8 +5684,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     const first = !starts.has(enginePromptId);
     if (first) {
       starts.set(enginePromptId, Date.now());
-      if (starts.size > ACP_TURN_MESSAGES_MAX)
-        starts.delete(starts.keys().next().value as string);
+      pruneEnginePromptStarts(record);
     }
     if (record.activeTurnId) {
       if (!record.providerTurn) {

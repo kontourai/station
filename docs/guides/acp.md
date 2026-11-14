@@ -747,16 +747,17 @@ session's own continuity, which
   to 57 characters plus `...` when longer than 60); Station puts the same
   ambient line (the timezone) first in every prompt, so the preview alone
   rarely tells turns apart. Every turn the adapter remembers must resolve
-  the same way, each to its own point at a rising index, except that a turn
-  other than the chosen one that is a slash command may have none (Grok can
-  run one itself): a turn shorter than the quarter second can lose its point
-  to the next window, and that chain always leaves some turn with none.
-  Otherwise the rewind fails with nothing changed: no point in a window,
-  two, or a preview that differs. So a turn Grok made no point for (a prompt
-  hook blocked it) stops every Grok rewind and fork in the conversation while
-  the adapter remembers it; a notice Station reads more than about a quarter
-  second late, and a step of more than about a quarter second in Grok's
-  clock after earlier turns, fail rewinds too. A point copied into a fork carries no time and
+  the same way, each to its own point at a rising index, because a turn
+  shorter than the quarter second can lose its point to the next window,
+  and that chain always leaves some turn with none. The one exception is a
+  turn other than the chosen one that is a slash command, which may have
+  none (Grok can run one itself). Otherwise the rewind fails with nothing
+  changed: no point in a window, two, or a preview that differs. So, while
+  the adapter remembers it, any one of these stops every Grok rewind and
+  fork in the conversation: a turn Grok made no point for (a prompt hook
+  blocked it), a notice Station read more than about a quarter second late,
+  or a step of more than about a quarter second in Grok's clock after the
+  turn. A point copied into a fork carries no time and
   never matches, and a prompt that opens with a tag block Grok strips from
   its preview never matches either.
   The chosen point's `prompt_index` is the one sent. It then sends `_x.ai/rewind/execute { sessionId,

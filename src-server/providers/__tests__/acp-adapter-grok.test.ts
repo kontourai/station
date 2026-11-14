@@ -1530,21 +1530,75 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
     await session.stop();
   });
 
-  test('a turn Grok made no point for stops rewinds to the turns after it too', async () => {
+  test('a turn Grok made no point for stops rewinds to turns well after it too', async () => {
+    // A hook blocked turn 1; turn 3 is two turns later.
     const t = times[0]!;
     const { session, turns, listed } = await ambientTurns(
-      [t, t + 4_000, t + 8_000],
-      [t + 15, t + 8_015],
+      [t, t + 4_000, t + 8_000, t + 12_000],
+      [t + 15, t + 8_015, t + 12_015],
     );
     answerLive(session, { '_x.ai/rewind/points': [listed] });
     expect(
-      await session.adapter.rewindSession(session.threadId, turns[2]!),
+      await session.adapter.rewindSession(session.threadId, turns[3]!),
     ).toEqual({
       kind: 'failed',
       message: expect.stringContaining('do not line up'),
     });
+    expect(session.proc.extMethodCalls).toHaveLength(1);
     await session.stop();
   });
+
+  test('a long conversation with a rewind in it still resolves its turns', async () => {
+    // 300 turns, a rewind hiding the last 150, then 60 more: 210 turns
+    // remembered, and 510 prompts Grok has run.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const ambient = '[Timezone: America/Denver]';
+    const t = times[0]!;
+    const session = await startGrokSession();
+    const [live] = (points as { rewind_points: Record<string, unknown>[] })
+      .rewind_points;
+    const pointAt = (index: number, at: number) => ({
+      ...live,
+      prompt_index: index,
+      prompt_preview: ambient,
+      created_at: new Date(at + NOTICE_BEFORE_POINT_MS).toISOString(),
+    });
+    const turns: Array<{ id: string; at: number }> = [];
+    const runTurns = async (count: number, first: number) => {
+      for (let k = 0; k < count; k += 1) {
+        const at = t + (first + k) * 2_000;
+        turns.push({
+          id: await grokTurn(session, `${ambient}\nturn`, `p-${first + k}`, at),
+          at,
+        });
+      }
+    };
+    await runTurns(300, 0);
+    answerLive(session, {
+      '_x.ai/rewind/points': [
+        { rewind_points: turns.map(({ at }, index) => pointAt(index, at)) },
+      ],
+      '_x.ai/rewind/execute': [preview, commit],
+    });
+    expect(
+      await session.adapter.rewindSession(session.threadId, turns[150]!.id),
+    ).toMatchObject({ kind: 'rewound' });
+    turns.splice(150);
+    await runTurns(60, 300);
+    answerLive(session, {
+      '_x.ai/rewind/points': [
+        { rewind_points: turns.map(({ at }, index) => pointAt(index, at)) },
+      ],
+      '_x.ai/rewind/execute': [preview, commit],
+    });
+    expect(
+      await session.adapter.rewindSession(session.threadId, turns[100]!.id),
+    ).toMatchObject({ kind: 'rewound' });
+    expect(session.proc.extMethodCalls.at(-1)?.params.targetPromptIndex).toBe(
+      100,
+    );
+    await session.stop();
+  }, 120_000);
 
   test('points whose times run against their indexes resolve nothing', async () => {
     const t = times[0]!;
