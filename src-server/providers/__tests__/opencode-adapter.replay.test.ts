@@ -21,6 +21,7 @@ import {
   SendTurnRefusedError,
   SessionRewindingError,
 } from '../adapter-shape.js';
+import type { PreToolPolicyDecision } from '../../runtime/agents/pre-tool-policy.js';
 import type { AcpAdapterOptions } from '../adapters/acp-adapter.js';
 import { nativeResumeBindingKey } from '../adapters/native-resume-binding.js';
 import {
@@ -2720,37 +2721,289 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     expect(opened(h.events)).toEqual([]);
   });
 
-  test("a session started as an Agent with Station's tool policy runs over ACP, which enforces it; one without an Agent runs natively", async () => {
-    const resolvePreToolPolicy = async () => async () => ({
-      behavior: 'allow' as const,
-    });
-    const h = await setup(
-      { scenario: 'basic' },
-      { acp: { resolvePreToolPolicy } },
-    );
-    const agent = { slug: 'reviewer' } as ProviderSessionStartInput['agent'];
-    const session = await h.start(undefined, { agent });
-    expect(h.leaser.acquired).toHaveLength(0);
-    expect(h.replay.made('POST', '/api/session')).toHaveLength(0);
+  /**
+   * Station's staged pre-tool policy as the runtime resolves it for an
+   * Agent (`resolvePreToolPolicy`), answering each call with `decide`, and
+   * every call it was asked.
+   */
+  function stagedPolicy(
+    decide: (tool: { toolName: string }) => PreToolPolicyDecision,
+  ) {
+    const calls: Array<{
+      tool: Record<string, unknown>;
+      invocation: Record<string, unknown>;
+      options: Record<string, unknown>;
+    }> = [];
+    const resolvePreToolPolicy: NonNullable<
+      AcpAdapterOptions['resolvePreToolPolicy']
+    > = async () => async (tool, invocation, options) => {
+      calls.push({
+        tool: tool as unknown as Record<string, unknown>,
+        invocation: invocation as unknown as Record<string, unknown>,
+        options: options as unknown as Record<string, unknown>,
+      });
+      return decide(tool);
+    };
+    return { calls, resolvePreToolPolicy };
+  }
+  const AGENT = { slug: 'reviewer' } as ProviderSessionStartInput['agent'];
+  const replies = (h: { replay: OpenCodeServeReplay }) =>
+    h.replay
+      .made('POST', '/api/session/:id/permission/:id/reply')
+      .map((reply) => reply.body);
+  /** The session ran natively: nothing went to ACP, and nothing said so. */
+  const ranNatively = (
+    h: Awaited<ReturnType<typeof setup>>,
+    session: { resumeCursor?: unknown },
+  ) => {
+    expect(session.resumeCursor).toMatchObject({ transport: 'native' });
+    expect(h.inner()?.starts ?? []).toEqual([]);
     expect(
-      h.events.find((event) => event.method === 'runtime.warning'),
-    ).toMatchObject({
-      code: OPENCODE_NATIVE_UNSUPPORTED_SETTING,
-      message: expect.stringContaining('tool policy'),
-    });
-    // The ACP adapter gets the session's Agent and the resolver, so it
-    // resolves the policy and runs it on each permission request.
-    expect(h.inner()?.starts).toEqual([expect.objectContaining({ agent })]);
-    expect(h.inner()?.resolvePreToolPolicy).toBe(resolvePreToolPolicy);
-    expect(session.resumeCursor).toMatchObject({ transport: 'acp' });
+      h.events.filter((event) => event.method === 'runtime.warning'),
+    ).toEqual([]);
+  };
 
-    const other = await setup(
-      { scenario: 'basic' },
-      { acp: { resolvePreToolPolicy } },
+  test("a session started as an Agent runs natively, and its Station tool policy's deny rejects a shell ask with the reason as OpenCode's feedback", async () => {
+    const policy = stagedPolicy(() => ({
+      behavior: 'deny',
+      denial: { allowed: false, reason: 'shell is not for reviewers' },
+    }));
+    const h = await setup(
+      { scenario: 'permission-allow' },
+      { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
     );
-    const native = await other.start();
-    expect(native.resumeCursor).toMatchObject({ transport: 'native' });
-    expect(other.inner()?.starts).toEqual([]);
+    const session = await h.start(undefined, {
+      agent: AGENT,
+      metadata: {
+        connectionId: 'opencode',
+        delegation: { parentConversationId: 'parent-conversation' },
+      },
+    });
+    ranNatively(h, session);
+    await h.turn('DO_BASH please');
+    await h.waitFor(() => replies(h).length === 1);
+    expect(replies(h)).toEqual([
+      { decision: 'reject', message: 'shell is not for reviewers' },
+    ]);
+    expect(opened(h.events)).toEqual([]);
+    // Asked as the ACP adapter asks it: OpenCode's tool name (what its ACP
+    // layer reports as `toolCall.name`), the call's input, the Agent, the
+    // conversation and its delegation, an external interaction.
+    expect(policy.calls).toEqual([
+      {
+        tool: {
+          toolName: 'shell',
+          toolCallId: 'call_6',
+          toolArgs: {
+            command: 'echo hello-from-bash',
+            description: 'echo test',
+          },
+        },
+        invocation: {
+          agentSlug: 'reviewer',
+          conversationId: 'thread-1',
+          delegation: { parentConversationId: 'parent-conversation' },
+        },
+        options: {
+          interaction: 'external',
+          identity: {
+            delegationToolName: 'shell',
+            configProtectionToolName: 'shell',
+          },
+        },
+      },
+    ]);
+  });
+
+  test("an Agent's Station tool policy that allows a shell ask Auto would put to the person answers it `once`", async () => {
+    const policy = stagedPolicy(() => ({ behavior: 'allow' }));
+    const h = await setup(
+      { scenario: 'governed' },
+      { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
+    );
+    const session = await h.start({ approvalMode: 'auto' }, { agent: AGENT });
+    ranNatively(h, session);
+    const edit = await h.turn('DO_EDIT one');
+    await h.waitFor(completedFor(edit.turnId));
+    const shell = await h.turn('DO_BASH two');
+    await h.waitFor(completedFor(shell.turnId));
+    expect(replies(h)).toEqual([{ decision: 'once' }, { decision: 'once' }]);
+    expect(opened(h.events)).toEqual([]);
+    expect(policy.calls.map((call) => call.tool.toolName)).toEqual([
+      'edit',
+      'shell',
+    ]);
+  });
+
+  test("an Agent's Station tool policy that requires a person puts an edit Auto would answer to the person", async () => {
+    const policy = stagedPolicy(() => ({ behavior: 'ask', required: true }));
+    const h = await setup(
+      { scenario: 'governed' },
+      { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
+    );
+    await h.start({ approvalMode: 'auto' }, { agent: AGENT });
+    const edit = await h.turn('DO_EDIT one');
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.opened' && event.turnId === edit.turnId,
+      ),
+    ).toMatchObject({ payload: { toolName: 'edit' } });
+    expect(replies(h)).toEqual([]);
+    expect(policy.calls).toHaveLength(1);
+  });
+
+  test("a child's ask goes through its parent Agent's Station tool policy: its deny rejects an edit Auto would answer", async () => {
+    const policy = stagedPolicy(() => ({
+      behavior: 'deny',
+      denial: { allowed: false, reason: 'no child edits' },
+    }));
+    // The child names its tool (`session.tool.input.started`, in place of
+    // its first step's start) and asks from it (`source`).
+    const ask = childAsk('edit', ['notes.txt']);
+    const h = await setup(
+      {
+        scenario: 'subagent',
+        rewrite: (record) => {
+          if (
+            record.kind === 'sse' &&
+            record.event?.type === 'session.step.started' &&
+            record.event.data?.sessionID === CHILD
+          )
+            return {
+              ...record,
+              event: {
+                ...record.event,
+                type: 'session.tool.input.started',
+                data: { sessionID: CHILD, id: 'call_child', name: 'edit' },
+              },
+            };
+          const rewritten = ask(record);
+          return rewritten.event?.type === 'permission.asked' &&
+            rewritten !== record
+            ? {
+                ...rewritten,
+                event: {
+                  ...rewritten.event,
+                  data: {
+                    ...rewritten.event.data,
+                    source: { type: 'tool', id: 'call_child' },
+                  },
+                },
+              }
+            : rewritten;
+        },
+        respond: childGovernance({ build: [], general: [] }),
+      },
+      { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
+    );
+    await h.start({ approvalMode: 'auto' }, { agent: AGENT });
+    await h.turn('DO_TASK now');
+    await h.waitFor(() => repliesTo(h, CHILD).length === 1);
+    expect(repliesTo(h, CHILD)).toEqual([
+      { decision: 'reject', message: 'no child edits' },
+    ]);
+    expect(policy.calls).toEqual([
+      expect.objectContaining({
+        tool: expect.objectContaining({
+          toolName: 'edit',
+          toolCallId: 'call_child',
+        }),
+        invocation: expect.objectContaining({ conversationId: 'thread-1' }),
+      }),
+    ]);
+  });
+
+  test('an Agent whose Station tool policy cannot be prepared has every ask rejected, with the reason ACP gives', async () => {
+    const h = await setup(
+      { scenario: 'permission-allow' },
+      {
+        acp: {
+          resolvePreToolPolicy: async () => {
+            throw new Error('agent file unreadable');
+          },
+        },
+      },
+    );
+    ranNatively(h, await h.start(undefined, { agent: AGENT }));
+    await h.turn('DO_BASH please');
+    await h.waitFor(() => replies(h).length === 1);
+    expect(replies(h)).toEqual([
+      {
+        decision: 'reject',
+        message:
+          'Station pre-tool policy could not be prepared; tool execution was denied: agent file unreadable',
+      },
+    ]);
+  });
+
+  test("after an untrusted read, an edit of an agent-instruction file is rejected before the Agent's Station tool policy is asked (#4828)", async () => {
+    const policy = stagedPolicy(() => ({ behavior: 'allow' }));
+    const read = ledger(['thread-1']);
+    const h = await setup(
+      { scenario: 'governed', rewrite: editOf('AGENTS.md') },
+      {
+        acp: {
+          untrustedContentLedger: read.ledger,
+          resolvePreToolPolicy: policy.resolvePreToolPolicy,
+        },
+      },
+    );
+    await h.start({ approvalMode: 'auto' }, { agent: AGENT });
+    const edit = await h.turn('DO_EDIT one');
+    await h.waitFor(completedFor(edit.turnId));
+    expect(replies(h)).toEqual([{ decision: 'reject' }]);
+    expect(policy.calls).toEqual([]);
+  });
+
+  test("an Agent's Station tool policy allow does not answer an edit of OpenCode configuration: the person is asked", async () => {
+    const policy = stagedPolicy(() => ({ behavior: 'allow' }));
+    const h = await setup(
+      { scenario: 'governed', rewrite: editOf('opencode.json') },
+      { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
+    );
+    await h.start({ approvalMode: 'auto' }, { agent: AGENT });
+    const edit = await h.turn('DO_EDIT one');
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.opened' && event.turnId === edit.turnId,
+      ),
+    ).toMatchObject({
+      payload: { rawInput: { resources: ['opencode.json'] } },
+    });
+    expect(policy.calls).toHaveLength(1);
+    expect(replies(h)).toEqual([]);
+  });
+
+  test("an ask whose tool OpenCode did not name cannot be put to an Agent's Station tool policy: the person answers it, not the mode", async () => {
+    const policy = stagedPolicy(() => ({ behavior: 'allow' }));
+    const h = await setup(
+      {
+        scenario: 'governed',
+        rewrite: (record) =>
+          record.kind === 'sse' &&
+          record.event?.type === 'permission.asked' &&
+          record.event.data?.action === 'edit'
+            ? {
+                ...record,
+                event: {
+                  ...record.event,
+                  data: { ...record.event.data, source: undefined },
+                },
+              }
+            : record,
+      },
+      { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
+    );
+    await h.start({ approvalMode: 'auto' }, { agent: AGENT });
+    const edit = await h.turn('DO_EDIT one');
+    await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === edit.turnId,
+    );
+    expect(policy.calls).toEqual([]);
+    expect(replies(h)).toEqual([]);
   });
 });
 

@@ -36,6 +36,7 @@ import {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { ownArray, ownRecord } from '@kontourai/station-shared/input-request';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
+import type { StagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
 import type { InvocationContext } from '../../runtime/types.js';
 import {
   assertEngineAllowedByManagedPolicy,
@@ -104,6 +105,7 @@ import {
 } from './acp-approval-mode.js';
 import { requestedAcpSessionMode } from './acp-session-mode.js';
 import { assertExecutionOverrideDelivery } from './capability-delivery-metadata.js';
+import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 import { nativeResumeBindingKey } from './native-resume-binding.js';
 import { readString } from './opencode-native-events.js';
 import {
@@ -124,6 +126,7 @@ import {
 import {
   type OpenCodeNativeDecision,
   OpenCodeNativeSession,
+  type OpenCodeNativeSessionDeps,
 } from './opencode-serve-session.js';
 import {
   type OpenCodeVersionProbe,
@@ -478,21 +481,60 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
    *
    * - An `effort` setting: OpenCode 2's native model reference takes a
    *   provider-defined `variant`, not a level Station can map.
-   * - Station's staged pre-tool policy (an Agent's tool policy, its
-   *   approval guardian, tool grants, the untrusted-content stages): the
-   *   ACP adapter resolves it for a session started as an Agent
-   *   (`resolvePreToolPolicy`, given `input.agent`) and runs it on each
-   *   permission request. The native transport does not run it, so such a
-   *   session runs where it is enforced.
+   *
+   * A session started as an Agent runs natively too: its staged pre-tool
+   * policy runs on each ask there, as ACP runs it on each permission
+   * request ({@link preparePreToolPolicy}).
    */
   private nativeUnsupported(
     input: ProviderSessionStartInput,
   ): string | undefined {
     if (input.modelOptions?.effort !== undefined)
       return "its effort setting is not available on OpenCode's own server";
-    if (input.agent && this.options.acp?.resolvePreToolPolicy)
-      return "its Agent's Station tool policy runs only over ACP";
     return undefined;
+  }
+
+  /**
+   * Station's staged pre-tool policy for a session started as an Agent,
+   * resolved as the ACP adapter resolves it (`AcpAdapter`
+   * `resolvePreToolPolicy`: the same option, the same input, and on a
+   * failed preparation an evaluator that denies every call with the same
+   * reason), bound to this session for its asks (`AcpAdapter`
+   * `requestPermission`: the Agent, the conversation and its delegation;
+   * an external interaction with the raw tool name as its identity).
+   */
+  private async preparePreToolPolicy(
+    input: ProviderSessionStartInput,
+    delegation: InvocationContext['delegation'],
+  ): Promise<OpenCodeNativeSessionDeps['preToolPolicy']> {
+    const resolve = this.options.acp?.resolvePreToolPolicy;
+    if (!input.agent || !resolve) return undefined;
+    let evaluator: StagedPreToolPolicyEvaluator | undefined;
+    try {
+      evaluator = await resolve(input);
+    } catch (error) {
+      const reason = `Station pre-tool policy could not be prepared; tool execution was denied: ${errorMessage(error)}`;
+      evaluator = async () => ({
+        behavior: 'deny',
+        denial: { allowed: false, reason },
+      });
+    }
+    if (!evaluator) return undefined;
+    const evaluate = evaluator;
+    const agentSlug = input.agent.slug ?? 'unknown';
+    return (tool) =>
+      evaluate(
+        {
+          toolName: tool.toolName,
+          toolCallId: tool.toolCallId,
+          toolArgs: tool.toolArgs,
+        },
+        { agentSlug, conversationId: input.threadId, delegation },
+        {
+          interaction: 'external',
+          identity: externalPreToolPolicyIdentity(tool.toolName),
+        },
+      );
   }
 
   /**
@@ -1036,6 +1078,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       typeof input.metadata.delegation === 'object'
         ? (input.metadata.delegation as InvocationContext['delegation'])
         : undefined;
+    const preToolPolicy = await this.preparePreToolPolicy(input, delegation);
     const ledger =
       this.options.acp?.untrustedContentLedger ?? sharedUntrustedContentLedger;
     let onMoved: (move: { sessionId: string; directory: string }) => void =
@@ -1060,6 +1103,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
             delegation,
           }),
         ),
+      ...(preToolPolicy ? { preToolPolicy } : {}),
       onMoved: (move) => onMoved(move),
       ...(this.options.reconnectFirstMs
         ? { reconnectFirstMs: this.options.reconnectFirstMs }

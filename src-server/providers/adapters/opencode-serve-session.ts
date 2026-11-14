@@ -54,11 +54,14 @@ import {
   validateInputRequestContent,
 } from '@kontourai/station-shared/input-request';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
+import { toolRequestNeedsPerson } from '@kontourai/station-shared/tool-request-preview';
+import type { PreToolPolicyDecision } from '../../runtime/agents/pre-tool-policy.js';
 import {
   type OpenCodeNativeRule,
   openCodeGrantCovers,
   openCodeNativeAskAnswer,
   openCodeNativePersistenceTarget,
+  openCodeNativeStationRejects,
 } from '../../services/acp/opencode-approval-native.js';
 import { openCodeNativeAskNeedsPerson } from '../../services/acp/opencode-project-config.js';
 import { errorMessage } from '../../utils/error-message.js';
@@ -96,6 +99,10 @@ const RECONNECT_FIRST_MS = 250;
 const RECONNECT_MAX_MS = 5_000;
 /** How long a start waits for the feed's first `server.connected`. */
 const FEED_READY_TIMEOUT_MS = 10_000;
+/** Tools kept for the asks they may make (see `noteAskTool`). */
+const ASK_TOOLS_MAX = 512;
+const askToolKey = (sessionId: string, callId: string) =>
+  `${sessionId}\u0000${callId}`;
 /** Settled turns kept as rewind points. */
 const TURN_MESSAGES_MAX = 500;
 /** How long stopping a session waits on each request that drops engine work. */
@@ -205,6 +212,19 @@ export interface OpenCodeNativeSessionDeps {
    */
   readonly untrustedRead?: () => Promise<boolean>;
   /**
+   * Station's staged pre-tool policy for a session started as an Agent
+   * (the evaluator the ACP adapter runs in `requestPermission`), bound to
+   * this session's Agent, conversation and delegation. Asked about every
+   * ask, this session's or a descendant's, whose tool OpenCode named, as
+   * OpenCode's own ACP layer names it (`toolCall.name`: the tool part's
+   * name); see {@link OpenCodeNativeSession.decideAsk}.
+   */
+  readonly preToolPolicy?: (tool: {
+    readonly toolName: string;
+    readonly toolCallId: string;
+    readonly toolArgs: unknown;
+  }) => Promise<PreToolPolicyDecision>;
+  /**
    * This session, or one of its descendants, moved to another directory
    * (`session.moved`). OpenCode has loaded that directory's configuration
    * by then; the adapter decides whether the session may go on.
@@ -288,6 +308,8 @@ interface NativeAsk {
   readonly toolCallId: string | undefined;
   /** The files an edit ask names in its metadata (`metadata.files[].file`). */
   readonly files: readonly string[];
+  /** The ask's own metadata, the tool's arguments when its input is not known. */
+  readonly metadata: unknown;
 }
 
 interface SessionGrant {
@@ -1288,6 +1310,7 @@ export class OpenCodeNativeSession {
       this.handleForeign(event.type, data, sessionId);
       return;
     }
+    if (sessionId) this.noteAskTool(event.type, data, sessionId);
     if (!sessionId) {
       if (!OPENCODE_IGNORED_EVENTS.has(event.type)) this.countUnknown(event);
       return;
@@ -1474,6 +1497,7 @@ export class OpenCodeNativeSession {
     }
     const child = this.children.get(sessionId);
     if (!child) return;
+    this.noteAskTool(type, data, sessionId);
     switch (type) {
       case 'session.execution.started':
         this.markChildRunning(child);
@@ -1884,6 +1908,7 @@ export class OpenCodeNativeSession {
           return file ? [file] : [];
         },
       ),
+      metadata: data.metadata,
     };
     // #4828, first: after an untrusted read, a change to a known
     // agent-instruction or git-hook file is rejected, whatever a grant, the
@@ -1928,7 +1953,7 @@ export class OpenCodeNativeSession {
       this.autoAnswering.delete(nativeId);
       if (this.stopped || this.requests.has(nativeId)) return;
       if (rules) this.decideAsk(ask, rules);
-      else this.openPermission(ask);
+      else this.decideAsk(ask, undefined, { personOnly: true });
     });
   }
 
@@ -1951,47 +1976,157 @@ export class OpenCodeNativeSession {
   }
 
   /**
-   * Answer an ask without a person where Station may (a kept deny, a
-   * session grant, the mode), else open it for the person. An OpenCode
-   * configuration edit is never answered by a grant or a mode below full
-   * access (`openCodeNativeAskNeedsPerson`).
+   * Decide an ask, this session's or a descendant's, in the ACP adapter's
+   * order (`requestPermission` in acp-adapter.ts; the #4828 persistence
+   * decline already ran, in {@link onPermissionAsked}):
+   * 1. `reject` when the confined rules govern and Station keeps the asking
+   *    agent's deny (native only: over ACP OpenCode enforces it itself);
+   * 2. Station's staged pre-tool policy, for a session started as an
+   *    Agent: its deny rejects, with its reason as OpenCode's feedback to
+   *    the model; its allow answers `once`, except for a request addressed
+   *    to a person (`toolRequestNeedsPerson`) or one the configuration-edit
+   *    guard gives a person (`openCodeNativeAskNeedsPerson`), as ACP's
+   *    `needsPerson` holds it back; its required ask goes to the person;
+   *    anything else goes on. An ask whose tool OpenCode did not name is one
+   *    the policy cannot be asked about: it goes to the person (ACP, given
+   *    no tool name, skips the policy and lets a grant or the mode answer);
+   * 3. a session grant or the mode, never for an OpenCode configuration
+   *    edit below full access (`openCodeNativeAskAnswer`), else the person.
    */
   private decideAsk(
     ask: NativeAsk,
     agentRules: readonly OpenCodeNativeRule[] | undefined,
+    options: { personOnly?: true } = {},
   ): void {
     const request = { action: ask.action, resources: ask.resources };
+    if (agentRules && openCodeNativeStationRejects(agentRules, request)) {
+      this.answerAutomatically(ask, 'reject');
+      return;
+    }
     // OpenCode names a write relative to the asking session's directory.
     const cwd =
       ask.sessionId === this.sessionId
         ? this.deps.cwd
         : (this.children.get(ask.sessionId)?.directory ?? this.deps.cwd);
-    const answer = openCodeNativeAskAnswer({
-      mode: this.deps.approvalMode,
-      agentRules,
-      request,
-      granted: this.grants.some((grant) => openCodeGrantCovers(grant, request)),
-      configNeedsPerson: () =>
-        openCodeNativeAskNeedsPerson(request, cwd, this.deps.configEnv),
-    });
-    if (answer === 'person') {
-      this.openPermission(ask);
+    const configNeedsPerson = () =>
+      openCodeNativeAskNeedsPerson(request, cwd, this.deps.configEnv);
+    const answer = (personOnly: boolean) => {
+      const decided = personOnly
+        ? 'person'
+        : openCodeNativeAskAnswer({
+            mode: this.deps.approvalMode,
+            agentRules: undefined,
+            request,
+            granted: this.grants.some((grant) =>
+              openCodeGrantCovers(grant, request),
+            ),
+            configNeedsPerson,
+          });
+      if (decided === 'person') this.openPermission(ask);
+      else this.answerAutomatically(ask, decided);
+    };
+    const policy = this.deps.preToolPolicy;
+    if (!policy) {
+      answer(options.personOnly === true);
       return;
     }
-    this.answerAutomatically(ask, answer);
+    const tool = ask.toolCallId
+      ? this.askTools.get(askToolKey(ask.sessionId, ask.toolCallId))
+      : undefined;
+    if (!tool?.name || !ask.toolCallId) {
+      answer(true);
+      return;
+    }
+    const toolName = tool.name;
+    this.autoAnswering.add(ask.nativeId);
+    void policy({
+      toolName,
+      toolCallId: ask.toolCallId,
+      toolArgs: tool.input ?? ask.metadata ?? {},
+    })
+      .catch(
+        (error: unknown): PreToolPolicyDecision => ({
+          behavior: 'deny',
+          denial: {
+            allowed: false,
+            reason: `Station pre-tool policy failed; tool execution was denied: ${errorMessage(error)}`,
+          },
+        }),
+      )
+      .then((decision) => {
+        this.autoAnswering.delete(ask.nativeId);
+        if (this.stopped || this.requests.has(ask.nativeId)) return;
+        if (decision.behavior === 'deny') {
+          this.answerAutomatically(ask, 'reject', decision.denial.reason);
+          return;
+        }
+        const needsPerson =
+          options.personOnly === true ||
+          toolRequestNeedsPerson(toolName) ||
+          (this.deps.approvalMode !== 'never' && configNeedsPerson());
+        if (decision.behavior === 'allow' && !needsPerson) {
+          this.answerAutomatically(ask, 'once');
+          return;
+        }
+        answer(
+          needsPerson ||
+            (decision.behavior === 'ask' && decision.required === true),
+        );
+      });
+  }
+
+  /**
+   * The tools an ask may come from, by session and call id: the name
+   * `session.tool.input.started` gives and the input `session.tool.called`
+   * gives, as OpenCode's own ACP layer keeps them for its permission
+   * requests (2.3.0 `cli/src/acp/translate.ts`), until the tool ends.
+   */
+  private readonly askTools = new Map<
+    string,
+    { name?: string; input?: unknown }
+  >();
+  private noteAskTool(
+    type: string,
+    data: Record<string, unknown>,
+    sessionId: string,
+  ): void {
+    const callId = readString(data.id);
+    if (!callId) return;
+    const key = askToolKey(sessionId, callId);
+    if (type === 'session.tool.success' || type === 'session.tool.failed') {
+      this.askTools.delete(key);
+      return;
+    }
+    const known = this.askTools.get(key) ?? {};
+    if (type === 'session.tool.input.started') {
+      const name = readString(data.name);
+      if (name) known.name = name;
+    } else if (type === 'session.tool.called') {
+      known.input = data.input;
+    } else return;
+    this.askTools.delete(key);
+    this.askTools.set(key, known);
+    // A tool whose end the feed hid is not kept for ever.
+    if (this.askTools.size > ASK_TOOLS_MAX)
+      this.askTools.delete(this.askTools.keys().next().value as string);
   }
 
   /**
    * Answer an ask for the person (`once` or `reject`). One OpenCode will not
    * take is put to the person, unless it is gone already.
    */
-  private answerAutomatically(ask: NativeAsk, answer: 'once' | 'reject'): void {
+  private answerAutomatically(
+    ask: NativeAsk,
+    answer: 'once' | 'reject',
+    /** A rejection's reason, which OpenCode gives the model as feedback. */
+    message?: string,
+  ): void {
     this.autoAnswering.add(ask.nativeId);
     void this.deps.client
       .request(
         'POST',
         `/api/session/${ask.sessionId}/permission/${ask.nativeId}/reply`,
-        { decision: answer },
+        { decision: answer, ...(message ? { message } : {}) },
       )
       .then(
         () => {
