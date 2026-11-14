@@ -78,7 +78,9 @@ machinery:
 - [keep reviews fresh](documentation-review-ledger.md#keep-reviews-fresh): after
   committing reviewed bytes, run `npm run docs:freshness:check`, inspect each
   document it names, and record what you checked with
-  `npm run docs:review:record -- <doc> --note "..."`;
+  `npm run docs:review:record -- <doc> --note "..."`, or one
+  `--input <source> --note "..."` note for a changed source that many
+  documents cite;
 - the [ledger layout and merge rules](documentation-review-ledger.md#ledger-layout-and-merges),
   including the append-only note guards;
 - [generated release records and removed notes](documentation-review-ledger.md#generated-release-records-and-removed-notes).

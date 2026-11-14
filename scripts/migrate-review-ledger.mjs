@@ -630,7 +630,9 @@ function migratePathOnly(root) {
     )) {
       const run = JSON.parse(readFileSync(path.join(root, file), 'utf8'));
       if (
-        run.notes.every((note) => note.inputs !== undefined) ||
+        run.notes.every(
+          (note) => note.inputs !== undefined || note.input !== undefined,
+        ) ||
         readGitObjects(root, [`${base}:${file}`])[0] !== undefined
       )
         continue;
@@ -644,7 +646,8 @@ function migratePathOnly(root) {
         file,
       ]).trim();
       const covered = run.notes.map((note) => {
-        if (note.inputs !== undefined) return note;
+        // An input note already names exactly the input it covers.
+        if (note.inputs !== undefined || note.input !== undefined) return note;
         const record = decisions.get(note.path);
         const owner = record?.checks
           ? recordFile(note.path)

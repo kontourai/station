@@ -2,7 +2,11 @@ import { cpSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
-import { REVIEW_LEDGER_DIR, recordFile } from '../lib/review-ledger-store.mjs';
+import {
+  REVIEW_LEDGER_DIR,
+  recordFile,
+  serializeNotesFile,
+} from '../lib/review-ledger-store.mjs';
 import {
   check,
   commit,
@@ -33,34 +37,32 @@ import { forbidAmbientFreshnessMode } from './helpers/freshness-env.js';
 forbidAmbientFreshnessMode();
 const makeFileTempDir = trackTempDirs({ lifetime: 'file' });
 
-describe('append-only review notes and Git history (#3101)', () => {
-  // Built once per file and copied per test: the migration child dominated
-  // each test's setup, and every test starts from the same commits.
-  let template: { root: string; content: string } | undefined;
-  function pathOnlyFixture() {
-    if (!template) {
-      const f = fixture({ makeDir: makeFileTempDir });
-      // Two documents depend on the same source, as broad hubs do in Station.
-      editRecord(f.root, 'docs/c.md', (data) => {
-        data.sources.push({
-          path: 'src/c.ts',
-          digest: hash(SHARED_C),
-          revision: f.content,
-        });
+// Built once per file and copied per test: the migration child dominated
+// each test's setup, and every test starts from the same commits.
+let template: { root: string; content: string } | undefined;
+function pathOnlyFixture() {
+  if (!template) {
+    const f = fixture({ makeDir: makeFileTempDir });
+    // Two documents depend on the same source, as broad hubs do in Station.
+    editRecord(f.root, 'docs/c.md', (data) => {
+      data.sources.push({
+        path: 'src/c.ts',
+        digest: hash(SHARED_C),
+        revision: f.content,
       });
-      commit(f.root, 'add a shared dependency');
-      const migrated = run(f.root, 'migrate-review-ledger.mjs', [
-        '--path-only',
-      ]);
-      expect(migrated.status, migrated.stderr).toBe(0);
-      commit(f.root, 'migrate path-only decisions');
-      template = { root: f.root, content: f.content };
-    }
-    const root = makeTempDir('station-review-notes-');
-    cpSync(template.root, root, { recursive: true });
-    return fixtureAt(root, template.content);
+    });
+    commit(f.root, 'add a shared dependency');
+    const migrated = run(f.root, 'migrate-review-ledger.mjs', ['--path-only']);
+    expect(migrated.status, migrated.stderr).toBe(0);
+    commit(f.root, 'migrate path-only decisions');
+    template = { root: f.root, content: f.content };
   }
+  const root = makeTempDir('station-review-notes-');
+  cpSync(template.root, root, { recursive: true });
+  return fixtureAt(root, template.content);
+}
 
+describe('append-only review notes and Git history (#3101)', () => {
   function reviewShared(f: ReturnType<typeof fixture>, message: string) {
     for (const path of ['docs/map.md', 'docs/c.md']) {
       const result = record_(f.root, [path, '--note', message]);
@@ -662,5 +664,342 @@ describe('append-only review notes and Git history (#3101)', () => {
     git(f.root, ['mv', 'src/c.ts', 'src/moved.ts']);
     commit(f.root, 'later unreviewed move');
     expect(check(f.root, scoped).status).toBe(1);
+  });
+});
+
+// One reviewed note for a changed input, covering every document that cites it.
+describe('input review notes', () => {
+  const NOTES_DIR = `${REVIEW_LEDGER_DIR}/notes`;
+  const C_CHANGED = SHARED_C.replace('c1 = 1', 'c1 = 2');
+  const recordInput = (f: { root: string }, input: string, note: string) => {
+    const result = record_(f.root, ['--input', input, '--note', note]);
+    expect(result.status, JSON.stringify(result.error)).toBe(0);
+    return result.output;
+  };
+  const noteText = (f: { read: (path: string) => string }, file: string) =>
+    f.read(`${NOTES_DIR}/${file}`);
+  const blockedChanges = (result: ReturnType<typeof check>) =>
+    Object.fromEntries(
+      result.blocking.map((entry) => [entry.path, entry.changed]),
+    );
+
+  it('covers every document citing the changed source with one note, through scoped, landing and strict replay', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', C_CHANGED);
+    commit(f.root, 'change shared source');
+    expect(entryPaths(check(f.root, scoped).blocking)).toEqual([
+      'docs/c.md',
+      'docs/map.md',
+    ]);
+    const before = ledgerTexts(f.root);
+    const output = recordInput(f, 'src/c.ts', 'Neither page states c1.');
+    expect(output.recorded).toEqual([
+      {
+        kind: 'input',
+        path: 'src/c.ts',
+        paths: ['docs/c.md', 'docs/map.md'],
+        rebound: [],
+      },
+    ]);
+    // Only one notes file is added, holding one entry.
+    for (const [file, text] of Object.entries(before))
+      expect(f.read(file)).toBe(text);
+    const [file] = notesFiles(f.root);
+    expect(notesFiles(f.root)).toHaveLength(1);
+    expect(JSON.parse(noteText(f, file)).notes).toEqual([
+      {
+        input: 'src/c.ts',
+        paths: ['docs/c.md', 'docs/map.md'],
+        note: 'Neither page states c1.',
+      },
+    ]);
+    expect(check(f.root, scoped).status).toBe(0);
+    commit(f.root, 'record input note');
+    expect(check(f.root, scoped).status).toBe(0);
+    // The reader still shows, per document, which note reviewed which input.
+    for (const path of ['docs/c.md', 'docs/map.md']) {
+      const record = compiled(f.root, path);
+      expect(record.notes.at(-1)).toMatchObject({
+        file: `${NOTES_DIR}/${file}`,
+        input: 'src/c.ts',
+        inputs: ['src/c.ts'],
+        note: 'Neither page states c1.',
+      });
+      expect(record.checks).toContain('Neither page states c1.');
+    }
+    expect(compiled(f.root, 'docs/a.md').checks).not.toContain(
+      'Neither page states c1.',
+    );
+    // History replay judges the squash landing by the note it carries.
+    git(f.root, ['switch', '-q', 'main']);
+    git(f.root, ['merge', '--squash', 'pr']);
+    commit(f.root, 'squash PR');
+    expect(check(f.root, strict).status).toBe(0);
+  });
+
+  it('lets a later catch-up input note cover a landing that had none', () => {
+    const f = pathOnlyFixture();
+    f.write('src/c.ts', C_CHANGED);
+    commit(f.root, 'unreviewed landing');
+    const missing = check(f.root, strict);
+    expect(missing.status).toBe(1);
+    expect(blockedChanges(missing)).toEqual({
+      'docs/c.md': ['src/c.ts'],
+      'docs/map.md': ['src/c.ts'],
+    });
+    recordInput(f, 'src/c.ts', 'Catch-up: no documented claim changed.');
+    commit(f.root, 'catch up deliberately');
+    expect(check(f.root, strict).status).toBe(0);
+  });
+
+  it('does not cover an edited document that cites the input, in scoped or strict replay', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', C_CHANGED);
+    f.write('docs/map.md', '# Map cites C and D, edited\n');
+    commit(f.root, 'change source and one citing page');
+    recordInput(f, 'src/c.ts', 'Checked c1 against both pages.');
+    const result = check(f.root, scoped);
+    expect(result.status).toBe(1);
+    expect(blockedChanges(result)).toEqual({ 'docs/map.md': ['docs/map.md'] });
+    commit(f.root, 'input note');
+    // The same landing on main, judged by history replay.
+    git(f.root, ['switch', '-q', 'main']);
+    git(f.root, ['merge', '--squash', 'pr']);
+    commit(f.root, 'squash without a page note');
+    const replay = check(f.root, strict);
+    expect(replay.status).toBe(1);
+    expect(blockedChanges(replay)).toEqual({ 'docs/map.md': ['docs/map.md'] });
+    expect(
+      record_(f.root, ['docs/map.md', '--note', 'Reviewed the edited page.'])
+        .status,
+    ).toBe(0);
+    commit(f.root, 'page note');
+    expect(check(f.root, strict).status).toBe(0);
+  });
+
+  it('does not cover a different changed input of the same document', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', C_CHANGED);
+    f.write('src/d.ts', 'export const d = 2;\n');
+    commit(f.root, 'change two sources');
+    recordInput(f, 'src/c.ts', 'Checked c1.');
+    const result = check(f.root, scoped);
+    expect(result.status).toBe(1);
+    expect(blockedChanges(result)).toEqual({ 'docs/map.md': ['src/d.ts'] });
+    recordInput(f, 'src/d.ts', 'Checked d.');
+    expect(check(f.root, scoped).status).toBe(0);
+  });
+
+  it('does not cover a record edit', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', C_CHANGED);
+    editRecord(f.root, 'docs/map.md', (data) => {
+      data.summary = 'A changed human decision.';
+    });
+    commit(f.root, 'change source and a record decision');
+    recordInput(f, 'src/c.ts', 'Checked c1.');
+    const result = check(f.root, scoped);
+    expect(result.status).toBe(1);
+    expect(blockedChanges(result)).toEqual({ 'docs/map.md': ['docs/map.md'] });
+  });
+
+  it('covers a capture citing the input but never the image itself', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/ui.ts', 'export const ui = 2;\n');
+    commit(f.root, 'change capture source');
+    expect(recordInput(f, 'src/ui.ts', 'Pixels unaffected.').recorded).toEqual([
+      {
+        kind: 'input',
+        path: 'src/ui.ts',
+        paths: ['docs/learn/media/task.png'],
+        rebound: [],
+      },
+    ]);
+    expect(check(f.root, scoped).status).toBe(0);
+  });
+
+  it('names one input per note and refuses inputs nothing cites, before writing anything', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', C_CHANGED);
+    f.write('src/d.ts', 'export const d = 2;\n');
+    commit(f.root, 'change two sources');
+    const before = ledgerTexts(f.root);
+    const twice = record_(f.root, [
+      '--input',
+      'src/c.ts',
+      '--input',
+      'src/d.ts',
+      '--note',
+      'One note for both.',
+    ]);
+    expect(twice.status).toBe(1);
+    expect(twice.error?.code).toBe('usage');
+    expect(
+      record_(f.root, ['--input', 'src/none.ts', '--note', 'x']).error?.code,
+    ).toBe('not-cited');
+    // A whole-file input does not stand for a cited value inside that file.
+    const value = run(f.root, 'record-documentation-review.mjs', [
+      '--input',
+      'package.json',
+      '--note',
+      'x',
+    ]);
+    expect(value.status).toBe(1);
+    expect(value.stderr).toContain('package.json#/scripts/docs');
+    for (const entries of [
+      [{ input: ['src/c.ts', 'src/d.ts'], note: 'Both.' }],
+      [{ input: 'src/c.ts', paths: ['docs/a.md'], note: 'Chosen pages.' }],
+      [
+        { input: 'src/c.ts', note: 'Once.' },
+        { input: 'src/c.ts', note: 'Twice.' },
+      ],
+      [
+        { path: 'docs/map.md', note: 'Valid page entry.' },
+        { input: 'src/none.ts', note: 'Nothing cites this.' },
+      ],
+    ]) {
+      f.write('.git/reviews.json', JSON.stringify(entries));
+      expect(record_(f.root, ['--batch', '.git/reviews.json']).status).toBe(1);
+    }
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 9'));
+    expect(
+      record_(f.root, ['--input', 'src/c.ts', '--note', 'Uncommitted.']).error
+        ?.code,
+    ).toBe('not-committed');
+    expect(ledgerTexts(f.root)).toEqual(before);
+  });
+
+  it('refuses hand-written input notes that list the input itself or several inputs', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('docs/a.md', '# A edited\n');
+    commit(f.root, 'edit a cited page');
+    const head = git(f.root, ['rev-parse', 'HEAD']);
+    const write = (entry: Record<string, unknown>) => {
+      const text = `{\n  "revision": "${head}",\n\n  "notes": [\n    ${JSON.stringify(entry)}\n  ]\n}\n`;
+      const name = `${NOTES_DIR}/20990101T000000.000Z-${hash(text).slice(0, 12)}.json`;
+      f.write(name, text);
+      return name;
+    };
+    for (const entry of [
+      { input: 'docs/a.md', paths: ['docs/a.md', 'docs/c.md'], note: 'x' },
+      { input: ['docs/a.md', 'src/c.ts'], paths: ['docs/c.md'], note: 'x' },
+      { input: 'docs/a.md', paths: ['docs/c.md', 'docs/c.md'], note: 'x' },
+    ]) {
+      const name = write(entry);
+      const result = run(
+        f.root,
+        'check-documentation-freshness.mjs',
+        [],
+        scoped,
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('Invalid input review note');
+      rmSync(join(f.root, name));
+    }
+    // A listed page that does not cite the input gains nothing from it.
+    write({ input: 'src/c.ts', paths: ['docs/a.md'], note: 'Unrelated.' });
+    expect(compiled(f.root, 'docs/a.md').checks).not.toContain('Unrelated.');
+  });
+
+  it('keeps an input note append-only and accepts only its exact privacy redaction', () => {
+    const f = pathOnlyFixture();
+    f.write('src/c.ts', C_CHANGED);
+    commit(f.root, 'main source change');
+    recordInput(f, 'src/c.ts', 'Checked c1 on proxy.example.internal.');
+    commit(f.root, 'main input note');
+    const [file] = notesFiles(f.root);
+    const path = `${NOTES_DIR}/${file}`;
+    const original = f.read(path);
+    git(f.root, ['switch', '-qc', 'pr']);
+    rmSync(join(f.root, path));
+    commit(f.root, 'delete the input note');
+    const deleted = check(f.root, scoped);
+    expect(deleted.status).toBe(1);
+    expect(deleted.blocking).toContainEqual(
+      expect.objectContaining({ path, rule: 'note-removed' }),
+    );
+    // Narrowing the pages it covers under a new hash name is a removal too.
+    const narrowed = original.replace('"docs/c.md",', '');
+    f.write(
+      `${NOTES_DIR}/${file.slice(0, 21)}${hash(narrowed).slice(0, 12)}.json`,
+      narrowed,
+    );
+    commit(f.root, 'rewrite the input note');
+    expect(check(f.root, scoped).blocking).toContainEqual(
+      expect.objectContaining({ path, rule: 'note-removed' }),
+    );
+    git(f.root, ['reset', '-q', '--hard', 'main']);
+    const redacted = run(f.root, 'record-documentation-review.mjs', [
+      '--redact-private-hosts',
+      path,
+    ]);
+    expect(redacted.status, redacted.stderr).toBe(0);
+    commit(f.root, 'redact the input note');
+    expect(check(f.root, scoped).status).toBe(0);
+    const [kept] = notesFiles(f.root);
+    expect(JSON.parse(noteText(f, kept)).notes[0]).toEqual({
+      input: 'src/c.ts',
+      paths: ['docs/c.md', 'docs/map.md'],
+      note: 'Checked c1 on [private host].',
+    });
+  });
+
+  it('archives an input note byte for byte at compaction and still compiles it', () => {
+    const f = pathOnlyFixture();
+    f.write('src/c.ts', C_CHANGED);
+    commit(f.root, 'main source change');
+    recordInput(f, 'src/c.ts', 'Checked c1.');
+    commit(f.root, 'main input note');
+    const [file] = notesFiles(f.root);
+    const bytes = f.read(`${NOTES_DIR}/${file}`);
+    const advance = () => {
+      git(f.root, ['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+      const result = run(f.root, 'record-documentation-review.mjs', [
+        '--advance-baseline',
+      ]);
+      expect(result.status, result.stderr).toBe(0);
+    };
+    // The first advance archives only what the previous baseline held.
+    advance();
+    commit(f.root, 'advance once');
+    expect(notesFiles(f.root)).toContain(file);
+    const previous = git(f.root, ['rev-parse', 'HEAD~1']);
+    advance();
+    git(f.root, ['switch', '-qc', 'compact']);
+    commit(f.root, 'advance and compact');
+    expect(notesFiles(f.root)).not.toContain(file);
+    const archive = JSON.parse(f.read(`${NOTES_DIR}/archive/${previous}.json`));
+    expect(archive.notes[file]).toBe(bytes);
+    expect(check(f.root, scoped).status).toBe(0);
+    expect(check(f.root, strict).status).toBe(0);
+    expect(compiled(f.root, 'docs/map.md').notes).toContainEqual(
+      expect.objectContaining({
+        file: `${NOTES_DIR}/${file}`,
+        input: 'src/c.ts',
+        note: 'Checked c1.',
+      }),
+    );
+  });
+
+  it('serializes document notes exactly as before input notes existed', () => {
+    const revision = 'a'.repeat(40);
+    expect(
+      serializeNotesFile({
+        revision,
+        notes: [
+          { path: 'docs/a.md', note: 'Old form.' },
+          { path: 'docs/c.md', note: 'With inputs.', inputs: ['src/c.ts'] },
+        ],
+      }),
+    ).toBe(
+      `{\n  "revision": "${revision}",\n\n  "notes": [\n    {"path":"docs/a.md","note":"Old form."},\n\n    {"path":"docs/c.md","note":"With inputs.","inputs":["src/c.ts"]}\n  ]\n}\n`,
+    );
   });
 });

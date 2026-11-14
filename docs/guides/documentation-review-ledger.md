@@ -33,7 +33,9 @@ input fails the report rather than returning an empty impact list.
 
 Catch-up derives outstanding reviews from Git history since the ledger's
 `coverageBaseline`. Each first-parent landing commit that changes a document
-or a cited source needs an added note covering that document and input. Squash
+or a cited source needs an added note covering that document and input; an
+[input note](#one-note-for-a-widely-cited-input) covers its input for the
+documents it lists. Squash
 commits contain both source changes and notes. Ordinary merges introduce the
 other branch's notes with its source changes. A later deliberate catch-up note
 can cover named outstanding inputs; restoring old bytes alone cannot erase an
@@ -132,7 +134,9 @@ serves `docs:truth:gate`, Veritas readiness, `docs:learn:check`, captures and
 
 - **Scoped** (local runs, pre-push, `pull_request` and `pull_request_target`):
   every document whose file or listed sources the PR's diff against its merge
-  base touches needs a new note covering those inputs. Human record edits also
+  base touches needs a new note covering those inputs. One input note can cover
+  a changed source for every document that cites it; the document's own file
+  and its record still need a document note. Human record edits also
   need a note. Dependencies at the merge base and in the working tree are both
   considered, so dropping a citation cannot hide a changed input. A removed
   record whose document remains cannot hide source changes either. Committed
@@ -162,11 +166,13 @@ After inspecting the changed claims and their callers:
 npm run docs:review:record -- --show-delta docs/guides/example.md
 npm run docs:review:record -- docs/guides/example.md --note "Checked the new retry limit against its caller."
 npm run docs:review:record -- docs/guides/example.md --note "..." --drop-source src-server/removed.ts --add-source src-server/new-owner.ts
+npm run docs:review:record -- --input src-server/shared-owner.ts --note "No cited claim depends on the changed retry default."
 npm run docs:review:record -- --batch reviews.json
 npm run docs:freshness:check
 ```
 
-Batch input is `[{ "path", "note", "removedSources"?, "addedSources"? }]`.
+Batch input is `[{ "path", "note", "removedSources"?, "addedSources"? }]`;
+an input note entry is `{ "input", "note" }`.
 Commit the reviewed document and source changes first, then record and commit
 the note. The note records the context HEAD and the inputs inspected; the
 context revision does not have to survive a squash merge. While the PR is open,
@@ -176,7 +182,8 @@ The root `AGENTS.md` rule to integrate upstream with merge, not rebase, keeps
 those note revisions valid. Recording writes
 only a new uniquely named notes file, plus a record edit if the dependency list
 really changes. It refuses empty notes, unknown paths, invalid or duplicate
-sources, uncommitted reviewed inputs, and captures whose image identity changed.
+sources, uncommitted reviewed inputs, captures whose image identity changed, and
+input notes for an input that no record or capture cites.
 It validates the entire batch before writing. New records still need their
 kind, state, summary and limits decided by a reviewer. A deliberate review of
 unchanged inputs is allowed (`--rereview` remains accepted for compatibility).
@@ -196,6 +203,37 @@ whole file paths. Narrow a citation only after reviewing the claim it supports;
 retain version fields when the claim actually depends on that version.
 Notes document review decisions, not automated semantic approval.
 
+### One note for a widely cited input
+
+A source that many records cite would otherwise need one near-identical note
+per citing document whenever it changes. After checking the changed source
+against every page that cites it, record one input note instead:
+
+```sh
+npm run docs:review:record -- --input src-server/shared-owner.ts --note "Checked the new default against every citing page; no stated claim changed."
+```
+
+The command lists every record and capture whose sources cite exactly that
+input, after any source edits in the same batch, and stores the list in the
+note. The note covers that one input for those documents in the scoped check,
+in history replay and in catch-up. The learning reader shows it on each listed
+document with the input it covers. It does not cover:
+
+- an edit to a document's own file, or a capture's image, even when that
+  document cites the input; the parser refuses a note that lists its input;
+- a record or capture decision edit, including a source added or dropped;
+- any other input, including another value cited from the same file
+  (`package.json` does not stand for `package.json#/scripts/docs`);
+- a document that starts citing the input after the note was recorded, or one
+  that no longer cites it.
+
+Each note names one input, so a single note cannot clear every input a change
+touches; record one note per input, or several entries in one `--batch`. The
+note claims that its author checked each listed page against the change. The
+gate proves only that such a note exists for the input, not that every listed
+page was read; when a page's claims do change, edit the page and give it a
+document note.
+
 ### Ledger layout and merges
 
 GitHub uses Git's default text merge; this layout needs no local merge driver.
@@ -205,7 +243,7 @@ GitHub uses Git's default text merge; this layout needs no local merge driver.
 | `ledger.json` | Layout version 3 and the history `coverageBaseline` |
 | `records/<document>.json` | Path, kind, state, summary, limits, source path list and retained historical checks |
 | `captures/<capture>.json` | Source path list and retained historical review notes; image identity stays in `media.json` |
-| `notes/<time>-<hash>.json` | Context revision and reviews: document/capture path, note text and covered inputs |
+| `notes/<time>-<hash>.json` | Context revision and reviews: a document note (document/capture path, note text and covered inputs) or an input note (one input, the records and captures citing it, note text) |
 | `notes/archive/<baseline>.json` | Immutable: notes landed at or before that coverage baseline, by file name, with their exact bytes |
 
 Each source path occupies its own line, separated from the next by a blank
@@ -273,7 +311,11 @@ discarded: the notes of a removed document stay in the store, loose until a
 baseline advance archives them, because deleting them would fail
 `note-removed`. A branch cut before a compaction merges `main` cleanly: it
 never modifies landed notes, so `main`'s deletions and added archive apply
-without conflict. The gate proves that a covering
+without conflict. Input notes keep layout version 3: older tooling refuses one
+as an invalid review note rather than ignoring it. A branch cut before input
+notes existed fails its freshness check once its base holds one, because the
+check reads that base with the branch's own scripts; merge `main` to get the
+current tooling. The gate proves that a covering
 note exists for each touched input, not that its prose is accurate. All consumers
 use
 [`review-ledger-store.mjs`](../../scripts/lib/review-ledger-store.mjs), including

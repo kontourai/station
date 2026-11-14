@@ -382,9 +382,19 @@ export function deriveReviewHistory(root, state, committedNotes) {
           blobs.get(`${commit.revision}:${file}`)?.toString('utf8')
       )
         continue;
-      for (const note of json(`${commit.revision}:${file}`).notes)
+      for (const note of json(`${commit.revision}:${file}`).notes) {
+        // An input note clears only its one input for the paths it lists.
+        // The input is never one of those paths, so a document edit stays
+        // outstanding; the parser enforces this, and replay reads raw JSON.
+        if (note.input !== undefined) {
+          for (const path of note.paths ?? [])
+            if (path !== note.input && path !== bindingFile(note.input))
+              pending.get(path)?.delete(note.input);
+          continue;
+        }
         for (const input of note.inputs ?? [])
           pending.get(note.path)?.delete(input);
+      }
     }
   }
   // Only a note not yet committed may cover a working-tree edit; an archived
