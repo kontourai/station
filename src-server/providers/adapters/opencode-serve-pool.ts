@@ -55,6 +55,13 @@ export interface OpenCodeServeAcquireInput {
   readonly env: NodeJS.ProcessEnv;
   /** The engine spawn tmp dir. */
   readonly tmpDir: string;
+  /**
+   * The digest of the Station tool servers the session adds to the server
+   * (`openCodeMcpDigest`). Added servers belong to the server's location,
+   * which its sessions share, so sessions with different sets (Station's
+   * carry per-session credentials) never share a server.
+   */
+  readonly mcpDigest: string;
 }
 
 export interface OpenCodeServeLease {
@@ -153,6 +160,7 @@ export class OpenCodeServePool {
       [binary, size, mtimeMs],
       cwd,
       envDigest(input.env, input.tmpDir),
+      input.mcpDigest,
     ]);
     let entry = this.servers.get(key);
     if (!entry || entry.stopping) {

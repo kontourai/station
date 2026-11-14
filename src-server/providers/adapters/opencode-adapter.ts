@@ -96,8 +96,14 @@ import {
   isOpenCodeGovernedMode,
 } from './acp-approval-mode.js';
 import { requestedAcpSessionMode } from './acp-session-mode.js';
+import { assertExecutionOverrideDelivery } from './capability-delivery-metadata.js';
 import { nativeResumeBindingKey } from './native-resume-binding.js';
 import { readString } from './opencode-native-events.js';
+import {
+  type OpenCodeNativeMcp,
+  openCodeMcpDigest,
+  resolveOpenCodeNativeMcp,
+} from './opencode-native-mcp.js';
 import {
   type OpenCodeServeClient,
   OpenCodeServeHttpError,
@@ -428,6 +434,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
   private async verifiedLease(
     plan: NativePlan,
     threadId: string,
+    mcpDigest: string,
   ): Promise<OpenCodeServeLease | undefined> {
     let identity: string;
     try {
@@ -448,6 +455,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         cwd: plan.cwd,
         env: plan.env,
         tmpDir: plan.env.TMPDIR ?? '',
+        mcpDigest,
       });
     } catch (error) {
       // The server would not start: the session runs over ACP, as for an
@@ -602,7 +610,13 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     const agent = requestedAcpSessionMode(input.modelOptions);
     if (agent && !isOpenCodeGovernedMode(agent))
       throw new ApprovalGovernanceRefusedError(governedModeRefusal(agent));
-    const lease = await this.verifiedLease(plan, input.threadId);
+    // The governance check needs no tool servers; it reads from a server
+    // that has none added.
+    const lease = await this.verifiedLease(
+      plan,
+      input.threadId,
+      openCodeMcpDigest([]),
+    );
     if (!lease) {
       await this.inner.preflightStart?.(this.acpStartInput(input, config));
       return;
@@ -640,16 +654,80 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         OPENCODE_NATIVE_UNSUPPORTED_SETTING,
         "Station runs this OpenCode chat over ACP: its effort setting is not available on OpenCode's own server.",
       );
-    const lease = plan
-      ? await this.verifiedLease(plan, input.threadId)
-      : undefined;
-    if (!plan || !lease) return this.startOverAcp(input, config);
+    // Station's tool servers decide which server the session may share.
+    let mcp: OpenCodeNativeMcp | undefined;
+    if (plan) {
+      mcp = await resolveOpenCodeNativeMcp(
+        input,
+        config,
+        this.options.acp ?? {},
+      );
+      try {
+        assertExecutionOverrideDelivery(input.metadata, mcp.undelivered);
+      } catch (error) {
+        this.revokeMcpAuth(input.threadId);
+        throw error;
+      }
+    }
+    const lease =
+      plan && mcp
+        ? await this.verifiedLease(
+            plan,
+            input.threadId,
+            openCodeMcpDigest(mcp.servers),
+          )
+        : undefined;
+    if (!plan || !lease || !mcp) {
+      // The ACP adapter mints its own credentials for the session.
+      if (mcp) this.revokeMcpAuth(input.threadId);
+      return this.startOverAcp(input, config);
+    }
     try {
-      return await this.startNative(input, plan, lease);
+      return await this.startNative(input, plan, lease, mcp);
     } catch (error) {
       lease.release();
+      this.revokeMcpAuth(input.threadId);
       throw error;
     }
+  }
+
+  /** Revoke the Station tool-server credentials minted for a native session. */
+  private revokeMcpAuth(threadId: string): void {
+    this.options.acp?.revokeStationControlMcpAuth?.(threadId);
+  }
+
+  /**
+   * Add the session's Station tool servers to its server (`PUT
+   * /api/experimental/mcp/{name}`). One OpenCode will not add is reported,
+   * by name only (its config carries credentials), and the session starts
+   * without it, as on ACP.
+   */
+  private async addMcpServers(
+    threadId: string,
+    client: OpenCodeServeClient,
+    mcp: OpenCodeNativeMcp,
+  ): Promise<void> {
+    const failed: string[] = [];
+    for (const server of mcp.servers) {
+      try {
+        await client.request(
+          'PUT',
+          `/api/experimental/mcp/${encodeURIComponent(server.name)}`,
+          { config: server.config },
+        );
+      } catch (error) {
+        failed.push(
+          `${server.name} (${error instanceof OpenCodeServeHttpError ? error.status : 'no answer'})`,
+        );
+      }
+    }
+    const skipped = mcp.undelivered.map((entry) => entry.id ?? entry.reason);
+    if (failed.length > 0 || skipped.length > 0)
+      this.warn(
+        threadId,
+        'OPENCODE_TOOL_SERVERS_UNDELIVERED',
+        `Some tool servers were not given to OpenCode: ${[...failed, ...skipped].join(', ')}.`,
+      );
   }
 
   /** The start input the inner ACP adapter reads, its cursor unwrapped. */
@@ -755,6 +833,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     input: ProviderSessionStartInput,
     plan: NativePlan,
     lease: OpenCodeServeLease,
+    mcp: OpenCodeNativeMcp,
   ): Promise<ProviderSession> {
     const cursor = isOpenCodeResumeCursor(input.resumeCursor)
       ? input.resumeCursor
@@ -800,6 +879,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         : undefined;
     const permissions = floor ? openCodeNativeApprovalRules(floor) : undefined;
     const model = readModelRef(input.modelId);
+    // Before the session runs, so its first step sees them.
+    await this.addMcpServers(input.threadId, lease.client, mcp);
     if (cursor) {
       sessionId = cursor.sessionId;
       if (agent && agent !== stored)
@@ -908,6 +989,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     if (this.native.get(threadId) !== record) return;
     this.native.delete(threadId);
     await record.native.stop('exited');
+    this.revokeMcpAuth(threadId);
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -1371,8 +1453,12 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     const record = this.native.get(threadId);
     if (!record) return;
     this.native.delete(threadId);
-    await record.native.stop('stopped');
-    record.lease.release();
+    try {
+      await record.native.stop('stopped');
+    } finally {
+      record.lease.release();
+      this.revokeMcpAuth(threadId);
+    }
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,

@@ -97,6 +97,7 @@ const input = (overrides: Record<string, unknown> = {}) => ({
     OPENCODE_PASSWORD: 'inherited-too',
   },
   tmpDir: '/station/tmp/engine',
+  mcpDigest: 'no-tool-servers',
   ...overrides,
 });
 
@@ -170,6 +171,19 @@ describe('OpenCodeServePool', () => {
     await h.pool.acquire(input({ connectionId: 'opencode-2' }));
     await h.pool.acquire(input({ env: { PATH: '/other' } }));
     expect(h.spawned).toHaveLength(4);
+  });
+
+  test('sessions whose Station tool servers differ never share a server', async () => {
+    const h = harness();
+    active = h.pool;
+    const a = await h.pool.acquire(input({ mcpDigest: 'session-a-servers' }));
+    const b = await h.pool.acquire(input({ mcpDigest: 'session-b-servers' }));
+    expect(b.url).not.toBe(a.url);
+    const again = await h.pool.acquire(
+      input({ mcpDigest: 'session-a-servers' }),
+    );
+    expect(again.url).toBe(a.url);
+    expect(h.spawned).toHaveLength(2);
   });
 
   test('a server stops only once every lease is back and the idle bound passed', async () => {

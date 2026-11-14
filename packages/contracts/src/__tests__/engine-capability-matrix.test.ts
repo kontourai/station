@@ -254,12 +254,24 @@ describe('engine capability matrix', () => {
     expect(row).toMatchObject({
       systemPrompt: { state: 'unsupported' },
       instructionsInFirstTurn: { state: 'session', channel: 'first-turn' },
-      toolServers: { state: 'unsupported' },
+      toolServers: {
+        state: 'session',
+        channel: 'wire',
+        builtinStationControlDelivery: {
+          mechanism: 'http-header-token',
+          basis: 'runtime_observation',
+          observation: 'acp-mcp-http',
+        },
+      },
       skills: { state: 'unsupported' },
       commands: { state: 'unsupported' },
       modelSelection: { state: 'session', channel: 'wire' },
       toolPolicy: { state: 'unsupported', adapterModule: 'opencode-adapter' },
-      imageInput: { state: 'unsupported' },
+      imageInput: {
+        state: 'session',
+        channel: 'native-content',
+        basis: 'runtime_observation',
+      },
       midTurnSteer: true,
       subagentObservability: { state: 'declared', signals: ['lifecycle'] },
       subagentControl: { state: 'none' },
@@ -267,7 +279,7 @@ describe('engine capability matrix', () => {
     // It is never the unknown-engine matrix the UI hides everything behind.
     expect(row).not.toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
     expect(sessionDeliveryChannels('opencode')).toEqual({
-      toolServers: false,
+      toolServers: true,
       skills: false,
       systemPrompt: false,
     });
@@ -570,7 +582,7 @@ describe('station#1549: the observation-based basis (policy in the cell, evidenc
     ).toBe('chat-only');
   });
 
-  test('station#1684: EXACTLY ONE shipped cell carries an observation basis, and it is acp', () => {
+  test('station#1684: only the ACP-backed rows carry an observation basis: acp, and opencode (whose fallback is ACP)', () => {
     // Slice 1's version of this test asserted that EVERY shipped cell was
     // `declared` — its way of pinning "this slice adds a type and changes no
     // behavior". Slice 2 is the change it was holding the door for, so the
@@ -592,7 +604,10 @@ describe('station#1549: the observation-based basis (policy in the cell, evidenc
         expect(delivery.basis).toBe('declared');
       }
     }
-    expect(observationBased).toEqual(['acp']);
+    // `opencode` (round 4): its ACP fallback reads the same live
+    // `mcpCapabilities.http` observation as `acp`; its native transport has
+    // HTTP MCP by its verified API.
+    expect(observationBased).toEqual(['acp', 'opencode']);
   });
 
   test('resolveBuiltinAgentEngineBinding never optimistically binds an unobserved connection, and binds it the moment evidence says yes', () => {

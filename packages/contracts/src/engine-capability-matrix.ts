@@ -1337,11 +1337,22 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // sendTurn; the inner ACP adapter's `session/prompt`), so the authored
     // prompt prepended to the first turn arrives as ordinary text.
     instructionsInFirstTurn: { state: 'session', channel: 'first-turn' },
-    // Native: `POST /api/session` carries no MCP servers and the adapter
-    // registers none (`opencode-adapter.ts` startNative). The ACP fallback
-    // could pass them on `session/new`, but a cell cannot name the
-    // transport, so the native floor stands.
-    toolServers: { state: 'unsupported' },
+    // Both transports deliver the servers the `acp` row does, resolved the
+    // same way (`acp-mcp-passthrough.ts`). Native: each is added to the
+    // session's own OpenCode server (`PUT /api/experimental/mcp/{name}`,
+    // `opencode-native-mcp.ts`; fixture `opencode-serve-2.3.0-mcp-add.jsonl`),
+    // a server no session with other tool servers shares; HTTP MCP is part
+    // of the verified API. ACP: on `session/new`, behind the live
+    // `mcpCapabilities.http` gate, as for `acp`.
+    toolServers: {
+      state: 'session',
+      channel: 'wire',
+      builtinStationControlDelivery: {
+        mechanism: 'http-header-token',
+        basis: 'runtime_observation',
+        observation: 'acp-mcp-http',
+      },
+    },
     skills: { state: 'unsupported' },
     // Authored commands are not delivered on either transport; OpenCode's
     // own commands run through `engine-command-dispatch.ts`.

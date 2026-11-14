@@ -6,6 +6,7 @@
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test } from 'vitest';
+import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   evaluateOpenCodeRules,
   type OpenCodeNativeRule,
@@ -27,6 +28,7 @@ import {
   OPENCODE_NATIVE_UNVERIFIED,
   OpenCodeAdapter,
 } from '../adapters/opencode-adapter.js';
+import { openCodeMcpDigest } from '../adapters/opencode-native-mcp.js';
 import { OpenCodeRequestClosedError } from '../adapters/opencode-serve-session.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import {
@@ -613,6 +615,103 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
       }),
     ).rejects.toBeInstanceOf(AttachmentInputUnsupportedError);
     expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(0);
+  });
+
+  /** The capture added `station-echo`; Station's built-in is `station-control`. */
+  const asStationControl = (record: OpenCodeReplayRecord) =>
+    record.path === '/api/experimental/mcp/station-echo'
+      ? { ...record, path: '/api/experimental/mcp/station-control' }
+      : record;
+
+  /** Station's tool servers for a thread: the built-in station-control, by HTTP. */
+  function stationTools(tokens: Record<string, string>) {
+    const revoked: string[] = [];
+    return {
+      revoked,
+      options: {
+        getConnections: async () => [
+          { ...CONNECTION, provideToolServers: ['station-control'] },
+        ],
+        acp: {
+          resolveToolServer: async (id: string) =>
+            id === 'station-control'
+              ? {
+                  id: 'station-control',
+                  kind: 'mcp' as const,
+                  transport: 'stdio' as const,
+                  command: 'node',
+                  args: [builtinStationControlServerPath()],
+                  env: { STATION_API_BASE: 'http://127.0.0.1:3141' },
+                }
+              : null,
+          mintStationControlMcpAuth: (threadId: string) => ({
+            url: 'http://127.0.0.1:47999/mcp/station-control',
+            token: tokens[threadId] as string,
+          }),
+          revokeStationControlMcpAuth: (threadId: string) => {
+            revoked.push(threadId);
+          },
+        },
+      },
+    };
+  }
+
+  test("a session's Station tool servers are added to its OpenCode server before the session, and their credentials go nowhere else", async () => {
+    const tools = stationTools({ 'thread-1': 'tok-session-one' });
+    const h = await setup(
+      { scenario: 'mcp-add', rewrite: asStationControl },
+      tools.options,
+    );
+    await h.start();
+    const added = h.replay.made('PUT', '/api/experimental/mcp/station-control');
+    expect(added.map((request) => request.body)).toEqual([
+      {
+        config: {
+          type: 'remote',
+          url: 'http://127.0.0.1:47999/mcp/station-control',
+          headers: { Authorization: 'Bearer tok-session-one' },
+          oauth: false,
+        },
+      },
+    ]);
+    // The shape the real server took (2.3.0 mcp-add capture).
+    const recorded = loadOpenCodeFixture('mcp-add').find(
+      (line) => line.method === 'PUT',
+    )?.body as { config: Record<string, unknown> };
+    expect(Object.keys(recorded.config).sort()).toEqual(
+      Object.keys((added[0] as { body: typeof recorded }).body.config).sort(),
+    );
+    const writes = h.replay.requests.map(
+      (request) => `${request.method} ${request.path}`,
+    );
+    expect(
+      writes.indexOf('PUT /api/experimental/mcp/station-control'),
+    ).toBeLessThan(writes.indexOf('POST /api/session'));
+    // Its server is keyed by the session's tool servers.
+    expect(h.leaser.acquired[0]?.mcpDigest).not.toBe(openCodeMcpDigest([]));
+    const { turnId } = await h.turn('DO_MCP');
+    await h.waitFor(completedFor(turnId));
+    expect(
+      h.events.filter((event) => event.method === 'runtime.warning'),
+    ).toEqual([]);
+    expect(JSON.stringify(h.events)).not.toContain('tok-session-one');
+    await h.adapter.stopSession('thread-1');
+    expect(tools.revoked).toContain('thread-1');
+  });
+
+  test('two sessions with different Station tool-server credentials ask for different servers', async () => {
+    const digests: Array<string | undefined> = [];
+    for (const token of ['tok-one', 'tok-two']) {
+      const tools = stationTools({ 'thread-1': token });
+      const h = await setup(
+        { scenario: 'mcp-add', rewrite: asStationControl },
+        tools.options,
+      );
+      await h.start();
+      digests.push(h.leaser.acquired[0]?.mcpDigest);
+    }
+    expect(digests[0]).toBeDefined();
+    expect(digests[0]).not.toBe(digests[1]);
   });
 
   test('a subagent is reported as child work only', async () => {

@@ -59,6 +59,14 @@ export const OPENCODE_NATIVE_ROUTES: readonly OpenCodeServeRoute[] = [
   { operationId: 'model.list', method: 'GET', template: '/api/model' },
   { operationId: 'mcp.list', method: 'GET', template: '/api/mcp' },
   {
+    // Station's tool servers for the session (`opencode-native-mcp.ts`),
+    // added to the server's default location as OpenCode's ACP layer adds a
+    // client's.
+    operationId: 'experimental.mcp.add',
+    method: 'PUT',
+    template: '/api/experimental/mcp/{server}',
+  },
+  {
     operationId: 'permission.saved.list',
     method: 'GET',
     template: '/api/permission/saved',
