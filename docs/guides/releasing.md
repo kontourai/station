@@ -242,6 +242,9 @@ scheduled run executes the corpus when main has moved, when that run was
 cancelled, timed out or incomplete, when a job failed outside its test step
 (checkout, install, browser download or prerequisites), and once the 24 hours
 pass. Pushes and manual dispatches always execute. A lookup failure runs fresh.
+Such a skipped run leaves the open repair episode and its run link unchanged,
+since it ran no tests; the health watchdog still counts it as a started,
+unqualified run.
 Dispatch a fresh diagnostic when investigating environment changes or confirming
 a repair; a receipt is bounded source/environment evidence, not physical-device
 or provider publication proof:

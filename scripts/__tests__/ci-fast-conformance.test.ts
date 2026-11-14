@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   readFileSync,
   symlinkSync,
@@ -151,5 +152,68 @@ describe('ci:fast generated conformance freshness', () => {
       'src-server/runtime/types.ts',
     ])
       expect(selected(unrelated), unrelated).toBe(false);
+  });
+
+  // The explicit input edges must keep up with the generator. This follows
+  // only STATIC RELATIVE runtime imports (type-only imports are erased by
+  // tsx and skipped) from the generator outward, plus the repository paths
+  // the generator spells as string literals. It cannot see a path built at
+  // run time, a dynamic import, or a file a package reads; pnpm-lock.yaml,
+  // read through scripts/lib/pnpm-lockfile.mjs's root argument, is one such
+  // input and is listed by hand in the edges instead.
+  it('covers every static relative import and literal path the generator reads', () => {
+    const repo = process.cwd();
+    const generator = /\bscripts\/\S+\.mjs\b/.exec(
+      JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8')).scripts[
+        'conduit:conformance:check'
+      ],
+    )?.[0];
+    if (!generator) throw new Error('conformance generator not found');
+    const resolveImport = (from: string, specifier: string) => {
+      const base = join(dirname(from), specifier);
+      for (const candidate of [
+        base,
+        `${base}.ts`,
+        `${base}.mjs`,
+        base.replace(/\.js$/, '.ts'),
+      ])
+        if (existsSync(join(repo, candidate)) && candidate.includes('.'))
+          return candidate;
+      throw new Error(`cannot resolve ${specifier} from ${from}`);
+    };
+    const inputs = new Set<string>();
+    const pending = [generator];
+    while (pending.length) {
+      const file = pending.pop() as string;
+      if (inputs.has(file)) continue;
+      inputs.add(file);
+      const source = readFileSync(join(repo, file), 'utf8');
+      for (const match of source.matchAll(
+        /^import\s+(?!type\b)[^;]*?from\s+'(\.{1,2}\/[^']+)'/gms,
+      ))
+        pending.push(resolveImport(file, match[1]));
+      if (file === generator)
+        for (const match of source.matchAll(
+          /'((?:docs|src-server|scripts|config)\/[^']+\.[a-z]+)'/g,
+        ))
+          inputs.add(match[1]);
+    }
+    // The walk must at least reach what the fixture copies.
+    expect(inputs).toContain(
+      'src-server/runtime/frameworks/conduit-framework-adapter.ts',
+    );
+    expect(inputs).toContain(
+      'docs/conformance/station-runtime-conformance.json',
+    );
+    const manifest = buildTestImpactManifest({ root: repo });
+    const suite = 'scripts/__tests__/ci-fast-conformance.test.ts';
+    for (const input of inputs)
+      expect(
+        selectChangedVerification(
+          [input],
+          manifest as Parameters<typeof selectChangedVerification>[1],
+        ).tests.some((entry: { path: string }) => entry.path === suite),
+        `${input} has no impact edge to ${suite}`,
+      ).toBe(true);
   });
 });

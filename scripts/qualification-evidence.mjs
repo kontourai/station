@@ -132,7 +132,12 @@ const NONTERMINAL_RUN_STATES = new Set([
   'requested',
   'in_progress',
 ]);
-const FULL_QUALIFICATION_JOB_NAMES = [
+/**
+ * Every job a reusable full qualification run must have completed
+ * successfully, by its displayed name. Pinned against full-regression.yml's
+ * jobs and matrix slices, so a slice cannot drop out of reuse unnoticed.
+ */
+export const FULL_QUALIFICATION_JOB_NAMES = [
   'resolve',
   'Static and app builds',
   'Ordinary corpus 1-2 of 8',

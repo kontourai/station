@@ -3,11 +3,13 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   DEPLOY_LEDGER_PATHS,
   FAILED_SOURCE_WINDOW_MS,
+  FULL_QUALIFICATION_JOB_NAMES,
   failedSourceObservation,
   LEDGER_WALK_LIMIT,
   ledgerEquivalentSources,
@@ -61,6 +63,37 @@ const run = {
 };
 
 describe('source qualification evidence', () => {
+  it('requires every job and matrix slice of the full-regression workflow for reuse', () => {
+    const workflow = load(
+      readFileSync(
+        resolve(
+          import.meta.dirname,
+          '../../.github/workflows/full-regression.yml',
+        ),
+        'utf8',
+      ),
+    ) as {
+      jobs: Record<
+        string,
+        {
+          name?: string;
+          strategy?: { matrix?: { include?: Array<{ slice?: string }> } };
+        }
+      >;
+    };
+    const displayed = Object.entries(workflow.jobs).flatMap(([id, job]) => {
+      const name = job.name ?? id;
+      const slices = job.strategy?.matrix?.include ?? [];
+      if (!name.includes('${{ matrix.slice }}')) return [name];
+      expect(slices.length, id).toBeGreaterThan(0);
+      return slices.map(({ slice }) =>
+        name.replace('${{ matrix.slice }}', String(slice)),
+      );
+    });
+    expect([...FULL_QUALIFICATION_JOB_NAMES].sort()).toEqual(
+      [...displayed].sort(),
+    );
+  });
   it('rejects missing, failed, cancelled or unexpected jobs and permits only validated reuse skips', () => {
     expect(qualificationVerdict(needs(), '')).toBe(true);
     for (const id of QUALIFICATION_JOBS)
@@ -836,6 +869,10 @@ describe('source qualification evidence', () => {
       const now = Date.now();
       const at = (ms: number) => new Date(now - ms).toISOString();
       let parentPassed = false;
+      // A newer passing re-run of the parent (a manual dispatch after the
+      // failed push run).
+      let rerunPassed = false;
+      const rerunId = 43546941926;
       const parentRun = {
         id: 43546941925,
         run_attempt: 1,
@@ -853,6 +890,7 @@ describe('source qualification evidence', () => {
         res.setHeader('content-type', 'application/json');
         const url = new URL(req.url ?? '/', 'http://localhost');
         if (url.pathname.endsWith('/jobs')) {
+          const runId = Number(/\/runs\/(\d+)\//.exec(url.pathname)?.[1]);
           // Every job the exact-source reuse check requires, so a passing
           // parent is evidence the reuse path would accept for the parent.
           const names = [
@@ -874,13 +912,14 @@ describe('source qualification evidence', () => {
               jobs: names.map((name, index) => {
                 const failed =
                   !parentPassed &&
+                  runId !== rerunId &&
                   [
                     'Ordinary corpus 3-4 of 8',
                     'Full source qualification',
                   ].includes(name);
                 return {
                   id: index,
-                  run_id: parentRun.id,
+                  run_id: runId,
                   run_attempt: 1,
                   head_sha: parentSha,
                   name: `qualification / ${name}`,
@@ -931,6 +970,17 @@ describe('source qualification evidence', () => {
                       ...parentRun,
                       conclusion: parentPassed ? 'success' : 'failure',
                     },
+                    ...(rerunPassed
+                      ? [
+                          {
+                            ...parentRun,
+                            id: rerunId,
+                            event: 'workflow_dispatch',
+                            conclusion: 'success',
+                            created_at: at(2.5 * 3_600_000),
+                          },
+                        ]
+                      : []),
                   ]
                 : [],
           }),
@@ -970,6 +1020,13 @@ describe('source qualification evidence', () => {
           `reuse_run=${parentRun.id}\nfailed_run=\n`,
         );
         // It is still not carried to the ledger commit.
+        expect(await resolveOutput()).toBe('reuse_run=\nfailed_run=\n');
+        // The parent failed, then a newer re-run of it passed. The newest
+        // executed run on the first source that has one decides, so the
+        // older failure is not carried past the pass: the ledger commit runs
+        // its corpus rather than failing its gate with "Not re-run".
+        parentPassed = false;
+        rerunPassed = true;
         expect(await resolveOutput()).toBe('reuse_run=\nfailed_run=\n');
       } finally {
         await new Promise<void>((done) => server.close(() => done()));
