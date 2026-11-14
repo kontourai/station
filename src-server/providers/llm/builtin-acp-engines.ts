@@ -413,17 +413,31 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     },
     auth: {
       signInHint:
-        'Provide a paid Gemini API key. Station does not offer the Google account sign-in: Gemini CLI terms forbid using its Google login from other software.',
-      // `GEMINI_API_KEY` selects the key route on its own
-      // (packages/core/src/core/contentGenerator.ts getAuthTypeFromEnv).
-      // `GOOGLE_API_KEY` is read only for Vertex AI, which also needs
-      // GOOGLE_GENAI_USE_VERTEXAI=true, so a key field cannot use it.
+        'Sign in with a Google account that has Gemini Code Assist Standard or Enterprise, or provide a paid Gemini API key. Gemini CLI uses its saved sign-in first and the key only when none is saved.',
+      // Precedence (packages/cli/src/acp/acpSessionManager.ts, 4ed06ed0dd):
+      // `newSession` uses the saved `security.auth.selectedType`, else the
+      // key (`GEMINI_API_KEY`, read by packages/core contentGenerator.ts).
+      // `loadSession` has no key fallback and asks for authentication when
+      // nothing is saved; see acp-reattach-identity.ts for how a key-only
+      // reattach is handled. `GOOGLE_API_KEY` is read only for Vertex AI,
+      // which also needs GOOGLE_GENAI_USE_VERTEXAI=true, so a key field
+      // cannot use it.
       credentialEnvVars: ['GEMINI_API_KEY'],
-      // `oauth-personal`: docs/resources/tos-privacy.md calls accessing its
-      // services "using third-party software, tools, or services (for
-      // example, using OpenClaw with Gemini CLI OAuth)" a violation.
-      // `gemini-api-key`: the key field above replaces it.
-      hiddenAuthMethodIds: ['oauth-personal', 'gemini-api-key'],
+      // Every advertised method stays offered. The key field does not
+      // replace `gemini-api-key`: with a Google sign-in saved, Gemini CLI
+      // ignores the key until that method is chosen (and choosing it clears
+      // the cached Google login, acpRpcDispatcher.ts authenticate).
+      // The Google sign-in carries Gemini CLI's terms, which name
+      // "using third-party software" with its OAuth (docs/resources/
+      // tos-privacy.md); the person decides with that in view.
+      subscriptionTermsNotices: [
+        {
+          provider: 'Google',
+          termsUrl:
+            'https://github.com/google-gemini/gemini-cli/blob/main/docs/resources/tos-privacy.md',
+          authMethodIds: ['oauth-personal'],
+        },
+      ],
     },
   },
   {

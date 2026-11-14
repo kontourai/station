@@ -74,25 +74,25 @@ beforeEach(() => {
 afterEach(() => clearAll());
 
 describe('Gemini CLI sign-in', () => {
-  test('offers neither the Google login nor the key method the key field replaces', async () => {
+  test('offers every advertised method, the Google login with its terms notice', async () => {
     const service = new EngineSignInService({
       terminal: null,
       processFactory: () => geminiHandshake() as never,
     });
     await service.refreshMethods(gemini);
-    expect(
-      service.methodsView(gemini).methods?.map((method) => method.id),
-    ).toEqual(['vertex-ai', 'gateway']);
-  });
-
-  test('refuses to run the Google login when asked for it by id', async () => {
-    const service = new EngineSignInService({
-      terminal: null,
-      processFactory: () => geminiHandshake() as never,
+    const methods = service.methodsView(gemini).methods ?? [];
+    expect(methods.map((method) => method.id)).toEqual([
+      'oauth-personal',
+      'gemini-api-key',
+      'vertex-ai',
+      'gateway',
+    ]);
+    expect(methods[0]?.termsNotice).toEqual({
+      provider: 'Google',
+      termsUrl:
+        'https://github.com/google-gemini/gemini-cli/blob/main/docs/resources/tos-privacy.md',
     });
-    await service.refreshMethods(gemini);
-    await expect(service.startAgent(gemini, 'oauth-personal')).rejects.toThrow(
-      'does not offer',
-    );
+    // The notice belongs to the Google login alone.
+    expect(methods.slice(1).some((method) => method.termsNotice)).toBe(false);
   });
 });

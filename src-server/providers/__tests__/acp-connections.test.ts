@@ -130,7 +130,7 @@ describe('BuiltinACPConnectionRegistryProvider', () => {
     );
   });
 
-  test('Gemini CLI takes only a Gemini API key and never offers its Google login', () => {
+  test('Gemini CLI takes a Gemini API key and offers its Google login with its terms', () => {
     const gemini = new BuiltinACPConnectionRegistryProvider(
       () => false,
       () => false,
@@ -139,12 +139,17 @@ describe('BuiltinACPConnectionRegistryProvider', () => {
       .find((entry) => entry.id === 'gemini');
     // GOOGLE_API_KEY is Vertex AI only, which needs a second variable.
     expect(gemini?.auth?.credentialEnvVars).toEqual(['GEMINI_API_KEY']);
-    // The ids Gemini CLI's initialize advertises (packages/cli/src/acp/
-    // acpRpcDispatcher.ts): its Google login is refused on terms, its key
-    // method is what the key field replaces.
-    expect(gemini?.auth?.hiddenAuthMethodIds).toEqual([
-      'oauth-personal',
-      'gemini-api-key',
+    // Nothing is hidden: with a Google login saved, Gemini CLI ignores the
+    // key until `gemini-api-key` is chosen, so the key field does not
+    // replace that method.
+    expect(gemini?.auth?.hiddenAuthMethodIds).toBeUndefined();
+    expect(gemini?.auth?.subscriptionTermsNotices).toEqual([
+      {
+        provider: 'Google',
+        termsUrl:
+          'https://github.com/google-gemini/gemini-cli/blob/main/docs/resources/tos-privacy.md',
+        authMethodIds: ['oauth-personal'],
+      },
     ]);
     // Who Google still serves since 2026-06-18 is said up front.
     expect(gemini?.description).toMatch(/paid Gemini API keys/);
