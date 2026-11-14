@@ -339,9 +339,15 @@ the table, `:id` is one validated decoded segment, not an arbitrary suffix.
 | Foreground send and continue | POST orchestration `chat` and `chat/:id/continue` with receiver schemas reparsed and a mandatory current-Station target/environment. |
 | Commands | POST `commands` restricted to `interruptTurn`, `steerTurn`, `steerTurnOnce`, `inspectSteerInput`, `respondToRequest`, `stopSession` and `discardDraft`; GET exact command receipt(s). These are the actual wire discriminants. |
 | Transcript and requests | GET session content, request/content-binding, input-request and child-work transcript/instructions leaves required by shared readers. Child instructions write stays denied until separately admitted and tested. |
-| Checkpoints and usage | GET checkpoint/restore history, usage-limit/tree/stat reads consumed by shared controls; POST exact restore-preview/restore only. No goal or other session mutation wildcard. |
+| Checkpoints and usage | GET checkpoint history (its only query is the transcript's `revision`), restore history, usage-limit and usage-tree reads consumed by shared controls; POST exact restore-preview/restore only. No goal or other session mutation wildcard. The agent conversation-stats read is not admitted, so a relay chat does not request it. |
 | Target choices | GET exact Projects list, agents list/detail, orchestration provider list/commands/models, `/api/connections/agents` and `/api/connections/models`. The exact `/api/settings/managed-policy` GET exposes the approval-policy summary. No secret/config indexes or model-inventory requiring inference scope. |
 | Attachments | GET exact attachment bytes and staging capability; POST staging prepare/reconcile, PUT one stage, DELETE one stage. Bound each body with its domain limit. |
+
+A chat another Station owns does not read the source Station's own
+per-conversation records (summary, skill experience, pull-request links,
+Scheduled); the source holds none for it and the tunnel admits none.
+The connection provider re-resolves a chat only when a profile fact it routes
+on changes, not when a health tick refreshes profile timestamps.
 
 Always deny peer/enrollment/pairing/auth/access/users/people/groups, config,
 settings/secrets except that summary read, connections writes and credential/sign-in leaves, ACP,

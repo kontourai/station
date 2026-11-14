@@ -64,6 +64,15 @@ Delivery and current native identity are checked again synchronously at provider
 dispatch, including resumption of a prepared turn. An identity replacement after
 continuation resolution cannot borrow the earlier identity's completion.
 
+A handoff that is not a native return, or a plain continuation with no
+deliberate context boundary, is not stranded by a failed or stopped seed-bearing
+turn: the next ordinary follow-up starts a successor Session with a freshly
+pinned bounded seed of the whole conversation, never the failed Session's native
+cursor. That holds again if the redelivery's own turn is stopped. A seed turn
+that is still open or uncertain is refused, as is a failed native return,
+context-boundary seed or fork seed. These refusals carry the code
+`conversation-context-unavailable`.
+
 New native-return reservations pin the exact catch-up text and its SHA-256 digest
 alongside ordered source Session cutoffs and omission facts in the existing event
 store. Each cutoff is an exclusive `afterSequence` and inclusive `throughSequence`

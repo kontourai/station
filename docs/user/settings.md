@@ -281,14 +281,23 @@ switch says whether publication succeeded; enabling it does not change your
 network or firewall. Connecting still needs your approval. See
 [Connect your phone](getting-started.md#connect-your-phone).
 
+A server connection loss shows a brief reconnecting notice after three failed
+checks. Recovery shows a notice only if a loss was announced; an active event
+stream must catch up first. Pairing and other blocking failures still need the
+action shown in Station details.
+
 ## Updates and changelogs
 
 Open **Updates** in the sidebar to review an app or server update. **What’s
-new** shows the offered version’s release notes. **Previous versions and
+new** shows release notes for the installed server and any offered update. **Previous versions and
 changelogs** lets you browse published releases without starting an update.
 The circle around the sidebar update icon fills as a download progresses.
 
-After an app upgrade, its changelog opens once on this device. To turn that
+After an app or connected-server upgrade, its changelog opens once on this device.
+A browser served by the updated server shows one popup for that upgrade.
+In-app changelogs omit installation instructions; those remain on GitHub.
+Long lists show the first 50 changes. **See all changes** opens the full release.
+Server versions are remembered separately for each server. To turn that
 off, clear **Show changelog after updates** in the dialog, Updates, or
 **Settings → System**. Release history stays available. The first launch on a
 new device establishes the starting version without showing an upgrade dialog.
