@@ -48,14 +48,6 @@ const defaultRunner: VersionCommandRunner = (command, args, env) =>
     maxBuffer: VERSION_COMMAND_MAX_OUTPUT,
     killSignal: 'SIGKILL',
   });
-let runner: VersionCommandRunner = defaultRunner;
-
-/** Test seam: the command runner. */
-export function setEngineVersionFloorTestRunner(
-  next: VersionCommandRunner | undefined,
-): void {
-  runner = next ?? defaultRunner;
-}
 
 /**
  * The connection's engine is below its built-in floor, or undefined when it
@@ -76,7 +68,7 @@ export async function engineUpdateRequired(connection: {
     : argv0;
   const resolved = await findCliBinaryAsync(program);
   if (!resolved) return undefined;
-  const result = await runner(
+  const result = await defaultRunner(
     resolved,
     args,
     registryLaunchEnvFor(connection),
