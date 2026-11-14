@@ -1076,6 +1076,54 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
   });
 });
 
+/**
+ * classify's `heavy` output, evaluated with the same expression model: only
+ * a proven merge-queue verdict turns it off; anything else (verified false,
+ * an empty output, the step skipped off push) passes the classifier through.
+ * A skipped step's outputs read as empty in GitHub; both empty and absent
+ * are modelled.
+ */
+describe("classify's heavy output under the merge-group verdict", () => {
+  const heavy = String(
+    (readJobs().classify as Job & { outputs: Record<string, string> }).outputs
+      .heavy,
+  )
+    .replace(/^\$\{\{\s*/, '')
+    .replace(/\s*\}\}$/, '');
+  const evaluateHeavy = (verdict: Record<string, string>, classifier: string) =>
+    evaluate(
+      heavy,
+      ([head, id, field, name, ...rest]) => {
+        if (head !== 'steps' || field !== 'outputs' || rest.length)
+          throw new Error(`unmodelled ${head}.${id}.${field}`);
+        if (id === 'classify' && name === 'heavy') return classifier;
+        if (id === 'merge-group-verdict' && name === 'verified')
+          return verdict.verified;
+        throw new Error(`unmodelled steps.${id}.outputs.${name}`);
+      },
+      {},
+    );
+
+  test.each(['true', 'false'])(
+    'a proven verdict turns heavy off when the classifier says %s',
+    (classifier) => {
+      expect(evaluateHeavy({ verified: 'true' }, classifier)).toBe('false');
+    },
+  );
+
+  test.each([
+    ['verified=false', { verified: 'false' }],
+    ['an empty output', { verified: '' }],
+    ['the step skipped (no output)', {}],
+  ] as Array<[string, Record<string, string>]>)(
+    '%s keeps the classifier answer',
+    (_label, verdict) => {
+      for (const classifier of ['true', 'false'])
+        expect(evaluateHeavy(verdict, classifier), classifier).toBe(classifier);
+    },
+  );
+});
+
 describe('delivery work waits for required PR feedback', () => {
   const jobs = readJobs();
   const outputs = { 'delivery-plan': { install: 'true' } };
