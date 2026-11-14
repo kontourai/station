@@ -328,6 +328,8 @@ export function capacityMetrics(jobs, until, since) {
     skipped: jobs.filter((j) => j.conclusion === 'skipped').length,
     unfinished: unfinished.length,
     unattributed: unattributed.length,
+    unattributedUnfinished: unattributed.filter((j) => j.conclusion == null)
+      .length,
     unfinishedWaitMinutes: distribution(knownUnfinished.map(waitSoFar)),
     runnerHours:
       ran.reduce(
@@ -829,6 +831,13 @@ export function buildSnapshot(data, options) {
     until: options.until,
     collectedAt: data.collectedAt ?? options.until,
     incomplete: reasons.length > 0,
+    // Incomplete only because work in the window had not finished (an
+    // unfinished job has no runner attribution yet either). The next window
+    // measures that work; nothing failed to be collected.
+    unfinishedOnly:
+      data.reasons.length === 0 &&
+      capacity.unfinished > 0 &&
+      capacity.unattributed === capacity.unattributedUnfinished,
     reasons,
     listingCapHits: data.capHits,
     mergeQueue: mergeMetrics(
@@ -1048,7 +1057,15 @@ async function main() {
   console.log(
     options.json ? JSON.stringify(snapshot) : renderSnapshot(snapshot),
   );
-  if (snapshot.incomplete) process.exitCode = 1;
+  // A collection failure (API error, pagination cap, unresolved PR or
+  // merge base, unavailable ledger) fails the run. A window that is
+  // incomplete only because work was still running is reported but does not:
+  // the scheduled run would otherwise be red for a measurement gap.
+  if (snapshot.incomplete && snapshot.unfinishedOnly)
+    console.error(
+      `::warning title=CI health window incomplete::${snapshot.reasons.join('; ')} (still running at the window end; not a collection failure)`,
+    );
+  else if (snapshot.incomplete) process.exitCode = 1;
 }
 if (invokedDirectly(import.meta.url))
   main().catch((error) => {

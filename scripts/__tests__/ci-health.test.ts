@@ -434,8 +434,25 @@ describe('CI health metrics', () => {
     const snapshot = buildSnapshot(data, options);
     expect(snapshot).toMatchObject({
       incomplete: true,
+      unfinishedOnly: true,
       reasons: ['window includes 2 unfinished jobs'],
     });
+    // A finished job with no runner attribution is a collection gap, not
+    // unfinished work, and so is a collection reason.
+    const finishedUnattributed = job(3, { runner_id: null, runner_name: null });
+    expect(
+      buildSnapshot(
+        { ...data, jobs: [...data.jobs, finishedUnattributed] },
+        options,
+      ).unfinishedOnly,
+    ).toBe(false);
+    expect(
+      buildSnapshot(
+        { ...data, reasons: ['Invalid Actions runs response'] },
+        options,
+      ).unfinishedOnly,
+    ).toBe(false);
+    expect(buildSnapshot(emptyData(), options).unfinishedOnly).toBe(false);
     expect(snapshot.capacity).toMatchObject({
       unfinished: 2,
       unfinishedWaitMinutes: { count: 2, median: 60, p90: 60 },
@@ -1158,3 +1175,125 @@ describe('CI health collection bounds and command interface', () => {
     );
   });
 });
+
+// The scheduled workflow fails when the CLI exits non-zero. Driven as the
+// real CLI against a stand-in `gh` (the CLI's only API transport) and a
+// non-shallow repository whose origin names the measured repository.
+describe.skipIf(process.platform === 'win32')(
+  'CI health CLI exit status',
+  () => {
+    const cli = join(import.meta.dirname, '../ci-health.mjs');
+    const fakeGh = `#!/usr/bin/env node
+const [, , verb, endpoint] = process.argv;
+const mode = process.env.FAKE_GH_MODE;
+if (verb !== 'api') process.exit(2);
+if (mode === 'error') {
+  // The real transport failure seen on scheduled runs.
+  process.stderr.write('gh: Server Error (HTTP 502)\\n');
+  process.exit(1);
+}
+const job = {
+  id: 1, name: 'test', labels: ['ubuntu-latest'], steps: [],
+  created_at: '${at(10)}',
+  ...(mode === 'complete'
+    ? { status: 'completed', conclusion: 'success', started_at: '${at(11)}', completed_at: '${at(20)}', runner_id: 2, runner_name: 'runner-2' }
+    : { status: 'in_progress', conclusion: null, started_at: null, completed_at: null, runner_id: null, runner_name: null }),
+};
+if (/\\/actions\\/runs\\?created=/.test(endpoint))
+  console.log(JSON.stringify({ total_count: 1, workflow_runs: [{
+    id: 7, run_attempt: 1, name: 'Main: Container smoke', event: 'push',
+    status: mode === 'complete' ? 'completed' : 'in_progress',
+    conclusion: mode === 'complete' ? 'success' : null,
+    created_at: '${at(10)}', head_sha: 'a'.repeat(40), head_branch: 'main',
+    pull_requests: [],
+  }] }));
+else if (/\\/actions\\/runs\\/7\\/attempts\\/1\\/jobs/.test(endpoint))
+  console.log(JSON.stringify({ total_count: 1, jobs: [job] }));
+else {
+  process.stderr.write('unexpected endpoint ' + endpoint + '\\n');
+  process.exit(1);
+}
+`;
+    const setup = () => {
+      const root = makeTempDir('ci-health-cli-');
+      const bin = join(root, 'bin');
+      const repo = join(root, 'repo');
+      mkdirSync(bin);
+      mkdirSync(repo);
+      writeFileSync(join(bin, 'gh'), fakeGh, { mode: 0o755 });
+      const env = Object.fromEntries(
+        Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')),
+      );
+      const git = (args: string[]) =>
+        execFileSync('git', args, { cwd: repo, env, windowsHide: true });
+      git(['init', '-q', '-b', 'main']);
+      git([
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.invalid',
+        'commit',
+        '-q',
+        '--allow-empty',
+        '-m',
+        'fixture',
+      ]);
+      git([
+        'remote',
+        'add',
+        'origin',
+        'https://github.com/kontourai/station.git',
+      ]);
+      git(['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+      return (mode: string) =>
+        spawnSync(
+          process.execPath,
+          [cli, '--json', `--since=${at(0)}`, `--until=${at(60)}`],
+          {
+            cwd: repo,
+            env: {
+              ...env,
+              PATH: `${bin}:${process.env.PATH ?? ''}`,
+              FAKE_GH_MODE: mode,
+            },
+            encoding: 'utf8',
+            timeout: 30_000,
+            windowsHide: true,
+          },
+        );
+    };
+
+    it('exits 0 for a complete window', () => {
+      const result = setup()('complete');
+      expect(result.stderr).toBe('');
+      expect(JSON.parse(result.stdout).incomplete).toBe(false);
+      expect(result.status).toBe(0);
+    });
+
+    it('reports a window incomplete only because work is unfinished, and exits 0', () => {
+      const result = setup()('unfinished');
+      const snapshot = JSON.parse(result.stdout);
+      expect(snapshot).toMatchObject({
+        incomplete: true,
+        unfinishedOnly: true,
+        reasons: [
+          'window includes 1 jobs with unavailable runner attribution',
+          'window includes 1 unfinished jobs',
+        ],
+      });
+      expect(result.stderr).toContain(
+        '::warning title=CI health window incomplete::window includes 1 jobs with unavailable runner attribution; window includes 1 unfinished jobs',
+      );
+      expect(result.status).toBe(0);
+    });
+
+    it('still fails when the API cannot be read', () => {
+      const result = setup()('error');
+      const snapshot = JSON.parse(result.stdout);
+      expect(snapshot.incomplete).toBe(true);
+      expect(snapshot.unfinishedOnly).toBe(false);
+      expect(snapshot.reasons.join('\n')).toContain('HTTP 502');
+      expect(result.status).toBe(1);
+    });
+  },
+);
