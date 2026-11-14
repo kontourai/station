@@ -279,20 +279,35 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   decline, a delegated session's decline) is sent once more. Refused again,
   it fails closed: it is never shown to a person who could allow it, and a
   later re-list does not reopen it. Station interrupts the execution that
-  asked, which drops the ask. For the session's own ask, or one from a
-  descendant started during the live turn, that is the asking descendant (a
-  2.3.0 subagent is a background job that the root's interrupt does not
-  stop) and the session. The turn then ends with a `runtime.error` that gives
-  the reason. It ends once OpenCode reports the execution ended, or after
-  three seconds if OpenCode does not. Until then the turn is still live, so a
-  next turn is refused as busy and a steer as too late, rather than delivered
-  into the execution being stopped. An ask from a descendant that an earlier
-  turn started, and that still runs in the background, interrupts only that
-  descendant, with a `runtime.warning`; the live turn goes on. An interrupt
-  that fails gets a warning of its own, and the error says OpenCode may still
-  be running the turn. Until OpenCode reports the asking session's execution
-  ended, stopping the session counts the ask as running work: it interrupts
-  that session again and repeats the rejection.
+  asked, which drops the ask. The session's own ask stops the turn it was
+  raised in, and a descendant's ask stops the live turn if that turn started
+  the descendant. Station interrupts the asking descendant (a 2.3.0 subagent
+  is a background job that the root's interrupt does not stop) and the
+  session. The turn then ends with a `runtime.error` that gives the reason.
+  It ends once OpenCode reports the execution ended (on the feed, or on a
+  reconnect that finds the session idle), or after three seconds if OpenCode
+  does not. Until then the turn is still live, so a next turn is refused as
+  busy and a steer as too late, rather than delivered into the execution
+  being stopped. When the wait runs out, the turn's queued steers are
+  withdrawn and its open tools closed. A second refusal in the same turn
+  keeps the first one's reason and wait. A turn that nothing runs yet has
+  its prompt taken back out of the inbox once its POST lands, and the error
+  says whether that worked. Some asks are not the live turn's: one from a
+  descendant that an earlier turn started and that still runs in the
+  background, or the session's own ask from a turn that has already ended.
+  Station interrupts the session that asked, with a `runtime.warning`, and
+  the live turn goes on. The session's own ask with no turn live ends in a
+  `runtime.error` of its own, and a next turn is refused as busy until the
+  interrupt answers or the same three seconds pass. An interrupt that fails
+  gets a warning of its own. The error then says OpenCode may still be
+  running the turn, including when a descendant's interrupt failed and that
+  descendant has not been seen to end. Until OpenCode reports the asking
+  session's execution ended, stopping the session counts the ask as running
+  work: it interrupts that session again and repeats the rejection. A
+  refusal that comes back after that execution ended counts as nothing
+  held. Station remembers at most 200 refused asks that OpenCode no longer
+  holds, and never forgets one it may still hold. Past 1,000 of those it
+  stops the chat with an `OPENCODE_REFUSED_ASKS_OVERFLOW` warning.
 - **After an untrusted read** (#4828), an `edit` ask from the session or a
   descendant that names a known agent-instruction or git-hook file, as a
   resource or in `metadata.files`, is rejected before any deny check, staged
