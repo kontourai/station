@@ -39,6 +39,8 @@ const AGENT_ID = /^bc-[A-Za-z0-9-]{1,128}$/;
 const RUN_ID = /^run-[A-Za-z0-9-]{1,128}$/;
 /** Finished runs without an inline `result` read one by one, per poll. */
 const RESULT_READS_PER_PAGE = 5;
+/** Run list pages read per call; the first page is usually enough. */
+const RUN_LIST_PAGES = 10;
 const TERMINAL_RUN_STATES = new Set([
   'FINISHED',
   'ERROR',
@@ -252,22 +254,40 @@ export const cursorBinding: RemoteTaskBinding = {
   },
 
   /**
-   * The finished runs' results, oldest first. The runs list has no resume
-   * position Station could keep, so every poll reads its first page and the
-   * store drops the run ids it already holds; the cursor stays null.
+   * The finished runs' results, oldest first. The runs list is newest first
+   * and paged (`limit`, `nextCursor`); it is followed until a page reaches a
+   * run Station already stored, so a burst of runs between polls is not cut
+   * at the first page. A finished run the list leaves without its `result`
+   * is read on its own, at most five per call and never one already stored;
+   * when more remain, `hasMore` asks the service to call again before the
+   * task can settle. The list has no resume position, so the cursor stays
+   * null and `known` does the skipping.
    */
-  async pageEvents(context, taskId) {
-    const { body } = await context.http.json({
-      method: 'GET',
-      path: `${agentPath(taskId)}/runs`,
-    });
-    const record = asRecord(body);
-    if (!Array.isArray(record.items)) throw malformed(VENDOR, 'a run list');
-    const runs = record.items
-      .map((item) => asRecord(item))
+  async pageEvents(context, taskId, _cursor, known = () => false) {
+    const runs: Array<Record<string, unknown>> = [];
+    let next: string | undefined;
+    for (let page = 0; page < RUN_LIST_PAGES; page += 1) {
+      const { body } = await context.http.json({
+        method: 'GET',
+        path: `${agentPath(taskId)}/runs`,
+        query: { limit: PAGE_SIZE, cursor: next },
+      });
+      const record = asRecord(body);
+      if (!Array.isArray(record.items)) throw malformed(VENDOR, 'a run list');
+      const items = record.items.map((item) => asRecord(item));
+      runs.push(...items);
+      next = stringField(record, 'nextCursor');
+      const reachedStored = items.some((run) => {
+        const id = stringField(run, 'id');
+        return id !== undefined && known(`run:${id}`);
+      });
+      if (!next || reachedStored) break;
+    }
+    const finished = runs
       .filter((run) =>
         TERMINAL_RUN_STATES.has(stringField(run, 'status') ?? ''),
       )
+      .filter((run) => !known(`run:${stringField(run, 'id') ?? ''}`))
       .sort((a, b) =>
         (stringField(a, 'createdAt') ?? '').localeCompare(
           stringField(b, 'createdAt') ?? '',
@@ -275,17 +295,16 @@ export const cursorBinding: RemoteTaskBinding = {
       );
     const events: RemoteTaskEvent[] = [];
     let reads = 0;
-    for (const run of runs) {
+    let unread = 0;
+    for (const run of finished) {
       let message = runMessage(run);
       const runId = stringField(run, 'id');
       // A list entry may leave `result` out; the run itself carries it.
-      if (
-        !message &&
-        run.result === undefined &&
-        runId &&
-        RUN_ID.test(runId) &&
-        reads < RESULT_READS_PER_PAGE
-      ) {
+      if (!message && run.result === undefined && runId && RUN_ID.test(runId)) {
+        if (reads >= RESULT_READS_PER_PAGE) {
+          unread += 1;
+          continue;
+        }
         reads += 1;
         const { body: full } = await context.http.json({
           method: 'GET',
@@ -295,7 +314,7 @@ export const cursorBinding: RemoteTaskBinding = {
       }
       if (message) events.push(message);
     }
-    return { events, cursor: null, hasMore: false };
+    return { events, cursor: null, hasMore: unread > 0 };
   },
 
   async cancelTask(context, taskId) {
@@ -322,10 +341,4 @@ export const cursorBinding: RemoteTaskBinding = {
       ? [{ unit: 'tokens', quantity: total }]
       : [];
   },
-
-  // Reading an archived agent answers `409 agent_archived`: it has nothing
-  // more to give.
-  isEndOfMessages: (error) =>
-    error.details.vendorStatus === 409 &&
-    error.details.vendorCode === 'agent_archived',
 };

@@ -6861,7 +6861,8 @@ kept. `sync` reads the vendor at once.
 **Polling.** Station polls a task only while a client has created, written
 to, synced or read it within the last 15 minutes, and stops once the task is
 finished, idle or waiting for the person. After a restart nothing polls until
-a client reads a task again.
+a client reads a task again. A task the vendor refused (not a rate limit or an
+outage) is not polled again on a read; a write, cancel or `sync` restarts it.
 
 ## Opt-in native Device proof binding management
 

@@ -331,6 +331,32 @@ describe('Devin binding', () => {
     });
   });
 
+  test("a finished session's last page is kept when the page fails once", async () => {
+    const { devin, h, connectionId } = await setup();
+    const { taskId } = await h.service.createTask(connectionId, {
+      prompt: 'Go',
+    });
+    devin.setStatus(taskId, 'running', 'waiting_for_user');
+    const waiting = await h.service.syncTask(connectionId, taskId);
+    expect(waiting.quiescent).toBe(true);
+    // Devin finishes with a last message, but that sync's page fails.
+    devin.reply(taskId, 'final answer');
+    devin.setStatus(taskId, 'exit');
+    devin.fake.injectFor('GET', /\/messages$/, () =>
+      json(503, { title: 'Service Unavailable', status: 503 }),
+    );
+    await expect(
+      h.service.syncTask(connectionId, taskId),
+    ).rejects.toMatchObject({
+      code: 'remote-task-vendor-unavailable',
+    });
+    // The next sync is not fooled by the finished status it already saw.
+    const retried = await h.service.syncTask(connectionId, taskId);
+    expect(retried.appended.map((e) => e.text)).toContain('final answer');
+    const { events } = h.service.readEvents(connectionId, taskId, 0);
+    expect(events.filter((e) => e.text === 'final answer')).toHaveLength(1);
+  });
+
   test('a finished session stops polling until the next sync', async () => {
     const { devin, h, connectionId } = await setup();
     const { taskId } = await h.service.createTask(connectionId, {

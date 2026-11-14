@@ -429,7 +429,11 @@ export function cursorFake() {
   const finishRun = (result: string, status = 'FINISHED') => {
     Object.assign(state.run, {
       status,
-      updatedAt: '2026-04-13T18:45:00.000Z',
+      // A run finishes a quarter hour after it started, so each run's
+      // update time is its own.
+      updatedAt: new Date(
+        Date.parse(String(state.run.createdAt)) + 15 * 60_000,
+      ).toISOString(),
       durationMs: 12357,
       result,
     });
@@ -456,14 +460,22 @@ export function cursorFake() {
           error: { code: 'agent_not_found', message: 'Agent not found' },
         }),
   );
-  fake.on('GET', /^\/v1\/agents\/[^/]+\/runs$/, () => {
-    if (state.agent.status === 'ARCHIVED') return archived();
+  // The runs list as the OpenAPI describes it: newest first, `limit`
+  // (default 20) and `nextCursor`, and readable for an archived agent (only
+  // the stream answers 409 agent_archived).
+  fake.on('GET', /^\/v1\/agents\/[^/]+\/runs$/, (request) => {
+    const limit = Number(request.url.searchParams.get('limit') ?? 20);
+    const cursor = request.url.searchParams.get('cursor');
+    const start = cursor ? Number(cursor) : 0;
+    const page = state.runs.slice(start, start + limit).map((entry) => {
+      if (!state.omitResultInList) return entry;
+      const { result: _result, ...rest } = entry;
+      return rest;
+    });
+    const end = start + page.length;
     return json(200, {
-      items: state.runs.map((entry) => {
-        if (!state.omitResultInList) return entry;
-        const { result: _result, ...rest } = entry;
-        return rest;
-      }),
+      items: page,
+      ...(end < state.runs.length ? { nextCursor: String(end) } : {}),
     });
   });
   fake.on('GET', /^\/v1\/agents\/[^/]+\/runs\/([^/]+)$/, (_r, match) => {

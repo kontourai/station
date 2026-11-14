@@ -1,12 +1,12 @@
 /**
  * Remote task engine credentials live only in Station's engine host-auth
  * vault (docs/decisions/engine-credential-provider.md), one bucket per
- * connection: `engine-secret:<connectionId>:default`, key
- * {@link REMOTE_TASK_CREDENTIAL_KEY}. Connection ids carry the
- * `remote-task-` prefix, which an ACP connection id may not take
- * (`acpConnectionSchema`), so an ACP connection's secrets and their removal
- * never reach one of these buckets. Removing a remote task connection deletes
- * only its own key, never every bucket of the id.
+ * connection in their own family: `remote-task-credential:<connectionId>:default`,
+ * key {@link REMOTE_TASK_CREDENTIAL_KEY}. Removing an engine connection of the
+ * same id (an ACP connection loaded from disk or imported, which the
+ * `acpConnectionSchema` prefix refusal does not see) removes only the engine
+ * families, never this one; removing a remote task connection removes only
+ * this bucket.
  *
  * Nothing here returns a credential to a route. {@link withCredential} hands
  * the value to the service's request builder for one call, and a route can
@@ -72,33 +72,32 @@ export class RemoteTaskCredentials {
     const vault = this.#resolveVault();
     return (
       !!vault &&
-      vault.readSecret(scope(connectionId), REMOTE_TASK_CREDENTIAL_KEY) !==
-        undefined
+      vault.readRemoteTaskToken(
+        scope(connectionId).connectionId,
+        REMOTE_TASK_CREDENTIAL_KEY,
+      ) !== undefined
     );
   }
 
   async set(connectionId: string, value: string): Promise<void> {
     const problem = remoteTaskCredentialProblem(value);
     if (problem) throw new Error(problem);
-    await this.#vault.writeSecret(
-      scope(connectionId),
+    await this.#vault.writeRemoteTaskToken(
+      scope(connectionId).connectionId,
       REMOTE_TASK_CREDENTIAL_KEY,
       value.trim(),
     );
   }
 
   async clear(connectionId: string): Promise<void> {
-    await this.#vault.removeSecret(
-      scope(connectionId),
-      REMOTE_TASK_CREDENTIAL_KEY,
-    );
+    await this.#vault.removeRemoteTaskTokens(scope(connectionId).connectionId);
   }
 
   /** The connection's own key, for a connection being removed. */
   async removeConnection(connectionId: string): Promise<void> {
     const vault = this.#resolveVault();
     if (!vault) return;
-    await vault.removeSecret(scope(connectionId), REMOTE_TASK_CREDENTIAL_KEY);
+    await vault.removeRemoteTaskTokens(scope(connectionId).connectionId);
   }
 
   /**
@@ -109,8 +108,8 @@ export class RemoteTaskCredentials {
     connectionId: string,
     work: (credential: string) => Promise<T>,
   ): Promise<{ value: T } | undefined> {
-    const credential = this.#resolveVault()?.readSecret(
-      scope(connectionId),
+    const credential = this.#resolveVault()?.readRemoteTaskToken(
+      scope(connectionId).connectionId,
       REMOTE_TASK_CREDENTIAL_KEY,
     );
     if (credential === undefined) return undefined;

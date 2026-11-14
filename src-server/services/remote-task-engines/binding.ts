@@ -63,11 +63,16 @@ export interface RemoteTaskBinding {
     taskId: string,
     text: string,
   ): Promise<{ delivery: 'sent' | 'steered' | 'queued' }>;
-  /** Messages after `cursor` (null: from the start). */
+  /**
+   * Messages after `cursor` (null: from the start). `known` says whether an
+   * event id is already stored, for a vendor whose list has no resume
+   * position: the binding stops paging at what Station has.
+   */
   pageEvents?(
     context: RemoteTaskCallContext,
     taskId: string,
     cursor: string | null,
+    known?: (eventId: string) => boolean,
   ): Promise<RemoteTaskEventPage>;
   cancelTask?(context: RemoteTaskCallContext, taskId: string): Promise<void>;
   /**

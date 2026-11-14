@@ -320,16 +320,25 @@ describe('remote task engine routes', () => {
     expect(listing).toContain('"credential":"set"');
     // Separate vault buckets, and removing A leaves B's alone.
     expect(s.h.vault.bucketIds().sort()).toEqual(
-      [`engine-secret:${a}:default`, `engine-secret:${b}:default`].sort(),
+      [
+        `remote-task-credential:${a}:default`,
+        `remote-task-credential:${b}:default`,
+      ].sort(),
     );
     await s.call('DELETE', `/connections/${a}`);
-    expect(s.h.vault.bucketIds()).toEqual([`engine-secret:${b}:default`]);
-    expect(
-      s.h.vault.readSecret(
-        { connectionId: b, credentialProfileRef: 'default' },
-        REMOTE_TASK_CREDENTIAL_KEY,
-      ),
-    ).toBe(TOKEN_B);
+    expect(s.h.vault.bucketIds()).toEqual([
+      `remote-task-credential:${b}:default`,
+    ]);
+    expect(s.h.vault.readRemoteTaskToken(b, REMOTE_TASK_CREDENTIAL_KEY)).toBe(
+      TOKEN_B,
+    );
+    // Removing an engine connection of the same id (an ACP connection
+    // loaded from disk, which the HTTP schema never saw) leaves the remote
+    // task token alone.
+    await s.h.vault.removeConnection(b);
+    expect(s.h.vault.readRemoteTaskToken(b, REMOTE_TASK_CREDENTIAL_KEY)).toBe(
+      TOKEN_B,
+    );
     // Clearing B's credential stops its calls before any request.
     await s.call('DELETE', `/connections/${b}/credential`);
     const sent = s.vendorRequests();

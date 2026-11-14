@@ -1416,8 +1416,8 @@ Storing or clearing a connection's vendor token
 with the same operator-in-person exception as an engine key. Every route refuses
 a request that may be an agent's, so an agent cannot send host code off the
 machine. The token lives in the engine host-auth vault in its connection's own
-bucket, whose `remote-task-` prefix an ACP connection id may not take. It is
-never returned or logged, and a vendor's error text and error code are
+bucket, in a family (`remote-task-credential`) that removing an engine
+connection of the same id never reaches. It is never returned or logged, and a vendor's error text and error code are
 redacted of it. It reaches only that connection's vendor requests.
 
 Quota reads remain `access:manage`: they borrow a selected account's stored token
