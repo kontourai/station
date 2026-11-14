@@ -135,19 +135,20 @@ describe('Cursor binding', () => {
     const { cursor, h, connectionId } = await setup();
     cursor.state.run.status = 'RUNNING';
     await h.service.syncTask(connectionId, cursor.agentId);
-    // 30 runs finish between polls; the list is newest first, 20 a page by
-    // default.
+    // 130 runs finish between polls: past one list page even at limit=100.
     cursor.finishRun('run 0 done');
-    for (let i = 1; i < 30; i += 1) {
+    for (let i = 1; i < 130; i += 1) {
       cursor.startRun(
         `run-10000000-0000-0000-0000-${String(i).padStart(12, '0')}`,
-        `2026-04-13T19:${String(i).padStart(2, '0')}:00.000Z`,
+        new Date(
+          Date.parse('2026-04-13T19:00:00.000Z') + i * 60_000,
+        ).toISOString(),
       );
       cursor.finishRun(`run ${i} done`);
     }
     const result = await h.service.syncTask(connectionId, cursor.agentId);
     expect(agentMessages(result.appended)).toEqual(
-      Array.from({ length: 30 }, (_, i) => `run ${i} done`),
+      Array.from({ length: 130 }, (_, i) => `run ${i} done`),
     );
     // limit is sent, and paging stops once it reaches a stored run.
     const lists = cursor.fake.matching('GET', /\/runs$/);
