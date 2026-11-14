@@ -213,3 +213,169 @@ it('releasing a deleted message never takes bytes another process commits to a m
   );
   expect(read?.bytes).toEqual(PNG);
 });
+
+/** The other process: cycles of upload, send and delete in its own Project. */
+const CYCLING_CHILD = `
+import { readFileSync } from 'node:fs';
+import { ProjectRoomAttachments } from './src-server/services/projects/task-room-attachments.ts';
+import { createProjectRoomRuntime } from './src-server/services/projects/project-room-store.ts';
+import { ProjectRoomService } from './src-server/services/projects/project-room-service.ts';
+const p = JSON.parse(readFileSync(process.env.RACE_INPUT, 'utf8'));
+const runtime = createProjectRoomRuntime(p.home);
+const access = {
+  async withAction(_request, _slug, _action, _expected, operation) {
+    return operation(p.scope, p.actor, { view: true, discuss: true, edit: false, execute: false }, () => {});
+  },
+  async current() { return true; },
+};
+const service = new ProjectRoomService(runtime.store, access, new ProjectRoomAttachments(p.root));
+const request = new Request('http://station');
+const slug = p.scope.localProjectSlug;
+const room = (await service.open(request, slug)).data;
+const guard = { expectedRoomId: room.roomId, expectedProjectId: p.scope.localProjectId, expectedActorId: p.actor.id };
+const send = async (input) => {
+  const [file] = (await service.storeAttachments(request, slug, guard, [input])).data;
+  const message = (await service.append(request, slug, guard, { intentId: crypto.randomUUID(), text: '', attachments: [file] })).data;
+  return { file, message };
+};
+for (const input of p.cycles) {
+  const { message } = await send(input);
+  await service.deleteMessage(request, slug, guard, message.messageId, { intentId: crypto.randomUUID() });
+}
+const live = await send(p.live);
+service.close();
+runtime.close();
+process.stdout.write(JSON.stringify({ id: live.file.id, roomId: room.roomId }));
+`;
+
+it('bytes on disk are exactly the bytes live files name, across release and re-upload in two processes', async () => {
+  const { readdirSync } = await import('node:fs');
+  const home = makeTempDir('room-release-accounting-');
+  const root = join(home, 'project-room-attachments');
+  const first = scopeFor('first', randomUUID());
+  const second = scopeFor('second', randomUUID());
+  const runtime = createProjectRoomRuntime(home);
+  cleanup.push(runtime.close);
+  const service = new ProjectRoomService(
+    runtime.store,
+    port({ first, second }),
+    new ProjectRoomAttachments(root),
+  );
+  cleanup.push(() => service.close());
+  const request = new Request('http://station');
+  const room = (await service.open(request, 'first')).data;
+  const guard = {
+    expectedRoomId: room.roomId,
+    expectedProjectId: first.localProjectId,
+    expectedActorId: actor.id,
+  };
+  const variant = (name: string) => {
+    const bytes = Buffer.concat([PNG, Buffer.from(name)]);
+    return {
+      ...png(`${name}.png`),
+      size: bytes.length,
+      dataUrl: `data:image/png;base64,${bytes.toString('base64')}`,
+      bytes,
+    };
+  };
+  const input = ({ bytes: _bytes, ...rest }: ReturnType<typeof variant>) =>
+    rest;
+  const sendHere = async (file: ReturnType<typeof variant>) => {
+    const [stored] = (
+      await service.storeAttachments(request, 'first', guard, [input(file)])
+    ).data;
+    const message = (
+      await service.append(request, 'first', guard, {
+        intentId: randomUUID(),
+        text: '',
+        attachments: [stored!],
+      })
+    ).data;
+    return { stored: stored!, message };
+  };
+  // This process's live file: its bytes are also uploaded, sent and deleted
+  // by the other process, so a release that ignored references would take it.
+  const shared = variant('shared');
+  const mine = await sendHere(shared);
+
+  const stdout = join(home, 'child.out');
+  const stderr = join(home, 'child.err');
+  const inputFile = join(home, 'child.json');
+  writeFileSync(
+    inputFile,
+    JSON.stringify({
+      home,
+      root,
+      scope: second,
+      actor,
+      cycles: [
+        input(shared),
+        ...[1, 2, 3, 4, 5].map((n) => input(variant(`child-${n}`))),
+      ],
+      live: input(variant('child-live')),
+    }),
+  );
+  const child = spawn(
+    process.execPath,
+    ['--import', 'tsx', '--input-type=module', '-e', CYCLING_CHILD],
+    {
+      cwd: process.cwd(),
+      env: { ...process.env, RACE_INPUT: inputFile },
+      windowsHide: true,
+      stdio: ['ignore', openSync(stdout, 'w'), openSync(stderr, 'w')],
+    },
+  );
+  const finished = new Promise<number | null>((resolve) =>
+    child.on('close', resolve),
+  );
+  // Meanwhile this process cycles too, through the same store.
+  for (const n of [1, 2, 3, 4, 5]) {
+    const { message } = await sendHere(variant(`parent-${n}`));
+    await service.deleteMessage(request, 'first', guard, message.messageId, {
+      intentId: randomUUID(),
+    });
+  }
+  expect(await finished, readFileSync(stderr, 'utf8')).toBe(0);
+  const theirs = JSON.parse(readFileSync(stdout, 'utf8')) as {
+    id: string;
+    roomId: string;
+  };
+
+  // Only the two live files keep bindings, and the blobs on disk are exactly
+  // the ones those bindings name: nothing released stays, nothing live went.
+  const bindings = join(root, 'bindings');
+  const named = new Set<string>();
+  let files = 0;
+  for (const key of readdirSync(bindings))
+    for (const name of readdirSync(join(bindings, key))) {
+      files += 1;
+      named.add(
+        (
+          JSON.parse(readFileSync(join(bindings, key, name), 'utf8')) as {
+            blobRef: string;
+          }
+        ).blobRef.slice('sha256-'.length),
+      );
+    }
+  const blobs = new Set<string>();
+  for (const prefix of readdirSync(join(root, 'blobs')))
+    for (const digest of readdirSync(join(root, 'blobs', prefix)))
+      blobs.add(digest);
+  expect(files).toBe(2);
+  expect([...blobs].sort()).toEqual([...named].sort());
+  const store = new ProjectRoomAttachments(root);
+  const binding = (scope: typeof first, roomId: string) => [
+    scope.stationId,
+    scope.localProjectId,
+    scope.portableProjectId,
+    roomId,
+    actor.kind,
+    actor.id,
+  ];
+  expect(
+    store.read(binding(first, room.roomId), mine.stored.id)?.bytes,
+  ).toEqual(shared.bytes);
+  expect(store.read(binding(second, theirs.roomId), theirs.id)?.bytes).toEqual(
+    variant('child-live').bytes,
+  );
+});
