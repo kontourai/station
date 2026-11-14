@@ -232,7 +232,7 @@ const UNSUPPORTED_ENVIRONMENT_OPTIONS = Object.freeze([
 ]);
 
 /** Vitest's `getEnvPackageName`: the package an environment name loads. */
-export function vitestEnvironmentPackage(environment) {
+function vitestEnvironmentPackage(environment) {
   if (environment === 'node') return null;
   if (Object.hasOwn(VITEST_ENVIRONMENT_PACKAGES, environment))
     return VITEST_ENVIRONMENT_PACKAGES[environment];
