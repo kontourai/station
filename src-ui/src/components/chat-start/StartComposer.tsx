@@ -347,7 +347,7 @@ export function StartComposer({
           className={`choice-trigger start-composer__project${draft ? ' start-composer__chip' : ''}`}
           aria-haspopup={projectFixed ? undefined : 'dialog'}
           aria-label={`Project: ${project.label}`}
-          title={project.folderTitle ?? project.folder}
+          title={project.folder}
           disabled={projectFixed}
           onClick={(event) => onOpenProject(event.currentTarget)}
         >

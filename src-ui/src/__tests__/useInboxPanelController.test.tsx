@@ -200,7 +200,9 @@ test('mobile search focuses when mounted and never steals a later keyboard selec
   fireEvent.click(screen.getByRole('button', { name: 'Search inbox' }));
   const search = screen.getByRole('searchbox');
   expect(document.activeElement).toBe(search);
-  const row = screen.getByRole('button', { name: 'First selection, Workshop' });
+  const row = screen.getByRole('button', {
+    name: 'First selection, Workshop, Station: Receiver Station',
+  });
   row.focus();
   act(() =>
     frames.splice(0).forEach((callback) => callback(performance.now())),
@@ -256,7 +258,9 @@ for (const layout of ['desktop', 'mobile'] as const) {
       );
       const { acknowledge } = mount(layout, open);
       fireEvent.click(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       );
       fireEvent.click(
         screen.getByRole('button', { name: 'Second selection, Workshop' }),
@@ -289,14 +293,18 @@ for (const layout of ['desktop', 'mobile'] as const) {
       );
       const { failures, acknowledge } = mount(layout, open);
       fireEvent.click(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       );
       fireEvent.click(screen.getByRole('button', { name: 'Toggle panel' }));
       fireEvent.click(screen.getByRole('button', { name: 'Toggle panel' }));
       await act(async () => resolves[0]!(false));
       expect(window.location.search).toBe('');
       fireEvent.click(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       );
       fireEvent.click(screen.getByRole('button', { name: 'Switch Station' }));
       await act(async () => resolves[1]!(false));
@@ -316,7 +324,9 @@ for (const layout of ['desktop', 'mobile'] as const) {
         await user.click(screen.getByRole('button', { name: 'Search inbox' }));
       await user.type(screen.getByRole('searchbox'), 'second');
       expect(
-        screen.queryByRole('button', { name: 'First selection, Workshop' }),
+        screen.queryByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeNull();
       expect(
         screen.getByRole('button', { name: 'Second selection, Workshop' }),
@@ -324,17 +334,23 @@ for (const layout of ['desktop', 'mobile'] as const) {
       await user.clear(screen.getByRole('searchbox'));
       await user.type(screen.getByRole('searchbox'), 'reviewer');
       expect(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeTruthy();
       await user.clear(screen.getByRole('searchbox'));
       await user.type(screen.getByRole('searchbox'), 'Workshop');
       expect(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeTruthy();
       await user.clear(screen.getByRole('searchbox'));
       await user.type(screen.getByRole('searchbox'), 'Receiver Station');
       expect(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeTruthy();
       expect(
         screen.queryByRole('button', { name: 'Second selection, Workshop' }),
@@ -343,7 +359,9 @@ for (const layout of ['desktop', 'mobile'] as const) {
       await user.type(screen.getByRole('searchbox'), 'missing');
       expect(screen.getByRole('button', { name: 'Clear filter' })).toBeTruthy();
       expect(
-        screen.queryByRole('button', { name: 'First selection, Workshop' }),
+        screen.queryByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeNull();
     },
   );
@@ -368,7 +386,9 @@ for (const layout of ['desktop', 'mobile'] as const) {
         true,
       );
       fireEvent.click(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       );
       await waitFor(() => expect(acknowledge).toHaveBeenCalledOnce());
       expect(acknowledge.mock.calls[0]?.[0]).toMatchObject({ id: 'first' });
@@ -384,7 +404,9 @@ for (const layout of ['desktop', 'mobile'] as const) {
         async () => 'unavailable' as const,
       );
       fireEvent.click(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       );
       await waitFor(() => expect(failures).toHaveBeenCalledOnce());
       expect(failures.mock.calls[0]?.[0]).toEqual(expect.any(String));
@@ -400,7 +422,9 @@ for (const layout of ['desktop', 'mobile'] as const) {
         throw new Error('unsafe-secret-machine-diagnostic');
       });
       fireEvent.click(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       );
       await waitFor(() => expect(failures).toHaveBeenCalledOnce());
       expect(failures.mock.calls[0]?.[0]).not.toContain('unsafe-secret');
@@ -459,12 +483,16 @@ for (const layout of ['desktop', 'mobile'] as const) {
       await user.click(screen.getByRole('button', { name: 'Undo dismissal' }));
       expect(readInboxDismissals('principal-a')).toEqual({});
       expect(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeTruthy();
       view.unmount();
       view = mount(layout, async () => true, 'principal-b');
       expect(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeTruthy();
     },
   );
@@ -477,14 +505,18 @@ for (const layout of ['desktop', 'mobile'] as const) {
     async () => {
       mount(layout, async () => true, 'principal-a', true);
       expect(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       await waitFor(() =>
         expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull(),
       );
       expect(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeTruthy();
     },
   );
