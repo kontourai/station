@@ -17,6 +17,7 @@ import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { ACP_APPROVAL_TAKEOVER_FAILED_CODE } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test } from 'vitest';
+import type { PreToolPolicyDecision } from '../../runtime/agents/pre-tool-policy.js';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   evaluateOpenCodeRules,
@@ -31,7 +32,6 @@ import {
   SendTurnRefusedError,
   SessionRewindingError,
 } from '../adapter-shape.js';
-import type { PreToolPolicyDecision } from '../../runtime/agents/pre-tool-policy.js';
 import type { AcpAdapterOptions } from '../adapters/acp-adapter.js';
 import { nativeResumeBindingKey } from '../adapters/native-resume-binding.js';
 import {
@@ -3445,11 +3445,13 @@ describe('OpenCodeAdapter native reconnect re-reads (2.3.0 replay)', () => {
       record.kind === 'http' &&
       record.method === 'GET' &&
       record.path?.startsWith('/api/session?parentID=') === true;
+    const recorded = loadOpenCodeFixture('subagent-gap').find(
+      (record) =>
+        record.kind === 'http' && record.path === '/api/permission/request',
+    );
+    if (!recorded) throw new Error('subagent-gap recorded no ask list');
     const ask = (
-      loadOpenCodeFixture('subagent-gap').find(
-        (record) =>
-          record.kind === 'http' && record.path === '/api/permission/request',
-      )?.response as { data: Array<{ id: string; sessionID: string }> }
+      recorded.response as { data: Array<{ id: string; sessionID: string }> }
     ).data[0]!;
     const rewrite = (record: OpenCodeReplayRecord): OpenCodeReplayRecord => {
       if (!listsDescendants(record)) return record;
