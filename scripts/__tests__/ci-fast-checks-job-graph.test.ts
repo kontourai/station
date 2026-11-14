@@ -725,6 +725,32 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       expect(state.results.get(id), id).toBe('skipped');
   });
 
+  // The repo-scans comments (ci.yml, REPO_SCAN_SUITES) say a red there is
+  // feedback that does not block landing: nothing that gates landing waits
+  // on it, and neither the merge queue nor a fork pull request runs it.
+  test('repo-scans is pull-request feedback: a red one gates nothing, and merge groups and forks skip it', () => {
+    const red = simulate(jobs, sameRepositoryPr, {
+      outcomes: { 'repo-scans': 'failure' },
+      outputs: { 'fast-checks-plan': { legacy: 'false', shards: '[1]' } },
+    });
+    expect(red.results.get('repo-scans')).toBe('failure');
+    for (const id of ['fast-checks', 'source-policy'])
+      expect(red.results.get(id), id).toBe('success');
+    for (const id of ['fast-checks', 'source-policy', 'merge-queue-regression'])
+      expect(ancestors(jobs, id).has('repo-scans'), id).toBe(false);
+    const queue = simulate(
+      jobs,
+      { ...sameRepositoryPr, event: 'merge_group' },
+      { outputs: { 'fast-checks-plan': { legacy: 'false' } } },
+    );
+    expect(queue.results.get('repo-scans')).toBe('skipped');
+    const fork = simulate(jobs, {
+      ...sameRepositoryPr,
+      headRepository: 'someone/station',
+    });
+    expect(fork.results.get('repo-scans')).toBe('skipped');
+  });
+
   test('a push that is not heavy skips the fast-checks graph', () => {
     const state = simulate(
       jobs,

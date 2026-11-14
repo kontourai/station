@@ -811,8 +811,12 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
   'scripts/__tests__/classify-ci-change.scan.test.ts',
   // Its iOS coverage tests walk src-ui and every package the UI bundle can
-  // import, so a new import that no iOS build covers fails on the pull
-  // request that adds it. No import edge connects those sources to the test.
+  // import, so a new import that no iOS build covers shows red in the
+  // repo-scans job on the same-repository pull request that adds it. That job
+  // is not required, the source-verification verdict leaves it out, fork pull
+  // requests skip it and the merge queue does not run this suite, so the red
+  // does not block landing; post-landing full qualification is what would
+  // stop it. No import edge connects those sources to the test.
   'scripts/__tests__/classify-ci-change.test.ts',
   'scripts/__tests__/content-integrity-gate.scan.test.ts',
   // Scans source trees for coordinator product names outside their copy owner.
