@@ -436,7 +436,11 @@ function attributionFixture({
   const root = makeTempDir('gallery-attribution-workspace-');
   const git = gitIn(root);
   git('init', '-q');
-  mkdirSync(join(root, 'scripts'));
+  mkdirSync(join(root, 'scripts/lib'), { recursive: true });
+  copyFileSync(
+    resolve('scripts/lib/module-entry.mjs'),
+    join(root, 'scripts/lib/module-entry.mjs'),
+  );
   mkdirSync(join(root, 'tests'));
   for (const file of [
     'gallery-main-attribution.mjs',

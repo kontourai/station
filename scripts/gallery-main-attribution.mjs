@@ -24,15 +24,10 @@
 // commit, so the candidate's tree supplies the captures and its own
 // allowlist but never the rule that excuses them. Exit 2 is a usage or input
 // error, never a verdict; the workflow treats it as `verdict=pr`.
-import {
-  appendFileSync,
-  readFileSync,
-  realpathSync,
-  writeFileSync,
-} from 'node:fs';
-import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { judge, readAllowlist } from './gallery-ui-findings.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const DEFAULT_MAX_SCREENS = 40;
 const SCREEN_MAP = 'tests/gallery-screen-sources.json';
@@ -219,12 +214,4 @@ function main(argv = process.argv.slice(2)) {
   }
 }
 
-let isMain = false;
-try {
-  isMain =
-    realpathSync(resolve(process.argv[1] ?? '')) ===
-    realpathSync(fileURLToPath(import.meta.url));
-} catch {
-  // A missing entry path cannot be this module's executable invocation.
-}
-if (isMain) process.exitCode = main();
+if (invokedDirectly(import.meta.url)) process.exitCode = main();
