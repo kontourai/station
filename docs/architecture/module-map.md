@@ -4883,7 +4883,9 @@ normally killed). Orchestration's first-turn composition adds the
 budget statement for adapters declaring `workloadScope: 'engine-process'`
 (omitted, with the chat-images line, when the Session's `session.started`
 records that its engine resumed an existing native transcript, which already
-holds them) and
+holds them; delivered again, with the prompt, Station instructions and Task
+brief, on the first turn after an `acp.session-started-fresh` warning, whose
+new engine session holds none of them) and
 the [memory-exhaustion recovery note](../../src-server/services/orchestration/memory-exhaustion-recovery.ts)
 for a successor of a memory-killed Session. Otherwise, the first turn after any
 engine ended with work still running gets the
