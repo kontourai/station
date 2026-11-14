@@ -1280,3 +1280,38 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     expect(session.resumeCursor).toMatchObject({ transport: 'acp' });
   });
 });
+
+describe('OpenCodeResumeCursor shape guard', () => {
+  const valid = {
+    kind: 'opencode',
+    connectionId: 'opencode',
+    sessionId: 'ses_1',
+    cwd: '/p',
+    bindingKey: 'k',
+    transport: 'native',
+  };
+  test('accepts the cursors Station writes, native and ACP', () => {
+    expect(isOpenCodeResumeCursor(valid)).toBe(true);
+    expect(
+      isOpenCodeResumeCursor({
+        ...valid,
+        transport: 'acp',
+        acp: {
+          acpSessionId: 'ses_1',
+          connectionId: 'opencode',
+          connectionFingerprint: 'f00d',
+        },
+      }),
+    ).toBe(true);
+  });
+  test.each([
+    ['another kind', { ...valid, kind: 'acp' }],
+    ['an empty session id', { ...valid, sessionId: '' }],
+    ['an unknown transport', { ...valid, transport: 'serve' }],
+    ['no binding key', { ...valid, bindingKey: undefined }],
+    ['a malformed ACP cursor', { ...valid, transport: 'acp', acp: { x: 1 } }],
+    ['an ACP cursor itself', { acpSessionId: 'ses_1', connectionId: 'o' }],
+  ])('refuses %s', (_label, value) => {
+    expect(isOpenCodeResumeCursor(value)).toBe(false);
+  });
+});
