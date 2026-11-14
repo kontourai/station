@@ -112,12 +112,6 @@
 
     "scripts/__tests__/agent-runtime-import-boundary-gate.test.ts",
 
-    "scripts/typecheck-aggregate.mjs",
-
-    "scripts/test-impact-manifest.mjs",
-
-    "scripts/vitest-resource-manifest.mjs",
-
     "package.json#/scripts/typecheck:agent-runtime",
 
     "package.json#/scripts/build:agent-runtime",
