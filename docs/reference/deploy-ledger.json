@@ -1,5 +1,48 @@
 [
   {
+    "timestampUtc": "2026-11-14T23:38:21Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261114.43653046102",
+    "sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43653046102",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261114.43653046102 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "e54d5784edda09dc704955455b4fe000547231ca",
+      "groups": {
+        "feat": [
+          "[#4969](https://github.com/kontourai/station/pull/4969) feat(acp): make Google Antigravity (agy acp) a working built-in engine on generic ACP seams",
+          "[#4970](https://github.com/kontourai/station/pull/4970) feat(muse): full Muse Code support on muse serve, on generic engine seams",
+          "[#4961](https://github.com/kontourai/station/pull/4961) feat(docs): record one review note per widely cited input",
+          "[#4897](https://github.com/kontourai/station/pull/4897) feat(ui): unify run setup beside composer send actions"
+        ],
+        "fix": [
+          "[#4967](https://github.com/kontourai/station/pull/4967) fix(plugins): recover from an unreadable plugin inventory instead of showing unsupported tabs",
+          "[#4966](https://github.com/kontourai/station/pull/4966) fix(deps): record the owner-approved zod exception and renew three residuals"
+        ],
+        "ci": [
+          "[#4974](https://github.com/kontourai/station/pull/4974) ci(qualification): classify red runs from runner-written failure manifests, in report mode",
+          "[#4964](https://github.com/kontourai/station/pull/4964) ci(qualification): spend less runner time on main qualification",
+          "[#4962](https://github.com/kontourai/station/pull/4962) ci(fast-checks): spread PR shards over five slots and give the release bot its own",
+          "[#4960](https://github.com/kontourai/station/pull/4960) ci: repair scheduled automation that failed every run and harden its issue writes"
+        ],
+        "docs": [],
+        "other": [
+          "[#4965](https://github.com/kontourai/station/pull/4965) test(android): reconcile release pairing keeper with Stable RC staging",
+          "[#4959](https://github.com/kontourai/station/pull/4959) test(gallery): phone chat actions lead the child-chat breadcrumb"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
     "timestampUtc": "2026-11-14T15:37:21Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.20261114.1",
