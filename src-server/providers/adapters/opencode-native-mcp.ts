@@ -54,6 +54,12 @@ export interface OpenCodeMcpServer {
 export interface OpenCodeNativeMcp {
   readonly servers: readonly OpenCodeMcpServer[];
   readonly undelivered: readonly CapabilityUndelivered[];
+  /**
+   * The servers carry a credential minted for this session (Station's
+   * built-in servers), so no other session's set digests the same: the
+   * server keyed by it is this session's alone.
+   */
+  readonly sessionScoped: boolean;
 }
 
 type MintOptions = Pick<
@@ -156,7 +162,8 @@ export async function resolveOpenCodeNativeMcp(
           ]),
         ]
       : config.provideToolServers;
-  if (!requested?.length) return { servers: [], undelivered: [] };
+  if (!requested?.length)
+    return { servers: [], undelivered: [], sessionScoped: false };
   if (
     agentToolServers?.some(
       (server) =>
@@ -263,7 +270,15 @@ export async function resolveOpenCodeNativeMcp(
         });
       }
     }
-    return { servers, undelivered };
+    return {
+      servers,
+      undelivered,
+      sessionScoped:
+        (stationControlAuth !== undefined &&
+          resolved.stationControlDelivered === true) ||
+        (stationKnowledgeAuth !== undefined &&
+          resolved.stationKnowledgeDelivered === true),
+    };
   } catch (error) {
     // As on ACP: a failed resolution delivers nothing and says so; it does
     // not stop the session from starting.
@@ -286,6 +301,7 @@ export async function resolveOpenCodeNativeMcp(
           detail: error instanceof Error ? error.message : String(error),
         },
       ],
+      sessionScoped: false,
     };
   }
 }

@@ -75,15 +75,25 @@ export interface OpenCodeServeLease {
   release(): void;
   /**
    * Give the lease back and stop the server at once if no other lease holds
-   * it: for a server Station will not use (its API was not verified).
+   * it: for a server Station will not use (its API was not verified), or one
+   * no other session can share (its key carries one session's credentials).
    */
   discard(): void;
+  /**
+   * Move the server to the key for `mcpDigest`, so the session that holds
+   * this lease uses it for its own tool servers rather than starting
+   * another. Only while this lease is the server's only holder and no server
+   * runs under that key; the caller must not have added tool servers to it.
+   * False changes nothing.
+   */
+  rekey(mcpDigest: string): boolean;
 }
 
 type Spawn = typeof spawnOwnedChild;
 
 interface ServerEntry {
-  readonly key: string;
+  /** Changes only by `rekey`. */
+  key: string;
   refs: number;
   idleTimer?: ReturnType<typeof setTimeout>;
   stopping?: Promise<void>;
@@ -155,13 +165,15 @@ export class OpenCodeServePool {
     const { size, mtimeMs } = await this.stat(binary);
     // stopAll may have run while the paths resolved.
     if (this.closed) throw new OpenCodeServeStartError('The pool is closed.');
-    const key = JSON.stringify([
-      input.connectionId,
-      [binary, size, mtimeMs],
-      cwd,
-      envDigest(input.env, input.tmpDir),
-      input.mcpDigest,
-    ]);
+    const keyFor = (mcpDigest: string) =>
+      JSON.stringify([
+        input.connectionId,
+        [binary, size, mtimeMs],
+        cwd,
+        envDigest(input.env, input.tmpDir),
+        mcpDigest,
+      ]);
+    const key = keyFor(input.mcpDigest);
     let entry = this.servers.get(key);
     if (!entry || entry.stopping) {
       if (this.options.allowSpawn && !this.options.allowSpawn())
@@ -204,6 +216,22 @@ export class OpenCodeServePool {
         released = true;
         held.refs = Math.max(0, held.refs - 1);
         if (held.refs === 0) void this.stop(held);
+      },
+      rekey: (mcpDigest: string) => {
+        const next = keyFor(mcpDigest);
+        if (next === held.key) return !released;
+        if (
+          released ||
+          held.refs !== 1 ||
+          held.stopping ||
+          this.servers.get(held.key) !== held ||
+          this.servers.has(next)
+        )
+          return false;
+        this.servers.delete(held.key);
+        held.key = next;
+        this.servers.set(next, held);
+        return true;
       },
     };
   }
@@ -254,7 +282,7 @@ export class OpenCodeServePool {
       if (gone) return;
       gone = true;
       release();
-      if (this.servers.get(key) === entry) this.servers.delete(key);
+      if (this.servers.get(entry.key) === entry) this.servers.delete(entry.key);
       markExited();
     };
     // A spawn that fails (ENOENT, EACCES) emits 'error' and never 'exit'.

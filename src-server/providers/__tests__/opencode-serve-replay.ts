@@ -362,6 +362,8 @@ export function replayLeaser(
   acquired: OpenCodeServeAcquireInput[];
   released: number;
   discarded: number;
+  /** Each lease's `rekey` digest, in order. */
+  rekeyed: string[];
   exit(): void;
 } {
   let markExited!: () => void;
@@ -372,6 +374,7 @@ export function replayLeaser(
     acquired: [] as OpenCodeServeAcquireInput[],
     released: 0,
     discarded: 0,
+    rekeyed: [] as string[],
     async acquire(input: OpenCodeServeAcquireInput) {
       leaser.acquired.push(input);
       return {
@@ -384,6 +387,10 @@ export function replayLeaser(
         },
         discard: () => {
           leaser.discarded += 1;
+        },
+        rekey: (mcpDigest: string) => {
+          leaser.rekeyed.push(mcpDigest);
+          return true;
         },
       };
     },

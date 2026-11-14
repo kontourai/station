@@ -829,8 +829,48 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
       h.events.filter((event) => event.method === 'runtime.warning'),
     ).toEqual([]);
     expect(JSON.stringify(h.events)).not.toContain('tok-session-one');
+    // Its key carries this session's credential, so no other session can
+    // share it: it stops with the session, not after idling.
+    expect(h.leaser.discarded).toBe(0);
     await h.adapter.stopSession('thread-1');
     expect(tools.revoked).toContain('thread-1');
+    expect(h.leaser.discarded).toBe(1);
+    expect(h.leaser.released).toBe(0);
+  });
+
+  test('a session without Station tool servers gives its shareable server back to idle at stop', async () => {
+    const h = await setup({ scenario: 'basic' });
+    await h.start();
+    await h.adapter.stopSession('thread-1');
+    expect(h.leaser.released).toBe(1);
+    expect(h.leaser.discarded).toBe(0);
+  });
+
+  test("a governed start runs on the server its preflight checked, moved to the session's tool servers: one server, not two", async () => {
+    const tools = stationTools({ 'thread-1': 'tok-session-one' });
+    const h = await setup(
+      { scenario: 'mcp-add', rewrite: asStationControl },
+      tools.options,
+    );
+    await h.adapter.preflightStart({
+      threadId: 'thread-1',
+      provider: 'opencode',
+      cwd: '/replay/proj',
+      metadata: { connectionId: 'opencode' },
+      modelOptions: { approvalMode: 'ask' },
+    });
+    expect(h.leaser.acquired.map((input) => input.mcpDigest)).toEqual([
+      openCodeMcpDigest([]),
+    ]);
+    // Held for the start, not given back.
+    expect(h.leaser.released).toBe(0);
+    await h.start({ approvalMode: 'ask' });
+    expect(h.leaser.acquired).toHaveLength(1);
+    expect(h.leaser.rekeyed).toHaveLength(1);
+    expect(h.leaser.rekeyed[0]).not.toBe(openCodeMcpDigest([]));
+    expect(
+      h.replay.made('PUT', '/api/experimental/mcp/station-control'),
+    ).toHaveLength(1);
   });
 
   test('two sessions with different Station tool-server credentials ask for different servers', async () => {

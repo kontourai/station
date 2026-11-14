@@ -186,6 +186,28 @@ describe('OpenCodeServePool', () => {
     expect(h.spawned).toHaveLength(2);
   });
 
+  test("a lease moves its server to another tool-server set's key only while it alone holds it", async () => {
+    const h = harness();
+    active = h.pool;
+    const checked = await h.pool.acquire(input());
+    expect(checked.rekey('session-a-servers')).toBe(true);
+    // The session's own acquire would now find it; the old key starts anew.
+    const own = await h.pool.acquire(input({ mcpDigest: 'session-a-servers' }));
+    expect(own.url).toBe(checked.url);
+    expect(h.spawned).toHaveLength(1);
+    const fresh = await h.pool.acquire(input());
+    expect(fresh.url).not.toBe(checked.url);
+    expect(h.spawned).toHaveLength(2);
+    // Shared (two leases hold it), or the target key taken: refused.
+    expect(checked.rekey('session-b-servers')).toBe(false);
+    const other = await h.pool.acquire(input({ mcpDigest: 'session-c' }));
+    expect(fresh.rekey('session-c')).toBe(false);
+    other.release();
+    fresh.release();
+    // A released lease moves nothing.
+    expect(fresh.rekey('session-d')).toBe(false);
+  });
+
   test('a server stops only once every lease is back and the idle bound passed', async () => {
     const h = harness();
     active = h.pool;

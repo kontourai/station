@@ -147,6 +147,17 @@ const AGENT_LOOKUP_BOUND_MS = 3_000;
 const AGENT_LOOKUP_RETRY_MS = 100;
 
 const ENGINE_NAME = 'OpenCode';
+/**
+ * How long a governed preflight's server lease waits for its start
+ * (`preflightStart` runs just before `startSession`); past it the lease is
+ * given back and the server idles as usual.
+ */
+const PREFLIGHT_LEASE_HOLD_MS = 60_000;
+
+/** What the server a plan runs on is keyed by, less its tool servers. */
+function nativePlanKey(plan: NativePlan): string {
+  return JSON.stringify([plan.config.id, plan.binary, plan.cwd, plan.env]);
+}
 
 /**
  * A saved connection this adapter runs: the OpenCode descriptor's own id,
@@ -245,6 +256,12 @@ interface NativeRecord {
   dirty: boolean;
   /** A turn is being set up (settings, prompt): a second one is refused. */
   busy: boolean;
+  /**
+   * The server's key carries this session's own credentials
+   * (`OpenCodeNativeMcp.sessionScoped`): no other session can share it, so
+   * it stops with the session rather than idling.
+   */
+  readonly serverIsSessions: boolean;
 }
 
 interface NativePlan {
@@ -287,6 +304,15 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
   private readonly native = new Map<string, NativeRecord>();
   /** Threads whose session runs over the inner ACP adapter. */
   private readonly overAcp = new Set<string>();
+  /** Leases a governed preflight checked on, waiting for their start. */
+  private readonly preflightLeases = new Map<
+    string,
+    {
+      lease: OpenCodeServeLease;
+      planKey: string;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
   private readonly inner: ProviderAdapterShape;
   private readonly pool: OpenCodeServeLeaser;
   /** Schema verdicts by binary identity: verified, or why not. */
@@ -630,9 +656,13 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         floor,
         agent ?? 'build',
       );
-    } finally {
+    } catch (error) {
       lease.release();
+      throw error;
     }
+    // Nothing was added to it: the start takes it over for its own tool
+    // servers (`startLease`) instead of starting a second server.
+    this.keepPreflightLease(input.threadId, plan, lease);
   }
 
   async startSession(
@@ -673,11 +703,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     }
     const lease =
       plan && mcp
-        ? await this.verifiedLease(
-            plan,
-            input.threadId,
-            openCodeMcpDigest(mcp.servers),
-          )
+        ? await this.startLease(input.threadId, plan, mcp)
         : undefined;
     if (!plan || !lease || !mcp) {
       // The ACP adapter mints its own credentials for the session.
@@ -687,10 +713,66 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     try {
       return await this.startNative(input, plan, lease, mcp);
     } catch (error) {
-      lease.release();
+      if (mcp.sessionScoped) lease.discard();
+      else lease.release();
       this.revokeMcpAuth(input.threadId);
       throw error;
     }
+  }
+
+  /**
+   * The server a native start runs on: the one its preflight checked
+   * governance on, when the preflight left one for this thread and it can
+   * take the session's tool servers (same set, or moved to the set's key),
+   * so a governed start spawns one server, not two; else the server for the
+   * session's tool servers.
+   */
+  private async startLease(
+    threadId: string,
+    plan: NativePlan,
+    mcp: OpenCodeNativeMcp,
+  ): Promise<OpenCodeServeLease | undefined> {
+    const digest = openCodeMcpDigest(mcp.servers);
+    const checked = this.takePreflightLease(threadId);
+    if (checked) {
+      if (
+        checked.planKey === nativePlanKey(plan) &&
+        checked.lease.rekey(digest)
+      )
+        return checked.lease;
+      checked.lease.release();
+    }
+    return this.verifiedLease(plan, threadId, digest);
+  }
+
+  private takePreflightLease(
+    threadId: string,
+  ): { lease: OpenCodeServeLease; planKey: string } | undefined {
+    const held = this.preflightLeases.get(threadId);
+    if (!held) return undefined;
+    this.preflightLeases.delete(threadId);
+    clearTimeout(held.timer);
+    return held;
+  }
+
+  /** Hold the lease a preflight checked on for the start that follows it. */
+  private keepPreflightLease(
+    threadId: string,
+    plan: NativePlan,
+    lease: OpenCodeServeLease,
+  ): void {
+    this.takePreflightLease(threadId)?.lease.release();
+    const timer = setTimeout(() => {
+      if (this.preflightLeases.get(threadId)?.lease !== lease) return;
+      this.preflightLeases.delete(threadId);
+      lease.release();
+    }, PREFLIGHT_LEASE_HOLD_MS);
+    timer.unref?.();
+    this.preflightLeases.set(threadId, {
+      lease,
+      planKey: nativePlanKey(plan),
+      timer,
+    });
   }
 
   /** Revoke the Station tool-server credentials minted for a native session. */
@@ -966,6 +1048,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       rules: permissions ?? [],
       dirty: false,
       busy: false,
+      serverIsSessions: mcp.sessionScoped,
     };
     this.native.set(input.threadId, record);
     void lease.exited.then(() => this.onServerExit(input.threadId, record));
@@ -1503,7 +1586,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     try {
       await record.native.stop('stopped');
     } finally {
-      record.lease.release();
+      if (record.serverIsSessions) record.lease.discard();
+      else record.lease.release();
       this.revokeMcpAuth(threadId);
     }
     this.publish({
@@ -1551,6 +1635,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
 
   async stopAll(): Promise<void> {
     try {
+      for (const threadId of [...this.preflightLeases.keys()])
+        this.takePreflightLease(threadId)?.lease.release();
       await Promise.all(
         [...this.native.keys()].map((threadId) => this.stopSession(threadId)),
       );
