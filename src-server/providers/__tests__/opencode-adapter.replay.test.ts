@@ -21,6 +21,7 @@ import { nativeResumeBindingKey } from '../adapters/native-resume-binding.js';
 import {
   isOpenCodeResumeCursor,
   OPENCODE_NATIVE_UNAVAILABLE,
+  OPENCODE_NATIVE_UNSUPPORTED_SETTING,
   OPENCODE_NATIVE_UNVERIFIED,
   OpenCodeAdapter,
 } from '../adapters/opencode-adapter.js';
@@ -1255,6 +1256,23 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
       kind: 'opencode',
       transport: 'acp',
     });
+  });
+
+  test('an effort setting runs the session over ACP with a warning', async () => {
+    const h = await setup({ scenario: 'basic' });
+    const session = await h.start({ effort: 'high' });
+    expect(h.leaser.acquired).toHaveLength(0);
+    expect(h.replay.made('POST', '/api/session')).toHaveLength(0);
+    expect(
+      h.events.find((event) => event.method === 'runtime.warning'),
+    ).toMatchObject({
+      code: OPENCODE_NATIVE_UNSUPPORTED_SETTING,
+      threadId: 'thread-1',
+    });
+    expect(h.inner()?.starts).toEqual([
+      expect.objectContaining({ modelOptions: { effort: 'high' } }),
+    ]);
+    expect(session.resumeCursor).toMatchObject({ transport: 'acp' });
   });
 
   test('a server that does not start falls back to ACP with a warning', async () => {

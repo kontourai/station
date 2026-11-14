@@ -118,6 +118,13 @@ import {
 export const OPENCODE_NATIVE_UNVERIFIED = 'OPENCODE_NATIVE_UNVERIFIED';
 /** `runtime.warning` code: a 2.x server could not be started; ACP runs instead. */
 export const OPENCODE_NATIVE_UNAVAILABLE = 'OPENCODE_NATIVE_UNAVAILABLE';
+/**
+ * `runtime.warning` code: the session asks for something only ACP honours
+ * (an `effort` setting), so ACP runs instead. OpenCode 2's native model
+ * reference takes a provider-defined `variant`, not a level Station can map.
+ */
+export const OPENCODE_NATIVE_UNSUPPORTED_SETTING =
+  'OPENCODE_NATIVE_UNSUPPORTED_SETTING';
 
 /**
  * How long an agent lookup keeps asking while the server answers 404: a
@@ -370,6 +377,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     // R5′: the policy's `acp` entry governs this connection, whichever
     // transport runs it (`managedPolicyEngineId` maps `opencode` to `acp`).
     assertEngineAllowedByManagedPolicy(this.provider, config);
+    // The native path cannot honour an effort setting; ACP can.
+    if (input.modelOptions?.effort !== undefined) return undefined;
     // A managed policy pins OpenCode's launch through its `acp` entry: the
     // binary and environment apply to `serve` as they do to `acp`. Pinned
     // arguments belong to the `acp` command line and are not given to
@@ -609,6 +618,16 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       throw new Error('This OpenCode resume cursor is not one Station wrote.');
     const config = await this.connection(input);
     const plan = await this.nativePlan(input, config);
+    if (
+      !plan &&
+      this.nativeEnabled() &&
+      input.modelOptions?.effort !== undefined
+    )
+      this.warn(
+        input.threadId,
+        OPENCODE_NATIVE_UNSUPPORTED_SETTING,
+        'Station runs this OpenCode chat over ACP: its effort setting is not available on OpenCode\'s own server.',
+      );
     const lease = plan
       ? await this.verifiedLease(plan, input.threadId)
       : undefined;
@@ -739,10 +758,6 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     );
     const floor = acpApprovalFloor(mode);
     const agent = requestedAcpSessionMode(input.modelOptions);
-    if (input.modelOptions?.effort !== undefined)
-      throw new Error(
-        'OpenCode on its own server does not take an effort setting in Station yet. Remove it from the agent, or turn off the OpenCode native engine preview.',
-      );
     let sessionId: string;
     let stored: string | undefined;
     if (cursor) {
