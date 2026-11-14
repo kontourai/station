@@ -189,8 +189,9 @@ export class CopilotSdkEventTranslator {
         ];
       }
       case 'assistant.usage': {
-        // Per model call, including a subagent's calls: the fold sums them
-        // into the parent turn (`PROVIDER_USAGE_SCOPE` 'per-call').
+        // One event per model call, a subagent's calls included, never a
+        // running total: the fold sums them into the parent turn
+        // (`PROVIDER_USAGE_SCOPE` 'per-turn').
         const input = event.data.inputTokens;
         const output = event.data.outputTokens;
         return [
