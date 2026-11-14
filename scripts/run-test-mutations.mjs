@@ -1271,8 +1271,8 @@ export const MUTATIONS = [
         change: (source) =>
           exactReplace(
             source,
-            '/(?<![A-Za-z0-9_.])\\d+(?![A-Za-z0-9_.])/g,',
-            '/(?<![A-Za-z0-9_.])\\d+(?![A-Za-z0-9_.])/,',
+            "`N${range ? '-N' : ''}${sep}of${sep}N`",
+            "`N${range ?? ''}${sep}of${sep}N`",
           ),
       },
     ],
@@ -1324,6 +1324,40 @@ export const MUTATIONS = [
             source,
             'last.push((merged - entries.at(-1)) / minute);',
             'last.push((merged - entries[0]) / minute);',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'ci-health-landing-bypass',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure:
+      'measures last and first queue entry to merge, counting re-entries and PRs without queue or merge events',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(
+            source,
+            'removals.some((at) => at > entries.at(-1) && at < merged - minute)',
+            'removals.some((at) => at > entries.at(-1) && at < merged - 1)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'ci-health-unique-catch-non-verifying',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure:
+      'leaves label, dequeue and close automation out of the unique-catch table',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(
+            source,
+            'NON_VERIFYING_PR_WORKFLOWS.includes(workflowFile(run))',
+            'NON_VERIFYING_PR_WORKFLOWS.includes(run.path)',
           ),
       },
     ],

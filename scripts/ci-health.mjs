@@ -408,14 +408,19 @@ export function setupMetrics(jobs) {
     }),
   );
 }
-// Matrix and shard legs differ only in standalone numbers ("fast-checks shard
-// 3", "Ordinary corpus 1-2 of 8", "test (1, 4)"); digits inside a token such as
-// "linux-x64" or "ubuntu-22.04" name a different lane and are kept.
+// Shard and matrix legs differ only in counters, which become `N`:
+// "X of Y" ranges ("1-2 of 8", "ordinary-1-of-8") and numbers that stand alone
+// after a space, "(", "," or "/" ("shard 3", "test (1, 4)", "1/4"). A number
+// joined to a word by a hyphen ("macos-14", "windows-2022", "ubuntu-22"),
+// inside a token ("linux-x64", "22.04") or leading the name as a stage
+// ordinal ("1 · Source gate") names a platform or step and is kept.
 export function laneJobName(name) {
-  return String(name ?? '').replace(
-    /(?<![A-Za-z0-9_.])\d+(?![A-Za-z0-9_.])/g,
-    'N',
-  );
+  return String(name ?? '')
+    .replace(
+      /(?<![A-Za-z0-9_.])\d+(-\d+)?([- ])of\2\d+(?![A-Za-z0-9_.])/g,
+      (_, range, sep) => `N${range ? '-N' : ''}${sep}of${sep}N`,
+    )
+    .replace(/(?<=[\s(,/])\d+(?=$|[\s),/])/g, 'N');
 }
 const runKey = (run) => `${run.id}:${run.run_attempt ?? 1}`;
 const workflowFile = (run) =>
@@ -564,6 +569,15 @@ export function laneMetrics(runs, jobs, until, since, limit = LANE_ROW_LIMIT) {
       : null,
   };
 }
+// PR-event workflows whose triggers are not source events (`opened`,
+// `synchronize`): landing automation reacts to labels and dequeues, and
+// supersession to closes. Their jobs verify nothing about the head, so a
+// "failure" there is not a catch. A test pins this list against the checked-in
+// trigger types; the script itself runs without a YAML parser.
+export const NON_VERIFYING_PR_WORKFLOWS = [
+  'landing-automation.yml',
+  'pr-ci-supersession.yml',
+];
 const ciReference = (run) =>
   run.path === '.github/workflows/ci.yml' ||
   (run.path == null && run.name === 'PR: CI');
@@ -596,7 +610,12 @@ export function uniqueCatchMetrics(runs, jobs, limit = LANE_ROW_LIMIT) {
   const attempts = new Map();
   for (const job of jobs) {
     const run = runsByKey.get(job.health_run_key);
-    if (!run || ciReference(run)) continue;
+    if (
+      !run ||
+      ciReference(run) ||
+      NON_VERIFYING_PR_WORKFLOWS.includes(workflowFile(run))
+    )
+      continue;
     const lane = JSON.stringify([workflowFile(run), laneJobName(job.name)]);
     const key = `${lane}\n${job.health_run_key}`;
     const attempt = attempts.get(key) ?? {
@@ -685,6 +704,10 @@ export async function mergedPullRequests(request, repo, since, until) {
       items
         .filter((item) => {
           const at = time(item.pull_request?.merged_at);
+          if (!Number.isFinite(at))
+            throw new Error(
+              `Merged pull request search item #${item.number} has no merged_at`,
+            );
           return at >= time(since) && at < time(until);
         })
         .map((item) => item.number),
@@ -706,7 +729,7 @@ export function landingLatency(landings, timelines) {
     return {
       merged: null,
       measured: 0,
-      withoutQueueEntry: 0,
+      notQueuedAtMerge: 0,
       missingMergeEvent: 0,
       multipleEntries: 0,
       lastEntryToMergeMinutes: distribution([]),
@@ -714,7 +737,7 @@ export function landingLatency(landings, timelines) {
     };
   const last = [];
   const first = [];
-  let withoutQueueEntry = 0;
+  let notQueuedAtMerge = 0;
   let missingMergeEvent = 0;
   let multipleEntries = 0;
   for (const pr of new Set(landings)) {
@@ -733,8 +756,17 @@ export function landingLatency(landings, timelines) {
       )
       .map(eventTime)
       .sort((a, b) => a - b);
-    if (!entries.length) {
-      withoutQueueEntry++;
+    // GitHub logs a queue removal with every queue merge, a second before or
+    // at the same second (PRs 4879, 4876). Any other removal after the last
+    // entry means the PR left the queue and was merged some other way.
+    const removals = timeline
+      .filter((e) => e.event === 'removed_from_merge_queue')
+      .map(eventTime);
+    if (
+      !entries.length ||
+      removals.some((at) => at > entries.at(-1) && at < merged - minute)
+    ) {
+      notQueuedAtMerge++;
       continue;
     }
     if (entries.length > 1) multipleEntries++;
@@ -744,7 +776,7 @@ export function landingLatency(landings, timelines) {
   return {
     merged: new Set(landings).size,
     measured: last.length,
-    withoutQueueEntry,
+    notQueuedAtMerge,
     missingMergeEvent,
     multipleEntries,
     lastEntryToMergeMinutes: roundDistribution(distribution(last)),
@@ -1373,8 +1405,8 @@ export function renderSnapshot(s) {
             stats(s.landingLatency.firstEntryToMergeMinutes),
           ],
           [
-            'Merged PRs: with re-entry / no queue entry / no merge event',
-            `${s.landingLatency.multipleEntries} / ${s.landingLatency.withoutQueueEntry} / ${s.landingLatency.missingMergeEvent}`,
+            'Merged PRs: with re-entry / not queued at merge / no merge event',
+            `${s.landingLatency.multipleEntries} / ${s.landingLatency.notQueuedAtMerge} / ${s.landingLatency.missingMergeEvent}`,
           ],
         ]
       : []),
@@ -1515,18 +1547,46 @@ async function main() {
     }
     return;
   }
-  const snapshot = buildSnapshot(await collectHealth(options), options);
+  process.exitCode = await reportSnapshot(options);
+}
+/**
+ * Collect, print, then record. The snapshot is printed before recording so a
+ * refused or failed comment still leaves the measurement in the output the
+ * workflow retains; either failure exits nonzero.
+ * @param {any} options
+ * @param {{
+ *   collect?: (options: any) => Promise<any>,
+ *   post?: (body: string) => Promise<unknown>,
+ *   print?: (text: string) => void,
+ *   warn?: (text: string) => void,
+ * }} [deps]
+ */
+export async function reportSnapshot(
+  options,
+  {
+    collect = (o) => collectHealth(o),
+    post = (body) =>
+      api(`repos/${options.repo}/issues/${options.issue}/comments`, [
+        '--method',
+        'POST',
+        '-f',
+        `body=${body}`,
+      ]),
+    print = console.log,
+    warn = console.error,
+  } = {},
+) {
+  const snapshot = buildSnapshot(await collect(options), options);
+  print(options.json ? JSON.stringify(snapshot) : renderSnapshot(snapshot));
+  let failed = snapshot.incomplete;
   if (options.record)
-    await api(`repos/${options.repo}/issues/${options.issue}/comments`, [
-      '--method',
-      'POST',
-      '-f',
-      `body=${snapshotComment(snapshot)}`,
-    ]);
-  console.log(
-    options.json ? JSON.stringify(snapshot) : renderSnapshot(snapshot),
-  );
-  if (snapshot.incomplete) process.exitCode = 1;
+    try {
+      await post(snapshotComment(snapshot));
+    } catch (error) {
+      warn(`Recording failed: ${error.message}`);
+      failed = true;
+    }
+  return failed ? 1 : 0;
 }
 if (invokedDirectly(import.meta.url))
   main().catch((error) => {
