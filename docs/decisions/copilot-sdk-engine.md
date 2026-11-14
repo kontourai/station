@@ -39,15 +39,17 @@ MIT, but they contain the Copilot CLI runtime itself (`runtime.node`,
 GitHub Copilot CLI License. They also contain Microsoft's `OneAuthInterop`
 binary, whose Microsoft Software License Terms (section 3e) forbid
 distributing it. The packages carry neither license's own text for the CLI.
-Inspected: the 1.0.33 `win32-x64` package, 2026-11-13.
+Inspected: the 1.0.33 `win32-x64` package, 2026-11-13. Station pins 1.0.32
+(1.0.33 was still inside the repository's 24-hour release-age floor); its
+platform packages were not opened, and none is installed either way.
 
 ### How Station runs it
 
-- **The person's own CLI, not a bundled one.** Station resolves `copilot` the
-  way it resolves other engine CLIs (a managed policy's pinned binary first,
-  then PATH) and hands that path to the SDK. On Windows an npm `copilot.cmd`
-  shim is mapped to the package's `npm-loader.js`, which the SDK runs with
-  Node.
+- **The person's own CLI, not a bundled one.** Station finds `copilot` on
+  PATH and hands that path to the SDK. On Windows an npm `copilot.cmd` shim is
+  mapped to the package's `npm-loader.js`, which the SDK runs with Node. A
+  managed policy cannot pin this engine's binary, arguments or environment:
+  its engine ids do not name `copilot-sdk`.
 - **No proprietary package installed or shipped.** `pnpm-workspace.yaml`
   lists all eight platform packages in `ignoredOptionalDependencies`, so no
   install, lockfile, or Station build contains them. The SDK's `koffi` pin is
@@ -59,7 +61,26 @@ Inspected: the 1.0.33 `win32-x64` package, 2026-11-13.
   forwards one of its own, as the [engine credential
   record](engine-credential-provider.md) prefers.
 - **One runtime per session,** started with Station's child environment and
-  the session's own TMPDIR, and stopped with the session.
+  the session's own TMPDIR, and stopped with the session. A model-list read
+  starts a short-lived runtime the same way, with Station's shared engine
+  TMPDIR. The child environment is Station's process environment, so the
+  runtime also reads whatever `GH_TOKEN`, `GITHUB_TOKEN`, `COPILOT_GITHUB_TOKEN`
+  or other `COPILOT_*` variables Station itself was started with, as the
+  person's own CLI would.
+- **Start and resume.** One start runs per thread at a time; a second is
+  refused while it runs. A resume needs the binding key recorded at the
+  session's start (`nativeResumeBindingKey` over `COPILOT_HOME`); a cursor
+  without one, or with another home's, is refused. A session whose runtime
+  does not report `permissionMode: 'manual'` applied is refused, since a
+  resume can restore another mode. On resume, the persisted `user.message`
+  events (each carries the `clientTurnId` Station sent) restore the rewind
+  points.
+- **Turn ends and runtime death.** A turn ends on the `session.idle` that
+  follows its own `user.message`, or on a root `session.error` for its message
+  (the SDK's own `sendAndWait` matching). A subagent's error does not end it,
+  and a recoverable error (`eligibleForAutoSwitch`) is a warning. When the
+  runtime stops answering `ping()`, the running turn ends aborted, open
+  requests are answered, and the session ends (`session.exited`).
 
 ### How each capability binds
 
@@ -69,7 +90,7 @@ Copilot-only path.
 | SDK capability | Station seam |
 | --- | --- |
 | `createSession` / `resumeSession` | `startSession`; resume cursor `{ copilotSessionId }`, scoped by `nativeResumeBindingKey` to the runtime's configuration home |
-| `send({ mode: 'enqueue', clientTurnId })`, `session.idle`, `session.error` | `sendTurn`, `turn.completed` / `turn.aborted` |
+| `send({ mode: 'enqueue', clientTurnId })`, `session.idle`, `session.error` | `sendTurn`, `turn.completed` / `turn.aborted` (matched to the turn's own message) |
 | `send({ mode: 'immediate' })` | `steerTurn` (steering durability `native`) |
 | `abort()` | `interruptTurn`, confirmed by the turn's own `session.idle` |
 | `onPermissionRequest` | `request.opened` / `respondToRequest` (below) |
@@ -93,6 +114,22 @@ approval mode answers it:
 - `auto`: also a write inside the working directory.
 - `never` (full access): every request, but only in a `host` session.
 
+The mode is derived again on every turn from the turn's own approval mode and
+confinement, and reported in that turn's `turn.started` metadata. A turn that
+revokes full access (Ask, or a confinement other than `host`) asks before its
+next action, and the grants given under the earlier mode are dropped. A steer
+runs under its turn's mode; orchestration refuses a steer across a
+confinement change.
+
+"Inside" compares real paths: symlinks resolved, for a new file through its
+nearest existing parent, against the working directory's real path. It needs
+the runtime's `resolvedPath` (optional and experimental in the SDK), and a
+write's every `fileEdits` path must be inside too; otherwise a person decides.
+A request managed policy marks (`managedApprovalRequired`, on the request or
+on the derived prompt) always goes to a person, in every mode, and never
+records a session grant. A read granted for the session covers the file's
+real directory.
+
 The Copilot runtime gives Station no process sandbox to confine it with, so
 full access elsewhere applies `auto`, as it does for an ACP engine. The
 adapter claims no confinement provider. "Allow for this session" is
@@ -109,8 +146,9 @@ person. That trade was rejected; this residual stays documented.
 
 The adapter is always registered and selects the preview again at every entry
 point that starts work: `preflightStart` and `startSession` refuse with
-`feature_preview_disabled`, `sendTurn` and `steerTurn` refuse, prerequisites
-report the preview, and the model list is empty. Turning the preview off stops
+`feature_preview_disabled`; `sendTurn`, `steerTurn`, `rewindSession` and
+`reconnectMcpServer` refuse; continuity offers no rewind; prerequisites report
+the preview; and the model list is empty, with no runtime started. Turning the preview off stops
 new sessions and turns at once. Stop, interrupt and answering an open request
 stay available, so nothing is stranded.
 
@@ -147,9 +185,13 @@ name it.
 - No live Copilot session has been run against this adapter. Event and
   request shapes come from the pinned SDK's own types (the adapter tests use
   them as fixtures, so drift fails the typecheck), not from captured traffic.
-- That a stdio runtime exits when Station dies without stopping it rests on
-  stdin closing. The SDK spawns the process itself, outside Station's owned
-  child registry.
+- Station cannot reap a runtime it did not stop. The SDK spawns it itself
+  (`child_process.spawn` with piped stdio, not detached, `windowsHide`),
+  outside Station's owned-child registry. When Station dies, the runtime's
+  stdin reaches end-of-file. Whether the runtime then exits is the CLI's
+  behavior and is not verified: no Copilot CLI ran in this change. While
+  Station runs, a runtime that stops answering is detected by `ping()` and its
+  session is ended.
 - Rewind with file restore is the runtime's operation and is not crash-atomic.
   Its partial outcomes (`files-rolled-back`, `rollback-incomplete`,
   `truncation-failed`) are reported as failures with the runtime's message.
