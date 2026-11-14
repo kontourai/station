@@ -867,7 +867,7 @@ findings that have a compatible release; none adds or renews an exception.
 | --- | --- | --- | --- | --- |
 | `node-forge` | Seven high Forge advisories plus moderate/low production findings | 1.4.0 → 1.4.3 | Override floor, managed patch removed | SAP connectivity → `jks-js` |
 | `follow-redirects` | [GHSA-mrwp-f3q8-3g9p](https://github.com/advisories/GHSA-mrwp-f3q8-3g9p) (high) | 1.16.1 → 1.16.2 | `axios>follow-redirects` pin | SAP Cloud SDK → Axios |
-| `qs` | [GHSA-6pq8-jhm2-2vcw](https://github.com/advisories/GHSA-6pq8-jhm2-2vcw) | 6.16.0 → 6.16.1 | Exact override | Both body-parser lines |
+| `qs` | [GHSA-6pq8-jhm2-2vcw](https://github.com/advisories/GHSA-6pq8-jhm2-2vcw) | 6.16.0 → 6.16.1 | Override floor `^6.16.1` | Both body-parser lines |
 | `@hono/node-server` | [GHSA-rmxm-3fg6-px4f](https://github.com/advisories/GHSA-rmxm-3fg6-px4f), [GHSA-jpvv-r467-5p4w](https://github.com/advisories/GHSA-jpvv-r467-5p4w) | 1.19.15 → 2.1.7 | `@voltagent/server-hono` child override | VoltAgent Hono provider |
 | `glob` / `minimatch` | [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4), [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) | 13.0.6 / 10.2.5 → 14.0.4 / 11.0.6 | `cacache@20` and `cacache@21` child overrides | Sigstore signing → `make-fetch-happen` |
 

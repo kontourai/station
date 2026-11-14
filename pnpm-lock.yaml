@@ -32,7 +32,7 @@ overrides:
   lodash: ^4.18.1
   node-forge: ^1.4.3
   proxy-addr: 2.0.8
-  qs: 6.16.1
+  qs: ^6.16.1
   router>path-to-regexp: ^8.4.2
   anymatch>picomatch: ^2.3.2
   micromatch>picomatch: ^2.3.2
