@@ -1210,9 +1210,10 @@ describe('the base checkout is exactly main, and node is the one resolved first'
     );
     chmodSync(join(hooks, 'post-checkout'), 0o755);
     const result = fixture.run();
-    expect(existsSync(marker), 'the planted hook ran').toBe(false);
+    // Checked first: the skip-worktree hook, if it ran, forges the excuse.
     expect(result.out).not.toContain('FORGED');
     expect(result.output, result.out).toBe('verdict=pr\n');
+    expect(existsSync(marker), 'the planted hook ran').toBe(false);
   });
 
   // The second layer, against a tamper no flag prevents (a `git` shim).
