@@ -364,7 +364,8 @@ are excluded. The [account-bound gate](../../src-server/runtime/bootstrap/accoun
 uses the same exact relay-leaf classifier and admits account-bound management
 only with current native proof/account binding and separate `relay:manage`.
 Credential-only account-bound Devices remain gated; capabilities are neutral
-false without management authority. This source composition has no released Nightly,
+false without management authority. Without a relay connector only the
+capability probe is mounted, answering `configured: false`. This source composition has no released Nightly,
 physical-device or two-human qualification receipt.
 
 The native [account-proof key owner](../../src-desktop/src/native_account_proof_key.rs)
