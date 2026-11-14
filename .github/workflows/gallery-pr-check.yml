@@ -61,9 +61,11 @@ name: "PR: Gallery"
 #
 # The base's judge is authoritative for an honest PR. It is NOT a security
 # boundary: by the time it runs, the candidate's own code (its install and
-# capture) has run on this runner and could have shimmed `node` or set
-# NODE_OPTIONS through GITHUB_PATH/GITHUB_ENV, left a process behind, or
-# planted objects in the shared .git. A malicious PR could already forge its
+# capture) has run on this runner and could have shimmed `node` or `npm`
+# through GITHUB_PATH (the step runs PATH `npm` for the base install and
+# capture, and for `screenshot:diff`, which also runs from the candidate's
+# tree), set NODE_OPTIONS through GITHUB_ENV, left a process behind, or
+# planted hooks, config or objects in the shared .git. A malicious PR could already forge its
 # own green through its own spec, so this gives an attacker nothing new;
 # nothing downstream may trust the Gallery conclusion, which is why it is not
 # a required check. The cheap hardening below (no replace refs, a verified

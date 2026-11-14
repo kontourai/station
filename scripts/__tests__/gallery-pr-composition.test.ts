@@ -974,7 +974,7 @@ describe('an excuse needs a complete capture and a sound comparison', () => {
   });
 });
 
-describe('the base checkout is not what a planted replace ref says', () => {
+describe('the base checkout is exactly main, and node is the one resolved first', () => {
   it('ignores refs/replace for the base commit', () => {
     const fixture = attributionFixture({
       composed: [failedCapture('child-chat-dark-390'), screen('home')],

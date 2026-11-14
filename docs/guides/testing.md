@@ -1529,10 +1529,15 @@ warning naming that `main` commit only when the composed capture is complete
 on `main` the same way, and the screens that rendered still pass the
 report-only comparison's integrity checks. "The same way" is the screen and
 finding identity and, for a screen that did not render or whose audit threw,
-its error text after removing only ANSI codes, the appended console-error line,
-Playwright's call log, loopback ports, runner paths and the numbers on
-`Received` lines; the assertion message, matcher, `Expected` bound, locator and
-timeout bound must match. So a break already on `main` does not turn unrelated
+its error text after removing only ANSI codes, the capture's appended last
+`Browser errors: [...]` line, a Playwright call log that follows a message,
+loopback ports and each checkout's own root at the start of a path, and
+masking a `Received` value only when it is a plain number. The assertion
+message, matcher, `Expected` bound, locator, timeout bound, quoted or mixed
+`Received` values, repo-relative paths with their line numbers, and URL paths
+must match, and an error that is not text never matches. `telemetry-feedback-mobile`
+throws one line that embeds console output, so its failure is never excused.
+So a break already on `main` does not turn unrelated
 PRs red, while breaking the same screen another way stays red. A crash or
 test-level assertion with no failing screen, a failing screen `main` lacks,
 more than 40 failing screens, an incomplete capture, or an attribution that
@@ -1541,8 +1546,13 @@ assertion in the same test is not seen until `main` is fixed, a different
 console error on an otherwise identical failure is not distinguished, and the
 excused screens get no pixel report. The base judge is authoritative for honest
 PRs but is not a security boundary: the candidate's code has already run on the
-runner and could subvert it, which gives a malicious PR nothing it could not
-already forge through its own spec. Nothing may trust the PR Gallery
+runner and could subvert it (a `node` or `npm` shim through `GITHUB_PATH`, the
+`npm` the step runs for the base capture and for `screenshot:diff` included,
+`NODE_OPTIONS`, a leftover process, or hooks and config in the shared `.git`),
+which gives a malicious PR nothing it could not already forge through its own
+spec. The job ignores replace refs, refuses a base checkout that is not exactly
+the base commit, clean, and runs the attribution with the `node` resolved
+before candidate code; that keeps honest accidents out, nothing more. Nothing may trust the PR Gallery
 conclusion, which is one reason it is not a required check. Merge-queue candidates still report the
 workflow's contexts, but the capture job skips there: Gallery is not a required
 context, so a candidate's capture could not stop a landing. Combined changes
