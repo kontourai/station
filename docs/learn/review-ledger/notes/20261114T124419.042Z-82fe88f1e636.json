@@ -1,0 +1,7 @@
+{
+  "revision": "a73a6ea57212444c03d6548ee0b41fd1dc2e3127",
+
+  "notes": [
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Reviewed the complete contributor guide against container cleanup, channel ownership and native text preparation. At 4577e4312785 both pinned actual native clients complete confined synthetic turns with capped, tool-free final request bodies; current source splits provider builders without changing their contract. Raw request evidence exposes the uncapped/tool-bearing Codex wire and Claude beta route. Two isolated source faults catch missing cap and retained web_search, followed by byte-exact restoration. The helper is called only by the opt-in lab; it grants no source/credential/reservation/accounting authority. Earlier create-only recovery controls and their no-worker scope remain distinct. Opaque/stateful Responses and Pro mode refuse. Official Responses output-cap documentation is conceptual support, not tariff or live billing qualification. No prose claims ordinary serving or complete epic acceptance.","inputs":["docs/guides/native-model-channel-lab.md","scripts/child-work-native-model-channel-lab.ts","src-server/services/connections/native-model-container.ts","src-server/runtime/conversation/native-text-model-request.ts","src-server/runtime/conversation/__tests__/native-text-model-request.test.ts","src-server/runtime/conversation/bounded-api-provider-contract.ts"]}
+  ]
+}
