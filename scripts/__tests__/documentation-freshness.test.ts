@@ -1735,6 +1735,8 @@ describe('Nightly freshness sweep (#2923)', () => {
     );
   });
 
+  const head = 'c'.repeat(40);
+
   it('creates, updates, reopens and closes one tracking issue', () => {
     const root = makeTempDir('station-doc-sweep-');
     const reportPath = join(root, 'report.md');
@@ -1745,7 +1747,12 @@ describe('Nightly freshness sweep (#2923)', () => {
     };
     writeFileSync(reportPath, report(2).body);
     expect(
-      upsertFreshnessIssue({ repo: 'owner/repo', reportPath, gh: gh('') }),
+      upsertFreshnessIssue({
+        repo: 'owner/repo',
+        reportPath,
+        head,
+        gh: gh(''),
+      }),
     ).toEqual({ action: 'created', number: 7 });
     // Looked up by its stable title, so a removed label cannot fork it.
     const lookup = calls[0];
@@ -1765,7 +1772,12 @@ describe('Nightly freshness sweep (#2923)', () => {
       ]),
     );
     expect(
-      upsertFreshnessIssue({ repo: 'owner/repo', reportPath, gh: gh('9\n4') }),
+      upsertFreshnessIssue({
+        repo: 'owner/repo',
+        reportPath,
+        head,
+        gh: gh('9\n4'),
+      }),
     ).toEqual({ action: 'updated', number: 4 });
     expect(calls.at(-1)).toEqual(
       expect.arrayContaining([
@@ -1776,17 +1788,67 @@ describe('Nightly freshness sweep (#2923)', () => {
     );
     writeFileSync(reportPath, report(0).body);
     expect(
-      upsertFreshnessIssue({ repo: 'owner/repo', reportPath, gh: gh('4') }),
+      upsertFreshnessIssue({
+        repo: 'owner/repo',
+        reportPath,
+        head,
+        gh: gh('4'),
+      }),
     ).toEqual({ action: 'closed', number: 4 });
     expect(calls.at(-1)).toEqual(expect.arrayContaining(['state=closed']));
     calls.length = 0;
     expect(
-      upsertFreshnessIssue({ repo: 'owner/repo', reportPath, gh: gh('') }),
+      upsertFreshnessIssue({
+        repo: 'owner/repo',
+        reportPath,
+        head,
+        gh: gh(''),
+      }),
     ).toEqual({ action: 'none' });
     expect(calls).toHaveLength(1);
     expect(() =>
-      upsertFreshnessIssue({ repo: '--bad', reportPath, gh: gh('') }),
+      upsertFreshnessIssue({ repo: '--bad', reportPath, head, gh: gh('') }),
     ).toThrow('--repo must be owner/name');
+  });
+
+  // The report is written by a job that runs installed code and posted by
+  // the job holding `issues: write`: the writer posts only a report for its
+  // own checkout, within the size bound, with every mention broken.
+  it('posts only a bounded, mention-free report for the checked-out revision', () => {
+    const root = makeTempDir('station-doc-sweep-harden-');
+    const reportPath = join(root, 'report.md');
+    const posted: string[] = [];
+    const gh = (args: string[]) => {
+      const body = args.find((arg) => arg.startsWith('body=@'));
+      if (body) posted.push(readFileSync(body.slice('body=@'.length), 'utf8'));
+      return args.includes('GET') ? '' : '7';
+    };
+    writeFileSync(
+      reportPath,
+      report(1).body.replace(
+        '# Documentation',
+        '@octocat @org/team # Documentation',
+      ),
+    );
+    expect(
+      upsertFreshnessIssue({ repo: 'owner/repo', reportPath, head, gh }),
+    ).toEqual({ action: 'created', number: 7 });
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain('@\u200bocto' + 'cat @\u200borg/team');
+    expect(posted[0]).not.toMatch(/@[A-Za-z0-9]/);
+    expect(() =>
+      upsertFreshnessIssue({
+        repo: 'owner/repo',
+        reportPath,
+        head: 'd'.repeat(40),
+        gh,
+      }),
+    ).toThrow(/refusing to post it/);
+    writeFileSync(reportPath, `${report(1).body}${'x'.repeat(60_000)}`);
+    expect(() =>
+      upsertFreshnessIssue({ repo: 'owner/repo', reportPath, head, gh }),
+    ).toThrow(/refusing to post more than 60000/);
+    expect(posted).toHaveLength(1);
   });
 
   // #4270: the upsert runs in the workflow job that holds `issues: write` and
@@ -1810,6 +1872,7 @@ describe('Nightly freshness sweep (#2923)', () => {
       const result = sweep.upsertFreshnessIssue({
         repo: 'owner/repo',
         reportPath: process.argv[2],
+        head: 'c'.repeat(40),
         gh: (args) => (calls.push(args), args.includes('GET') ? '' : '7'),
       });
       console.log(JSON.stringify({ result, last: calls.at(-1) }));

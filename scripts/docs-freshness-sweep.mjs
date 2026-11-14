@@ -13,7 +13,11 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { invokedDirectly } from './lib/module-entry.mjs';
-import { runGh, upsertTrackingIssue } from './lib/tracking-issue.mjs';
+import {
+  postableReport,
+  runGh,
+  upsertTrackingIssue,
+} from './lib/tracking-issue.mjs';
 
 export const SWEEP_ISSUE_TITLE = 'Documentation freshness sweep';
 export const SWEEP_ISSUE_LABELS = Object.freeze(['documentation', 'P2']);
@@ -78,19 +82,47 @@ export function reportStaleCount(report) {
   return Number(match[1]);
 }
 
+export function reportRevision(report) {
+  const match = new RegExp(
+    `^<!-- ${MARKER} stale=\\d+ revision=([a-f0-9]{40}) -->$`,
+    'm',
+  ).exec(report);
+  if (!match) throw new Error(`report is missing the ${MARKER} marker`);
+  return match[1];
+}
+
+const checkedOutRevision = () =>
+  execFileSync('git', ['rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+    windowsHide: true,
+  }).trim();
+
 /**
- * Create, update, reopen or close the single tracking issue.
- * @param {{ repo: string, reportPath: string, gh?: (args: string[]) => string }} input
+ * Create, update, reopen or close the single tracking issue. The report comes
+ * from another job, so it must describe this job's checkout (`head`), and it
+ * is posted only through `postableReport` (size bound, no live mentions).
+ * @param {{ repo: string, reportPath: string, head?: string, gh?: (args: string[]) => string }} input
  */
-export function upsertFreshnessIssue({ repo, reportPath, gh = runGh }) {
+export function upsertFreshnessIssue({
+  repo,
+  reportPath,
+  head = checkedOutRevision(),
+  gh = runGh,
+}) {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo ?? ''))
     throw new Error('--repo must be owner/name');
+  const report = readFileSync(reportPath, 'utf8');
+  const revision = reportRevision(report);
+  if (revision !== head)
+    throw new Error(
+      `report describes ${revision}, but this checkout is ${head}; refusing to post it`,
+    );
   return upsertTrackingIssue({
     repo,
-    reportPath,
+    reportPath: postableReport(reportPath),
     title: SWEEP_ISSUE_TITLE,
     labels: SWEEP_ISSUE_LABELS,
-    outstanding: reportStaleCount(readFileSync(reportPath, 'utf8')),
+    outstanding: reportStaleCount(report),
     gh,
   });
 }

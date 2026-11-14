@@ -4,7 +4,35 @@
  * is, and closed as completed once nothing is. The sweeps never fail a
  * required check; this issue is how their findings stay visible.
  */
+import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSyncBounded } from './bounded-capture.mjs';
+
+/** Below GitHub's 65,536-character issue body cap, with room to spare. */
+export const TRACKING_BODY_LIMIT = 60_000;
+
+/**
+ * A report is written by a job that runs installed (third-party) code and
+ * posted by a job that holds `issues: write`. Before posting, refuse a body
+ * over the limit and break every `@` mention, so a tampered report cannot
+ * ping people through the write token. Returns the path of the copy to post.
+ * @param {string} reportPath
+ * @param {{ limit?: number }} [options]
+ */
+export function postableReport(
+  reportPath,
+  { limit = TRACKING_BODY_LIMIT } = {},
+) {
+  const body = readFileSync(reportPath, 'utf8');
+  if (body.length > limit)
+    throw new Error(
+      `report is ${body.length} characters; refusing to post more than ${limit}`,
+    );
+  const path = `${reportPath}.postable`;
+  // A zero-width space after `@` keeps the text readable and stops GitHub
+  // from resolving it as a user or team mention.
+  writeFileSync(path, body.replace(/@(?=[A-Za-z0-9_-])/g, '@\u200b'));
+  return path;
+}
 
 export function runGh(args) {
   return execFileSyncBounded('gh', args, {

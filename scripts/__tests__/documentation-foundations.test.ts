@@ -367,4 +367,23 @@ describe('documentation freshness sweep contract', () => {
       'scripts/docs-freshness-sweep.mjs --upsert --report .artifacts/docs-freshness-report.md',
     );
   });
+
+  // An install-time script must not be able to save a package-manager cache
+  // that other workflows on main restore.
+  it('keeps every job in the sweep workflow off the package-manager cache', () => {
+    const workflow = parse(
+      readFileSync('.github/workflows/docs-freshness-sweep.yml', 'utf8'),
+    );
+    const setups = Object.values(
+      workflow.jobs as Record<
+        string,
+        { steps: { uses?: string; with?: Record<string, unknown> }[] }
+      >,
+    ).flatMap((job) =>
+      job.steps.filter((step) => step.uses?.startsWith('actions/setup-node@')),
+    );
+    expect(setups).toHaveLength(4);
+    for (const step of setups)
+      expect(step.with?.['package-manager-cache']).toBe(false);
+  });
 });
