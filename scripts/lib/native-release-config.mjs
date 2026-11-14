@@ -75,13 +75,22 @@ export function nativeProductNameForChannel(channel) {
  * collide with a later tag:
  *   major * 10_000_000 + minor * 10_000 + patch * 100 + slot
  * where slot is the candidate number (1–98) or 99 for the final tag, so every
- * candidate and the final tag of one base are distinct store builds.
+ * candidate and the final tag of one base are distinct store builds. Minor is
+ * bounded to 0–999 and patch to 0–99 so the bands never overlap.
  * Nightly (`io.kontourai.station.nightly`) uses a different package and its
  * own day-based numbering; it does not share this space.
  */
 export function taggedStoreIdentity(tag) {
   const { baseVersion, major, minor, patch, kind, candidate } =
     parseReleaseTag(tag);
+  // Each component owns a fixed decimal band, so a component that overflows
+  // its band would collide with, or outrank, a later release (v0.1.100-rc.1
+  // and v0.2.0-rc.1 would both be 20001). Refuse rather than wrap.
+  if (minor > 999 || patch > 99) {
+    fail(
+      `release ${baseVersion} cannot be numbered for the stores: minor must be 0-999 and patch 0-99`,
+    );
+  }
   const slot = candidate ?? FINAL_STORE_SLOT;
   const versionCode = major * 10_000_000 + minor * 10_000 + patch * 100 + slot;
   if (!Number.isSafeInteger(versionCode) || versionCode > 2_100_000_000) {

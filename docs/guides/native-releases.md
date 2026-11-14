@@ -128,7 +128,10 @@ release-only Tauri overlay with Stable identity and the bare base version
 `X.Y.Z` for both, so a candidate's bytes can later be promoted unchanged.
 The overlay also derives Android `versionCode` and iOS `CFBundleVersion` from
 the tag (`major * 10_000_000 + minor * 10_000 + patch * 100 + slot`, where
-slot is the candidate number 1–98 or `99` for the final tag). That integer is
+slot is the candidate number 1–98 or `99` for the final tag). Minor is limited
+to 0–999 and patch to 0–99, and a tag outside those bounds is refused, because
+an overflowing component would collide with or outrank a later release
+(`v0.1.100-rc.1` and `v0.2.0-rc.1` would both be `20001`). That integer is
 what Play and App Store Connect use as the monotonic build number; do not
 fall back to Gradle's `1` / `1.0` defaults for a store upload. Nightly
 Android uses a different application id and its own day-based numbering. Before
