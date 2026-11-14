@@ -1,0 +1,7 @@
+{
+  "revision": "d6b583667e9836b358e624f55500fe347b41c5c4",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Wrote the Zod 3 exception paragraph and updated the VoltAgent residuals paragraph against scripts/dependency-advisory-exceptions.json at this change: one exception (root / zod / GHSA-mrhx-c7xc-m3w5, high, #4210, expires 2026-12-13) and the three existing residuals with only their expiry moved from 2026-11-07 to 2026-12-13. Checked the stated consumers against pnpm-lock.yaml (@gitlab/gitlab-ai-provider 3.6.1, zod 3.25.76 present) and that npm run audit:policy now reports no unaccepted critical/high advisories or production residuals. Residual dispositions are unchanged by approval, so their path text still names @voltagent/core 2.10.0.","inputs":["docs/guides/dependency-security.md","scripts/dependency-advisory-exceptions.json"]}
+  ]
+}
