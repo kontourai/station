@@ -103,6 +103,41 @@ These are same-live-controller cleanup controls. Controller-death reconstruction
 lost removal replies, paid native authority and general cleanup recovery remain
 unqualified.
 
+### Native text request preparation
+
+`--with-native-engines --with-bounded-text-wire` also exercises
+[`prepareNativeTextModelRequest`](../../src-server/runtime/conversation/native-text-model-request.ts)
+before generating the synthetic reply. The helper preserves text, imposes the
+server-selected output cap without increasing a smaller native cap, removes
+advertised tools and native beta/state headers, and selects standard service.
+Responses input containing opaque reasoning, tool results or server conversation
+references refuses. Pro reasoning mode refuses. This helper issues no grant,
+reserves no budget and performs no fetch. A future serving caller must authorize,
+quote and reserve the returned bytes, then attach its own observed credential.
+The original native request hash cannot authorize different prepared bytes.
+
+The private artifacts retain original and prepared request bodies as mode-0600
+files beside their hashes. At `b3bd8d03f0d2`, actual Claude 2.1.322 emits
+`max_tokens: 32000`; actual Codex 0.167.0 emits no output cap and advertises nine
+tools, including provider-side web search. Transport confinement alone therefore
+cannot establish provider-request budget or tool restrictions.
+
+At `4577e4312785`, both actual native clients complete synthetic turns through
+the prepared text requests: both caps are 2,048, Claude's thinking budget is
+2,047 and both tool arrays are empty. Codex uses `tool_choice: none` and disables
+parallel tools. The container is removed, its worker settled and pending channel
+requests are zero. The preceding integration fails because the helper refuses
+Claude's observed `?beta=true` route; the repair explicitly returns the standard
+path and strips beta headers. That failure remains retained.
+
+Independent cap-removal and tool-retention faults fail the intended final-byte
+assertions; each source is restored byte-exactly. These checks establish request
+construction and synthetic native consumption, not provider enforcement or
+monotonic ledger accounting. The [official Responses reasoning guide](https://developers.openai.com/api/docs/guides/reasoning#controlling-costs)
+documents that `max_output_tokens` includes reasoning and visible output. That
+does not supply a complete tariff, model entitlement or approved qualification
+record. Responses pricing, source admission and native issuance remain open.
+
 ## Evidence and limits
 
 The [real-worker process tests](../../src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts)

@@ -3805,6 +3805,14 @@ provider billing nor inherited delegation authority. The real-worker
 owns byte-delivery revocation and terminal-lifetime regressions. Do not substitute
 worker exit or response completion for accounting settlement.
 
+[Native text request preparation](../../src-server/runtime/conversation/native-text-model-request.ts)
+narrows native text requests before a future authority owner quotes and reserves
+their final bytes. It removes advertised tools and beta/state headers, preserves
+smaller output caps and refuses opaque/stateful Responses inputs. Its only
+current caller is the explicit confined lab. It supplies no source admission,
+provider qualification, credential or accounting authority; ordinary native
+launch remains unwired to this path.
+
 ## ConnectionInspector
 
 [ConnectionInspector](../../src-server/services/connections/connection-inspector.ts)

@@ -21,6 +21,24 @@ is enabled.
 
 ### Current bounded progress (2026-11-14)
 
+Main through `c56bb322d4f0` is integrated at `c158b8fa009a`; the two-file
+session-state/channel selection passes all 126 cases. Native cleanup is
+independently submitted as [PR #4957](https://github.com/kontourai/station/pull/4957)
+at `63ae08509d1a`, with zero-failure/zero-warning exact-ref readiness, normal
+hooks and auto-merge armed. No merged receipt is claimed for that submission.
+
+Actual native wire capture at `b3bd8d03f0d2` establishes a missing Codex output
+cap and nine advertised tools, including provider-side web search. At
+`4577e4312785`, the text-preparation helper is exercised by both actual pinned
+CLIs with synthetic replies: each final request has a 2,048-token cap and no
+advertised tools. The helper refuses hidden/stateful inputs and supplies no
+authority. Cap-removal and retained-tool faults fail their intended assertions;
+source restoration is byte-exact. The integrated beta-route refusal remains
+retained. The contributor guide owns the private artifact and scope details.
+Responses qualification/pricing, authenticated source issuance, physical
+reservation/accounting and local/peer/SSH enforcement are still open. Both
+production flags remain false.
+
 At `7db32856ab53`, all eleven finalizer cases and both full controlled report-input
 journeys pass with their original workloads and deadlines. The lost-reappraisal
 caller passes at 55.03 seconds under its unchanged sixty-second bound. Earlier
