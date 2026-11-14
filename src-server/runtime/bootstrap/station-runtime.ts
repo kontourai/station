@@ -171,6 +171,7 @@ import type { ProviderSessionStartInput } from '../../providers/adapter-shape.js
 import { BedrockAdapter } from '../../providers/adapters/bedrock-adapter.js';
 import { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
+import { CopilotSdkAdapter } from '../../providers/adapters/copilot-sdk-adapter.js';
 import { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import {
@@ -1197,6 +1198,32 @@ export class StationRuntime {
         ),
     },
   });
+  // GitHub Copilot through the Copilot SDK (docs/decisions/copilot-sdk-engine.md).
+  // Built here, before the preview registry exists, so it reads the
+  // `copilot-sdk-engine` preview through a lazy selector: until the bind in
+  // the constructor runs, and on a hosted runtime where it never binds,
+  // every selection takes the disabled branch.
+  private copilotSdkPreview: FeaturePreviewSelector | undefined;
+  private copilotSdkAdapter = new CopilotSdkAdapter({
+    preview: {
+      select: (branches) =>
+        this.copilotSdkPreview
+          ? this.copilotSdkPreview.select(branches)
+          : branches.disabled(),
+    },
+    logger: {
+      warn: (msg: string, context?: unknown) =>
+        (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
+          msg,
+          context,
+        ),
+      info: (msg: string, context?: unknown) =>
+        (this.logger?.info as ((...a: unknown[]) => void) | undefined)?.(
+          msg,
+          context,
+        ),
+    },
+  });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
   private failedInitializationOrchestration?: OrchestrationService;
@@ -1761,6 +1788,14 @@ export class StationRuntime {
           label: 'Codex browser and device tools',
           description:
             'Let Codex Sessions use authorized browser and device tools through a bound channel.',
+        });
+        // Runs the operator's own Copilot CLI and sign-in, so a hosted
+        // multi-tenant runtime never offers it.
+        this.copilotSdkPreview = this.featurePreviews.bind({
+          id: 'copilot-sdk-engine',
+          label: 'GitHub Copilot through the Copilot SDK',
+          description:
+            'Add a GitHub Copilot engine that drives your installed Copilot CLI through the Copilot SDK, with Station approvals, rewind and subagent reporting. Each message spends your Copilot requests.',
         });
       }
       // Journal consumers wire after the quarantine notice: the runtime must
@@ -4544,6 +4579,7 @@ export class StationRuntime {
           claudeAdapter: this.claudeAdapter,
           codexAdapter: this.codexAdapter,
           museAdapter: this.museAdapter,
+          copilotSdkAdapter: this.copilotSdkAdapter,
           ollamaAdapter: this.ollamaAdapter,
           createVoltAgentInstance: async (slug) =>
             this.createVoltAgentInstance(slug),
@@ -4935,6 +4971,16 @@ export class StationRuntime {
       logger: this.logger,
       timers: this.timers,
       signal: this.nativeEngineAdoptionAbort.signal,
+      // The Copilot SDK engine is adopted only while its preview is on. It
+      // shares the `copilot` CLI with the ACP built-in `copilot`, a separate
+      // connection this never touches.
+      previewCandidates: [
+        {
+          id: 'copilot-sdk',
+          cli: 'copilot',
+          allowed: () => this.copilotSdkAdapter.previewEnabled(),
+        },
+      ],
     }).catch((error: unknown) => {
       // Documented never to throw. If it ever does, the rejection is observed
       // HERE, where it can be attributed, rather than surfacing unowned on

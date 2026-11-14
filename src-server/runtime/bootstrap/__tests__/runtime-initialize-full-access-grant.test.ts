@@ -97,6 +97,7 @@ describe('runtime composition: the live full-access grant check', () => {
         claudeAdapter: fakeAdapter('claude'),
         codexAdapter: fakeAdapter('codex'),
         museAdapter: fakeAdapter('muse'),
+        copilotSdkAdapter: fakeAdapter('copilot-sdk'),
         bedrockAdapter: fakeAdapter('bedrock'),
         ollamaAdapter: fakeAdapter('ollama'),
         activeAgents: new Map(),

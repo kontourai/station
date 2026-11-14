@@ -697,6 +697,55 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
   });
 });
 
+describe('preview-gated native engines (copilot-sdk-engine)', () => {
+  it('never probes or adopts a preview engine while its preview is off', async () => {
+    const loader = createLoader();
+    const detect = vi.fn(async (_cli: string) => true);
+    const summary = await adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect,
+      delaysMs: [0],
+      previewCandidates: [
+        { id: 'copilot-sdk', cli: 'copilot', allowed: () => false },
+      ],
+    });
+    expect(detect.mock.calls.map(([cli]) => cli)).not.toContain('copilot');
+    expect(summary.outcomes['copilot-sdk']).toBe('disabled');
+    const registry = await loadOrCreateAgentRegistry(loader);
+    expect(registry.engineConnections.map((c) => c.id)).not.toContain(
+      'copilot-sdk',
+    );
+  });
+
+  it('reads the preview at each candidate, so turning it on during the window adopts it', async () => {
+    const loader = createLoader();
+    const detect = vi.fn(async (_cli: string) => true);
+    let enabled = false;
+    const summary = await adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect: async (cli) => {
+        // The preview is turned on while the first probe runs.
+        enabled = true;
+        return detect(cli);
+      },
+      delaysMs: [0, 0],
+      previewCandidates: [
+        { id: 'copilot-sdk', cli: 'copilot', allowed: () => enabled },
+      ],
+    });
+    expect(summary.outcomes['copilot-sdk']).toBe('adopted');
+    expect(detect.mock.calls.filter(([cli]) => cli === 'copilot')).toHaveLength(
+      1,
+    );
+    await expect(loader.loadAgent('copilot-sdk')).resolves.toMatchObject({
+      name: 'GitHub Copilot (SDK)',
+      execution: { agentConnectionId: 'copilot-sdk' },
+    });
+  });
+});
+
 describe('native engine candidates', () => {
   it('binds every candidate to a distinct id and cli', () => {
     const ids = NATIVE_ENGINE_CANDIDATES.map((c) => c.id);
