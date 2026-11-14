@@ -2055,6 +2055,82 @@ describe('Station Control canonical Environment + Agent execution', () => {
   // only the project shape was rebuilt. Swapping the session-cwd read for a
   // field nothing writes leaves the pure tests green and restores the bug, so
   // the seam needs its own proof.
+  test.each([
+    ['opencode', 'opencode'],
+    ['acp', 'acp'],
+  ] as const)(
+    'a follow-up keeps the provider its current session runs on (stored %s, R2)',
+    async (stored, expected) => {
+      fetchMock.mockImplementation(async (input) => {
+        const url = String(input);
+        if (url === `${CURRENT_API}/.well-known/station/v1`)
+          return json({ environmentId: 'environment-current' });
+        if (url === `${CURRENT_API}/api/agents/opencode-agent`)
+          return json({
+            success: true,
+            data: {
+              slug: 'opencode-agent',
+              available: true,
+              execution: { agentConnectionId: 'opencode' },
+            },
+          });
+        if (url === `${CURRENT_API}/api/connections/opencode`)
+          return json({
+            success: true,
+            data: {
+              id: 'opencode',
+              kind: 'agent',
+              type: 'acp',
+              name: 'OpenCode',
+              enabled: true,
+              status: 'ready',
+              capabilities: ['agent-runtime', 'acp'],
+              prerequisites: [],
+              // The preview is now off: a new chat would get `acp`.
+              config: { engineId: 'acp', provider: 'acp' },
+            },
+          });
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      const orchestrationService = localService();
+      const resolveConversationContinuation = vi.fn(async () => ({
+        sessionId: 'conversation:opencode:session:2',
+        startRequired: true,
+      }));
+      Object.assign(orchestrationService, { resolveConversationContinuation });
+      orchestrationService.readSession.mockResolvedValue({
+        session: { cwd: '/srv/scratch', provider: stored },
+        events: [
+          {
+            method: 'session.configured',
+            metadata: {
+              environmentId: 'environment-current',
+              targetKind: 'agent',
+              targetId: 'opencode-agent',
+              connectionId: 'opencode',
+            },
+          },
+        ],
+      } as never);
+      const { continueExecutionTargetMessage } = await import(
+        '../station-control-delegation.js'
+      );
+      await continueExecutionTargetMessage(
+        {
+          userId: 'test-user',
+          conversationId: 'conversation:opencode',
+          message: 'Keep going',
+        },
+        orchestrationService as never,
+      ).catch(() => undefined);
+      expect(resolveConversationContinuation).toHaveBeenCalledWith(
+        'conversation:opencode',
+        expect.anything(),
+        expect.objectContaining({ provider: expected }),
+      );
+    },
+  );
+
   test('continues local work for a conversation bound to a directory rather than a project', async () => {
     fetchMock.mockImplementation(async (input) => {
       const url = String(input);
