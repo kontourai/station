@@ -30,15 +30,24 @@ isolated guard faults are caught, source restoration is byte-exact and four
 selected restored controls pass. Server-test typing passes. These synthetic
 registry fixtures issue no production approval or source grant.
 
-The next native admission work must introduce genuine single-Task source custody.
-`LocalSourceAdmissionOwner` currently binds group/work-item subjects, and its
-generic private-v1 prototype wire explicitly grants no provider execution.
-Neither that port nor an SDK source lease may be relabeled for native use. Native
+At `0ac7fd7bff4d`, native root source capture uses the exact live Request and
+server-minted durable Task allocation in its own private seal domain. It reads
+real source under current authority, returns references rather than bytes, and
+shares the existing four-holder/twelve-MiB snapshot bounds. Provided Task IDs,
+borrowed Requests and session-parent root fallback refuse before source reads.
+Actual credential revocation after one file prevents the next read. Four guard
+faults are caught, source restoration is byte-exact and the restored native,
+create-claim and group-source selection passes 47 cases. Empty table selections
+and the earlier observer/revocation fixture failures remain invalid evidence.
+This is allocation/source custody, not Session existence or native execution.
+
+The group/work-item SDK lease and generic private-v1 prototype wire still grant
+no native provider execution. Neither may be relabeled for native use. Native
 Task/parent identities must come from actual server orchestration, and current
 Station permissions and ancestor source restrictions must be checked before
 protected source reads or disclosure. A sealed parent's source must remain bound
 to its authenticated receipt or a mechanically validated narrower successor,
-rather than reopening a broader checkout. Native
+rather than reopening a broader checkout. Ancestor source admission, native
 source injection, execution-resolution binding, reservation and retained
 accounting, Codex pricing and full local/peer/SSH acceptance remain unfinished.
 Both production qualification flags stay false.

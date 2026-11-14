@@ -166,10 +166,49 @@ schema's native-metadata refusal fails the intended assertion; byte-exact
 restoration passes all 66 cases again. Server-test typing passes at the earlier
 profile checkpoint. Native source admission and physical reservation remain
 unfinished: the [existing source owner](../../src-server/services/orchestration/delegation-group-source-admission.ts)
-cannot lend its SDK lease or private prototype wire as a native grant. A single
-Task must not be given invented group/seat identities to enter its group-only
-source API. Codex/Responses qualification and the full inherited-authority
-acceptance remain open.
+cannot lend its SDK lease or private prototype wire as a native grant. Its group
+methods must not receive invented group/seat identities for a single Task.
+Codex/Responses qualification and the full inherited-authority acceptance remain open.
+
+### Root Task source custody
+
+[`captureRootNativeTaskSnapshot`](../../src-server/services/orchestration/delegation-group-source-admission.ts)
+uses the live [durable create allocation](../../src-server/services/orchestration/create-request-claims.ts),
+not a caller-supplied Task or group identity. The HTTP route carries its exact
+Request object internally; that object is neither accepted from JSON nor stored
+in the claim ledger. Only newly server-minted Task identities qualify. Legacy
+claims without identity-origin evidence retain ordinary creation/replay behavior
+but cannot gain this native custody by inference.
+
+Current personal-operator authority is checked around protected synchronous
+source reads. The seal binds actual file bytes to the Task allocation in a
+separate private domain and returns references, never source text. Native and
+group snapshots share the existing four-holder and twelve-MiB retained-byte
+bounds. Native seal receipts have a 1,024-record refusal cap and are not evicted.
+Current-custody checks fail after the create callback closes, on Request
+replacement, receipt change, expiry or credential revocation. Releasing these
+source buffers is not evidence of runtime or accounting cleanup.
+
+At `0ac7fd7bff4d`, the native/create/route-claim selection passes forty cases;
+the restored native/create/group-source selection passes all 47. Two actual
+route cases prove that the server's Request replaces a JSON authority claim.
+Four isolated faults are caught: wrong-Request borrowing, provided-Task origin,
+ancestor-to-root fallback and skipped per-file authority. The last fault reads
+one extra source file after a committed revocation and fails its zero-read
+assertion. Each source is restored byte-exactly. Two empty table-case selections
+are retained as invalid mutation attempts, not catches.
+
+Earlier fixture failures remain separate: repeated filesystem spies recurse,
+and the first revocation control does not establish a committed independent
+revocation. The corrected control registers its action outside the source Home
+span, verifies the revocation commits and observes the next file remaining
+unread. No production guard or deadline is relaxed.
+
+This is allocation/source custody only: it proves neither Session existence nor
+native process start. Session-parent calls refuse before source capture until
+genuine ancestor-source admission exists. Native execution-resolution binding,
+safe producer hand-off, physical reservation and retained accounting are still
+unwired; both production qualification flags remain false.
 
 ## Evidence and limits
 

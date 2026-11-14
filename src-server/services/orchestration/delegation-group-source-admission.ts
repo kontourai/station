@@ -1294,6 +1294,7 @@ export class LocalSourceAdmissionOwner {
     }
   }
 
+  // UNWIRED #91: native producer hand-off and execution/funding admission remain required.
   /** Root source capture for a live, server-minted durable Task allocation.
    * This is not a native execution grant; session-parent calls cannot fall back
    * to root authority while ancestor source admission remains unavailable. */

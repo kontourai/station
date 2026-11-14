@@ -3626,7 +3626,13 @@ A repeated client message should join the same turn instead of invoking the engi
 
 Before a Session exists, [CreateRequestClaims](../../src-server/services/orchestration/create-request-claims.ts)
 binds request kind, authenticated user/tenant/principal, verified calling
-Session and key to input and the reserved reference. A per-request owner lock
+Session and key to input and the reserved reference. The exact route-owned
+Request remains private to the live create callback; it is not ledger data or
+JSON-supplied authority. New rows record whether the identity was server-minted
+or provided. Native root source capture accepts only live server-minted Task
+allocations and checks actual current permissions separately; legacy rows cannot
+gain native custody by inferred provenance. This allocation proves neither
+Session existence nor native process start. A per-request owner lock
 prevents concurrent reclaim. The start ports and peer POST boundary persist `starting` before their
 effect; an unmarked dead reservation is reclaimable immediately, even with
 changed input, without consulting Session existence. Live or unreadable ownership,
@@ -3812,6 +3818,14 @@ smaller output caps and refuses opaque/stateful Responses inputs. Its only
 current caller is the explicit confined lab. It supplies no source admission,
 provider qualification, credential or accounting authority; ordinary native
 launch remains unwired to this path.
+
+[Native root source capture](../../src-server/services/orchestration/delegation-group-source-admission.ts)
+uses the actual durable Task allocation and Request, with current authority
+around protected source reads. Its seals have a separate private domain and
+share the existing group/native snapshot capacity. It returns references rather
+than source bytes. Session-parent calls refuse until genuine ancestor-source
+admission exists; a root seal supplies no execution, funding or runtime-cleanup
+authority. The contributor guide owns the exact fixture and fault-control scope.
 
 ## ConnectionInspector
 
