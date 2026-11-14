@@ -320,6 +320,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Vitest per case, including a leaked child and a deadline kill) and the
   // real phase driver once, to assert the failure manifest they write.
   'scripts/__tests__/qualification-failure-manifest.test.ts',
+  // Runs the repair prepare CLI against a loopback API with on-disk
+  // failure manifests and a temporary known-failure list.
+  'scripts/__tests__/qualification-failure-signal.test.ts',
   // #3101: runs the dequeue report as a child against temporary Git remotes
   // (git fetch + merge-tree) and a loopback GitHub API.
   'scripts/__tests__/merge-queue-dequeue.test.ts',
