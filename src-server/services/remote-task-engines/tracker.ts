@@ -21,6 +21,7 @@ import {
   REMOTE_TASK_POLLING_DEFAULT,
 } from '@kontourai/station-contracts/remote-task-engine';
 import type { Logger } from '../../utils/logger.js';
+import { FeaturePreviewDisabledError } from '../feature-previews/feature-preview-refusal.js';
 import { RemoteTaskError } from './remote-task-error.js';
 import type { RemoteTaskEngineService } from './service.js';
 
@@ -36,7 +37,6 @@ export interface RemoteTaskTrackerOptions {
 
 /** Refusals that resolve on their own (the gate or the vendor); retried. */
 const TRANSIENT = new Set([
-  'feature_preview_disabled',
   'remote-task-policy-refused',
   'remote-task-rate-limited',
   'remote-task-vendor-unavailable',
@@ -117,7 +117,7 @@ export class RemoteTaskTracker {
     } catch (error) {
       const code = error instanceof RemoteTaskError ? error.code : undefined;
       if (
-        code === 'feature_preview_disabled' ||
+        error instanceof FeaturePreviewDisabledError ||
         code === 'remote-task-policy-refused'
       )
         next = polling.maxBackoffMs;

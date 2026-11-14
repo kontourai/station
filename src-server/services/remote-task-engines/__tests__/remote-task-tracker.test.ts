@@ -7,6 +7,7 @@
 import type { RemoteTaskPolling } from '@kontourai/station-contracts/remote-task-engine';
 import { describe, expect, test } from 'vitest';
 import { createLogger } from '../../../utils/logger.js';
+import { FeaturePreviewDisabledError } from '../../feature-previews/feature-preview-refusal.js';
 import { RemoteTaskError } from '../remote-task-error.js';
 import type { RemoteTaskSyncResult } from '../service.js';
 import { RemoteTaskTracker } from '../tracker.js';
@@ -103,7 +104,10 @@ describe('RemoteTaskTracker', () => {
 
   test('a preview or policy refusal holds the task and retries; turning it on resumes', async () => {
     const t = setup([
-      new RemoteTaskError('feature_preview_disabled', 'off', 404),
+      new FeaturePreviewDisabledError(
+        'remote-task-engines',
+        'Remote task engines',
+      ),
       new RemoteTaskError('remote-task-policy-refused', 'managed', 403),
       'ok',
     ]);

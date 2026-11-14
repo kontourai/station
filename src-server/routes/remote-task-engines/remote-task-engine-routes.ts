@@ -16,11 +16,9 @@ import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import { FeaturePreviewDisabledError } from '../../services/feature-previews/feature-preview-refusal.js';
 import { RemoteTaskError } from '../../services/remote-task-engines/remote-task-error.js';
-import {
-  REMOTE_TASK_SETTINGS_PATH,
-  type RemoteTaskEngineService,
-} from '../../services/remote-task-engines/service.js';
+import type { RemoteTaskEngineService } from '../../services/remote-task-engines/service.js';
 import type { RemoteTaskTracker } from '../../services/remote-task-engines/tracker.js';
 import type { Logger } from '../../utils/logger.js';
 
@@ -76,6 +74,8 @@ export function createRemoteTaskEngineRoutes(
   const app = new Hono();
 
   const refusal = (c: Context, error: unknown) => {
+    if (error instanceof FeaturePreviewDisabledError)
+      return c.json(error.refusal, 404);
     if (!(error instanceof RemoteTaskError)) {
       // Never forward an unexpected error's text: it may carry vendor detail.
       logger.error('Remote task engine request failed', {
@@ -86,17 +86,6 @@ export function createRemoteTaskEngineRoutes(
         500,
       );
     }
-    if (error.code === 'feature_preview_disabled')
-      return c.json(
-        {
-          success: false,
-          error: error.message,
-          code: error.code,
-          previewId: 'remote-task-engines',
-          settingsPath: REMOTE_TASK_SETTINGS_PATH,
-        },
-        404,
-      );
     if (error.details.retryAfterMs !== undefined)
       c.header(
         'Retry-After',

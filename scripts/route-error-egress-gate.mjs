@@ -47,9 +47,9 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   'src-server/routes/connections/acp-sign-in.ts :: function failure :: error.message :: 1',
   'src-server/routes/connections/acp-sign-in.ts :: function failure :: error.message :: 2',
   // Remote task engine refusals (docs/decisions/remote-task-engines.md).
-  // `error` is narrowed by `instanceof RemoteTaskError`; anything else answers
-  // a fixed sentence. Occurrence 1 is the preview refusal, a fixed sentence.
-  // Occurrence 2 is every other refusal: sentences authored in the
+  // `error` is narrowed by `instanceof RemoteTaskError`; a disabled preview
+  // answers the shared preview refusal and anything else a fixed sentence.
+  // Occurrence 1 is every refusal: sentences authored in the
   // remote-task-engines service, bindings and `vendor-http.ts`, whose only
   // interpolations are the vendor's label, an HTTP status, and the vendor's
   // own error text, which `redactSecret` strips of the connection's
@@ -60,7 +60,6 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   // What would make this unsafe: constructing a RemoteTaskError from a caught
   // error's message, or from vendor text that did not pass `redactSecret`.
   'src-server/routes/remote-task-engines/remote-task-engine-routes.ts :: function refusal :: error.message :: 1',
-  'src-server/routes/remote-task-engines/remote-task-engine-routes.ts :: function refusal :: error.message :: 2',
   // The script runner's refusal (#3994). `error` is narrowed by `instanceof
   // TerminalCommandUnavailable`, constructed only in `terminal-sessions.ts`
   // from a literal ("Its directory has changed") or from a

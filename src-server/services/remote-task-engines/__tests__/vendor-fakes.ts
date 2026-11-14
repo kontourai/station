@@ -36,7 +36,11 @@ interface Route {
   readonly handle: Handler;
 }
 
-export function json(status: number, body: unknown, headers?: HeadersInit) {
+export function json(
+  status: number,
+  body: unknown,
+  headers?: Record<string, string>,
+) {
   return new Response(body === undefined ? null : JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json', ...headers },

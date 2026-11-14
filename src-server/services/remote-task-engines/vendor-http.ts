@@ -58,10 +58,7 @@ const DEFAULT_TIMEOUT_MS = 30_000;
  * The vendor's wait in milliseconds: `Retry-After` as seconds or an HTTP
  * date, else an exhausted quota's `X-RateLimit-Reset` (epoch seconds).
  */
-export function retryAfterMs(
-  headers: Headers,
-  now: number,
-): number | undefined {
+function retryAfterMs(headers: Headers, now: number): number | undefined {
   const retryAfter = headers.get('retry-after');
   if (retryAfter !== null) {
     const trimmed = retryAfter.trim();

@@ -45,6 +45,7 @@ import {
   remoteTaskPollingProblems,
 } from '@kontourai/station-contracts/remote-task-engine';
 import type { Logger } from '../../utils/logger.js';
+import { requireFeaturePreview } from '../feature-previews/feature-preview-refusal.js';
 import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import type { RemoteTaskBinding, RemoteTaskCallContext } from './binding.js';
 import { REMOTE_TASK_BINDINGS } from './bindings/index.js';
@@ -61,9 +62,6 @@ import {
   RemoteTaskStore,
 } from './stores.js';
 import { VendorHttp } from './vendor-http.js';
-
-export const REMOTE_TASK_SETTINGS_PATH =
-  '/settings?view=feature-previews&highlight=feature-previews' as const;
 
 /** The managed policy as the gate reads it; null: no policy installed. */
 export interface RemoteTaskManagedPolicy {
@@ -141,7 +139,7 @@ function cleanSettings(
   return settings;
 }
 
-export function parseRemoteTaskCreateInput(
+function parseRemoteTaskCreateInput(
   value: unknown,
   capabilities: RemoteTaskCapabilities,
   vendor: RemoteTaskVendorId,
@@ -224,20 +222,12 @@ export class RemoteTaskEngineService {
 
   // --- the gate --------------------------------------------------------------
 
-  #previewOn(): boolean {
-    return this.#options.preview.select({
-      enabled: () => true,
-      disabled: () => false,
-    });
-  }
-
   #requirePreview(): void {
-    if (!this.#previewOn())
-      throw new RemoteTaskError(
-        'feature_preview_disabled',
-        'Enable Remote task engines in Settings → Advanced → Feature previews.',
-        404,
-      );
+    requireFeaturePreview(
+      this.#options.preview,
+      REMOTE_TASK_PREVIEW_ID,
+      'Remote task engines',
+    );
   }
 
   /** Whether the managed policy lets `vendor` be used. */
@@ -722,7 +712,4 @@ export class RemoteTaskEngineService {
       return { task: finalTask, appended, quiescent };
     });
   }
-
-  /** For the routes: the preview id the refusal names. */
-  static readonly previewId = REMOTE_TASK_PREVIEW_ID;
 }

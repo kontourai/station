@@ -90,7 +90,7 @@ function epochToIso(value: unknown): string | undefined {
   return new Date(ms).toISOString();
 }
 
-export function devinSession(connectionId: string, body: unknown): RemoteTask {
+function devinSession(connectionId: string, body: unknown): RemoteTask {
   const record = asRecord(body);
   const sessionId = stringField(record, 'session_id');
   const status = stringField(record, 'status');

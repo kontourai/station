@@ -64,7 +64,7 @@ function agentPath(taskId: string): string {
   return `/v1/agents/${encodeURIComponent(taskId)}`;
 }
 
-export function cursorTask(
+function cursorTask(
   connectionId: string,
   agentBody: unknown,
   runBody?: unknown,

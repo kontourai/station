@@ -48,7 +48,7 @@ interface ConnectionsDocument {
 const CONNECTIONS_MAX_BYTES = 1024 * 1024;
 const TASK_MAX_BYTES = 8 * 1024 * 1024;
 /** Stored messages per task; the oldest are dropped past it. */
-export const REMOTE_TASK_STORED_EVENTS_MAX = 2000;
+const REMOTE_TASK_STORED_EVENTS_MAX = 2000;
 /** Vendor ids remembered for de-duplication, newest kept. */
 const SEEN_IDS_MAX = 4000;
 

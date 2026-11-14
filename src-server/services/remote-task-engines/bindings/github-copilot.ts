@@ -58,7 +58,7 @@ function taskPath(taskId: string): string {
  * A task object. Usage is per session (`sessions[].usage`), which only the
  * get endpoints return; amounts of one type are summed.
  */
-export function copilotTask(connectionId: string, body: unknown): RemoteTask {
+function copilotTask(connectionId: string, body: unknown): RemoteTask {
   const record = asRecord(body);
   const id =
     typeof record.id === 'number'
