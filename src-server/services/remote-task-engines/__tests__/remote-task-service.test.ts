@@ -4,7 +4,7 @@
  * dropped), and removing a connection while one of its syncs is in flight
  * leaves no task behind.
  */
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { devinBinding } from '../bindings/devin.js';
@@ -96,7 +96,7 @@ describe('remote task service', () => {
     expect(await sync).toMatchObject({ code: 'remote-task-not-found' });
     const dir = join(h.home, 'remote-task-engines', 'tasks', id);
     // Not even an empty folder is left behind.
-    expect(existsSync(dir) ? readdirSync(dir) : 'absent').toBe('absent');
+    expect(existsSync(dir)).toBe(false);
     expect(new RemoteTaskStore(h.home).hasTasks(id)).toBe(false);
   });
 });
