@@ -2007,6 +2007,42 @@ describe('thread inbox (#3568)', () => {
     expect(followUpSends()).toEqual([FOLLOW_UP]);
   });
 
+  test('a follow-up refused busy during a rewind goes when the rewind ends, not at its timed re-check', async () => {
+    let refuseOnce = true;
+    const world = boot(path(), {
+      // No re-checks: only a trigger can place it.
+      retryDelaysMs: [],
+      start: async ({ payload: sent }) => {
+        if (refuseOnce) {
+          refuseOnce = false;
+          throw Object.assign(
+            new Error(
+              'Station is rewinding this conversation; send again when it finishes.',
+            ),
+            { code: 'provider_turn_in_progress' },
+          );
+        }
+        sends.push(sent.message);
+        return {
+          outcome: 'started',
+          conversationId: THREAD,
+          sessionId: THREAD,
+          turnId: 'turn-next',
+        };
+      },
+    });
+    const firstTurn = await runningFirstTurn(world);
+    queueFollowUp(world);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
+    await settle(world);
+    expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'queued' }]);
+    expect(followUpSends()).toEqual([]);
+    // The rewind ends with no turn event.
+    world.inbox.nudge(THREAD);
+    await settle(world);
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+  });
+
   test('a busy flag that outlives the terminal is looked at again, and the follow-up goes', async () => {
     let coordinatorHolds = true;
     const world = boot(path(), { coordinatorBusy: () => coordinatorHolds });

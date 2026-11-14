@@ -1261,6 +1261,125 @@ export const MUTATIONS = [
     ],
   },
   {
+    id: 'ci-health-lane-shard-normalization',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure:
+      'aggregates shard legs into one lane per workflow, job and event with clipped runner-minutes',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(
+            source,
+            "`N${range ? '-N' : ''}${sep}of${sep}N`",
+            "`N${range ?? ''}${sep}of${sep}N`",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'ci-health-lane-cancelled-run',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure:
+      'charges executed minutes inside cancelled runs to the lane, including legs that finished first',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(
+            source,
+            "if (run?.conclusion === 'cancelled') {",
+            "if (job.conclusion === 'cancelled') {",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'ci-health-unique-catch-supersede',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure:
+      'counts lane failures on head SHAs whose ci.yml source verdict passed, a later passing attempt superseding failures on either side',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(
+            source,
+            "if (map.get(key) !== 'success') map.set(key, outcome);",
+            "if (map.get(key) !== 'failure') map.set(key, outcome);",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'ci-health-landing-last-entry',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure:
+      'measures last and first queue entry to merge, counting re-entries and PRs without queue or merge events',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(
+            source,
+            'last.push((merged - entries.at(-1)) / minute);',
+            'last.push((merged - entries[0]) / minute);',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'ci-health-landing-bypass',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure:
+      'measures last and first queue entry to merge, counting re-entries and PRs without queue or merge events',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(
+            source,
+            'removals.some((at) => at > entries.at(-1) && at < merged - minute)',
+            'removals.some((at) => at > entries.at(-1) && at < merged - 1)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'ci-health-unique-catch-non-verifying',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure:
+      'leaves label, dequeue and close automation out of the unique-catch table',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(
+            source,
+            'NON_VERIFYING_PR_WORKFLOWS.includes(workflowFile(run))',
+            'NON_VERIFYING_PR_WORKFLOWS.includes(run.path)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'ci-health-landing-window-end',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure:
+      'counts landings by merged_at in the half-open window, not by commit date, fetching each landed timeline once',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(
+            source,
+            'return at >= time(since) && at < time(until);',
+            'return at >= time(since) && at <= time(until);',
+          ),
+      },
+    ],
+  },
+  {
     id: 'fast-checks-shard-threshold',
     test: 'scripts/__tests__/fast-checks-plan.test.ts',
     failure: '101 selected files produce 2 shards',

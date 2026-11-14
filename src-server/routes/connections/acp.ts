@@ -45,6 +45,7 @@ import {
   mapPublicRegistryListings,
   type PublicRegistryCatalog,
 } from '../../services/acp/public-agent-registry-catalog.js';
+import { engineHostAuth } from '../../services/engine-host-auth/service.js';
 import {
   type IntegrationSecretResolution,
   SecretBindingResolutionError,
@@ -1065,6 +1066,15 @@ export function createACPRoutes(
               ctx.logger?.warn?.('Stored engine keys could not be removed', {
                 id,
               }),
+            );
+          // Nor may a Kiro sign-in or an engine-held secret Station kept for it.
+          await engineHostAuth()
+            ?.removeConnection(id)
+            .catch(() =>
+              ctx.logger?.warn?.(
+                'Engine sign-in and secrets could not be removed',
+                { id },
+              ),
             );
           acpOps.add(1, { op: 'delete' });
           return c.json({ success: true });

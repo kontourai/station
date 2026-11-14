@@ -141,6 +141,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real Node sidecars verify native model relay framing, queued delivery and cancellation settlement.
+  'src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts',
   // #4828: short-lived `git init`, `git config` and `git status` children
   // prove the persistence protection reads the effective core.hooksPath from
   // git and runs no repository-named program; no wall-clock assertion.
@@ -1368,9 +1370,29 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3290: spawns an OpenCode-shaped ACP engine through the real
   // ACPProcess, so the launch environment is the one actually delivered.
   'src-server/providers/__tests__/acp-approval-mode.process.test.ts',
+  // Installs a fake Kiro agent service with the real installer and launches
+  // it through the real ACPProcess, managed and as a custom command.
+  'src-server/services/engine-host-auth/__tests__/engine-host-auth-launch.process.test.ts',
+  // Runs a managed runtime's `--version` (Node, and a slow shell stand-in
+  // killed by an abort) through the ACP adapter's readiness.
+  'src-server/providers/__tests__/acp-managed-runtime-readiness.test.ts',
+  // Two real processes race one expiring credential through the vault's
+  // cross-process refresh lock against a local stub issuer.
+  'src-server/services/engine-host-auth/__tests__/engine-host-auth-refresh-lock.process.test.ts',
+  // Extracts fixture archives with the host's own tar and runs the installed
+  // runtime, so the extraction and launch are the real ones.
+  'src-server/services/engines/__tests__/managed-install.test.ts',
+  // Launches the fake ACP agent through the real ACPProcess so the agent
+  // records the client capabilities `initialize` actually announced.
+  'src-server/services/acp/__tests__/acp-client-announcements.process.test.ts',
   // Launches the profile-driven fake engine through the real ACPProcess,
   // adapter and probe; the process boundary is the qualification claim.
   'src-server/providers/__tests__/acp-engine-qualification.process.test.ts',
+  // Kiro parity: the fake ACP agent, driven by recorded kiro-cli profiles,
+  // through the real adapter and ACPProcess; it records what Station
+  // announced and answered.
+  'src-server/providers/__tests__/acp-kiro-announce.process.test.ts',
+  'src-server/providers/__tests__/acp-kiro-parity.process.test.ts',
   // #3924: runs the real `opencode` (when this host has one) with fresh XDG
   // directories against a planted project plugin; skips loudly where no
   // opencode binary resolves.

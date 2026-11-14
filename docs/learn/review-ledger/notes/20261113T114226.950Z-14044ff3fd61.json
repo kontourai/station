@@ -1,0 +1,7 @@
+{
+  "revision": "48df5a2cb0fbdd12e218133581e651acd3bb5e2d",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Links to the session API reference only; the session-api edit (ACP settles only the stopped turn's requests) does not touch the routing-behind-a-flag decision it records.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

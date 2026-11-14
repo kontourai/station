@@ -188,7 +188,11 @@ function isEngineSignInLeaf(request: {
     (['GET', 'DELETE'].includes(request.method) &&
       /^\/acp\/connections\/[^/]+\/sign-in\/attempt$/.test(path)) ||
     (['PUT', 'DELETE'].includes(request.method) &&
-      /^\/acp\/connections\/[^/]+\/credentials\/[^/]+$/.test(path))
+      /^\/acp\/connections\/[^/]+\/credentials\/[^/]+$/.test(path)) ||
+    (['GET', 'POST', 'DELETE'].includes(request.method) &&
+      /^\/acp\/connections\/[^/]+\/host-auth\/login$/.test(path)) ||
+    (request.method === 'POST' &&
+      /^\/acp\/connections\/[^/]+\/host-auth\/sign-out$/.test(path))
   );
 }
 
@@ -1858,6 +1862,29 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: '*',
     prefix: '/acp/connections/:id/credentials',
     scope: PAIRING_SCOPE_ENGINE_LOGIN,
+    origin: 'explicit',
+  },
+  // Station-run engine sign-in (acp-sign-in.ts): starting, reading (it
+  // carries the device code) or cancelling one, and signing out, are the
+  // `engine:login` decision like the engine's own sign-in above.
+  ...(['host-auth/login', 'host-auth/sign-out'] as const).map(
+    (leaf): PairingScopeRouteRule => ({
+      id: `/acp/connections/:id/${leaf}:engine-login`,
+      method: '*',
+      prefix: `/acp/connections/:id/${leaf}`,
+      exact: true,
+      scope: PAIRING_SCOPE_ENGINE_LOGIN,
+      origin: 'explicit',
+    }),
+  ),
+  // Installing a managed engine downloads and lays down code Station runs:
+  // an operate-tier action, with explicit consent in the body.
+  {
+    id: '/acp/connections/:id/managed-install:operate',
+    method: 'POST',
+    prefix: '/acp/connections/:id/managed-install',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
   // Re-detecting engines re-runs the host user's login shell (bounded and
@@ -4654,6 +4681,31 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'POST',
       path: '/api/orchestration/sessions/:threadId/provider-tasks/:taskId/stop',
+    },
+    // Restart (or sign in to) one MCP server the Session's ENGINE runs, in
+    // a Session the caller already reaches through this family. Like the
+    // usage-limit actions below it is the person's act on their own Session
+    // (`canUserMutateSession`, the authority of sending the next turn). It
+    // returns only the engine's outcome; a sign-in link it starts arrives
+    // as an input request this family already reads.
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/mcp-servers/:serverName/reconnect',
+    },
+    // A Session's live continuity (which engine-native actions its engine
+    // declared) and the person's in-place rewind of that engine's context.
+    // The read returns only two declared mechanism names under the same
+    // session-read gate as its siblings; the rewind is the person's act on
+    // their own Session (`canUserMutateSession`, the authority of sending the
+    // next turn) and edits no transcript, so it takes the operate tier like
+    // the MCP reconnect above.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/continuity',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/rewind',
     },
     // #3157: the usage-limit banner's recovery read and its two person-owned
     // actions (Resume now, Cancel auto-resume). Deliberate family inheritance:

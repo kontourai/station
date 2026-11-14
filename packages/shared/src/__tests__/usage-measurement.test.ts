@@ -108,4 +108,21 @@ describe('the one unreported-measurement representation (station#3201)', () => {
       ),
     ).toContain('Muse Code did not report token counts, cost or context usage');
   });
+
+  it('counts a cost in the engine\u2019s own unit and the engine\u2019s own context reading as reported', () => {
+    expect(
+      unreportedMeasurementClasses({
+        source: 'engine-events',
+        provider: 'acp',
+        reportedCostUnits: 1,
+        contextPercent: 2.2,
+      }),
+    ).toEqual(['token counts']);
+    expect(
+      unreportedMeasurementClasses({
+        source: 'engine-events',
+        provider: 'acp',
+      }),
+    ).toEqual(['token counts', 'cost', 'context usage']);
+  });
 });
