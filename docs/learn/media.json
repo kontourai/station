@@ -792,7 +792,7 @@
       "alt": "Child tool result before the missing-text fix at 390px in dark theme.",
       "caption": "Before the fix: the tool result has no recorded text label.",
       "scenario": "Read a child transcript with missing tool text",
-      "evidence": "Controlled Chromium product journey at 092eebec8017dd9a6b04d6e2ed1d30d47cd0c197, with synthetic child transcript data and asserted account theme. Historical before control: mapper bytes from main a7017a3e515c893c233767e4598350d636e1a49e were temporarily substituted; mapper SHA256 cc201803e1d49e0b3a6cf2a6afa96eba948680317069dd0857ebf26b1d9d7a99. All six missing-text assertions failed as intended; the legacy-route control passed. The committed mapper was restored byte-exactly. No live-provider, native-shell, physical-device or whole-epic qualification.",
+      "evidence": "Controlled Chromium product journey at 092eebec8017dd9a6b04d6e2ed1d30d47cd0c197, with synthetic child transcript data and asserted account theme. Historical before control: mapper bytes from main a7017a3e515c893c233767e4598350d636e1a49e were temporarily substituted; mapper SHA256 cc201803e1d49e0b3a6cf2a6afa96eba948680317069dd0857ebf26b1d9d7a99. All six missing-text assertions failed as intended; the legacy-route control passed. The committed mapper was restored byte-exactly. No live-provider, native-shell, physical-device or whole-epic qualification. Historical surrounding Home and dock chrome from the captured revision is retained; these comparisons illustrate tool-text semantics, not current Home appearance.",
       "capturedRevision": "092eebec8017dd9a6b04d6e2ed1d30d47cd0c197",
       "documents": [
         "docs/user/getting-started.md"
@@ -805,7 +805,7 @@
       "alt": "Child tool result after the missing-text fix at 390px in dark theme.",
       "caption": "After the fix: the reader labels the text unavailable.",
       "scenario": "Read a child transcript with missing tool text",
-      "evidence": "Controlled Chromium product journey at 092eebec8017dd9a6b04d6e2ed1d30d47cd0c197, with synthetic child transcript data and asserted account theme. Committed mapper. All seven cases passed; all twelve verified-theme before/after frames were opened and inspected at 390, 412 and 1440 widths. Missing-text marker remains readable and navigation/touch checks are retained. No live-provider, native-shell, physical-device or whole-epic qualification.",
+      "evidence": "Controlled Chromium product journey at 092eebec8017dd9a6b04d6e2ed1d30d47cd0c197, with synthetic child transcript data and asserted account theme. Committed mapper. All seven cases passed; all twelve verified-theme before/after frames were opened and inspected at 390, 412 and 1440 widths. Missing-text marker remains readable and navigation/touch checks are retained. No live-provider, native-shell, physical-device or whole-epic qualification. Historical surrounding Home and dock chrome from the captured revision is retained; these comparisons illustrate tool-text semantics, not current Home appearance.",
       "capturedRevision": "092eebec8017dd9a6b04d6e2ed1d30d47cd0c197",
       "documents": [
         "docs/user/getting-started.md"
@@ -818,7 +818,7 @@
       "alt": "Child tool result before the missing-text fix at 1440px in light theme.",
       "caption": "Before the fix: the tool result has no recorded text label.",
       "scenario": "Read a child transcript with missing tool text",
-      "evidence": "Controlled Chromium product journey at 092eebec8017dd9a6b04d6e2ed1d30d47cd0c197, with synthetic child transcript data and asserted account theme. Historical before control: mapper bytes from main a7017a3e515c893c233767e4598350d636e1a49e were temporarily substituted; mapper SHA256 cc201803e1d49e0b3a6cf2a6afa96eba948680317069dd0857ebf26b1d9d7a99. All six missing-text assertions failed as intended; the legacy-route control passed. The committed mapper was restored byte-exactly. No live-provider, native-shell, physical-device or whole-epic qualification.",
+      "evidence": "Controlled Chromium product journey at 092eebec8017dd9a6b04d6e2ed1d30d47cd0c197, with synthetic child transcript data and asserted account theme. Historical before control: mapper bytes from main a7017a3e515c893c233767e4598350d636e1a49e were temporarily substituted; mapper SHA256 cc201803e1d49e0b3a6cf2a6afa96eba948680317069dd0857ebf26b1d9d7a99. All six missing-text assertions failed as intended; the legacy-route control passed. The committed mapper was restored byte-exactly. No live-provider, native-shell, physical-device or whole-epic qualification. Historical surrounding Home and dock chrome from the captured revision is retained; these comparisons illustrate tool-text semantics, not current Home appearance.",
       "capturedRevision": "092eebec8017dd9a6b04d6e2ed1d30d47cd0c197",
       "documents": [
         "docs/user/getting-started.md"
@@ -831,7 +831,7 @@
       "alt": "Child tool result after the missing-text fix at 1440px in light theme.",
       "caption": "After the fix: the reader labels the text unavailable.",
       "scenario": "Read a child transcript with missing tool text",
-      "evidence": "Controlled Chromium product journey at 092eebec8017dd9a6b04d6e2ed1d30d47cd0c197, with synthetic child transcript data and asserted account theme. Committed mapper. All seven cases passed; all twelve verified-theme before/after frames were opened and inspected at 390, 412 and 1440 widths. Missing-text marker remains readable and navigation/touch checks are retained. No live-provider, native-shell, physical-device or whole-epic qualification.",
+      "evidence": "Controlled Chromium product journey at 092eebec8017dd9a6b04d6e2ed1d30d47cd0c197, with synthetic child transcript data and asserted account theme. Committed mapper. All seven cases passed; all twelve verified-theme before/after frames were opened and inspected at 390, 412 and 1440 widths. Missing-text marker remains readable and navigation/touch checks are retained. No live-provider, native-shell, physical-device or whole-epic qualification. Historical surrounding Home and dock chrome from the captured revision is retained; these comparisons illustrate tool-text semantics, not current Home appearance.",
       "capturedRevision": "092eebec8017dd9a6b04d6e2ed1d30d47cd0c197",
       "documents": [
         "docs/user/getting-started.md"
