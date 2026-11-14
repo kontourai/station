@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-14T14:47:46Z | nightly-npm | 0.11.0-nightly.20261114.43605242413 | `e54d578` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43605242413) |
 | 2026-11-14T01:32:17Z | nightly-desktop | 0.1.11-nightly.20261114 | `a5752ec` | native cohort final receipt partial | [run](https://github.com/kontourai/station/actions/runs/43530636495) |
 | 2026-11-14T00:16:41Z | nightly-npm | 0.11.0-nightly.20261113.43530636495 | `a5752ec` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43530636495) |
 | 2026-11-13T13:09:17Z | nightly-desktop | 0.1.11-nightly.20261113.1 | `ce3f226` | native cohort final receipt partial | [run](https://github.com/kontourai/station/actions/runs/43418305981) |
@@ -477,6 +478,53 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-14T14:47:46Z · nightly-npm · 0.11.0-nightly.20261114.43605242413
+
+- Ship SHA: `e54d5784edda09dc704955455b4fe000547231ca`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261114.43605242413 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `a5752ec` ([full sha](https://github.com/kontourai/station/commit/a5752ec5b31170072dbaabb9744f486d3a551321)):
+
+**Features**
+
+- [#4927](https://github.com/kontourai/station/pull/4927) feat(acp): full Grok Build support (child work, wakes, rewind, fork, MCP) on generic engine abstractions (carries #4912)
+- [#4930](https://github.com/kontourai/station/pull/4930) feat(release): stage vX.Y.Z-rc.N tags as Stable builds (#4929)
+- [#4925](https://github.com/kontourai/station/pull/4925) feat: add confined native model channel prerequisite
+- [#4938](https://github.com/kontourai/station/pull/4938) feat(ci): measure CI cost by lane, unique catch and landing latency
+- [#4912](https://github.com/kontourai/station/pull/4912) feat(acp): comprehensive Kiro support (CLI v2, KAS, KAS without CLI) on generic engine abstractions
+
+**Fixes**
+
+- [#4957](https://github.com/kontourai/station/pull/4957) fix: recover owned native namespace after lost create reply
+- [#4955](https://github.com/kontourai/station/pull/4955) fix(chat): label missing child tool text as unavailable
+- [#4953](https://github.com/kontourai/station/pull/4953) fix(presence,relay): stop fresh-home focus over-posting and the relay capability 404
+- [#4933](https://github.com/kontourai/station/pull/4933) fix(release): ship tagged Windows MSI unsigned when no Authenticode credentials exist
+- [#4952](https://github.com/kontourai/station/pull/4952) fix(deps): clear the dependency advisory floor where upgrades exist
+- [#4896](https://github.com/kontourai/station/pull/4896) fix(chat): distinguish input requests and retain background status
+- [#4898](https://github.com/kontourai/station/pull/4898) fix: polish Home, inbox Station identity and mobile dock
+- [#4931](https://github.com/kontourai/station/pull/4931) fix(chat): keep child breadcrumbs reachable and add gallery screens
+- [#4899](https://github.com/kontourai/station/pull/4899) fix(updates): announce connection loss and show server changelogs
+- [#4894](https://github.com/kontourai/station/pull/4894) fix: relay chat reload loop, stuck engine switch, troubleshoot seed, monitoring spans, and drain status
+
+**CI / workflow**
+
+- [#4950](https://github.com/kontourai/station/pull/4950) ci: stop repeating merge-group verdicts on main and publish queue status in-run
+- [#4939](https://github.com/kontourai/station/pull/4939) ci: run CodeQL and the heavy platform lanes once per landing
+
+**Docs**
+
+- [#4949](https://github.com/kontourai/station/pull/4949) docs(review): narrow hub source citations after claim review
+
+**Other**
+
+- [#4951](https://github.com/kontourai/station/pull/4951) chore(docs): advance the review coverage baseline and archive 8548 landed notes
+- [#4946](https://github.com/kontourai/station/pull/4946) chore(docs): advance the review coverage baseline and archive 3102 landed notes
+- [#4905](https://github.com/kontourai/station/pull/4905) perf(bench): add Station idle-weight and request-overhead budgets
 
 ## 2026-11-14T01:32:17Z · nightly-desktop · 0.1.11-nightly.20261114
 
