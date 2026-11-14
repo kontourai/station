@@ -42,6 +42,7 @@ describe('OpenCode serve captures', () => {
   test('every scenario the native transport replays was captured', () => {
     expect(files.sort()).toEqual(
       [
+        'attachment',
         'basic',
         'boot',
         'catalog',
@@ -53,6 +54,7 @@ describe('OpenCode serve captures', () => {
         'interrupt',
         'interrupt-pending',
         'mcp',
+        'mcp-add',
         'mode-switch',
         'permission-allow',
         'permission-reject',

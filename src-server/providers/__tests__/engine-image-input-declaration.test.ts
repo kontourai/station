@@ -84,8 +84,8 @@ const INTERACTIVE_DISPATCH_ADAPTERS: {
   },
   { matrixKey: 'muse', capabilities: new MuseAdapter().metadata.capabilities },
   {
-    // Declares no `image-input`: a native session refuses attachments, and
-    // the cell states the floor of both transports.
+    // Declares `image-input`: native sends images as prompt files; the ACP
+    // fallback refuses them unless its handshake advertised images.
     matrixKey: 'opencode',
     capabilities: new OpenCodeAdapter({ getConnections: async () => [] })
       .metadata.capabilities,
@@ -139,6 +139,7 @@ describe('engine imageInput declaration', () => {
       // the join already agree; only this list was stale, so the per-engine
       // cross-check above passed while this one failed.
       'muse',
+      'opencode',
       'station',
     ]);
   });

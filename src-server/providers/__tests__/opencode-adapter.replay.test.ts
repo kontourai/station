@@ -12,6 +12,7 @@ import {
 } from '../../services/acp/opencode-approval-native.js';
 import {
   ApprovalGovernanceRefusedError,
+  AttachmentInputUnsupportedError,
   type ProviderAdapterShape,
   type ProviderSessionStartInput,
   ProviderTurnEndedError,
@@ -562,6 +563,56 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     expect(
       await h.waitFor((event) => event.code === 'acp.session-rewound'),
     ).toMatchObject({ details: { hiddenTurnIds: [second.turnId] } });
+  });
+
+  test('an image goes to OpenCode as a prompt file, as a data URI, and reaches the model', async () => {
+    const h = await setup({ scenario: 'attachment' });
+    await h.start();
+    const recorded = loadOpenCodeFixture('attachment').find(
+      (line) => line.kind === 'http' && line.path?.endsWith('/prompt') === true,
+    )?.body as { files: Array<{ uri: string; name: string }> };
+    const dataUrl = recorded.files[0]?.uri as string;
+    const { turnId } = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'What is in the picture?',
+      attachments: [
+        {
+          kind: 'image',
+          name: 'pixel.png',
+          mimeType: 'image/png',
+          size: Buffer.from(dataUrl.split(',')[1] as string, 'base64').length,
+          dataUrl,
+        },
+      ],
+    });
+    await h.waitFor(completedFor(turnId));
+    const prompt = h.replay.made('POST', '/api/session/:id/prompt')[0]
+      ?.body as { files?: unknown };
+    // The shape the real server took (2.3.0 attachment capture).
+    expect(prompt.files).toEqual(recorded.files);
+    expect(turnText(h.events, turnId)).toBe('IMAGE_SEEN by mock');
+  });
+
+  test('a non-image file is refused before anything reaches OpenCode', async () => {
+    const h = await setup({ scenario: 'attachment' });
+    await h.start();
+    const text = Buffer.from('a,b\n').toString('base64');
+    await expect(
+      h.adapter.sendTurn({
+        threadId: 'thread-1',
+        input: 'read this',
+        attachments: [
+          {
+            kind: 'file',
+            name: 'data.csv',
+            mimeType: 'text/csv',
+            size: 4,
+            dataUrl: `data:text/csv;base64,${text}`,
+          },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(AttachmentInputUnsupportedError);
+    expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(0);
   });
 
   test('a subagent is reported as child work only', async () => {

@@ -1355,11 +1355,15 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // shared staged policy there. The ACP fallback's `requestPermission`
     // does (`acp` row: partial), the native path does not.
     toolPolicy: { state: 'unsupported', adapterModule: 'opencode-adapter' },
-    // Native refuses attachments (`AttachmentInputUnsupportedError` in
-    // `opencode-adapter.ts` sendTurn).
+    // Native: images go as `POST .../prompt` `files` (data URIs), as
+    // OpenCode's own ACP layer sends them (fixture
+    // `opencode-serve-2.3.0-attachment.jsonl`); other files are refused.
+    // ACP: as the `acp` row, only when the connection's `initialize`
+    // advertised `promptCapabilities.image`, so the basis is an observation.
     imageInput: {
-      state: 'unsupported',
-      reason: 'OpenCode on its own server does not take images in Station yet.',
+      state: 'session',
+      channel: 'native-content',
+      basis: 'runtime_observation',
     },
     // Native: `POST .../prompt {delivery:'steer'}`, acknowledged by
     // `inbox.delivered` (fixture `opencode-serve-2.3.0-steer.jsonl`); ACP:

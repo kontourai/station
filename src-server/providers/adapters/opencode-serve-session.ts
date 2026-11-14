@@ -387,6 +387,8 @@ export class OpenCodeNativeSession {
   async sendTurn(input: {
     turnId: string;
     text: string;
+    /** Prompt files (`PromptInput.FileAttachment`): images as data URIs. */
+    files?: ReadonlyArray<{ uri: string; name: string }>;
     displayText: string;
     invocationId?: string;
     metadata?: Record<string, unknown>;
@@ -411,7 +413,11 @@ export class OpenCodeNativeSession {
         await this.deps.client.request<{ data?: unknown }>(
           'POST',
           `/api/session/${this.sessionId}/prompt`,
-          { id: turn.messageId, text: input.text },
+          {
+            id: turn.messageId,
+            text: input.text,
+            ...(input.files?.length ? { files: input.files } : {}),
+          },
         );
       }
     } catch (error) {

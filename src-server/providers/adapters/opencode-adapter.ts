@@ -76,6 +76,10 @@ import {
   type AsyncEventStreamOptions,
 } from '../sessions/async-event-queue.js';
 import {
+  decodeChatAttachments,
+  rejectFileAttachments,
+} from '../sessions/chat-attachments.js';
+import {
   AcpAdapter,
   type AcpAdapterOptions,
   type AcpResumeCursor,
@@ -261,6 +265,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       'tool-calls',
       'interrupt',
       'approvals',
+      'image-input',
     ],
     durability: ACP_ENGINE_DURABILITY,
     continuity: { resume: 'same-session', fork: 'none', rewind: 'in-place' },
@@ -941,10 +946,19 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         : result;
     }
     const record = this.requireNative(input.threadId);
-    if (input.attachments && input.attachments.length > 0)
-      throw new AttachmentInputUnsupportedError(
-        'OpenCode over its own server does not take attachments in Station yet.',
-      );
+    // Images go as prompt files, data URIs, as OpenCode's own ACP layer
+    // sends them (`cli/src/acp/turn.ts`); other files are refused, as on ACP.
+    let decoded: ReturnType<typeof decodeChatAttachments>;
+    try {
+      decoded = decodeChatAttachments(input.attachments);
+    } catch (error) {
+      throw new SendTurnRefusedError(errorMessage(error), 'input_unsupported');
+    }
+    try {
+      rejectFileAttachments(ENGINE_NAME, decoded);
+    } catch (error) {
+      throw new AttachmentInputUnsupportedError(errorMessage(error));
+    }
     // Busy from here, before anything is awaited: a second turn sent while
     // this one applies its settings is refused, not set up alongside it.
     if (record.busy)
@@ -955,7 +969,14 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     record.native.assertIdle();
     record.busy = true;
     try {
-      return await this.sendNativeTurn(record, input);
+      return await this.sendNativeTurn(
+        record,
+        input,
+        decoded.map(({ attachment, base64 }) => ({
+          uri: `data:${attachment.mimeType};base64,${base64}`,
+          name: attachment.name,
+        })),
+      );
     } finally {
       record.busy = false;
     }
@@ -964,11 +985,14 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
   private async sendNativeTurn(
     record: NativeRecord,
     input: ProviderSendTurnInput,
+    files: Array<{ uri: string; name: string }>,
   ): Promise<ProviderTurnStartResult> {
     await this.applyTurnSettings(record, input);
     const turnId = crypto.randomUUID();
     const displayText = input.displayInput ?? input.input;
-    const invocation = readSlashCommand(input.input);
+    // A turn with attachments is a prompt, never a command (as on ACP).
+    const invocation =
+      files.length === 0 ? readSlashCommand(input.input) : undefined;
     const result = {
       threadId: input.threadId,
       turnId,
@@ -978,6 +1002,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       await record.native.sendTurn({
         turnId,
         text: input.input,
+        ...(files.length > 0 ? { files } : {}),
         displayText,
         ...(input.invocationId ? { invocationId: input.invocationId } : {}),
       });

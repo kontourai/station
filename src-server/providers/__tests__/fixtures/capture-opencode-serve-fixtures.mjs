@@ -93,6 +93,15 @@ const OUT = path.resolve(
 const PORT_BASE = Number(args['port-base'] ?? 47300);
 const MOCK_PORT = PORT_BASE;
 const SERVE_PORT = PORT_BASE + 1;
+/**
+ * A Station-like HTTP MCP server, for `mcp-add`: it refuses a request
+ * without the session's header. Station's own servers take a bearer
+ * `Authorization` header; the capture names its header differently so the
+ * committed fixture never holds an authorization header (privacy suite).
+ */
+const HTTP_MCP_HEADER = 'x-station-session';
+const HTTP_MCP_PORT = PORT_BASE + 5;
+const HTTP_MCP_TOKEN = 'capture-mcp-session-token';
 if (!(PORT_BASE >= 1024 && PORT_BASE < 65000))
   throw new Error('--port-base out of range');
 
@@ -176,6 +185,12 @@ function plan(body) {
       ],
     };
   const user = textOf(last.content);
+  // What an attachment reached the model as (OpenAI-compatible parts).
+  if (
+    Array.isArray(last.content) &&
+    last.content.some((part) => part?.type === 'image_url')
+  )
+    return { kind: 'text', chunks: ['IMAGE_SEEN ', 'by mock'] };
   // OpenCode's compaction refuses a summary without its template headings.
   if (user.includes('<template>') || user.includes('required summary template'))
     return {
@@ -206,6 +221,25 @@ function plan(body) {
       oldString: 'line one',
       newString: 'line one EDITED',
     });
+  if (user.includes('DO_MCP')) {
+    const echo = tools.find((name) => /^station-echo[_-]echo$/.test(name));
+    if (echo)
+      return { kind: 'tool', name: echo, args: { text: 'from-station-mcp' } };
+    // OpenCode's Code Mode (on by default for an added server) offers MCP
+    // tools only inside its `execute` tool.
+    if (tools.includes('execute'))
+      return {
+        kind: 'tool',
+        name: 'execute',
+        args: {
+          code: 'const ns = tools["station-echo"] ?? tools.station_echo; return await ns.echo({ text: "from-station-mcp" });',
+        },
+      };
+    return {
+      kind: 'text',
+      chunks: [`TOOL_UNAVAILABLE station-echo (${tools.join(',')})`],
+    };
+  }
   if (user.includes('DO_TASK'))
     return call('subagent', {
       agent: 'general',
@@ -400,6 +434,69 @@ rl.on('line', (line) => {
 });
 `;
 
+/**
+ * A minimal streamable-HTTP MCP server, as a Station tool server is reached:
+ * JSON-RPC over POST, answered as JSON, refusing any call without the
+ * session's header. Records what it was asked.
+ */
+function startHttpMcp() {
+  const seen = [];
+  const server = http.createServer(async (req, res) => {
+    let raw = '';
+    for await (const chunk of req) raw += chunk;
+    const authorized = req.headers[HTTP_MCP_HEADER] === HTTP_MCP_TOKEN;
+    let msg;
+    try {
+      msg = JSON.parse(raw || 'null');
+    } catch {}
+    seen.push({ method: req.method, rpc: msg?.method, authorized });
+    if (!authorized) return res.writeHead(401).end();
+    if (req.method !== 'POST') return res.writeHead(405).end();
+    if (!msg || msg.id === undefined) return res.writeHead(202).end();
+    const reply = (result) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }));
+    };
+    if (msg.method === 'initialize')
+      return reply({
+        protocolVersion: msg.params?.protocolVersion ?? '2025-06-18',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'station-echo', version: '0.0.1' },
+      });
+    if (msg.method === 'tools/list')
+      return reply({
+        tools: [
+          {
+            name: 'echo',
+            description: 'Echo text back',
+            inputSchema: {
+              type: 'object',
+              properties: { text: { type: 'string' } },
+              required: ['text'],
+            },
+          },
+        ],
+      });
+    if (msg.method === 'tools/call')
+      return reply({
+        content: [
+          { type: 'text', text: `echo: ${msg.params?.arguments?.text}` },
+        ],
+      });
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: msg.id,
+        error: { code: -32601, message: 'not found' },
+      }),
+    );
+  });
+  return new Promise((resolve) =>
+    server.listen(HTTP_MCP_PORT, '127.0.0.1', () => resolve({ server, seen })),
+  );
+}
+
 function prepareWorkspace() {
   writeFileSync(path.join(WORK, 'mcp-echo.mjs'), MCP_ECHO);
   writeFileSync(path.join(PROJ, 'edit-me.txt'), 'line one\nline two\n');
@@ -462,6 +559,14 @@ function prepareWorkspace() {
           apiKey: 'mock-key',
         },
         models: {
+          // An image-sized context, so an attached image does not set off
+          // compaction (`attachment`).
+          'mock-vision': {
+            name: 'Mock Vision',
+            capabilities: { tools: true, input: ['text', 'image'] },
+            cost: { input: 1, output: 2 },
+            limit: { context: 200000, output: 2000 },
+          },
           'mock-1': {
             name: 'Mock One',
             capabilities: { tools: true },
@@ -1401,6 +1506,62 @@ S.history = async (rec) => {
   );
 };
 
+// A prompt with an image attached the way OpenCode's own ACP layer sends
+// one (`cli/src/acp/turn.ts`: `files: [{uri, name}]`, a data URI).
+const PIXEL_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+S.attachment = async (rec) => {
+  const A = await rec.tap('A');
+  const s = await createSession(rec, 'attachment', {
+    model: { providerID: 'mock', id: 'mock-vision' },
+  });
+  await rec.api('POST', `/api/session/${s}/prompt`, {
+    text: 'What is in the picture?',
+    files: [{ uri: `data:image/png;base64,${PIXEL_PNG}`, name: 'pixel.png' }],
+  });
+  await settled(A, s);
+  const history = await rec.api('GET', `/api/session/${s}/message?order=asc`);
+  const reply = (history.json?.data ?? [])
+    .filter((m) => m.type === 'assistant')
+    .flatMap((m) => m.content ?? [])
+    .map((part) => part.text ?? '')
+    .join('');
+  rec.finding(`attachment: the model answered ${JSON.stringify(reply)}`);
+};
+
+// A Station-like HTTP tool server added at runtime to the server's default
+// location (the directory it was started in), the way OpenCode's ACP layer
+// adds a client's servers (`cli/src/acp/sessions.ts` registerMcp), then one
+// tool call through it.
+S['mcp-add'] = async (rec) => {
+  const mcp = await startHttpMcp();
+  try {
+    const A = await rec.tap('A');
+    const added = await rec.api('PUT', '/api/experimental/mcp/station-echo', {
+      config: {
+        type: 'remote',
+        url: `http://127.0.0.1:${HTTP_MCP_PORT}/mcp`,
+        headers: { [HTTP_MCP_HEADER]: HTTP_MCP_TOKEN },
+        oauth: false,
+      },
+    });
+    const listed = await rec.api('GET', '/api/mcp');
+    const s = await createSession(rec, 'mcp-add');
+    await rec.api('POST', `/api/session/${s}/prompt`, { text: 'DO_MCP' });
+    await settled(A, s);
+    const called = mcp.seen.filter((entry) => entry.rpc === 'tools/call');
+    const station = (listed.json?.data ?? []).find(
+      (server) => server.name === 'station-echo',
+    );
+    rec.finding(
+      `mcp-add: PUT -> ${added.status}; listed ${JSON.stringify(station?.status ?? null)}; tools/call ${called.length} (authorized ${called.every((entry) => entry.authorized)}); unauthorized requests ${mcp.seen.filter((entry) => !entry.authorized).length}`,
+    );
+  } finally {
+    await new Promise((resolve) => mcp.server.close(resolve));
+    mcp.server.closeAllConnections?.();
+  }
+};
+
 const ORDER = [
   'basic',
   'tools',
@@ -1424,6 +1585,8 @@ const ORDER = [
   'stop-pending',
   'permission-saved',
   'history',
+  'attachment',
+  'mcp-add',
 ];
 // Captured separately, with `--config plain --only plan-deny`.
 const PLAIN_ONLY = new Set(['plan-deny']);
