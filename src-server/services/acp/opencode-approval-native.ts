@@ -137,6 +137,70 @@ export function openCodeNativeApprovalRules(
   ];
 }
 
+const STRICTNESS: Record<OpenCodeRuleEffect, number> = {
+  allow: 0,
+  ask: 1,
+  deny: 2,
+};
+
+/**
+ * The session ruleset Station sends for `floor` on an agent whose own rules
+ * are `agentRules`. OpenCode evaluates the agent's rules and then the
+ * session's, last match wins, so Station's rules alone would outrank an
+ * agent's deny: the plan agent's `edit * deny` would become Station's
+ * `edit * ask` (or full access's allow), and a mode that answers edits would
+ * then let them run. Station's rules never weaken a deny: each deny the
+ * agent's rules still decide by is appended after them, followed by the
+ * agent's later, narrower rules for the same action (the plan agent's own
+ * plan-file exception), each made no looser than Station's rule for it.
+ */
+export function openCodeNativeSessionRules(
+  floor: OpenCodeNativeFloor,
+  agentRules: readonly OpenCodeNativeRule[],
+): OpenCodeNativeRule[] {
+  const station = openCodeNativeApprovalRules(floor);
+  const kept: OpenCodeNativeRule[] = [];
+  agentRules.forEach((rule, index) => {
+    if (rule.effect !== 'deny') return;
+    // A deny a later agent rule overrides does not decide; restoring it
+    // would make Station stricter than the agent itself.
+    if (evaluateOne(rule.action, rule.resource, agentRules) !== 'deny') return;
+    kept.push(rule);
+    for (const later of agentRules.slice(index + 1)) {
+      if (later.action !== rule.action || later.effect === 'deny') continue;
+      const stationEffect = evaluateOne(later.action, later.resource, station);
+      kept.push({
+        ...later,
+        effect:
+          STRICTNESS[stationEffect] > STRICTNESS[later.effect]
+            ? stationEffect
+            : later.effect,
+      });
+    }
+  });
+  return [...station, ...kept];
+}
+
+/**
+ * Whether a session grant covers a request (ruling R4, scoped): the grant
+ * holds the action and the patterns the person allowed (OpenCode's `save`
+ * patterns for the ask, else its exact resources), and covers a later
+ * request for the same action only when every resource it names matches one
+ * of them.
+ */
+export function openCodeGrantCovers(
+  grant: { readonly action: string; readonly patterns: readonly string[] },
+  request: { readonly action: string; readonly resources: readonly string[] },
+): boolean {
+  return (
+    grant.action === request.action &&
+    request.resources.length > 0 &&
+    request.resources.every((resource) =>
+      grant.patterns.some((pattern) => openCodeWildcard(resource, pattern)),
+    )
+  );
+}
+
 /**
  * The saved approvals that would let a governed action run without asking
  * in a session with `floor`'s rules after `agentRules`. Each saved approval
@@ -149,7 +213,10 @@ export function openCodeSavedApprovalOverrides(
   saved: readonly OpenCodeSavedApproval[],
 ): OpenCodeSavedApproval[] {
   if (floor === 'full') return [];
-  const configured = [...agentRules, ...openCodeNativeApprovalRules(floor)];
+  const configured = [
+    ...agentRules,
+    ...openCodeNativeSessionRules(floor, agentRules),
+  ];
   return saved.filter((approval) =>
     OPENCODE_NATIVE_ASK_ACTIONS.some((governed) => {
       // The saved action names a concrete action or a pattern; the governed

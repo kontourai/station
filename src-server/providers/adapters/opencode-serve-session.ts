@@ -22,9 +22,12 @@
  *
  * Approvals (A.5, ruling R4). Station answers a permission ask only `once`
  * or `reject`, never `always`: "allow for this session" is a grant this
- * session keeps and answers `once` each time. A request resolves when the
- * engine says it was answered (`permission.replied`, `form.replied`), so its
- * acknowledgement is the engine's.
+ * session keeps, scoped to what was asked (OpenCode's `save` patterns, else
+ * the exact resources), answered `once` each time and dropped when the
+ * approval mode changes. A request resolves when the engine says it was
+ * answered (`permission.replied`, `form.replied`), so its acknowledgement is
+ * the engine's; an execution that ends drops its pending asks silently, so
+ * they close then, and a late answer is refused without reaching OpenCode.
  */
 import crypto from 'node:crypto';
 import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
@@ -48,7 +51,10 @@ import {
   validateInputRequestContent,
 } from '@kontourai/station-shared/input-request';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
-import { openCodeNativeModeAllows } from '../../services/acp/opencode-approval-native.js';
+import {
+  openCodeGrantCovers,
+  openCodeNativeModeAllows,
+} from '../../services/acp/opencode-approval-native.js';
 import { errorMessage } from '../../utils/error-message.js';
 import {
   type ProviderInterruptTurnResult,
@@ -56,7 +62,7 @@ import {
   ProviderTurnInProgressError,
   SendTurnRefusedError,
 } from '../adapter-shape.js';
-import { providerFailure } from '../provider-failure.js';
+import { ProviderRefusalError, providerFailure } from '../provider-failure.js';
 import { projectBoundedToolOutput } from '../tool-output-projection.js';
 import type { AcpAppliedApprovalMode } from './acp-approval-mode.js';
 import {
@@ -85,6 +91,55 @@ const RECONNECT_MAX_MS = 5_000;
 const FEED_READY_TIMEOUT_MS = 10_000;
 /** Settled turns kept as rewind points. */
 const TURN_MESSAGES_MAX = 500;
+/** How long stopping a session waits on the engine to drop its work. */
+const STOP_ENGINE_WORK_MS = 3_000;
+/** Request ids closed without an answer, remembered to refuse a late one. */
+const CLOSED_REQUESTS_MAX = 200;
+
+/**
+ * An answer to a request OpenCode no longer holds: its execution ended (an
+ * interrupt or failure drops a pending ask without `permission.replied`),
+ * or the session stopped. Nothing is sent to the engine.
+ */
+export class OpenCodeRequestClosedError extends ProviderRefusalError {
+  constructor() {
+    super(
+      'OpenCode no longer holds this request: the turn that asked it ended.',
+      'conflict',
+    );
+    this.name = 'OpenCodeRequestClosedError';
+  }
+}
+
+const ID_CHARS =
+  '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+let lastIdTimestamp = 0;
+let idCounter = 0;
+
+/**
+ * A new OpenCode message id, in OpenCode's own ascending form
+ * (`@opencode/schema` `Identifier.ascending`: 48 bits of time and counter
+ * in hex, then 14 random characters). Station chooses a prompt's id so the
+ * turn (or steer) is known by it before the engine can report it.
+ */
+export function newOpenCodeMessageId(timestamp = Date.now()): string {
+  if (timestamp !== lastIdTimestamp) {
+    lastIdTimestamp = timestamp;
+    idCounter = 0;
+  }
+  idCounter += 1;
+  const value = BigInt(timestamp) * 0x1000n + BigInt(idCounter);
+  const time = Array.from({ length: 6 }, (_, index) =>
+    Number((value >> BigInt(40 - 8 * index)) & 0xffn)
+      .toString(16)
+      .padStart(2, '0'),
+  ).join('');
+  const random = Array.from(
+    crypto.randomBytes(14),
+    (byte) => ID_CHARS[byte % ID_CHARS.length],
+  ).join('');
+  return `msg_${time}${random}`;
+}
 
 export type OpenCodeNativeDecision =
   | 'accept'
@@ -106,6 +161,8 @@ export interface OpenCodeNativeSessionDeps {
   readonly now?: () => Date;
   readonly reconnectFirstMs?: number;
   readonly heartbeatTimeoutMs?: number;
+  /** Tests: the ids Station gives its prompts (default {@link newOpenCodeMessageId}). */
+  readonly newMessageId?: () => string;
 }
 
 interface NativeTurn {
@@ -114,6 +171,12 @@ interface NativeTurn {
   readonly invocationId?: string;
   /** The user message (inbox item) the turn's prompt is, once known. */
   messageId?: string;
+  /**
+   * For a turn with no message of its own (the engine's, or a command's):
+   * the server's time its execution started, which bounds what history
+   * belongs to it.
+   */
+  sinceMs?: number;
   /** Bound to the engine execution running it. */
   executing: boolean;
   startPublished: boolean;
@@ -142,6 +205,8 @@ interface PendingRequest {
   /** The OpenCode session that asked (this one, or a child). */
   readonly sessionId: string;
   readonly action?: string;
+  /** What an "allow for this session" grant of it covers. */
+  readonly patterns?: readonly string[];
   readonly form?: InputRequestForm;
   readonly turnId?: string;
   decided?: OpenCodeNativeDecision;
@@ -150,8 +215,16 @@ interface PendingRequest {
 interface PendingSteer {
   readonly turnId: string;
   readonly text: string;
+  /** Its prompt is in flight: a withdrawal must be repeated once it lands. */
+  posting: boolean;
+  withdrawn: boolean;
   resolve(): void;
   reject(error: Error): void;
+}
+
+interface SessionGrant {
+  readonly action: string;
+  readonly patterns: readonly string[];
 }
 
 interface ChildSession {
@@ -194,8 +267,13 @@ export class OpenCodeNativeSession {
     [];
   private readonly parts = new Map<string, TextPart>();
   private readonly requests = new Map<string, PendingRequest>();
-  /** Session grants by permission action (R4): answered `once` each time. */
-  private readonly grants = new Set<string>();
+  /**
+   * Session grants (R4): the action and the patterns allowed for it,
+   * answered `once` each time; cleared when the approval mode changes.
+   */
+  private readonly grants: SessionGrant[] = [];
+  /** Requests closed unanswered (their execution ended), oldest first. */
+  private readonly closedRequests = new Set<string>();
   private readonly steers = new Map<string, PendingSteer>();
   private readonly children = new Map<string, ChildSession>();
   private lastModel: string | undefined;
@@ -232,8 +310,30 @@ export class OpenCodeNativeSession {
     return this.turnMessages.map((entry) => entry.turnId);
   }
 
+  get approvalMode(): AcpAppliedApprovalMode | undefined {
+    return this.deps.approvalMode;
+  }
+
+  /** A changed mode starts over: the grants made under the old one go. */
   setApprovalMode(mode: AcpAppliedApprovalMode | undefined): void {
+    if (mode !== this.deps.approvalMode) this.grants.splice(0);
     this.deps.approvalMode = mode;
+  }
+
+  /** Refuse, before anything reaches the engine, while a turn runs. */
+  assertIdle(): void {
+    const live = this.turn ?? this.pendingStart;
+    if (live && !live.settled) {
+      if (live.kind === 'provider') throw new ProviderTurnInProgressError();
+      throw new SendTurnRefusedError(
+        'This OpenCode session is already running a turn.',
+        'busy',
+      );
+    }
+  }
+
+  private newMessageId(): string {
+    return (this.deps.newMessageId ?? newOpenCodeMessageId)();
   }
 
   /** Open the event feed and wait until the server has said it is connected. */
@@ -270,17 +370,13 @@ export class OpenCodeNativeSession {
     /** Send as this listed OpenCode command (`POST /command`) instead. */
     command?: { name: string; args: string };
   }): Promise<void> {
-    const live = this.turn ?? this.pendingStart;
-    if (live && !live.settled) {
-      if (live.kind === 'provider') throw new ProviderTurnInProgressError();
-      throw new SendTurnRefusedError(
-        'This OpenCode session is already running a turn.',
-        'busy',
-      );
-    }
+    this.assertIdle();
     const turn = this.createTurn(input.turnId, 'station', input.invocationId);
     this.pendingStart = turn;
-    let messageId: string | undefined;
+    // The prompt's id is chosen here, so the turn is known by it before the
+    // engine can report it (a delivery, or history read after a feed gap).
+    // `POST /command` takes no id; its turn is bound when it is delivered.
+    if (!input.command) turn.messageId = this.newMessageId();
     try {
       if (input.command) {
         await this.deps.client.request(
@@ -289,12 +385,11 @@ export class OpenCodeNativeSession {
           { name: input.command.name, text: input.command.args },
         );
       } else {
-        const answer = await this.deps.client.request<{ data?: unknown }>(
+        await this.deps.client.request<{ data?: unknown }>(
           'POST',
           `/api/session/${this.sessionId}/prompt`,
-          { text: input.text },
+          { id: turn.messageId, text: input.text },
         );
-        messageId = readString(ownRecord(answer?.data)?.id);
       }
     } catch (error) {
       if (this.pendingStart === turn) this.pendingStart = undefined;
@@ -307,7 +402,7 @@ export class OpenCodeNativeSession {
         );
       throw error;
     }
-    if (messageId) this.bindMessage(turn, messageId);
+    if (turn.messageId) this.recordRewindPoint(turn);
     this.publishStart(turn, {
       prompt: input.displayText,
       ...(input.metadata ? { metadata: input.metadata } : {}),
@@ -324,18 +419,45 @@ export class OpenCodeNativeSession {
     const turn = this.turn;
     if (!turn || turn.settled || turn.turnId !== turnId || !turn.executing)
       throw new ProviderTurnEndedError();
-    const answer = await this.deps.client.request<{ data?: unknown }>(
-      'POST',
-      `/api/session/${this.sessionId}/prompt`,
-      { text, delivery: 'steer' },
-    );
-    const inboxId = readString(ownRecord(answer?.data)?.id);
-    if (!inboxId) throw new Error('OpenCode did not name the steered input.');
-    await new Promise<void>((resolve, reject) => {
-      this.steers.set(inboxId, { turnId, text, resolve, reject });
-      // The execution may have ended while the prompt was in flight.
-      if (turn.settled) void this.withdrawSteer(inboxId);
+    // Known by its id before it is sent: the engine can deliver it (on the
+    // feed) before the prompt's answer arrives.
+    const inboxId = this.newMessageId();
+    let steer!: PendingSteer;
+    const delivered = new Promise<void>((resolve, reject) => {
+      steer = {
+        turnId,
+        text,
+        posting: true,
+        withdrawn: false,
+        resolve,
+        reject,
+      };
     });
+    // A withdrawal can reject it before it is awaited below.
+    delivered.catch(() => undefined);
+    this.steers.set(inboxId, steer);
+    try {
+      await this.deps.client.request(
+        'POST',
+        `/api/session/${this.sessionId}/prompt`,
+        { id: inboxId, text, delivery: 'steer' },
+      );
+    } catch (error) {
+      this.steers.delete(inboxId);
+      if (steer.withdrawn) throw new ProviderTurnEndedError();
+      throw error;
+    } finally {
+      steer.posting = false;
+    }
+    if (steer.withdrawn) {
+      // Withdrawn while in flight: the item it made must not wait for the
+      // next execution.
+      await this.deleteInboxItem(inboxId);
+    } else if (turn.settled) {
+      // The execution ended while the prompt was in flight.
+      void this.withdrawSteer(inboxId);
+    }
+    await delivered;
   }
 
   async interrupt(turnId?: string): Promise<ProviderInterruptTurnResult> {
@@ -383,14 +505,7 @@ export class OpenCodeNativeSession {
     displayText: string;
     invocationId?: string;
   }): void {
-    const live = this.turn ?? this.pendingStart;
-    if (live && !live.settled) {
-      if (live.kind === 'provider') throw new ProviderTurnInProgressError();
-      throw new SendTurnRefusedError(
-        'This OpenCode session is already running a turn.',
-        'busy',
-      );
-    }
+    this.assertIdle();
     const turn = this.createTurn(input.turnId, 'station', input.invocationId);
     this.turn = turn;
     this.publishStart(turn, { prompt: input.displayText });
@@ -485,7 +600,11 @@ export class OpenCodeNativeSession {
     },
   ): Promise<void> {
     const pending = this.requests.get(requestId);
-    if (!pending) throw new Error(`Unknown OpenCode request: ${requestId}`);
+    if (!pending) {
+      if (this.closedRequests.has(requestId))
+        throw new OpenCodeRequestClosedError();
+      throw new Error(`Unknown OpenCode request: ${requestId}`);
+    }
     if (pending.decided) throw new Error('This request was already answered.');
     const base = `/api/session/${pending.sessionId}`;
     if (pending.kind === 'form') {
@@ -530,11 +649,18 @@ export class OpenCodeNativeSession {
           : { decision: 'reject' },
       );
     } catch (error) {
+      if (error instanceof OpenCodeServeHttpError && error.status === 404) {
+        // The engine dropped the ask (its execution ended) without saying so.
+        this.closeRequest(pending);
+        throw new OpenCodeRequestClosedError();
+      }
       pending.decided = undefined;
       throw error;
     }
-    if (decision === 'acceptForSession' && pending.action)
-      this.grants.add(pending.action);
+    // Scoped to what was asked: OpenCode's `save` patterns for the ask, else
+    // its exact resources; never the whole action.
+    if (decision === 'acceptForSession' && pending.action && pending.patterns)
+      this.grants.push({ action: pending.action, patterns: pending.patterns });
   }
 
   // --- Lifecycle --------------------------------------------------------
@@ -543,6 +669,7 @@ export class OpenCodeNativeSession {
   async stop(reason: 'stopped' | 'exited'): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
+    if (reason === 'stopped') await this.dropEngineWork();
     this.controller.abort();
     for (const [inboxId, steer] of this.steers) {
       this.steers.delete(inboxId);
@@ -557,14 +684,55 @@ export class OpenCodeNativeSession {
         });
       }
     }
-    for (const pending of this.requests.values()) {
-      if (!pending.decided) this.publishResolved(pending, 'cancelled');
-    }
-    this.requests.clear();
+    for (const pending of [...this.requests.values()])
+      this.closeRequest(pending);
     for (const child of this.children.values()) {
       if (child.running) this.settleChild(child, 'unresolved');
     }
     await this.loop?.catch(() => undefined);
+  }
+
+  /**
+   * Stopping a live session stops what OpenCode runs for it: its pending
+   * asks are rejected and its questions cancelled (so nothing they hold
+   * proceeds), then its execution is interrupted. Bounded and best effort:
+   * the session is released whatever the engine answers.
+   */
+  private async dropEngineWork(): Promise<void> {
+    const client = this.deps.client;
+    const live = this.turn ?? this.pendingStart;
+    const running = (live !== undefined && !live.settled) || this.hasOpenWork();
+    const work = (async () => {
+      await Promise.all(
+        [...this.requests.values()]
+          .filter((pending) => !pending.decided)
+          .map((pending) => {
+            pending.decided = 'cancel';
+            const base = `/api/session/${pending.sessionId}`;
+            return (
+              pending.kind === 'permission'
+                ? client.request(
+                    'POST',
+                    `${base}/permission/${pending.nativeId}/reply`,
+                    { decision: 'reject' },
+                  )
+                : client.request('DELETE', `${base}/form/${pending.nativeId}`)
+            ).catch(() => undefined);
+          }),
+      );
+      if (running)
+        await client
+          .request('POST', `/api/session/${this.sessionId}/interrupt`)
+          .catch(() => undefined);
+    })();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      work,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, STOP_ENGINE_WORK_MS);
+      }),
+    ]);
+    clearTimeout(timer);
   }
 
   private async run(): Promise<void> {
@@ -623,6 +791,7 @@ export class OpenCodeNativeSession {
         'GET',
         `${base}/message?order=asc`,
       );
+      this.adoptStartedDuringGap(history?.data);
       this.catchUpText(history?.data);
       const permissions = await client.request<{ data?: unknown }>(
         'GET',
@@ -664,6 +833,54 @@ export class OpenCodeNativeSession {
   }
 
   /**
+   * A prompt whose execution started while the feed was down: its message is
+   * in history (a queued inbox item is not), so the execution running, or
+   * the one that ran, is its turn's. Still queued, it waits as before.
+   */
+  private adoptStartedDuringGap(messages: unknown): void {
+    const pending = this.pendingStart;
+    if (!pending || pending.settled || !pending.messageId) return;
+    const delivered = (ownArray(messages) ?? []).some(
+      (item) => ownRecord(item)?.id === pending.messageId,
+    );
+    if (!delivered) return;
+    const current = this.turn;
+    if (current && !current.settled && current !== pending) {
+      // An execution Station saw start before this prompt's: it is over.
+      this.closeOpenTools(current);
+      this.settle(current, { method: 'turn.completed', finishReason: 'other' });
+    }
+    this.pendingStart = undefined;
+    pending.executing = true;
+    this.turn = pending;
+  }
+
+  /** Where each history message falls against `turn`'s start, in order. */
+  private historyBound(
+    turn: NativeTurn | undefined,
+  ): (message: Record<string, unknown>) => 'before' | 'mark' | 'in' {
+    let after = false;
+    return (message) => {
+      if (!turn) return 'before';
+      if (turn.messageId) {
+        if (message.id === turn.messageId) {
+          after = true;
+          return 'mark';
+        }
+        return after ? 'in' : 'before';
+      }
+      // No message of its own: bounded by when its execution started, and
+      // with no bound nothing in history is known to be its.
+      const created = ownRecord(message.time)?.created;
+      return turn.sinceMs !== undefined &&
+        typeof created === 'number' &&
+        created >= turn.sinceMs
+        ? 'in'
+        : 'before';
+    };
+  }
+
+  /**
    * Text a message finished during the gap: whatever of it was not already
    * streamed is published, for parts Station saw and for parts of the
    * running turn it never saw at all.
@@ -671,16 +888,12 @@ export class OpenCodeNativeSession {
   private catchUpText(messages: unknown): void {
     const texts = openCodeHistoryText(messages);
     const turn = this.turn;
-    let afterTurnMessage = !turn?.messageId;
+    const bound = this.historyBound(turn);
     for (const item of ownArray(messages) ?? []) {
       const message = ownRecord(item);
       const id = readString(message?.id);
-      if (!id) continue;
-      if (id === turn?.messageId) {
-        afterTurnMessage = true;
-        continue;
-      }
-      if (!afterTurnMessage || message?.type !== 'assistant') continue;
+      if (!message || !id) continue;
+      if (bound(message) !== 'in' || message.type !== 'assistant') continue;
       for (const [key, text] of texts) {
         if (!key.startsWith(`${id}:`) || !text) continue;
         const part = this.parts.get(key);
@@ -713,11 +926,10 @@ export class OpenCodeNativeSession {
   /** The execution ended during the gap: its outcome is history's idle entry. */
   private settleFromHistory(turn: NativeTurn, messages: unknown): void {
     let outcome: string | undefined;
-    let after = !turn.messageId;
+    const bound = this.historyBound(turn);
     for (const item of ownArray(messages) ?? []) {
       const message = ownRecord(item);
-      if (message?.id === turn.messageId) after = true;
-      else if (after && message?.type === 'idle')
+      if (message && bound(message) === 'in' && message.type === 'idle')
         outcome = readString(message.outcome);
     }
     this.closeOpenTools(turn);
@@ -749,7 +961,9 @@ export class OpenCodeNativeSession {
     }
     switch (event.type) {
       case 'session.execution.started':
-        this.onExecutionStarted();
+        this.onExecutionStarted(
+          typeof event.created === 'number' ? event.created : undefined,
+        );
         return;
       case 'session.execution.succeeded':
         this.onExecutionEnded((turn) =>
@@ -766,8 +980,10 @@ export class OpenCodeNativeSession {
         const inboxId = readString(data.inboxID);
         if (!inboxId) return;
         const turn = this.turn;
-        if (turn && turn.kind === 'station' && !turn.messageId)
-          this.bindMessage(turn, inboxId);
+        if (turn && turn.kind === 'station' && !turn.messageId) {
+          turn.messageId = inboxId;
+          this.recordRewindPoint(turn);
+        }
         this.onSteerDelivered(inboxId);
         return;
       }
@@ -977,6 +1193,9 @@ export class OpenCodeNativeSession {
   ): void {
     if (!child.running) return;
     child.running = false;
+    for (const pending of [...this.requests.values()]) {
+      if (pending.sessionId === child.childId) this.closeRequest(pending);
+    }
     this.emit({
       method: 'child-work.updated',
       delta: {
@@ -990,25 +1209,35 @@ export class OpenCodeNativeSession {
     });
   }
 
-  private onExecutionStarted(): void {
+  private onExecutionStarted(createdMs: number | undefined): void {
+    const start = (turn: NativeTurn) => {
+      turn.executing = true;
+      if (!turn.messageId && createdMs !== undefined) turn.sinceMs = createdMs;
+    };
     const pending = this.pendingStart;
     if (pending && !pending.settled) {
       this.pendingStart = undefined;
-      pending.executing = true;
+      start(pending);
       this.turn = pending;
       return;
     }
     if (this.turn && !this.turn.settled) {
-      this.turn.executing = true;
+      start(this.turn);
       return;
     }
     // The engine's own execution: published when it shows something.
     const turn = this.createTurn(crypto.randomUUID(), 'provider');
-    turn.executing = true;
+    start(turn);
     this.turn = turn;
   }
 
   private onExecutionEnded(settle: (turn: NativeTurn) => void): void {
+    // OpenCode drops this session's pending asks with its execution and
+    // says nothing of them (no `permission.replied` after an interrupt or a
+    // failure): they close here, whatever the outcome.
+    for (const pending of [...this.requests.values()]) {
+      if (pending.sessionId === this.sessionId) this.closeRequest(pending);
+    }
     const turn = this.turn;
     if (!turn || turn.settled) return;
     for (const [inboxId, steer] of this.steers) {
@@ -1030,10 +1259,17 @@ export class OpenCodeNativeSession {
     const steer = this.steers.get(inboxId);
     if (!steer) return;
     this.steers.delete(inboxId);
+    steer.withdrawn = true;
+    // Still in flight: `steer` deletes the item once its prompt lands, before
+    // it reports the refusal.
+    if (!steer.posting) await this.deleteInboxItem(inboxId);
+    steer.reject(new ProviderTurnEndedError());
+  }
+
+  private async deleteInboxItem(inboxId: string): Promise<void> {
     await this.deps.client
       .request('DELETE', `/api/session/${this.sessionId}/inbox/${inboxId}`)
       .catch(() => undefined);
-    steer.reject(new ProviderTurnEndedError());
   }
 
   private onSteerDelivered(inboxId: string): void {
@@ -1248,10 +1484,15 @@ export class OpenCodeNativeSession {
       (item): item is string => typeof item === 'string',
     );
     const own = sessionId === this.sessionId;
+    const save = (ownArray(data.save) ?? []).filter(
+      (item): item is string => typeof item === 'string',
+    );
     // A grant or Station's mode answers it without a person, `once`.
     if (
       own &&
-      (this.grants.has(action) ||
+      (this.grants.some((grant) =>
+        openCodeGrantCovers(grant, { action, resources }),
+      ) ||
         openCodeNativeModeAllows(this.deps.approvalMode, action))
     ) {
       void this.deps.client
@@ -1270,6 +1511,9 @@ export class OpenCodeNativeSession {
       eventId: crypto.randomUUID(),
       sessionId,
       action,
+      ...(save.length > 0 || resources.length > 0
+        ? { patterns: save.length > 0 ? save : resources }
+        : {}),
       ...(turnId ? { turnId } : {}),
     };
     this.requests.set(nativeId, pending);
@@ -1442,11 +1686,24 @@ export class OpenCodeNativeSession {
     };
   }
 
-  private bindMessage(turn: NativeTurn, messageId: string): void {
-    if (turn.messageId) return;
-    turn.messageId = messageId;
+  /** The turn's message, once the engine has it, is a rewind point. */
+  private recordRewindPoint(turn: NativeTurn): void {
+    const messageId = turn.messageId;
+    if (!messageId) return;
     this.turnMessages.push({ turnId: turn.turnId, messageId });
     if (this.turnMessages.length > TURN_MESSAGES_MAX) this.turnMessages.shift();
+  }
+
+  /** A request closed unanswered: resolved cancelled, a late answer refused. */
+  private closeRequest(pending: PendingRequest): void {
+    if (this.requests.get(pending.nativeId) !== pending) return;
+    this.requests.delete(pending.nativeId);
+    this.closedRequests.add(pending.nativeId);
+    if (this.closedRequests.size > CLOSED_REQUESTS_MAX) {
+      const oldest = this.closedRequests.values().next().value;
+      if (oldest !== undefined) this.closedRequests.delete(oldest);
+    }
+    this.publishResolved(pending, 'cancelled');
   }
 
   private turnById(turnId: string): NativeTurn | undefined {

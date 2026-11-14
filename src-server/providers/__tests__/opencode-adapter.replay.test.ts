@@ -7,22 +7,31 @@ import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
+  evaluateOpenCodeRules,
+  type OpenCodeNativeRule,
+} from '../../services/acp/opencode-approval-native.js';
+import {
   ApprovalGovernanceRefusedError,
   type ProviderAdapterShape,
+  type ProviderSessionStartInput,
   ProviderTurnEndedError,
 } from '../adapter-shape.js';
 import type { AcpAdapterOptions } from '../adapters/acp-adapter.js';
+import { nativeResumeBindingKey } from '../adapters/native-resume-binding.js';
 import {
   isOpenCodeResumeCursor,
+  OPENCODE_NATIVE_UNAVAILABLE,
   OPENCODE_NATIVE_UNVERIFIED,
   OpenCodeAdapter,
 } from '../adapters/opencode-adapter.js';
+import { OpenCodeRequestClosedError } from '../adapters/opencode-serve-session.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import {
   loadOpenCodeFixture,
   type OpenCodeReplayRecord,
   OpenCodeServeReplay,
   type OpenCodeServeReplayOptions,
+  recordedPromptIds,
   replayLeaser,
 } from './opencode-serve-replay.js';
 
@@ -97,6 +106,11 @@ async function setup(
 ) {
   const replay = await OpenCodeServeReplay.start(replayOptions);
   const leaser = replayLeaser(replay);
+  // Station names its prompts; the replay's engine knows the recorded names.
+  const promptIds = recordedPromptIds(
+    replayOptions.scenario,
+    replayOptions.omit,
+  );
   let inner: ReturnType<typeof fakeInner> | undefined;
   const adapter = new OpenCodeAdapter({
     getConnections: async () => [CONNECTION],
@@ -117,6 +131,11 @@ async function setup(
       XDG_DATA_HOME: '/replay/xdg',
     }),
     reconnectFirstMs: 5,
+    newMessageId: () => {
+      const id = promptIds.shift();
+      if (!id) throw new Error('the replay has no more recorded prompt ids');
+      return id;
+    },
     ...adapterOptions,
   });
   const events: Event[] = [];
@@ -159,17 +178,40 @@ async function setup(
     events,
     waitFor,
     inner: () => inner,
-    async start(modelOptions?: Record<string, unknown>) {
+    async start(
+      modelOptions?: Record<string, unknown>,
+      extra: Partial<ProviderSessionStartInput> = {},
+    ) {
       return adapter.startSession({
         threadId: 'thread-1',
         provider: 'opencode',
         cwd: '/replay/proj',
         metadata: { connectionId: 'opencode' },
         ...(modelOptions ? { modelOptions } : {}),
+        ...extra,
+      });
+    },
+    /** A turn and its outcome event. */
+    async turn(input: string, modelOptions?: Record<string, unknown>) {
+      return adapter.sendTurn({
+        threadId: 'thread-1',
+        input,
+        ...(modelOptions ? { modelOptions } : {}),
       });
     },
   };
 }
+
+/** The steer capture without its withdrawn steer. */
+const withdrawnSteer = (record: OpenCodeReplayRecord) =>
+  (record.kind === 'http' &&
+    (JSON.stringify(record.body ?? null).includes('STEER-withdrawn') ||
+      (record.method === 'GET' &&
+        record.path?.endsWith('/inbox') === true &&
+        record.t < 100) ||
+      record.method === 'DELETE')) ||
+  (record.kind === 'sse' &&
+    record.event?.data?.inboxID === 'msg_1d71b0245001rPumuccI4tfOcM');
 
 const turnText = (events: Event[], turnId: string) =>
   events
@@ -382,15 +424,7 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     await h.waitFor(completedFor(turnId));
   });
 
-  const withdrawn = (record: OpenCodeReplayRecord) =>
-    (record.kind === 'http' &&
-      (JSON.stringify(record.body ?? null).includes('STEER-withdrawn') ||
-        (record.method === 'GET' &&
-          record.path?.endsWith('/inbox') === true &&
-          record.t < 100) ||
-        record.method === 'DELETE')) ||
-    (record.kind === 'sse' &&
-      record.event?.data?.inboxID === 'msg_1d71b0245001rPumuccI4tfOcM');
+  const withdrawn = withdrawnSteer;
 
   test('a steer is acknowledged when OpenCode delivers it', async () => {
     const h = await setup({ scenario: 'steer', omit: withdrawn });
@@ -412,6 +446,7 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
       () => h.replay.made('POST', '/api/session/:id/prompt').length === 2,
     );
     expect(h.replay.made('POST', '/api/session/:id/prompt')[1]?.body).toEqual({
+      id: 'msg_1d71b024d001crEY1solwrshJq',
       text: 'STEER-delivered',
       delivery: 'steer',
     });
@@ -738,5 +773,510 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
         resumeCursor: { acpSessionId: 'ses_x', connectionId: 'opencode' },
       }),
     ).rejects.toThrow('not one Station wrote');
+  });
+});
+
+/** The rules a fixture's `GET /api/agent/<id>` answered with. */
+function recordedAgentRules(scenario: string, agent: string) {
+  const record = loadOpenCodeFixture(scenario).find(
+    (line) =>
+      line.kind === 'http' &&
+      line.method === 'GET' &&
+      line.path === `/api/agent/${agent}` &&
+      line.status === 200,
+  );
+  if (!record) throw new Error(`${scenario} recorded no ${agent} agent`);
+  return (record.response as { data: { permissions: OpenCodeNativeRule[] } })
+    .data.permissions;
+}
+
+function recordedSessionId(scenario: string): string {
+  const record = loadOpenCodeFixture(scenario).find(
+    (line) =>
+      line.kind === 'http' &&
+      line.method === 'POST' &&
+      line.path === '/api/session',
+  );
+  if (!record) throw new Error(`${scenario} created no session`);
+  return (record.response as { data: { id: string } }).data.id;
+}
+
+const opened = (events: Event[]) =>
+  events.filter((event) => event.method === 'request.opened');
+
+describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () => {
+  test("a turn that moves to Ask puts Ask's rules on the live session before its prompt; an agent switch follows the turn", async () => {
+    const h = await setup({ scenario: 'mode-switch' });
+    await h.start({ approvalMode: 'never' }, { confinement: 'host' });
+    const build = recordedAgentRules('mode-switch', 'build');
+    const created = h.replay.made('POST', '/api/session')[0]?.body as {
+      permissions: OpenCodeNativeRule[];
+    };
+    expect(
+      evaluateOpenCodeRules(
+        { action: 'shell', resources: ['echo hi'] },
+        [...build, ...created.permissions],
+        [],
+      ),
+    ).toBe('allow');
+    const full = await h.turn('DO_BASH full');
+    await h.waitFor(completedFor(full.turnId));
+    expect(opened(h.events)).toHaveLength(0);
+
+    const ask = await h.turn('DO_BASH ask', { approvalMode: 'ask' });
+    const patches = h.replay.made('PATCH', '/api/session/:id');
+    expect(patches).toHaveLength(1);
+    const asked = patches[0]?.body as { permissions: OpenCodeNativeRule[] };
+    expect(
+      evaluateOpenCodeRules(
+        { action: 'shell', resources: ['echo hi'] },
+        [...build, ...asked.permissions],
+        [],
+      ),
+    ).toBe('ask');
+    // The rules went to OpenCode before the prompt did.
+    const order = h.replay.requests.map((request) =>
+      request.method === 'POST' && request.path.endsWith('/prompt')
+        ? 'prompt'
+        : request.method,
+    );
+    expect(order.lastIndexOf('PATCH')).toBeLessThan(
+      order.lastIndexOf('prompt'),
+    );
+    expect(order.lastIndexOf('PATCH')).toBeGreaterThan(order.indexOf('prompt'));
+    const request = await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === ask.turnId,
+    );
+    expect(request).toMatchObject({ payload: { toolName: 'shell' } });
+    await h.adapter.respondToRequest(
+      'thread-1',
+      request.requestId as string,
+      'accept',
+    );
+    await h.waitFor(completedFor(ask.turnId));
+
+    const plan = await h.turn('hello plan', {
+      approvalMode: 'ask',
+      mode: 'plan',
+    });
+    expect(h.replay.made('POST', '/api/session/:id/agent')[0]?.body).toEqual({
+      agent: 'plan',
+    });
+    await h.waitFor(completedFor(plan.turnId));
+    expect(
+      await h.waitFor((event) => event.method === 'session.configured'),
+    ).toBeDefined();
+    expect(
+      h.events.filter((event) => event.method === 'session.configured').at(-1),
+    ).toMatchObject({ metadata: { mode: 'plan' } });
+  });
+
+  test('a turn that names an agent the modes do not cover is refused before anything is sent', async () => {
+    const h = await setup({ scenario: 'mode-switch' });
+    await h.start({ approvalMode: 'ask' });
+    await expect(
+      h.turn('DO_BASH ask', { approvalMode: 'ask', mode: 'explore' }),
+    ).rejects.toBeInstanceOf(ApprovalGovernanceRefusedError);
+    expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(0);
+    expect(h.replay.made('POST', '/api/session/:id/agent')).toHaveLength(0);
+  });
+
+  test('the agent lookup asks again while a just-started server still answers 404', async () => {
+    const h = await setup({
+      scenario: 'basic',
+      fallbacks: ['boot', 'catalog', 'mcp'],
+    });
+    await h.start({ approvalMode: 'ask' });
+    const lookups = h.replay.made('GET', '/api/agent/build');
+    expect(lookups).toHaveLength(2);
+    expect(
+      loadOpenCodeFixture('boot').find(
+        (line) => line.path === '/api/agent/build',
+      ),
+    ).toMatchObject({ status: 404, response: { _tag: 'AgentNotFoundError' } });
+  });
+
+  test('Auto answers an edit; a session grant answers the same command again, and only that command', async () => {
+    const h = await setup({ scenario: 'governed' });
+    await h.start({ approvalMode: 'auto' });
+    const edit = await h.turn('DO_EDIT one');
+    await h.waitFor(completedFor(edit.turnId));
+    // Station's mode answered it: nobody was asked.
+    expect(opened(h.events)).toHaveLength(0);
+    expect(
+      h.events.find(
+        (event) =>
+          event.method === 'tool.completed' && event.turnId === edit.turnId,
+      ),
+    ).toMatchObject({ toolName: 'edit', status: 'success' });
+
+    const first = await h.turn('DO_BASH two');
+    const shell = await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === first.turnId,
+    );
+    await h.adapter.respondToRequest(
+      'thread-1',
+      shell.requestId as string,
+      'acceptForSession',
+    );
+    await h.waitFor(completedFor(first.turnId));
+
+    const again = await h.turn('DO_BASH three');
+    await h.waitFor(completedFor(again.turnId));
+    expect(opened(h.events)).toHaveLength(1);
+
+    // `ls -a` is not `echo *`: the grant does not cover it.
+    const other = await h.turn('DO_LS four');
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.opened' && event.turnId === other.turnId,
+      ),
+    ).toMatchObject({ payload: { rawInput: { resources: ['ls -a'] } } });
+    expect(
+      h.replay
+        .made('POST', '/api/session/:id/permission/:id/reply')
+        .map((reply) => reply.body),
+    ).toEqual([
+      { decision: 'once' },
+      { decision: 'once' },
+      { decision: 'once' },
+    ]);
+  });
+
+  test('a session grant ends when the approval mode changes', async () => {
+    const h = await setup({ scenario: 'governed' });
+    await h.start({ approvalMode: 'ask' });
+    const edit = await h.turn('DO_EDIT one');
+    const editAsk = await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === edit.turnId,
+    );
+    await h.adapter.respondToRequest(
+      'thread-1',
+      editAsk.requestId as string,
+      'accept',
+    );
+    await h.waitFor(completedFor(edit.turnId));
+    const first = await h.turn('DO_BASH two');
+    const shell = await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === first.turnId,
+    );
+    await h.adapter.respondToRequest(
+      'thread-1',
+      shell.requestId as string,
+      'acceptForSession',
+    );
+    await h.waitFor(completedFor(first.turnId));
+    // Same floor, so no new rules; but the grant made under Ask is gone.
+    const again = await h.turn('DO_BASH three', { approvalMode: 'auto' });
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.opened' && event.turnId === again.turnId,
+      ),
+    ).toMatchObject({ payload: { toolName: 'shell' } });
+    expect(h.replay.made('PATCH', '/api/session/:id')).toHaveLength(0);
+  });
+
+  test('an interrupt with an ask pending closes the ask, and a late answer is refused without reaching OpenCode', async () => {
+    const h = await setup({ scenario: 'interrupt-pending' });
+    await h.start({ approvalMode: 'ask' });
+    const { turnId } = await h.turn('DO_BASH wait');
+    const ask = await h.waitFor((event) => event.method === 'request.opened');
+    expect(await h.adapter.interruptTurn('thread-1', turnId)).toEqual({
+      outcome: 'cancelled',
+      turnId,
+    });
+    await h.waitFor(
+      (event) => event.method === 'turn.aborted' && event.turnId === turnId,
+    );
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.resolved' &&
+          event.requestId === ask.requestId,
+      ),
+    ).toMatchObject({ status: 'cancelled', turnId });
+    await expect(
+      h.adapter.respondToRequest('thread-1', ask.requestId as string, 'accept'),
+    ).rejects.toBeInstanceOf(OpenCodeRequestClosedError);
+    expect(
+      h.replay.made('POST', '/api/session/:id/permission/:id/reply'),
+    ).toHaveLength(0);
+  });
+
+  test('stopping a session with an ask pending rejects the ask and interrupts OpenCode before letting go', async () => {
+    const h = await setup({ scenario: 'stop-pending' });
+    await h.start({ approvalMode: 'ask' });
+    const { turnId } = await h.turn('DO_BASH stop');
+    const ask = await h.waitFor((event) => event.method === 'request.opened');
+    await h.adapter.stopSession('thread-1');
+    const replies = h.replay.made(
+      'POST',
+      '/api/session/:id/permission/:id/reply',
+    );
+    expect(replies.map((reply) => reply.body)).toEqual([
+      { decision: 'reject' },
+    ]);
+    expect(h.replay.made('POST', '/api/session/:id/interrupt')).toHaveLength(1);
+    const methods = h.replay.requests.map(
+      (request) => `${request.method} ${request.path.split('/').at(-1)}`,
+    );
+    expect(methods.indexOf('POST reply')).toBeLessThan(
+      methods.indexOf('POST interrupt'),
+    );
+    expect(h.leaser.released).toBe(1);
+    expect(
+      await h.waitFor(
+        (event) => event.method === 'turn.aborted' && event.turnId === turnId,
+      ),
+    ).toMatchObject({ reason: 'session-stopped' });
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.resolved' &&
+          event.requestId === ask.requestId,
+      ),
+    ).toMatchObject({ status: 'cancelled' });
+  });
+
+  test("the plan agent's deny survives Station's rules under Auto", async () => {
+    const h = await setup({ scenario: 'plan-deny' });
+    await h.start({ approvalMode: 'auto', mode: 'plan' });
+    const plan = recordedAgentRules('plan-deny', 'plan');
+    const body = h.replay.made('POST', '/api/session')[0]?.body as {
+      agent: string;
+      permissions: OpenCodeNativeRule[];
+    };
+    expect(body.agent).toBe('plan');
+    expect(
+      evaluateOpenCodeRules(
+        { action: 'edit', resources: ['edit-me.txt'] },
+        [...plan, ...body.permissions],
+        [],
+      ),
+    ).toBe('deny');
+    const { turnId } = await h.turn('DO_EDIT plan');
+    await h.waitFor(completedFor(turnId));
+    expect(opened(h.events)).toHaveLength(0);
+    expect(
+      h.replay.made('POST', '/api/session/:id/permission/:id/reply'),
+    ).toHaveLength(0);
+    expect(
+      h.events.find((event) => event.method === 'tool.completed'),
+    ).toMatchObject({ toolName: 'edit', status: 'error' });
+  });
+
+  test('a feed drop between the prompt and its execution start does not wedge the turn', async () => {
+    const promptAt = loadOpenCodeFixture('reconnect').find(
+      (line) => line.kind === 'http' && line.path?.endsWith('/prompt') === true,
+    )?.t as number;
+    const h = await setup({
+      scenario: 'reconnect',
+      // Tap A shows nothing after the prompt: the start was in the gap.
+      omit: (record) =>
+        record.tap === 'A' && record.kind === 'sse' && record.t >= promptAt,
+    });
+    await h.start();
+    const { turnId } = await h.turn('DO_SLOW stream');
+    const completed = await h.waitFor(completedFor(turnId), 10_000);
+    expect(completed).toMatchObject({ finishReason: 'stop' });
+    expect(turnText(h.events, turnId)).toBe(finalAssistantText('reconnect'));
+  });
+
+  test('a steer delivered before its prompt returns is acknowledged', async () => {
+    const steerId = 'msg_1d71b024d001crEY1solwrshJq';
+    const h = await setup({
+      scenario: 'steer',
+      omit: withdrawnSteer,
+      holdUntil: (request) =>
+        JSON.stringify(request.body ?? null).includes('STEER-delivered')
+          ? (record) =>
+              record.event?.type === 'session.inbox.delivered' &&
+              record.event.data?.inboxID === steerId
+          : undefined,
+    });
+    await h.start();
+    const { turnId } = await h.turn('DO_BASH steer');
+    const ask = await h.waitFor((event) => event.method === 'request.opened');
+    const steer = h.adapter.steerTurn('thread-1', 'STEER-delivered', turnId);
+    await h.waitFor(
+      () => h.replay.made('POST', '/api/session/:id/prompt').length === 2,
+    );
+    await h.adapter.respondToRequest(
+      'thread-1',
+      ask.requestId as string,
+      'accept',
+    );
+    await steer;
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'turn.started' && event.inputKind === 'steer',
+      ),
+    ).toMatchObject({ turnId, prompt: 'STEER-delivered' });
+    await h.waitFor(completedFor(turnId));
+    expect(h.replay.made('DELETE', '/api/session/:id/inbox/:id')).toHaveLength(
+      0,
+    );
+  });
+
+  test("a turn with no message of its own is not given an earlier turn's text on reconnect", async () => {
+    const h = await setup({
+      scenario: 'reconnect',
+      // OpenCode runs on its own: Station sent no prompt, so the execution
+      // is the engine's turn and has no message Station knows.
+      omit: (record) =>
+        record.kind === 'http' && record.path?.endsWith('/prompt') === true,
+      // History also holds an earlier turn's reply.
+      rewrite: (record) => {
+        if (!record.path?.includes('/message?order=asc')) return record;
+        const response = record.response as { data: unknown[] };
+        return {
+          ...record,
+          response: {
+            ...response,
+            data: [
+              {
+                id: 'msg_0000000000001earlierUser',
+                time: { created: 1 },
+                type: 'user',
+                text: 'earlier',
+              },
+              {
+                id: 'msg_0000000000002earlierReply',
+                time: { created: 2, completed: 3 },
+                type: 'assistant',
+                content: [{ type: 'text', text: 'EARLIER TURN TEXT' }],
+              },
+              ...response.data,
+            ],
+          },
+        };
+      },
+    });
+    await h.start();
+    const completed = await h.waitFor(
+      (event) => event.method === 'turn.completed',
+      10_000,
+    );
+    expect(completed).toMatchObject({ metadata: { trigger: 'provider' } });
+    expect(turnText(h.events, completed.turnId as string)).toBe(
+      finalAssistantText('reconnect'),
+    );
+    expect(JSON.stringify(h.events)).not.toContain('EARLIER TURN TEXT');
+  });
+
+  const nativeCursor = (sessionId: string, transport: 'native' | 'acp') => ({
+    kind: 'opencode' as const,
+    connectionId: 'opencode',
+    sessionId,
+    cwd: '/replay/proj',
+    bindingKey: nativeResumeBindingKey(
+      'opencode',
+      '/replay/xdg/opencode',
+      null,
+    ),
+    transport,
+  });
+
+  test('a native session resumes natively, and without a Station mode its old rules are cleared with []', async () => {
+    const sessionId = recordedSessionId('basic');
+    const h = await setup({
+      scenario: 'basic',
+      fallbacks: ['mode-switch', 'catalog', 'mcp'],
+      // Resuming creates no session: the feed does not wait for one.
+      ungated: (record) => record.path === '/api/session',
+    });
+    const session = await h.start(undefined, {
+      resumeCursor: nativeCursor(sessionId, 'native'),
+    });
+    expect(session.resumeCursor).toMatchObject({
+      transport: 'native',
+      sessionId,
+    });
+    expect(h.replay.made('POST', '/api/session')).toHaveLength(0);
+    expect(h.replay.made('GET', '/api/session/:id')[0]?.path).toBe(
+      `/api/session/${sessionId}`,
+    );
+    expect(h.replay.made('PATCH', '/api/session/:id')[0]?.body).toEqual({
+      permissions: [],
+    });
+    const { turnId } = await h.turn('hello basic');
+    await h.waitFor(completedFor(turnId));
+    expect(turnText(h.events, turnId)).toBe('mock reply: hello basic');
+  });
+
+  test('a session that ran over ACP resumes natively under the same id', async () => {
+    const sessionId = recordedSessionId('basic');
+    const h = await setup({
+      scenario: 'basic',
+      fallbacks: ['mode-switch', 'catalog', 'mcp'],
+      // Resuming creates no session: the feed does not wait for one.
+      ungated: (record) => record.path === '/api/session',
+    });
+    const session = await h.start(undefined, {
+      resumeCursor: {
+        ...nativeCursor(sessionId, 'acp'),
+        acp: {
+          acpSessionId: sessionId,
+          connectionId: 'opencode',
+          connectionFingerprint: 'f00d',
+        },
+      },
+    });
+    expect(session.resumeCursor).toMatchObject({
+      transport: 'native',
+      sessionId,
+    });
+    expect(h.inner()?.starts).toHaveLength(0);
+    expect(h.replay.made('POST', '/api/session')).toHaveLength(0);
+  });
+
+  test('a native session resumes over ACP under the same id when the native transport is off', async () => {
+    const sessionId = recordedSessionId('basic');
+    const h = await setup(
+      { scenario: 'basic' },
+      { nativeEnabled: () => false },
+    );
+    const session = await h.start(undefined, {
+      resumeCursor: nativeCursor(sessionId, 'native'),
+    });
+    expect(h.leaser.acquired).toHaveLength(0);
+    expect(h.inner()?.starts).toHaveLength(1);
+    expect(h.inner()?.starts[0]).toMatchObject({
+      resumeCursor: { acpSessionId: sessionId },
+    });
+    expect(session.resumeCursor).toMatchObject({
+      kind: 'opencode',
+      transport: 'acp',
+    });
+  });
+
+  test('a server that does not start falls back to ACP with a warning', async () => {
+    const h = await setup(
+      { scenario: 'basic' },
+      {
+        pool: {
+          acquire: async () => {
+            throw new Error('spawn opencode ENOENT');
+          },
+          stopAll: async () => {},
+        },
+      },
+    );
+    const session = await h.start();
+    expect(
+      h.events.find((event) => event.method === 'runtime.warning'),
+    ).toMatchObject({
+      code: OPENCODE_NATIVE_UNAVAILABLE,
+      threadId: 'thread-1',
+    });
+    expect(h.inner()?.starts).toHaveLength(1);
+    expect(session.resumeCursor).toMatchObject({ transport: 'acp' });
   });
 });

@@ -20,7 +20,9 @@
  *
  * `omit` removes records (their answers and frames) from the scenario;
  * `ungated` keeps a request's answer but lets the frames after it flow
- * without it.
+ * without it; `rewrite` changes a record as it is loaded; `holdUntil` holds
+ * a request's answer until a given frame has been written to the feed (the
+ * engine reporting something before the request that caused it returns).
  */
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
@@ -53,6 +55,28 @@ export interface OpenCodeReplayRecord {
 
 const FIXTURES = fileURLToPath(new URL('./fixtures/', import.meta.url));
 const PREFIX = 'opencode-serve-2.3.0-';
+
+/**
+ * The message ids the capture's prompts got, in order: Station chooses its
+ * prompts' ids, so a replay gives it the recorded ones.
+ */
+export function recordedPromptIds(
+  scenario: string,
+  omit?: (record: OpenCodeReplayRecord) => boolean,
+): string[] {
+  return loadOpenCodeFixture(scenario).flatMap((record) => {
+    if (
+      omit?.(record) ||
+      record.kind !== 'http' ||
+      record.method !== 'POST' ||
+      !record.path?.endsWith('/prompt')
+    )
+      return [];
+    const id = (record.response as { data?: { id?: unknown } } | undefined)
+      ?.data?.id;
+    return typeof id === 'string' ? [id] : [];
+  });
+}
 
 export function loadOpenCodeFixture(scenario: string): OpenCodeReplayRecord[] {
   return readFileSync(`${FIXTURES}${PREFIX}${scenario}.jsonl`, 'utf8')
@@ -87,6 +111,10 @@ export interface OpenCodeServeReplayOptions {
   fallbacks?: string[];
   omit?: (record: OpenCodeReplayRecord) => boolean;
   ungated?: (record: OpenCodeReplayRecord) => boolean;
+  rewrite?: (record: OpenCodeReplayRecord) => OpenCodeReplayRecord;
+  holdUntil?: (
+    request: OpenCodeReplayRequest,
+  ) => ((record: OpenCodeReplayRecord) => boolean) | undefined;
   password?: string;
 }
 
@@ -110,14 +138,18 @@ export class OpenCodeServeReplay {
   private readonly counts = new Map<string, number>();
   private readonly waiters: Array<() => void> = [];
   private readonly taps: string[] = [];
+  private readonly written: OpenCodeReplayRecord[] = [];
   private connections = 0;
   private closed = false;
+  private readonly holdUntil: OpenCodeServeReplayOptions['holdUntil'];
 
   private constructor(options: OpenCodeServeReplayOptions) {
     this.password = options.password ?? 'replay-password';
+    this.holdUntil = options.holdUntil;
     const seen = new Map<string, number>();
-    for (const record of loadOpenCodeFixture(options.scenario)) {
-      if (options.omit?.(record)) continue;
+    for (const loaded of loadOpenCodeFixture(options.scenario)) {
+      if (options.omit?.(loaded)) continue;
+      const record = options.rewrite ? options.rewrite(loaded) : loaded;
       if (record.kind === 'sse-open' && record.tap) this.taps.push(record.tap);
       if (record.kind === 'http' && record.method && record.path) {
         const key = keyOf(record.method, record.path);
@@ -222,6 +254,11 @@ export class OpenCodeServeReplay {
     const count = (this.counts.get(key) ?? 0) + 1;
     this.counts.set(key, count);
     for (const wake of this.waiters.splice(0)) wake();
+    // Counted first, so the frames it gates can flow while its answer waits.
+    const hold = this.holdUntil?.({ method, path, body });
+    if (hold)
+      while (!this.closed && !this.written.some(hold))
+        await new Promise<void>((resolve) => this.waiters.push(resolve));
     const list = this.answers.get(key) ?? this.fallbackAnswers.get(key);
     const record = list?.[Math.min(count, list.length) - 1];
     if (!record) {
@@ -257,9 +294,11 @@ export class OpenCodeServeReplay {
       if (this.closed || res.destroyed) return;
       if (record.gate) await this.gate(record.gate.key, record.gate.count);
       if (record.tap !== tap) continue;
-      if (record.kind === 'sse' && record.event)
+      if (record.kind === 'sse' && record.event) {
         res.write(`data: ${JSON.stringify(record.event)}\n\n`);
-      else if (record.kind === 'sse-comment')
+        this.written.push(record);
+        for (const wake of this.waiters.splice(0)) wake();
+      } else if (record.kind === 'sse-comment')
         res.write(`: ${record.text ?? ''}\n\n`);
       else if (record.kind === 'sse-close') {
         res.end();

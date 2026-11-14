@@ -175,7 +175,15 @@ describe('managed policy over OpenCode (ruling R5)', () => {
         metadata: { connectionId: 'opencode' },
       });
       if (runs) {
-        await expect(start).rejects.toThrow('pool reached');
+        // The policy let it reach the pool; a server that does not start
+        // falls back to ACP (this stub's inner adapter cannot start one).
+        const outcome = await start.then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+        expect(outcome).not.toMatchObject({
+          code: 'managed-policy-engine-refused',
+        });
         expect(acquire).toHaveBeenCalledTimes(1);
       } else {
         await expect(start).rejects.toMatchObject({

@@ -3,8 +3,10 @@ import { loadOpenCodeFixture } from '../../../providers/__tests__/opencode-serve
 import {
   evaluateOpenCodeRules,
   type OpenCodeNativeRule,
+  openCodeGrantCovers,
   openCodeNativeApprovalRules,
   openCodeNativeModeAllows,
+  openCodeNativeSessionRules,
   openCodeSavedApprovalOverrides,
 } from '../opencode-approval-native.js';
 
@@ -133,5 +135,90 @@ describe('evaluateOpenCodeRules (OpenCode 2.3.0 evaluateInput)', () => {
     expect(openCodeNativeModeAllows('auto', 'shell')).toBe(false);
     expect(openCodeNativeModeAllows('ask', 'edit')).toBe(false);
     expect(openCodeNativeModeAllows(undefined, 'edit')).toBe(false);
+  });
+
+  /** The plan agent's rules as 2.3.0 answered them with no global allow. */
+  const planRules = (): OpenCodeNativeRule[] => {
+    const record = loadOpenCodeFixture('plan-deny').find(
+      (line) => line.path === '/api/agent/plan',
+    );
+    if (!record) throw new Error('plan-deny recorded no plan agent');
+    return (record.response as { data: { permissions: OpenCodeNativeRule[] } })
+      .data.permissions;
+  };
+
+  test("Station's session rules never weaken an agent's deny", () => {
+    const plan = planRules();
+    for (const floor of ['confined', 'full'] as const) {
+      const session = openCodeNativeSessionRules(floor, plan);
+      expect(
+        evaluateOpenCodeRules(
+          { action: 'edit', resources: ['src/app.ts'] },
+          [...plan, ...session],
+          [],
+        ),
+        floor,
+      ).toBe('deny');
+      // Station's own rules alone would have let the session's rule win.
+      expect(
+        evaluateOpenCodeRules(
+          { action: 'edit', resources: ['src/app.ts'] },
+          [...plan, ...openCodeNativeApprovalRules(floor)],
+          [],
+        ),
+        floor,
+      ).not.toBe('deny');
+    }
+    // The plan file exception stays, no looser than Station's rule for edits.
+    const planFile = '{HOME}/.opencode/plan/next.md';
+    expect(
+      evaluateOpenCodeRules(
+        { action: 'edit', resources: [planFile] },
+        [...plan, ...openCodeNativeSessionRules('confined', plan)],
+        [],
+      ),
+    ).toBe('ask');
+    expect(
+      evaluateOpenCodeRules(
+        { action: 'edit', resources: [planFile] },
+        [...plan, ...openCodeNativeSessionRules('full', plan)],
+        [],
+      ),
+    ).toBe('allow');
+  });
+
+  test('a deny a later agent rule overrides is not restored', () => {
+    const shadowed: OpenCodeNativeRule[] = [
+      { action: 'edit', resource: '*', effect: 'deny' },
+      { action: '*', resource: '*', effect: 'allow' },
+    ];
+    expect(openCodeNativeSessionRules('confined', shadowed)).toEqual(
+      openCodeNativeApprovalRules('confined'),
+    );
+  });
+
+  test('a session grant covers the asked patterns of its action only', () => {
+    const grant = { action: 'shell', patterns: ['echo *'] };
+    expect(
+      openCodeGrantCovers(grant, {
+        action: 'shell',
+        resources: ['echo hello-from-bash'],
+      }),
+    ).toBe(true);
+    expect(
+      openCodeGrantCovers(grant, { action: 'shell', resources: ['ls -a'] }),
+    ).toBe(false);
+    expect(
+      openCodeGrantCovers(grant, {
+        action: 'shell',
+        resources: ['echo ok', 'rm -rf x'],
+      }),
+    ).toBe(false);
+    expect(
+      openCodeGrantCovers(grant, { action: 'edit', resources: ['echo x'] }),
+    ).toBe(false);
+    expect(openCodeGrantCovers(grant, { action: 'shell', resources: [] })).toBe(
+      false,
+    );
   });
 });

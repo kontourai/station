@@ -18,6 +18,7 @@ import crypto from 'node:crypto';
 import { realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import {
@@ -26,11 +27,13 @@ import {
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
 import {
+  ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   type EngineId,
   readApprovalMode,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { ownArray, ownRecord } from '@kontourai/station-shared/input-request';
+import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
   assertEngineAllowedByManagedPolicy,
   managedEngineLaunch,
@@ -40,7 +43,7 @@ import {
   type OpenCodeNativeFloor,
   type OpenCodeNativeRule,
   type OpenCodeSavedApproval,
-  openCodeNativeApprovalRules,
+  openCodeNativeSessionRules,
   openCodeSavedApprovalOverrides,
   openCodeSavedApprovalRefusal,
 } from '../../services/acp/opencode-approval-native.js';
@@ -60,6 +63,7 @@ import {
   type ProviderSession,
   type ProviderSessionStartInput,
   type ProviderTurnStartResult,
+  SendTurnRefusedError,
 } from '../adapter-shape.js';
 import { augmentedSpawnEnv, findCliBinaryAsync } from '../auth/cli-auth.js';
 import {
@@ -81,6 +85,7 @@ import {
   isAcpResumeCursor,
 } from './acp-adapter.js';
 import {
+  type AcpAppliedApprovalMode,
   acpAppliedApprovalMode,
   acpApprovalFloor,
   governedModeRefusal,
@@ -89,7 +94,10 @@ import {
 import { requestedAcpSessionMode } from './acp-session-mode.js';
 import { nativeResumeBindingKey } from './native-resume-binding.js';
 import { readString } from './opencode-native-events.js';
-import type { OpenCodeServeClient } from './opencode-serve-client.js';
+import {
+  type OpenCodeServeClient,
+  OpenCodeServeHttpError,
+} from './opencode-serve-client.js';
 import { verifyOpenCodeServeSchema } from './opencode-serve-fingerprint.js';
 import {
   type OpenCodeServeAcquireInput,
@@ -108,6 +116,16 @@ import {
 
 /** `runtime.warning` code: a 2.x server's API was not verified; ACP runs instead. */
 export const OPENCODE_NATIVE_UNVERIFIED = 'OPENCODE_NATIVE_UNVERIFIED';
+/** `runtime.warning` code: a 2.x server could not be started; ACP runs instead. */
+export const OPENCODE_NATIVE_UNAVAILABLE = 'OPENCODE_NATIVE_UNAVAILABLE';
+
+/**
+ * How long an agent lookup keeps asking while the server answers 404: a
+ * just-started server reports ready (`/api/info` 200) before its agent
+ * catalog is loaded (seen on 2.3.0: one 404, then 200 about 200ms later).
+ */
+const AGENT_LOOKUP_BOUND_MS = 3_000;
+const AGENT_LOOKUP_RETRY_MS = 100;
 
 const ENGINE_NAME = 'OpenCode';
 
@@ -188,6 +206,8 @@ export interface OpenCodeAdapterOptions {
   verifiedFingerprints?: Readonly<Record<string, string>>;
   managedWorkspaceHomeDir?: string;
   reconnectFirstMs?: number;
+  /** Tests: the ids native sessions give their prompts. */
+  newMessageId?: () => string;
 }
 
 interface NativeRecord {
@@ -195,6 +215,10 @@ interface NativeRecord {
   readonly lease: OpenCodeServeLease;
   session: ProviderSession;
   readonly cursor: OpenCodeResumeCursor;
+  /** The OpenCode agent the session runs (undefined: OpenCode's default). */
+  agent: string | undefined;
+  /** The session ruleset last applied to the engine. */
+  rules: OpenCodeNativeRule[];
 }
 
 interface NativePlan {
@@ -389,13 +413,26 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     const key = JSON.stringify([identity, plan.version]);
     const known = this.verdicts.get(key);
     if (known && !known.verified) return undefined;
-    const lease = await this.pool.acquire({
-      connectionId: plan.config.id,
-      binary: plan.binary,
-      cwd: plan.cwd,
-      env: plan.env,
-      tmpDir: plan.env.TMPDIR ?? '',
-    });
+    let lease: OpenCodeServeLease;
+    try {
+      lease = await this.pool.acquire({
+        connectionId: plan.config.id,
+        binary: plan.binary,
+        cwd: plan.cwd,
+        env: plan.env,
+        tmpDir: plan.env.TMPDIR ?? '',
+      });
+    } catch (error) {
+      // The server would not start: the session runs over ACP, as for an
+      // unverified one. Not a verdict on the binary; the next start tries
+      // again.
+      this.warn(
+        threadId,
+        OPENCODE_NATIVE_UNAVAILABLE,
+        `Station runs OpenCode ${plan.version} over ACP: its server did not start (${redactSecrets(errorMessage(error))}).`,
+      );
+      return undefined;
+    }
     if (known?.verified) return lease;
     let verdict: { verified: boolean; reason?: string };
     try {
@@ -416,6 +453,20 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     }
     if (verdict.verified) return lease;
     lease.discard();
+    this.warn(
+      threadId,
+      OPENCODE_NATIVE_UNVERIFIED,
+      `Station runs OpenCode ${plan.version} over ACP: ${verdict.reason ?? 'its server API was not verified'}.`,
+    );
+    return undefined;
+  }
+
+  private warn(
+    threadId: string,
+    code: string,
+    message: string,
+    details?: Record<string, unknown>,
+  ): void {
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -423,10 +474,39 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       createdAt: new Date().toISOString(),
       method: 'runtime.warning',
       severity: 'warning',
-      code: OPENCODE_NATIVE_UNVERIFIED,
-      message: `Station runs OpenCode ${plan.version} over ACP: ${verdict.reason ?? 'its server API was not verified'}.`,
+      code,
+      message,
+      ...(details ? { details } : {}),
     });
-    return undefined;
+  }
+
+  /**
+   * The agent's configured rules. A server that just reported ready may not
+   * have loaded its agents yet and answers 404 for a while, so a 404 is
+   * asked again within {@link AGENT_LOOKUP_BOUND_MS} before it counts.
+   */
+  private async agentRules(
+    client: OpenCodeServeClient,
+    agent: string,
+  ): Promise<OpenCodeNativeRule[]> {
+    const deadline = Date.now() + AGENT_LOOKUP_BOUND_MS;
+    for (;;) {
+      try {
+        const answer = await client.request<{ data?: unknown }>(
+          'GET',
+          `/api/agent/${encodeURIComponent(agent)}`,
+        );
+        return readRules(ownRecord(answer?.data)?.permissions);
+      } catch (error) {
+        if (
+          !(error instanceof OpenCodeServeHttpError) ||
+          error.status !== 404 ||
+          Date.now() + AGENT_LOOKUP_RETRY_MS > deadline
+        )
+          throw error;
+      }
+      await sleep(AGENT_LOOKUP_RETRY_MS);
+    }
   }
 
   /**
@@ -439,8 +519,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     cwd: string,
     floor: OpenCodeNativeFloor,
     agent: string,
-  ): Promise<void> {
-    if (floor !== 'confined') return;
+  ): Promise<OpenCodeNativeRule[]> {
+    if (floor !== 'confined') return this.agentRules(client, agent);
     const code = await (this.options.findProjectCode ?? defaultFindProjectCode)(
       cwd,
     );
@@ -448,14 +528,10 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       throw new ApprovalGovernanceRefusedError(
         `Station can't apply its approval mode to OpenCode, so the chat was not started: ${openCodeProjectCodeRefusal(code)}.`,
       );
-    const [agentAnswer, savedAnswer] = await Promise.all([
-      client.request<{ data?: unknown }>(
-        'GET',
-        `/api/agent/${encodeURIComponent(agent)}`,
-      ),
+    const [agentRules, savedAnswer] = await Promise.all([
+      this.agentRules(client, agent),
       client.request<{ data?: unknown }>('GET', '/api/permission/saved'),
     ]);
-    const agentRules = readRules(ownRecord(agentAnswer?.data)?.permissions);
     const saved: OpenCodeSavedApproval[] = (
       ownArray(savedAnswer?.data) ?? []
     ).flatMap((item) => {
@@ -469,6 +545,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       throw new ApprovalGovernanceRefusedError(
         openCodeSavedApprovalRefusal(overrides),
       );
+    return agentRules;
   }
 
   private bindingKey(
@@ -660,25 +737,47 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       throw new Error(
         'OpenCode on its own server does not take an effort setting in Station yet. Remove it from the agent, or turn off the OpenCode native engine preview.',
       );
-    if (floor && agent && !isOpenCodeGovernedMode(agent))
-      throw new ApprovalGovernanceRefusedError(governedModeRefusal(agent));
-    if (floor)
-      await this.assertGovernable(
-        lease.client,
-        lease.cwd,
-        floor,
-        agent ?? 'build',
-      );
-    const permissions = floor ? openCodeNativeApprovalRules(floor) : undefined;
-    const model = readModelRef(input.modelId);
     let sessionId: string;
+    let stored: string | undefined;
     if (cursor) {
       sessionId = cursor.sessionId;
-      // The session must exist in this server's store; its rules follow the
-      // mode this start asks for (null clears an earlier start's).
-      await lease.client.request('GET', `/api/session/${sessionId}`);
+      // The session must exist in this server's store.
+      const existing = await lease.client.request<{ data?: unknown }>(
+        'GET',
+        `/api/session/${sessionId}`,
+      );
+      stored = readString(ownRecord(existing?.data)?.agent);
+    }
+    // A governed session runs a named agent, whose denies its rules keep.
+    const sessionAgent = agent ?? stored ?? (floor ? 'build' : undefined);
+    if (floor && sessionAgent && !isOpenCodeGovernedMode(sessionAgent))
+      throw new ApprovalGovernanceRefusedError(
+        governedModeRefusal(sessionAgent),
+      );
+    const permissions =
+      floor && sessionAgent
+        ? openCodeNativeSessionRules(
+            floor,
+            await this.assertGovernable(
+              lease.client,
+              lease.cwd,
+              floor,
+              sessionAgent,
+            ),
+          )
+        : undefined;
+    const model = readModelRef(input.modelId);
+    if (cursor) {
+      sessionId = cursor.sessionId;
+      if (agent && agent !== stored)
+        await lease.client.request('POST', `/api/session/${sessionId}/agent`, {
+          agent,
+        });
+      // Its rules follow the mode this start asks for. OpenCode ignores
+      // `permissions: null` (the old rules stay; 2.3.0 mode-switch capture),
+      // so a start without a mode sends `[]`, which clears them.
       await lease.client.request('PATCH', `/api/session/${sessionId}`, {
-        permissions: permissions ?? null,
+        permissions: permissions ?? [],
       });
     } else {
       const created = await lease.client.request<{ data?: unknown }>(
@@ -686,7 +785,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         '/api/session',
         {
           location: { directory: lease.cwd },
-          ...(floor ? { agent: agent ?? 'build' } : agent ? { agent } : {}),
+          ...(sessionAgent ? { agent: sessionAgent } : {}),
           ...(model ? { model } : {}),
           ...(permissions ? { permissions } : {}),
         },
@@ -705,6 +804,9 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       ...(mode ? { approvalMode: mode } : {}),
       ...(this.options.reconnectFirstMs
         ? { reconnectFirstMs: this.options.reconnectFirstMs }
+        : {}),
+      ...(this.options.newMessageId
+        ? { newMessageId: this.options.newMessageId }
         : {}),
     });
     try {
@@ -740,6 +842,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       lease,
       session,
       cursor: resumeCursor,
+      agent: sessionAgent,
+      rules: permissions ?? [],
     };
     this.native.set(input.threadId, record);
     void lease.exited.then(() => this.onServerExit(input.threadId, record));
@@ -810,6 +914,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       throw new AttachmentInputUnsupportedError(
         'OpenCode over its own server does not take attachments in Station yet.',
       );
+    record.native.assertIdle();
+    await this.applyTurnSettings(record, input);
     const turnId = crypto.randomUUID();
     const displayText = input.displayInput ?? input.input;
     const invocation = readSlashCommand(input.input);
@@ -885,6 +991,98 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       ),
     );
     return result;
+  }
+
+  /**
+   * #3290 on the native transport: a turn that names an approval mode or an
+   * agent moves the live OpenCode session to it before its prompt is sent,
+   * as the ACP adapter does at its turn boundary. The session's ruleset is
+   * replaced (`PATCH`), the agent switched, and the grants made under the old
+   * mode dropped. Anything that cannot be applied refuses the turn before
+   * the prompt, except a failed move to a looser mode, which runs under the
+   * stricter rules it already has, with a warning.
+   */
+  private async applyTurnSettings(
+    record: NativeRecord,
+    input: ProviderSendTurnInput,
+  ): Promise<void> {
+    const requestedMode = readApprovalMode(input.modelOptions);
+    const requestedAgent = requestedAcpSessionMode(input.modelOptions);
+    const current = record.native.approvalMode;
+    const mode: AcpAppliedApprovalMode | undefined = requestedMode
+      ? acpAppliedApprovalMode(requestedMode, input.confinement)
+      : current;
+    const agent = requestedAgent ?? record.agent;
+    if (mode === current && agent === record.agent) return;
+    const floor = acpApprovalFloor(mode);
+    const sessionAgent = agent ?? (floor ? 'build' : undefined);
+    if (floor && sessionAgent && !isOpenCodeGovernedMode(sessionAgent))
+      throw new ApprovalGovernanceRefusedError(
+        governedModeRefusal(sessionAgent),
+      );
+    const client = record.lease.client;
+    const sessionId = record.cursor.sessionId;
+    const rules =
+      floor && sessionAgent
+        ? openCodeNativeSessionRules(
+            floor,
+            await this.assertGovernable(
+              client,
+              record.lease.cwd,
+              floor,
+              sessionAgent,
+            ),
+          )
+        : [];
+    const agentChanged = sessionAgent !== record.agent;
+    if (sessionAgent && agentChanged) {
+      try {
+        await client.request('POST', `/api/session/${sessionId}/agent`, {
+          agent: sessionAgent,
+        });
+      } catch (error) {
+        throw new SendTurnRefusedError(
+          `OpenCode did not switch to the ${sessionAgent} agent, so this message was not sent: ${redactSecrets(errorMessage(error))}.`,
+          'unavailable',
+        );
+      }
+      record.agent = sessionAgent;
+    }
+    if (JSON.stringify(rules) !== JSON.stringify(record.rules)) {
+      try {
+        await client.request('PATCH', `/api/session/${sessionId}`, {
+          permissions: rules,
+        });
+      } catch (error) {
+        const reason = redactSecrets(errorMessage(error));
+        const currentFloor = acpApprovalFloor(current);
+        const message =
+          currentFloor === 'full'
+            ? "Couldn't switch OpenCode to Station's approval rules; it is still running with full access"
+            : currentFloor === 'confined'
+              ? "Couldn't switch OpenCode to Station's full-access rules; it's still asking first as before"
+              : "Couldn't switch OpenCode to Station's approval rules; it's still using its own settings";
+        // A turn may run only under rules at least as strict as the pick:
+        // only a failed move from Ask or Auto to full access still runs.
+        if (currentFloor !== 'confined' || floor !== 'full' || agentChanged)
+          throw new ApprovalGovernanceRefusedError(
+            `${message}, so this message was not sent: ${reason}.`,
+          );
+        this.warn(
+          input.threadId,
+          ACP_APPROVAL_TAKEOVER_FAILED_CODE,
+          `${message}: ${reason}.`,
+          {
+            ...(mode ? { requestedApprovalMode: mode } : {}),
+            reason,
+            ...(current ? { appliedApprovalMode: current } : {}),
+          },
+        );
+        return;
+      }
+      record.rules = rules;
+    }
+    record.native.setApprovalMode(mode);
   }
 
   /** `/rewind <turnId>`, or with none the turn before the last. */
