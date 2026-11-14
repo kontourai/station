@@ -44,7 +44,7 @@ notifications and usage display.
 | `startSession` | Local only; nothing is sent. |
 | first `sendTurn` | Create the task. |
 | later `sendTurn` | Send a follow-up, where the binding declares one. |
-| `interruptTurn` | Cancel, where declared; otherwise `termination-unconfirmed`, because the work keeps running at the vendor. |
+| `interruptTurn` | Cancel only where the vendor's cancel leaves the task usable (a Cursor run); where it ends the whole task (Devin's terminate) or there is none, stop following: `termination-unconfirmed`, and the work keeps running at the vendor. |
 | `hasSession` | True for a thread whose resume cursor names a remote task. The adapter contract allows this for work that genuinely survives a restart. |
 | `streamEvents` | Vendor messages, keyed by the vendor's event id so replay is idempotent. |
 | `respondToRequest` | Never needed: no Station approval is ever opened. |
@@ -79,26 +79,47 @@ The second, stacked on the first, composes the chat adapter:
 - **Managed policy.** `remote-task` is an engine id `limits.engines.allowed`
   can name. A chat needs both that list (when there is one) and
   `limits.engines.remoteTasks` naming the connection's vendor.
+- **Who may send.** The adapter declares `turnAuthorship: 'person-only'`,
+  and orchestration enforces it for every engine that declares it. A start
+  needs the composer route's person-start mark (`personChatStart`) and a send
+  or steer its person-typed mark, so a public command start, a delegation, a
+  task dispatch, a schedule, an automation, a review, a station-control tool
+  and an agent-origin or internal-principal request are all refused before the
+  adapter. Which requests carry those marks is pinned by the person-authorship
+  ingress suites.
 - **Adapter.** `RemoteTaskAdapter` over the service. The first turn creates
-  the task, later turns send follow-ups, and an interrupt cancels where the
-  vendor can (otherwise `termination-unconfirmed`). Only the person's own
-  words are sent, never the composed input with Station's ambient context.
-  The repository is the chat's working copy's GitHub `origin`; Station reads
-  only the remote's URL.
-- **Transcript projection.** A turn polls only while it is open. Each new
-  agent message is a `content.text-delta`; user echoes and status lines are
-  not reply text. The turn completes once the task rests, carrying its
-  status, outputs and usage in the vendor's unit as metadata. A follow-up
-  does not end on the stale idle status it was sent into: a turn ends at
-  rest only after it saw work or a reply, or after three polls without
-  either. A restarted chat resumes its task from its resume cursor without
-  replaying history.
+  the task (claimed before the vendor call, so concurrent first sends create
+  one) and later turns send follow-ups. Only `personText`, the typed text
+  orchestration sets for a person-typed send and strips from every other, is
+  sent, never the composed input. The repository is the chat's working copy's
+  GitHub `origin`; Station reads only the remote's URL. A vendor that needs
+  a repository (GitHub) is refused at start without one; others start with a
+  warning.
+- **Stop.** Stop cancels only where the vendor's cancel leaves the task usable
+  (a Cursor run). Where cancel ends the whole task (Devin) Stop only stops
+  following, and the task keeps working. A task that finished at a vendor
+  whose finished tasks take no more work (Devin) closes the chat to further
+  messages, with a clear refusal.
+- **Transcript projection.** A turn polls only while it is open and reports
+  the task's status as tool progress, under the turn-stall window. It shows
+  every message the store holds after what the chat last showed, whoever
+  synced it. It ends only once the vendor reacted to the message (a reply, or
+  a status it did not have when it was sent) and rests. It ends early as
+  "still waking" if the vendor did not react within 10 minutes, or as "still
+  working" after an hour; the task goes on either way. Every turn ends with a
+  line naming the status, each pull request (by URL, or by the vendor's
+  reference), the task's page, and where to answer when Station cannot (a
+  GitHub task waiting for the person). A failed or timed-out task ends the
+  turn as aborted. A restarted chat resumes its task from its resume cursor
+  without replaying history.
 - **Agent and picker.** The adapter is registered always, and every start
   and turn passes the service's gate. Its model catalog lists only the
   connections ready for a chat. The engine connection and its same-id Agent
   are adopted into the agent registry once a connection is ready (preview
-  on, policy allows it, acknowledged, token set), through the registry's
-  native adoption, which honours a recorded decline.
+  on, the managed engine list allows `remote-task`, the vendor allowed,
+  acknowledged, token set), through the registry's native adoption, which
+  honours a recorded decline. Adoption runs at boot, after an
+  acknowledgement or a token, and when the preview's choice changes.
 
 ### Capabilities
 
@@ -158,8 +179,10 @@ refusal sends nothing:
    - The value reaches a binding only as the auth header for one call.
    - It is never returned to a client, logged, or passed on in a vendor's
      error text: the vendor's message and error code are redacted of it.
-5. **Who asks.** A request that may be an agent's is refused on every route,
-   so an agent cannot send host code off the machine.
+5. **Who asks.** A request that may be an agent's is refused on every route.
+   In a chat, only a session a person started in the composer and a message a
+   person typed reach the engine (see **Who may send**), so neither an agent
+   nor any automatic path can send host code off the machine.
 
 Station never forwards anything the vendor could use to reach the host:
 
@@ -258,8 +281,12 @@ Tests:
 - [Service rules](../../src-server/services/remote-task-engines/__tests__/remote-task-service.test.ts):
   capability flags, usage units, and removal during a sync.
 - [Chat adapter](../../src-server/providers/__tests__/remote-task-adapter.test.ts):
-  the picker lists ready connections, the first turn sends only the person's
-  words, follow-ups, restart resume, preview refusal, interrupt.
+  the picker, `personText` only, replies from the store, the wake and work
+  bounds, Stop per vendor, closed finished sessions, the status line,
+  concurrent first sends, failures, the repository rule, restart resume.
+- [Person-only engines](../../src-server/services/orchestration/__tests__/person-only-engine.test.ts):
+  orchestration refuses public, delegated, scheduled, automation, task
+  dispatch and review starts and sends, and passes only the typed text.
 
 ## Not verified
 
