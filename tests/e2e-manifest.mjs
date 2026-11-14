@@ -463,6 +463,9 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/station-connection-chat.spec.ts',
     // Creates real Projects, channels and read markers on the instance.
     'tests/project-channel-navigation.spec.ts',
+    // Starts its own Station with local accounts and sharing, pairs browsers
+    // and approves an account-bound device, as device-pairing-mobile does.
+    'tests/project-room-message-actions.spec.ts',
     'tests/conversation-surfaces.spec.ts',
     'tests/owned-work-custody.spec.ts',
     // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
@@ -1198,6 +1201,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Deterministic 320px/390px mobile task-switcher, visual-viewport, composer, scroll-anchor, model/session preservation, restore, and desktop parity lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/project-room-message-actions.spec.ts',
+    bucket: 'product',
+    surface: 'Project channels',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#4796/#4797/#4812 on a real isolated Station: two paired operator browsers see a reaction and its removal, an edit and a delete (both kept after reload); a file uploaded on one downloads byte for byte on the other; an oversize file is refused in the composer; a 900px desktop keeps row actions and the picker on screen; an invited contributor, through their own account-bound session, is refused edit and delete of the operator message (and the operator theirs), and their message offers no Edit or Delete. The contributor room UI is not exercised: a browser guest is shown Available Projects, not the room.',
     exceptions: [],
   },
   {

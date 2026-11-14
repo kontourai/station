@@ -17,6 +17,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'lastProjectLayout', // Navigation restore pointer to the last visited layout.
   'recentAgents', // Derived MRU used for picker ordering, not a setting.
   'recentLayouts', // Derived MRU used for picker ordering, not a setting.
+  'station.room.recent-emoji', // Derived MRU of this viewer's reaction picks (bounded to 8) for the room reaction picker's ordering; not a setting.
   'station.switcher.recent', // Derived MRU of saved Station ids for switcher ordering (bounded to 20), not a setting.
   'station-device-settings-v1', // The versioned device-settings envelope itself.
   'station.turnAttention.settled', // Bounded (500) memory of turns whose finish already toasted, so a reload does not re-toast them (#4396); notification bookkeeping, not a setting.

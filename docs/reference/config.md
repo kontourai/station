@@ -339,8 +339,14 @@ refused before it is dispatched.
 
 Task room uploads use a separate store under
 `<STATION_HOME>/task-room-attachments`, with the same retention variables and
-defaults applied to that store independently. Descriptors remain in room history
-after byte eviction. Task downloads use the scoped room attachment route;
+defaults applied to that store independently; descriptors remain in room
+history after byte eviction, even while their message stands (#4947). Project
+channel uploads use another store under
+`<STATION_HOME>/project-room-attachments` that the retention variables do not
+apply to: it never evicts by age or size, deletes only bytes no file names,
+and stops deleting and pauses new uploads if any file record cannot be read
+(see [Project room files](api.md#reactions-edits-deletes-and-files) for the
+recovery step). Task downloads use the scoped room attachment route;
 conversation-deletion cleanup described above applies to chat attachments, not
 this separate Task store. See [Task images and files](../design/task-room-agent-requests.md#images-and-files)
 for per-message limits and Task incarnation binding.

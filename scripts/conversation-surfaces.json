@@ -890,6 +890,10 @@
       "reason": "Safe visible request failures and durable error publishers consume the shared translator."
     },
     {
+      "file": "src-ui/src/hooks/useRoomAttachments.ts",
+      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
+    },
+    {
       "file": "src-ui/src/hooks/useSessionManagementMenu.ts",
       "reason": "Safe visible request failures and durable error publishers consume the shared translator."
     },
@@ -899,10 +903,6 @@
     },
     {
       "file": "src-ui/src/hooks/useSlashCommandHandler.ts",
-      "reason": "Safe visible request failures and durable error publishers consume the shared translator."
-    },
-    {
-      "file": "src-ui/src/hooks/useTaskRoomAttachments.ts",
       "reason": "Safe visible request failures and durable error publishers consume the shared translator."
     },
     {

@@ -1,0 +1,35 @@
+{
+  "revision": "0246435a6339d31fe75e0d4a952d24b98ea44995",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#4852 fix round 1: ProjectRoom section now states the uploader is part of the file binding (it was missing), that deleting a message releases its files, that an upload first releases its uploader's day-old unsent files, and that a shared blob goes only when no binding names it. ProjectRoom.tsx changes (destination-keyed staged files, retained-row re-read) stay below this map's granularity.","inputs":["docs/architecture/module-map.md","src-server/services/projects/project-room-store.ts","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"#4852 fix round 1: the shared RoomAttachments store now refuses image bytes without the declared type's signature; added that sentence to the Task asset store paragraph. Binding, authority and retention claims unchanged and still accurate.","inputs":["docs/design/task-room-agent-requests.md","src-server/services/projects/task-room-attachments.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"#4852 fix round 1: api.md changed only the Project room files bullet and the Task room attachments limits (image signature, quota release). Nothing this terminal design cites from api.md is affected; prose unchanged.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"#4852 fix round 1: added project-room-message-actions to the Project channels row with what it proves (two paired clients on an isolated Station, reload persistence, cross-client download, composer refusal, second-person refusals). chat-dock-inbox-open stays listed; its fixture now models the Home row latest-turn read.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/__tests__/e2e-manifest.test.ts","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#4852 fix round 1: api.md and sdk.md gained the image signature rule, quota release and useProjectRoomRetainedHistory. This guide's integration claims (auth, scopes, transports) do not describe those details; prose unchanged.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"#4852 fix round 1: the manifest gained one product spec (project-room-message-actions); this plan names no product spec list or count that changes. Prose unchanged.","inputs":["docs/plans/whole-app-ux-campaign.md","docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/reference/api.md","note":"#4852 fix round 1: Project room files bullet now states the image signature check, the 1280-file per-uploader quota, release on delete, the day-old unsent sweep, and shared-blob removal; Task room attachments state the signature check. Checked against task-room-attachments.ts and project-room-service.ts.","inputs":["docs/reference/api.md","src-server/services/projects/project-room-store.ts","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"#4852 fix round 1: task-room-attachments.ts gained the image signature check and release/sweep; no configuration key, default or environment variable changed. Prose unchanged.","inputs":["docs/reference/config.md","src-server/services/projects/task-room-attachments.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#4852 fix round 1: ProjectRoom.tsx changes are client state only (staged files per destination, retained-row re-read); no contract shape, parser or code changed. Prose unchanged.","inputs":["docs/reference/contracts.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"#4852 fix round 1: added useProjectRoomRetainedHistory (re-reads rows kept from history windows the room moved past on every room invalidation). Checked against packages/sdk/src/query-domains/projectRooms.ts; other hook claims unchanged.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/projectRooms.ts","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"#4852 fix round 1: the new spec is product bucket, not part of the PR smoke journeys this page lists; the smoke contract is unchanged. Prose unchanged.","inputs":["docs/testing/browser-smoke.md","scripts/__tests__/e2e-manifest.test.ts","tests/e2e-manifest.mjs"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"#4852 fix round 1: sdk.md gained one hook paragraph; this scope file only routes to sdk.md and its rules (consumer tests, cancellation races) still apply. Unchanged.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"tests/AGENTS.md","note":"#4852 fix round 1: runtime-conversation-fixture.ts now also models the session-keyed latest-turn read and falls back for other session windows; the routing rule here (use it for explicit conversation-open authority, reject unmodelled reads) still holds. Unchanged.","inputs":["tests/AGENTS.md","tests/helpers/runtime-conversation-fixture.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"#4852 fix round 1: module-map.md changed only the ProjectRoom files sentence (uploader binding, release on delete, day-old unsent sweep, shared blobs). The server scope rules here (route validation at the seam, capability flags, logger seam) are unaffected; the new code follows them. Unchanged.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"#4852 fix round 1: module-map.md changed only the ProjectRoom files sentence. UI scope rules here (React Query through SDK hooks, conversation boundaries, definition of done) unaffected; the retained-row re-read is an SDK query hook. Unchanged.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

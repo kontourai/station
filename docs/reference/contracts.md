@@ -2328,6 +2328,29 @@ name the reason (`empty`, `too_long`, `format`) so a client can explain it
 inline. `parseProjectRoomChannelCreateInput`, `parseProjectRoomChannelUpdateInput`
 (`topic: null` clears) and `parseProjectRoomChannelList` are the wire parsers.
 
+Messages can carry files, react and be edited or deleted (#4796, #4797,
+#4812). `ProjectRoomAttachment` is the Task room's `TaskRoomAttachment`, with its
+count and size limits, and no file named twice (`parseProjectRoomAttachments`);
+a message with files may
+have empty text. `ProjectRoomMessage` adds three projected fields that are never
+stored on the message itself: `editedAt` (the text is the latest edit's),
+`deletedAt` (a tombstone: empty text, no files or reactions) and `reactions`
+(`ProjectRoomReaction`: an emoji and its actors, in first-reacted order).
+`parseProjectRoomMessage` refuses a tombstone that still carries content. The
+inputs are `ProjectRoomReactionInput` (`{ emoji, reacted }`, a set state, so a
+repeat changes nothing), `ProjectRoomEditInput` and `ProjectRoomDeleteInput`, with
+their `parse…` functions. `PROJECT_ROOM_FORBIDDEN_CODE`
+(`project_room_forbidden`, a `permission_denied` failure) is the refusal of an
+edit or delete by anyone but the message's person author.
+`PROJECT_ROOM_FILES_UNAVAILABLE_CODE` (`project_room_files_unavailable`, an
+`unavailable` failure a later retry can clear) is the 503 refusal of a new
+attachment while the room's file store cannot read every file record.
+`PROJECT_ROOM_LIMITS` bounds reactions
+(`reactionEmojiPerMessage` 20, `reactionsPerMessage` 100, `reactionEmojiBytes`
+32) and revisions (`revisionsPerMessage` 50). `projectRoomReactionEmojiProblem`
+accepts exactly one emoji: a pictograph with optional skin tone or tag
+sequence, joined by ZWJ to more, a flag pair or a keycap.
+
 See [Room HTTP operations](api.md#shared-project-room) and the
 [SDK](sdk.md#shared-project-room).
 

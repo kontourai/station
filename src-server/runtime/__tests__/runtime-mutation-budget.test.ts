@@ -948,6 +948,53 @@ it('allows bounded Task image uploads above the standard body ceiling while keep
   expect(sideEffects.get(`POST ${adjacent}`)).toBeUndefined();
 });
 
+it.each([
+  ['/api/projects/alpha/room/attachments', '/api/projects/alpha/room/messages'],
+  [
+    '/api/projects/alpha/channels/7b0d3a52-9c1e-4c55-9a8b-2f4c1d7e6a11/attachments',
+    '/api/projects/alpha/channels/7b0d3a52-9c1e-4c55-9a8b-2f4c1d7e6a11/messages',
+  ],
+])(
+  'allows bounded Project room file uploads at %s above the standard body ceiling (#4812)',
+  async (path, adjacent) => {
+    const { request, sideEffects } = createBudgetHarness({
+      maxMutationBodyBytes: 100,
+      extraMutationRoutes: [
+        { method: 'POST', path },
+        { method: 'POST', path: adjacent },
+      ],
+    });
+    const body = JSON.stringify({ image: 'x'.repeat(1_100_000) });
+    expect(
+      (await request(path, { ...bearerAuth(), body }, '192.168.1.50')).status,
+    ).toBe(200);
+    expect(
+      (await request(adjacent, { ...bearerAuth(), body }, '192.168.1.50'))
+        .status,
+    ).toBe(413);
+    expect(
+      (
+        await request(
+          path,
+          {
+            ...bearerAuth(),
+            headers: {
+              ...bearerAuth().headers,
+              'content-length': String(
+                CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES + 1,
+              ),
+            },
+            body: '{}',
+          },
+          '192.168.1.50',
+        )
+      ).status,
+    ).toBe(413);
+    expect(sideEffects.get(`POST ${path}`)).toBe(1);
+    expect(sideEffects.get(`POST ${adjacent}`)).toBeUndefined();
+  },
+);
+
 // Real HTTP exercises the Node adapter and composed authentication/body budget.
 it.each([
   ['/api/projects/alpha/walkthroughs/import', WALKTHROUGH_LIMITS.uploadBytes],

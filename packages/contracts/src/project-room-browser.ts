@@ -3,9 +3,15 @@ import type {
   ProjectRoomHistory,
   ProjectRoomMessage,
   ProjectRoomNote,
+  ProjectRoomReaction,
   ProjectRoomView,
 } from './project-room.js';
-import { isProjectRoomUuid, PROJECT_ROOM_LIMITS } from './project-room.js';
+import {
+  isProjectRoomUuid,
+  PROJECT_ROOM_LIMITS,
+  parseProjectRoomAttachments,
+  parseProjectRoomReactionEmoji,
+} from './project-room.js';
 export interface ProjectRoomPresence {
   clientId: string;
   actor: ProjectRoomActor;
@@ -114,6 +120,34 @@ export function parseProjectRoomBrowserView(
   };
 }
 
+/** Bounded by distinct emoji and by stored reactions; never empty. */
+function reactions(value: unknown): ProjectRoomReaction[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > PROJECT_ROOM_LIMITS.reactionEmojiPerMessage
+  )
+    throw new Error('Invalid Room reactions');
+  let total = 0;
+  const result = value.map((item) => {
+    const r = record(item, ['emoji', 'actors']);
+    if (!Array.isArray(r.actors) || r.actors.length === 0)
+      throw new Error('Invalid Room reactions');
+    total += r.actors.length;
+    if (total > PROJECT_ROOM_LIMITS.reactionsPerMessage)
+      throw new Error('Invalid Room reactions');
+    const actors = r.actors.map(actor);
+    if (
+      new Set(actors.map((a) => JSON.stringify([a.kind, a.id]))).size !==
+      actors.length
+    )
+      throw new Error('Invalid Room reactions');
+    return { emoji: parseProjectRoomReactionEmoji(r.emoji), actors };
+  });
+  if (new Set(result.map((r) => r.emoji)).size !== result.length)
+    throw new Error('Invalid Room reactions');
+  return result;
+}
 export function parseProjectRoomMessage(value: unknown): ProjectRoomMessage {
   const v = record(value, [
     'roomId',
@@ -124,12 +158,27 @@ export function parseProjectRoomMessage(value: unknown): ProjectRoomMessage {
     'intentId',
     'text',
     'replyTo',
+    'attachments',
+    'editedAt',
+    'deletedAt',
+    'reactions',
   ]);
+  const attachments =
+    v.attachments === undefined
+      ? undefined
+      : parseProjectRoomAttachments(v.attachments);
+  const deleted = v.deletedAt !== undefined;
   if (
     typeof v.text !== 'string' ||
-    !v.text.trim() ||
     new TextEncoder().encode(v.text).length > PROJECT_ROOM_LIMITS.textBytes ||
-    v.seq === 0
+    v.seq === 0 ||
+    // A tombstone keeps no content; anything else says something.
+    (deleted
+      ? v.text !== '' ||
+        attachments ||
+        v.reactions !== undefined ||
+        v.editedAt !== undefined
+      : !v.text.trim() && !(v.text === '' && attachments))
   )
     throw new Error('Invalid Room message');
   return {
@@ -141,6 +190,10 @@ export function parseProjectRoomMessage(value: unknown): ProjectRoomMessage {
     intentId: uuid(v.intentId),
     text: v.text,
     ...(v.replyTo === undefined ? {} : { replyTo: uuid(v.replyTo) }),
+    ...(attachments ? { attachments } : {}),
+    ...(v.editedAt === undefined ? {} : { editedAt: date(v.editedAt) }),
+    ...(deleted ? { deletedAt: date(v.deletedAt) } : {}),
+    ...(v.reactions === undefined ? {} : { reactions: reactions(v.reactions) }),
   };
 }
 export function parseProjectRoomHistory(value: unknown): ProjectRoomHistory {

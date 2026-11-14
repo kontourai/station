@@ -3403,8 +3403,8 @@ function projectRepositorySourceScreens(): Screen[] {
  * Room conversation scenes (#4791): the Project room and the Task room
  * rendered by their real components over browser-projection fixtures
  * (tests/helpers/room-gallery-fixtures.ts), at 390 and 1440 in both themes.
- * Reactions have no scene: no room contract carries them yet, and a scene
- * must not draw state nothing computes. The reactions child adds both.
+ * Reactions, edits, deletes and channel files draw the history's projected
+ * fields (#4796, #4797, #4812).
  */
 const ROOM_SCENES = [
   { scene: 'empty', room: 'project' },
@@ -3417,6 +3417,11 @@ const ROOM_SCENES = [
   { scene: 'agent-abandon', room: 'project' },
   { scene: 'keyboard', room: 'project' },
   { scene: 'channels', room: 'project' },
+  { scene: 'reactions', room: 'project' },
+  { scene: 'reaction-picker', room: 'project' },
+  { scene: 'edited', room: 'project' },
+  { scene: 'deleted', room: 'project' },
+  { scene: 'attachment', room: 'project' },
   { scene: 'thread', room: 'task' },
   { scene: 'working', room: 'task' },
 ] as const satisfies readonly (
@@ -3455,6 +3460,7 @@ function roomConversationScreens(): Screen[] {
           | Awaited<ReturnType<typeof installProjectRoomFixture>>
           | undefined;
         let cleanupTask: (() => Promise<void>) | undefined;
+        let restoreHandshake: (() => Promise<void>) | undefined;
         const screen: Screen = {
           name: `room-${room === 'task' ? 'task-' : ''}${scene}-${theme}-${width}`,
           title: `${room === 'task' ? 'Task' : 'Project'} room, ${scene} — ${theme}, ${viewport.width}px`,
@@ -3475,6 +3481,16 @@ function roomConversationScreens(): Screen[] {
                 viewport.width === MOBILE.width
               )
                 await installKeyboardEmulation(page);
+              // A current host serves reactions, edits, deletes and files
+              // (#4796, #4797, #4812); the room offers them only on this flag.
+              restoreHandshake = await withRoute(
+                page,
+                '**/.well-known/station/v1',
+                (route) =>
+                  fulfillGalleryStationHandshake(route, false, {
+                    projectRoomMessageActions: true,
+                  }),
+              );
               fixture = await installProjectRoomFixture(page, {
                 slug,
                 projectId: project.id,
@@ -3806,6 +3822,200 @@ function roomConversationScreens(): Screen[] {
                 theme,
               );
             }
+            const messageRow = (text: string) =>
+              conversation
+                .locator('.room-row')
+                .filter({ has: page.getByText(text, { exact: true }) });
+            if (scene === 'reactions') {
+              const pill = conversation.getByRole('button', {
+                name: '🙏 3: You, Priya Natarajan and Jonas Berg',
+              });
+              await expect(pill).toHaveAttribute('aria-pressed', 'true');
+              await expect(
+                conversation.getByRole('button', {
+                  name: '👀 1: Jonas Berg',
+                }),
+              ).toHaveAttribute('aria-pressed', 'false');
+              if (viewport.width === DESKTOP.width) {
+                // Who reacted: the pill's tooltip. Keyboard focus shows it as
+                // hover does, and survives the capture's resting pointer.
+                await pill.focus();
+                await expect(
+                  conversation.getByRole('tooltip', {
+                    name: 'You, Priya Natarajan and Jonas Berg',
+                  }),
+                ).toBeVisible();
+              } else {
+                await expectTouchTarget(pill, 'Reaction pill');
+                // The phone's actions are a labelled menu behind ⋯ (no
+                // tooltips on touch): full-width 44px rows, Delete last and
+                // destructive, focus moved in.
+                const own = messageRow(
+                  'Good catch. Jonas, can you update both before we ship?',
+                );
+                const more = own.getByRole('button', { name: /^More actions/ });
+                await expectTouchTarget(more, 'More actions');
+                await more.click();
+                const menu = page.getByRole('menu');
+                await expect(menu.getByRole('menuitem')).toHaveText([
+                  'React',
+                  // In the channel, Reply opens the message's thread (#4795).
+                  'Reply in thread',
+                  'Edit',
+                  'Who reacted',
+                  'Delete',
+                ]);
+                await expect(
+                  menu.getByRole('menuitem', { name: 'React', exact: true }),
+                ).toBeFocused();
+                const menuBox = await menu.boundingBox();
+                for (const item of await menu.getByRole('menuitem').all()) {
+                  const box = await item.boundingBox();
+                  expect(
+                    Math.round(box!.height),
+                    'menu row height',
+                  ).toBeGreaterThanOrEqual(44);
+                  expect(box!.width, 'menu row spans the menu').toBeGreaterThan(
+                    menuBox!.width - 24,
+                  );
+                }
+                await expect(
+                  menu.getByRole('menuitem', { name: 'Delete', exact: true }),
+                ).toHaveClass(/action-overflow__row--danger/);
+              }
+            }
+            if (scene === 'reaction-picker') {
+              const target = messageRow(
+                'Morning! The pricing page copy is ready for review.',
+              );
+              if (viewport.width === DESKTOP.width) {
+                await target.hover();
+                await target
+                  .getByRole('button', { name: 'React to Jonas Berg' })
+                  .click();
+              } else {
+                await target
+                  .getByRole('button', { name: /^More actions/ })
+                  .click();
+                await page
+                  .getByRole('menu')
+                  .getByRole('menuitem', { name: 'React', exact: true })
+                  .click();
+              }
+              const picker = page.getByRole('dialog', { name: 'Add reaction' });
+              await expect(picker).toBeVisible();
+              await expect(
+                picker.getByRole('heading', { name: 'Recent' }),
+              ).toBeVisible();
+              if (viewport.width === MOBILE.width) {
+                await expectTouchTarget(
+                  picker.getByRole('button', { name: '👍' }).first(),
+                  'Picker emoji',
+                );
+                // A sheet over the conversation, not a full-screen takeover.
+                const sheet = await page
+                  .locator('.room-emoji-picker')
+                  .boundingBox();
+                expect(sheet!.y, 'picker sheet top (px)').toBeGreaterThan(
+                  MOBILE.height * 0.2,
+                );
+              } else {
+                // Search narrows the catalogue as the person types.
+                await picker.getByRole('searchbox').fill('par');
+                await expect(
+                  picker.getByRole('button', { name: '🎉' }),
+                ).toBeVisible();
+                await picker.getByRole('searchbox').fill('');
+              }
+            }
+            if (scene === 'edited') {
+              await expect(
+                messageRow(
+                  'I kept the three tiers and moved the FAQ under the comparison table.',
+                ).getByText('edited', { exact: true }),
+              ).toBeVisible();
+              // Up in an empty composer edits your last message (#4793).
+              await composer.click();
+              await composer.press('ArrowUp');
+              await expect(
+                roomRegion.getByText('Editing message'),
+              ).toBeVisible();
+              await expect(composer).toHaveValue(
+                'Good catch. Jonas, can you update both numbers before we ship?',
+              );
+              await expect(
+                roomRegion.getByRole('button', { name: 'Save edit' }),
+              ).toBeDisabled();
+            }
+            if (scene === 'deleted') {
+              // The deleted message keeps its place, takes no actions, and
+              // its thread stays reachable from it (#4797 with #4795).
+              const tombstone = conversation
+                .locator('.room-row')
+                .filter({ has: page.getByText('Message deleted') });
+              await expect(tombstone).toBeVisible();
+              await expect(
+                tombstone.getByRole('button', { name: /^More actions/ }),
+              ).toHaveCount(0);
+              const summary = tombstone.getByRole('button', {
+                name: /1 reply/,
+              });
+              await expect(summary).toBeVisible();
+              if (viewport.width === MOBILE.width) {
+                // The phone's thread page: the tombstone as its root, the
+                // reply under it.
+                await summary.click();
+                const threadList = roomRegion.getByRole('list', {
+                  name: 'Thread',
+                });
+                await expect(
+                  threadList.getByText('Message deleted'),
+                ).toBeVisible();
+                await expect(
+                  threadList.getByText(
+                    'Which FAQ do you mean, the billing one?',
+                  ),
+                ).toBeVisible();
+                await expect(
+                  roomRegion.getByRole('textbox', { name: 'Reply in thread' }),
+                ).toBeVisible();
+              }
+            }
+            if (scene === 'attachment') {
+              await expect(
+                conversation.getByRole('img', { name: 'pricing-table.png' }),
+              ).toBeVisible();
+              const file = conversation.getByRole('link', {
+                name: 'plan-limits.pdf',
+              });
+              await expect(file).toBeVisible();
+              if (viewport.width === MOBILE.width) {
+                await expectTouchTarget(file, 'Attached file');
+                await expectTouchTarget(
+                  conversation.getByRole('link', {
+                    name: 'Open pricing-table.png',
+                  }),
+                  'Attached image',
+                );
+              }
+              // A file staged in the shared composer, about to be sent.
+              await roomRegion.locator('input[type="file"]').setInputFiles({
+                name: 'checkout-flow.png',
+                mimeType: 'image/png',
+                buffer: readFileSync(
+                  new URL(
+                    '../docs/design/media/browser-device-ux-browser-390.png',
+                    import.meta.url,
+                  ),
+                ),
+              });
+              await expect(
+                roomRegion.getByRole('img', { name: 'checkout-flow.png' }),
+              ).toBeVisible();
+              await expect(
+                roomRegion.getByRole('button', { name: 'Send message' }),
+              ).toBeEnabled();
+            }
             if (scene === 'new-messages' && fixture) {
               const box = await roomRegion
                 .locator('.room-conversation__scroller')
@@ -3887,6 +4097,7 @@ function roomConversationScreens(): Screen[] {
           },
           async cleanup() {
             await fixture?.cleanup();
+            await restoreHandshake?.();
             await cleanupTask?.();
             if (created) {
               const removed = await request.delete(

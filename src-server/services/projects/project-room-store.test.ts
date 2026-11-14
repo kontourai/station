@@ -490,7 +490,7 @@ describe('ProjectRoomStore channels (#4792)', () => {
     expect(userVersion(home)).toBe(0);
     let runtime = createProjectRoomRuntime(home);
     try {
-      expect(userVersion(home)).toBe(1);
+      expect(userVersion(home)).toBe(2);
       expect(runtime.store.listChannels(scope)).toEqual([
         { channelId: legacy.roomId, name: 'general', isDefault: true },
       ]);
@@ -528,7 +528,7 @@ describe('ProjectRoomStore channels (#4792)', () => {
   it('adopts a room an older Station created after the upgrade, and refuses a newer schema', () => {
     const home = makeTempDir('project-room-downgrade-');
     createProjectRoomRuntime(home).close();
-    expect(userVersion(home)).toBe(1);
+    expect(userVersion(home)).toBe(2);
     // A downgraded Station writes only `project_rooms`.
     const legacy = writeSingleRoomFixture(home);
     const runtime = createProjectRoomRuntime(home);
@@ -543,7 +543,7 @@ describe('ProjectRoomStore channels (#4792)', () => {
       join(home, 'security', 'project-rooms.sqlite'),
       'Project rooms',
     );
-    db.exec('PRAGMA user_version=2');
+    db.exec('PRAGMA user_version=3');
     db.close();
     expect(() => createProjectRoomRuntime(home)).toThrow(
       'Project rooms database version is not supported',
@@ -672,7 +672,7 @@ describe('ProjectRoomStore migration review fixes (#4792)', () => {
           return (sql: string) => {
             if (!interleaved && sql === 'BEGIN IMMEDIATE') {
               interleaved = true;
-              other.exec('PRAGMA user_version=2');
+              other.exec('PRAGMA user_version=3');
             }
             return target.exec(sql);
           };
@@ -687,7 +687,7 @@ describe('ProjectRoomStore migration review fixes (#4792)', () => {
       expect(interleaved).toBe(true);
       expect(
         Number(other.prepare('PRAGMA user_version').get()?.user_version),
-      ).toBe(2);
+      ).toBe(3);
       expect(tables(other)).not.toContain('project_room_channels');
     } finally {
       db.close();
@@ -697,7 +697,7 @@ describe('ProjectRoomStore migration review fixes (#4792)', () => {
   it('refuses a newer schema before creating any table', () => {
     const home = makeTempDir('project-room-newer-');
     const db = openPrivateSqlite(roomsPath(home), 'Project rooms');
-    db.exec('PRAGMA user_version=2');
+    db.exec('PRAGMA user_version=3');
     db.close();
     expect(() => createProjectRoomRuntime(home)).toThrow(
       'Project rooms database version is not supported',

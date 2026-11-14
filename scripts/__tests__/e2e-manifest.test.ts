@@ -232,6 +232,8 @@ describe('e2e manifest', () => {
       'tests/station-connection-chat.spec.ts',
       // Creates real Projects, channels and read markers on the instance.
       'tests/project-channel-navigation.spec.ts',
+      // Owns an isolated Station with accounts and sharing (#4796, #4812).
+      'tests/project-room-message-actions.spec.ts',
       'tests/conversation-surfaces.spec.ts',
       'tests/owned-work-custody.spec.ts',
       // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.

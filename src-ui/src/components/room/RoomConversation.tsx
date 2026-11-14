@@ -10,6 +10,11 @@ import {
   useState,
 } from 'react';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import {
+  ActionOverflowMenu,
+  type OverflowAction,
+  type OverflowMenuHandle,
+} from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import {
   type ChatScrollAnchor,
@@ -18,7 +23,7 @@ import {
 } from '../chat/chatScrollAnchor';
 import { TranscriptVirtualizer } from '../chat/TranscriptVirtualizer';
 import { IconButton } from '../IconButton';
-import { MoreGlyph } from '../icons/Glyph';
+import { glyph, MoreGlyph } from '../icons/Glyph';
 import { useTouchKeyboard } from './composerKeys';
 import {
   groupRows,
@@ -51,14 +56,36 @@ export interface RoomConversationRow {
   /** Custom body (an agent answer with its own Show more). */
   readonly body?: ReactNode;
   readonly attachments?: ReactNode;
+  /** Reaction pills under the body (`RoomReactionBar`). */
+  readonly reactions?: ReactNode;
+  /** ISO time of the latest edit: the body ends with an "edited" marker. */
+  readonly editedAt?: string;
+  /**
+   * A deleted message: a "Message deleted" line replaces the body, and its
+   * author and time stay so replies to it still read.
+   */
+  readonly deleted?: boolean;
+  /** The row the composer is editing: marked so the reader sees which. */
+  readonly highlighted?: boolean;
   /** Under the body: a thread summary or a delivery state. */
   readonly footer?: ReactNode;
   /** The row's action bar: shown on hover, focus or long press. */
   readonly actions?: ReactNode;
+  /**
+   * The same actions as labelled menu rows. Where there is no hover (touch
+   * and phone layouts) the ⋯ control and a long press open these as a menu
+   * instead of the icon bar, whose icons would have no visible names there.
+   */
+  readonly menu?: readonly OverflowAction[];
   readonly tone?: 'failed' | 'pending';
   /** Written by the reader: the list follows it instead of counting it as new. */
   readonly own?: boolean;
 }
+
+/** A struck-through circle: content that was removed. */
+const DeletedGlyph = /* @__PURE__ */ glyph(
+  'M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM4.2 4.2l7.6 7.6',
+);
 
 /** How close to the end still counts as reading the latest message. */
 const FOLLOW_SLACK_PX = 48;
@@ -122,6 +149,8 @@ function Row({
 }) {
   const actionsId = useId();
   const moreButton = useRef<HTMLButtonElement>(null);
+  const menuHandle = useRef<OverflowMenuHandle>(null);
+  const menuOnTouch = showMore && !!row.menu?.length;
   const rowElement = useRef<HTMLDivElement>(null);
   const actionsElement = useRef<HTMLDivElement>(null);
   // Opening by the button or a long press moves focus into the actions; with
@@ -132,7 +161,11 @@ function Row({
       actionsElement.current?.querySelector<HTMLElement>(
         'button:not(:disabled), [href]',
       ) ?? moreButton.current
-    )?.focus();
+    )?.focus({ preventScroll: true });
+    // Bring the whole bar into view, not just its first button: on the last
+    // message a wrapped bar would otherwise sit under the fold, and the
+    // partial scroll read as the reader leaving the end of the list.
+    actionsElement.current?.scrollIntoView?.({ block: 'nearest' });
   }, [actionsOpen, showMore]);
   // Escape closes from the button or the actions and returns to the button.
   const closeOnEscape = (event: React.KeyboardEvent) => {
@@ -178,32 +211,36 @@ function Row({
     press.current = undefined;
   }, []);
   useEffect(() => cancelPress, [cancelPress]);
-  const touchHandlers = row.actions
-    ? {
-        onPointerDown: (event: React.PointerEvent) => {
-          if (event.pointerType !== 'touch') return;
-          origin.current = { x: event.clientX, y: event.clientY };
-          cancelPress();
-          press.current = window.setTimeout(() => {
-            press.current = undefined;
-            onLongPress(row.id);
-          }, LONG_PRESS_MS);
-        },
-        onPointerMove: (event: React.PointerEvent) => {
-          const start = origin.current;
-          if (
-            start &&
-            Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8
-          )
+  const touchHandlers =
+    row.actions || menuOnTouch
+      ? {
+          onPointerDown: (event: React.PointerEvent) => {
+            if (event.pointerType !== 'touch') return;
+            origin.current = { x: event.clientX, y: event.clientY };
             cancelPress();
-        },
-        onPointerUp: cancelPress,
-        onPointerCancel: cancelPress,
-        onContextMenu: (event: React.MouseEvent) => {
-          if (actionsOpen) event.preventDefault();
-        },
-      }
-    : {};
+            press.current = window.setTimeout(() => {
+              press.current = undefined;
+              if (menuOnTouch) menuHandle.current?.open();
+              else onLongPress(row.id);
+            }, LONG_PRESS_MS);
+          },
+          onPointerMove: (event: React.PointerEvent) => {
+            const start = origin.current;
+            if (
+              start &&
+              Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8
+            )
+              cancelPress();
+          },
+          onPointerUp: cancelPress,
+          onPointerCancel: cancelPress,
+          onContextMenu: (event: React.MouseEvent) => {
+            if (actionsOpen) event.preventDefault();
+          },
+        }
+      : {};
+  // The time tells one author's messages apart.
+  const moreLabel = `More actions for ${row.author?.label ?? 'this'}'s message${row.at && Number.isFinite(Date.parse(row.at)) ? ` at ${roomShortTime(row.at)}` : ''}`;
   const day =
     placement.newDay && row.at ? (
       <div className="room-divider room-divider--day">
@@ -248,6 +285,7 @@ function Row({
           placement.stackNext && 'room-row--continues',
           row.tone && `room-row--${row.tone}`,
           actionsOpen && 'room-row--actions-open',
+          row.highlighted && 'room-row--highlighted',
         ]
           .filter(Boolean)
           .join(' ')}
@@ -280,21 +318,51 @@ function Row({
           {row.context && (
             <div className="room-row__context">{row.context}</div>
           )}
-          <div className="room-row__body">
-            {row.body ??
-              (row.text !== undefined ? (
-                <RoomMessageText text={row.text} />
-              ) : null)}
-          </div>
-          {row.attachments}
+          {row.deleted ? (
+            <p className="room-row__body room-row__deleted">
+              <DeletedGlyph />
+              Message deleted
+            </p>
+          ) : (
+            <div
+              className={`room-row__body${row.editedAt ? ' room-row__body--edited' : ''}`}
+            >
+              {row.body ??
+                (row.text !== undefined ? (
+                  <RoomMessageText text={row.text} />
+                ) : null)}
+              {row.editedAt && (
+                <span
+                  className="room-row__edited"
+                  title={
+                    Number.isFinite(Date.parse(row.editedAt))
+                      ? `Edited ${roomFullTime(row.editedAt)}`
+                      : undefined
+                  }
+                >
+                  edited
+                </span>
+              )}
+            </div>
+          )}
+          {!row.deleted && row.attachments}
+          {!row.deleted && row.reactions}
           {row.footer && <div className="room-row__footer">{row.footer}</div>}
         </div>
-        {row.actions && showMore && (
+        {menuOnTouch && (
+          <ActionOverflowMenu
+            actions={row.menu!}
+            handleRef={menuHandle}
+            triggerClassName="action-overflow__trigger room-row__more"
+            label={moreLabel}
+          />
+        )}
+        {row.actions && showMore && !menuOnTouch && (
           <IconButton
             ref={moreButton}
             className="room-row__more"
             // The time tells one author's messages apart.
-            aria-label={`More actions for ${row.author?.label ?? 'this'}'s message${row.at && Number.isFinite(Date.parse(row.at)) ? ` at ${roomShortTime(row.at)}` : ''}`}
+            aria-label={moreLabel}
             aria-expanded={actionsOpen}
             aria-controls={actionsId}
             onClick={() =>
@@ -305,7 +373,7 @@ function Row({
             <MoreGlyph />
           </IconButton>
         )}
-        {row.actions && (
+        {row.actions && !menuOnTouch && (
           <div
             ref={actionsElement}
             id={actionsId}
@@ -336,6 +404,7 @@ export function RoomConversation({
   status,
   empty,
   hasOlder = false,
+  olderNote,
   loadingOlder = false,
   onLoadOlder,
   trailing,
@@ -353,6 +422,11 @@ export function RoomConversation({
   /** Shown when there are no rows and nothing is loading. */
   empty?: ReactNode;
   hasOlder?: boolean;
+  /**
+   * Why the list starts where it does when earlier history exists but is not
+   * all here (a kept-history limit, or rows unloaded), shown at the top.
+   */
+  olderNote?: string;
   loadingOlder?: boolean;
   onLoadOlder?(): void;
   /** Live rows after the history, such as a working agent. */
@@ -595,6 +669,13 @@ export function RoomConversation({
           ref={content}
           className={`room-conversation__content${!rows.length && !loading ? ' room-conversation__content--empty' : ''}`}
         >
+          {olderNote && (
+            // A polite live region: the note can appear with no action from
+            // the reader (rows unloaded), so it is announced, never focused.
+            <p className="room-conversation__older-note" role="status">
+              {olderNote}
+            </p>
+          )}
           {hasOlder && onLoadOlder && (
             <Button
               variant="ghost"

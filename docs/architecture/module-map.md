@@ -3739,7 +3739,28 @@ is created; otherwise tables are created and every channel-less room is adopted 
 `#general` under the writer lock, after re-reading the version there, so a racing
 newer Station's upgrade is never overwritten. A room whose stored record does not
 match its row is not adopted, and it refuses its channels as it refuses its reads. Channel limits, unique names and
-archived read-only state are enforced in the store transaction. Persisted records are validated
+archived read-only state are enforced in the store transaction. Schema version 2
+adds message activity in separate tables: reactions (one per person and emoji),
+superseding edit and delete revisions, the files each message links, and a
+per-room activity counter. History projects the latest revision and the
+reactions onto each stored message, which is never rewritten. The live
+checkpoint counts activity so reactions and edits wake readers, while
+`lastSeq`, the read-state version, moves only with new messages. Only a
+message's person author may edit or delete it, and Agent messages are never
+edited. Message files are stored by `ProjectRoomAttachments` (over the
+`RoomAttachments` store Task rooms use) under a binding of Station, Project
+incarnation, room and uploader. Deleting a message releases its files, and an
+upload first releases its uploader's day-old unsent files. Uploads, releases
+and messages naming files hold one store-wide cross-process file lock (the
+yielding form, taken before the request's authority check so access revoked
+while waiting refuses). Records are written whole (staging, then rename). A
+release reads every record first and deletes only bytes no record names,
+counting references recovered from damaged records; if any record's
+reference cannot be known it fails closed (nothing removed, a
+`reclamation-blocked.json` marker, new uploads refused with
+`project_room_files_unavailable` until a scan reads every record). The store
+never evicts by age or size. Task rooms keep age and size retention (#4947)
+and share only the whole-record write. Persisted records are validated
 against their row identities before use. History reads use a deferred transaction;
 discovery is lookup-only. Explicit opening requires current discussion authority.
 

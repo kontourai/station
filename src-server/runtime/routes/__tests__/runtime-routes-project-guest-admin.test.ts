@@ -1726,6 +1726,109 @@ describe('project guest administration over the production composition', () => {
       ).toBe(403);
   });
 
+  test('Project Room message actions: an account-bound member reacts, edits, deletes and shares a file through the production mount (#4796, #4797, #4812)', async () => {
+    const h = await setup();
+    const { project, guest } = await h.shareWithGuestAdmin(
+      'activity-project',
+      'Activity Project',
+    );
+    const room = '/api/projects/activity-project/room';
+    const send = (method: string, value: unknown) =>
+      guest({
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(value),
+      });
+    const opened = await h.request(
+      `${room}/init`,
+      send('POST', { expectedProjectId: project.id }),
+    );
+    expect(opened.status, await opened.clone().text()).toBe(200);
+    const view = (
+      await readJson<{ data: { roomId: string; actor: { id: string } } }>(
+        await h.request(room, guest()),
+      )
+    ).data;
+    const guards = {
+      expectedRoomId: view.roomId,
+      expectedProjectId: project.id,
+      expectedActorId: view.actor.id,
+    };
+    // A real PNG header, so the shared byte checks see matching bytes.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const uploaded = await h.request(
+      `${room}/attachments`,
+      send('POST', {
+        ...guards,
+        attachments: [
+          {
+            kind: 'image',
+            name: 'shot.png',
+            mimeType: 'image/png',
+            size: png.length,
+            dataUrl: `data:image/png;base64,${png.toString('base64')}`,
+          },
+        ],
+      }),
+    );
+    expect(uploaded.status, await uploaded.clone().text()).toBe(200);
+    const files = (await readJson<{ data: { id: string }[] }>(uploaded)).data;
+    const posted = await h.request(
+      `${room}/messages`,
+      send('POST', {
+        ...guards,
+        intentId: crypto.randomUUID(),
+        text: 'Draft copy',
+        attachments: files,
+      }),
+    );
+    expect(posted.status, await posted.clone().text()).toBe(200);
+    const messageId = (await readJson<{ data: { messageId: string } }>(posted))
+      .data.messageId;
+    const file = await h.request(
+      `${room}/attachments/${files[0]!.id}`,
+      guest(),
+    );
+    expect(file.status, await file.clone().text()).toBe(200);
+    expect(Buffer.from(await file.arrayBuffer())).toEqual(png);
+    for (const [leaf, body] of [
+      ['reactions', { emoji: '👍', reacted: true }],
+      ['edit', { intentId: crypto.randomUUID(), text: 'Final copy' }],
+      ['delete', { intentId: crypto.randomUUID() }],
+    ] as const) {
+      const response = await h.request(
+        `${room}/messages/${messageId}/${leaf}`,
+        send('POST', { ...guards, ...body }),
+      );
+      expect(response.status, `${leaf}: ${await response.clone().text()}`).toBe(
+        200,
+      );
+    }
+    const history = await readJson<{
+      data: { messages: { text: string; deletedAt?: string }[] };
+    }>(await h.request(`${room}/messages`, guest()));
+    expect(history.data.messages).toEqual([
+      expect.objectContaining({ text: '', deletedAt: expect.any(String) }),
+    ]);
+    // The deleted message's file is withheld with it.
+    expect(
+      (await h.request(`${room}/attachments/${files[0]!.id}`, guest())).status,
+    ).toBe(404);
+    // Only the exact leaves are admitted past the Project read guard.
+    for (const [method, path] of [
+      ['POST', `${room}/messages/${messageId}/pin`],
+      ['POST', `${room}/attachments/${files[0]!.id}`],
+      ['PUT', `${room}/messages/${messageId}/edit`],
+    ])
+      expect(
+        (await h.request(path, send(method, guards))).status,
+        `${method} ${path}`,
+      ).toBe(403);
+  });
+
   test('Project Room production mount requires exact incarnation and independent transport and member actions', async () => {
     const h = await setup();
     const { project, scope, guest, credential } = await h.shareWithGuestAdmin(

@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import {
+  PROJECT_ROOM_FILES_UNAVAILABLE_CODE,
+  PROJECT_ROOM_FORBIDDEN_CODE,
   PROJECT_ROOM_LIMITS,
   parseProjectRoomChannel,
   parseProjectRoomChannelList,
@@ -35,6 +37,10 @@ import {
   ProjectRoomStore,
 } from '../../services/projects/project-room-store.js';
 import { ProjectService } from '../../services/projects/project-service.js';
+import {
+  ProjectRoomAttachments,
+  RoomAttachments,
+} from '../../services/projects/task-room-attachments.js';
 import { projectRoomVersionSource } from '../../services/read-markers/room-version-sources.js';
 import { createProjectRoomRoutes } from './project-room-routes.js';
 
@@ -164,7 +170,11 @@ async function harness(
   };
   const runtime = createProjectRoomRuntime(home);
   cleanup.push(() => runtime.close());
-  const service = new ProjectRoomService(runtime.store, port);
+  const service = new ProjectRoomService(
+    runtime.store,
+    port,
+    new ProjectRoomAttachments(join(home, 'project-room-attachments')),
+  );
   cleanup.push(() => service.close());
   if (provision)
     await service.open(
@@ -955,6 +965,271 @@ test('channels: an archived channel refuses posts and note edits but still serve
   expect((await message('back')).status).toBe(200);
 });
 
+/** A real 1x1 PNG, so the shared attachment checks see matching bytes. */
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64',
+);
+const png = (name = 'shot.png') => ({
+  kind: 'image',
+  name,
+  mimeType: 'image/png',
+  size: PNG.length,
+  dataUrl: `data:image/png;base64,${PNG.toString('base64')}`,
+});
+async function history(
+  h: Awaited<ReturnType<typeof harness>>,
+  who: 'alice' | 'bob',
+) {
+  const response = await h.request(who, '/messages');
+  expect(response.status).toBe(200);
+  return parseProjectRoomHistory(await data(response));
+}
+
+test('message activity: another client sees a reaction, its removal and an edit after a refetch, and the read version stays', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const b = await h.discover('bob');
+  const message = parseProjectRoomMessage(
+    await data(
+      await h.request('alice', '/messages', 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+        text: 'Ship it?',
+      }),
+    ),
+  );
+  const target = `/messages/${message.messageId}`;
+  const react = (who: 'alice' | 'bob', reacted: boolean) =>
+    h.request(who, `${target}/reactions`, 'POST', {
+      ...guard(who === 'alice' ? a : b),
+      emoji: '👍',
+      reacted,
+    });
+  expect((await react('bob', true)).status).toBe(200);
+  expect((await react('alice', true)).status).toBe(200);
+  expect((await history(h, 'alice')).messages[0]!.reactions).toEqual([
+    { emoji: '👍', actors: [b.actor, a.actor] },
+  ]);
+  expect((await react('bob', false)).status).toBe(200);
+  expect((await history(h, 'alice')).messages[0]!.reactions).toEqual([
+    { emoji: '👍', actors: [a.actor] },
+  ]);
+  const edited = await h.request('alice', `${target}/edit`, 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+    text: 'Ship it Friday?',
+  });
+  expect(edited.status).toBe(200);
+  const seen = (await history(h, 'bob')).messages[0]!;
+  expect(seen.text).toBe('Ship it Friday?');
+  expect(seen.editedAt).toEqual(expect.any(String));
+  // Neither moved the room's content version, which read state counts.
+  expect((await h.discover('bob')).checkpoint.lastSeq).toBe(1);
+});
+
+test("message activity: the server refuses an edit or delete of another person's message", async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const b = await h.discover('bob');
+  const message = parseProjectRoomMessage(
+    await data(
+      await h.request('alice', '/messages', 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+        text: 'Mine',
+      }),
+    ),
+  );
+  for (const action of ['edit', 'delete'] as const) {
+    const response = await h.request(
+      'bob',
+      `/messages/${message.messageId}/${action}`,
+      'POST',
+      {
+        ...guard(b),
+        intentId: randomUUID(),
+        ...(action === 'edit' ? { text: 'Yours now' } : {}),
+      },
+    );
+    // Not a 403: clients read a 403 as lost access and stop the room.
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: { code: PROJECT_ROOM_FORBIDDEN_CODE },
+    });
+    // Pinned literal beside the constant under test.
+    expect(PROJECT_ROOM_FORBIDDEN_CODE).toBe('project_room_forbidden');
+  }
+  expect((await history(h, 'alice')).messages).toEqual([message]);
+});
+
+test('message activity: a deleted root keeps its replies reachable', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const b = await h.discover('bob');
+  const root = parseProjectRoomMessage(
+    await data(
+      await h.request('alice', '/messages', 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+        text: 'Root',
+      }),
+    ),
+  );
+  const reply = parseProjectRoomMessage(
+    await data(
+      await h.request('bob', '/messages', 'POST', {
+        ...guard(b),
+        intentId: randomUUID(),
+        text: 'Reply',
+        replyTo: root.messageId,
+      }),
+    ),
+  );
+  const deleted = await h.request(
+    'alice',
+    `/messages/${root.messageId}/delete`,
+    'POST',
+    { ...guard(a), intentId: randomUUID() },
+  );
+  expect(deleted.status).toBe(200);
+  const { messages } = await history(h, 'bob');
+  expect(messages.map((m) => [m.messageId, m.text, !!m.deletedAt])).toEqual([
+    [root.messageId, '', true],
+    [reply.messageId, 'Reply', false],
+  ]);
+  expect(messages[1]!.replyTo).toBe(root.messageId);
+});
+
+test('message files: upload, send, read back; past the count or size limit is refused; a deleted message withholds them', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const upload = (attachments: unknown[]) =>
+    h.request('alice', '/attachments', 'POST', { ...guard(a), attachments });
+  expect((await upload(Array.from({ length: 6 }, () => png()))).status).toBe(
+    400,
+  );
+  const big = Buffer.alloc(5 * 1024 * 1024 + 1);
+  PNG.copy(big);
+  expect(
+    (
+      await upload([
+        {
+          ...png('big.png'),
+          size: big.length,
+          dataUrl: `data:image/png;base64,${big.toString('base64')}`,
+        },
+      ])
+    ).status,
+  ).toBe(400);
+  const stored = await upload([png()]);
+  expect(stored.status).toBe(200);
+  const [file] = (await data(stored)) as { id: string }[];
+  // A file is its uploader's: another member cannot send it as theirs.
+  const b = await h.discover('bob');
+  const borrowed = await h.request('bob', '/messages', 'POST', {
+    ...guard(b),
+    intentId: randomUUID(),
+    text: 'Look what I made',
+    attachments: [file],
+  });
+  expect(borrowed.status).toBe(400);
+  // Unsent, the file is nobody's to read.
+  expect((await h.request('bob', `/attachments/${file!.id}`)).status).toBe(404);
+  // Six distinct stored files are refused at the message too, not only at
+  // upload. Distinct ids keep the repeated-file refusal from answering first.
+  const five = await upload(
+    Array.from({ length: 5 }, (_, i) => png(`${i}.png`)),
+  );
+  expect(five.status).toBe(200);
+  const six = [file, ...((await data(five)) as { id: string }[])];
+  expect(new Set(six.map((stored) => stored!.id)).size).toBe(6);
+  const tooMany = await h.request('alice', '/messages', 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+    text: '',
+    attachments: six,
+  });
+  expect(tooMany.status).toBe(400);
+  // The same file twice is refused, not a storage failure (503).
+  const repeated = await h.request('alice', '/messages', 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+    text: '',
+    attachments: [file, file],
+  });
+  expect(repeated.status).toBe(400);
+  const message = parseProjectRoomMessage(
+    await data(
+      await h.request('alice', '/messages', 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+        text: '',
+        attachments: [file],
+      }),
+    ),
+  );
+  const read = await h.request('bob', `/attachments/${file!.id}`);
+  expect(read.status).toBe(200);
+  expect(read.headers.get('content-type')).toBe('application/octet-stream');
+  expect(Buffer.from(await read.arrayBuffer())).toEqual(PNG);
+  expect((await history(h, 'bob')).messages[0]!.attachments).toEqual([file]);
+  await h.request('alice', `/messages/${message.messageId}/delete`, 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+  });
+  expect((await h.request('bob', `/attachments/${file!.id}`)).status).toBe(404);
+});
+
+test('message activity: SSE announces a reaction, an edit and a delete without advancing lastSeq', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const message = h.runtime.store.append(
+    h.scope,
+    a.actor,
+    { intentId: randomUUID(), text: 'watch me' },
+    () => {},
+  );
+  const response = await h.request('alice', '/events');
+  const reader = response.body!.getReader();
+  expect(await frame(reader)).toContain('event: changed');
+  expect(await frame(reader)).toContain('event: presence');
+  const changes = [
+    () =>
+      h.runtime.store.react(
+        h.scope,
+        a.actor,
+        message.messageId,
+        { emoji: '🎉', reacted: true },
+        () => {},
+      ),
+    () =>
+      h.runtime.store.edit(
+        h.scope,
+        a.actor,
+        message.messageId,
+        { intentId: randomUUID(), text: 'watch this' },
+        () => {},
+      ),
+    () =>
+      h.runtime.store.deleteMessage(
+        h.scope,
+        a.actor,
+        message.messageId,
+        { intentId: randomUUID() },
+        () => {},
+      ),
+  ];
+  for (const change of changes) {
+    const next = frame(reader);
+    change();
+    const value = await next;
+    expect(value).toContain('event: changed');
+    expect(value).toContain('"lastSeq":1');
+  }
+  await reader.cancel();
+});
+
 test('read markers (#3075): each channel has its own room version, read through the room service', async () => {
   const h = await harness();
   const general = await h.discover('bob');
@@ -1000,3 +1275,542 @@ test('read markers (#3075): each channel has its own room version, read through 
     ),
   ).toBeUndefined();
 });
+
+test('read markers: a reaction, an edit and a delete in a named channel leave its read version where it was (#4796, #4797)', async () => {
+  const h = await harness();
+  const design = parseProjectRoomChannel(
+    await data(await createChannel(h, 'alice', 'design')),
+  );
+  const view = parseProjectRoomBrowserView(
+    await data(await api(h, 'alice', `/channels/${design.channelId}`)),
+  );
+  const channel = `/channels/${design.channelId}`;
+  const posted = parseProjectRoomMessage(
+    await data(
+      await api(h, 'alice', `${channel}/messages`, 'POST', {
+        ...guard(view),
+        intentId: randomUUID(),
+        text: 'Draft one',
+      }),
+    ),
+  );
+  const versions = projectRoomVersionSource(h.service);
+  const asAlice = new Request('http://localhost', {
+    headers: { authorization: 'Bearer alice-session' },
+  });
+  const latest = () =>
+    versions.latest(
+      { projectSlug: 'example', roomId: design.channelId },
+      asAlice,
+    );
+  expect(await latest()).toEqual({
+    key: `project-room:${design.channelId}`,
+    latestVersion: 1,
+  });
+  const target = `${channel}/messages/${posted.messageId}`;
+  for (const [leaf, body] of [
+    ['reactions', { emoji: '👀', reacted: true }],
+    ['edit', { intentId: randomUUID(), text: 'Draft two' }],
+    ['delete', { intentId: randomUUID() }],
+  ] as const) {
+    const response = await api(h, 'alice', `${target}/${leaf}`, 'POST', {
+      ...guard(view),
+      ...body,
+    });
+    expect(response.status, leaf).toBe(200);
+    expect(await latest(), leaf).toEqual({
+      key: `project-room:${design.channelId}`,
+      latestVersion: 1,
+    });
+  }
+});
+
+/** Where alice's files in the default room live, and how to read them. */
+async function aliceFiles(h: Awaited<ReturnType<typeof harness>>) {
+  const { existsSync, readdirSync, readFileSync } = await import('node:fs');
+  const a = await h.discover('alice');
+  const root = join(h.home, 'project-room-attachments');
+  const binding = [
+    h.scope.stationId,
+    h.scope.localProjectId,
+    h.scope.portableProjectId,
+    a.roomId,
+    a.actor.kind,
+    a.actor.id,
+  ];
+  const directory = () => {
+    const bindings = join(root, 'bindings');
+    const [key] = existsSync(bindings) ? readdirSync(bindings) : [];
+    return key ? join(bindings, key) : undefined;
+  };
+  const blobOf = (id: string) => {
+    const { blobRef } = JSON.parse(
+      readFileSync(join(directory()!, `${id}.json`), 'utf8'),
+    ) as { blobRef: string };
+    const digest = blobRef.slice('sha256-'.length);
+    return join(root, 'blobs', digest.slice(0, 2), digest);
+  };
+  const upload = async (...files: Record<string, unknown>[]) => {
+    const response = await h.request('alice', '/attachments', 'POST', {
+      ...guard(a),
+      attachments: files,
+    });
+    return response.status === 200
+      ? ((await data(response)) as { id: string }[])
+      : response.status;
+  };
+  const send = async (attachments: unknown[]) =>
+    parseProjectRoomMessage(
+      await data(
+        await h.request('alice', '/messages', 'POST', {
+          ...guard(a),
+          intentId: randomUUID(),
+          text: '',
+          attachments,
+        }),
+      ),
+    );
+  const remove = async (messageId: string) =>
+    (
+      await h.request('alice', `/messages/${messageId}/delete`, 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+      })
+    ).status;
+  return { a, root, binding, directory, blobOf, upload, send, remove };
+}
+
+test('message files: deleting a message releases its files, and its bytes go only once no other file names them (#4812)', async () => {
+  const { existsSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  // The same bytes twice: two files, one deduplicated blob.
+  const [first, second] = (await f.upload(png('one.png'), png('two.png'))) as {
+    id: string;
+  }[];
+  const blob = f.blobOf(first!.id);
+  expect(f.blobOf(second!.id)).toBe(blob);
+  const one = await f.send([first]);
+  const two = await f.send([second]);
+  expect(await f.remove(one.messageId)).toBe(200);
+  expect(existsSync(join(f.directory()!, `${first!.id}.json`))).toBe(false);
+  // The other message's file is untouched and still reads.
+  expect(existsSync(blob)).toBe(true);
+  expect((await h.request('bob', `/attachments/${second!.id}`)).status).toBe(
+    200,
+  );
+  expect(await f.remove(two.messageId)).toBe(200);
+  expect(existsSync(join(f.directory()!, `${second!.id}.json`))).toBe(false);
+  // No file names the bytes any more, so the release reclaimed them.
+  expect(existsSync(blob)).toBe(false);
+  // A repeated delete (the same message again) changes nothing and still answers.
+  expect(await f.remove(two.messageId)).toBe(200);
+});
+
+/** Bytes other than `PNG` that are still a PNG, so each upload is a new blob. */
+const pngVariant = (name: string, tail: string) => {
+  const bytes = Buffer.concat([PNG, Buffer.from(tail)]);
+  return {
+    ...png(name),
+    size: bytes.length,
+    dataUrl: `data:image/png;base64,${bytes.toString('base64')}`,
+  };
+};
+
+test('message files: a standing message keeps its file past the age the byte store would once have evicted (#4852)', async () => {
+  const { utimesSync, existsSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const [file] = (await f.upload(png('standing.png'))) as { id: string }[];
+  await f.send([file]);
+  const blob = f.blobOf(file!.id);
+  // 91 days old, and a day later so any once-a-day sweep runs on this upload.
+  const old = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000);
+  utimesSync(blob, old, old);
+  vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 24 * 60 * 60 * 1000);
+  expect(Array.isArray(await f.upload(pngVariant('next.png', 'next')))).toBe(
+    true,
+  );
+  expect(existsSync(blob)).toBe(true);
+  const read = await h.request('bob', `/attachments/${file!.id}`);
+  expect(read.status).toBe(200);
+  expect(Buffer.from(await read.arrayBuffer())).toEqual(PNG);
+});
+
+test('message files: a standing message keeps its file past a byte cap the store would once have enforced (#4852)', async () => {
+  const { existsSync } = await import('node:fs');
+  vi.stubEnv('STATION_ATTACHMENT_MAX_BYTES', String(PNG.length));
+  try {
+    const h = await harness();
+    const f = await aliceFiles(h);
+    const [file] = (await f.upload(png('standing.png'))) as { id: string }[];
+    await f.send([file]);
+    const blob = f.blobOf(file!.id);
+    const now = Date.now();
+    expect(
+      Array.isArray(await f.upload(pngVariant('second.png', 'second'))),
+    ).toBe(true);
+    vi.spyOn(Date, 'now').mockReturnValue(now + 24 * 60 * 60 * 1000);
+    expect(
+      Array.isArray(await f.upload(pngVariant('third.png', 'third'))),
+    ).toBe(true);
+    expect(existsSync(blob)).toBe(true);
+    expect((await h.request('bob', `/attachments/${file!.id}`)).status).toBe(
+      200,
+    );
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
+test('message files: a full quota recovers from deleted messages and old unsent uploads, but keeps sent files and recent uploads (#4812)', async () => {
+  const { existsSync, readdirSync, utimesSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const [kept] = (await f.upload(png('kept.png'))) as { id: string }[];
+  await f.send([kept]);
+  const [gone] = (await f.upload(png('gone.png'))) as { id: string }[];
+  const deleted = await f.send([gone]);
+  const [recent] = (await f.upload(png('recent.png'))) as { id: string }[];
+  // Fill the binding to its 1280 files with uploads no message names.
+  const bytes = new RoomAttachments(f.root, 'room', { retention: false });
+  const unsent = Array.from(
+    { length: 1280 - 3 },
+    () =>
+      bytes.store(f.binding, [
+        png() as Parameters<RoomAttachments['store']>[1][number],
+      ])[0]!.id,
+  );
+  expect(await f.upload(png('over.png'))).toBe(400);
+  // Deleting a message frees its file's place at once.
+  expect(await f.remove(deleted.messageId)).toBe(200);
+  const [freed] = (await f.upload(png('freed.png'))) as { id: string }[];
+  expect(freed).toBeTruthy();
+  expect(await f.upload(png('full-again.png'))).toBe(400);
+  // Unsent uploads older than a day are released by the next upload. The
+  // sent file is made as old, to show it stays for its message, not its age.
+  const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
+  for (const id of [...unsent, kept!.id])
+    utimesSync(join(f.directory()!, `${id}.json`), old, old);
+  const [after] = (await f.upload(png('after.png'))) as { id: string }[];
+  expect(after).toBeTruthy();
+  expect(readdirSync(f.directory()!).sort()).toEqual(
+    [kept!.id, recent!.id, freed!.id, after!.id]
+      .map((id) => `${id}.json`)
+      .sort(),
+  );
+  expect((await h.request('bob', `/attachments/${kept!.id}`)).status).toBe(200);
+  // The recent unsent upload is still there to send.
+  await f.send([recent]);
+  expect(existsSync(f.blobOf(recent!.id))).toBe(true);
+});
+
+test('message files: bytes that are not the declared image are refused (#4812)', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const declared = (bytes: Buffer, mimeType = 'image/png') => ({
+    kind: 'image',
+    name: 'claimed.png',
+    mimeType,
+    size: bytes.length,
+    dataUrl: `data:${mimeType};base64,${bytes.toString('base64')}`,
+  });
+  const upload = async (file: Record<string, unknown>) =>
+    (
+      await h.request('alice', '/attachments', 'POST', {
+        ...guard(a),
+        attachments: [file],
+      })
+    ).status;
+  expect(await upload(declared(Buffer.from('<html>not a PNG</html>')))).toBe(
+    400,
+  );
+  // A real image of another type is refused under the wrong name too.
+  expect(await upload(declared(Buffer.from('GIF89a\x01\x00\x01\x00')))).toBe(
+    400,
+  );
+  // The control: the same route takes a real PNG.
+  expect(await upload(declared(PNG))).toBe(200);
+});
+
+test('viewers cannot react, edit, delete or upload, and a file is read only through its own channel', async () => {
+  const h = await harness('viewer');
+  const a = await h.discover('alice');
+  const b = await h.discover('bob');
+  const files = await data(
+    await h.request('alice', '/attachments', 'POST', {
+      ...guard(a),
+      attachments: [png()],
+    }),
+  );
+  const message = parseProjectRoomMessage(
+    await data(
+      await h.request('alice', '/messages', 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+        text: 'owner',
+        attachments: files,
+      }),
+    ),
+  );
+  for (const [leaf, extra] of [
+    ['reactions', { emoji: '👍', reacted: true }],
+    ['edit', { intentId: randomUUID(), text: 'mine' }],
+    ['delete', { intentId: randomUUID() }],
+  ] as const)
+    expect(
+      (
+        await h.request(
+          'bob',
+          `/messages/${message.messageId}/${leaf}`,
+          'POST',
+          { ...guard(b), ...extra },
+        )
+      ).status,
+    ).toBe(403);
+  expect(
+    (
+      await h.request('bob', '/attachments', 'POST', {
+        ...guard(b),
+        attachments: [png()],
+      })
+    ).status,
+  ).toBe(403);
+  const channel = h.runtime.store.createChannel(
+    h.scope,
+    { name: 'other' },
+    () => {},
+  );
+  const fileId = message.attachments![0]!.id;
+  const read = await h.app.request(
+    `/api/projects/example/channels/${channel.channelId}/attachments/${fileId}`,
+    { headers: { authorization: 'Bearer bob-session' } },
+  );
+  expect(read.status).toBe(404);
+  const original = await h.request('bob', `/attachments/${fileId}`);
+  expect(original.status).toBe(200);
+});
+
+/** The store's own tuple-to-directory mapping, so a test never guesses. */
+async function bindingDirectory(root: string, binding: readonly string[]) {
+  const { createHash } = await import('node:crypto');
+  return join(
+    root,
+    'bindings',
+    createHash('sha256').update(JSON.stringify(binding)).digest('hex'),
+  );
+}
+async function blobCount(root: string) {
+  const { existsSync, readdirSync } = await import('node:fs');
+  const blobs = join(root, 'blobs');
+  return existsSync(blobs)
+    ? readdirSync(blobs).flatMap((prefix) => readdirSync(join(blobs, prefix)))
+        .length
+    : 0;
+}
+/** One of bob's uploads, whose record a test then damages. */
+async function bobsRecord(
+  h: Awaited<ReturnType<typeof harness>>,
+  f: Awaited<ReturnType<typeof aliceFiles>>,
+) {
+  const b = await h.discover('bob');
+  const [file] = (await data(
+    await h.request('bob', '/attachments', 'POST', {
+      ...guard(b),
+      attachments: [png('interrupted.png')],
+    }),
+  )) as { id: string }[];
+  const directory = await bindingDirectory(f.root, [
+    ...f.binding.slice(0, -1),
+    b.actor.id,
+  ]);
+  return { file: file!, path: join(directory, `${file!.id}.json`) };
+}
+/** Alice's file's blob path, through her computed binding directory. */
+async function aliceBlob(
+  f: Awaited<ReturnType<typeof aliceFiles>>,
+  id: string,
+) {
+  const { readFileSync } = await import('node:fs');
+  const directory = await bindingDirectory(f.root, f.binding);
+  const { blobRef } = JSON.parse(
+    readFileSync(join(directory, `${id}.json`), 'utf8'),
+  ) as { blobRef: string };
+  const digest = blobRef.slice('sha256-'.length);
+  return join(f.root, 'blobs', digest.slice(0, 2), digest);
+}
+const unavailable = async (response: Response) => {
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({
+    error: { code: PROJECT_ROOM_FILES_UNAVAILABLE_CODE },
+  });
+};
+
+test('message files: a record whose reference is unknown stops reclamation and new uploads, and only that (#4852)', async () => {
+  const { existsSync, readFileSync, writeFileSync, rmSync } = await import(
+    'node:fs'
+  );
+  const h = await harness();
+  const f = await aliceFiles(h);
+  // A standing message keeps its file throughout.
+  const [kept] = (await f.upload(pngVariant('kept.png', 'kept'))) as {
+    id: string;
+  }[];
+  await f.send([kept]);
+  const damaged = await bobsRecord(h, f);
+  writeFileSync(damaged.path, '{');
+  const blobsBefore = await blobCount(f.root);
+  const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
+    id: string;
+  }[];
+  const deleted = await f.send([gone]);
+  // The delete commits; its release cannot prove references, so it deletes
+  // nothing and keeps the released record.
+  expect(await f.remove(deleted.messageId)).toBe(200);
+  const aliceDirectory = await bindingDirectory(f.root, f.binding);
+  expect(existsSync(join(aliceDirectory, `${gone!.id}.json`))).toBe(true);
+  expect(await blobCount(f.root)).toBe(blobsBefore + 1);
+  expect(readFileSync(damaged.path, 'utf8')).toBe('{');
+  const marker = join(f.root, 'reclamation-blocked.json');
+  expect(
+    (
+      JSON.parse(readFileSync(marker, 'utf8')) as {
+        records: { path: string }[];
+      }
+    ).records[0]!.path,
+  ).toBe(damaged.path);
+  // New attachments are refused; text, reads and downloads keep working.
+  await unavailable(
+    await h.request('alice', '/attachments', 'POST', {
+      ...guard(f.a),
+      attachments: [pngVariant('more.png', 'more')],
+    }),
+  );
+  expect(await blobCount(f.root)).toBe(blobsBefore + 1);
+  const text = await h.request('alice', '/messages', 'POST', {
+    ...guard(f.a),
+    intentId: randomUUID(),
+    text: 'Text still sends.',
+  });
+  expect(text.status).toBe(200);
+  expect((await h.request('bob', `/attachments/${kept!.id}`)).status).toBe(200);
+  // The operator removes the damaged record: the next upload re-checks,
+  // clears the block, and the kept release is reclaimed by its sweep.
+  rmSync(damaged.path);
+  const [after] = (await f.upload(pngVariant('after.png', 'after'))) as {
+    id: string;
+  }[];
+  expect(after).toBeTruthy();
+  expect(existsSync(marker)).toBe(false);
+  expect(existsSync(join(aliceDirectory, `${gone!.id}.json`))).toBe(false);
+  expect((await h.request('bob', `/attachments/${kept!.id}`)).status).toBe(200);
+});
+
+test('message files: one damaged record cannot turn upload-delete cycles into unbounded bytes (#4852 review, six cycles)', async () => {
+  const { writeFileSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const damaged = await bobsRecord(h, f);
+  writeFileSync(damaged.path, '{');
+  const statuses: (number | string)[] = [];
+  for (let n = 0; n < 6; n++) {
+    const uploaded = await f.upload(
+      pngVariant(`cycle-${n}.png`, `distinct-${n}`),
+    );
+    if (!Array.isArray(uploaded)) {
+      statuses.push(uploaded);
+      continue;
+    }
+    statuses.push('stored');
+    const message = await f.send([uploaded[0]]);
+    expect(await f.remove(message.messageId)).toBe(200);
+  }
+  // The first cycle's release finds the damaged record and stops; every
+  // later upload is refused, so bytes stay bounded: bob's interrupted upload
+  // and the first cycle's file, both kept rather than deleted unproven.
+  expect(statuses).toEqual(['stored', 503, 503, 503, 503, 503]);
+  expect(await blobCount(f.root)).toBe(2);
+});
+
+test('message files: a damaged record whose reference is recoverable keeps its bytes, and other files still reclaim (#4852)', async () => {
+  const { existsSync, readFileSync, writeFileSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const damaged = await bobsRecord(h, f);
+  const { blobRef } = JSON.parse(readFileSync(damaged.path, 'utf8')) as {
+    blobRef: string;
+  };
+  const digest = blobRef.slice('sha256-'.length);
+  const bobsBlob = join(f.root, 'blobs', digest.slice(0, 2), digest);
+  // Torn after the reference: unparseable, but the reference is there.
+  writeFileSync(damaged.path, `{"blobRef":"${blobRef}","attachment":{"na`);
+  // Alice deletes a message that names the same bytes, and another with
+  // bytes nothing else names.
+  const [same] = (await f.upload(png('interrupted.png'))) as { id: string }[];
+  const [own] = (await f.upload(pngVariant('own.png', 'own'))) as {
+    id: string;
+  }[];
+  const ownBlob = await aliceBlob(f, own!.id);
+  expect(await aliceBlob(f, same!.id)).toBe(bobsBlob);
+  expect(await f.remove((await f.send([same])).messageId)).toBe(200);
+  expect(await f.remove((await f.send([own])).messageId)).toBe(200);
+  expect(existsSync(bobsBlob)).toBe(true);
+  expect(existsSync(ownBlob)).toBe(false);
+  expect(existsSync(join(f.root, 'reclamation-blocked.json'))).toBe(false);
+  expect(Array.isArray(await f.upload(pngVariant('next.png', 'next')))).toBe(
+    true,
+  );
+});
+
+test('message files: a record that cannot be read at all (EISDIR) fails closed (#4852)', async () => {
+  const { mkdirSync, rmSync, existsSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const damaged = await bobsRecord(h, f);
+  rmSync(damaged.path);
+  mkdirSync(damaged.path);
+  const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
+    id: string;
+  }[];
+  const blob = await aliceBlob(f, gone!.id);
+  expect(await f.remove((await f.send([gone])).messageId)).toBe(200);
+  expect(existsSync(blob)).toBe(true);
+  await unavailable(
+    await h.request('alice', '/attachments', 'POST', {
+      ...guard(f.a),
+      attachments: [pngVariant('more.png', 'more')],
+    }),
+  );
+});
+
+test.skipIf(process.getuid?.() === 0)(
+  'message files: a record the Station may not read (EACCES) fails closed, and recovers once readable (#4852)',
+  async () => {
+    const { chmodSync, existsSync } = await import('node:fs');
+    const h = await harness();
+    const f = await aliceFiles(h);
+    const damaged = await bobsRecord(h, f);
+    chmodSync(damaged.path, 0o000);
+    try {
+      const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
+        id: string;
+      }[];
+      const blob = await aliceBlob(f, gone!.id);
+      expect(await f.remove((await f.send([gone])).messageId)).toBe(200);
+      expect(existsSync(blob)).toBe(true);
+      await unavailable(
+        await h.request('alice', '/attachments', 'POST', {
+          ...guard(f.a),
+          attachments: [pngVariant('more.png', 'more')],
+        }),
+      );
+      chmodSync(damaged.path, 0o600);
+      expect(
+        Array.isArray(await f.upload(pngVariant('after.png', 'after'))),
+      ).toBe(true);
+      expect(existsSync(blob)).toBe(false);
+    } finally {
+      chmodSync(damaged.path, 0o600);
+    }
+  },
+);

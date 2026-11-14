@@ -4916,6 +4916,28 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'PUT', path: '/api/projects/:slug/room/note' },
     { method: 'POST', path: '/api/projects/:slug/room/presence' },
     { method: 'GET', path: '/api/projects/:slug/room/events' },
+    // Reactions, edits and deletes (#4796, #4797) compose the room's discuss
+    // tier; the room refuses edits and deletes of anyone else's message.
+    // Files (#4812): upload is discuss, a read is the room's view tier. Unlike
+    // Task-room files, they never feed an Agent request, and each is bound to
+    // its uploader (see account-bound-device-gate.ts isAccountBoundRoomLeaf).
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/messages/:messageId/reactions',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/messages/:messageId/edit',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/messages/:messageId/delete',
+    },
+    { method: 'POST', path: '/api/projects/:slug/room/attachments' },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/room/attachments/:attachmentId',
+    },
     { method: 'POST', path: '/api/projects/:slug/room/agents' },
     { method: 'GET', path: '/api/projects/:slug/room/agents/:requestId' },
     {
@@ -4946,6 +4968,26 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/projects/:slug/channels/:channelId/presence',
     },
     { method: 'GET', path: '/api/projects/:slug/channels/:channelId/events' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/messages/:messageId/reactions',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/messages/:messageId/edit',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/messages/:messageId/delete',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/attachments',
+    },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/channels/:channelId/attachments/:attachmentId',
+    },
     {
       method: 'POST',
       path: '/api/projects/:slug/channels/:channelId/agents',

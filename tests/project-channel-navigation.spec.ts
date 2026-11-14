@@ -340,7 +340,11 @@ test.describe('Project channels on a phone (#4795)', () => {
 
       // The message's phone actions open its thread as its own page.
       await openMessageActions(room, 'Hello from the phone');
-      await room.getByRole('button', { name: /Reply/ }).first().click();
+      // A phone's actions are a labelled menu (#4796), portalled over the page.
+      await page
+        .getByRole('menu')
+        .getByRole('menuitem', { name: 'Reply in thread' })
+        .click();
       await expect
         .poll(() => new URL(page.url()).searchParams.get('thread'))
         .not.toBeNull();
@@ -408,7 +412,7 @@ test.describe('Project channels on a phone (#4795)', () => {
   });
 });
 
-/** A phone shows a message's actions from its More button. */
+/** A phone shows a message's actions as a menu from its More button. */
 async function openMessageActions(room: Locator, text: string) {
   const row = room.locator('.room-row').filter({ hasText: text });
   await row.getByRole('button', { name: /^More actions for / }).click();

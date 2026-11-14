@@ -934,7 +934,8 @@ Personal Task rooms expose these authenticated routes:
 - `POST /api/tasks/:taskId/room/attachments` takes `{taskCreatedAt, attachments}`,
   where each input has `kind`, `name`, `mimeType`, `size` and an inline `dataUrl`.
   It returns `{success: true, data: TaskRoomAttachment[]}`. Limits are five files,
-  5 MiB each and 15 MiB decoded total. This exact POST has a 22 MiB JSON body
+  5 MiB each and 15 MiB decoded total. An image's bytes must start with the
+  declared image type's signature (a prefix check, not a full decode). This exact POST has a 22 MiB JSON body
   ceiling; it retains the standard mutation rate budget.
 - `GET /api/tasks/:taskId/room/attachments/:attachmentId?taskCreatedAt=...`
   returns authenticated bytes as `application/octet-stream`, with `nosniff`,
@@ -1047,7 +1048,7 @@ intent and grant no permission.
 | `GET` base | none | Room identity, current actor/capabilities, note, checkpoint and presence |
 | `POST /init` | `{ expectedProjectId }` | `{ scope, roomId }`; requires discussion permission and is idempotent |
 | `GET /messages` | `after` sequence, `limit` 1–100 | ordered history, checkpoint, `nextAfter`; byte limits may split a page |
-| `POST /messages` | guards plus `{ intentId, text, replyTo? }` | committed message; exact actor/Room/intent retry returns the same message, changed payload conflicts |
+| `POST /messages` | guards plus `{ intentId, text, replyTo?, attachments? }` | committed message; exact actor/Room/intent retry returns the same message, changed payload conflicts |
 | `PUT /note` | guards plus `{ expectedRevision, markdown, sourceMessageIds }` | revision-checked shared note |
 | `POST /presence` | guards plus `{ clientId, state: 'join' | 'leave' }` | current leased participants |
 | `GET /events` | none | SSE `changed`, `presence`, terminal `revoked`, and heartbeat comments |
@@ -1091,6 +1092,81 @@ after the upgrade are adopted the next time the store opens. A room whose stored
 record does not match its row is never adopted; that Project's room and channels
 stay refused, as before the upgrade. A database from a newer Station is refused
 before any schema change or migration.
+
+### Reactions, edits, deletes and files
+
+These routes exist under `/room` and under `/channels/:channelId`. A host
+advertises them with the handshake flag `projectRoomMessageActions`; an older
+host answers 404. Each takes the room guards and needs `discuss`, except a file
+read, which needs `view`.
+
+| Method and suffix | Input | Result |
+| --- | --- | --- |
+| `POST /messages/:messageId/reactions` | guards plus `{ emoji, reacted }` | the message. Sets the caller's own reaction; repeating either state changes nothing |
+| `POST /messages/:messageId/edit` | guards plus `{ intentId, text }` | the message with the new text and `editedAt`; an exact intent retry replays |
+| `POST /messages/:messageId/delete` | guards plus `{ intentId }` | the tombstone; deleting again returns it |
+| `POST /attachments` | guards plus `{ attachments: [{ kind, name, mimeType, size, dataUrl }] }` | stored descriptors `{ id, kind, name, mimeType, size }` for the next message |
+| `GET /attachments/:attachmentId` | none | the file's bytes as `application/octet-stream`, sandboxed |
+
+History projects each message from separate records: `text` is the latest
+edit's, with `editedAt`; a deleted message has `deletedAt`, empty `text`, and
+no files or reactions, and keeps its author, time and place, so replies to it
+still read. `reactions` lists `{ emoji, actors }` in the order people first
+reacted. The stored message row is never rewritten.
+
+- **Who may change a message.** Only the person who wrote it may edit or
+  delete it, and nobody edits or deletes an Agent's message (`409
+  project_room_forbidden`; not 403, which clients read as lost access). An
+  edit or reaction on a deleted message is `409 project_room_conflict`.
+- **Limits.** A reaction is one emoji of at most 32 bytes. A message holds at
+  most 20 distinct emoji and 100 reactions, and at most 50 edits and deletes.
+  Past a limit the server refuses with `429 project_room_capacity`. Files use
+  the Task room's limits: at most 5 per message, 5 MiB each and 15 MiB in all,
+  as images, PDF, text, Markdown, CSV or JSON (`400 project_room_invalid`). An
+  uploaded file can be sent only by the person who uploaded it, in one
+  message, in the room it was uploaded to. Its bytes can be read only while
+  that message stands. An image's bytes must start with the declared image
+  type's signature (a prefix check, not a full image decode). Each uploader
+  may hold 1280 files in a room. Deleting a message releases its files, and
+  an uploader's next upload in a room first releases their unsent files there
+  older than a day (no timer runs). Uploads, releases and messages naming
+  files hold one store-wide lock across processes, with access re-checked
+  once it is held, and the store never evicts by age or size.
+- **What a release deletes.** Before changing anything a release reads every
+  file record in the room's store. It deletes a released file's bytes only
+  if no other record names them; a damaged record still protects any blob
+  reference recoverable from its text. If any record's reference cannot be
+  known (it is unreadable, or damaged with nothing recoverable), the release
+  fails closed: it removes and deletes nothing, keeps the released records
+  and their bytes, and writes `reclamation-blocked.json` in the store,
+  naming each such record and its error. Until a scan reads every record,
+  new attachments are refused with `503 project_room_files_unavailable`;
+  sending text, reading and downloading existing files keep working.
+  Recovery: inspect the records that file names under
+  `<STATION_HOME>/project-room-attachments/bindings/`, restore or fix each
+  (for example its permissions), or remove it once you have decided its file
+  is not needed. The next upload re-checks the store, clears the block, and
+  the kept releases are reclaimed by later uploads' sweeps.
+- **Bound.** Live data is bounded per binding, not across the store: one
+  uploader in one room holds at most 1280 files of up to 5 MiB (6.25 GiB),
+  unsent uploads included until that uploader's next upload after a day.
+  While a block lasts, released bytes stay counted against their uploader
+  because their records are kept. Reported limits, not separately proven: a
+  crash between writing bytes and their record can leave up to 15 MiB
+  unreferenced per crashed upload, which nothing reclaims yet (records are
+  written whole, so a crash leaves no torn record), and each release reads
+  every record in the store, so its cost grows with the store (#4942).
+  Account-bound devices may read room files, and send messages, reactions,
+  edits and files once the operator grants the device operate scope (account
+  binding starts read-only); unlike Task-room files, these never reach an
+  Agent request.
+- **Read state.** Reactions, edits and deletes do not move the room's
+  `checkpoint.lastSeq`, which read markers count, so they never mark a channel
+  unread. They do wake `/events`, which sends `changed` with the same `lastSeq`
+  so open clients re-read history.
+
+Schema version 2 adds these records' tables to an existing version-1 file
+without changing any stored row.
 
 Reads, discussion, note editing and execution require their distinct current
 Project actions plus transport permission. Agent requests also require current

@@ -2,6 +2,9 @@ import {
   PROJECT_ROOM_PROJECT_NOT_FOUND_CODE,
   type ProjectRoomChannelCreateInput,
   type ProjectRoomChannelUpdateInput,
+  type ProjectRoomDeleteInput,
+  type ProjectRoomEditInput,
+  type ProjectRoomReactionInput,
 } from '@kontourai/station-contracts/project-room';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
@@ -10,20 +13,24 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StationHttpError } from '../client/api-error-message';
 import type { ApiRequestScope } from '../client/http';
 import {
   createProjectRoomChannel,
+  deleteProjectRoomMessage,
   discoverProjectRoom,
+  editProjectRoomMessage,
   fetchProjectRoomHistory,
   initializeProjectRoom,
   listProjectRoomChannels,
   type ProjectRoomBrowserView,
   type ProjectRoomChannelGuards,
   type ProjectRoomMessageIntent,
+  type ProjectRoomMessageTarget,
   type ProjectRoomNoteIntent,
   ProjectRoomProtocolError,
+  reactToProjectRoomMessage,
   saveProjectRoomNote,
   sendProjectRoomMessage,
   setProjectRoomPresence,
@@ -82,6 +89,13 @@ export function projectRoomChannelsKey(
  */
 export const PROJECT_ROOM_HISTORY_MAX_PAGES = 20;
 /**
+ * Most messages `useProjectRoomRetainedHistory` re-reads below the live
+ * windows (the same 500 the windows hold). A caller must not show a kept row
+ * older than this span: nothing would refresh it.
+ */
+export const PROJECT_ROOM_RETAINED_REREAD_MESSAGES =
+  PROJECT_ROOM_HISTORY_MAX_PAGES * 25;
+/**
  * The room route said the Project itself is not on this Station (#4855):
  * show "no such Project", never "unavailable" with a retry.
  */
@@ -97,6 +111,204 @@ export function isProjectRoomAccessError(error: unknown) {
     error instanceof StationHttpError &&
     (error.status === 401 || error.status === 403)
   );
+}
+/**
+ * One history window, `after` < seq <= `end`. The byte cap can split even a
+ * 25-message window; its forward continuations are finished before the caller
+ * moves backward, without overlapping newer windows.
+ */
+async function readProjectRoomWindow(
+  scope: ApiRequestScope,
+  slug: string,
+  identity: { projectId: string; roomId: string },
+  { after: start, end }: { after: number; end: number },
+  signal: AbortSignal,
+  channelId: string | undefined,
+) {
+  let after = start;
+  const messages: Awaited<
+    ReturnType<typeof fetchProjectRoomHistory>
+  >['messages'] = [];
+  for (let requests = 0; requests < 25; requests++) {
+    signal.throwIfAborted();
+    const page = await fetchProjectRoomHistory(
+      scope,
+      slug,
+      identity,
+      after,
+      Math.max(1, end - after),
+      signal,
+      channelId,
+    );
+    signal.throwIfAborted();
+    messages.push(...page.messages.filter((item) => item.seq <= end));
+    const last = page.messages[page.messages.length - 1]?.seq ?? after;
+    if (
+      last >= end ||
+      (page.nextAfter === null && last >= page.checkpoint.lastSeq)
+    )
+      return { ...page, messages };
+    if (page.nextAfter === null || page.nextAfter <= after)
+      throw new ProjectRoomProtocolError('Project room history is incomplete.');
+    after = page.nextAfter;
+  }
+  throw new ProjectRoomProtocolError(
+    'Project room history exceeded its window budget.',
+  );
+}
+/**
+ * One order for every Project-room history read, taken when the read starts:
+ * the live windows, the retained re-read and the immediate span read all draw
+ * from it (#4852 review). A caller keeps, per message, the number of the read
+ * that last set it and never lets a read that started earlier replace it, so
+ * a slow older response cannot bring back text a newer read already
+ * replaced. A change both reads missed arrives with the next live event.
+ */
+let historyReads = 0;
+function nextHistoryRead() {
+  historyReads += 1;
+  return historyReads;
+}
+/** Messages with `after` < seq <= `end`. */
+export interface ProjectRoomHistorySpan {
+  after: number;
+  end: number;
+}
+/**
+ * Re-reads the messages a room still shows from history windows it has moved
+ * past (#4797). The history query is keyed by the room's latest sequence, so
+ * when a new message moves the tail, rows read under the old key are kept on
+ * screen but no query owns them; a reaction, edit or delete of one of them
+ * would otherwise never reach the screen.
+ *
+ * This query lives under the room's key, so every live `changed` event and
+ * every mutation that invalidates the room re-reads the span; it reads nothing
+ * until then. `span` is asked at read time, for the rows shown at that moment.
+ * At most {@link PROJECT_ROOM_RETAINED_REREAD_MESSAGES} messages are read,
+ * newest first; the caller retires kept rows older than that.
+ */
+export function useProjectRoomRetainedHistory(
+  incomingScope: ApiRequestScope,
+  slug: string,
+  projectId: string,
+  channelId: string | undefined,
+  roomId: string | undefined,
+  span: () => ProjectRoomHistorySpan | undefined,
+) {
+  const { apiBase, authorityKey } = incomingScope;
+  const scope = useMemo(
+    () => ({ apiBase, authorityKey }),
+    [apiBase, authorityKey],
+  );
+  const asked = useRef(span);
+  asked.current = span;
+  return useQuery({
+    queryKey: [
+      ...(channelId === undefined
+        ? projectRoomKey(scope, projectId)
+        : projectRoomChannelKey(scope, projectId, channelId)),
+      roomId ?? 'unopened',
+      'history',
+      'retained',
+    ],
+    enabled: !!roomId,
+    retry: false,
+    gcTime: 0,
+    staleTime: Number.POSITIVE_INFINITY,
+    // Rows were current when shown: nothing is read until the room changes.
+    // A room that is not open holds no data at all, even an empty list.
+    initialData: roomId ? { messages: [], readSeq: 0 } : undefined,
+    initialDataUpdatedAt: 0,
+    queryFn: ({ signal }) =>
+      readProjectRoomSpan(
+        scope,
+        slug,
+        projectId,
+        roomId,
+        asked.current(),
+        signal,
+        channelId,
+      ),
+  });
+}
+/**
+ * Re-reads one span right away: the rows that just left the live windows
+ * (#4852 review). A history read cancelled as the tail moved left them as they
+ * were before any change it would have shown; this reads them again without
+ * waiting for the next live event. Each new span is one read, under the room's
+ * key, so an invalidation re-reads it too.
+ */
+export function useProjectRoomHistorySpan(
+  incomingScope: ApiRequestScope,
+  slug: string,
+  projectId: string,
+  channelId: string | undefined,
+  roomId: string | undefined,
+  span: ProjectRoomHistorySpan | undefined,
+) {
+  const { apiBase, authorityKey } = incomingScope;
+  const scope = useMemo(
+    () => ({ apiBase, authorityKey }),
+    [apiBase, authorityKey],
+  );
+  return useQuery({
+    queryKey: [
+      ...(channelId === undefined
+        ? projectRoomKey(scope, projectId)
+        : projectRoomChannelKey(scope, projectId, channelId)),
+      roomId ?? 'unopened',
+      'history',
+      'span',
+      span?.after,
+      span?.end,
+    ],
+    enabled: !!roomId && !!span,
+    retry: false,
+    gcTime: 0,
+    queryFn: ({ signal }) =>
+      readProjectRoomSpan(
+        scope,
+        slug,
+        projectId,
+        roomId,
+        span,
+        signal,
+        channelId,
+      ),
+  });
+}
+/** Messages in `span`, at most the re-read budget, newest windows first. */
+async function readProjectRoomSpan(
+  scope: ApiRequestScope,
+  slug: string,
+  projectId: string,
+  roomId: string | undefined,
+  wanted: ProjectRoomHistorySpan | undefined,
+  signal: AbortSignal,
+  channelId: string | undefined,
+) {
+  const readSeq = nextHistoryRead();
+  const messages: Awaited<
+    ReturnType<typeof readProjectRoomWindow>
+  >['messages'] = [];
+  if (!roomId || !wanted || wanted.end <= wanted.after)
+    return { messages, readSeq };
+  const floor = Math.max(
+    wanted.after,
+    wanted.end - PROJECT_ROOM_RETAINED_REREAD_MESSAGES,
+  );
+  for (let end = wanted.end; end > floor; end -= 25) {
+    const window = await readProjectRoomWindow(
+      scope,
+      slug,
+      { projectId, roomId },
+      { after: Math.max(floor, end - 25), end },
+      signal,
+      channelId,
+    );
+    messages.unshift(...window.messages);
+  }
+  return { messages, readSeq };
 }
 /**
  * One room's discovery, history, sends, note and live stream. Without
@@ -148,41 +360,16 @@ export function useProjectRoom(
     gcTime: 0,
     initialPageParam: { after: tailAfter, end: tailAfter + 25 },
     queryFn: async ({ pageParam, signal }) => {
-      // The byte cap can split even a 25-message window. Finish its forward
-      // continuations before moving backward, without overlapping newer windows.
-      const { end } = pageParam;
-      let after = pageParam.after;
-      const messages: Awaited<
-        ReturnType<typeof fetchProjectRoomHistory>
-      >['messages'] = [];
-      for (let requests = 0; requests < 25; requests++) {
-        signal.throwIfAborted();
-        const page = await fetchProjectRoomHistory(
-          scope,
-          slug,
-          { projectId, roomId: roomId! },
-          after,
-          Math.max(1, end - after),
-          signal,
-          channelId,
-        );
-        signal.throwIfAborted();
-        messages.push(...page.messages.filter((item) => item.seq <= end));
-        const last = page.messages[page.messages.length - 1]?.seq ?? after;
-        if (
-          last >= end ||
-          (page.nextAfter === null && last >= page.checkpoint.lastSeq)
-        )
-          return { ...page, messages };
-        if (page.nextAfter === null || page.nextAfter <= after)
-          throw new ProjectRoomProtocolError(
-            'Project room history is incomplete.',
-          );
-        after = page.nextAfter;
-      }
-      throw new ProjectRoomProtocolError(
-        'Project room history exceeded its window budget.',
+      const readSeq = nextHistoryRead();
+      const page = await readProjectRoomWindow(
+        scope,
+        slug,
+        { projectId, roomId: roomId! },
+        pageParam,
+        signal,
+        channelId,
       );
+      return { ...page, readSeq };
     },
     getNextPageParam: (_last, _pages, { after }) =>
       after > 0 ? { after: Math.max(0, after - 25), end: after } : undefined,
@@ -217,6 +404,36 @@ export function useProjectRoom(
       saveProjectRoomNote(scope, slug, input, channelId),
     onSuccess: () => client.invalidateQueries({ queryKey: root }),
   });
+  // Reactions, edits and deletes keep the room's sequence, so the history
+  // window is re-read rather than advanced. A refusal re-reads it too: the
+  // message may have changed under the caller.
+  const react = useMutation({
+    retry: false,
+    mutationFn: ({
+      target,
+      ...input
+    }: ProjectRoomReactionInput & { target: ProjectRoomMessageTarget }) =>
+      reactToProjectRoomMessage(scope, slug, target, input, channelId),
+    onSettled: () => client.invalidateQueries({ queryKey: root }),
+  });
+  const edit = useMutation({
+    retry: false,
+    mutationFn: ({
+      target,
+      ...input
+    }: ProjectRoomEditInput & { target: ProjectRoomMessageTarget }) =>
+      editProjectRoomMessage(scope, slug, target, input, channelId),
+    onSettled: () => client.invalidateQueries({ queryKey: root }),
+  });
+  const remove = useMutation({
+    retry: false,
+    mutationFn: ({
+      target,
+      ...input
+    }: ProjectRoomDeleteInput & { target: ProjectRoomMessageTarget }) =>
+      deleteProjectRoomMessage(scope, slug, target, input, channelId),
+    onSettled: () => client.invalidateQueries({ queryKey: root }),
+  });
   useEffect(() => {
     if (
       ![
@@ -225,6 +442,9 @@ export function useProjectRoom(
         initialize.error,
         send.error,
         note.error,
+        react.error,
+        edit.error,
+        remove.error,
       ].some(isProjectRoomAccessError)
     )
       return;
@@ -239,6 +459,9 @@ export function useProjectRoom(
     initialize.error,
     send.error,
     note.error,
+    react.error,
+    edit.error,
+    remove.error,
   ]);
   useEffect(() => {
     if (!roomId || !actorId || stopped) return;
@@ -336,12 +559,18 @@ export function useProjectRoom(
     history,
     send,
     note,
+    react,
+    edit,
+    remove,
     stopped,
     streamError,
     recover: () => {
       initialize.reset();
       send.reset();
       note.reset();
+      react.reset();
+      edit.reset();
+      remove.reset();
       setStopped(false);
       setStreamError(false);
       void client.resetQueries({ queryKey: root });
