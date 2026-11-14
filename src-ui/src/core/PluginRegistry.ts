@@ -1038,7 +1038,8 @@ export class PluginRegistry {
     // rather than trusting whatever the window holds.
     delete (window as any).__station_ai_plugins;
     const loadState = await this.initialize();
-    if (this.failure !== 'registry-unavailable') this.resetHealthyProbeBackoff();
+    if (this.failure !== 'registry-unavailable')
+      this.resetHealthyProbeBackoff();
     this.setLoadStatus(loadState, this.failedPluginNames, this.failure);
     return loadState;
   }

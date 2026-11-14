@@ -298,7 +298,11 @@ describe('PluginRegistry inventory timeout', () => {
           if (!recovered) throw new TypeError('Failed to fetch');
           return Response.json({
             plugins: [
-              { name: 'knowledge-docs-starter', version: '1.0.0', hasBundle: true },
+              {
+                name: 'knowledge-docs-starter',
+                version: '1.0.0',
+                hasBundle: true,
+              },
             ],
           });
         }),

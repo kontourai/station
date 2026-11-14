@@ -10,10 +10,10 @@ import type {
 import { FullScreenError, LayoutHeader } from '@kontourai/station-sdk';
 import type { JSX } from 'react';
 import { useSyncExternalStore } from 'react';
+import { Button } from '../components/Button';
 import { FlowRunConsole } from '../components/flow/FlowRunConsole';
 import { MCPToolUIFrame } from '../components/mcp-ui/MCPToolUIFrame';
 import { StationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
-import { Button } from '../components/Button';
 import { Empty, ErrorState, SkeletonBlock } from '../components/state';
 import { TroubleshootAction } from '../components/troubleshoot/TroubleshootAction';
 import {

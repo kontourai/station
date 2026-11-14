@@ -233,7 +233,9 @@ describe('LayoutRenderer component dispatch', () => {
 
     expect(screen.getByText('Extensions could not load')).toBeTruthy();
     expect(
-      screen.getByText('Station could not read the installed plugin inventory.'),
+      screen.getByText(
+        'Station could not read the installed plugin inventory.',
+      ),
     ).toBeTruthy();
     expect(screen.queryByText('Unsupported layout tab')).toBeNull();
     expect(screen.queryByText(/not installed or registered/)).toBeNull();
