@@ -494,8 +494,8 @@ show what **Start** will use:
   turn the server reports as still running), the other engines are not listed
   and **Use Agent defaults** is unavailable.
 - The **project** control in the start heading shows its name, or **Without a project**.
-  Open it to choose a project. The list shows each project's folder and the
-  folder this chat will run in. For a linked checkout, that is its resolved
+  Open it to choose a project. The list shows each project's Git repository,
+  or its folder without one, and the folder this chat will run in. For a linked checkout, that is its resolved
   execution root. An unavailable location states why Station cannot start
   there; a folder not checked yet is marked **Not checked** and the start
   checks it. A project with no folder
