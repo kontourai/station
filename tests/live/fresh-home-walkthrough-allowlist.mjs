@@ -43,4 +43,19 @@ export const WALKTHROUGH_ALLOWLIST = [
     reason:
       'kontourai/station#766: layout chrome polls operating-state availability, which 404s for ordinary projects on a healthy instance',
   },
+  {
+    // The route sweep deep-links every route with page.goto, so each route is
+    // a fresh document on the one paired device: about 17 to 20 a minute.
+    // Each document needs two focus reports (focused on load, hidden on
+    // unload), and FocusPresence counts every report against a per-device
+    // budget of 30 a minute, refusing only reports that raise a state
+    // (src-server/services/presence/focus-presence.ts). So the sweep is
+    // refused by design; the client honours Retry-After. A person navigates
+    // inside one document and does not reach this rate. Over-posting per
+    // document (three reports, fixed in src-ui/src/hooks/focusReporter.ts)
+    // is pinned by hooks/__tests__/useFocusReporter.test.tsx, not this suite.
+    pattern: /^request-error POST 429 \/api\/presence\/focus$/,
+    reason:
+      "focus presence rate limit refusing the sweep's page-load churn (17-20 fresh documents a minute on one device, two reports each, 30 a minute budget); per-document report count is pinned by useFocusReporter.test.tsx",
+  },
 ];
