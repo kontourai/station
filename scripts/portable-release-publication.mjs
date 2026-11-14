@@ -80,6 +80,10 @@ export function releaseLocationTag(ring, version, tag) {
  * tag's base version and source SHA, and every artifact named at the release
  * the assets are staged under (`tag`, default `v<version>`) under the public
  * release base.
+ *
+ * @param {string} ring
+ * @param {any} payload
+ * @param {{ repository: string, version: string, sourceSha: string, tag?: string }} release
  */
 export function assertReleasePayload(
   ring,
