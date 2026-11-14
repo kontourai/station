@@ -3009,7 +3009,9 @@ kiro-cli's `subagent/list_update` keeps its host-chrome notification row while
 its engine row reads the roster into `child-work.updated`, and a `tool_call`
 whose `_meta.kiro.kind` is `agent-subtask` is read the same way. An ACP
 engine whose handshake names neither reporter publishes `not-reported` at
-session start.
+session start. The matrix cell's `perConnection` reason is what
+`child-work-projection.ts` and the Agents pane fall back to for an ACP
+session with no report seen in this process.
 
 The transcript projection also draws an in-place engine rewind (a
 `runtime.warning` with `ACP_SESSION_REWOUND_CODE`) as a marker row and marks

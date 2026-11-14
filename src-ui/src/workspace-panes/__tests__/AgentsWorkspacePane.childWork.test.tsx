@@ -143,19 +143,22 @@ test('the chosen scope persists across mounts', () => {
   expect(pressed('All')).toBe('true');
 });
 
-test('an engine that cannot report subagents is not an engine reporting none', () => {
+test('an engine that may not report subagents is not an engine reporting none', () => {
+  // ACP reports per connection (Kiro does, others do not): with nothing
+  // from the server, the pane says so instead of "No subagents running".
   openChat('acp');
   render(<AgentsWorkspacePane />);
   expect(
-    screen.getByText('This engine does not report subagents'),
+    screen.getByText('Subagents are not shown for this engine'),
   ).toBeTruthy();
+  expect(screen.queryByText('No subagents running')).toBeNull();
   cleanup();
   activeChatsStore.removeChat(CHAT);
   openChat('claude');
   render(<AgentsWorkspacePane />);
   expect(screen.getByText('No subagents running')).toBeTruthy();
   expect(
-    screen.queryByText('This engine does not report subagents'),
+    screen.queryByText('Subagents are not shown for this engine'),
   ).toBeNull();
 });
 

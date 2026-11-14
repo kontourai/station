@@ -601,7 +601,11 @@ How the events behave:
   (`CHILD_WORK_ITEMS_MAX_PER_REPORTER`) publishes no running set, since a cut
   one would mark the rest ended; an `agent-subtask` past 64 running is not
   tracked. Each is logged through the adapter's logger once per session while
-  it stays over the bound. No ACP subagent can be stopped on its own.
+  it stays over the bound. No ACP subagent can be stopped on its own. The
+  cell is marked per connection (`perConnection`), so an ACP session this
+  Station process has not seen report (after a restart, before the engine
+  starts again) reads `not-reported`, and the Agents pane says subagents are
+  not shown rather than that none are running.
   The roster's opaque `extension.notification` stays host chrome. Neither wire
   has a live capture (kirocrew's live captures omit the roster because it names
   the host's agents); the shapes are kirocrew's test vectors. Grok Build is
