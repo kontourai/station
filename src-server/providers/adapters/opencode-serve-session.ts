@@ -66,6 +66,7 @@ import {
   ProviderTurnEndedError,
   ProviderTurnInProgressError,
   SendTurnRefusedError,
+  SessionRewindingError,
 } from '../adapter-shape.js';
 import { ProviderRefusalError, providerFailure } from '../provider-failure.js';
 import { projectBoundedToolOutput } from '../tool-output-projection.js';
@@ -412,11 +413,7 @@ export class OpenCodeNativeSession {
 
   /** Refuse, before anything reaches the engine, while a turn runs. */
   assertIdle(): void {
-    if (this.rewinding)
-      throw new SendTurnRefusedError(
-        'This OpenCode session is rewinding; send again once it has.',
-        'busy',
-      );
+    if (this.rewinding) throw new SessionRewindingError();
     const live = this.turn ?? this.pendingStart;
     if (live && !live.settled) {
       if (live.kind === 'provider') throw new ProviderTurnInProgressError();

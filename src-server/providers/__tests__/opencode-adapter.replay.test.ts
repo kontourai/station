@@ -19,6 +19,7 @@ import {
   type ProviderSessionStartInput,
   ProviderTurnEndedError,
   SendTurnRefusedError,
+  SessionRewindingError,
 } from '../adapter-shape.js';
 import type { AcpAdapterOptions } from '../adapters/acp-adapter.js';
 import { nativeResumeBindingKey } from '../adapters/native-resume-binding.js';
@@ -643,6 +644,26 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     expect(h.replay.made('POST', '/api/session/:id/revert/stage')).toHaveLength(
       0,
     );
+  });
+
+  test('a send while a rewind is with OpenCode is refused retryably, as on ACP', async () => {
+    const { h, second } = await twoRevertTurns({
+      // The stage is held until the replay closes: the rewind stays open.
+      holdUntil: (request) =>
+        request.path.endsWith('/revert/stage') ? () => false : undefined,
+    });
+    const rewinding = h.adapter.rewindSession('thread-1', second.turnId);
+    await h.waitFor(() =>
+      h.replay.requests.some((r) => r.path.endsWith('/revert/stage')),
+    );
+    await expect(
+      h.adapter.sendTurn({ threadId: 'thread-1', input: 'too soon' }),
+    ).rejects.toBeInstanceOf(SessionRewindingError);
+    expect(await h.adapter.rewindSession('thread-1', second.turnId)).toEqual({
+      kind: 'refused',
+      reason: 'rewind-pending',
+    });
+    void rewinding.catch(() => undefined);
   });
 
   test('/rewind with no turn named takes back the last turn', async () => {
