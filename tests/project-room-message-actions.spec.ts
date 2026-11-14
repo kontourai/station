@@ -70,12 +70,20 @@ function operatorOptions() {
   return options;
 }
 
-/** A paired operator browser on the Project's room. */
-async function openClient(
-  browser: Browser,
-  viewport = { width: 1440, height: 900 },
-): Promise<{ context: BrowserContext; page: Page; room: Locator }> {
-  const context = await browser.newContext({ viewport });
+type Client = { context: BrowserContext; page: Page; room: Locator };
+/**
+ * The two operator clients, paired once for the whole block: the public
+ * ui-bootstrap mint admits 5 per minute per peer, and this block must not
+ * spend more of it than two browsers need.
+ */
+let clientA: Client;
+let clientB: Client;
+
+/** A browser paired as the operator through the real ui-bootstrap mint. */
+async function pairClient(browser: Browser): Promise<Client> {
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+  });
   const page = await context.newPage();
   await pairBrowser(page, {
     root: process.cwd(),
@@ -83,12 +91,21 @@ async function openClient(
     serverPort: live.serverPort,
     uiOrigin: live.ui,
   });
-  await page.goto(`${live.ui}/projects/${SLUG}?section=room`);
   const room = page.getByRole('region', { name: 'Project room' }).first();
-  await expect(
-    room.getByRole('textbox', { name: 'Message the project' }),
-  ).toBeVisible({ timeout: 30_000 });
   return { context, page, room };
+}
+
+/** Opens the Project's room afresh on a paired client. */
+async function openClient(
+  client: Client,
+  viewport = { width: 1440, height: 900 },
+): Promise<Client> {
+  await client.page.setViewportSize(viewport);
+  await client.page.goto(`${live.ui}/projects/${SLUG}?section=room`);
+  await expect(
+    client.room.getByRole('textbox', { name: 'Message the project' }),
+  ).toBeVisible({ timeout: 30_000 });
+  return client;
 }
 
 async function send(room: Locator, text: string) {
@@ -133,8 +150,7 @@ test.describe
   .serial('Project room message actions on a real Station (#4796, #4797, #4812)', () => {
     test.setTimeout(240_000);
 
-    // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
-    test.beforeAll(async ({}, testInfo) => {
+    test.beforeAll(async ({ browser }, testInfo) => {
       testInfo.setTimeout(180_000);
       live = await allocateLiveStation('station-room-actions-', 'room-actions');
       await startStation(live, true, {
@@ -163,11 +179,15 @@ test.describe
         body: { expectedProjectId: project.id },
       });
       expect(opened.status, JSON.stringify(opened.body)).toBe(200);
+      clientA = await pairClient(browser);
+      clientB = await pairClient(browser);
     });
 
     // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
     test.afterAll(async ({}, testInfo) => {
       testInfo.setTimeout(120_000);
+      await clientA?.context.close();
+      await clientB?.context.close();
       if (!live) return;
       await stopStation(live);
       if (testInfo.status === testInfo.expectedStatus)
@@ -177,183 +197,157 @@ test.describe
         });
     });
 
-    test('two clients: a reaction and its removal, an edit and a delete reach the other client and survive a reload', async ({
-      browser,
-    }) => {
-      const a = await openClient(browser);
-      const b = await openClient(browser);
-      try {
-        await send(a.room, 'Pricing copy is ready.');
-        await expect(rowOf(b.room, 'Pricing copy is ready.')).toBeVisible();
+    test('two clients: a reaction and its removal, an edit and a delete reach the other client and survive a reload', async () => {
+      const a = await openClient(clientA);
+      const b = await openClient(clientB);
+      await send(a.room, 'Pricing copy is ready.');
+      await expect(rowOf(b.room, 'Pricing copy is ready.')).toBeVisible();
 
-        // React through the picker on A; B sees the count.
-        await (
-          await rowAction(a.room, 'Pricing copy is ready.', /^React to /)
-        ).click();
-        const picker = a.page.getByRole('dialog', { name: 'Add reaction' });
-        await picker.getByRole('searchbox').fill('thumbs');
-        await picker.getByRole('button', { name: '👍', exact: true }).click();
-        const pillA = rowOf(a.room, 'Pricing copy is ready.').getByRole(
-          'button',
-          { name: /^👍 1:/ },
-        );
-        await expect(pillA).toHaveAttribute('aria-pressed', 'true');
+      // React through the picker on A; B sees the count.
+      await (
+        await rowAction(a.room, 'Pricing copy is ready.', /^React to /)
+      ).click();
+      const picker = a.page.getByRole('dialog', { name: 'Add reaction' });
+      await picker.getByRole('searchbox').fill('thumbs');
+      await picker.getByRole('button', { name: '👍', exact: true }).click();
+      const pillA = rowOf(a.room, 'Pricing copy is ready.').getByRole(
+        'button',
+        { name: /^👍 1:/ },
+      );
+      await expect(pillA).toHaveAttribute('aria-pressed', 'true');
+      await expect(
+        rowOf(b.room, 'Pricing copy is ready.').getByRole('button', {
+          name: /^👍 1:/,
+        }),
+      ).toBeVisible();
+      // A tap takes it back; B sees it go.
+      await pillA.click();
+      await expect(
+        rowOf(b.room, 'Pricing copy is ready.').getByRole('group', {
+          name: 'Reactions',
+        }),
+      ).toHaveCount(0);
+
+      // Edit on A, through the composer; B sees it, and it survives reload.
+      await send(a.room, 'Shipping on Friday.');
+      await (
+        await rowAction(a.room, 'Shipping on Friday.', 'Edit message')
+      ).click();
+      await expect(a.room.getByText('Editing message')).toBeVisible();
+      const composer = a.room.getByRole('textbox', {
+        name: 'Message the project',
+      });
+      await expect(composer).toHaveValue('Shipping on Friday.');
+      await composer.fill('Shipping on Monday.');
+      await a.room
+        .getByRole('button', { name: 'Save edit', exact: true })
+        .click();
+      const edited = rowOf(a.room, 'Shipping on Monday.');
+      await expect(edited.getByText('edited', { exact: true })).toBeVisible();
+      await expect(
+        rowOf(b.room, 'Shipping on Monday.').getByText('edited', {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await a.page.reload();
+      await expect(
+        rowOf(a.room, 'Shipping on Monday.').getByText('edited', {
+          exact: true,
+        }),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(a.room.getByText('Shipping on Friday.')).toHaveCount(0);
+
+      // Delete on A, after the confirmation; B sees the tombstone, and it
+      // survives a reload on both.
+      await send(a.room, 'Wrong channel, sorry.');
+      await (
+        await rowAction(a.room, 'Wrong channel, sorry.', 'Delete message')
+      ).click();
+      const confirm = a.page.getByRole('alertdialog', {
+        name: 'Delete this message?',
+      });
+      await confirm
+        .getByRole('button', { name: 'Delete', exact: true })
+        .click();
+      await expect(a.room.getByText('Wrong channel, sorry.')).toHaveCount(0);
+      await expect(b.room.getByText('Wrong channel, sorry.')).toHaveCount(0);
+      await expect(b.room.getByText('Message deleted')).toBeVisible();
+      for (const client of [a, b]) {
+        await client.page.reload();
+        await expect(client.room.getByText('Message deleted')).toBeVisible({
+          timeout: 30_000,
+        });
         await expect(
-          rowOf(b.room, 'Pricing copy is ready.').getByRole('button', {
-            name: /^👍 1:/,
-          }),
-        ).toBeVisible();
-        // A tap takes it back; B sees it go.
-        await pillA.click();
-        await expect(
-          rowOf(b.room, 'Pricing copy is ready.').getByRole('group', {
-            name: 'Reactions',
-          }),
+          client.room.getByText('Wrong channel, sorry.'),
         ).toHaveCount(0);
-
-        // Edit on A, through the composer; B sees it, and it survives reload.
-        await send(a.room, 'Shipping on Friday.');
-        await (
-          await rowAction(a.room, 'Shipping on Friday.', 'Edit message')
-        ).click();
-        await expect(a.room.getByText('Editing message')).toBeVisible();
-        const composer = a.room.getByRole('textbox', {
-          name: 'Message the project',
-        });
-        await expect(composer).toHaveValue('Shipping on Friday.');
-        await composer.fill('Shipping on Monday.');
-        await a.room
-          .getByRole('button', { name: 'Save edit', exact: true })
-          .click();
-        const edited = rowOf(a.room, 'Shipping on Monday.');
-        await expect(edited.getByText('edited', { exact: true })).toBeVisible();
-        await expect(
-          rowOf(b.room, 'Shipping on Monday.').getByText('edited', {
-            exact: true,
-          }),
-        ).toBeVisible();
-        await a.page.reload();
-        await expect(
-          rowOf(a.room, 'Shipping on Monday.').getByText('edited', {
-            exact: true,
-          }),
-        ).toBeVisible({ timeout: 30_000 });
-        await expect(a.room.getByText('Shipping on Friday.')).toHaveCount(0);
-
-        // Delete on A, after the confirmation; B sees the tombstone, and it
-        // survives a reload on both.
-        await send(a.room, 'Wrong channel, sorry.');
-        await (
-          await rowAction(a.room, 'Wrong channel, sorry.', 'Delete message')
-        ).click();
-        const confirm = a.page.getByRole('alertdialog', {
-          name: 'Delete this message?',
-        });
-        await confirm
-          .getByRole('button', { name: 'Delete', exact: true })
-          .click();
-        await expect(a.room.getByText('Wrong channel, sorry.')).toHaveCount(0);
-        await expect(b.room.getByText('Wrong channel, sorry.')).toHaveCount(0);
-        await expect(b.room.getByText('Message deleted')).toBeVisible();
-        for (const client of [a, b]) {
-          await client.page.reload();
-          await expect(client.room.getByText('Message deleted')).toBeVisible({
-            timeout: 30_000,
-          });
-          await expect(
-            client.room.getByText('Wrong channel, sorry.'),
-          ).toHaveCount(0);
-        }
-      } finally {
-        await a.context.close();
-        await b.context.close();
       }
     });
 
-    test('files: an upload reaches the other client and downloads there byte for byte; an oversize file is refused in the composer', async ({
-      browser,
-    }) => {
-      const a = await openClient(browser);
-      const b = await openClient(browser);
-      try {
-        const notes = 'Launch notes: CTA shortened, price unchanged.\n';
-        await a.room.locator('input[type="file"]').setInputFiles({
-          name: 'launch-notes.txt',
-          mimeType: 'text/plain',
-          buffer: Buffer.from(notes),
-        });
-        await expect(a.room.getByText('launch-notes.txt')).toBeVisible();
-        await send(a.room, 'Notes attached.');
-        const onB = rowOf(b.room, 'Notes attached.');
-        const link = onB.getByRole('link', { name: /launch-notes\.txt/ });
-        await expect(link).toBeVisible();
-        const download = b.page.waitForEvent('download');
-        await link.click();
-        const saved = await (await download).path();
-        expect(readFileSync(saved, 'utf8')).toBe(notes);
+    test('files: an upload reaches the other client and downloads there byte for byte; an oversize file is refused in the composer', async () => {
+      const a = await openClient(clientA);
+      const b = await openClient(clientB);
+      const notes = 'Launch notes: CTA shortened, price unchanged.\n';
+      await a.room.locator('input[type="file"]').setInputFiles({
+        name: 'launch-notes.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.from(notes),
+      });
+      await expect(a.room.getByText('launch-notes.txt')).toBeVisible();
+      await send(a.room, 'Notes attached.');
+      const onB = rowOf(b.room, 'Notes attached.');
+      const link = onB.getByRole('link', { name: /launch-notes\.txt/ });
+      await expect(link).toBeVisible();
+      const download = b.page.waitForEvent('download');
+      await link.click();
+      const saved = await (await download).path();
+      expect(readFileSync(saved, 'utf8')).toBe(notes);
 
-        // Over the 5 MB per-file limit: refused before any upload, in words.
-        let uploads = 0;
-        a.page.on('request', (request) => {
-          if (
-            request.method() === 'POST' &&
-            new URL(request.url()).pathname.endsWith('/attachments')
-          )
-            uploads += 1;
-        });
-        await a.room.locator('input[type="file"]').setInputFiles({
-          name: 'too-big.txt',
-          mimeType: 'text/plain',
-          buffer: Buffer.alloc(5 * 1024 * 1024 + 1, 0x61),
-        });
-        await expect(
-          a.room.getByText('too-big.txt must be smaller than 5 MB.'),
-        ).toBeVisible();
-        expect(uploads).toBe(0);
-      } finally {
-        await a.context.close();
-        await b.context.close();
-      }
+      // Over the 5 MB per-file limit: refused before any upload, in words.
+      let uploads = 0;
+      a.page.on('request', (request) => {
+        if (
+          request.method() === 'POST' &&
+          new URL(request.url()).pathname.endsWith('/attachments')
+        )
+          uploads += 1;
+      });
+      await a.room.locator('input[type="file"]').setInputFiles({
+        name: 'too-big.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.alloc(5 * 1024 * 1024 + 1, 0x61),
+      });
+      await expect(
+        a.room.getByText('too-big.txt must be smaller than 5 MB.'),
+      ).toBeVisible();
+      expect(uploads).toBe(0);
     });
 
-    test('a narrow desktop (900px): row actions and the picker stay on screen and react', async ({
-      browser,
-    }) => {
-      const a = await openClient(browser, { width: 900, height: 800 });
-      try {
-        await send(a.room, 'Narrow check.');
-        const react = await rowAction(a.room, 'Narrow check.', /^React to /);
-        await expect(react).toBeInViewport();
-        await react.click();
-        const picker = a.page.getByRole('dialog', { name: 'Add reaction' });
-        await expect(picker).toBeInViewport({ ratio: 1 });
-        await picker.getByRole('searchbox').fill('party');
-        await picker.getByRole('button', { name: '🎉', exact: true }).click();
-        await expect(
-          rowOf(a.room, 'Narrow check.').getByRole('button', {
-            name: /^🎉 1:/,
-          }),
-        ).toBeVisible();
-        // Keyboard and focus reach the actions without a pointer: move the
-        // pointer away, then focus the row's action.
-        await a.page.mouse.move(1, 1);
-        await a.room
-          .getByRole('textbox', { name: 'Message the project' })
-          .focus();
-        const row = rowOf(a.room, 'Narrow check.');
-        await expect(row.locator('.room-row__actions')).toHaveCSS(
-          'opacity',
-          '0',
-        );
-        await row.getByRole('button', { name: /^React to / }).focus();
-        await expect(row.locator('.room-row__actions')).toHaveCSS(
-          'opacity',
-          '1',
-        );
-        await expectNoHorizontalScroll(a.page);
-      } finally {
-        await a.context.close();
-      }
+    test('a narrow desktop (900px): row actions and the picker stay on screen and react', async () => {
+      const a = await openClient(clientA, { width: 900, height: 800 });
+      await send(a.room, 'Narrow check.');
+      const react = await rowAction(a.room, 'Narrow check.', /^React to /);
+      await expect(react).toBeInViewport();
+      await react.click();
+      const picker = a.page.getByRole('dialog', { name: 'Add reaction' });
+      await expect(picker).toBeInViewport({ ratio: 1 });
+      await picker.getByRole('searchbox').fill('party');
+      await picker.getByRole('button', { name: '🎉', exact: true }).click();
+      await expect(
+        rowOf(a.room, 'Narrow check.').getByRole('button', {
+          name: /^🎉 1:/,
+        }),
+      ).toBeVisible();
+      // Keyboard and focus reach the actions without a pointer: move the
+      // pointer away, then focus the row's action.
+      await a.page.mouse.move(1, 1);
+      await a.room
+        .getByRole('textbox', { name: 'Message the project' })
+        .focus();
+      const row = rowOf(a.room, 'Narrow check.');
+      await expect(row.locator('.room-row__actions')).toHaveCSS('opacity', '0');
+      await row.getByRole('button', { name: /^React to / }).focus();
+      await expect(row.locator('.room-row__actions')).toHaveCSS('opacity', '1');
+      await expectNoHorizontalScroll(a.page);
     });
 
     test('a second person cannot edit or delete the operator’s message, and neither can the operator theirs', async ({
@@ -381,7 +375,7 @@ test.describe
       );
       if (invitation.kind !== 'invited') throw new Error('Not invited');
 
-      const a = await openClient(browser);
+      const a = await openClient(clientA);
       const guestContext = await browser.newContext();
       const guest = await guestContext.newPage();
       try {
@@ -585,7 +579,6 @@ test.describe
         await expect(a.room.getByText('Contributor here.')).toBeVisible();
       } finally {
         await guestContext.close();
-        await a.context.close();
       }
     });
   });
