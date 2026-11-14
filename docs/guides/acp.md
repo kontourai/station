@@ -110,14 +110,19 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    [acp-reattach-identity.ts](../../src-server/providers/adapters/acp-reattach-identity.ts)
    reads that name, keyed on the engine's
    handshake: Hermes (`agentInfo.name` `hermes-agent`) names it in
-   `_meta.hermes.sessionProvenance.acpSessionId`. Hermes up to v0.22.0
-   answers a resume of an unknown id by creating a session and returning
-   success. When the named session is not the one Station asked for, the
+   `_meta.hermes.sessionProvenance.acpSessionId`. `hermes acp` up to
+   v0.22.0, and in v0.22.2, answers a resume of an unknown id by creating a
+   session and returning success (seen live on 0.17.0). From v0.22.1 its
+   gateway viewer errors instead. When the named session is not the one Station asked for, the
    start fails like any other resume failure (counted as `other-session` on
    `station.acp.resume_sessions`) rather than running the conversation
    against an engine that holds none of it. The same check applies when the
    approval-floor relaunch reattaches. An answer without the field, or from
-   another engine, decides nothing.
+   another engine, decides nothing. That leaves one Hermes case it cannot
+   catch: a `session/load` of an unknown id answers `{}` with no `_meta`
+   (seen live on 0.17.0). Station loads Hermes only after `session/resume`
+   answers method-not-found, and Hermes advertises and answers resume, so
+   that path is not reached today.
    The same module names the one refusal after which Station starts a new
    engine session instead of failing. Gemini CLI (`agentInfo.name`
    `gemini-cli`) creates sessions with its saved sign-in method, or with the
@@ -211,7 +216,7 @@ provide no confirmed safe execution boundary, so the composer waits for the turn
 to finish. Attachments remain in the draft until then. See the
 [composer contract](../design/chat-composer.md#turn-activity-and-follow-up-delivery).
 
-An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro and Grok answer these methods without declaring them, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag). Goose (`agentInfo.name` `goose`) is steered with its undeclared `_goose/unstable/session/steer`, which joins a named run: each Goose prompt announces its run as `_meta.goose.activeRunId` on a `session_info_update`, and Station sends that id as `expectedRunId`. With no run announced, Goose would refuse the steer, so Station uses the fallback below. That row is read from Goose's source (v1.59.0), not a live run. Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
+An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro and Grok answer these methods without declaring them, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag). Goose (`agentInfo.name` `goose`) is steered with its undeclared `_goose/unstable/session/steer`, which joins a named run: each Goose prompt announces its run as `_meta.goose.activeRunId` on a `session_info_update`, and Station sends that id as `expectedRunId`. With no run announced, Goose would refuse the steer, so Station uses the fallback below. A run is forgotten when its prompt ends, and a steer Goose refuses with -32602 (its run ended or was replaced) also falls back. Known gap: Goose drops steers it accepted but had not yet read when the run ends (`discard_pending_steers`), without reporting the drop. A steer it did read reappears as a user message chunk whose `messageId` matches the steer's and whose `_meta.goose.steer` is `true`. Station has no consumer for steer delivery status yet (the `session.steer-status` binding consumer is a placeholder), so such a dropped steer is not reported. That row is read from Goose's source (v1.59.0), not a live run. Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
 
 ### Canonical Event Vocabulary
 

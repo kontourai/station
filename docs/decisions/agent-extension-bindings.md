@@ -102,9 +102,10 @@ identity the engine states at `initialize`, never a launch command.
 
 | Engine (identity) | Row | Table | Source |
 |---|---|---|---|
-| Goose (`agentInfo.name` `goose`) | steer with `_goose/unstable/session/steer`, joining the run Goose announced as `_meta.goose.activeRunId`; with no run announced, cancel + re-prompt | steer table, `acp-steer.ts` | aaif-goose/goose v1.59.0 `crates/goose/src/acp/server.rs`, `crates/goose-sdk-types/src/custom_requests.rs` |
+| Goose (`agentInfo.name` `goose`) | steer with `_goose/unstable/session/steer`, joining the run Goose announced as `_meta.goose.activeRunId`; with no run announced, or a -32602 refusal, cancel + re-prompt | steer table, `acp-steer.ts` | aaif-goose/goose v1.59.0 `crates/goose/src/acp/server.rs`, `crates/goose-sdk-types/src/custom_requests.rs` |
 | Qwen Code (`agentInfo.name` `qwen-code`) | subagents from nested tool calls (`_meta.provenance: 'subagent'`, `parentToolCallId`) | `ENGINE_EXTENSION_BINDINGS` `qwen-code.tool.subagent` and the reporter table in `acp-child-work.ts` | QwenLM/qwen-code 6f754be65489 `SubAgentTracker.ts`, `tool-call-emitter.ts`, `transcript-replay.ts` |
-| Hermes (`agentInfo.name` `hermes-agent`) | a reattach answer naming another session in `_meta.hermes.sessionProvenance.acpSessionId` fails the resume | `acp-reattach-identity.ts` | NousResearch/hermes-agent v0.22.0 `acp_adapter/server.py`, v0.23.1 `gateway_server.py`, `provenance.py` |
+| Hermes (`agentInfo.name` `hermes-agent`) | a reattach answer naming another session in `_meta.hermes.sessionProvenance.acpSessionId` fails the resume (`hermes acp` up to v0.22.0 and in v0.22.2; confirmed live on 0.17.0) | `acp-reattach-identity.ts` | NousResearch/hermes-agent v0.22.0 `acp_adapter/server.py`, v0.23.1 `gateway_server.py`, `provenance.py` |
+| Gemini CLI (`agentInfo.name` `gemini-cli`) | a `session/load` refused with `Authentication required` (-32000) starts a new engine session with a visible warning instead of failing; Station never calls `authenticate` for it | `acp-reattach-identity.ts` | google-gemini/gemini-cli 4ed06ed0dd `packages/cli/src/acp/acpSessionManager.ts`, `acpRpcDispatcher.ts` |
 
 Goose declares `_meta.goose` feature flags at `initialize` but no method
 list. Its steer is therefore an identity row, not a declared one.

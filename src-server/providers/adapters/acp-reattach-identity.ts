@@ -31,7 +31,10 @@ const ACP_REATTACHED_SESSION_NAMES: ReadonlyArray<{
     // creating new"); `hermes acp` ran that agent up to v0.22.0 and in
     // v0.22.2. The gateway viewer `hermes acp` runs from v0.22.1 on errors
     // instead, and names the requested id (acp_adapter/gateway_server.py
-    // _resume). Both name themselves `hermes-agent` at initialize.
+    // _resume). Both name themselves `hermes-agent` at initialize. Seen
+    // live on 0.17.0. Not caught: its `session/load` of an unknown id
+    // answers `{}` with no `_meta` (also seen live), but Station loads
+    // Hermes only after `session/resume` answers method-not-found.
     identity: { agentInfoName: 'hermes-agent' },
     path: ['hermes', 'sessionProvenance', 'acpSessionId'],
     observed:
