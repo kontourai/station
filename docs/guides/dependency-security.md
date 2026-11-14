@@ -869,7 +869,7 @@ findings that have a compatible release; none adds or renews an exception.
 | `follow-redirects` | [GHSA-mrwp-f3q8-3g9p](https://github.com/advisories/GHSA-mrwp-f3q8-3g9p) (high) | 1.16.1 → 1.16.2 | `axios>follow-redirects` pin | SAP Cloud SDK → Axios |
 | `qs` | [GHSA-6pq8-jhm2-2vcw](https://github.com/advisories/GHSA-6pq8-jhm2-2vcw) | 6.16.0 → 6.16.1 | Override floor `^6.16.1` | Both body-parser lines |
 | `@hono/node-server` | [GHSA-rmxm-3fg6-px4f](https://github.com/advisories/GHSA-rmxm-3fg6-px4f), [GHSA-jpvv-r467-5p4w](https://github.com/advisories/GHSA-jpvv-r467-5p4w) | 1.19.15 → 2.1.7 | `@voltagent/server-hono` child override | VoltAgent Hono provider |
-| `glob` / `minimatch` | [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4), [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) | 13.0.6 / 10.2.5 → 14.0.4 / 11.0.6 | `cacache@20` and `cacache@21` child overrides | Sigstore signing → `make-fetch-happen` |
+| `glob` / `minimatch` | [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4), [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) | 13.0.6 / 10.2.5 → 14.0.4 / 11.0.6 | `cacache@21` floor 21.0.2; `cacache@20>glob` override | Sigstore signing → `make-fetch-happen` |
 
 The follow-redirects threat is a caller-declared credential header reaching a
 cross-origin redirect target when `sensitiveHeaders` is an array from another
@@ -885,10 +885,11 @@ nested copy now resolves to the same 2.1.7 that Station already loads. A probe
 through VoltAgent's resolution context served a Hono app on 2.1.7.
 
 Glob 14 replaces regular expressions with a non-recursive matcher. Cacache
-21.0.2 adopted glob 14 with library code identical to 21.0.1, and cacache
-20.0.4's glob calls match it, so both installed copies take the release
-upstream already ships. Put, verify and `rm.all` probes behaved the same on both
-copies and on the untouched optional cacache 19 copy. Development-only glob 10
+21.0.2 adopted glob 14 with library code identical to 21.0.1, so the Sigstore 5
+copy moves to that patch release. Cacache 20 has no glob 14 release, but
+20.0.4's glob calls match 21.0.2's, so its own override takes the release
+upstream already ships. Put, verify and `rm.all` probes behaved the same on
+glob 14 and on the untouched optional cacache 19 copy. Development-only glob 10
 and minimatch 9 copies are unchanged.
 
 Two findings have no compatible upgrade and still fail the floor:

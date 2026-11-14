@@ -91,7 +91,7 @@ overrides:
   "@kontourai/bearing>csv-parse": ^7.0.2
   "@voltagent/server-hono>@hono/node-server": 2.1.7
   cacache@20>glob: ^14.0.3
-  cacache@21>glob: ^14.0.3
+  cacache@21: ^21.0.2
 patchedDependencies:
   "node-pty@1.2.0-beta.18": patches/node-pty-1.2.0-beta.18.patch
   "@vitest/runner@4.1.12": patches/vitest-runner-4.1.12.patch

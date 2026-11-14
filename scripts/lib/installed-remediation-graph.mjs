@@ -84,8 +84,8 @@ export function validateInstalledRemediationGraph(root) {
       const child = manifests.get(childRoot);
       // The reviewed major-version overrides are intentional. Every other edge
       // must retain its upstream semver contract, including older minimatches
-      // and cacache majors without their own glob override. Cacache 20 and 21
-      // take glob 14, which cacache 21.0.2 itself adopted with unchanged code.
+      // and cacache majors without their own glob override. Cacache 20 takes
+      // glob 14, which cacache 21.0.2 itself adopted with unchanged code.
       const cacacheGlob =
         parent.name === 'cacache' && name === 'glob'
           ? `cacache@${semver.major(parent.version)}>glob`

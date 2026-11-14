@@ -56,7 +56,7 @@ overrides:
   '@kontourai/bearing>csv-parse': ^7.0.2
   '@voltagent/server-hono>@hono/node-server': 2.1.7
   cacache@20>glob: ^14.0.3
-  cacache@21>glob: ^14.0.3
+  cacache@21: ^21.0.2
 
 patchedDependencies:
   '@homebridge/ciao@1.3.12': 390b9ac129555770dde11639b296eb66e06d0fead511348ded161e88e09e967d
@@ -5256,8 +5256,8 @@ packages:
     resolution: {integrity: sha512-M3Lab8NPYlZU2exsL3bMVvMrMqgwCnMWfdZbK28bn3pK6APT/Te/I8hjRPNu1uwORY9a1eEQoifXbKPQMfMTOA==}
     engines: {node: ^20.17.0 || >=22.9.0}
 
-  cacache@21.0.1:
-    resolution: {integrity: sha512-pTwz/uj3Jyp6WXdJ6fWhR+7LVxVs6RyroQSn7KJwHsSxXuyGSp0pcMVcwSwTpCFq1X2YG8QBe0W+vN+cr0SwzA==}
+  cacache@21.0.2:
+    resolution: {integrity: sha512-P1W9H2p3vBmvDhk5g/82aKTOxB3RpHK55IdiH2cAjX7Ts0bE/3OJI9F8HHoNTrCqsZq9XM3XB+ZblaDL8Ycd/g==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
 
   cacheable-request@6.1.0:
@@ -13598,7 +13598,7 @@ snapshots:
       ssri: 13.0.1
     optional: true
 
-  cacache@21.0.1:
+  cacache@21.0.2:
     dependencies:
       '@npmcli/fs': 6.0.0
       fs-minipass: 3.0.3
@@ -15545,7 +15545,7 @@ snapshots:
       '@gar/promise-retry': 1.0.3
       '@npmcli/agent': 5.0.2(supports-color@7.2.0)
       '@npmcli/redact': 5.0.0
-      cacache: 21.0.1
+      cacache: 21.0.2
       http-cache-semantics: 4.3.0(patch_hash=88d463d98aef02aa04f4263556dea7fe3fb8cf07121e1ea7a8e424e8bbeb7c15)
       minipass: 7.1.3
       minipass-fetch: 6.0.0
