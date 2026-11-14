@@ -163,6 +163,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/orchestration/__tests__/delegation-group-persistence.test.ts',
   // Uses real Git/SDK source fixtures and durable authority/intent stores for single-execution replay.
   'src-server/services/orchestration/__tests__/single-delegation-wire-intent.test.ts',
+  // Native source custody uses real Git snapshots under durable create allocations; no timing assertion.
+  'src-server/services/orchestration/__tests__/native-task-source-admission.test.ts',
   'src-server/services/orchestration/__tests__/station-report-checkpoint.test.ts',
   'src-server/services/orchestration/__tests__/station-report-credential-sharing.test.ts',
   'src-server/services/orchestration/__tests__/google-sealed-preparation.test.ts',

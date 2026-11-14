@@ -3037,7 +3037,7 @@ describe('Orchestration Routes', () => {
       delegateTask,
     });
 
-    const res = await app.request('/delegations', {
+    const requestAuthority = new Request('http://localhost/delegations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -3049,12 +3049,14 @@ describe('Orchestration Routes', () => {
           model: { override: 'gpt-5.6-sol' },
         },
         userId: 'spoofed-user',
+        createRequestAuthority: { taskId: 'claimed-authority' },
         taskId: 'task:poisoned',
         conversationId: 'conversation:poisoned',
         sessionId: 'session:poisoned',
         currentSessionId: 'session:current-poisoned',
       }),
     });
+    const res = await app.request(requestAuthority);
 
     expect(res.status).toBe(200);
     expect(await readJson(res)).toMatchObject({
@@ -3063,6 +3065,7 @@ describe('Orchestration Routes', () => {
     });
     expect(delegateTask).toHaveBeenCalledWith({
       clientTurnId: 'fixture-delegation-key',
+      createRequestAuthority: requestAuthority,
       createRequestIntent: expect.objectContaining({
         clientTurnId: 'fixture-delegation-key',
       }),
@@ -3110,7 +3113,7 @@ describe('Orchestration Routes', () => {
     });
     app.route('/', routes);
 
-    const res = await app.request('/delegations', {
+    const requestAuthority = new Request('http://localhost/delegations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -3124,10 +3127,12 @@ describe('Orchestration Routes', () => {
         },
       }),
     });
+    const res = await app.request(requestAuthority);
 
     expect(res.status).toBe(200);
     expect(delegateTask).toHaveBeenCalledWith({
       clientTurnId: 'fixture-delegation-key',
+      createRequestAuthority: requestAuthority,
       createRequestIntent: expect.objectContaining({
         clientTurnId: 'fixture-delegation-key',
       }),

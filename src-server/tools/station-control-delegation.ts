@@ -124,6 +124,7 @@ import {
   recordCreateRequestStartResult,
   runDelegationCreate,
 } from '../services/orchestration/create-request-claims.js';
+import { isDelegatedTaskSessionId } from '../services/orchestration/delegated-task-identity.js';
 import {
   DelegationAttemptCapacityError,
   DelegationAttemptClaimStore,
@@ -424,6 +425,8 @@ export interface DelegateTaskInput {
   clientTurnId?: string;
   createRequestIntent?: unknown;
   createRequestCallerSessionId?: string;
+  /** Exact route-owned Request; never accepted from JSON or persisted in a claim. */
+  createRequestAuthority?: Request;
   /** Route-owned human message, before appending the Task brief. */
   title?: string;
   target: ExecutionTarget;
@@ -1948,22 +1951,6 @@ function localServiceRequiredInHostedMode(
     );
   }
 }
-/**
- * archive#4543 LOW-2: the exact shape `delegateTask` itself mints
- * (`task:${randomUUID()}`) — and the only shape `metadata.conversationId`/
- * `metadata.environmentId` may be re-stamped from via the
- * `conversationIdentity` internal escape hatch (see `delegateTask`'s
- * `sessionId` validation below). `environmentId` is always server-resolved
- * (`target.environmentId`), but `conversationId` is stamped from
- * `sessionId`, and an MCP tool caller MAY supply a custom `sessionId`
- * (`station-control-operations-tools.ts`'s `sessionId` param) — an
- * unvalidated arbitrary string would otherwise get laundered through a
- * RESERVED_ORCHESTRATION_METADATA_KEYS key whose contract
- * (`provider.ts`'s `CONVERSATION_ID_RESERVED_METADATA_KEY` docblock) is
- * "always resolved by Station", not caller-supplied.
- */
-const TASK_SESSION_ID_PATTERN =
-  /^task:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TASK_EVENT_CURSOR_PREFIX = 'station-task-events:v1:';
 const DEFAULT_TASK_EVENT_LIMIT = 50;
 const MAX_TASK_EVENT_LIMIT = 100;
@@ -5885,7 +5872,7 @@ export async function delegateTask(
       );
     }
     const reservedTaskId =
-      input.sessionId && TASK_SESSION_ID_PATTERN.test(input.sessionId)
+      input.sessionId && isDelegatedTaskSessionId(input.sessionId)
         ? input.sessionId
         : `task:${randomUUID()}`;
     // The storage key is the unambiguous length-prefixed tuple of the
@@ -6038,7 +6025,7 @@ export async function delegateTask(
     // than let it be stamped into a reserved key whose contract promises
     // Station resolution. A server-minted id always conforms, so this only
     // ever rejects caller input.
-    if (input.sessionId && !TASK_SESSION_ID_PATTERN.test(input.sessionId)) {
+    if (input.sessionId && !isDelegatedTaskSessionId(input.sessionId)) {
       throw new Error(
         `Invalid session id '${input.sessionId}': a custom session id must match the 'task:<uuid>' form Station mints (e.g. 'task:${randomUUID()}').`,
       );

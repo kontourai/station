@@ -1385,6 +1385,8 @@ interface DelegateTaskRequest {
   clientTurnId?: string;
   createRequestIntent?: unknown;
   createRequestCallerSessionId?: string;
+  /** Server-only Request identity behind the durable create claim. */
+  createRequestAuthority?: Request;
   delegationAttemptId?: string;
   /**
    * #485: the verified delegation-kind device grant behind the CURRENT
@@ -4639,6 +4641,7 @@ export function createOrchestrationRoutes(
           ...request,
           createRequestIntent: body,
           createRequestCallerSessionId: callerSessionId,
+          createRequestAuthority: c.req.raw,
           ...(stagedFiles ? { stagedFiles } : {}),
           ...(roomAttachments ? { taskRoomAttachments: roomAttachments } : {}),
           ...(contextSnapshot

@@ -75,6 +75,7 @@ import type {
   HomeWriterLease,
   HomeWriterOwner,
 } from '../ssh/home-writer-owner.js';
+import { captureDelegationCreateCustody } from './create-request-claims.js';
 import {
   assertSdkSourceWireCurrentSync,
   beginSdkSourceWire,
@@ -296,7 +297,11 @@ function sourceObservationOwner(
   };
 }
 
-async function captureSource(home: string, selection: Selection) {
+async function captureSource(
+  home: string,
+  selection: Selection,
+  protectRead: <Value>(read: () => Value) => Value = (read) => read(),
+) {
   id(selection.projectSlug);
   const deadline = performance.now() + 15_000;
   const requireTime = () => {
@@ -304,10 +309,12 @@ async function captureSource(home: string, selection: Selection) {
   };
   const storage = new FileStorageAdapter(home);
   const projects = new ProjectService(storage);
-  const revision = storage.projectRevision(selection.projectSlug);
+  const revision = protectRead(() =>
+    storage.projectRevision(selection.projectSlug),
+  );
   const assertProjectCurrent = revision.assertCurrent?.bind(revision);
   if (!assertProjectCurrent) refuse('project_currentness_unavailable');
-  const project = projects.getProject(selection.projectSlug);
+  const project = protectRead(() => projects.getProject(selection.projectSlug));
   if (!isDeepStrictEqual(project, revision.value) || !project.workingDirectory)
     refuse('project_unavailable');
   const manifests = new ProjectManifestStore(home, storage);
@@ -318,12 +325,14 @@ async function captureSource(home: string, selection: Selection) {
     manifests,
     bindings,
   });
-  const manifest = manifests.readProjectManifest(project.slug);
+  const manifest = protectRead(() =>
+    manifests.readProjectManifest(project.slug),
+  );
   const metadataFileWitness = (path: string) => {
     try {
       if (realpathSync(path) !== path) refuse('unsupported_project_metadata');
       const before = stamp(path);
-      readRegular(path, 512 * 1024);
+      protectRead(() => readRegular(path, 512 * 1024));
       if (stamp(path) !== before) refuse('source_changed');
       return before;
     } catch (error) {
@@ -331,23 +340,24 @@ async function captureSource(home: string, selection: Selection) {
       throw error;
     }
   };
-  const metadata = () => {
-    const currentProject = withoutLockedProjectOverrides(project);
-    const record = manifests.readRecord(project.slug);
-    return json({
-      // The captured Project revision is checked separately; composition still reads live layouts.
-      project: currentProject,
-      manifest: record
-        ? manifests.composeManifest(record, currentProject)
-        : null,
-      bindings: bindings.read(),
-      fileWitnesses: [
-        join(home, 'projects', project.slug, 'project.json'),
-        manifests.manifestPath(project.slug),
-        bindings.path,
-      ].map(metadataFileWitness),
+  const metadata = () =>
+    protectRead(() => {
+      const currentProject = withoutLockedProjectOverrides(project);
+      const record = manifests.readRecord(project.slug);
+      return json({
+        // The captured Project revision is checked separately; composition still reads live layouts.
+        project: currentProject,
+        manifest: record
+          ? manifests.composeManifest(record, currentProject)
+          : null,
+        bindings: bindings.read(),
+        fileWitnesses: [
+          join(home, 'projects', project.slug, 'project.json'),
+          manifests.manifestPath(project.slug),
+          bindings.path,
+        ].map(metadataFileWitness),
+      });
     });
-  };
   const metadataBefore = metadata();
   const resolution = await resolver.resolveProjectResource(
     project.slug,
@@ -468,7 +478,9 @@ async function captureSource(home: string, selection: Selection) {
       const absolute = join(top, path);
       if (realpathSync(absolute) !== absolute) refuse('unsupported_path');
       const before = stamp(absolute);
-      const content = readRegular(absolute, MAX_BYTES - bytes);
+      const content = protectRead(() =>
+        readRegular(absolute, MAX_BYTES - bytes),
+      );
       bytes += content.length;
       if (bytes > MAX_BYTES) refuse('source_bound_exceeded');
       if (((lstatSync(absolute).mode & 0o111) !== 0) !== (mode === '100755'))
@@ -643,6 +655,18 @@ export function readStationControlSourceCredentialAuthority(
 /** Private source custody. Flow launch admission uses its sealed Project/resource observation. */
 export class LocalSourceAdmissionOwner {
   readonly #snapshots = new Map<object, SealedState>();
+  readonly #nativeSnapshots = new Map<
+    object,
+    {
+      record: NativeTaskSealedRecord;
+      serialization: string;
+      request: Request;
+      receiptPath: string;
+      receiptStamp: string;
+      assertCurrent(): void;
+    }
+  >();
+  #pendingNativeSeals = 0;
   readonly #flowAdmissions = new WeakMap<object, object>();
   readonly #flowMutations = new Map<string, Promise<void>>();
   #pendingFlowMutations = 0;
@@ -755,10 +779,31 @@ export class LocalSourceAdmissionOwner {
       )
         this.#dropSnapshot(capability);
     }
+    for (const [capability, state] of this.#nativeSnapshots) {
+      if (
+        Date.now() < state.record.issuedAt ||
+        Date.now() >= state.record.expiresAt
+      )
+        this.releaseRootNativeSnapshot(capability);
+    }
+  }
+  #snapshotCount() {
+    return (
+      this.#snapshots.size + this.#nativeSnapshots.size + this.#pendingSeals
+    );
+  }
+  #retainedSnapshotBytes() {
+    return [
+      ...this.#snapshots.values(),
+      ...this.#nativeSnapshots.values(),
+    ].reduce((size, state) => size + Buffer.byteLength(state.serialization), 0);
   }
   async #authority(
     context: RuntimeSourceRequestContext,
     method: 'GET' | 'POST' = 'POST',
+    actionPath:
+      | '/api/orchestration/chat'
+      | '/api/orchestration/delegations' = '/api/orchestration/chat',
   ) {
     const request = context.req.raw;
     if (request.method !== method) refuse('request_method_unsupported');
@@ -983,7 +1028,7 @@ export class LocalSourceAdmissionOwner {
                 this.#environment,
                 {
                   method: 'POST',
-                  path: '/api/orchestration/chat',
+                  path: actionPath,
                 },
               )
             : !isRuntimeRequestPrincipalCurrent(request, this.#environment)
@@ -1131,6 +1176,17 @@ export class LocalSourceAdmissionOwner {
     return this.#tuple(record);
   }
   #tuple(record: SourceRecord): Readonly<SourceTuple> {
+    return this.#observationTuple(
+      record,
+      DOMAIN,
+      `sha256:${sha(json(record))}`,
+    );
+  }
+  #observationTuple(
+    record: { id: string; hostContextId: string; observed: Snapshot },
+    domain: string,
+    digest: string,
+  ): Readonly<SourceTuple> {
     // These are private host/project-bound observation identities, not global repository IDs.
     const repositoryId = `source-observation-repository:${sha(json([record.hostContextId, record.observed.projectId, record.observed.portableProjectId, record.observed.resourceId, record.observed.commonDir, record.observed.identities.common]))}`;
     return Object.freeze({
@@ -1140,8 +1196,8 @@ export class LocalSourceAdmissionOwner {
       dirty_state_fingerprint: null,
       source_admission_receipt: Object.freeze({
         id: record.id,
-        domain: DOMAIN,
-        digest: `sha256:${sha(json(record))}`,
+        domain,
+        digest,
       }),
     });
   }
@@ -1165,17 +1221,13 @@ export class LocalSourceAdmissionOwner {
     const authority = await this.#authority(context);
     this.#assertSelection(authority, selected);
     this.#reapSnapshots();
-    if (this.#snapshots.size + this.#pendingSeals >= 4)
-      refuse('snapshot_capacity_exceeded');
+    if (this.#snapshotCount() >= 4) refuse('snapshot_capacity_exceeded');
     this.#pendingSeals++;
     try {
       const capture = await captureSource(this.#home, selected);
       this.#assertProject(authority, capture.observed);
       const serialization = capture.snapshotSerialization;
-      const retainedBytes = [...this.#snapshots.values()].reduce(
-        (n, s) => n + Buffer.byteLength(s.serialization),
-        0,
-      );
+      const retainedBytes = this.#retainedSnapshotBytes();
       if (
         Buffer.byteLength(serialization) > MAX_SNAPSHOT_BYTES ||
         retainedBytes + Buffer.byteLength(serialization) > 12 * 1024 * 1024
@@ -1240,6 +1292,178 @@ export class LocalSourceAdmissionOwner {
     } finally {
       this.#pendingSeals--;
     }
+  }
+
+  /** Root source capture for a live, server-minted durable Task allocation.
+   * This is not a native execution grant; session-parent calls cannot fall back
+   * to root authority while ancestor source admission remains unavailable. */
+  async captureRootNativeTaskSnapshot(
+    context: RuntimeSourceRequestContext,
+    selection: Selection,
+  ) {
+    let custody: ReturnType<typeof captureDelegationCreateCustody>;
+    try {
+      custody = captureDelegationCreateCustody(context.req.raw);
+    } catch {
+      refuse('native_task_custody_unavailable');
+    }
+    if (custody.callerSessionId !== null)
+      refuse('native_ancestor_source_admission_unavailable');
+    if (
+      new URL(context.req.raw.url).pathname !== '/api/orchestration/delegations'
+    )
+      refuse('native_task_source_action_required');
+    const selected =
+      selection.resourceId === undefined
+        ? { projectSlug: selection.projectSlug }
+        : {
+            projectSlug: selection.projectSlug,
+            resourceId: selection.resourceId,
+          };
+    const authority: SnapshotAuthority = await this.#authority(
+      context,
+      'POST',
+      '/api/orchestration/delegations',
+    );
+    const assertCurrent = () => {
+      custody.assertCurrent();
+      authority.assertCurrent();
+      if (
+        authority.sessionCustody ||
+        custody.principalId !== authority.principalId ||
+        !authority.lease.principalCredential
+      )
+        refuse('native_root_operator_required');
+    };
+    const protectRead = <Value>(read: () => Value): Value =>
+      this.#environment.withCurrentAuthority(() => {
+        assertCurrent();
+        const value = read();
+        assertCurrent();
+        return value;
+      });
+    protectRead(() => this.#assertSelection(authority, selected));
+    this.#reapSnapshots();
+    if (this.#snapshotCount() >= 4) refuse('snapshot_capacity_exceeded');
+    // Retained seals are not evicted or treated as execution/cleanup receipts.
+    if (
+      readdirSync(this.#store).filter((name) =>
+        name.startsWith('native-snapshot-'),
+      ).length +
+        this.#pendingNativeSeals >=
+      1024
+    )
+      refuse('native_source_receipt_capacity');
+    this.#pendingSeals++;
+    this.#pendingNativeSeals++;
+    try {
+      const capture = await captureSource(this.#home, selected, protectRead);
+      const serialization = capture.snapshotSerialization;
+      if (
+        Buffer.byteLength(serialization) > MAX_SNAPSHOT_BYTES ||
+        this.#retainedSnapshotBytes() + Buffer.byteLength(serialization) >
+          12 * 1024 * 1024
+      )
+        refuse('snapshot_bound_exceeded');
+      const issuedAt = Date.now();
+      const credential = authority.lease.principalCredential;
+      if (!credential) refuse('native_root_operator_required');
+      const record: NativeTaskSealedRecord = {
+        schema: 1,
+        kind: 'native-task-sealed-source-no-tools',
+        id: randomUUID(),
+        taskId: custody.taskId,
+        principalId: authority.principalId,
+        principalCredentialHash: sha(credential),
+        hostContextId: authority.lease.hostContextId,
+        privateHostContextWitness: authority.lease.privateHostContextWitness,
+        issuedAt,
+        expiresAt: issuedAt + 300_000,
+        selection: selected,
+        observed: capture.observed,
+        snapshotDigest: `sha256:${sha(serialization)}`,
+        serializedBytes: Buffer.byteLength(serialization),
+      };
+      const assertAtSeal = () =>
+        protectRead(() => capture.assertObservationOwnersCurrentSync());
+      assertAtSeal();
+      const signature = this.#environment.signRevisionEvidenceAuthorityBinding(
+        json([NATIVE_TASK_SNAPSHOT_DOMAIN, record]),
+      );
+      const receiptPath = join(
+        this.#store,
+        `native-snapshot-${record.id}.json`,
+      );
+      durableCreate(
+        this.#store,
+        `native-snapshot-${record.id}.json`,
+        json({ payload: record, signature }),
+        assertAtSeal,
+      );
+      assertAtSeal();
+      const origin = this.#observationTuple(
+        record,
+        NATIVE_TASK_SNAPSHOT_DOMAIN,
+        `sha256:${sha(json(record))}`,
+      );
+      const source = Object.freeze({
+        ...origin,
+        source_state_id: record.snapshotDigest,
+        execution_worktree_id: `native-source-task-slot:${sha(json([origin.repository_id, origin.execution_worktree_id, record.principalId, record.taskId]))}`,
+      });
+      const capability = Object.freeze({});
+      this.#nativeSnapshots.set(capability, {
+        record,
+        serialization,
+        request: context.req.raw,
+        receiptPath,
+        receiptStamp: stamp(receiptPath),
+        assertCurrent,
+      });
+      try {
+        this.assertRootNativeSnapshotCurrent(context, capability);
+      } catch (error) {
+        this.releaseRootNativeSnapshot(capability);
+        throw error;
+      }
+      return Object.freeze({
+        source,
+        capability,
+        taskId: record.taskId,
+        guarantee: 'sealed-input-only' as const,
+      });
+    } finally {
+      this.#pendingNativeSeals--;
+      this.#pendingSeals--;
+    }
+  }
+  assertRootNativeSnapshotCurrent(
+    context: RuntimeSourceRequestContext,
+    capability: object,
+  ): void {
+    const state = this.#nativeSnapshots.get(capability);
+    if (!state || state.request !== context.req.raw)
+      refuse('native_snapshot_unavailable');
+    this.#environment.withCurrentAuthority(() => {
+      state.assertCurrent();
+      if (
+        Date.now() < state.record.issuedAt ||
+        Date.now() >= state.record.expiresAt
+      )
+        refuse('snapshot_expired');
+      if (
+        stamp(state.receiptPath) !== state.receiptStamp ||
+        `sha256:${sha(state.serialization)}` !== state.record.snapshotDigest
+      )
+        refuse('snapshot_receipt_changed');
+      state.assertCurrent();
+    });
+  }
+  releaseRootNativeSnapshot(capability: object): void {
+    const state = this.#nativeSnapshots.get(capability);
+    if (!state) return;
+    state.serialization = '';
+    this.#nativeSnapshots.delete(capability);
   }
 
   async captureStationControlCredentialAuthority(
@@ -1551,8 +1775,7 @@ export class LocalSourceAdmissionOwner {
     this.#assertProject(authority, record.provenance.observed);
     assertCurrent();
     this.#reapSnapshots();
-    if (this.#snapshots.size + this.#pendingSeals >= 4)
-      refuse('snapshot_capacity_exceeded');
+    if (this.#snapshotCount() >= 4) refuse('snapshot_capacity_exceeded');
     this.#pendingSeals++;
     try {
       const capture = await captureSource(
@@ -1568,10 +1791,7 @@ export class LocalSourceAdmissionOwner {
         `sha256:${sha(capture.snapshotSerialization)}` !== record.snapshotDigest
       )
         refuse('source_changed');
-      const retainedBytes = [...this.#snapshots.values()].reduce(
-        (sum, state) => sum + Buffer.byteLength(state.serialization),
-        0,
-      );
+      const retainedBytes = this.#retainedSnapshotBytes();
       if (retainedBytes + record.serializedBytes > 12 * 1024 * 1024)
         refuse('snapshot_bound_exceeded');
       capture.assertObservationOwnersCurrentSync();
@@ -2203,6 +2423,8 @@ export class LocalSourceAdmissionOwner {
 }
 
 const SNAPSHOT_DOMAIN = 'station.private.sealed-source.no-tools.v1';
+const NATIVE_TASK_SNAPSHOT_DOMAIN =
+  'station.private.native-task-source.seal.v1';
 const MAX_SNAPSHOT_BYTES = 3 * 1024 * 1024;
 export type SnapshotFinalWire = Readonly<{
   url: string;
@@ -2253,6 +2475,22 @@ type SealedRecord = {
   schema: 2;
   kind: 'sealed-source-no-tools';
   provenance: SourceRecord;
+  snapshotDigest: string;
+  serializedBytes: number;
+};
+type NativeTaskSealedRecord = {
+  schema: 1;
+  kind: 'native-task-sealed-source-no-tools';
+  id: string;
+  taskId: string;
+  principalId: string;
+  principalCredentialHash: string;
+  hostContextId: string;
+  privateHostContextWitness: string;
+  issuedAt: number;
+  expiresAt: number;
+  selection: Selection;
+  observed: Snapshot;
   snapshotDigest: string;
   serializedBytes: number;
 };
