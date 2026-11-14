@@ -9,6 +9,8 @@ import { installMockOrchestrationSse } from './helpers/orchestration';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 
 const parent = 'conv-running';
+const parentTitle =
+  'Parent chat with a long title that must truncate without clipping navigation';
 const child: ChildWorkItem = {
   producer: 'engine-subagent',
   reporterThreadId: parent,
@@ -38,7 +40,7 @@ async function seed(page: import('@playwright/test').Page) {
   });
   await mockRuntimeConversation(page, {
     id: parent,
-    title: 'Parent chat',
+    title: parentTitle,
     agentSlug: 'station',
     provider: 'codex',
     model: 'model-selected',
@@ -50,7 +52,7 @@ async function seed(page: import('@playwright/test').Page) {
     conversationId: parent,
     provider: engineId('codex'),
     assignedAgentSlug: agentId('station'),
-    displayTitle: 'Parent chat',
+    displayTitle: parentTitle,
     controlMode: 'station-owned',
     answerability: { answerable: true },
     status: 'ready',
@@ -135,13 +137,32 @@ for (const viewport of [
       await page.screenshot({
         path: testInfo.outputPath(`child-chat-${viewport.width}-${theme}.png`),
       });
-      await trail.getByRole('button', { name: /Parent chat|New chat/ }).click();
-      await expect(
-        page.getByRole('navigation', { name: 'Chat breadcrumb' }),
-      ).toHaveCount(0);
-      await expect(
-        page.getByRole('log', { name: 'Conversation transcript' }),
-      ).toContainText('Parent answer with a child review.');
+      for (const name of ['Back to parent chat', parentTitle]) {
+        const control = trail.getByRole('button', { name, exact: true });
+        const box = (await control.boundingBox())!;
+        expect(box.width).toBeGreaterThanOrEqual(44);
+        expect(box.height).toBeGreaterThanOrEqual(44);
+        expect(
+          await control.evaluate((button) => {
+            const box = button.getBoundingClientRect();
+            return button.contains(
+              document.elementFromPoint(
+                box.x + box.width / 2,
+                box.y + box.height / 2,
+              ),
+            );
+          }),
+        ).toBe(true);
+        await control.click();
+        await expect(trail).toHaveCount(0);
+        await expect(log).toContainText('Parent answer with a child review.');
+        if (name === 'Back to parent chat') {
+          await log
+            .getByRole('button', { name: 'Open chat', exact: true })
+            .click();
+          await expect(trail).toBeVisible();
+        }
+      }
     });
   }
 }
