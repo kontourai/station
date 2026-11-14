@@ -879,8 +879,9 @@ test("a hand-off from Home's composer runs setup here and returns with the promp
     await screen.findByRole('textbox', { name: 'What would you like done?' }),
   ).toHaveProperty('value', 'Keep my Home message');
   expect(screen.getByRole('button', { name: 'Project: Beta' })).toBeTruthy();
+  // The run setup control names the kept Agent and model first.
   expect(
-    screen.getByRole('button', { name: 'Agent: Assistant · Chosen' }),
+    screen.getByRole('button', { name: /^Assistant · Chosen/ }),
   ).toBeTruthy();
   expect(view.onSelect).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Start' }));
