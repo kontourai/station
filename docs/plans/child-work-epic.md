@@ -19,6 +19,32 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
+### Route-assessment reduction and remaining caller failure (2026-11-14)
+
+At `b855e4e33aaa`, ordinary route assessment defers its duplicate credential
+validity fallback to the mandatory current effective-scope lookup. Earlier
+pairing, peer and administration checks remain in place. Ordinary authorization
+keeps direct credential verification; registry and Home boundaries are unchanged.
+The existing owner test observes the real filesystem: the prior sixteen-open
+assessment fails the new fifteen-open ceiling, and the optimized call passes
+with a positive observer and one physical acquisition.
+
+A fresh delta review found no actionable bounded source issue. Independent
+fabricated-scope and ordinary-authorization-default faults both fail the intended
+public API assertions. Byte-exact restoration passes all seventy-six selected
+owner/caller cases on the committed head. Lint and server-test types also pass.
+These are bounded resource and authority checks, not a latency qualification.
+
+The unchanged full lost-reappraisal caller still fails its original sixty-second
+bound on this head. The latest trace reaches late winner validation before abort;
+remaining refusal cases do not become passed by that progress. The earlier
+in-worker diagnostic at `4e1df2955da9` counted 205,202 opens matching the Home-lock
+path prefix before timeout and was restored exactly. Its sampled stacks establish
+repeated credential/scope work, not a measured duration or full-scenario repair.
+No workload, deadline, durability, resource bucket or qualification flag changed.
+Inherited native authority, full finalizer serving and combined acceptance remain
+open.
+
 ### Main integration and retained readiness limits (2026-11-14)
 
 Merge `be563a0ba03d` integrates the shared child-transcript renderer and the
