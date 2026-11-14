@@ -196,8 +196,8 @@ test('a running delegate can be stopped; a provider task with no session thread 
 
 test('opening a delegate’s transcript reveals it on Activity', () => {
   mount({ running: [entry({ delegateThreadId: 'delegate-1' })], finished: [] });
-  screen.getByText('View transcript').click();
-  expect(showSurface).toHaveBeenCalledWith('activity', {
+  screen.getByText('Open chat').click();
+  expect(showSurface).toHaveBeenCalledWith('chat', {
     session: 'delegate-1',
   });
 });

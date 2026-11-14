@@ -128,9 +128,7 @@ names what the module owns. Read the module before depending on it.
 - `/workspace-task-room-composition`: Task room composition and its degradations.
 - `/workspace-coding-file-composition`, `/workspace-coding-diff-composition`,
   `/workspace-coding-evidence-composition`: coding pane selection and read grants.
-- Built-in pane descriptors and instances: `/workspace-activity-pane`,
-  `/workspace-activity-review-pane` (docked, occurrence-only review),
-  `/workspace-agents-pane`, `/workspace-chat-pane`, `/workspace-coding-panels`,
+- Pane descriptors: `/workspace-agents-pane`, `/workspace-chat-pane`, `/workspace-coding-panels`,
   `/workspace-device-pane`, `/workspace-evidence-panels`, `/workspace-home-pane`,
   `/workspace-layout-pane`, `/workspace-plugin-draft-pane`,
   `/workspace-pull-request-pane`, `/workspace-spatial-board`,

@@ -203,7 +203,7 @@ test('a Web Push tap: the page loads on the link, the parameter leaves the URL o
 test('an alert opened before the reader loads is still read once it does', async () => {
   const view = renderHook(() => useTurnNotificationReads());
   navigationStore.navigate('/', {
-    surface: 'activity',
+    surface: 'chat',
     session: 'thread-watched',
     openedNotification: 'n-early',
   });

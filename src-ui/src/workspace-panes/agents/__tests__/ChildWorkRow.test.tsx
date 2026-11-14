@@ -15,10 +15,8 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { ConversationConnectionContext } from '../../../components/conversation/ConversationConnectionContext';
 import type { ChildWorkRowModel } from '../childWorkSelectors';
 
 const useOrchestrationSessionQuery = vi.fn();
@@ -207,7 +205,7 @@ test('a transcript-file handle gets no button; a session handle opens that sessi
       result: { handle: { kind: 'session', threadId: 'd-1' } },
     }),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Open session' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
   expect(onOpenSession).toHaveBeenCalledWith('d-1');
 });
 
@@ -541,12 +539,6 @@ const transcriptQuery = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const TRANSCRIPT = {
-  kind: 'claude-subagent' as const,
-  sessionId: '00000000-0000-4000-8000-000000000003',
-  agentId: 'task-1',
-};
-
 test('#3163: an engine subagent shows its own reported model, with where it came from', () => {
   const { container } = mount(
     row({
@@ -582,288 +574,25 @@ test('#3163: a child without a transcript offers none', () => {
   expect(useChildWorkTranscriptQuery).not.toHaveBeenCalled();
 });
 
-test('#3163: View transcript reads the child by session and id, renders it read-only, and pages on request', () => {
-  useChildWorkTranscriptQuery.mockReturnValue(
-    transcriptQuery({
-      isSuccess: true,
-      hasNextPage: true,
-      data: {
-        pages: [
-          {
-            entries: [
-              { message: 0, kind: 'text', role: 'user', text: 'Reply INNER' },
-              {
-                message: 1,
-                kind: 'tool-call',
-                name: 'Agent',
-                input: '{"prompt":"x"}',
-              },
-              { message: 2, kind: 'tool-result', text: 'INNER DONE' },
-              { message: 3, kind: 'text', role: 'assistant', text: 'DONE' },
-            ],
-            nextOffset: 30,
-          },
-        ],
-      },
-    }),
-  );
-  mount(row({ status: 'completed', transcript: TRANSCRIPT }));
-  // Closed: nothing is read.
-  expect(useChildWorkTranscriptQuery).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
-  expect(useChildWorkTranscriptQuery).toHaveBeenCalledWith(
-    {
-      threadId: 'exec-1',
-      childId: 'task-1',
-      requestScope: undefined,
-    },
-    undefined,
-  );
-  const region = screen.getByRole('region', { name: 'Subagent transcript' });
-  expect(region.textContent).toContain('Reply INNER');
-  expect(region.textContent).toContain('Tool · Agent');
-  expect(region.textContent).toContain('INNER DONE');
-  expect(region.querySelectorAll('textarea, input')).toHaveLength(0);
-  fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
-  expect(fetchNextPage).toHaveBeenCalledTimes(1);
-  fireEvent.click(screen.getByRole('button', { name: 'Hide transcript' }));
-  expect(
-    screen.queryByRole('region', { name: 'Subagent transcript' }),
-  ).toBeNull();
-});
-
-test('a peer chat reads its subagent transcript through the receiver bridge under the source authority', () => {
-  const requestScope = {
-    apiBase: 'http://source.test',
-    authorityKey: 'source',
-    isCurrent: () => true,
-  };
-  const apiBase = `${requestScope.apiBase}/api/environments/peers/desktop-win/chat-api`;
-  useChildWorkTranscriptQuery.mockReturnValue(transcriptQuery());
+test('an engine transcript opens in Chat without mounting an inline reader', () => {
+  const onOpenChild = vi.fn();
+  const model = row({
+    transcript: { kind: 'codex-thread', threadId: 'child' },
+  });
   render(
-    <ConversationConnectionContext.Provider value={{ apiBase, requestScope }}>
-      <ul>
-        <ChildWorkRow
-          row={row({ status: 'completed', transcript: TRANSCRIPT })}
-          now={100_000}
-          showProvenance={false}
-          onOpenSession={onOpenSession}
-        />
-      </ul>
-    </ConversationConnectionContext.Provider>,
-  );
-  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
-  expect(useChildWorkTranscriptQuery).toHaveBeenCalledWith(
-    { threadId: 'exec-1', childId: 'task-1', requestScope },
-    apiBase,
-  );
-});
-
-test('#4266: a subagent reply in the transcript renders as Markdown, a prompt as written', async () => {
-  useChildWorkTranscriptQuery.mockReturnValue(
-    transcriptQuery({
-      isSuccess: true,
-      data: {
-        pages: [
-          {
-            entries: [
-              {
-                message: 0,
-                kind: 'text',
-                role: 'user',
-                text: 'List **every** file.',
-              },
-              {
-                message: 1,
-                kind: 'text',
-                role: 'assistant',
-                text: 'Found 2 files in this folder:\n\n- `README.md`\n- `notes.txt`',
-              },
-            ],
-          },
-        ],
-      },
-    }),
-  );
-  mount(
-    row({
-      status: 'completed',
-      transcript: { kind: 'codex-thread', threadId: 'child-thread-1' },
-    }),
-  );
-  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
-  const region = screen.getByRole('region', { name: 'Subagent transcript' });
-  // Markdown renders lazily.
-  await waitFor(() =>
-    expect(
-      [...region.querySelectorAll('.child-work-transcript__markdown li')].map(
-        (item) => item.textContent?.trim(),
-      ),
-    ).toEqual(['README.md', 'notes.txt']),
-  );
-  expect(region.textContent).not.toContain('`');
-  // The parent's task stays as it was written.
-  expect(region.textContent).toContain('List **every** file.');
-});
-
-test('#3163: a transcript the engine no longer has says so', () => {
-  useChildWorkTranscriptQuery.mockReturnValue(
-    transcriptQuery({ isError: true, error: new FakeStationHttpError(503) }),
-  );
-  mount(row({ status: 'completed', transcript: TRANSCRIPT }));
-  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
-  expect(screen.getByRole('alert').textContent).toBe(
-    'The engine no longer has this transcript.',
-  );
-});
-
-test('#3163: a running child’s open transcript re-reads when the child reports, and offers Refresh', () => {
-  vi.useFakeTimers();
-  useChildWorkTranscriptQuery.mockReturnValue(
-    transcriptQuery({
-      isSuccess: true,
-      data: {
-        pages: [
-          {
-            entries: [
-              { message: 0, kind: 'text', role: 'user', text: 'Reply INNER' },
-            ],
-          },
-        ],
-      },
-    }),
-  );
-  const view = render(
     <ul>
       <ChildWorkRow
-        row={row({ transcript: TRANSCRIPT, progress: 'Reading files' })}
+        row={model}
         now={100_000}
         showProvenance={false}
         onOpenSession={onOpenSession}
+        onOpenChild={onOpenChild}
       />
     </ul>,
   );
-  const toggle = screen.getByRole('button', { name: 'View transcript' });
-  fireEvent.click(toggle);
-  const region = screen.getByRole('region', { name: 'Subagent transcript' });
-  expect(toggle.getAttribute('aria-controls')).toBe(region.id);
-  expect(refetch).not.toHaveBeenCalled();
-  view.rerender(
-    <ul>
-      <ChildWorkRow
-        row={row({ transcript: TRANSCRIPT, progress: 'Writing the answer' })}
-        now={100_000}
-        showProvenance={false}
-        onOpenSession={onOpenSession}
-      />
-    </ul>,
-  );
-  // Debounced: nothing until the child has been quiet for 2 s.
-  expect(refetch).not.toHaveBeenCalled();
-  act(() => {
-    vi.advanceTimersByTime(1_999);
-  });
-  expect(refetch).not.toHaveBeenCalled();
-  act(() => {
-    vi.advanceTimersByTime(1);
-  });
-  expect(refetch).toHaveBeenCalledTimes(1);
-  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-  expect(refetch).toHaveBeenCalledTimes(2);
-  vi.useRealTimers();
-});
-
-test('#3163: a child reporting every 500 ms for 10 s still gets its transcript re-read, at most every 2 s', () => {
-  vi.useFakeTimers();
-  useChildWorkTranscriptQuery.mockReturnValue(
-    transcriptQuery({ isSuccess: true, data: { pages: [{ entries: [] }] } }),
-  );
-  const mountAt = (progress: string) => (
-    <ul>
-      <ChildWorkRow
-        row={row({ transcript: TRANSCRIPT, progress })}
-        now={100_000}
-        showProvenance={false}
-        onOpenSession={onOpenSession}
-      />
-    </ul>
-  );
-  const view = render(mountAt('step 0'));
-  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
-  for (let step = 1; step <= 20; step++) {
-    view.rerender(mountAt(`step ${step}`));
-    act(() => {
-      vi.advanceTimersByTime(500);
-    });
-  }
-  // 10 s of reports every 500 ms: one re-read per 2 s window, every window.
-  expect(refetch).toHaveBeenCalledTimes(5);
-  vi.useRealTimers();
-});
-
-test('#3163: a change after a throttled re-read fires another one', () => {
-  vi.useFakeTimers();
-  useChildWorkTranscriptQuery.mockReturnValue(
-    transcriptQuery({ isSuccess: true, data: { pages: [{ entries: [] }] } }),
-  );
-  const mountAt = (progress: string) => (
-    <ul>
-      <ChildWorkRow
-        row={row({ transcript: TRANSCRIPT, progress })}
-        now={100_000}
-        showProvenance={false}
-        onOpenSession={onOpenSession}
-      />
-    </ul>
-  );
-  const view = render(mountAt('first'));
-  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
-  view.rerender(mountAt('second'));
-  act(() => {
-    vi.advanceTimersByTime(2_000);
-  });
-  expect(refetch).toHaveBeenCalledTimes(1);
-  view.rerender(mountAt('third'));
-  act(() => {
-    vi.advanceTimersByTime(2_000);
-  });
-  expect(refetch).toHaveBeenCalledTimes(2);
-  vi.useRealTimers();
-});
-
-test('#3163: unmounting with a re-read pending cancels it', () => {
-  vi.useFakeTimers();
-  useChildWorkTranscriptQuery.mockReturnValue(
-    transcriptQuery({ isSuccess: true, data: { pages: [{ entries: [] }] } }),
-  );
-  const mountAt = (progress: string) => (
-    <ul>
-      <ChildWorkRow
-        row={row({ transcript: TRANSCRIPT, progress })}
-        now={100_000}
-        showProvenance={false}
-        onOpenSession={onOpenSession}
-      />
-    </ul>
-  );
-  const view = render(mountAt('first'));
-  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
-  view.rerender(mountAt('second'));
-  view.unmount();
-  act(() => {
-    vi.advanceTimersByTime(10_000);
-  });
-  expect(refetch).not.toHaveBeenCalled();
-  vi.useRealTimers();
-});
-
-test('#3163: a settled child’s transcript offers no Refresh', () => {
-  useChildWorkTranscriptQuery.mockReturnValue(
-    transcriptQuery({ isSuccess: true, data: { pages: [{ entries: [] }] } }),
-  );
-  mount(row({ status: 'completed', transcript: TRANSCRIPT }));
-  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
-  expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+  expect(onOpenChild).toHaveBeenCalledWith(model.item, model.title);
+  expect(useChildWorkTranscriptQuery).not.toHaveBeenCalled();
 });
 
 test('a provider summary is labeled as a report rather than a verified returned artifact', () => {

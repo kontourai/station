@@ -906,10 +906,9 @@ ends, its exit code, and a group counts it as a background command.
 Every background-task row expands to its full title, status, start and end
 times, and, for a tool, which tool ran and a one-line summary of its input.
 
-The background-task sheet shows recent tasks only (its footer says so). Older
-tool rows and closed-chat history can be omitted, and remote tasks are in
-Activity; counts marked **shown** describe retained rows. Closing a chat does
-not stop its child work. Use Activity to inspect the
+The background-task sheet shows recent tasks only (its footer says so). Older tool rows and
+closed-chat history can be omitted; counts marked **shown** describe retained
+rows. Closing a chat does not stop its child work. Open its chat from the inbox to inspect the
 Session history available from that Station. Missing snapshot evidence keeps an
 outcome unresolved rather than declaring success.
 
@@ -1032,7 +1031,7 @@ Use the conversation-reference button beside the composer actions to choose an
 earlier conversation. The picker searches the 25 most recent conversations
 returned for your access and shows up to eight matches; it does not search
 older history. You can also drag a result into the composer, or drag a
-conversation's row from Activity or the inbox. A message can
+conversation's row from the inbox. A message can
 contain at most eight conversation references. Station
 sends a link to the selected conversation, plus one line naming its id and
 asking the receiving Agent to read it with the `read_conversation` tool; it
@@ -1119,7 +1118,7 @@ Project. This separate guided starter keeps its focused title entry and dispatch
 shows the setup reason without creating a Task. If a start has an uncertain
 outcome, inspect that Task rather than creating another to retry it.
 
-When a Session reports a plan (ACP engines do), its row in Activity and on
+When a Session reports a plan (ACP engines do), its row in the inbox and on
 Home, and the Tasks board card and Project task row of a Task it runs, show
 **Agent plan 3/5** and a thin bar. It is the agent's newest plan in that
 Session's latest turn, refreshed every few seconds while the Session is
@@ -1135,35 +1134,26 @@ Task status alone does not establish that work passed a gate. Read the run and
 review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains
 how Station preserves the same work identity through retries and response loss.
 
-## Review Activity Without Changing Your Place
+<a id="review-activity-without-changing-your-place"></a>
 
-Open **Activity** from the workspace sidebar. A row can show its Session's
-agent-reported plan, as described in
-[Start Your First Task](#start-your-first-task). Use a row's **More actions →
-Quick review** to read it in Related while keeping the selected item, search,
-filters and list position. **Previous** and **Next** follow the rows currently
-visible in that list. When an item leaves the current results, review says so
-and disables those controls rather than choosing from hidden results.
+## Read Child Conversations
 
-Choose **Open** to keep the reviewed item as durable work. Reopening the same
-kept item focuses it. Typing a reply also protects it; Cancel in the unsaved
-changes dialog leaves the reply and source in place. A review belongs to the
-Station it was opened on and does not read another Station's data.
+Choose **Open chat** on a subagent card or a background task to read its
+transcript in the chat pane. The title becomes **Parent chat › Subagent**;
+choose an ancestor to return without losing its draft or reading position.
+Escape returns one level. On a phone, use the back button or swipe from the
+left edge. Engine transcripts are read only and refresh while running.
 
-**Open conversation** uses Chat's normal conversation owner. A review that
-stays visible does not ask you to leave it. If opening Chat hides dirty work,
-that work asks once; Cancel keeps the current view and reply. An attached
-review hands its message to Chat's **Continue here?** confirmation on the same
-Station. Switching Station or closing that reader stops a late result from
-opening or sending in the new view.
-
-On a phone, review opens as a child screen. Back returns through the real
-history entry; **Up to Activity** returns to its captured Activity opener.
-Session properties sheets and cold child links remain separate planned work.
+Use **Home** or the inbox to find work. Notification and session links open
+that session in Chat, including attached records and sessions whose Agent
+was deleted. Older Activity links still work: a session link opens its reader,
+and a collection link opens the inbox. There is no separate Activity page or
+Quick review pane. Action operations are under **Developer → Monitoring**,
+linked from **Settings → Advanced → Developer tools**.
 
 ## See Conversations Started Outside Station
 
-**Activity** also lists Claude Code, Codex, Grok and OpenCode conversations
+The **inbox** also lists Claude Code, Codex, Grok and OpenCode conversations
 you ran in a terminal or another app on this machine. Station reads them; it
 never controls them. These conversations do not raise Station sounds, popups,
 desktop notifications or mobile alerts, and do not appear on mobile activity
@@ -1194,7 +1184,7 @@ Station looks in four places:
 `STATION_EXTERNAL_GROK_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
 point Station at a different folder (for OpenCode, the folder holding the
 database). Station checks every two seconds and reads the 128 most recently
-changed conversations from each place. Older ones stay in Activity once Station
+changed conversations from each place. Older ones stay in history once Station
 has read them, but new messages in them are not picked up until they are among
 the 128 again. Conversations Station has not listed before appear only after it
 finishes restoring its own sessions at startup; if that restore fails, already
@@ -1203,19 +1193,17 @@ listed conversations keep updating but new ones wait until Station restarts.
 Each conversation is filed under a Project by the folder it ran in:
 
 1. A Project whose folder contains that folder. When two Projects share the
-   folder, Activity names both rather than picking one.
+   folder, the inbox names both rather than picking one.
 2. Otherwise, a Project whose folder is in the same git repository. Every
    worktree of the repository counts, so a conversation in
    `../station-worktrees/fix-login` or another tool's worktree folder files
    under the Project on the main checkout. A Project on a subfolder of the
    repository takes that same subfolder in every worktree.
-3. Otherwise, **No project**. Choose **No project** in Activity's **Project**
-   filter to list these.
+3. Otherwise, **No project**. These conversations have no Project assignment.
 
 Rows can show **Directory · …/parent/folder** when a working folder is recorded
 without a Project label. The label provides folder context and leaves Project
-membership unchanged; use **No project** in the Project filter for unassigned
-conversations.
+membership unchanged.
 
 A conversation keeps its Project after its worktree is removed. If its Project
 is deleted while other Projects remain, it moves to **No project**. A conversation inside a git submodule
@@ -1229,15 +1217,15 @@ Station has already filed keeps its Project. A new one is listed under
 the drive responds, the conversation moves to its Project.
 
 Station copies what it reads into its own history and search index, so a
-conversation stays in Activity and in search after the original transcript is
+conversation stays in history and in search after the original transcript is
 gone. You can open these conversations, and so can every device you have
-paired with Activity read access, including a phone.
+paired with session read access, including a phone.
 
 To stop reading conversations from folders outside your Projects, turn off
 **Conversations outside projects** in **Settings → Advanced** (under Host options), then **Save**
 (`attachedSessionsOutsideProjects` in the Station configuration). Station stops on its
 next check, including for conversations it already lists: new messages in
-them no longer arrive. What it already read stays in Activity, in search and
+them no longer arrive. What it already read stays in history, in search and
 readable from your paired devices; turning the setting off removes nothing.
 Conversations inside a Project are read either way.
 
@@ -1246,7 +1234,7 @@ ones inside a Project, but no account can open them there.
 
 ## Continue an Attached Session
 
-Open an attached terminal Session in **Activity**. It reads like any chat. To
+Open an attached terminal Session from the **inbox**. It reads like any chat. To
 continue it in Station, type a message and press Send: Chat asks once,
 **Continue here?**, and **Continue and send** continues it there with your
 message. **Cancel** keeps your draft. Claude and Codex create independent child
@@ -1293,7 +1281,7 @@ the dock and take your next messages there. Those messages keep working in
 the conversation's own folder, including a folder inside the Project or a
 worktree, never the Project folder instead. If Station has no Agent for that
 engine, the continuation is still created and you continue it from
-**Activity**; the dock says why it cannot open it.
+**Chat**; the dock says why it cannot open it.
 
 See [continuation and recovery details](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#continue-an-attached-session).
 
@@ -1342,7 +1330,7 @@ message. Your draft stays editable. **Check** is for an unanswered send;
 a refusal does not mean delivery is uncertain. Unknown technical errors use a
 short recovery message, with diagnostics in Details where available.
 
-The Activity reader and coding tabs use the same reply controls as the dock.
+The session reader and coding tabs use the same reply controls as the dock.
 Shared Task history keeps the records already loaded when an earlier page fails;
 use **Retry** to read that page again. Inbox search, snooze, dismissal and Undo
 work across its desktop and mobile layouts.
