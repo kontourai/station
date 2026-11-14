@@ -61,6 +61,8 @@ export class RemoteTaskTracker {
   readonly #options: RemoteTaskTrackerOptions;
   readonly #tracked = new Map<string, Tracked>();
   readonly #interest = new Map<string, number>();
+  /** Tasks stopped by a failure only a person can fix; a read does not restart them. */
+  readonly #halted = new Set<string>();
   readonly #setTimer: (run: () => void, ms: number) => unknown;
   readonly #clearTimer: (handle: unknown) => void;
   readonly #now: () => number;
@@ -89,12 +91,23 @@ export class RemoteTaskTracker {
    * left alone, so a client reading every few seconds never shortens the
    * cadence.
    */
-  noteInterest(connectionId: string, taskId: string): void {
+  noteInterest(
+    connectionId: string,
+    taskId: string,
+    options: { explicit?: boolean } = {},
+  ): void {
     if (this.#stopped) return;
     const id = key(connectionId, taskId);
+    // A write or an explicit sync is a new attempt; a read is not, so a task
+    // a vendor refused is not polled again on every read.
+    if (options.explicit) this.#halted.delete(id);
+    if (this.#halted.has(id)) return;
+    if (!this.#options.service.isActive(connectionId, taskId)) {
+      this.#interest.delete(id);
+      return;
+    }
     this.#interest.set(id, this.#now());
     if (this.#tracked.has(id)) return;
-    if (!this.#options.service.isActive(connectionId, taskId)) return;
     this.#schedule(connectionId, taskId, 0);
   }
 
@@ -139,6 +152,7 @@ export class RemoteTaskTracker {
       this.#options.service.pollingFor(connectionId) ??
       REMOTE_TASK_POLLING_DEFAULT;
     let next: number | undefined;
+    let failedHard = false;
     try {
       const result = await this.#options.service.syncTask(connectionId, taskId);
       if (!result.quiescent)
@@ -162,6 +176,7 @@ export class RemoteTaskTracker {
         next = nextRemoteTaskPollDelay(polling, entry.delayMs, {
           kind: 'failed',
         });
+      else failedHard = true;
       this.#options.logger.warn('Remote task poll failed', {
         connectionId,
         code:
@@ -175,6 +190,8 @@ export class RemoteTaskTracker {
     if (this.#tracked.get(id) !== entry) return;
     if (next === undefined || this.#stopped) {
       this.#tracked.delete(id);
+      this.#interest.delete(id);
+      if (failedHard) this.#halted.add(id);
       return;
     }
     this.#schedule(connectionId, taskId, next);

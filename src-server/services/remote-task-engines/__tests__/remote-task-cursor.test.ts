@@ -113,14 +113,15 @@ describe('Cursor binding', () => {
     expect(agentMessages(result.appended)).toEqual(['Done from the run read.']);
   });
 
-  test('an archived agent finishes its sync and is not paged again', async () => {
+  test('an archived agent is read to its last result once, then not paged again', async () => {
     const { cursor, h, connectionId } = await setup();
     cursor.finishRun('Last words.');
     cursor.state.agent.status = 'ARCHIVED';
-    // The runs list answers 409 agent_archived: end of messages, not a failure.
+    // The runs list stays readable for an archived agent (OpenAPI).
     const first = await h.service.syncTask(connectionId, cursor.agentId);
     expect(first.quiescent).toBe(true);
     expect(first.task.status).toBe('completed');
+    expect(agentMessages(first.appended)).toEqual(['Last words.']);
     const lists = () => cursor.fake.matching('GET', /\/runs$/).length;
     expect(lists()).toBe(1);
     // Settled: the next sync reads the agent but pages nothing.
@@ -128,6 +129,57 @@ describe('Cursor binding', () => {
     expect(second.quiescent).toBe(true);
     expect(lists()).toBe(1);
     expect(h.service.isActive(connectionId, cursor.agentId)).toBe(false);
+  });
+
+  test('a burst of finished runs past the first list page is stored in full', async () => {
+    const { cursor, h, connectionId } = await setup();
+    cursor.state.run.status = 'RUNNING';
+    await h.service.syncTask(connectionId, cursor.agentId);
+    // 30 runs finish between polls; the list is newest first, 20 a page by
+    // default.
+    cursor.finishRun('run 0 done');
+    for (let i = 1; i < 30; i += 1) {
+      cursor.startRun(
+        `run-10000000-0000-0000-0000-${String(i).padStart(12, '0')}`,
+        `2026-04-13T19:${String(i).padStart(2, '0')}:00.000Z`,
+      );
+      cursor.finishRun(`run ${i} done`);
+    }
+    const result = await h.service.syncTask(connectionId, cursor.agentId);
+    expect(agentMessages(result.appended)).toEqual(
+      Array.from({ length: 30 }, (_, i) => `run ${i} done`),
+    );
+    // limit is sent, and paging stops once it reaches a stored run.
+    const lists = cursor.fake.matching('GET', /\/runs$/);
+    expect(lists.at(-1)?.url.searchParams.get('limit')).toBe('100');
+    cursor.startRun(
+      'run-00000000-0000-0000-0000-000000000099',
+      '2026-04-13T20:00:00.000Z',
+    );
+    cursor.finishRun('one more');
+    const again = await h.service.syncTask(connectionId, cursor.agentId);
+    expect(agentMessages(again.appended)).toEqual(['one more']);
+  });
+
+  test('finished runs listed without a result are all read, none twice, before the task settles', async () => {
+    const { cursor, h, connectionId } = await setup();
+    cursor.state.omitResultInList = true;
+    cursor.finishRun('result 0');
+    for (let i = 1; i < 8; i += 1) {
+      cursor.startRun(
+        `run-10000000-0000-0000-0000-${String(i).padStart(12, '0')}`,
+        `2026-04-13T19:0${i}:00.000Z`,
+      );
+      cursor.finishRun(`result ${i}`);
+    }
+    const result = await h.service.syncTask(connectionId, cursor.agentId);
+    expect(agentMessages(result.appended)).toEqual(
+      Array.from({ length: 8 }, (_, i) => `result ${i}`),
+    );
+    expect(result.quiescent).toBe(true);
+    // Each resultless run read exactly once: the sync's own latest-run read
+    // plus eight fallback reads, never one already stored again.
+    expect(cursor.fake.matching('GET', /\/runs\/run-[^/]+$/)).toHaveLength(9);
   });
 
   test('cancels the latest run, and reads token usage once the agent stops', async () => {

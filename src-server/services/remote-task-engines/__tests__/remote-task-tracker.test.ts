@@ -172,6 +172,21 @@ describe('RemoteTaskTracker', () => {
     expect(t.tracker.isTracking('c', 'task')).toBe(false);
   });
 
+  test('after a failure only a person can fix, reads do not re-poll; a write or sync does', async () => {
+    const t = setup([
+      new RemoteTaskError('remote-task-vendor-refused', 'no', 502),
+      'ok',
+    ]);
+    t.tracker.noteInterest('c', 'task');
+    await t.fire();
+    expect(t.pending()).toEqual([]);
+    for (let i = 0; i < 5; i += 1) t.tracker.noteInterest('c', 'task');
+    expect(t.pending()).toEqual([]);
+    expect(t.syncs).toHaveLength(1);
+    t.tracker.noteInterest('c', 'task', { explicit: true });
+    expect(t.pending()).toEqual([0]);
+  });
+
   test('an unexpected error stops tracking instead of retrying forever', async () => {
     const t = setup([new Error('remote task exceeds the byte limit')]);
     t.tracker.noteInterest('c', 'task');

@@ -186,7 +186,7 @@ export function createRemoteTaskEngineRoutes(
     handle(async (c) => {
       const id = param(c, 'id');
       const task = await service.createTask(id, await jsonBody(c));
-      tracker.noteInterest(id, task.taskId);
+      tracker.noteInterest(id, task.taskId, { explicit: true });
       return task;
     }, 201),
   );
@@ -210,7 +210,7 @@ export function createRemoteTaskEngineRoutes(
         taskId,
         (await jsonBody(c)).text,
       );
-      tracker.noteInterest(id, taskId);
+      tracker.noteInterest(id, taskId, { explicit: true });
       return result;
     }),
   );
@@ -220,7 +220,7 @@ export function createRemoteTaskEngineRoutes(
       const id = param(c, 'id');
       const taskId = param(c, 'taskId');
       await service.cancelTask(id, taskId);
-      tracker.noteInterest(id, taskId);
+      tracker.noteInterest(id, taskId, { explicit: true });
     }),
   );
   app.post(
@@ -229,7 +229,7 @@ export function createRemoteTaskEngineRoutes(
       const id = param(c, 'id');
       const taskId = param(c, 'taskId');
       const result = await service.syncTask(id, taskId);
-      tracker.noteInterest(id, taskId);
+      tracker.noteInterest(id, taskId, { explicit: true });
       return result;
     }),
   );

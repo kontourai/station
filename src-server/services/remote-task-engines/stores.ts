@@ -164,6 +164,13 @@ export interface RemoteTaskRecord {
   readonly tracking: 'active' | 'quiescent';
   /** Usage was read after the task stopped working (vendors that report it apart). */
   readonly usageSettled: boolean;
+  /**
+   * The vendor state (status and update time) whose messages were paged to
+   * the end, written only after paging finished. A finished task is settled
+   * (not paged again) only when this names its current state, so a page that
+   * failed is retried.
+   */
+  readonly pagedThroughStatus?: string;
 }
 
 function emptyTask(connectionId: string, taskId: string): RemoteTaskRecord {

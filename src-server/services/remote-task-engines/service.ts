@@ -504,14 +504,20 @@ export class RemoteTaskEngineService {
     taskId: string,
     update: Parameters<RemoteTaskStore['mutate']>[2],
   ) {
-    return this.#tasks.mutate(connectionId, taskId, (current) => {
-      if (
-        this.#deleted.has(connectionId) ||
-        !this.#connections.get(connectionId)
-      )
-        throw this.#connectionGone();
-      return update(current);
-    });
+    const gone = () =>
+      this.#deleted.has(connectionId) || !this.#connections.get(connectionId);
+    if (gone()) return Promise.reject(this.#connectionGone());
+    return this.#tasks
+      .mutate(connectionId, taskId, (current) => {
+        if (gone()) throw this.#connectionGone();
+        return update(current);
+      })
+      .catch((error: unknown) => {
+        // The write's folder may have been made again before the check
+        // refused it; a removed connection leaves nothing behind.
+        if (gone()) this.#tasks.removeConnection(connectionId);
+        throw error;
+      });
   }
 
   /**
@@ -646,12 +652,12 @@ export class RemoteTaskEngineService {
     const result = await this.#call(connectionId, (context) =>
       sendMessage(context, taskId, text),
     );
-    // The task works again: the tracker resumes polling it.
-    await this.#mutateTask(connection.id, taskId, (record) => ({
-      ...record,
-      tracking: 'active',
-      usageSettled: false,
-    }));
+    // The task works again: the tracker resumes polling it, and it pages
+    // again whatever its next status is.
+    await this.#mutateTask(connection.id, taskId, (record) => {
+      const { pagedThroughStatus: _paged, ...rest } = record;
+      return { ...rest, tracking: 'active', usageSettled: false };
+    });
     return result;
   }
 
@@ -753,11 +759,12 @@ export class RemoteTaskEngineService {
         return { ...next.record, snapshot: task };
       });
       const terminal = isRemoteTaskTerminal(task.status);
-      const settled =
-        terminal &&
-        before?.tracking === 'quiescent' &&
-        before.snapshot !== null &&
-        before.snapshot.vendorStatus === task.vendorStatus;
+      // Settled only when an earlier sync paged this very state to the end:
+      // a state written before a page failed does not count, and the
+      // vendor's update time tells a later run with the same status word
+      // apart from the one already paged.
+      const pagedKey = `${task.vendorStatus}|${task.updatedAt ?? ''}`;
+      const settled = terminal && before?.pagedThroughStatus === pagedKey;
       let more = false;
       if (binding.capabilities.events && binding.pageEvents && !settled) {
         let cursor = record.vendorCursor;
@@ -766,7 +773,12 @@ export class RemoteTaskEngineService {
             ReturnType<NonNullable<RemoteTaskBinding['pageEvents']>>
           >;
           try {
-            result = await binding.pageEvents(context, taskId, cursor);
+            // The vendor ids stored so far, this sync's earlier pages
+            // included, so a binding can stop at what Station has.
+            const seen = new Set(record.seenIds);
+            result = await binding.pageEvents(context, taskId, cursor, (id) =>
+              seen.has(id),
+            );
           } catch (error) {
             if (
               terminal &&
@@ -803,6 +815,7 @@ export class RemoteTaskEngineService {
               },
         tracking: quiescent ? 'quiescent' : 'active',
         usageSettled: quiescent ? true : current.usageSettled,
+        ...(more ? {} : { pagedThroughStatus: pagedKey }),
       }));
       return { task: finalTask, appended, quiescent };
     });

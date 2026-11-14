@@ -95,7 +95,8 @@ describe('remote task service', () => {
     release();
     expect(await sync).toMatchObject({ code: 'remote-task-not-found' });
     const dir = join(h.home, 'remote-task-engines', 'tasks', id);
-    expect(existsSync(dir) ? readdirSync(dir) : []).toEqual([]);
+    // Not even an empty folder is left behind.
+    expect(existsSync(dir) ? readdirSync(dir) : 'absent').toBe('absent');
     expect(new RemoteTaskStore(h.home).hasTasks(id)).toBe(false);
   });
 });
