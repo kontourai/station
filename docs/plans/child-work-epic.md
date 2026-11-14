@@ -19,6 +19,33 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
+### Historical locator guard qualification (2026-11-13)
+
+At `c6ae01856501`, each retained historical Flow locator checks its exact child
+lifetime and physical Home lease before rechecking the original captured POST
+authority. This avoids nested full-roster validation inside each locator while
+the outer preparation fence continues checking the complete roster. Locator
+signatures, source tuple, file stamp, Git identities and parent/group bindings
+remain unchanged. Prepared transaction validation also avoids an extra
+`current()` immediately before its already-guarded preparation callback; the
+separate parent accessor path is unchanged.
+
+Independent source review found no bounded objection. The existing pass-through
+control now captures actual location guards, releases the real transaction
+child and proves refusal before registry reads while its parent and sibling
+remain live. The existing request-replacement control probes those live guards
+before and after captured authority replacement. Both independent missing-lifetime
+and missing-authority mutations fail the intended assertion before the sixty-second
+bound. Byte-exact restoration passes all five currentness cases at the same
+committed head. Server-test typechecking passes.
+
+The full lost-reappraisal scenario still times out. Its latest unchanged-bound
+run spent 56.8 seconds in setup before initial finalization, so it does not establish
+whether this locator optimization improves the complete scenario. The 1,200-thread
+projection and broader semantic documentation backlog also remain unresolved.
+No workload, deadline, durability, resource bucket or qualification flag changed.
+Full inherited native/portable authority and combined acceptance remain open.
+
 ### Publication guard repair and retained performance failures (2026-11-13)
 
 At `780264f13f53`, a synchronous rounds check reuses its already-entered Home
