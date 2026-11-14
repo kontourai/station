@@ -9,6 +9,10 @@ import { assertGalleryScreenSourcesCover } from './gallery-screen-sources.mjs';
 import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
 import { phoneChatInventoryControls } from './helpers/chat-inventory';
 import { contrastRatio } from './helpers/color-contrast';
+import {
+  agentConnectionFixture,
+  modelConnectionFixture,
+} from './helpers/connection-fixtures';
 import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
@@ -1735,6 +1739,10 @@ async function chooseGalleryNewChatProject(
 function withGalleryProjectsList(
   projects: GalleryProjectFixture[],
   assertions: (page: Page) => Promise<void>,
+  readyAgent = false,
+  fullAccess = false,
+  modelName = 'Gallery model',
+  agentName = 'Station',
 ): Pick<Screen, 'beforeGoto' | 'afterGoto' | 'cleanup'> {
   let cleanups: (() => Promise<void>)[] = [];
   return {
@@ -1743,6 +1751,83 @@ function withGalleryProjectsList(
       cleanups = [
         await withRoute(page, '**/api/projects', projectsListFixture(projects)),
       ];
+      if (readyAgent) {
+        const connection = modelConnectionFixture({
+          id: 'gallery-model',
+          name: modelName,
+          config: {
+            defaultModel: 'gallery-model',
+            modelOptions: [
+              {
+                id: 'gallery-model',
+                name: modelName,
+                originalId: 'gallery-model',
+              },
+            ],
+          },
+        });
+        cleanups.push(
+          await withRoute(page, '**/api/agents', (route) =>
+            route.fulfill({
+              json: {
+                success: true,
+                data: [
+                  {
+                    slug: 'station',
+                    name: agentName,
+                    source: 'local',
+                    engineId: fullAccess ? 'claude' : 'station-agent',
+                    ...(fullAccess
+                      ? {
+                          execution: {
+                            agentConnectionId: 'claude',
+                            approvalMode: 'never',
+                          },
+                        }
+                      : {}),
+                    engineDefault: true,
+                    available: true,
+                    model: 'gallery-model',
+                    toolsConfig: { mcpServers: [], autoApprove: [] },
+                  },
+                ],
+              },
+            }),
+          ),
+          await withRoute(page, '**/api/connections/models', (route) =>
+            route.fulfill({ json: { success: true, data: [connection] } }),
+          ),
+          await withRoute(page, '**/config/app', (route) =>
+            route.fulfill({
+              json: {
+                success: true,
+                data: {
+                  defaultLLMProvider: connection.id,
+                  defaultModel: 'gallery-model',
+                },
+              },
+            }),
+          ),
+        );
+      }
+      if (fullAccess)
+        cleanups.push(
+          await withRoute(page, '**/api/connections/agents', (route) =>
+            route.fulfill({
+              json: {
+                success: true,
+                data: [
+                  agentConnectionFixture({
+                    id: 'claude',
+                    config: {
+                      modelOptions: [{ id: 'gallery-model', name: modelName }],
+                    },
+                  }),
+                ],
+              },
+            }),
+          ),
+        );
       for (const project of projects) {
         cleanups.push(
           await withRoute(
@@ -1768,6 +1853,8 @@ interface Screen {
   viewport: { width: number; height: number };
   /** Capture with the operating-system reduced-motion preference enabled. */
   reducedMotion?: boolean;
+  /** Apply after interactions, which may reapply the saved appearance. */
+  captureTheme?: 'dark' | 'light';
   /** Optional selector to await before shooting (beyond the splash gate). */
   waitFor?: string;
   /**
@@ -5528,6 +5615,7 @@ const SCREENS: Screen[] = [
   ...(['dark', 'light'] as const).flatMap((theme) =>
     [DESKTOP, MOBILE, { width: 412, height: 915 }].map(
       (viewport): Screen => ({
+        captureTheme: theme,
         name: `new-chat-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : viewport.width === 412 ? 'phone' : 'mobile'}`,
         title: `New chat — ${theme}, ${viewport.width}px`,
         path: '/?dock=open',
@@ -5558,6 +5646,22 @@ const SCREENS: Screen[] = [
             await expect(
               draft.getByRole('textbox', { name: 'What would you like done?' }),
             ).toBeVisible();
+            const setup = draft.getByTestId('run-setup-trigger');
+            const markBox = (await setup
+              .locator('.composer-choice__icon')
+              .boundingBox())!;
+            const labelBox = (await setup
+              .locator('.chat-input__chip-stack')
+              .boundingBox())!;
+            const caretBox = (await setup
+              .locator('.choice-caret')
+              .boundingBox())!;
+            expect(
+              labelBox.x - markBox.x - markBox.width,
+            ).toBeGreaterThanOrEqual(4);
+            expect(
+              caretBox.x - labelBox.x - labelBox.width,
+            ).toBeGreaterThanOrEqual(4);
             const location = draft.locator('.start-composer__location');
             await expect(location).toBeInViewport();
             const bounds = await location.boundingBox();
@@ -5566,6 +5670,430 @@ const SCREENS: Screen[] = [
               viewport.height,
             );
           },
+        ),
+      }),
+    ),
+  ),
+  ...(['dark', 'light'] as const).flatMap((theme) =>
+    [320, 360, 390, 412, 1440].flatMap((width) =>
+      ['short', 'long'].map((names): Screen => {
+        let fixturePage: Page;
+        const id = `reply-composer-${theme}-${width}-${names}`;
+        const model =
+          names === 'long'
+            ? 'reasoning-model-with-a-very-long-version-id-2026'
+            : 'Mini';
+        const agent =
+          names === 'long'
+            ? 'Research assistant with an unusually long name'
+            : 'Station';
+        const hooks = withGalleryProjectsList(
+          [],
+          async (page) => {
+            await page.evaluate(
+              (theme) =>
+                document.documentElement.setAttribute('data-theme', theme),
+              theme,
+            );
+            const composer = page
+              .locator('.chat-input')
+              .filter({ visible: true })
+              .last();
+            await expect(
+              composer.getByRole('textbox', { name: 'Message', exact: true }),
+            ).toBeVisible();
+            await composer
+              .getByRole('textbox', { name: 'Message', exact: true })
+              .fill('Follow up on this');
+            const trigger = composer.getByTestId('run-setup-trigger');
+            await expect(trigger).toHaveAccessibleName(new RegExp(agent));
+            await expect(trigger).toHaveAttribute(
+              'title',
+              new RegExp(
+                names === 'long'
+                  ? 'Reasoning Model With A Very Long Version Id 2026'
+                  : model,
+              ),
+            );
+            const send = composer.locator('.chat-input__send-btn');
+            const controlBox = (await trigger.boundingBox())!;
+            const sendBox = (await send.boundingBox())!;
+            const composerBox = (await composer.boundingBox())!;
+            expect(
+              Math.abs(
+                controlBox.y +
+                  controlBox.height / 2 -
+                  sendBox.y -
+                  sendBox.height / 2,
+              ),
+            ).toBeLessThanOrEqual(1);
+            expect(controlBox.x + controlBox.width).toBeLessThanOrEqual(
+              sendBox.x,
+            );
+            expect(sendBox.x + sendBox.width).toBeLessThanOrEqual(
+              composerBox.x + composerBox.width,
+            );
+            expect(controlBox.width).toBeGreaterThanOrEqual(44);
+            expect(controlBox.height).toBeGreaterThanOrEqual(44);
+            expect(
+              await composer.evaluate((el) => el.scrollWidth <= el.clientWidth),
+            ).toBe(true);
+            if (width === 412 && names === 'long') {
+              // Read glyph geometry through every clipping ancestor. textContent
+              // alone includes the Agent and separator even when neither paints.
+              const firstVisibleGlyph = await trigger
+                .locator('.composer-run-control__label')
+                .evaluate((label) => {
+                  const walker = document.createTreeWalker(
+                    label,
+                    NodeFilter.SHOW_TEXT,
+                  );
+                  for (
+                    let node = walker.nextNode();
+                    node;
+                    node = walker.nextNode()
+                  ) {
+                    for (let i = 0; i < (node.textContent?.length ?? 0); i++) {
+                      const char = node.textContent![i]!;
+                      if (!char.trim()) continue;
+                      const range = document.createRange();
+                      range.setStart(node, i);
+                      range.setEnd(node, i + 1);
+                      const rect = range.getBoundingClientRect();
+                      let left = rect.left;
+                      let right = rect.right;
+                      for (
+                        let parent = node.parentElement;
+                        parent;
+                        parent = parent.parentElement
+                      ) {
+                        if (getComputedStyle(parent).overflowX !== 'visible') {
+                          const clip = parent.getBoundingClientRect();
+                          left = Math.max(left, clip.left);
+                          right = Math.min(right, clip.right);
+                        }
+                      }
+                      if (rect.width > 1 && right - left >= rect.width * 0.9)
+                        return char;
+                    }
+                  }
+                  return null;
+                });
+              expect(firstVisibleGlyph).not.toBeNull();
+              expect(firstVisibleGlyph).not.toBe('·');
+            }
+            if (width === 320)
+              await expect(
+                trigger.locator('.chat-input__chip-stack'),
+              ).toBeHidden();
+            if (width === 320 && names === 'short') {
+              await composer
+                .getByRole('button', {
+                  name: 'More draft options',
+                  exact: true,
+                })
+                .click();
+              await page
+                .getByRole('menuitem', { name: 'Saved drafts', exact: true })
+                .click();
+              const drafts = page.getByRole('dialog', {
+                name: 'Saved drafts',
+                exact: true,
+              });
+              await expect(drafts).toBeVisible();
+              await drafts
+                .getByRole('button', {
+                  name: 'Close saved drafts',
+                  exact: true,
+                })
+                .click();
+              await composer
+                .getByRole('button', {
+                  name: 'More draft options',
+                  exact: true,
+                })
+                .click();
+              await page
+                .getByRole('menuitem', { name: 'Clear message', exact: true })
+                .click();
+              await expect(
+                composer.getByRole('textbox', { name: 'Message', exact: true }),
+              ).toHaveValue('');
+              await composer
+                .getByRole('textbox', { name: 'Message', exact: true })
+                .fill('Follow up on this');
+            }
+          },
+          true,
+          false,
+          model,
+          agent,
+        );
+        return {
+          name: id,
+          title: `Reply composer — ${names} names`,
+          path: `/?dock=open&chat=${id}`,
+          viewport: { width, height: width === 1440 ? 900 : 915 },
+          captureTheme: theme,
+          ...hooks,
+          beforeGoto: async (page) => {
+            fixturePage = page;
+            await hooks.beforeGoto?.(page);
+            await page.addInitScript((conversation) => {
+              if (
+                new URLSearchParams(location.search).get('chat') !==
+                conversation
+              )
+                return;
+              const original = window.fetch.bind(window);
+              window.fetch = async (input, init) => {
+                const url =
+                  input instanceof Request ? input.url : String(input);
+                if (
+                  new URL(url, location.href).pathname !==
+                  '/api/orchestration/events'
+                )
+                  return original(input, init);
+                return new Response(
+                  new ReadableStream<Uint8Array>({
+                    start(controller) {
+                      init?.signal?.addEventListener(
+                        'abort',
+                        () => controller.close(),
+                        { once: true },
+                      );
+                    },
+                  }),
+                  { headers: { 'Content-Type': 'text/event-stream' } },
+                );
+              };
+            }, id);
+            await page.route(
+              '**/api/orchestration/sessions/read-model',
+              orchestrationSessionFixture({ threadId: id }),
+            );
+            await seedActiveChatSession(page, {
+              conversationId: id,
+              agentSlug: 'station',
+              title: 'Toolbar layout',
+            });
+            await mockRuntimeConversation(page, {
+              id,
+              agentSlug: 'station',
+              title: 'Toolbar layout',
+              provider: 'station-agent',
+              model,
+              canContinue: true,
+              turns: () =>
+                buildLongSessionTurns({
+                  threadId: id,
+                  provider: 'station-agent',
+                  turnCount: 1,
+                  replyText: () => 'Ready for your next message.',
+                }),
+            });
+          },
+          cleanup: async () => {
+            const page = fixturePage;
+            await hooks.cleanup?.();
+            await page.unroute('**/api/orchestration/sessions/read-model');
+            await page.unroute(`**/api/conversations/${id}/open`);
+            await page.unroute(
+              `**/api/orchestration/conversations/${id}/inbox`,
+            );
+            await page.unroute(
+              `**/api/orchestration/conversations/${id}/event-window**`,
+            );
+            await page.unroute(
+              `**/api/orchestration/sessions/${id}/turns/*/basis`,
+            );
+          },
+        };
+      }),
+    ),
+  ),
+  ...[390, 412].map(
+    (width): Screen => ({
+      name: `run-setup-full-access-${width}`,
+      title: 'Run setup — full access',
+      path: '/?dock=open',
+      viewport: { width, height: 915 },
+      ...withGalleryProjectsList(
+        [],
+        async (page) => {
+          const draft = await openGalleryNewChatDraft(page);
+          const trigger = draft.getByTestId('run-setup-trigger');
+          await expect(trigger).toContainText('⚠');
+          await expect(trigger).toHaveAccessibleName(/Full access/);
+          await expect(trigger).toBeInViewport();
+          const model = trigger.locator('.composer-run-control__model');
+          await expect(model).toHaveText('Mini');
+          const modelBox = await model.boundingBox();
+          const triggerBox = await trigger.boundingBox();
+          expect(modelBox).not.toBeNull();
+          expect(triggerBox).not.toBeNull();
+          expect(modelBox!.x + modelBox!.width).toBeLessThanOrEqual(
+            triggerBox!.x + triggerBox!.width,
+          );
+          expect(
+            await model.evaluate((el) => el.scrollWidth <= el.clientWidth),
+          ).toBe(true);
+          await expect(
+            draft.getByRole('button', { name: /Attach/ }).first(),
+          ).toBeInViewport();
+          await expect(
+            draft.getByRole('button', { name: 'Start', exact: true }),
+          ).toBeInViewport();
+          await expect(
+            draft.getByRole('button', {
+              name: /^(Speak message|Microphone unavailable)$/,
+            }),
+          ).toBeInViewport();
+        },
+        true,
+        true,
+        'Mini',
+      ),
+    }),
+  ),
+  ...(['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE, { width: 412, height: 915 }].map(
+      (viewport): Screen => ({
+        name: `run-setup-filled-${theme}-${viewport.width}`,
+        title: `Filled run setup — ${theme}, ${viewport.width}px`,
+        path: '/?dock=open',
+        viewport,
+        captureTheme: theme,
+        ...withGalleryProjectsList(
+          [],
+          async (page) => {
+            const draft = await openGalleryNewChatDraft(page);
+            if (theme === 'light')
+              await page.evaluate(() =>
+                document.documentElement.setAttribute('data-theme', 'light'),
+              );
+            const trigger = draft.getByTestId('run-setup-trigger');
+            await expect(trigger).toContainText('Station · Mini');
+            const setupBox = (await trigger.boundingBox())!;
+            const startBox = (await draft
+              .getByRole('button', { name: 'Start', exact: true })
+              .boundingBox())!;
+            expect(
+              Math.abs(
+                setupBox.y +
+                  setupBox.height / 2 -
+                  startBox.y -
+                  startBox.height / 2,
+              ),
+            ).toBeLessThanOrEqual(1);
+            expect(setupBox.x + setupBox.width).toBeLessThanOrEqual(startBox.x);
+            expect(
+              await draft
+                .locator('.start-composer__box')
+                .evaluate((el) => el.scrollWidth <= el.clientWidth),
+            ).toBe(true);
+
+            await expect(
+              trigger.locator('[data-brand-key="station"]'),
+            ).toHaveCount(1);
+            await expect(trigger).toBeInViewport();
+            await expect(
+              page.getByRole('dialog', { name: 'Run setup', exact: true }),
+            ).toBeHidden();
+          },
+          true,
+          false,
+          'Mini',
+        ),
+      }),
+    ),
+  ),
+  ...(['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE, { width: 412, height: 915 }].map(
+      (viewport): Screen => ({
+        captureTheme: theme,
+        name: `run-setup-${theme}-${viewport.width}`,
+        title: `Run setup — ${theme}, ${viewport.width}px`,
+        path: '/?dock=open',
+        viewport,
+        ...withGalleryProjectsList(
+          [{ slug: 'demo-project', name: 'Demo Project' }],
+          async (page) => {
+            const draft = await openGalleryNewChatDraft(page);
+            if (theme === 'light')
+              await page.evaluate(() =>
+                document.documentElement.setAttribute('data-theme', 'light'),
+              );
+            const trigger = draft.getByTestId('run-setup-trigger');
+            await expect(trigger).toBeInViewport();
+            const bounds = await trigger.boundingBox();
+            expect(bounds!.width).toBeLessThan(viewport.width);
+            await trigger.click();
+            await expect(
+              page.getByRole('dialog', { name: 'Run setup' }),
+            ).toBeVisible();
+            await expect(
+              page.getByRole('button', { name: /^Agent:/ }),
+            ).toBeVisible();
+            await expect(
+              page.getByRole('button', { name: /^Model:/ }),
+            ).toBeVisible();
+          },
+        ),
+      }),
+    ),
+  ),
+  ...(['dark', 'light'] as const).flatMap((theme) =>
+    [{ width: 412, height: 915 }].map(
+      (viewport): Screen => ({
+        captureTheme: theme,
+        name: `run-setup-model-stacked-${theme}-${viewport.width}`,
+        title: `Stacked model picker — ${theme}, ${viewport.width}px`,
+        path: '/?dock=open',
+        viewport,
+        ...withGalleryProjectsList(
+          [{ slug: 'demo-project', name: 'Demo Project' }],
+          async (page) => {
+            const draft = await openGalleryNewChatDraft(page);
+            if (theme === 'light')
+              await page.evaluate(() =>
+                document.documentElement.setAttribute('data-theme', 'light'),
+              );
+            const trigger = draft.getByTestId('run-setup-trigger');
+            await expect(trigger).toBeInViewport();
+            const bounds = await trigger.boundingBox();
+            expect(bounds!.width).toBeLessThan(viewport.width);
+            await trigger.click();
+            await expect(
+              page.getByRole('dialog', { name: 'Run setup' }),
+            ).toBeVisible();
+            await expect(
+              page.getByRole('button', { name: /^Agent:/ }),
+            ).toBeVisible();
+            await expect(
+              page.getByRole('button', { name: /^Model:/ }),
+            ).toBeVisible();
+            await page
+              .getByRole('dialog', { name: 'Run setup', exact: true })
+              .getByRole('button', { name: /^Model:/ })
+              .click();
+            const picker = page.getByRole('dialog', {
+              name: /^(Model|Engine & model)$/,
+              exact: true,
+            });
+            await expect(picker).toBeVisible();
+            await picker.evaluate(async (panel) => {
+              await Promise.allSettled(
+                panel
+                  .getAnimations({ subtree: true })
+                  .map((animation) => animation.finished),
+              );
+            });
+            const box = await picker.boundingBox();
+            expect(box!.x).toBeGreaterThanOrEqual(0);
+            expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
+          },
+          true,
         ),
       }),
     ),
@@ -6419,6 +6947,17 @@ test('build gallery — capture key screens', async ({ page }) => {
             }
             if (screen.name !== 'settings-info-tip') {
               await page.mouse.move(0, 0);
+            }
+            if (screen.captureTheme) {
+              await page.evaluate(
+                (theme) =>
+                  document.documentElement.setAttribute('data-theme', theme),
+                screen.captureTheme,
+              );
+              await expect(page.locator('html')).toHaveAttribute(
+                'data-theme',
+                screen.captureTheme,
+              );
             }
             await page.screenshot({
               path: join(GALLERY_DIR, file),

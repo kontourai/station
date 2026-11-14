@@ -1421,6 +1421,10 @@ export function NewChatModal({
           status: 'ready',
           agent: draftAgent,
           modelLabel: draftModelLabel,
+          executionAgent:
+            agents.find(
+              (entry) => entry.slug === draftModel?.executionAgentId,
+            ) ?? draftAgent,
           executionAgentId: draftAgent
             ? start.modelChoiceFor(draftAgent)?.executionAgentId
             : undefined,
