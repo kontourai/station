@@ -1,9 +1,0 @@
-{
-  "revision": "b68d3c2c8c0b61ebe1a6c4be8622181eddc2d703",
-
-  "notes": [
-    {"path":"docs/guides/e2e-coverage-matrix.md","note":"#4406 only extends the daily-driver-switching rationale in tests/e2e-manifest.mjs (same product bucket, same spec path); no matrix row, bucket or tier claim changes.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]},
-
-    {"path":"docs/testing/browser-smoke.md","note":"#4406 adds two product-bucket cases to daily-driver-switching.spec.ts and updates its manifest rationale; no smoke-suite membership or browser-smoke claim changes.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]}
-  ]
-}

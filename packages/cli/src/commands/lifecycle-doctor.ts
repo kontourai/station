@@ -504,6 +504,7 @@ export async function collectDoctorReport(
     'config',
     'providers.json',
   );
+  const acpConfigPath = join(runtimeDeps.projectHome, 'config', 'acp.json');
   const awsCredentialsPath = join(homedir(), '.aws', 'credentials');
   const awsConfigPath = join(homedir(), '.aws', 'config');
 
@@ -584,6 +585,29 @@ export async function collectDoctorReport(
   // Kiro is an ACP registry engine, not an `agentConnections` key, so only
   // an unusable policy gates it here.
   const kiroUsable = Boolean(kiroVersion) && managedPolicyProblem === null;
+  // ACP engine connections (OpenCode, Kiro, a custom command, …) are saved
+  // in `config/acp.json`, the file the server's ACP adapter reads, each with
+  // its own `enabled` flag; `agentConnections` has no entry for them.
+  const acpConfig = runtimeDeps.readJson<{ connections?: unknown }>(
+    acpConfigPath,
+    {},
+  );
+  const enabledAcpConnections = (
+    Array.isArray(acpConfig?.connections) ? acpConfig.connections : []
+  ).filter(
+    (connection): connection is { id: string; name?: unknown } =>
+      Boolean(connection) &&
+      typeof connection === 'object' &&
+      typeof (connection as { id?: unknown }).id === 'string' &&
+      (connection as { enabled?: unknown }).enabled === true,
+  );
+  const acpConnectionsUsable =
+    managedPolicyProblem === null && enabledAcpConnections.length > 0;
+  const acpConnectionNames = enabledAcpConnections.map((connection) =>
+    typeof connection.name === 'string' && connection.name.trim()
+      ? connection.name.trim()
+      : connection.id,
+  );
   const awsConfigured = Boolean(
     runtimeDeps.env.AWS_ACCESS_KEY_ID ||
       runtimeDeps.env.AWS_PROFILE ||
@@ -691,16 +715,22 @@ export async function collectDoctorReport(
     {
       label: 'ACP / external runtime',
       status:
-        kiroUsable || enabledRuntimeConnections.some(([id]) => id === 'acp')
+        kiroUsable ||
+        acpConnectionsUsable ||
+        enabledRuntimeConnections.some(([id]) => id === 'acp')
           ? 'pass'
           : 'warn',
-      detail: kiroUsable
-        ? (kiroVersion as string)
-        : kiroVersion
-          ? `${kiroVersion}, but the managed policy cannot be used.`
-          : enabledRuntimeConnections.some(([id]) => id === 'acp')
-            ? 'ACP runtime connection configured.'
-            : 'No ACP runtime detected.',
+      detail: acpConnectionsUsable
+        ? `${enabledAcpConnections.length} enabled ACP connection(s): ${acpConnectionNames.join(', ')}`
+        : kiroUsable
+          ? (kiroVersion as string)
+          : kiroVersion
+            ? `${kiroVersion}, but the managed policy cannot be used.`
+            : enabledAcpConnections.length > 0
+              ? 'ACP connections are saved, but the managed policy cannot be used.'
+              : enabledRuntimeConnections.some(([id]) => id === 'acp')
+                ? 'ACP runtime connection configured.'
+                : 'No ACP runtime detected.',
     },
     ...(confinement ? confinementDoctorChecks(confinement) : []),
   ];
@@ -717,16 +747,25 @@ export async function collectDoctorReport(
 
   const codexUsable = Boolean(codexVersion) && runtimeAllowed('codex');
   const claudeUsable = Boolean(claudeVersion) && runtimeAllowed('claude');
+  // A chat can run on a usable engine with no model connection, the same
+  // rule as the server's `chat.ready` (system-status-routes.ts), so an
+  // installed CLI or an enabled ACP connection makes chat ready here too.
+  const engineChatReady =
+    codexUsable || claudeUsable || kiroUsable || acpConnectionsUsable;
   // A policy server startup would refuse leaves nothing ready: the server
   // does not start.
   const chatReady =
     managedPolicyProblem === null &&
-    (enabledLlmProviders.length > 0 || ollamaReachable || awsConfigured);
+    (enabledLlmProviders.length > 0 ||
+      ollamaReachable ||
+      awsConfigured ||
+      engineChatReady);
   const runtimeReady =
     managedPolicyProblem === null &&
     (awsConfigured ||
       codexUsable ||
       claudeUsable ||
+      acpConnectionsUsable ||
       enabledRuntimeConnections.length > 0);
   const configuredProviderLabels = enabledLlmProviders
     .map(providerLabel)
@@ -735,7 +774,12 @@ export async function collectDoctorReport(
     ollamaReachable ? 'ollama' : null,
     awsConfigured ? 'bedrock' : null,
   ].filter((value): value is string => Boolean(value));
-  const configuredRuntimes = enabledRuntimeConnections.map(([id]) => id);
+  const configuredRuntimes = [
+    ...enabledRuntimeConnections.map(([id]) => id),
+    ...(acpConnectionsUsable
+      ? enabledAcpConnections.map((connection) => `acp:${connection.id}`)
+      : []),
+  ];
   const detectedRuntimes = [
     codexUsable ? 'codex-cli' : null,
     claudeUsable ? 'claude-cli' : null,
@@ -762,7 +806,9 @@ export async function collectDoctorReport(
         ? 'Ollama is reachable, but no saved model connection exists yet. Add an Ollama connection in Connections.'
         : awsConfigured
           ? 'AWS credentials are available. Add or enable a Bedrock model connection in Connections.'
-          : 'No chat-capable path is ready yet. Start Ollama locally or add a model connection first.';
+          : engineChatReady
+            ? 'Chat can run on a connected engine. Add a model connection in Connections if you also want Station-managed models.'
+            : 'No chat-capable path is ready yet. Start Ollama locally or add a model connection first.';
 
   return {
     checks,

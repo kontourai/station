@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/reference/agent-plugins.md","note":"#4517 managed settings. Changed: config-loader.ts: loadAppConfig, the launchability snapshot and mutation results apply the managed overlay; mutateAppConfig and saveAppConfig refuse locked-key changes; loadStoredAppConfig added. Searched it for claims about app config loading and writes, settings provenance, the managed policy, project overrides and workspace isolation; none describes the changed behavior, so it remains accurate.","inputs":["docs/reference/agent-plugins.md","src-server/domain/config-loader.ts"]}
-  ]
-}

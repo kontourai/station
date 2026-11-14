@@ -55,3 +55,14 @@ test('the chat keeps whether the session’s engine can reconnect, from the late
     activeChatsStore.getSnapshot()[threadId]?.engineMcpReconnect,
   ).toBeUndefined();
 });
+
+test('the chat records that a complete report arrived, and partial reports after it keep that', () => {
+  const complete = () =>
+    activeChatsStore.getSnapshot()[threadId]?.engineMcpComplete;
+  handleEngineMcpStatusEvent(report({ complete: false }));
+  expect(complete()).toBeUndefined();
+  handleEngineMcpStatusEvent(report({ complete: true }));
+  expect(complete()).toBe(true);
+  handleEngineMcpStatusEvent(report({ complete: false }));
+  expect(complete()).toBe(true);
+});

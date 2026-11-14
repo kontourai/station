@@ -1,5 +1,15 @@
 # Station API Documentation
 
+## Project display metadata
+
+Operator Project list and detail reads, and create and update responses,
+include `repositoryDisplay` from the
+manifest's primary Git resource, or acquisition metadata when no manifest exists.
+Detected repository artwork is `derivedIcon` (at most 12 KiB before base64), not
+saved `icon`. Clearing `icon` through the update route saves `iconDisabled: true`;
+choosing an explicit icon clears that flag. Member views omit detected artwork
+and repository metadata.
+
 ## Paired Station conversation tunnel
 
 On a personal host with **Paired Station chats** enabled,
@@ -68,6 +78,18 @@ after invocation is indeterminate; pending native acknowledgement blocks another
 mutation. Refresh is observation, not permission to retry an uncertain write.
 Goal completion never mutates Task or workflow status. Turning the preview off
 refuses all subsequent Goal requests; ordinary Session controls remain available.
+
+## Engine continuity and rewind
+
+`GET /api/orchestration/sessions/:threadId/continuity` reads what the live
+Session's engine declared it can do natively (`{ live, rewind, fork }`), under
+Session read authority and the orchestration read scope; it never starts an
+engine. `POST /api/orchestration/sessions/:threadId/rewind` with
+`{ turnId }` rewinds that engine's context in place to before the turn. It
+requires the current request principal with Session mutation authority and
+the orchestration operate scope, and answers a typed `SessionRewindOutcome`.
+The transcript is never edited. See
+[session API](session-api.md#engine-continuity-and-rewind-sessionsthreadidcontinuity-rewind).
 
 ## Worktree output settlement
 
@@ -1047,6 +1069,10 @@ default channel, `#general`; every per-room operation above except `POST /init`
 is also served at `/api/projects/:slug/channels/:channelId`, where `channelId`
 is that channel's room UUID. Messages, the shared note and Agent requests
 belong to one channel. A host that predates channels answers 404 for these paths.
+A Project that is not on this Station answers 404 `project_room_project_not_found`
+on every room and channel path, so clients show "no such Project", not an
+outage; a room the Project never opened answers 404 `project_room_not_found`,
+and storage that cannot be read answers 503 `project_room_unavailable`.
 
 | Method and path | Input | Result |
 | --- | --- | --- |
@@ -1297,8 +1323,8 @@ POST /api/starter-work/launch
 DELETE /api/starter-work/:starterId/binding
 ```
 
-Starter Work links a bounded onboarding catalog to real Work owners. Its five
-IDs are `start-task`, `continue-session`, `inspect-approval`, `inspect-receipt`,
+Starter Work links a bounded onboarding catalog to real Work owners. The catalog
+offers `start-task` and `continue-session`. The five accepted endpoint IDs remain `start-task`, `continue-session`, `inspect-approval`, `inspect-receipt`,
 and `run-scheduled-check`. Binding/launch and inspection candidates require the
 home's completed first-run decision. Catalog/status reads describe readiness
 and correlation; they do not make a browser checklist authoritative.
@@ -2275,7 +2301,10 @@ POST /api/read-markers/summary
 The response holds one item per target, in request order:
 `{ target, latestVersion, seenVersion, unread, unreadCount? }`, or
 `{ target, unavailable: true }`. More than 100 targets is a 400 with
-`read_marker_too_many_targets`.
+`read_marker_too_many_targets`. A Project room target's `roomId` is any of the
+Project's channels (`channelId`, `#general` included); an id that is not one
+of its channels is unavailable. A Task room never opened is unavailable too:
+reading markers never opens one.
 
 ```http
 POST /api/read-markers/mark
@@ -2433,6 +2462,10 @@ cumulative figures (tokens, turns, tool calls, cost) sum across the Sessions'
 records, and context occupancy comes from the newest one. Without a stored
 record, the orchestration usage fold runs over every authorized Session's
 events in lineage order.
+
+`engineMcp`, present when the engine reported its MCP servers, is the latest
+`engine-mcp.status` reports folded per Session of the lineage (a later
+Session starts a new list) with the latest report's `reconnect` bit.
 
 `contextWindowPercentage` comes from context tokens and the model's context
 window; when the window cannot be resolved it is the engine's own context
@@ -4884,7 +4917,9 @@ changes requiring a preview decision must be completed through preview/install.
 Missing update source or managed update refusal returns 409; pending lifecycle
 or activation returns 202. A managed update answers install trust refusals as
 install does: 409 `plugin-install-trust-refused` or `plugin-trust-record-newer`,
-and 503 `plugin-trust-records-unavailable`.
+and 503 `plugin-trust-records-unavailable`. A registry update answers registry
+refusals as install does too, such as 409 `agent-catalog-ambiguous` or 503
+`agent-catalog-unavailable`.
 
 The legacy path can still use git/registry update with a backup and restoration
 on failure. Before either path it runs the install trust migration (#2998); when
@@ -4998,17 +5033,31 @@ Plugin-backed Agent entries use the full plugin lifecycle when resolved as such.
 
 ### List Available Agents (Registry)
 
-`GET /api/registry/agents` returns `{success: true, data}` from the Agent registry
-provider's available catalog.
+`GET /api/registry/agents` returns `{success: true, data}`: the rows of every
+registered Agent catalog ([merged](../../src-server/providers/registries/agent-registry-provider.ts),
+each with `catalogSourceName`), followed by the agent rows of every added
+source whose content lists agents. Those carry source-qualified catalog IDs.
+An ID that two registered catalogs both offer is listed from both with
+`status: "ambiguous-source"`; no catalog wins by registration order.
 
 ### List Installed Agents (Registry)
 
-`GET /api/registry/agents/installed` returns that provider's installed rows under
-`{success: true, data}` and requires the instance operator.
+`GET /api/registry/agents/installed` returns the installed rows of every
+registered Agent catalog and of added sources under `{success: true, data}`
+and requires the instance operator.
 
 ### Install Agent from Registry
 
 `POST /api/registry/agents/install` accepts `{id, ...pluginInstallFields}`.
+A plain ID that more than one registered Agent catalog offers is refused with
+409 (`agent-catalog-ambiguous`), and one that cannot be matched because a
+catalog could not be read is refused with 503 (`agent-catalog-unavailable`,
+naming it), before any install path runs. The same rule applies on every
+package acquisition path (`/plugins/install`, preview, update, and dependency
+preflight and installation), because the check is a precondition of the one
+registry resolver they all go through. Update answers the same status and code. There an unreadable catalog
+refuses only an ID that a readable catalog offers as an agent. A source-qualified ID from an added source
+installs through the plugin path, because a manifest agent entry is a package.
 When the ID resolves to a plugin, it uses the plugin install/consent path below.
 Otherwise it calls the Agent registry provider (which copies a plugin tree into
 the plugins directory, so a paired device needs the `coding:exec` grant here
@@ -5068,12 +5117,17 @@ All source-management methods require `access:manage` credential scope as well
 as the operator principal check. Ordinary catalog browsing retains its read
 scope; a standard paired credential cannot enumerate host source configuration
 or trigger source refresh.
-`POST /api/registry/sources` accepts `{displayName, adapter, location}` where
-`adapter` is `directory`, `github` or `manifest`. Directory and local manifest
-locations are absolute paths on this Station. Public GitHub repository URLs use
-its default branch and discover nested directories containing `SKILL.md`.
-Manifest URLs require HTTPS. Credentials in URLs are refused; private sources
-and other index formats need a future credential-aware adapter.
+`POST /api/registry/sources` accepts `{location, ref?, displayName?}`. A
+location is an absolute path on this Station (a folder or one file), a public
+`https://github.com/<owner>/<repository>` URL, whose optional `ref` names a
+branch, tag or commit, or another HTTPS URL to one document. Station reads the
+source before saving it and reports what its content provides in
+`detection`; nothing the person chooses decides the kinds
+([decision](../decisions/registry-sources-detected-by-structure.md)). An
+`adapter` from an older client is accepted and ignored, except as the way to
+read a local path that does not exist yet. An unusable location or ref is a
+400 whose `error` says why. Credentials in URLs are refused; private sources
+need a future credential-aware reader.
 
 `PATCH /api/registry/sources/:id` accepts `{enabled}`;
 `POST /api/registry/sources/:id/refresh` returns current status;
@@ -5092,6 +5146,18 @@ owned by the existing provider registry. Source status is `ready`, `stale`,
 `error`, `disabled` or `unknown`; it includes checked/last successful times and
 an explicit error when refresh fails. Cached data is discovery evidence;
 installation always revalidates the selected source.
+
+A source added by a person has one row however many kinds it provides. Its
+`detection` has `state` (`detected`, `nothing-recognized`, `refused` past a
+scan bound, or `unavailable`), `kinds` (each with `count`, the detector `via`,
+`installable`, an optional `note` and a per-kind `managedDenial`), the source
+`revision` (a GitHub commit resolved when it was read, or a folder digest),
+`checkedAt` and `changedAt`, the last read that found a new revision. `kind`
+is the primary catalog kind, kept for older clients. Refresh reads the source
+again before its catalogs. Station's default sources are named by engine, owner and scope
+(`Codex skills · user`, `Claude skills · Station app home`,
+`anthropics/skills (default)`), never by one shared name; the location stays on
+the row.
 
 ### List Available Skills (Registry)
 

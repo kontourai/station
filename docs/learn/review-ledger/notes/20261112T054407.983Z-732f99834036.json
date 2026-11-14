@@ -1,9 +1,0 @@
-{
-  "revision": "bf568392902bc92e6692197b86254546ed8ad19a",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Scoped follow-up review of InlineBrowserActivity: placement actions now compose the shared ActionRow owner, preserving Float/Bring back before Open in pane, exact session/authority binding and the existing opener fallback. The custom wrapping rule and standalone action-inventory entry are removed; the canonical shared owner supplies layout and target floors. Both inline owner files pass four tests and the responsive inventory passes. The documented session, control and recording boundaries remain unchanged; actual production frames, physical input and release qualification are not established by this source review.","inputs":["docs/architecture/module-map.md","src-ui/src/components/browser-activity/InlineBrowserActivity.tsx"]},
-
-    {"path":"docs/guides/browser-workspace.md","note":"Scoped follow-up review of InlineBrowserActivity: placement actions now compose the shared ActionRow owner, preserving Float/Bring back before Open in pane, exact session/authority binding and the existing opener fallback. The custom wrapping rule and standalone action-inventory entry are removed; the canonical shared owner supplies layout and target floors. Both inline owner files pass four tests and the responsive inventory passes. The documented session, control and recording boundaries remain unchanged; actual production frames, physical input and release qualification are not established by this source review.","inputs":["docs/guides/browser-workspace.md","src-ui/src/components/browser-activity/InlineBrowserActivity.tsx"]}
-  ]
-}

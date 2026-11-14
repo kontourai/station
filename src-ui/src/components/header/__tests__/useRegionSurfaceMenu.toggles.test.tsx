@@ -91,8 +91,8 @@ describe('the toolbar has a toggle for every dock region the model declares', ()
     harness.regions.left = {
       visible: false,
       size: 400,
-      panes: ['activity'] as never[],
-      occupant: 'activity' as never,
+      panes: ['workspace-agents'] as never[],
+      occupant: 'workspace-agents' as never,
     };
     const { result } = renderHook(() => useRegionSurfaceMenu());
     harness.regions.left = {
@@ -128,7 +128,7 @@ describe('the toolbar has a toggle for every dock region the model declares', ()
     });
     expect(toggles.find((toggle) => toggle.region === 'left')).toMatchObject({
       label: 'Left',
-      paneTitles: ['Activity'],
+      paneTitles: ['Agents'],
       visible: false,
     });
     // #2155 retired `offers` outright: every key a toggle carries is one of
@@ -288,7 +288,6 @@ describe('the toolbar has a toggle for every dock region the model declares', ()
     const { result } = renderHook(() => useRegionSurfaceMenu());
     expect(result.current.surfaceList.map((surface) => surface.id)).toEqual([
       'chat',
-      'activity',
     ]);
   });
 });

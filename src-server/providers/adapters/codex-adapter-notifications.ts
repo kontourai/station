@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import {
   type ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ENGINE_MCP_ERROR_MAX_CHARS,
   ENGINE_MCP_SERVER_NAME_MAX_CHARS,
   type ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
@@ -610,7 +611,7 @@ export function handleCodexNotification(
 /** A Codex model id: one token, at most 200 characters. */
 const CODEX_MODEL_ID = /^[A-Za-z0-9._:/@-]{1,200}$/;
 const CODEX_MCP_SERVER_NAME_MAX_CHARS = ENGINE_MCP_SERVER_NAME_MAX_CHARS;
-const CODEX_MCP_ERROR_MAX_CHARS = 512;
+const CODEX_MCP_ERROR_MAX_CHARS = ENGINE_MCP_ERROR_MAX_CHARS;
 
 /**
  * `model/rerouted` → `model.rerouted`. Codex names the turn and thread it

@@ -1,7 +1,0 @@
-{
-  "revision": "b5fbece343eb9b6cf3622bd6f12f07e07a9f5a8e",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Start Your First Task now says Activity and Home Session rows show the agent-reported plan line beside Task cards, refreshed while running or needing you, and lists where no bar appears (Drafts, Home one-line Earlier rows, other Stations). Checked against SessionPlanProgress, sessionPlanProgressRead and HomeWorkRowWithPlan, plus live captures. Review Activity gains a one-line pointer.","inputs":["docs/user/getting-started.md","src-ui/src/components/TaskPlanProgress.tsx","src-ui/src/utils/taskPlanProgress.ts","src-ui/src/views/SessionsView.css","src-ui/src/views/SessionsView.tsx"]}
-  ]
-}

@@ -11,8 +11,9 @@ import { createHash } from 'node:crypto';
  *
  * Masters rendered here (committed):
  *   assets/brand/icon-1024.png        — Stable on the macOS icon grid (824
- *                                       body, drop shadow, alpha outside it);
- *                                       only the .icns comes from this
+ *                                       body, drop shadow, alpha outside it),
+ *                                       the map face filling the body; only
+ *                                       the .icns comes from this
  *   assets/brand/icon-square-1024.png — Stable full-bleed opaque square; iOS
  *                                       rejects alpha in App Store icons;
  *                                       cropped to the map face
@@ -26,8 +27,8 @@ import { createHash } from 'node:crypto';
  *                                       too.
  *   src-ui/public/icons/station{,-maskable}-512.png
  *                                     — the web app manifest's install icons:
- *                                       the rounded Stable tile on
- *                                       transparency, and the full-bleed
+ *                                       the framed Stable tile in a rounded
+ *                                       body, and the full-bleed
  *                                       opaque square that survives a
  *                                       launcher's mask
  *   src-ui/src/lib/startup-mark-geometry.ts
@@ -51,11 +52,16 @@ import { createHash } from 'node:crypto';
  *                                       holds the committed files to it
  *
  * Platform fan-out (also run by this script, via `tauri icon`):
- *   src-desktop/icons/{icon.ico,icon.png,32x32,64x64,128x128*} and each
- *   channel's                         — from the desktop master: rounded, no
- *                                       grid inset or shadow, artwork
- *                                       enlarged, for Windows, Linux and the
- *                                       tray at 16-32px
+ *   src-desktop/icons/{icon.ico,32x32,64x64,128x128*} and each channel's
+ *                                     — from the desktop master: the map face
+ *                                       filling a rounded body, no grid inset
+ *                                       or shadow, for Windows and Linux at
+ *                                       16-32px
+ *   src-desktop/icons/icon.png and each channel's
+ *                                     — the tray icon tray.rs embeds, from the
+ *                                       framed master (the tile and base on
+ *                                       the channel backdrop), unchanged by
+ *                                       the full-bleed desktop icons
  *   src-desktop/icons/icon.icns and each channel's
  *                                     — from the macOS-grid master. Every `.icns`
  *                                       is rewritten into canonical member
@@ -65,9 +71,9 @@ import { createHash } from 'node:crypto';
  *                                       sequence, so without that the four
  *                                       committed icns churned on every run
  *                                       (#1797).
- *   src-desktop/icons/{Square*,StoreLogo}.png
- *                                     — from the uncropped square target
- *   gen/apple AppIcon set             — from the cropped iOS square master
+ *   src-desktop/icons/{Square*,StoreLogo}.png, gen/apple AppIcon set
+ *                                     — from the cropped iOS square master,
+ *                                       the map face filling the tile
  *   gen/android app/src/main mipmaps, src-desktop/icons/<channel>/android
  *                                     — from each channel's Android master:
  *                                       the map face fills the central 72 of
@@ -245,8 +251,8 @@ async function renderMasters() {
     ...(channel !== 'stable' && IOS_ICON_SET_CHANNELS.includes(channel)
       ? [{ channel, target: 'ios' }]
       : []),
-    ...(channel === 'stable' ? [{ channel, target: 'square' }] : []),
     { channel, target: 'desktop' },
+    { channel, target: 'framed' },
     { channel, target: 'android' },
   ]).map((master) => ({ ...master, size: ICON_SIZE }));
   const requests = [
@@ -275,7 +281,7 @@ async function renderMasters() {
     })),
     {
       channel: 'stable',
-      target: 'desktop',
+      target: 'framed',
       size: WEB_APP_ICON_SIZE,
       path: join(WEB_APP_ICON_DIR, 'station-512.png'),
     },
@@ -534,9 +540,11 @@ async function main() {
       assertOpaqueIosPngs(destinationDir);
     };
 
-    // The desktop master drives the whole default fan-out first (ico, the
-    // Linux/tray PNGs); the icns is then replaced from the macOS-grid
-    // master, the one surface that wants the grid inset and shadow...
+    // The desktop master (the map face filling a rounded body) drives the
+    // whole default fan-out first (ico and the Linux/Windows PNGs); the icns
+    // is then replaced from the macOS-grid master, the one surface that
+    // wants the grid inset and shadow, and the tray's icon.png from the
+    // framed master...
     tauriIcon(paths['stable-desktop']);
     const icnsOut = (master) => {
       const outDir = mkdtempSync(join(tmpdir(), 'station-icns-'));
@@ -544,18 +552,23 @@ async function main() {
       tauriIcon(master, outDir);
       return join(outDir, 'icon.icns');
     };
+    const trayOut = (channel) => {
+      const outDir = mkdtempSync(join(tmpdir(), `station-${channel}-tray-`));
+      tempDirs.push(outDir);
+      tauriIcon(paths[`${channel}-framed`], outDir);
+      return join(outDir, 'icon.png');
+    };
     copyFileSync(icnsOut(ROUNDED_MASTER), join(ICONS_DIR, 'icon.icns'));
+    copyFileSync(trayOut('stable'), join(ICONS_DIR, 'icon.png'));
 
-    // Windows tiles keep the uncropped composition; iOS fills its mask.
-    const windowsOut = mkdtempSync(join(tmpdir(), 'station-windows-icons-'));
-    tempDirs.push(windowsOut);
-    tauriIcon(paths['stable-square'], windowsOut);
-    copyInto(windowsOut, ICONS_DIR, (name) =>
-      /^Square.*Logo\.png$|^StoreLogo\.png$/.test(name),
-    );
+    // Windows Square/Store tiles and iOS both fill their masks with the
+    // cropped map face.
     const squareOut = mkdtempSync(join(tmpdir(), 'station-square-icons-'));
     tempDirs.push(squareOut);
     tauriIcon(join(BRAND_DIR, 'icon-square-1024.png'), squareOut);
+    copyInto(squareOut, ICONS_DIR, (name) =>
+      /^Square.*Logo\.png$|^StoreLogo\.png$/.test(name),
+    );
     copyInto(join(squareOut, 'ios'), APPLE_ICONSET);
     // The tracked seed is Stable; post-init staging restores the selected
     // channel from the corresponding committed square fan-out.
@@ -589,6 +602,7 @@ async function main() {
         /^(32x32|64x64|128x128|128x128@2x|icon)\.(png|ico)$/.test(name),
       );
       copyFileSync(icnsOut(rounded), join(channelDir, 'icon.icns'));
+      copyFileSync(trayOut(channel), join(channelDir, 'icon.png'));
       copyAndroidMipmaps(
         channel === 'dev' ? devAndroid : androidOut(channel),
         join(channelDir, 'android'),

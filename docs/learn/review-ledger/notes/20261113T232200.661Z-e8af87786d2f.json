@@ -1,0 +1,41 @@
+{
+  "revision": "ca8305a4408b3d30c92b946021ce1f5cb0f99e7a",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Local CodeQL SARIF policy section updated against .github/workflows/security-analysis.yml: CodeQL job skipped on pull_request_target (required context reports skipped), real run in merge groups, daily 11 9 * * * UTC schedule plus dispatch on main, stale baseline fails there and warns in merge groups; main-health.yml now watches PR: Security analysis. Dependency review section unchanged and still accurate (PR and merge-group steps).","inputs":["docs/guides/dependency-security.md",".github/workflows/main-health.yml",".github/workflows/security-analysis.yml","scripts/actionlint-gate.mjs","scripts/codeql-error-baseline.json"]},
+
+    {"path":"docs/guides/testing.md","note":"Workflow inventory rows for security-analysis.yml (PR events dependency review only, merge queue, schedule 11 9 * * *, dispatch) and main-health.yml (adds PR: Security analysis) checked against the workflow files; family prose now notes PR: checks may run on a main schedule. Cron collides with no other schedule in .github/workflows.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-workflow-contract.test.ts","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Merge-queue composition paragraph still accurate: the merge group runs CodeQL, dependency review, Windows and iOS contexts on the merge-group SHA; CodeQL no longer runs on PR events, which this guide does not claim. Analyzer baseline text concerns fallow baselines, not CodeQL.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/releasing.md","note":"Required-context list (CodeQL, dependency review, Windows, iOS, merge-queue regression, title policy) unchanged; ruleset not modified. Queue-field actionlint note unaffected by the security-analysis gate changes.","inputs":["docs/guides/releasing.md","scripts/__tests__/actionlint-gate.test.ts","scripts/actionlint-gate.mjs"]},
+
+    {"path":"scripts/__tests__/fixtures/codeql-sarif/README.md","note":"The finding fixture's error-level fingerprint e5ab68fdc6b4d1d4:1 (js/request-forgery) remains in scripts/codeql-error-baseline.json; only the two stale browserWebSocketAuth.ts entries were removed.","inputs":["scripts/__tests__/fixtures/codeql-sarif/README.md","scripts/codeql-error-baseline.json"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-read for claims about the security-analysis workflow's triggers, CodeQL job guard, main-health watch list, CodeQL baseline or actionlint-gate security shape; it makes none, so the CodeQL-once-per-landing change leaves it accurate.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Re-read for claims about the security-analysis workflow's triggers, CodeQL job guard, main-health watch list, CodeQL baseline or actionlint-gate security shape; it makes none, so the CodeQL-once-per-landing change leaves it accurate.","inputs":["docs/guides/delegation-attempt-claims.md",".github/workflows/security-analysis.yml","scripts/actionlint-gate.mjs","scripts/codeql-error-baseline.json"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Re-read for claims about the security-analysis workflow's triggers, CodeQL job guard, main-health watch list, CodeQL baseline or actionlint-gate security shape; it makes none, so the CodeQL-once-per-landing change leaves it accurate.","inputs":["docs/guides/home-transfer-controller.md",".github/workflows/security-analysis.yml","scripts/actionlint-gate.mjs","scripts/codeql-error-baseline.json"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Re-read for claims about the security-analysis workflow's triggers, CodeQL job guard, main-health watch list, CodeQL baseline or actionlint-gate security shape; it makes none, so the CodeQL-once-per-landing change leaves it accurate.","inputs":["docs/guides/private-runner-partition.md",".github/workflows/security-analysis.yml","scripts/actionlint-gate.mjs","scripts/codeql-error-baseline.json"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Re-read for claims about the security-analysis workflow's triggers, CodeQL job guard, main-health watch list, CodeQL baseline or actionlint-gate security shape; it makes none, so the CodeQL-once-per-landing change leaves it accurate.","inputs":["docs/guides/product-law-authoring.md",".github/workflows/security-analysis.yml","scripts/actionlint-gate.mjs","scripts/codeql-error-baseline.json"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Re-read for claims about the security-analysis workflow's triggers, CodeQL job guard, main-health watch list, CodeQL baseline or actionlint-gate security shape; it makes none, so the CodeQL-once-per-landing change leaves it accurate.","inputs":["docs/guides/release-rings.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Re-read for claims about the security-analysis workflow's triggers, CodeQL job guard, main-health watch list, CodeQL baseline or actionlint-gate security shape; it makes none, so the CodeQL-once-per-landing change leaves it accurate.","inputs":["docs/guides/repository-layout.md",".github/workflows/security-analysis.yml","scripts/actionlint-gate.mjs","scripts/codeql-error-baseline.json"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Re-read for claims about the security-analysis workflow's triggers, CodeQL job guard, main-health watch list, CodeQL baseline or actionlint-gate security shape; it makes none, so the CodeQL-once-per-landing change leaves it accurate.","inputs":["docs/guides/work-board-security.md",".github/workflows/security-analysis.yml","scripts/actionlint-gate.mjs","scripts/codeql-error-baseline.json"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Re-read for claims about the security-analysis workflow's triggers, CodeQL job guard, main-health watch list, CodeQL baseline or actionlint-gate security shape; it makes none, so the CodeQL-once-per-landing change leaves it accurate.","inputs":["docs/guides/workspace-packages.md",".github/workflows/security-analysis.yml","scripts/actionlint-gate.mjs","scripts/codeql-error-baseline.json"]},
+
+    {"path":"scripts/AGENTS.md","note":"Re-read for claims about the security-analysis workflow's triggers, CodeQL job guard, main-health watch list, CodeQL baseline or actionlint-gate security shape; it makes none, so the CodeQL-once-per-landing change leaves it accurate.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-read for claims about the security-analysis workflow's triggers, CodeQL job guard, main-health watch list, CodeQL baseline or actionlint-gate security shape; it makes none, so the CodeQL-once-per-landing change leaves it accurate.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-read for claims about the security-analysis workflow's triggers, CodeQL job guard, main-health watch list, CodeQL baseline or actionlint-gate security shape; it makes none, so the CodeQL-once-per-landing change leaves it accurate.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Re-read for claims about the security-analysis workflow's triggers, CodeQL job guard, main-health watch list, CodeQL baseline or actionlint-gate security shape; it makes none, so the CodeQL-once-per-landing change leaves it accurate.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

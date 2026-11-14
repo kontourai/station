@@ -19,6 +19,7 @@ import {
   type EngineId,
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
+import type { ConversationEngineMcpServer } from '@kontourai/station-contracts/runtime';
 import type { FlowRunFreshness } from '@kontourai/station-contracts/runtime-events';
 import { type ExecutionMode } from '@kontourai/station-contracts/tool';
 import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed-files';
@@ -214,6 +215,8 @@ export type ChatMessage = {
   stationMemoryContinuation?: boolean;
   /** See `ChatMessage.stationRestartContinuation` in types.ts. */
   stationRestartContinuation?: boolean;
+  /** See `ChatMessage.rewound` in types.ts. */
+  rewound?: boolean;
   /** See `ChatMessage.sender` in types.ts. */
   sender?: ClientOriginSender;
   model?: string;
@@ -407,19 +410,7 @@ export type ChatLiveUsage = {
  * The engine's MCP servers as it last reported them (`engine-mcp.status`).
  * Engine-attributed: Station's own MCP view is elsewhere.
  */
-export type ChatEngineMcpServer = {
-  name: string;
-  state:
-    | 'starting'
-    | 'ready'
-    | 'failed'
-    | 'needs-auth'
-    | 'disabled'
-    | 'configured';
-  toolCount?: number;
-  error?: string;
-  scope: 'session' | 'engine-config';
-};
+export type ChatEngineMcpServer = ConversationEngineMcpServer;
 
 export type ChatUIState = {
   retainedTranscript?: RetainedChatTranscript;
@@ -765,6 +756,7 @@ export type ChatUIState = {
   defaultModelSource?: EffectiveModelSource;
   sessionAutoApprove?: string[];
   pendingApprovals?: string[];
+  pendingRequestKinds?: Record<string, 'input' | 'approval'>;
   /**
    * #3071: the turn each request in `pendingApprovals` names
    * (`request.opened.turnId`), for the requests that name one. It is what
@@ -837,6 +829,12 @@ export type ChatUIState = {
    * (`reconnect: true`). Absent: no Reconnect or Sign in action is offered.
    */
   engineMcpReconnect?: true;
+  /**
+   * A complete `engine-mcp.status` arrived since this chat was opened, so
+   * `engineMcpServers` is the engine's whole list; until then it holds only
+   * the partial reports, which update the conversation's stored list.
+   */
+  engineMcpComplete?: true;
   /**
    * Synthetic event-replay occupant of this store key. Lineage ids stay
    * unset so live SSE cannot fuzzy-match the source thread into it.

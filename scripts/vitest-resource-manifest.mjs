@@ -141,6 +141,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real Node sidecars verify native model relay framing, queued delivery and cancellation settlement.
+  'src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts',
   // #4828: short-lived `git init`, `git config` and `git status` children
   // prove the persistence protection reads the effective core.hooksPath from
   // git and runs no repository-named program; no wall-clock assertion.
@@ -221,6 +223,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',
   'packages/cli/src/__tests__/passive-cli.test.ts',
   'scripts/__tests__/server-scenario.test.ts',
+  // Builds and starts an isolated Station on free ports, runs the bundled
+  // Claude engine against a loopback stub, and owns detached process trees.
+  'scripts/__tests__/station-weight.end-to-end.process.test.ts',
+  // Detached and double-forked node children, a CPU-burning worker, git
+  // fixtures and the runner's gate as a child process.
+  'scripts/__tests__/station-weight.process.test.ts',
   // Real IPC child observes the native histogram at reset acknowledgement and blocks for 80ms.
   'scripts/__tests__/server-scenario-probe.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
@@ -294,12 +302,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/ci-ubuntu-bootstrap-source.test.ts',
   // Runs the evidence CLI against temporary Git roots and a loopback Actions API.
   'scripts/__tests__/qualification-evidence.test.ts',
-  // Runs the advisory review gate as a real child against a loopback GitHub API.
-  'scripts/__tests__/advisory-review-gate.test.ts',
   // #2675: runs the Nightly plan step's shell under bash in a temporary dir.
   'scripts/__tests__/ios-web-build-version.test.ts',
   // Executes cancellation against a loopback Actions API; owns one short Node child.
   'scripts/__tests__/pr-ci-supersession.test.ts',
+  // Runs the main-push verdict step as one short Node child against a loopback Actions API.
+  'scripts/__tests__/ci-merge-group-verdict.test.ts',
+  // Runs the source-policy publisher CLI as one short Node child against a loopback Actions API.
+  'scripts/__tests__/source-verification-policy.test.ts',
   // Runs the signer diagnostic CLI against a loopback Actions API.
   'scripts/__tests__/pr-conflict-signer-diagnostic.test.ts',
   // #3101: runs the conflict-deferral CLI against a loopback GitHub API.
@@ -703,6 +713,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // paths' EXIT STATUS and printed verdicts are proven, not just the pure
   // evaluation functions.
   'scripts/__tests__/codeql-sarif-policy.cli.test.ts',
+  // Runs the security-analysis gate-change job's real bash/git script as a
+  // child process against throwaway fixture repositories (partial fetch,
+  // merge base, .github/ diff). Single-shot spawns, no wall-clock assertion.
+  'scripts/__tests__/security-analysis-gate-change.test.ts',
   // station#1312: same shape again — the issue-lifecycle module graph is
   // loaded in fresh node children, one entry module per case, because only a
   // cold import proves the graph has no evaluation-order cycle; in-process
@@ -1080,9 +1094,25 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // processes with release.yml's arguments. Single-shot spawns, no wall-clock
   // assertion.
   'scripts/__tests__/release-artifacts.test.ts',
+  // #3591: runs release.yml's desktop-windows signing-mode and receipt
+  // staging bash steps as real child processes. Single-shot spawns, no
+  // wall-clock assertion.
+  'scripts/__tests__/windows-release-signing.test.ts',
+  // #3591: on Windows, runs release.yml's Authenticode observation step under
+  // real pwsh against MSI/PE fixtures it signs at test time (skipped off
+  // Windows). Single-shot spawns, no wall-clock assertion.
+  'scripts/__tests__/windows-release-authenticode.process.test.ts',
   // #2977: runs release.yml's assemble-draft admission step as a real bash
   // child against a download-artifact-shaped fixture root.
   'scripts/__tests__/release-admit-producer-assets.test.ts',
+  // #4929: runs release.yml's portable, container-descriptor, host-manifest,
+  // admission and inventory step text as real bash children, plus the SBOM
+  // context and generation CLIs, for a release-candidate producer set.
+  // Single-shot spawns under owned temp dirs, no wall-clock assertion.
+  'scripts/__tests__/release-candidate-staging.test.ts',
+  // #4929: runs the shared release-tag parser's CLI, which the portable
+  // packager calls from bash, as a real child to prove its exit statuses.
+  'scripts/__tests__/release-tag.test.ts',
   // #1776: runs the pinned tauri-cli `icon` fan-out twice as a real child
   // process to prove the committed iOS channel sets are byte-reproducible.
   // #1797 adds two more runs for the desktop `.icns`, whose writer was the
@@ -1357,6 +1387,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Installs a fake Kiro agent service with the real installer and launches
   // it through the real ACPProcess, managed and as a custom command.
   'src-server/services/engine-host-auth/__tests__/engine-host-auth-launch.process.test.ts',
+  // Runs a managed runtime's `--version` (Node, and a slow shell stand-in
+  // killed by an abort) through the ACP adapter's readiness.
+  'src-server/providers/__tests__/acp-managed-runtime-readiness.test.ts',
   // Two real processes race one expiring credential through the vault's
   // cross-process refresh lock against a local stub issuer.
   'src-server/services/engine-host-auth/__tests__/engine-host-auth-refresh-lock.process.test.ts',
@@ -1739,7 +1772,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // jsdom, then launch a real Chromium to lay that DOM out against index.css —
   // whether the dock body scrolls inside the shell, and whether a collapsed
   // bottom dock is its bar alone. A rule-text scan could not see an override.
-  'src-ui/src/app-shell/__tests__/ActivityRegionShell.dock-body.test.tsx',
+  // Renders the actual child chat DOM in Chromium at desktop and phone widths.
+  'src-ui/src/__tests__/child-transcript-navigation.test.tsx',
   'src-ui/src/app-shell/__tests__/CollapsedRegionDockBody.test.tsx',
   // Runs the full-regression phase driver CLI and real npm children, including
   // one it must kill at a deadline.

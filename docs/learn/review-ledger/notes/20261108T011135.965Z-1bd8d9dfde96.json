@@ -1,7 +1,0 @@
-{
-  "revision": "9065f79520a72288ebbe5ff3aa2e409c792bf6b9",
-
-  "notes": [
-    {"path":"docs/reference/shared.md","note":"Checked the ResolvedAgentDefinition systemPrompt excerpt (line ~999) against provider.ts: stationInstructions is a new optional sibling documented in contracts.md. The excerpt is an abbreviated shape and still accurate for systemPrompt.","inputs":["docs/reference/shared.md","packages/contracts/src/provider.ts"]}
-  ]
-}

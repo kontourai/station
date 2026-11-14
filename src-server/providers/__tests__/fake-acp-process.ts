@@ -46,6 +46,11 @@ export class FakeAcpProcess {
     params: Record<string, unknown>;
   }> = [];
   extMethodError?: unknown;
+  /** Answers an extension request; without it every request answers `{}`. */
+  extMethodHandler?: (
+    method: string,
+    params: Record<string, unknown>,
+  ) => unknown | Promise<unknown>;
   destroyed = false;
   destroyCalls = 0;
   cancelCalls = 0;
@@ -219,7 +224,7 @@ export class FakeAcpProcess {
   ): Promise<unknown> {
     this.extMethodCalls.push({ method, params });
     if (this.extMethodError) throw this.extMethodError;
-    return {};
+    return this.extMethodHandler ? this.extMethodHandler(method, params) : {};
   }
 
   async destroy(): Promise<void> {

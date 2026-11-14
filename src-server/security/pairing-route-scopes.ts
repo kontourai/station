@@ -4692,6 +4692,21 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/sessions/:threadId/mcp-servers/:serverName/reconnect',
     },
+    // A Session's live continuity (which engine-native actions its engine
+    // declared) and the person's in-place rewind of that engine's context.
+    // The read returns only two declared mechanism names under the same
+    // session-read gate as its siblings; the rewind is the person's act on
+    // their own Session (`canUserMutateSession`, the authority of sending the
+    // next turn) and edits no transcript, so it takes the operate tier like
+    // the MCP reconnect above.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/continuity',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/rewind',
+    },
     // #3157: the usage-limit banner's recovery read and its two person-owned
     // actions (Resume now, Cancel auto-resume). Deliberate family inheritance:
     // the GET returns only the Session's recovery projection under the same

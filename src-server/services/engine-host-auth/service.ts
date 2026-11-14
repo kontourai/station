@@ -41,6 +41,7 @@ import {
   type KiroOidcEndpoints,
   KiroRefreshRejectedError,
 } from './kiro-oidc/oidc.js';
+import type { KiroSocialEndpoints } from './kiro-oidc/social.js';
 import { EngineHostAuthVault } from './vault.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -52,6 +53,11 @@ export interface EngineHostAuthServiceOptions {
   endpoints?: KiroOidcEndpoints;
   /** Per-request OIDC timeout; defaults to `OIDC_REQUEST_TIMEOUT_MS`. */
   oidcRequestTimeoutMs?: number;
+  /** Kiro's portal and social service; defaults to production. */
+  social?: KiroSocialEndpoints;
+  /** Loopback ports for the social callback; defaults to Kiro's allowlist. */
+  socialCallbackPorts?: readonly number[];
+  socialCallbackTimeoutMs?: number;
   now?: () => number;
   schedule?: (run: () => void, delayMs: number) => () => void;
   /** Extra audit sink (the structured log). The JSONL file is always written. */
@@ -108,6 +114,13 @@ export class EngineHostAuthService {
         : {}),
       schedule: options.schedule ?? defaultSchedule,
       vault: this.vault,
+      ...(options.social ? { social: options.social } : {}),
+      ...(options.socialCallbackPorts
+        ? { socialCallbackPorts: options.socialCallbackPorts }
+        : {}),
+      ...(options.socialCallbackTimeoutMs !== undefined
+        ? { socialCallbackTimeoutMs: options.socialCallbackTimeoutMs }
+        : {}),
       onSignedIn: (scope) =>
         this.#audit({
           at: new Date(this.#now()).toISOString(),
@@ -177,6 +190,7 @@ export class EngineHostAuthService {
             ...(this.#options.oidcRequestTimeoutMs !== undefined
               ? { requestTimeoutMs: this.#options.oidcRequestTimeoutMs }
               : {}),
+            ...(this.#options.social ? { social: this.#options.social } : {}),
           }),
         },
         isRefreshRejected: (error) => error instanceof KiroRefreshRejectedError,

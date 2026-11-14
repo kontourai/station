@@ -23,6 +23,7 @@ import {
   dismissSetupLauncher,
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 
 /**
  * Mid-conversation switching journeys (archive#3307, mechanism map from the
@@ -147,13 +148,16 @@ async function expectCardReportsModel(
 
 /** Picks a model through the composer's real picker. */
 async function selectComposerModel(page: Page, optionName: RegExp) {
-  const modelButton = page.getByRole('button', { name: /^Model:/ });
+  const modelButton = await runSetupControl(page, (panel) =>
+    panel.getByRole('button', { name: /^(?:Model:|Engine & model:)/ }),
+  );
   await expect(modelButton).toBeEnabled({ timeout: 10_000 });
   await modelButton.click();
   const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
   await expect(picker).toBeVisible({ timeout: 5_000 });
   await picker.getByRole('option', { name: optionName }).click();
   await expect(picker).toBeHidden({ timeout: 5_000 });
+  await closeRunSetup(page);
 }
 
 /**
@@ -199,7 +203,9 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     // than inheriting whatever the reopened session resolved) keeps the
     // before/after comparison a fact about the switch.
     await selectComposerModel(page, /Claude Sonnet 4/);
+    await closeRunSetup(page);
     await textarea.fill('First turn on the picked model.');
+    await closeRunSetup(page);
     await textarea.press('Enter');
     await expect
       .poll(() => shell.executionRequests.length, { timeout: 10_000 })
@@ -237,13 +243,17 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     // The composer names the switched model, so the switch is visible session
     // state rather than a silent per-turn side effect.
     await expect(
-      page.getByRole('button', { name: /^Model:/ }),
+      await runSetupControl(page, (panel) =>
+        panel.getByRole('button', { name: /^(?:Model:|Engine & model:)/ }),
+      ),
       'the composer must name the model the next turn will ask for',
     ).toHaveAccessibleName(/Claude Haiku Mid Switch/, { timeout: 5_000 });
 
     // Turn 2 in the SAME conversation must dispatch the new model, and the
     // switched turn's provenance card must report it.
+    await closeRunSetup(page);
     await textarea.fill('Second turn after the switch.');
+    await closeRunSetup(page);
     await textarea.press('Enter');
     await expect
       .poll(() => shell.executionRequests.length, { timeout: 10_000 })
@@ -345,7 +355,9 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     ]);
     await openChat(page, FORK_CONVERSATION);
     const textarea = page.locator('textarea[placeholder*="Type a message"]');
+    await closeRunSetup(page);
     await textarea.fill('Parent branch prompt.');
+    await closeRunSetup(page);
     await textarea.press('Enter');
     await expect.poll(() => shell.executionRequests.length).toBe(1);
     await completeDispatchedTurn(page, {
@@ -385,7 +397,9 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       }),
     ).toBeVisible();
 
+    await closeRunSetup(page);
     await textarea.fill('Child-only divergent turn.');
+    await closeRunSetup(page);
     await textarea.press('Enter');
     await expect.poll(() => shell.executionRequests.length).toBe(2);
     expect(shell.executionRequests[1]?.conversationId).toBe(childId);
@@ -451,7 +465,9 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     ]);
     await openChat(page, FORK_CONVERSATION);
     const textarea = page.locator('textarea[placeholder*="Type a message"]');
+    await closeRunSetup(page);
     await textarea.fill('Cross-engine parent.');
+    await closeRunSetup(page);
     await textarea.press('Enter');
     await expect.poll(() => shell.executionRequests.length).toBe(1);
     await completeDispatchedTurn(page, {
@@ -601,9 +617,11 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     ]);
     await openChat(page, HANDOFF_CONVERSATION);
 
-    const agentTrigger = page.getByRole('button', {
-      name: /^Agent: .*\. Change Agent$/,
-    });
+    const agentTrigger = await runSetupControl(page, (panel) =>
+      panel.getByRole('button', {
+        name: /^Agent: .*\. Change Agent$/,
+      }),
+    );
     await agentTrigger.focus();
     await page.keyboard.press('Enter');
     const dialog = page.getByRole('dialog', {
@@ -642,7 +660,11 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     // The accepted target becomes current before focus restoration, so the
     // same control now carries its new Agent and may temporarily be unavailable
     // while that Agent starts. Its stable host selector proves return focus.
-    await expect(page.locator('.chat-input__agent-btn')).toBeFocused();
+    await expect(
+      await runSetupControl(page, (panel) =>
+        panel.locator('.chat-input__agent-btn'),
+      ),
+    ).toBeFocused();
     await boundary.getByText('What carried and reset').click();
     await expect(boundary).toContainText(
       CONVERSATION_HANDOFF_DISCLOSURE_LABELS.authorizedTranscript,

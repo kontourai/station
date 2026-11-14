@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildFreshnessReport,
@@ -115,6 +116,16 @@ describe('scoped documentation freshness (#2923)', () => {
     expect(firstTrace).not.toMatch(
       /ls-tree -r -z main -- docs\/learn\/review-ledger/,
     );
+    const coveredDelta = run(
+      f.root,
+      'record-documentation-review.mjs',
+      ['--show-delta', 'docs/a.md', '--json'],
+      scoped,
+    );
+    expect(coveredDelta.status).toBe(0);
+    expect(JSON.parse(coveredDelta.stdout).deltas).toEqual([
+      { kind: 'review', path: 'docs/a.md', fresh: true },
+    ]);
 
     git(f.root, ['switch', 'main']);
     git(f.root, [...identity, 'cherry-pick', noteCommit]);
@@ -130,6 +141,29 @@ describe('scoped documentation freshness (#2923)', () => {
     expect(readFileSync(trace, 'utf8')).toMatch(
       /ls-tree -r -z main -- docs\/learn\/review-ledger/,
     );
+    const uncoveredDelta = run(
+      f.root,
+      'record-documentation-review.mjs',
+      ['--show-delta', 'docs/a.md', '--json'],
+      scoped,
+    );
+    expect(uncoveredDelta.status).toBe(0);
+    expect(JSON.parse(uncoveredDelta.stdout).deltas).toEqual([
+      expect.objectContaining({
+        kind: 'review',
+        path: 'docs/a.md',
+        fresh: false,
+        diffs: [
+          expect.objectContaining({
+            scope: 'current-change',
+            revision: second.mergeBase,
+            inputs: ['src/a.ts'],
+            diff: expect.stringContaining('+export const a = 2;'),
+          }),
+        ],
+      }),
+    ]);
+    expect(git(f.root, ['status', '--porcelain'])).toBe('');
   });
   function classifiedNote({
     path = '.changeset/release-fixture.md',
@@ -1701,17 +1735,31 @@ describe('Nightly freshness sweep (#2923)', () => {
     );
   });
 
+  const head = 'c'.repeat(40);
+
   it('creates, updates, reopens and closes one tracking issue', () => {
     const root = makeTempDir('station-doc-sweep-');
     const reportPath = join(root, 'report.md');
     const calls: string[][] = [];
     const gh = (existing: string) => (args: string[]) => {
       calls.push(args);
-      return args.includes('GET') ? existing : '7';
+      // The search answers `number<TAB>author` per same-titled issue.
+      return args.includes('GET')
+        ? existing
+            .split('\n')
+            .filter(Boolean)
+            .map((number) => `${number}\tgithub-actions[bot]`)
+            .join('\n')
+        : '7';
     };
     writeFileSync(reportPath, report(2).body);
     expect(
-      upsertFreshnessIssue({ repo: 'owner/repo', reportPath, gh: gh('') }),
+      upsertFreshnessIssue({
+        repo: 'owner/repo',
+        reportPath,
+        head,
+        gh: gh(''),
+      }),
     ).toEqual({ action: 'created', number: 7 });
     // Looked up by its stable title, so a removed label cannot fork it.
     const lookup = calls[0];
@@ -1731,7 +1779,12 @@ describe('Nightly freshness sweep (#2923)', () => {
       ]),
     );
     expect(
-      upsertFreshnessIssue({ repo: 'owner/repo', reportPath, gh: gh('9\n4') }),
+      upsertFreshnessIssue({
+        repo: 'owner/repo',
+        reportPath,
+        head,
+        gh: gh('9\n4'),
+      }),
     ).toEqual({ action: 'updated', number: 4 });
     expect(calls.at(-1)).toEqual(
       expect.arrayContaining([
@@ -1742,16 +1795,118 @@ describe('Nightly freshness sweep (#2923)', () => {
     );
     writeFileSync(reportPath, report(0).body);
     expect(
-      upsertFreshnessIssue({ repo: 'owner/repo', reportPath, gh: gh('4') }),
+      upsertFreshnessIssue({
+        repo: 'owner/repo',
+        reportPath,
+        head,
+        gh: gh('4'),
+      }),
     ).toEqual({ action: 'closed', number: 4 });
     expect(calls.at(-1)).toEqual(expect.arrayContaining(['state=closed']));
     calls.length = 0;
     expect(
-      upsertFreshnessIssue({ repo: 'owner/repo', reportPath, gh: gh('') }),
+      upsertFreshnessIssue({
+        repo: 'owner/repo',
+        reportPath,
+        head,
+        gh: gh(''),
+      }),
     ).toEqual({ action: 'none' });
     expect(calls).toHaveLength(1);
     expect(() =>
-      upsertFreshnessIssue({ repo: '--bad', reportPath, gh: gh('') }),
+      upsertFreshnessIssue({ repo: '--bad', reportPath, head, gh: gh('') }),
     ).toThrow('--repo must be owner/name');
+  });
+
+  // The report is written by a job that runs installed code and posted by
+  // the job holding `issues: write`: the writer posts only a report for its
+  // own checkout, within the size bound, with every mention broken.
+  it('posts only a bounded, mention-free report for the checked-out revision', () => {
+    const root = makeTempDir('station-doc-sweep-harden-');
+    const reportPath = join(root, 'report.md');
+    const posted: string[] = [];
+    const gh = (args: string[]) => {
+      const body = args.find((arg) => arg.startsWith('body=@'));
+      if (body) posted.push(readFileSync(body.slice('body=@'.length), 'utf8'));
+      return args.includes('GET') ? '' : '7';
+    };
+    writeFileSync(
+      reportPath,
+      report(1).body.replace(
+        '# Documentation',
+        '@octocat @org/team # Documentation',
+      ),
+    );
+    expect(
+      upsertFreshnessIssue({ repo: 'owner/repo', reportPath, head, gh }),
+    ).toEqual({ action: 'created', number: 7 });
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain('@\u200bocto' + 'cat @\u200borg/team');
+    expect(posted[0]).not.toMatch(/@[A-Za-z0-9]/);
+    expect(() =>
+      upsertFreshnessIssue({
+        repo: 'owner/repo',
+        reportPath,
+        head: 'd'.repeat(40),
+        gh,
+      }),
+    ).toThrow(/refusing to post it/);
+    writeFileSync(reportPath, `${report(1).body}${'x'.repeat(65_536)}`);
+    expect(() =>
+      upsertFreshnessIssue({ repo: 'owner/repo', reportPath, head, gh }),
+    ).toThrow(/refusing to post more than 65536/);
+    expect(posted).toHaveLength(1);
+  });
+
+  // #4270: the upsert runs in the workflow job that holds `issues: write` and
+  // installs nothing. A child process that refuses every package import (as
+  // a job without node_modules would) loads the sweep script and upserts.
+  it('upserts from a process that can load no installed package', () => {
+    const root = makeTempDir('station-doc-sweep-nodeps-');
+    const reportPath = join(root, 'report.md');
+    writeFileSync(reportPath, report(2).body);
+    const child = `
+      import { isBuiltin, registerHooks } from 'node:module';
+      registerHooks({
+        resolve(specifier, context, next) {
+          if (!isBuiltin(specifier) && !/^(\\.|\\/|file:)/.test(specifier))
+            throw new Error('refused package import: ' + specifier);
+          return next(specifier, context);
+        },
+      });
+      const sweep = await import(process.argv[1]);
+      const calls = [];
+      const result = sweep.upsertFreshnessIssue({
+        repo: 'owner/repo',
+        reportPath: process.argv[2],
+        head: 'c'.repeat(40),
+        gh: (args) => (calls.push(args), args.includes('GET') ? '' : '7'),
+      });
+      console.log(JSON.stringify({ result, last: calls.at(-1) }));
+    `;
+    // The script is passed as a file URL, which `invokedDirectly` never
+    // matches, so importing it does not also run its CLI body.
+    const run = (script: string) =>
+      spawnSync(
+        process.execPath,
+        ['--input-type=module', '-e', child, script, reportPath],
+        { encoding: 'utf8', timeout: 30_000, windowsHide: true },
+      );
+    const result = run(
+      pathToFileURL(resolve('scripts/docs-freshness-sweep.mjs')).href,
+    );
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.result).toEqual({ action: 'created', number: 7 });
+    expect(parsed.last).toEqual(
+      expect.arrayContaining(['POST', `title=${SWEEP_ISSUE_TITLE}`]),
+    );
+    // The refusal is live: the report module needs installed packages.
+    const control = run(
+      pathToFileURL(resolve('scripts/documentation-impact.mjs')).href,
+    );
+    expect(control.status).not.toBe(0);
+    expect(control.stderr).toContain('refused package import');
   });
 });

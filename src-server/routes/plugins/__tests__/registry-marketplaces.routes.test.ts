@@ -239,21 +239,23 @@ describe('Marketplace source lifecycle through Registry routes', () => {
           })
         ).status,
       ).toBe(201);
+      // Adding the source read it once, to detect what it provides.
+      expect(calls).toBe(1);
       const first = (
         (await (await request('/plugins')).json()) as { data: RegistryItem[] }
       ).data;
-      expect(calls).toBe(1);
+      expect(calls).toBe(2);
       expect(first.map((item) => item.version)).toEqual([
-        '1.0.0',
-        '1.0.0',
-        '1.0.0',
+        '2.0.0',
+        '2.0.0',
+        '2.0.0',
       ]);
       expect(first[0]!.packageRevision).toBe(
         createHash('sha256')
           .update(
             JSON.stringify({
-              source: 'https://catalog.example/packages/0-1',
-              claim: { observation: 1 },
+              source: 'https://catalog.example/packages/0-2',
+              claim: { observation: 2 },
             }),
           )
           .digest('hex'),
@@ -261,11 +263,11 @@ describe('Marketplace source lifecycle through Registry routes', () => {
       const second = (
         (await (await request('/plugins')).json()) as { data: RegistryItem[] }
       ).data;
-      expect(calls).toBe(2);
+      expect(calls).toBe(3);
       expect(second.map((item) => item.version)).toEqual([
-        '2.0.0',
-        '2.0.0',
-        '2.0.0',
+        '3.0.0',
+        '3.0.0',
+        '3.0.0',
       ]);
       expect(second[0]!.id).not.toBe(first[0]!.id);
     } finally {

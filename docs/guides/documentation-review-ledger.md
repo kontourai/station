@@ -40,6 +40,10 @@ can cover named outstanding inputs; restoring old bytes alone cannot erase an
 unreviewed change. `docs:review:record -- --show-delta` shows the input diff
 since the coverage baseline, including working edits. This is an inspection
 lead, not an assertion that every intermediate change is visible in the net diff.
+If global history is covered but the current branch still lacks its own
+review, the command shows the outstanding branch inputs from the same scoped
+policy as the freshness gate. It does not treat a note already on the base
+branch as approval of this change.
 
 `--base=<ref>` overrides the catch-up search for new or unmapped paths, but does
 not change the freshness baseline. The one-time path-only migration sets the
@@ -128,7 +132,9 @@ serves `docs:truth:gate`, Veritas readiness, `docs:learn:check`, captures and
 
 - **Scoped** (local runs, pre-push, `pull_request` and `pull_request_target`):
   every document whose file or listed sources the PR's diff against its merge
-  base touches needs a new note covering those inputs. Human record edits also
+  base touches needs a new note covering those inputs (one command can write
+  that note for every document citing a changed source; see
+  [below](#one-note-for-a-widely-cited-input)). Human record edits also
   need a note. Dependencies at the merge base and in the working tree are both
   considered, so dropping a citation cannot hide a changed input. A removed
   record whose document remains cannot hide source changes either. Committed
@@ -158,11 +164,13 @@ After inspecting the changed claims and their callers:
 npm run docs:review:record -- --show-delta docs/guides/example.md
 npm run docs:review:record -- docs/guides/example.md --note "Checked the new retry limit against its caller."
 npm run docs:review:record -- docs/guides/example.md --note "..." --drop-source src-server/removed.ts --add-source src-server/new-owner.ts
+npm run docs:review:record -- --input src-server/shared-owner.ts --note "No cited claim depends on the changed retry default."
 npm run docs:review:record -- --batch reviews.json
 npm run docs:freshness:check
 ```
 
-Batch input is `[{ "path", "note", "removedSources"?, "addedSources"? }]`.
+Batch input is `[{ "path", "note", "removedSources"?, "addedSources"? }]`;
+an `--input` entry is `{ "input", "note" }`.
 Commit the reviewed document and source changes first, then record and commit
 the note. The note records the context HEAD and the inputs inspected; the
 context revision does not have to survive a squash merge. While the PR is open,
@@ -172,7 +180,8 @@ The root `AGENTS.md` rule to integrate upstream with merge, not rebase, keeps
 those note revisions valid. Recording writes
 only a new uniquely named notes file, plus a record edit if the dependency list
 really changes. It refuses empty notes, unknown paths, invalid or duplicate
-sources, uncommitted reviewed inputs, and captures whose image identity changed.
+sources, uncommitted reviewed inputs, captures whose image identity changed, and
+an `--input` that no record or capture cites.
 It validates the entire batch before writing. New records still need their
 kind, state, summary and limits decided by a reviewer. A deliberate review of
 unchanged inputs is allowed (`--rereview` remains accepted for compatibility).
@@ -191,6 +200,43 @@ reviewed. No value digest is stored in a path-only record. Other formats use
 whole file paths. Narrow a citation only after reviewing the claim it supports;
 retain version fields when the claim actually depends on that version.
 Notes document review decisions, not automated semantic approval.
+
+### One note for a widely cited input
+
+A source that many records cite would otherwise need the same note typed once
+per citing document whenever it changes. After checking the changed source
+against every page that cites it, write the note once:
+
+```sh
+npm run docs:review:record -- --input src-server/shared-owner.ts --note "Checked the new default against every citing page; no stated claim changed."
+```
+
+This is a convenience over per-document notes, with identical gate semantics.
+The command finds every record and capture whose sources cite exactly that
+binding, after any source edits in the same batch, and writes one ordinary
+note per document into a single notes file: `{ "path", "note", "inputs": [<binding>] }`.
+Every reader, including scripts on a branch cut before the option existed,
+treats those entries like any other note. Each covers only that input for its
+document, so it does not cover:
+
+- an edit to the document's own file, or a change to a capture itself;
+- a record or capture decision edit, including a source added or dropped;
+- any other input, including another value cited from the same file
+  (`package.json` does not stand for `package.json#/scripts/docs`);
+- a document that starts citing the input after the note was recorded, or one
+  whose citation the same change drops by hand.
+
+A command names one input; use one `--batch` for several. The command refuses
+an input that nothing cites, naming other cited bindings in that file. After a
+rename, records keep citing the old path until they are edited: the old name
+is refused because it is no longer tracked, and the new name until a record
+cites it.
+
+The trade is that one sentence now reaches many documents. The note claims
+that its author checked each listed page against the change; the gate proves
+only that such a note exists for each document and input, not that each page
+was read. When a page's claims do change, edit the page and give it its own
+note.
 
 ### Ledger layout and merges
 

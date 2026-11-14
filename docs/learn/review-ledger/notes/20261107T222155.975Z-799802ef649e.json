@@ -1,7 +1,0 @@
-{
-  "revision": "2636dfd2f8efb8710b609385347a2ce0b9ff468f",
-
-  "notes": [
-    {"path":"docs/design/README.md","note":"Generated index gained one entry for the new connections-overhaul proposal; no other claim changed. Checked the entry against the document's H1.","inputs":["docs/design/README.md"]}
-  ]
-}

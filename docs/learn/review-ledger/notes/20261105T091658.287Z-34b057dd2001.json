@@ -1,7 +1,0 @@
-{
-  "revision": "abd2ed93ba62f17ca396fc9079bd2e39ca5dea90",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Merged the Verification and NOT_VERIFIED text with #4598 (phone keyboard on emulated Android, Desktop WebDriver build with tauri-plugin-wdio-webdriver 1.5.1, PowerShell and Git Bash, script-runner suite on Windows) and #4590 (execution authority, restore binding, remaining #2497/#492 scope). Removed this lane's superseded claims (Desktop build blocker, other Windows shells untested, script-runner POSIX-only, ConPTY unqualified). Restore refusal for a removed Project now runs on ConPTY in the retention suite. Floor result recorded from the run at 76af54e (13 files, 157 passed, 31 skipped).","inputs":["docs/design/terminal.md","src-server/services/terminal/__tests__/terminal-retention.process.test.ts"]}
-  ]
-}

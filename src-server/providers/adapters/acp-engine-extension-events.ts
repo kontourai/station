@@ -17,7 +17,17 @@
  */
 import crypto from 'node:crypto';
 import {
+  CHILD_WORK_SUMMARY_MAX_CHARS,
+  type ChildWorkTerminalStatus,
+  type ChildWorkUsage,
+  cutChildWorkText,
+  isReportableChildWorkModelId,
+  isReportableChildWorkToolName,
+} from '@kontourai/station-contracts/child-work';
+import {
+  ENGINE_MCP_ERROR_MAX_CHARS,
   ENGINE_MCP_SERVER_NAME_MAX_CHARS,
+  ENGINE_MCP_STATUS_MAX_SERVERS,
   type EngineMcpServerState,
   type EngineMcpServerStatus,
   type EngineReportedCost,
@@ -27,17 +37,38 @@ import { readInputRequestLink } from '@kontourai/station-shared/input-request';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
   ENGINE_EXTENSION_BINDINGS,
-  ENGINE_EXTENSION_CONSUMERS,
   type EngineExtensionBinding,
-  type EngineExtensionConsumerId,
   type EngineExtensionWire,
   engineExtensionBinding,
+  engineExtensionRowLive,
   takeUnboundExtensionNotice,
 } from '../../../src-shared/extension-notification-bindings.js';
 import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderSession,
 } from '../adapter-shape.js';
+import {
+  type AcpChildStart,
+  type AcpChildWorkState,
+  acpChild,
+  publishAcpAgentSubtask,
+  publishAcpSubagentRoster,
+  settleAcpChild,
+  startAcpChild,
+  updateAcpChild,
+} from './acp-child-work.js';
+
+/**
+ * The adapter's port for turns the engine runs on its own (a wake after
+ * background work finished). The adapter owns turn state; a reader only says
+ * which engine prompt started running and which one ended.
+ */
+export interface EngineTurnBoundary {
+  /** The engine is now running prompt `enginePromptId`. */
+  started(enginePromptId: string): void;
+  /** Prompt `enginePromptId` ended; `failure` is the engine's own text when it failed. */
+  ended(enginePromptId: string, stopReason?: string, failure?: string): void;
+}
 
 /** What a reader needs from the mapper context; a subset of `AcpMapperContext`. */
 export interface EngineExtensionContext {
@@ -46,6 +77,7 @@ export interface EngineExtensionContext {
   activeTurnId?: string;
   publish: (event: CanonicalRuntimeEvent) => void;
   state?: EngineExtensionState;
+  engineTurns?: EngineTurnBoundary;
   logger?: {
     warn: (message: string, fields?: Record<string, unknown>) => void;
   };
@@ -55,21 +87,30 @@ export interface EngineExtensionContext {
  * Adapter-owned session state the readers keep. Structurally part of
  * `AcpMapperState`, so the adapter's live session record is the store.
  */
-export interface EngineExtensionState {
+export interface EngineExtensionState extends AcpChildWorkState {
   /**
    * The last turn-scoped cost published per engine turn id. A frame the
    * engine repeats (a replay, a duplicate) reports the same whole-turn
    * figure; it is not published twice.
    */
   engineTurnCosts?: Map<string, number>;
+  /** Engine prompt ids whose usage was published (`grok.turn-completed`). */
+  engineTurnUsage?: Map<string, true>;
+  /** Station turn id → the cost published for it so far, summed over engine prompts. */
+  turnCostSums?: Map<string, number>;
+  /**
+   * The MCP servers Station passed on `session/new`, by name. An engine that
+   * does not say where a server came from (Grok calls every server `local`)
+   * is read against this list: a named server Station passed is `session`
+   * scope.
+   */
+  mcpServers?: ReadonlyArray<{ readonly name: string }>;
 }
 
 /** Bound on the per-session maps above; the oldest entry goes first. */
 const ENGINE_EXTENSION_STATE_MAX_ENTRIES = 256;
-/** Bound on MCP servers one status report may carry; the rest are dropped. */
-const ENGINE_MCP_STATUS_MAX_SERVERS = 64;
 const MCP_SERVER_NAME_MAX_CHARS = ENGINE_MCP_SERVER_NAME_MAX_CHARS;
-const MCP_ERROR_MAX_CHARS = 512;
+const MCP_ERROR_MAX_CHARS = ENGINE_MCP_ERROR_MAX_CHARS;
 /** A model id as engines spell one: one token, at most 200 characters. */
 const MODEL_ID = /^[A-Za-z0-9._:/@-]{1,200}$/;
 /** A cost unit as engines spell one (`USD`, `EUR`, `credit`). */
@@ -281,11 +322,352 @@ function kasMcpServer(entry: unknown): EngineMcpServerStatus | undefined {
 }
 
 /**
+ * Grok `_x.ai/mcp/server_status` states, as observed (grok 1.0.77): a server
+ * coming up is `initializing`, one that came up is `ready`, and one whose
+ * handshake or restart failed is `unavailable` with a `reason` and
+ * `detail`. A server the client's list no longer names is `unavailable`
+ * with reason `config_removed`: taken out, not broken
+ * ({@link GROK_MCP_REMOVED_REASON}). A state not observed maps to nothing,
+ * so an unknown one is never guessed.
+ */
+const GROK_MCP_STATES: Readonly<Record<string, EngineMcpServerState>> = {
+  initializing: 'starting',
+  ready: 'ready',
+  unavailable: 'failed',
+};
+/** The `unavailable` reason Grok gives a server taken out of the client's list. */
+const GROK_MCP_REMOVED_REASON = 'config_removed';
+
+/** Grok's `costUsdTicks`: 10^10 ticks to the US dollar (live: 91,782,320 ticks = $0.009178232). */
+const GROK_COST_TICKS_PER_USD = 1e10;
+
+/**
+ * One engine prompt's cost from Grok's `turn_completed.usage.costUsdTicks`,
+ * scope `turn`. Grok writes 0 when a model's price is unknown or withheld,
+ * so zero is no report rather than a free turn. A frame repeated for the same
+ * engine prompt is not new spend. When more than one engine prompt lands in
+ * one Station turn (a wake that ran while Station's turn was open), the
+ * turn's figure is their sum: the usage fold keeps the last turn-scope
+ * figure per turn, so each publish states the whole turn so far.
+ *
+ * Grok's token counts are not published: usage scope is declared per
+ * provider (`usage-semantics.ts`), and `acp` is context-occupancy-only for
+ * every engine it runs.
+ */
+function publishGrokTurnCost(
+  ctx: EngineExtensionContext,
+  usage: Record<string, unknown>,
+  promptId: string | undefined,
+): void {
+  const ticks = finiteNonNegative(usage.costUsdTicks);
+  // A figure that names no engine prompt cannot be told from its own repeat
+  // or added to the turn's sum, so it is not published (live, every
+  // `turn_completed` names its prompt).
+  if (!ticks || !promptId) return;
+  if (ctx.state) {
+    ctx.state.engineTurnUsage ??= new Map();
+    if (ctx.state.engineTurnUsage.has(promptId)) return;
+    setBounded(ctx.state.engineTurnUsage, promptId, true);
+  }
+  let amount = ticks / GROK_COST_TICKS_PER_USD;
+  if (ctx.activeTurnId && ctx.state) {
+    ctx.state.turnCostSums ??= new Map();
+    amount += ctx.state.turnCostSums.get(ctx.activeTurnId) ?? 0;
+    setBounded(ctx.state.turnCostSums, ctx.activeTurnId, amount);
+  }
+  ctx.publish({
+    ...base(ctx),
+    method: 'token-usage.updated',
+    reportedCost: { amount, unit: 'USD', scope: 'turn' },
+  });
+}
+
+function mcpServerScope(
+  ctx: EngineExtensionContext,
+  name: string,
+): EngineMcpServerStatus['scope'] {
+  return ctx.state?.mcpServers?.some((server) => server.name === name)
+    ? 'session'
+    : 'engine-config';
+}
+
+// --- Grok child work -------------------------------------------------------
+
+/** Bound on a child's title; a longer description is cut. */
+const CHILD_TITLE_MAX_CHARS = 200;
+/** Bound on one monitor line shown as a child's progress. */
+const CHILD_PROGRESS_MAX_CHARS = 500;
+
+/** A Grok `update` object, from a notification's `params.update`. */
+function grokUpdate(params: Record<string, unknown>) {
+  return isRecord(params.update) ? params.update : undefined;
+}
+
+function childTitle(...candidates: unknown[]): string | undefined {
+  for (const candidate of candidates) {
+    const text = engineText(candidate, CHILD_TITLE_MAX_CHARS);
+    if (text) return text;
+  }
+  return undefined;
+}
+
+/** An ISO timestamp Grok wrote, or nothing. */
+function isoTime(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > 64) return undefined;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? undefined : new Date(ms).toISOString();
+}
+
+/** Grok's `{secs_since_epoch, nanos_since_epoch}` as ISO, or nothing. */
+function epochTime(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined;
+  const secs = finiteNonNegative(value.secs_since_epoch);
+  if (secs === undefined) return undefined;
+  const nanos = finiteNonNegative(value.nanos_since_epoch) ?? 0;
+  const date = new Date(secs * 1000 + Math.floor(nanos / 1e6));
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+/** A child's usage; every field absent when unreported, never 0-filled. */
+function childUsage(fields: {
+  tokens?: unknown;
+  tools?: unknown;
+  durationMs?: unknown;
+}): ChildWorkUsage | undefined {
+  const usage: ChildWorkUsage = {};
+  const totalTokens = finiteNonNegative(fields.tokens);
+  const toolUses = finiteNonNegative(fields.tools);
+  const durationMs = finiteNonNegative(fields.durationMs);
+  if (totalTokens !== undefined) usage.totalTokens = totalTokens;
+  if (toolUses !== undefined) usage.toolUses = toolUses;
+  if (durationMs !== undefined) usage.durationMs = durationMs;
+  return Object.keys(usage).length > 0 ? usage : undefined;
+}
+
+/** Engine text kept as a child's result: redacted, then cut and flagged. */
+function childSummary(
+  value: unknown,
+  source: 'tool-return' | 'child-message' | 'provider-error',
+) {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const cut = cutChildWorkText(
+    redactSecrets(value.trim()),
+    CHILD_WORK_SUMMARY_MAX_CHARS,
+  );
+  return {
+    summary: cut.text,
+    source,
+    ...(cut.truncated ? { summaryTruncated: true as const } : {}),
+  };
+}
+
+/**
+ * A background task (`kind` `bash` or `monitor`) as a child. A monitor says
+ * so by `kind`, by a `monitor_description`, or by a `[monitor]` display
+ * command.
+ */
+function grokTaskStart(
+  task: Record<string, unknown>,
+  ctx: EngineExtensionContext,
+): AcpChildStart | undefined {
+  const childId = engineId(task.task_id);
+  if (!childId) return undefined;
+  const monitor =
+    task.kind === 'monitor' ||
+    typeof task.monitor_description === 'string' ||
+    (typeof task.display_command === 'string' &&
+      task.display_command.startsWith('[monitor]'));
+  const toolCallId = engineId(task.tool_call_id);
+  const startedAt = isoTime(task.started_at) ?? epochTime(task.start_time);
+  const title = childTitle(
+    task.monitor_description,
+    task.description,
+    task.command,
+  );
+  const parent = {
+    ...(ctx.activeTurnId ? { turnId: ctx.activeTurnId } : {}),
+    ...(toolCallId ? { toolCallId } : {}),
+  };
+  return {
+    childId,
+    workKind: monitor ? 'monitor' : 'command',
+    kindLabel: monitor ? 'monitor' : 'bash',
+    backgrounded: true,
+    ...(title ? { title } : {}),
+    ...(Object.keys(parent).length > 0 ? { parent } : {}),
+    ...(startedAt ? { startedAt } : {}),
+  };
+}
+
+/** A finished task's verdict: killed, its exit code, or not one Station can name. */
+function grokTaskStatus(
+  task: Record<string, unknown>,
+): ChildWorkTerminalStatus {
+  if (task.explicitly_killed === true) return 'cancelled';
+  if (task.exit_code === 0) return 'completed';
+  if (
+    (typeof task.exit_code === 'number' && task.exit_code !== 0) ||
+    (typeof task.signal === 'string' && task.signal.length > 0)
+  )
+    return 'failed';
+  return 'unresolved';
+}
+
+/** `background_tasks` statuses that end a task, as observed. */
+const GROK_TASK_ENDED_STATUSES: ReadonlySet<string> = new Set([
+  'completed',
+  'failed',
+  'killed',
+  'cancelled',
+]);
+
+/** `subagent_finished.status` as child work; any other status settles `unresolved`. */
+const GROK_SUBAGENT_STATUSES: Readonly<
+  Record<string, ChildWorkTerminalStatus>
+> = { completed: 'completed', failed: 'failed', cancelled: 'cancelled' };
+
+const GROK_CHILD_WORK_READERS: Readonly<Record<string, Reader>> = {
+  'grok.task-backgrounded': (params, ctx) => {
+    const update = grokUpdate(params);
+    const start = update && grokTaskStart(update, ctx);
+    if (start) startAcpChild(ctx, 'background-task', start);
+  },
+  'grok.background-tasks': (params, ctx) => {
+    const tasks = grokUpdate(params)?.tasks;
+    if (!Array.isArray(tasks)) return;
+    for (const entry of tasks) {
+      if (!isRecord(entry)) continue;
+      const start = grokTaskStart(entry, ctx);
+      if (!start) continue;
+      if (entry.status === 'running') {
+        startAcpChild(ctx, 'background-task', start);
+      } else if (
+        typeof entry.status === 'string' &&
+        GROK_TASK_ENDED_STATUSES.has(entry.status) &&
+        acpChild(ctx, start.childId)?.status === 'running'
+      ) {
+        const endedAt = isoTime(entry.ended_at);
+        settleAcpChild(
+          ctx,
+          'background-task',
+          start.childId,
+          grokTaskStatus(entry),
+          {
+            ...(endedAt ? { endedAt } : {}),
+          },
+        );
+      }
+    }
+  },
+  'grok.task-completed': (params, ctx) => {
+    const task = grokUpdate(params)?.task_snapshot;
+    if (!isRecord(task)) return;
+    const start = grokTaskStart(task, ctx);
+    if (!start) return;
+    const result = childSummary(task.output, 'tool-return');
+    const endedAt = epochTime(task.end_time);
+    settleAcpChild(
+      ctx,
+      'background-task',
+      start.childId,
+      grokTaskStatus(task),
+      {
+        ...(result ? { result } : {}),
+        ...(endedAt ? { endedAt } : {}),
+        identity: start,
+      },
+    );
+  },
+  'grok.monitor-event': (params, ctx) => {
+    const update = grokUpdate(params);
+    const childId = engineId(update?.task_id);
+    const line = engineText(update?.event_text, CHILD_PROGRESS_MAX_CHARS);
+    if (childId && line)
+      updateAcpChild(ctx, 'background-task', childId, { progress: line });
+  },
+  'grok.subagent-spawned': (params, ctx) => {
+    const update = grokUpdate(params);
+    const childId = engineId(update?.subagent_id);
+    if (!update || !childId) return;
+    const model =
+      typeof update.model === 'string' &&
+      isReportableChildWorkModelId(update.model) &&
+      modelId(update.model)
+        ? update.model
+        : undefined;
+    const title = childTitle(update.description);
+    const kindLabel = childTitle(update.subagent_type);
+    // No depth: a subagent's own spawns stream on its session, which the
+    // adapter drops, so Station cannot tell a child from a grandchild.
+    return startAcpChild(ctx, 'subagent-lifecycle', {
+      childId,
+      workKind: 'agent',
+      ...(kindLabel ? { kindLabel } : {}),
+      ...(title ? { title } : {}),
+      ...(model
+        ? { model: { id: model, source: 'spawn-result' as const } }
+        : {}),
+      ...(ctx.activeTurnId ? { parent: { turnId: ctx.activeTurnId } } : {}),
+    });
+  },
+  'grok.subagent-progress': (params, ctx) => {
+    const update = grokUpdate(params);
+    const childId = engineId(update?.subagent_id);
+    if (!update || !childId) return;
+    const usage = childUsage({
+      tokens: update.tokens_used,
+      tools: update.tool_call_count,
+      durationMs: update.duration_ms,
+    });
+    const tools = Array.isArray(update.tools_used) ? update.tools_used : [];
+    const last = tools.at(-1);
+    const latestTool =
+      typeof last === 'string' && isReportableChildWorkToolName(last)
+        ? last.trim()
+        : undefined;
+    updateAcpChild(ctx, 'subagent-lifecycle', childId, {
+      ...(usage ? { usage } : {}),
+      ...(latestTool ? { latestTool } : {}),
+    });
+  },
+  'grok.subagent-finished': (params, ctx) => {
+    const update = grokUpdate(params);
+    const childId = engineId(update?.subagent_id);
+    if (!update || !childId) return;
+    const status =
+      typeof update.status === 'string'
+        ? (GROK_SUBAGENT_STATUSES[update.status] ?? 'unresolved')
+        : 'unresolved';
+    const result =
+      status === 'completed'
+        ? childSummary(update.output, 'child-message')
+        : childSummary(update.error ?? update.output, 'provider-error');
+    const usage = childUsage({
+      tokens: update.tokens_used,
+      tools: update.tool_calls,
+      durationMs: update.duration_ms,
+    });
+    settleAcpChild(ctx, 'subagent-lifecycle', childId, status, {
+      ...(result ? { result } : {}),
+      ...(usage ? { usage } : {}),
+      identity: { workKind: 'agent' },
+    });
+  },
+};
+
+/**
  * Readers keyed by `ENGINE_EXTENSION_BINDINGS` row id. A row whose consumer
  * is implemented must have a reader here, or be a consumer the UI owns
  * (`ENGINE_CONSUMERS_WITHOUT_SERVER_READER`); a test pins that.
  */
 export const ENGINE_EXTENSION_READERS: Readonly<Record<string, Reader>> = {
+  ...GROK_CHILD_WORK_READERS,
+  // --- session.turn-boundary
+  'grok.queue-changed': (params, ctx) => {
+    const running = engineId(params.runningPromptId);
+    if (running) ctx.engineTurns?.started(running);
+  },
+
   // --- usage.context-percent
   'kiro-v3.info.context-usage': (meta, ctx) => {
     if (isSubagentFrame(meta)) return;
@@ -309,6 +691,19 @@ export const ENGINE_EXTENSION_READERS: Readonly<Record<string, Reader>> = {
       ctx,
       { amount, unit: 'credit', scope: 'turn' },
       engineId(meta.turnId) ?? engineId(meta.executionId),
+    );
+  },
+  // Also session.turn-boundary: it ends the engine prompt, after its cost.
+  'grok.turn-completed': (params, ctx) => {
+    const update = isRecord(params.update) ? params.update : undefined;
+    const promptId = engineId(update?.prompt_id);
+    const usage = isRecord(update?.usage) ? update.usage : undefined;
+    if (usage) publishGrokTurnCost(ctx, usage, promptId);
+    if (!promptId) return;
+    ctx.engineTurns?.ended(
+      promptId,
+      typeof update?.stop_reason === 'string' ? update.stop_reason : undefined,
+      engineText(update?.agent_result, MCP_ERROR_MAX_CHARS * 2),
     );
   },
   'kiro-v3.info.session-usage': (meta, ctx) => {
@@ -356,6 +751,14 @@ export const ENGINE_EXTENSION_READERS: Readonly<Record<string, Reader>> = {
       scope: update.promoted === true && toModel ? 'session' : 'turn',
     });
   },
+  // --- child-work
+  'kiro-v2.subagent-list-update': (params, ctx) =>
+    publishAcpSubagentRoster(params, ctx),
+  // The payload is the whole `tool_call` / `tool_call_update`.
+  'kiro-v3.tool.agent-subtask': (update, ctx) => {
+    const meta = isRecord(update._meta) ? update._meta.kiro : undefined;
+    if (isRecord(meta)) publishAcpAgentSubtask(update, meta, ctx);
+  },
   // --- engine-mcp.status
   'kiro-v3.mcp-status': (params, ctx) => {
     if (!Array.isArray(params.servers)) return;
@@ -371,6 +774,36 @@ export const ENGINE_EXTENSION_READERS: Readonly<Record<string, Reader>> = {
       byName.set(server.name, server);
     }
     publishMcpStatus(ctx, [...byName.values()], true);
+  },
+  'grok.mcp-server-status': (params, ctx) => {
+    const name = mcpServerName(params.name);
+    const reported =
+      typeof params.status === 'string'
+        ? GROK_MCP_STATES[params.status]
+        : undefined;
+    const state =
+      reported === 'failed' && params.reason === GROK_MCP_REMOVED_REASON
+        ? 'disabled'
+        : reported;
+    if (!name || !state) return;
+    const error =
+      state === 'failed'
+        ? engineText(params.detail ?? params.reason, MCP_ERROR_MAX_CHARS)
+        : undefined;
+    const tools = Array.isArray(params.tools) ? params.tools.length : undefined;
+    publishMcpStatus(
+      ctx,
+      [
+        {
+          name,
+          state,
+          ...(tools !== undefined ? { toolCount: tools } : {}),
+          ...(error ? { error } : {}),
+          scope: mcpServerScope(ctx, name),
+        },
+      ],
+      false,
+    );
   },
   'kiro-v2.mcp-server-initialized': (params, ctx) => {
     const name = mcpServerName(params.serverName);
@@ -407,19 +840,12 @@ export const ENGINE_EXTENSION_READERS: Readonly<Record<string, Reader>> = {
 export const ENGINE_CONSUMERS_WITHOUT_SERVER_READER: ReadonlySet<string> =
   new Set(['acp.host-chrome']);
 
-function consumerImplemented(row: EngineExtensionBinding): boolean {
-  return Object.hasOwn(ENGINE_EXTENSION_CONSUMERS, row.consumer)
-    ? ENGINE_EXTENSION_CONSUMERS[row.consumer as EngineExtensionConsumerId]
-        .implemented
-    : true;
-}
-
 function runReader(
   row: EngineExtensionBinding,
   payload: Record<string, unknown>,
   ctx: EngineExtensionContext,
 ): void {
-  if (!consumerImplemented(row)) return;
+  if (!engineExtensionRowLive(row)) return;
   ENGINE_EXTENSION_READERS[row.id]?.(payload, ctx);
 }
 
@@ -495,6 +921,37 @@ export function mapEngineSessionInfo(
     // the engine's prompt ids; nothing is published for this frame.
     if (row.consumer === 'session.message-id') continue;
     runReader(row, meta, ctx);
+  }
+}
+
+/** Every `_meta` namespace a tool-call row names, from the table itself. */
+const TOOL_CALL_META_NAMESPACES: readonly string[] = [
+  ...new Set(
+    ENGINE_EXTENSION_BINDINGS.flatMap(({ wire }) =>
+      wire.kind === 'tool-call-meta-kind' ? [wire.namespace] : [],
+    ),
+  ),
+];
+
+/**
+ * A core `tool_call` / `tool_call_update` whose vendor `_meta.<namespace>.kind`
+ * a table row binds: that row's reader gets the whole update. Ordinary tool
+ * calls carry no bound kind and are untouched; the tool call itself is still
+ * mapped as one by the caller.
+ */
+export function mapEngineToolCallMeta(
+  update: { _meta?: Record<string, unknown> | null },
+  ctx: EngineExtensionContext,
+): void {
+  for (const namespace of TOOL_CALL_META_NAMESPACES) {
+    const meta = update._meta?.[namespace];
+    if (!isRecord(meta) || typeof meta.kind !== 'string') continue;
+    const row = engineExtensionBinding({
+      kind: 'tool-call-meta-kind',
+      namespace,
+      metaKind: meta.kind,
+    });
+    if (row) runReader(row, update as Record<string, unknown>, ctx);
   }
 }
 

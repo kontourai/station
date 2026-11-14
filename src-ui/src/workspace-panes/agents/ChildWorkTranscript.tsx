@@ -1,20 +1,22 @@
-import type { ChildWorkTranscriptEntry } from '@kontourai/station-contracts/child-work';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   StationHttpError,
   useChildWorkTranscriptQuery,
 } from '@kontourai/station-sdk';
 import { useEffect, useRef } from 'react';
 import { Button } from '../../components/Button';
-import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
+import { ChatMessageList } from '../../components/chat/ChatMessageList';
 import { useOptionalConversationConnection } from '../../components/conversation/ConversationConnectionContext';
-import { SkeletonBlock } from '../../components/state';
+import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
+import type { ChatSession } from '../../types';
 import { describeStationFailure } from '../../utils/stationFailure';
+import { childTranscriptMessages } from './childTranscriptMessages';
 import './ChildWorkTranscript.css';
 
 /**
  * #3163: an engine subagent's own transcript, read-only. The server resolves
  * it from the reporting session's persisted facts; this view names only the
- * session and the child. Pages load on request, never by polling.
+ * session and the child. Running children poll; settlement stops polling.
  */
 
 /** A reporting child's transcript re-reads at most this often. */
@@ -28,89 +30,17 @@ function failureText(error: unknown): string {
   return describeStationFailure(error).body;
 }
 
-function EntryLine({ entry }: { entry: ChildWorkTranscriptEntry }) {
-  const cut = entry.truncated ? (
-    <span className="child-work-transcript__cut"> (cut)</span>
-  ) : null;
-  switch (entry.kind) {
-    case 'text':
-      return (
-        <li className="child-work-transcript__entry" data-role={entry.role}>
-          <span className="child-work-transcript__label">
-            {entry.role === 'user' ? 'Prompt' : 'Subagent'}
-          </span>
-          {entry.role === 'assistant' ? (
-            // #4266: a subagent writes Markdown, as the card's summary of
-            // the same reply renders it. Any engine's child, the same way.
-            <div className="child-work-transcript__markdown">
-              <LazyMarkdown>{entry.text}</LazyMarkdown>
-              {cut}
-            </div>
-          ) : (
-            <p className="child-work-transcript__text">
-              {entry.text}
-              {cut}
-            </p>
-          )}
-        </li>
-      );
-    case 'tool-call':
-      return (
-        <li className="child-work-transcript__entry" data-kind="tool-call">
-          <span className="child-work-transcript__label">
-            Tool · {entry.name}
-          </span>
-          {entry.input && (
-            <code className="child-work-transcript__code">
-              {entry.input}
-              {cut}
-            </code>
-          )}
-        </li>
-      );
-    case 'tool-result':
-      return (
-        <li className="child-work-transcript__entry" data-kind="tool-result">
-          <span className="child-work-transcript__label">
-            {entry.isError ? 'Tool error' : 'Tool result'}
-          </span>
-          {entry.text ? (
-            <code className="child-work-transcript__code">
-              {entry.text}
-              {cut}
-            </code>
-          ) : (
-            <p className="child-work-transcript__text">No text output.</p>
-          )}
-        </li>
-      );
-    case 'omitted':
-      return (
-        <li className="child-work-transcript__entry" data-kind="omitted">
-          <p className="child-work-transcript__note">
-            {entry.count} more {entry.count === 1 ? 'block' : 'blocks'} in this
-            message not shown.
-          </p>
-        </li>
-      );
-    case 'too-large':
-      return (
-        <li className="child-work-transcript__entry" data-kind="too-large">
-          <p className="child-work-transcript__note">
-            An entry too large to show was left out.
-          </p>
-        </li>
-      );
-  }
-}
-
 export function ChildWorkTranscript({
   id,
   threadId,
   childId,
   running,
   revision,
+  title = 'Subagent',
+  engineId,
 }: {
+  title?: string;
+  engineId?: string;
   id: string;
   threadId: string;
   childId: string;
@@ -125,7 +55,7 @@ export function ChildWorkTranscript({
 }) {
   const target = useOptionalConversationConnection();
   const transcript = useChildWorkTranscriptQuery(
-    { threadId, childId, requestScope: target?.requestScope },
+    { threadId, childId, running, requestScope: target?.requestScope },
     target?.apiBase,
   );
   const { refetch } = transcript;
@@ -152,6 +82,27 @@ export function ChildWorkTranscript({
     [],
   );
   const entries = transcript.data?.pages.flatMap((page) => page.entries) ?? [];
+  const session: ChatSession = {
+    id: JSON.stringify([
+      'child-record',
+      target?.station?.runtimeKey ?? target?.apiBase,
+      threadId,
+      childId,
+    ]),
+    agentSlug: agentId(engineId ?? 'record'),
+    agentName: title,
+    title,
+    source: 'manual',
+    messages: childTranscriptMessages(entries),
+    input: '',
+    attachments: [],
+    queuedMessages: [],
+    inputHistory: [],
+    status: 'idle',
+    error: null,
+    createdAt: 0,
+    updatedAt: 0,
+  };
   return (
     <section
       id={id}
@@ -161,25 +112,29 @@ export function ChildWorkTranscript({
       {transcript.isPending && (
         <SkeletonBlock count={3} label="Loading transcript" />
       )}
-      {transcript.isError && entries.length === 0 && (
-        <p className="child-work-transcript__note" role="alert">
-          {failureText(transcript.error)}
-        </p>
+      {transcript.isError && !transcript.isFetchNextPageError && (
+        <ErrorState
+          variant="compact"
+          title={
+            entries.length > 0
+              ? 'Could not refresh the transcript'
+              : 'Could not read the transcript'
+          }
+          description={failureText(transcript.error)}
+          action={<Button onClick={() => void refetch()}>Retry</Button>}
+        />
       )}
       {transcript.isSuccess && entries.length === 0 && (
-        <p className="child-work-transcript__note">The transcript is empty.</p>
+        <Empty label="No messages in this transcript yet." />
       )}
-      {entries.length > 0 && (
-        <ol className="child-work-transcript__entries">
-          {entries.map((entry, index) => (
-            <EntryLine
-              // Entries never reorder: a page only appends.
-              key={index}
-              entry={entry}
-            />
-          ))}
-        </ol>
-      )}
+      <ChatMessageList
+        activeSession={session}
+        emptyState={null}
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails
+        suppressStreamingRow
+      />
       {transcript.hasNextPage && (
         <Button
           size="sm"
@@ -201,9 +156,16 @@ export function ChildWorkTranscript({
         </Button>
       )}
       {transcript.isFetchNextPageError && (
-        <p className="child-work-transcript__note" role="alert">
-          {failureText(transcript.error)}
-        </p>
+        <ErrorState
+          variant="compact"
+          title={
+            entries.length > 0
+              ? 'Could not refresh the transcript'
+              : 'Could not read the transcript'
+          }
+          description={failureText(transcript.error)}
+          action={<Button onClick={() => void refetch()}>Retry</Button>}
+        />
       )}
     </section>
   );

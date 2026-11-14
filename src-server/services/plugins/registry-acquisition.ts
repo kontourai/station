@@ -7,6 +7,7 @@ import {
   type PluginRegistryTrust,
   type RegistryAcquisitionReceipt,
 } from '@kontourai/station-contracts/registry-trust';
+import { AgentCatalogOwnershipRefusal } from '../../providers/registries/agent-registry-provider.js';
 import { managedCapabilityDenial } from '../../security/managed-capability-limits.js';
 import {
   type RegistryPackageClaim,
@@ -72,21 +73,27 @@ export class RegistryAcquisitionRefused extends Error {
 export function isRegistryAcquisitionRefusal(error: unknown): boolean {
   return (
     error instanceof RegistryAcquisitionRefused ||
-    error instanceof RegistryTrustPolicyConflict
+    error instanceof RegistryTrustPolicyConflict ||
+    error instanceof AgentCatalogOwnershipRefusal
   );
 }
 /** A dependency failure wraps its cause; recover the closed trust refusal so
  * routes answer it as one (409 with its reason) instead of a generic failure. */
 export function findRegistryAcquisitionRefusal(
   error: unknown,
-): RegistryAcquisitionRefused | RegistryTrustPolicyConflict | null {
+):
+  | RegistryAcquisitionRefused
+  | RegistryTrustPolicyConflict
+  | AgentCatalogOwnershipRefusal
+  | null {
   const seen = new Set<object>();
   try {
     for (let depth = 0; depth < 32 && error instanceof Error; depth++) {
       if (error instanceof AggregateError || seen.has(error)) return null;
       if (
         error instanceof RegistryAcquisitionRefused ||
-        error instanceof RegistryTrustPolicyConflict
+        error instanceof RegistryTrustPolicyConflict ||
+        error instanceof AgentCatalogOwnershipRefusal
       )
         return error;
       seen.add(error);
@@ -110,6 +117,14 @@ function refusalReason(error: unknown): RegistryAcquisitionRefusalReason {
  * managed refusal (the managed code and sentence), keeping its reason.
  */
 export function registryAcquisitionRefusalDetails(error: unknown) {
+  // An unresolved agent catalog owner answers with its own fixed sentence.
+  if (error instanceof AgentCatalogOwnershipRefusal)
+    return {
+      code: error.code,
+      reason: error.state,
+      error: error.reason,
+      message: error.reason,
+    };
   const reason = refusalReason(error);
   if (reason === 'managed-signature-required')
     return {
@@ -126,7 +141,10 @@ export function registryAcquisitionRefusalDetails(error: unknown) {
 }
 
 /** The status a route answers a refusal with: 403 when the managed policy refused. */
-export function registryAcquisitionRefusalStatus(error: unknown): 403 | 409 {
+export function registryAcquisitionRefusalStatus(
+  error: unknown,
+): 403 | 409 | 503 {
+  if (error instanceof AgentCatalogOwnershipRefusal) return error.status;
   return refusalReason(error) === 'managed-signature-required' ? 403 : 409;
 }
 export type RegistryPolicyAdmission = Awaited<

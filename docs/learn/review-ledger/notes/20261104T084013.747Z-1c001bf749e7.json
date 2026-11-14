@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/reference/sdk.md","note":"#4517 managed settings. Changed: workspace-pane-host-admission.ts: the isolation read hides a locked project override; project-service.ts: project create/update refuse a change to a locked override field. The /config/app read helper still returns the JSON envelope (provenance may now carry managed entries, which the shared contract type admits). No claim covers project isolation resolution or project override writes.","inputs":["docs/reference/sdk.md","src-server/services/plugins/workspace-pane-host-admission.ts","src-server/services/projects/project-service.ts"]}
-  ]
-}

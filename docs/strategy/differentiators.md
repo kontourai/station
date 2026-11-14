@@ -30,6 +30,12 @@ the line where those receipts are visible. It does not claim that every Task
 has a gate, or that a passed check is an approval.
 
 The public promise is “Code from anywhere. On your own, or with your team.”
+This sentence is its single source. The README tagline, the Pages home title,
+descriptions, social tags and headline, and the `corpus.json` purpose and
+tagline repeat it word for word, and `npm run docs:public:hygiene` fails when
+one of them drifts. Change the wording here first. The GitHub repository
+description is checked by hand, as
+[Verify the change](../guides/documentation.md#verify-the-change) describes.
 Use concrete supporting copy and keep current sharing limits in the owning
 guides and team FAQ. This wording does not qualify a complete two-person
 workflow.

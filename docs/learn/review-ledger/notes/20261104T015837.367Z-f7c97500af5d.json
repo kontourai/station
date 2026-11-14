@@ -1,7 +1,0 @@
-{
-  "revision": "b28e7848b0bdb81994280a2e07c732c774f02868",
-
-  "notes": [
-    {"path":"docs/learn/media/oauth-mcp-picker-comparison.png","note":"Inspected the personal OAuth source attachment comparison and its explicit mounted/synthetic/no-live-provider limits. The AgentToolLibrary test delta adds refused callback input retention and pending authorization protection; existing Station/Claude/Codex attachment and ACP refusal cases remain. The capture shows attachment selection, not account sign-in, so its image and claims remain accurate. Prior caller regressions passed14/14 and controlled browser recovery checks passed; no live OAuth claim added.","inputs":["docs/learn/media/oauth-mcp-picker-comparison.png","src-ui/src/__tests__/AgentToolLibrary.test.tsx"]}
-  ]
-}

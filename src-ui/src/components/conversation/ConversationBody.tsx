@@ -119,6 +119,7 @@ import type {
 import { preloadMarkdownRenderer } from '../chat/LazyMarkdown';
 import { outboxNeedsReview } from '../chat/pendingMessages';
 import type { OutboxRows } from '../chat/QueuedMessages';
+import { SessionRewindProvider } from '../chat/SessionRewind';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
 import { StationSessionTitlesProvider } from '../chat/station-session-titles';
 import { preloadToolCallBatch } from '../chat/ToolCallBatchBoundary';
@@ -710,6 +711,7 @@ function LiveConversationBody({
           ? [
               {
                 requestId: request.approvalId,
+                requestKind: request.requestKind,
                 threadId: request.approvalThreadId,
               },
             ]
@@ -1869,7 +1871,14 @@ function LiveConversationBody({
       }
     : undefined;
   return (
-    <>
+    <SessionRewindProvider
+      executionThreadId={
+        activeSession.replay || connectionRecord?.readOnly
+          ? undefined
+          : (activeSession.currentSessionId ?? activeSession.id)
+      }
+      openTurnId={activeSession.conversationActivity?.openTurn?.turnId}
+    >
       {!activeSession.replay && (
         <CoordinatorToolsNotice
           conversationId={activeSession.conversationId ?? activeSession.id}
@@ -1885,6 +1894,7 @@ function LiveConversationBody({
           messageCount={activeSession.messages.length}
           engineMcpServers={activeSession.engineMcpServers}
           engineMcpReconnect={activeSession.engineMcpReconnect === true}
+          engineMcpComplete={activeSession.engineMcpComplete === true}
           engineName={activeAcpConnection?.name}
           executionThreadId={
             activeSession.replay || connectionRecord?.readOnly
@@ -2924,6 +2934,11 @@ function LiveConversationBody({
             fileAttachmentsSupported={fileAttachmentsSupported}
             modelProviderLabel={modelProviderLabel}
             executionEngineLabel={executionEngineLabel}
+            executionEngineId={
+              engineIdentity.configurationNamesEngine
+                ? executionBinding?.engineId
+                : activeSession.orchestrationProvider
+            }
             agentEngineMove={agentEngineMove}
             modelProviders={modelProviders}
             currentProviderId={activeSession.providerId}
@@ -3093,6 +3108,6 @@ function LiveConversationBody({
           />
         </>
       )}
-    </>
+    </SessionRewindProvider>
   );
 }

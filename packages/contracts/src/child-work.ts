@@ -176,7 +176,10 @@ export type ChildWorkModelSource =
    * Agent tool's model choice.
    */
   | 'subagent-reply'
-  /** Codex: `model` on the completed `spawnAgent` call that created the child. */
+  /**
+   * The engine's report of the spawn that created the child: Codex's `model`
+   * on the completed `spawnAgent` call, Grok's `model` on `subagent_spawned`.
+   */
   | 'spawn-result'
   /** Codex: `thread.model` on the child thread's own `thread/started`. */
   | 'child-thread';
@@ -368,8 +371,8 @@ export type ChildWorkTranscriptEntry = {
   truncated?: true;
 } & (
   | { kind: 'text'; role: 'user' | 'assistant'; text: string }
-  | { kind: 'tool-call'; name: string; input?: string }
-  | { kind: 'tool-result'; text?: string; isError?: true }
+  | { kind: 'tool-call'; name: string; input?: string; toolCallId?: string }
+  | { kind: 'tool-result'; text?: string; isError?: true; toolCallId?: string }
   /** Blocks of one message past the per-message bound. */
   | { kind: 'omitted'; count: number }
   /** A transcript record too large to read; it is skipped, not cut. */

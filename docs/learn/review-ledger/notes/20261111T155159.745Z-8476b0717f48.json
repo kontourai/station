@@ -1,7 +1,0 @@
-{
-  "revision": "273fbedbb397272f5eb291d0e259841038066878",
-
-  "notes": [
-    {"path":"docs/design/approval-posture-server-ordered.md","note":"bubblewrap.ts changed only by formatting (MIN_BUBBLEWRAP_VERSION on one line); the design's bubblewrap section is unaffected.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/security/confinement/bubblewrap.ts"]}
-  ]
-}

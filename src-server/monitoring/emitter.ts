@@ -194,6 +194,12 @@ export class MonitoringEmitter {
     /** Omit when the producer reported no name — see `emitToolCall`. */
     toolName?: string;
     toolCallId: string | undefined;
+    /**
+     * Input that arrived after the start span was written. An ACP engine
+     * reports a call before its input settles, and the durable start row
+     * cannot be amended, so the result row carries the settled input.
+     */
+    input?: unknown;
     result?: unknown;
     /**
      * Omit when the source did not report a terminal outcome.
@@ -222,6 +228,7 @@ export class MonitoringEmitter {
         : {}),
       ...(opts.toolName ? { [K.TOOL_NAME]: opts.toolName } : {}),
       ...(opts.toolCallId ? { [K.TOOL_CALL_ID]: opts.toolCallId } : {}),
+      ...(opts.input !== undefined ? { [K.TOOL_CALL_ARGS]: opts.input } : {}),
       [K.TOOL_CALL_RESULT]: opts.result,
       ...(opts.outcome !== undefined
         ? { [K.TOOL_CALL_OUTCOME]: opts.outcome }

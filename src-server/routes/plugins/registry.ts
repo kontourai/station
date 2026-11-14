@@ -29,9 +29,11 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { unregisterPluginEngineConnections } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { PROTOTYPE_AFFECTING_KEYS } from '../../domain/skill-paths.js';
+import { AgentCatalogOwnershipRefusal } from '../../providers/registries/agent-registry-provider.js';
 import { UnsupportedRegistrySkillFormatError } from '../../providers/registries/github-skill-registry.js';
 import { mcpSubregistryIntegrationProviders } from '../../providers/registries/mcp-subregistry-provider.js';
 import {
+  assertRegisteredAgentOwnership,
   getAgentRegistryProvider,
   getIntegrationRegistryProvider,
   integrationCatalogManagedDenial,
@@ -39,8 +41,10 @@ import {
 import {
   ManagedRegistryRefusal,
   RegistryCatalogRefusal,
+  RegistrySourceInputError,
   readRegistryCatalogSelection,
   registrySourceManager,
+  registrySourceSupplies,
 } from '../../providers/registries/registry-source-manager.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { localSkillRevisionFromDirectory } from '../../services/agents/skill-revision.js';
@@ -231,7 +235,7 @@ export function createRegistryRoutes(
     manageSources(async (c) => {
       try {
         return c.json(
-          { success: true, data: sources.add(await c.req.json()) },
+          { success: true, data: await sources.add(await c.req.json()) },
           201,
         );
       } catch (error) {
@@ -248,7 +252,9 @@ export function createRegistryRoutes(
           {
             success: false,
             error:
-              'Could not add marketplace. Use a unique name and a supported public HTTPS repository/manifest or absolute local path.',
+              error instanceof RegistrySourceInputError
+                ? error.reason
+                : 'Could not add this source. Use a public https:// address or an absolute path on this Station.',
           },
           400,
         );
@@ -605,10 +611,16 @@ export function createRegistryRoutes(
 
   // ── Agent Registry ─────────────────────────────────────
 
+  // Agents from every registered catalog and from every source whose content
+  // was detected to list agents. A source's rows carry source-qualified ids,
+  // so the same agent name from two sources stays two choices.
   app.get('/agents', async (c) => {
     registryOps.add(1, { operation: 'list-agents' });
-    const items = await getAgentRegistryProvider().listAvailable();
-    return c.json({ success: true, data: items });
+    const [registered, fromSources] = await Promise.all([
+      getAgentRegistryProvider().listAvailable(),
+      sources.catalog('agents'),
+    ]);
+    return c.json({ success: true, data: [...registered, ...fromSources] });
   });
 
   // #2067: operator-only. Rows carry `installedPluginName` — the installed
@@ -620,8 +632,14 @@ export function createRegistryRoutes(
       'list installed registry agents',
     )(async (c) => {
       registryOps.add(1, { operation: 'list-agents-installed' });
-      const items = await getAgentRegistryProvider().listInstalled();
-      return c.json({ success: true, data: items });
+      const [registered, fromSources] = await Promise.all([
+        getAgentRegistryProvider().listInstalled(),
+        sources.catalog('agents'),
+      ]);
+      return c.json({
+        success: true,
+        data: [...registered, ...fromSources.filter((item) => item.installed)],
+      });
     }),
   );
 
@@ -633,14 +651,23 @@ export function createRegistryRoutes(
       const { id } = body;
       registryOps.add(1, { operation: 'install-agent', item: id });
 
-      // A JSON-manifest registry serves the same catalog through the agent
-      // face and the plugin face (`register-manifest-registry.ts`), so an id
-      // this surface offers can be a PLUGIN — code contributions, a build
-      // step, a consent basis. Installing that through the provider's raw
-      // tree copy skipped all three: the tree landed without `dist/bundle.js`
-      // and its layout components could never register (#765 D1). An id the
-      // plugin registry resolves takes the one complete install path;
-      // anything else remains a plain provider install, exactly as before.
+      // A plain id is installed only when one agent catalog owns it: two
+      // owners (409), or a catalog that could not be read and might be the
+      // second owner (503), refuse before any install path runs. The same
+      // rule guards every package path in `resolvePluginRegistryInstall`;
+      // this face is the strict one. A source-qualified id names its source.
+      if (!readRegistryCatalogSelection(id)) {
+        try {
+          await assertRegisteredAgentOwnership(id, 'agent');
+        } catch (error) {
+          if (!(error instanceof AgentCatalogOwnershipRefusal)) throw error;
+          return c.json(
+            { success: false, code: error.code, message: error.reason },
+            error.status,
+          );
+        }
+      }
+
       if (pluginInstallDeps) {
         let registryPlugin: { source: string } | null = null;
         try {
@@ -962,7 +989,10 @@ export function createRegistryRoutes(
     });
     const sourceStatus = sources
       .list()
-      .filter((source) => source.kind === 'skills' && sourceVisible(c)(source));
+      .filter(
+        (source) =>
+          registrySourceSupplies(source, 'skills') && sourceVisible(c)(source),
+      );
     const failed = sourceStatus.filter(
       (source) => source.enabled && ['error', 'stale'].includes(source.status),
     );
@@ -1299,7 +1329,7 @@ export function createRegistryRoutes(
       const data = await sources.catalog('plugins');
       const sourceStatus = sources
         .list()
-        .filter((source) => source.kind === 'plugins');
+        .filter((source) => registrySourceSupplies(source, 'plugins'));
       const failed = sourceStatus.filter(
         (source) =>
           source.enabled && ['error', 'stale'].includes(source.status),

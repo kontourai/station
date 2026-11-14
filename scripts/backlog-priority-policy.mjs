@@ -1,10 +1,16 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 import { validateIssueLabelAxes } from './label-manifest.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import {
+  assertReportRevision,
+  postableReport,
+  runGh,
+  upsertTrackingIssue,
+} from './lib/tracking-issue.mjs';
 
 const PRIORITIES = Object.freeze(['P1', 'P2', 'P3']);
 const NON_ACTIONABLE_DISPOSITIONS = Object.freeze([
@@ -122,6 +128,7 @@ export function evaluateBacklogPriorityPolicy(
 
   return {
     findings,
+    unclassifiedIssues,
     summary: {
       open: openIssues.length,
       actionableP1: actionableP1Issues.length,
@@ -248,6 +255,102 @@ function readIssues(inputPath) {
   );
 }
 
+export const BACKLOG_ISSUE_TITLE = 'Backlog policy findings';
+// The tracker is itself an open issue the policy audits, so it carries a
+// priority.
+export const BACKLOG_ISSUE_LABELS = Object.freeze(['P2']);
+/** Entries per list in the tracker; the run summary lists every finding. */
+export const BACKLOG_ISSUE_OFFENDERS = 50;
+const MARKER = 'backlog-policy';
+
+// `#123` in an issue body adds a cross-reference to issue 123's timeline on
+// every edit; a code span names the issue without that.
+const quoteIssueNumbers = (text) => text.replace(/#(\d+)/g, '`#$1`');
+
+/** The tracking issue body for one evaluation at one revision. */
+export function buildBacklogReport(result, { revision }) {
+  const { open, actionableP1, unclassified } = result.summary;
+  const shown = result.unclassifiedIssues.slice(0, BACKLOG_ISSUE_OFFENDERS);
+  const others = result.findings.filter(
+    (finding) => !finding.startsWith('Unclassified open issues:'),
+  );
+  return `${[
+    `<!-- ${MARKER} findings=${result.findings.length} revision=${revision} -->`,
+    `# ${BACKLOG_ISSUE_TITLE}`,
+    '',
+    `The daily [backlog policy](../blob/main/docs/reference/backlog-disposition-policy.md) audit at ${revision}. Open issues: ${open}. Actionable P1: ${actionableP1}. Unclassified: ${unclassified}.`,
+    '',
+    ...(unclassified
+      ? [
+          `## Unclassified (${shown.length} of ${unclassified})`,
+          '',
+          `Apply one of: ${BACKLOG_POLICY.classificationLabels.join(', ')}.`,
+          '',
+          shown.map((number) => `\`#${number}\``).join(' '),
+          '',
+        ]
+      : []),
+    ...(others.length
+      ? [
+          '## Other findings',
+          '',
+          ...others
+            .slice(0, BACKLOG_ISSUE_OFFENDERS)
+            .map((finding) => `- ${quoteIssueNumbers(finding)}`),
+          ...(others.length > BACKLOG_ISSUE_OFFENDERS
+            ? [
+                `- ${others.length - BACKLOG_ISSUE_OFFENDERS} more; the run summary lists every finding.`,
+              ]
+            : []),
+          '',
+        ]
+      : []),
+    ...(result.findings.length ? [] : ['_Nothing to report._', '']),
+  ].join('\n')}`;
+}
+
+/**
+ * Keep the one tracking issue current from a report another job wrote: only
+ * one stamped with this checkout's revision (current, which is not proof of
+ * who wrote it), with mentions broken and the posted text within the bound.
+ * @param {{ repo: string, reportPath: string, head?: string, gh?: (args: string[]) => string }} input
+ */
+export function upsertBacklogIssue({
+  repo,
+  reportPath,
+  head = execFileSync('git', ['rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+    windowsHide: true,
+  }).trim(),
+  gh = runGh,
+}) {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo ?? ''))
+    throw new Error('--repo must be owner/name');
+  const match = new RegExp(
+    `^<!-- ${MARKER} findings=(\\d+) revision=([a-f0-9]{40}) -->$`,
+    'm',
+  ).exec(readFileSync(reportPath, 'utf8'));
+  if (!match) throw new Error(`report is missing the ${MARKER} marker`);
+  assertReportRevision(match[2], head);
+  return upsertTrackingIssue({
+    repo,
+    reportPath: postableReport(reportPath),
+    title: BACKLOG_ISSUE_TITLE,
+    labels: BACKLOG_ISSUE_LABELS,
+    outstanding: Number(match[1]),
+    gh,
+  });
+}
+
+function flagValue(argv, name) {
+  const index = argv.indexOf(name);
+  if (index === -1) return undefined;
+  const value = argv[index + 1];
+  if (!value || value.startsWith('--'))
+    throw new Error(`${name} requires a value.`);
+  return value;
+}
+
 function parseInputPath(argv) {
   const index = argv.indexOf('--input');
   if (index === -1) return undefined;
@@ -255,12 +358,57 @@ function parseInputPath(argv) {
   return argv[index + 1];
 }
 
+/**
+ * Report-only: policy findings are printed, annotated and written to the job
+ * summary, and the process still exits 0. A permanently red daily run was
+ * ignored, so the red no longer carries information. An unreadable or
+ * partial backlog is not a finding: `readIssues` throws, and the process
+ * exits non-zero, as does the label-manifest check the workflow runs first.
+ */
 function main() {
-  const issues = readIssues(parseInputPath(process.argv.slice(2)));
+  const argv = process.argv.slice(2);
+  const reportPath = flagValue(argv, '--report');
+  if (argv.includes('--upsert')) {
+    if (!reportPath) throw new Error('--upsert requires --report <path>.');
+    const outcome = upsertBacklogIssue({
+      repo: flagValue(argv, '--repo'),
+      reportPath,
+    });
+    console.log(
+      `[backlog-policy] ${outcome.action}${outcome.number ? ` #${outcome.number}` : ''}`,
+    );
+    return;
+  }
+  const issues = readIssues(parseInputPath(argv));
   const result = evaluateBacklogPriorityPolicy(issues);
+  if (reportPath)
+    writeFileSync(
+      reportPath,
+      buildBacklogReport(result, {
+        revision: execFileSync('git', ['rev-parse', 'HEAD'], {
+          encoding: 'utf8',
+          windowsHide: true,
+        }).trim(),
+      }),
+    );
   console.log(JSON.stringify(result.summary));
-  for (const finding of result.findings) console.error(`FAIL: ${finding}`);
-  if (result.findings.length > 0) process.exitCode = 1;
+  for (const finding of result.findings)
+    console.error(`::warning title=Backlog policy::${finding}`);
+  const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+  if (summaryPath)
+    appendFileSync(
+      summaryPath,
+      [
+        '## Backlog policy',
+        '',
+        `Open issues: ${result.summary.open}. Actionable P1: ${result.summary.actionableP1}. Unclassified: ${result.summary.unclassified}.`,
+        '',
+        ...(result.findings.length
+          ? result.findings.map((finding) => `- ${finding}`)
+          : ['No findings.']),
+        '',
+      ].join('\n'),
+    );
 }
 
 if (invokedDirectly(import.meta.url)) main();

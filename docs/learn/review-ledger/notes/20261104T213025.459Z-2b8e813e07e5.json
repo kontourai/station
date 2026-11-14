@@ -1,7 +1,0 @@
-{
-  "revision": "75b6e36ce242cc05deb7b12369375fe44978f64c",
-
-  "notes": [
-    {"path":"deploy/public-ingress/README.md","note":"Scanned for claims about origin admission, WebSocket origins, the sign-in picker, live-surface Retry, the input notice, the codec label, the float pill, the Stations pending row and Chromium launch failures; none here describe those mechanics. Changed sources: runtime-routes now builds one StationOriginPolicy (configured origins, then the daemon-attested own Tailscale Serve origin) for the HTTP gates, pairing check and sign-in picker.","inputs":["deploy/public-ingress/README.md","src-server/runtime/routes/runtime-routes.ts"]}
-  ]
-}

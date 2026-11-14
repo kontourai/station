@@ -1,7 +1,0 @@
-{
-  "revision": "48fcca265ee6ec04eea76419f518c3f08c211ea5",
-
-  "notes": [
-    {"path":"docs/reference/sdk.md","note":"AuthorityQueryContext's boot/observation gating is unchanged: the local-session boot read still runs while the observation is pending and stays out of the cache until it verifies; only the pending screen and a reset-based retry of the same observation key were added. No SDK claim changed.","inputs":["docs/reference/sdk.md","src-ui/src/contexts/AuthorityQueryContext.tsx"]}
-  ]
-}

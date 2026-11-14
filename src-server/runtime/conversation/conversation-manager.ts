@@ -70,6 +70,7 @@ function usageAggregateToConversationStats(
     ...(aggregate.reportedCosts
       ? { reportedCosts: aggregate.reportedCosts }
       : {}),
+    ...(aggregate.engineMcp ? { engineMcp: aggregate.engineMcp } : {}),
     turns: aggregate.turns,
     toolCalls: aggregate.toolCalls,
     estimatedCost: aggregate.reportedCostUsd,
@@ -87,7 +88,10 @@ function hasUsageSignal(aggregate: SessionUsageAggregate): boolean {
     // inventory, so occupancy alone is still a real measurement.
     aggregate.contextTokens !== undefined ||
     aggregate.contextPercent !== undefined ||
-    aggregate.reportedCosts !== undefined
+    aggregate.reportedCosts !== undefined ||
+    // An engine that has only reported its MCP servers so far (a session
+    // whose first turn has not finished) still has a panel to show.
+    aggregate.engineMcp !== undefined
   );
 }
 

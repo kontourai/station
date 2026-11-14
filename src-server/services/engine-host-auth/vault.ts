@@ -251,6 +251,22 @@ export class EngineHostAuthVault {
     );
   }
 
+  /**
+   * Remove the credential only if the bucket still holds `expected` (a
+   * revision `read` returned). Returns whether it was removed.
+   */
+  async compareAndRemove(
+    kind: EngineCredentialKind,
+    scope: EngineCredentialScope,
+    expected: string,
+  ): Promise<boolean> {
+    return this.#store.compareAndRemove(
+      engineCredentialBucketKey(kind, scope),
+      CREDENTIAL_ENTRY,
+      expected,
+    );
+  }
+
   async remove(
     kind: EngineCredentialKind,
     scope: EngineCredentialScope,
