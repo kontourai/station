@@ -231,7 +231,7 @@ const REWIND_PREVIEW_LINE_MAX_CHARS = 60;
  * gets a different preview there, so it never matches here and its rewind is
  * refused, never misdirected.
  */
-export function acpRewindPreviewOf(promptText: string): string | undefined {
+function acpRewindPreviewOf(promptText: string): string | undefined {
   const line = promptText
     .split('\n')
     .map((part) => part.trim())
