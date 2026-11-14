@@ -19,6 +19,34 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
+### Main integration and retained readiness limits (2026-11-14)
+
+Merge `be563a0ba03d` integrates the shared child-transcript renderer and the
+paired Flow Agents 11.0.0 / Flow 6.0.0 pins. Provider SDK entry-point and package
+hashes remain byte-identical to the retained Anthropic 3.0.142 and Google
+3.0.145 audits. The prior Flow Agents 9.14 artifact comparison remains historical.
+The unavailable-tool-text regression catches both missing and empty output on
+the incoming fallback; exact restoration passes all thirteen owner cases. The
+initial three-file transcript/navigation selection passes all forty-eight cases.
+Server-test typechecking also passes with the merged dependency graph.
+
+Exact-source readiness at `f5aa4e12b2d5` passes all 1,666 connected-agent cases,
+including the unchanged 1,200-thread projection under its original ten-second
+bound. Earlier projection timeouts remain retained; this green run establishes
+its own outcome, not a causal explanation or general latency recovery. Readiness
+still fails the required style and documentation-truth checks. The style error
+needs an unsuppressed diagnostic; the semantic documentation backlog remains
+open. Four later entry-point review notes cover only their named module-map
+input and leave unrelated dependencies stale.
+
+The separately submitted native model-channel prerequisite at `839fc589b993`
+passes its six real-worker cases and readiness with zero failures and warnings,
+including 1,642 connected-agent cases. Its normal push refuses a missing verified
+transfer baseline at exact merge base `16b23309f04d`; baseline preparation is
+pending. No push, merge, new native/provider execution, full finalizer recovery
+or inherited native authority follows from these checks. Both production
+qualification flags remain false, and the full epic remains incomplete.
+
 ### Historical locator guard qualification (2026-11-13)
 
 At `c6ae01856501`, each retained historical Flow locator checks its exact child
