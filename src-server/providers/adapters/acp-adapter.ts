@@ -1265,6 +1265,9 @@ async function reapplyRequestedSessionState(input: {
       if (applied.configOptions) record.configOptions = applied.configOptions;
     }
   } catch (error) {
+    // An engine that exited (or a stop) mid-reapply fails the start as any
+    // start whose engine is gone does; only a refusal keeps the reopen.
+    if (!input.process.isAlive) throw error;
     input.logger.warn?.(
       `ACP connection '${input.connectionId}': a reopened session kept the engine's model or effort; reapplying the requested one failed.`,
       error instanceof Error ? error.message : error,

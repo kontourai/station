@@ -499,8 +499,13 @@ export class SessionTranscriptReads {
       } else if (
         event.payload.method === 'token-usage.updated' &&
         (isReportedAmount(event.payload.contextTokens) ||
-          isReportedAmount(event.payload.contextWindowTokens))
+          isReportedAmount(event.payload.contextWindowTokens) ||
+          isReportedAmount(event.payload.contextPercent) ||
+          event.payload.reportedCost !== undefined)
       ) {
+        // Context (the token pair or an engine's percent) or an engine's own
+        // cost (Kiro credits, Grok USD, scoped by its unit), with no token
+        // totals: what the occupancy reason describes.
         provider.contextOnlyTurns.add(
           `${event.threadId}:${event.turnId ?? event.id}`,
         );

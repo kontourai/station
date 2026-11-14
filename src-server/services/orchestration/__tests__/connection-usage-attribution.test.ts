@@ -539,6 +539,52 @@ describe('usage attribution to connections', () => {
     ]);
   });
 
+  test('an ACP turn with only an engine context percent and credits reads as context-only', async () => {
+    // Kiro's shape: `contextPercent` and a credit `reportedCost`, no pair.
+    store.appendEvent({
+      eventId: 'kiro-started',
+      provider: 'acp',
+      threadId: 'kiro-thread',
+      sessionId: 'kiro-thread',
+      createdAt: new Date().toISOString(),
+      method: 'session.started',
+      initialState: 'created',
+      metadata: { userId: OWNER, cwd: '/work', connectionId: 'kiro-cli' },
+    });
+    store.appendEvent({
+      eventId: 'kiro-usage',
+      provider: 'acp',
+      threadId: 'kiro-thread',
+      turnId: 'kiro-turn',
+      createdAt: new Date().toISOString(),
+      method: 'token-usage.updated',
+      contextPercent: 12,
+      reportedCost: { amount: 0.4, unit: 'credit', scope: 'turn' },
+    } as never);
+    store.appendEvent({
+      eventId: 'kiro-completed',
+      provider: 'acp',
+      threadId: 'kiro-thread',
+      turnId: 'kiro-turn',
+      createdAt: new Date().toISOString(),
+      method: 'turn.completed',
+      finishReason: 'stop',
+    });
+    const response = await usageRoute(store, home).request(
+      rollupPath({ connectionId: 'kiro-cli' }),
+    );
+    expect(response.status).toBe(200);
+    const body = await readJson<{ data: UsageRollup }>(response);
+    expect(body.data.coverage[0].providers).toEqual([
+      expect.objectContaining({
+        provider: 'acp',
+        state: 'partial',
+        reason:
+          'engine reports context occupancy only, not token or cost totals',
+      }),
+    ]);
+  });
+
   test('an ACP turn with no usage at all is a missing usage report', async () => {
     store.appendEvent({
       eventId: 'acp-silent-started',
