@@ -1,0 +1,9 @@
+{
+  "revision": "ad28164f1da628402f632132567df2ac36f609fc",
+
+  "notes": [
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Full 351-line guide read at ad28164f1da6. Reviewed its four-line branch addition against historicalLedgers/readReviewStateAt and parseRecordFile: only advisory dependency history accepts repeated valid paths in path-only records, validating each path before Set deduplication. Default/current reads remain canonical; legacy digest/revision identity values and malformed JSON/path/binding cases remain strict. Traced the real-CLI retained-dependency and current-record refusal controls in documentation-impact.test.ts; tests were inspected, not newly executed. No current review approval, note/capture byte tolerance, binding refresh or baseline advancement follows. Existing guide limits and commands remain accurate for this document delta; no prose correction. This note covers this document input only, not unrelated source deltas.","inputs":["docs/guides/documentation-review-ledger.md"]},
+
+    {"path":"docs/guides/documentation.md","note":"Full 318-line maintenance guide read at ad28164f1da6. Scoped review of its documentation-review-ledger.md dependency: the new advisory-only historical path deduplication preserves dependency leads and does not change current review, source accuracy, canonical inputs, recording, publication, baseline or immutable-history rules. The maintenance guide still delegates the machinery to that canonical owner and distinguishes source review, executed evidence and deployment. No prose correction for this input. Source-only inspection; no new documentation test, render, release or external-content qualification claimed.","inputs":["docs/guides/documentation.md","docs/guides/documentation-review-ledger.md"]}
+  ]
+}
