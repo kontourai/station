@@ -1,7 +1,0 @@
-{
-  "revision": "c74dee47fcb42aeaad2634b640cb5c53a78a0628",
-
-  "notes": [
-    {"path":"docs/design/placement.md","note":"The three phone-layer suites this document cites changed only their teardown: after unmounting an open layer they now wait for queued history traversals to land before the next case pushes history, which stops jsdom cancelling the layer's cleanup Back and stranding later cases. No product code changed and no assertion about the phone layer, its history entry or Back changed. Checked the phone-layer section and the history-entry rules against that; no prose change needed.","inputs":["docs/design/placement.md","src-ui/src/contexts/__tests__/RegionModelContext-phone-layer-guard.test.tsx","src-ui/src/contexts/__tests__/RegionModelContext-phone-layer-reload-id.test.tsx","src-ui/src/contexts/__tests__/RegionModelContext-phone-layer.test.tsx"]}
-  ]
-}

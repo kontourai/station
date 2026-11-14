@@ -1,7 +1,0 @@
-{
-  "revision": "f17591512da96dad2982d0e588dbef156d4ce402",
-
-  "notes": [
-    {"path":"docs/reference/contracts.md","note":"Reviewed removal of the controls-to-status type re-export: summary types remain on managed-policy-status and UI consumers import them there with import type. Runtime helpers still re-export through status for compatibility, with no runtime cycle or behavior change. The lightweight public-subpath description remains accurate.","inputs":["docs/reference/contracts.md"]}
-  ]
-}

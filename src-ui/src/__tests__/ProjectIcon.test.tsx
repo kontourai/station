@@ -27,6 +27,33 @@ describe('ProjectIcon', () => {
     expect(el?.style.width).toBe('18px');
   });
 
+  test('uses detected artwork only as a fallback and respects explicit None', () => {
+    expect(
+      mark(
+        <ProjectIcon project={{ name: 'Demo', derivedIcon: PNG }} size={18} />,
+      )
+        ?.querySelector('img')
+        ?.getAttribute('src'),
+    ).toBe(PNG);
+    expect(
+      mark(
+        <ProjectIcon
+          project={{ name: 'Demo', derivedIcon: PNG, icon: '🧭' }}
+          size={18}
+        />,
+      )?.querySelector('img'),
+    ).toBeNull();
+    expect(
+      mark(
+        <ProjectIcon
+          project={{ name: 'Demo', derivedIcon: PNG, iconDisabled: true }}
+          fallback="initials"
+          size={18}
+        />,
+      )?.querySelector('img'),
+    ).toBeNull();
+  });
+
   test('draws a glyph as text', () => {
     const el = mark(
       <ProjectIcon project={{ name: 'Station', icon: '🧭' }} size={18} />,

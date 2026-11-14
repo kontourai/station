@@ -1,7 +1,0 @@
-{
-  "revision": "88c6eece38a5db395e46ae3cbe938de4f3f631b8",
-
-  "notes": [
-    {"path":"docs/reference/sdk.md","note":"Correction to the previous note: sdk.md has no failure-kind table. The source input packages/contracts/src/provider-failure.ts now maps PROJECT_ROOM_PROJECT_NOT_FOUND_CODE to input_unsupported, consistent with this document's room.projectMissing (no retry). ProjectRoom.tsx's seek and draft fixes keep the Shared Project room paragraph accurate: paging up to PROJECT_ROOM_HISTORY_MAX_PAGES, and an open thread keeps its own draft.","inputs":["docs/reference/sdk.md"]}
-  ]
-}

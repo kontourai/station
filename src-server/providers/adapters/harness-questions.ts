@@ -21,9 +21,11 @@ import {
  * | Claude `AskUserQuestion` | ≤4 choice / multi-choice | `header` | always | no |
  * | Codex `request_user_input` | choice, or free text with no options | `header` | `isOther` | `isSecret` |
  * | Cursor `cursor/ask_question` | choice / multi-choice | no | no | no |
+ * | Muse `userInput/request` | choice / multi-choice (bounded) | `header` | single only | no |
+ * | Grok `_x.ai/ask_user_question` | choice / multi-choice | no | no | no |
  *
  * Field names are the engine's own question identity (Claude's question
- * index, Codex's and Cursor's question id) and option values are option
+ * index, Codex's, Cursor's and Muse's question id) and option values are option
  * indexes, so the answer maps back without trusting any label to be unique.
  * Cursor's request can come from any engine that speaks it, so its form
  * names the sending connection as requester, never Cursor.
@@ -42,12 +44,15 @@ interface HarnessQuestionInput {
   multiple: boolean;
   allowCustom: boolean;
   secret: boolean;
+  /** Selection bounds of a `multiple` question, when the engine states them. */
+  minItems?: number;
+  maxItems?: number;
 }
 
 const HARNESS_QUESTION_MESSAGE = 'The agent has questions for you';
 
 function harnessForm(
-  engine: 'claude' | 'codex' | 'cursor',
+  engine: 'claude' | 'codex' | 'cursor' | 'muse' | 'grok',
   requester: string,
   questions: HarnessQuestionInput[],
   message: string = HARNESS_QUESTION_MESSAGE,
@@ -85,18 +90,32 @@ function harnessForm(
           : {}),
       });
     }
+    const field = harnessQuestionField({
+      id: question.id,
+      ...(typeof question.header === 'string'
+        ? { header: question.header }
+        : {}),
+      prompt: question.prompt,
+      options: admitted,
+      multiple: question.multiple,
+      allowCustom: question.allowCustom,
+      secret: question.secret,
+    });
+    // Only a source that states bounds sets them; every other source keeps
+    // the field `harnessQuestionField` built, byte for byte.
     fields.push(
-      harnessQuestionField({
-        id: question.id,
-        ...(typeof question.header === 'string'
-          ? { header: question.header }
-          : {}),
-        prompt: question.prompt,
-        options: admitted,
-        multiple: question.multiple,
-        allowCustom: question.allowCustom,
-        secret: question.secret,
-      }),
+      field.kind === 'multi-choice' &&
+        (question.minItems !== undefined || question.maxItems !== undefined)
+        ? {
+            ...field,
+            ...(question.minItems !== undefined
+              ? { minItems: question.minItems }
+              : {}),
+            ...(question.maxItems !== undefined
+              ? { maxItems: question.maxItems }
+              : {}),
+          }
+        : field,
     );
   }
   return readInputRequestForm({
@@ -261,4 +280,180 @@ export function cursorAnswers(
     });
     return { questionId: field.name, selectedOptionIds };
   });
+}
+
+/** A selection bound Muse states: a positive integer, else absent. */
+function museSelectionBound(value: unknown): number | undefined | null {
+  if (value === undefined) return undefined;
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1
+    ? value
+    : null;
+}
+
+/**
+ * Muse `userInput/request` (and `userInput/requested`) params → form (MSP
+ * `UserInputRequestParams`, Muse Code 1.4.18). Each question names its
+ * `selection.mode`; a `multiple` question may bound how many options are
+ * picked. Muse's answer for a question is exactly one of `selectedLabel`
+ * (single), `selectedLabels` (multiple) or `freeText`, so a custom answer is
+ * offered only on a `single` question, where it cannot mix with a label. An
+ * option label is how the answer names the option, so a blank or repeated
+ * label is refused. Option previews are not carried.
+ */
+export function museInputRequest(params: unknown): InputRequestForm | null {
+  const list = ownArray(ownRecord(params)?.questions);
+  if (!list) return null;
+  const questions: HarnessQuestionInput[] = [];
+  for (const entry of list) {
+    const question = ownRecord(entry);
+    const options = ownArray(question?.options);
+    const selection = ownRecord(question?.selection);
+    if (!question || !options || options.length === 0 || !selection)
+      return null;
+    if (selection.mode !== 'single' && selection.mode !== 'multiple')
+      return null;
+    const labels = new Set<string>();
+    for (const option of options) {
+      const label = ownRecord(option)?.label;
+      if (typeof label !== 'string' || !label.trim() || labels.has(label))
+        return null;
+      labels.add(label);
+    }
+    const multiple = selection.mode === 'multiple';
+    const minItems = museSelectionBound(selection.minSelections);
+    const maxItems = museSelectionBound(selection.maxSelections);
+    if (
+      minItems === null ||
+      maxItems === null ||
+      (minItems !== undefined && minItems > options.length) ||
+      (minItems !== undefined && maxItems !== undefined && minItems > maxItems)
+    )
+      return null;
+    questions.push({
+      id: question.id,
+      header: question.header,
+      prompt: question.question,
+      options,
+      multiple,
+      allowCustom: !multiple,
+      secret: false,
+      ...(multiple && minItems !== undefined ? { minItems } : {}),
+      ...(multiple && maxItems !== undefined ? { maxItems } : {}),
+    });
+  }
+  return harnessForm('muse', 'Muse', questions);
+}
+
+/** One `userInput/answer` entry (MSP `UserInputAnswer`). */
+export type MuseUserInputAnswer =
+  | { questionId: string; selectedLabel: string }
+  | { questionId: string; selectedLabels: string[] }
+  | { questionId: string; freeText: string };
+
+/**
+ * Muse takes each answer back keyed by question id, naming options by their
+ * exact label (the form's option labels are the engine's own, verbatim): a
+ * `choice` answers `selectedLabel` or, in the person's own words,
+ * `freeText`; a `multi-choice` answers `selectedLabels`. `content` must
+ * already be valid for `form`.
+ */
+export function museAnswers(
+  form: InputRequestForm,
+  content: InputRequestContent,
+): MuseUserInputAnswer[] {
+  return form.body.fields.map((field) => {
+    const value = content[field.name];
+    const label = (item: unknown): string => {
+      const option =
+        (field.kind === 'choice' || field.kind === 'multi-choice') &&
+        typeof item === 'string'
+          ? field.options.find((candidate) => candidate.value === item)
+          : undefined;
+      // Unreachable for content validated against `form`; refused, not dropped.
+      if (!option) throw new Error('This answer does not match the question.');
+      return option.label;
+    };
+    if (field.kind === 'multi-choice') {
+      if (!Array.isArray(value))
+        throw new Error('This answer does not match the question.');
+      return { questionId: field.name, selectedLabels: value.map(label) };
+    }
+    if (typeof value === 'object' && value !== null && !Array.isArray(value))
+      return { questionId: field.name, freeText: value.custom };
+    return { questionId: field.name, selectedLabel: label(value) };
+  });
+}
+
+/** Grok's question tool takes at most this many questions in one request. */
+const GROK_QUESTIONS_MAX = 16;
+
+/**
+ * Grok `_x.ai/ask_user_question` params → form (grok 1.0.77, live:
+ * `{sessionId, toolCallId, questions: [{question, options: [{label,
+ * description}], multiSelect}], mode}`). Its answer names each question by
+ * its text, so two questions with the same text are refused: the answer
+ * could not say which was meant. A question with no options is refused too,
+ * because only a chosen label was observed coming back.
+ */
+export function grokInputRequest(
+  params: unknown,
+  requester: string,
+): InputRequestForm | null {
+  const list = ownArray(ownRecord(params)?.questions);
+  if (!list || list.length > GROK_QUESTIONS_MAX) return null;
+  const prompts = new Set<unknown>();
+  const questions: HarnessQuestionInput[] = [];
+  for (const [index, entry] of list.entries()) {
+    const question = ownRecord(entry);
+    const options = ownArray(question?.options);
+    if (
+      !question ||
+      !options ||
+      options.length === 0 ||
+      prompts.has(question.question) ||
+      (question.multiSelect != null &&
+        typeof question.multiSelect !== 'boolean')
+    )
+      return null;
+    prompts.add(question.question);
+    questions.push({
+      id: String(index),
+      header: undefined,
+      prompt: question.question,
+      options,
+      multiple: question.multiSelect === true,
+      allowCustom: false,
+      secret: false,
+    });
+  }
+  return harnessForm('grok', requester, questions);
+}
+
+/**
+ * Grok takes the answers back as the chosen labels, keyed by question text:
+ * `{outcome: 'accepted', answers: {<question>: [<label>, ...]}}` (live: the
+ * model read `"<question>"="<label>"`). Anything but an answer goes back as
+ * `{outcome: 'cancelled'}`, which Grok tells its model is a decline, never a
+ * yes.
+ */
+export function grokQuestionResponse(
+  decision: 'accept' | 'decline' | 'cancel',
+  form: InputRequestForm,
+  content: InputRequestContent | undefined,
+): Record<string, unknown> {
+  if (decision !== 'accept' || !content) return grokQuestionCancelled();
+  return {
+    outcome: 'accepted',
+    answers: Object.fromEntries(
+      form.body.fields.map((field) => [
+        field.title ?? field.name,
+        inputRequestAnswerTexts(field, content[field.name]),
+      ]),
+    ),
+  };
+}
+
+/** The answer for a Grok question nobody answered, declined, or Station could not show. */
+export function grokQuestionCancelled(): Record<string, unknown> {
+  return { outcome: 'cancelled' };
 }

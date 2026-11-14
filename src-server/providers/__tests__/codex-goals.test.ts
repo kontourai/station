@@ -67,6 +67,22 @@ describe('Codex Goal controls through the owned app-server pipe', () => {
     }
   });
 
+  test('a goal without its accounting figures is still an invalid Codex response', async () => {
+    const { adapter, process } = await startedAdapter();
+    try {
+      const result = adapter.goals.read(THREAD);
+      const rpc = await request(process, 'thread/goal/get');
+      const { tokensUsed: _tokens, ...withoutUsage } = nativeGoal;
+      await emit(process, { id: rpc.id, result: { goal: withoutUsage } });
+      expect(await result).toEqual({
+        state: 'unavailable',
+        reason: 'provider-unavailable',
+      });
+    } finally {
+      await adapter.stopAll();
+    }
+  });
+
   test('does not advertise a method an older engine refuses', async () => {
     const { adapter, process } = await startedAdapter();
     try {

@@ -1,7 +1,0 @@
-{
-  "revision": "8be2af8c8ecbdbe190225cb7de98a23b24c7ff41",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Scoped generated-topic delta: regenerated canonical module-map idle-retention paragraph into the credential-free MCP payload. Topic metadata, access, routing and public docs API contracts are unchanged. The generator owns these bytes; exact canonical payload parity remains checked by docs-index-reachability.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

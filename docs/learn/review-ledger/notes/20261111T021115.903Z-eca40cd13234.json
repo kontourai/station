@@ -1,7 +1,0 @@
-{
-  "revision": "5ff4b10e24f3d8cabc6940ea79ba5c6dba8ce082",
-
-  "notes": [
-    {"path":"docs/reference/config.md","note":"Re-checked against 5ff4b10e24f3, which changes only how StationRuntime hands two Claude resolvers to the confinement preflight factory: as closures read when a preflight runs, no longer as field references read while routes are composed. A preflight still calls the same resolvers. Re-read the confinement-preflight entry: it describes what a request reads and may write, the answer shape and the probe. Those happen when a preflight runs and are unchanged; the entry says nothing about when the resolvers are bound. No claim is affected.","inputs":["docs/reference/config.md","src-server/runtime/bootstrap/station-runtime.ts"]}
-  ]
-}

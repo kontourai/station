@@ -1,7 +1,7 @@
 /**
  * #2966: a credential profile is an isolated engine home plus an optional,
  * non-secret env overlay. This module owns turning a selected profile into
- * the spawn env the Claude/Codex adapters receive from `getAppHomeEnv`, and
+ * the spawn env the Claude/Codex/Muse adapters receive from `getAppHomeEnv`, and
  * the routing fingerprint automatic recovery compares between profiles.
  *
  * Merge ownership lives here (not in the adapters) so later layers, such as
@@ -29,6 +29,7 @@ import {
   codexAppHomeEnv,
   ensureAppHomeProfile,
   locateAppHomeProfile,
+  museAppHomeEnv,
   type ResolvedAppHome,
 } from './app-home-profiles.js';
 import {
@@ -109,12 +110,21 @@ export function credentialProfilesRouteAlike(
   );
 }
 
+/**
+ * The engines with a credential-profile home. Wider than
+ * {@link ConnectionEnvEngine}: Muse (#1942) has an app home but no
+ * per-connection env layer (`connectionSpawnEnv`), so its config-home key is
+ * not one the connection env refuses or expands.
+ */
+export type CredentialProfileAppHomeEngine = ConnectionEnvEngine | 'muse';
+
 const APP_HOME_ENV_FOR: Record<
-  ConnectionEnvEngine,
+  CredentialProfileAppHomeEngine,
   (dir: string) => Record<string, string>
 > = {
   claude: claudeAppHomeEnv,
   codex: codexAppHomeEnv,
+  muse: museAppHomeEnv,
 };
 
 /**
@@ -157,7 +167,7 @@ export function createCredentialProfileAppHomeEnvPeek(
 }
 
 export interface CredentialProfileAppHomeEnvOptions {
-  engine: ConnectionEnvEngine;
+  engine: CredentialProfileAppHomeEngine;
   loadConnectionSettings: () => Promise<
     | { credentialRecovery?: unknown; config?: Record<string, unknown> }
     | undefined

@@ -1,9 +1,0 @@
-{
-  "revision": "73c9934acf32e274ccb9587b0617c76ccb95af05",
-
-  "notes": [
-    {"path":"docs/design/verified-action-replay.md","note":"New proposal. Checked each current-behavior claim against its source: target schema (ref, locator, point) in station-control-browser-tools.ts; isolated-world locators, obscured hit-test and size-only history of typed text in browser-automation.ts; the 200-entry history limit and query/fragment URL redaction in browser-session-registry.ts; the four secret-binding grant kinds in the contract; ref expiry, approval posture, dialog refusal and profile keying in the Browser guide; coordinate-only device input and its socket-acceptance limit in the Device guide and decision. Every proposed behavior is marked unimplemented. No tests executed.","inputs":["docs/design/verified-action-replay.md","docs/decisions/browser-agent-actions-and-bound-channel.md","docs/decisions/device-agent-control.md","docs/guides/browser-workspace.md","docs/guides/mobile-device-workspace.md","packages/contracts/src/secret-binding.ts","src-server/services/browser/browser-automation.ts","src-server/services/browser/browser-session-registry.ts","src-server/tools/station-control-browser-tools.ts"]},
-
-    {"path":"docs/design/README.md","note":"Regenerated the design index with npm run docs:index after staging the new record; the only change is the added index line.","inputs":["docs/design/README.md"]}
-  ]
-}

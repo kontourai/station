@@ -1,7 +1,0 @@
-{
-  "revision": "b731d4459aa64b3416d01545ae94a044f44c78f6",
-
-  "notes": [
-    {"path":"docs/guides/delegation-attempt-claims.md","note":"WorkspacePaneFrame change is layout only: its section gains the workspace-pane-frame class (a flex column that fills a flex parent) so the Coding lower panel's Terminal fills the panel. Checked this document's frame claims (error boundary, Retry/details/Close actions, recovery diagnostics, lifecycle attribute, elementless dock) against the component: none depend on the frame's layout; no prose change needed.","inputs":["docs/guides/delegation-attempt-claims.md","src-ui/src/workspace-panes/WorkspacePaneFrame.tsx"]}
-  ]
-}

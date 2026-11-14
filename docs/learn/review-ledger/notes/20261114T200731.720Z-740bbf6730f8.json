@@ -1,0 +1,7 @@
+{
+  "revision": "60fe48dbb8ea3c876d772e58bccd118f210fe2a8",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Rechecked: station-docs-content.ts was regenerated from the updated module map; the reference's description of the bundle is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

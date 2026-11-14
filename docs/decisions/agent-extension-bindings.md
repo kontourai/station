@@ -13,6 +13,10 @@ evidence:
     ref: packages/contracts/src/engine-commands.ts
   - kind: doc
     ref: src-server/services/acp/__tests__/fixtures/kiro-v3-2.35.0-session-frames.jsonl
+  - kind: doc
+    ref: src-server/services/acp/__tests__/fixtures/grok-1.0.77-session-frames.jsonl
+  - kind: doc
+    ref: src-server/providers/adapters/acp-child-work.ts
 ---
 
 # Agent extension bindings
@@ -22,7 +26,8 @@ still decides how Station consumes agent extensions. A binding is data: an
 id, the exact wire method or flag, a basis and its evidence. "Delivered"
 means this session's `initialize` declares the method or flag, or a reviewed
 handshake-identity entry matches. Station never infers support from method
-names or launch commands. This record amends it in three places.
+names or launch commands. This record amends it in three places, and section 4
+records what Grok Build's evidence changed.
 
 ## 1. Credential requests: superseded
 
@@ -86,3 +91,65 @@ host paths, session ids and private agent names, are the repository fixtures
 - The v3 `autopilot` config option (`on` by default) did not self-approve.
   With it on and off, the engine still sent `session/request_permission`,
   and a reject was honored. Station treats it as an ordinary engine option.
+
+## 4. Live grok 1.0.77 evidence
+
+grok 1.0.77 (`grok agent stdio`) was run signed in on 2026-11-13, with a
+background command, a background subagent, a monitor (with a wake cancelled
+mid-run), an MCP server Station passed that fails, a model question
+answered, declined and refused, a rewind previewed and applied, a fork at a
+prompt loaded in a new process, and an MCP server removed and passed again.
+The
+frames, scrubbed of host paths, ids and private names, are
+`src-server/services/acp/__tests__/fixtures/grok-1.0.77-session-frames.jsonl`.
+
+- Grok's `initialize` result sets `_meta.grokShell: true` and sends no
+  `agentInfo`. That flag is a reviewed handshake identity: engine variant
+  `grok-build`. Grok lists no extension methods, so its rows are
+  `undeclared-engine`.
+- **Child work is the engine's.** ACP has no subagent concept, so the ACP
+  capability cell for subagent observability is `declared`, and the adapter
+  decides per session from the handshake which subagent wires it reads
+  (`acpSubagentWires` in `acp-child-work.ts`): Kiro's roster and
+  `agent-subtask` wires, and Grok's background-task and subagent-lifecycle
+  wires keyed on `_meta.grokShell`. A session whose handshake names none
+  states `not-reported` once at start.
+- **One frame, several facts.** A row may name `also` consumers it feeds.
+  Grok's `turn_completed` ends a turn and states that turn's cost, so its row
+  is `session.turn-boundary` with `also` `usage.reported-cost`. A row runs
+  only when every consumer it names is implemented. Grok's token counts are
+  not published: usage scope is declared per provider, and `acp` stays
+  context-occupancy-only.
+- **Engine-opened turns.** `session.turn-boundary` is implemented: a prompt
+  the engine runs while no turn is open, and that Station never sent, opens a
+  `PROVIDER_TURN_TRIGGER` turn. `_x.ai/session/prompt_complete` follows only
+  Station's own prompts, so it does not close one. A wake whose process exits,
+  or that credential-refusal recovery replaces, is ended by the adapter,
+  since its own end cannot arrive.
+- **Another session's frames are not this session's.** A Grok subagent
+  streams as its own session on the same connection. The adapter drops any
+  session-scoped frame naming another session than its process's own.
+- `_x.ai/ask_user_question` is a reviewed inbound request, answered from the
+  person's choice.
+- **Rewind and fork name a prompt by index.** Grok declares neither, so both
+  are keyed on its handshake identity (`acp-session-actions.ts`). On 1.0.77
+  every prompt it runs takes an index but only a client's is listed as a
+  point, so points cannot be counted. Grok runs one prompt at a time, so a
+  Station turn's point is the one made in its window, from its prompt's
+  first notice to the next prompt's (both moved a quarter second earlier,
+  so windows tile), with the point's time read on Station's clock less
+  Grok's stamped clock offset, and only while that offset is within half a
+  second; its `prompt_preview` must also match, and every turn the adapter
+  remembers must resolve the same way (another turn that is a slash command
+  may have no point), or nothing is sent. Previews alone do not tell turns apart: Station's
+  ambient timezone line opens every prompt. A rewind is a dry run
+  (`force: false`) first; files changed outside the engine since then fail
+  it rather than being overwritten. A fork copies through the named prompt,
+  inclusive.
+- **MCP reconnect replaces the list.** Grok's one MCP call replaces the
+  servers the client passed, so reconnecting one sends the list without it,
+  then with it. A server taken out reports `unavailable` `config_removed`,
+  read as `disabled`, not `failed`.
+
+What Station leaves unbound, and why, is listed in
+[the ACP guide](../guides/acp.md#grok-extensions-station-does-not-support).

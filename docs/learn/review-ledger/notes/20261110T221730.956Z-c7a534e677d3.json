@@ -1,7 +1,0 @@
-{
-  "revision": "8319ff109ada57850ac3bfd8a9c75bd4cd6dbe3b",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Re-checked the mayRuntimeSkip sentence against check-required-tests-ran.mjs: a skipped result counts as a runtime skip only when the reporter gave it a duration; pre-run skips of may-skip legs now fail.","inputs":["docs/guides/testing.md"]}
-  ]
-}

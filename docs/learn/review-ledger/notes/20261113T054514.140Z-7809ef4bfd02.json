@@ -1,9 +1,0 @@
-{
-  "revision": "8a202ae00f83e99e29e2b658d8db7e23ffd4bbde",
-
-  "notes": [
-    {"path":"docs/guides/nightly.md","note":"Delta review of final comparator refinement only: fallback history now compares base version first, then stable over preview over nightly, then numeric prerelease build fields. Inspected the release-history generator and its stable-versus-nightly negative control. The existing highest-older-version description and release/install routing remain accurate; no prose or runtime release claim changes. All other previously reviewed source remains unchanged.","inputs":["docs/guides/nightly.md","scripts/lib/desktop-release-notes.mjs"]},
-
-    {"path":"README.md","note":"Delta review of final comparator refinement only: fallback history now compares base version first, then stable over preview over nightly, then numeric prerelease build fields. Inspected the release-history generator and its stable-versus-nightly negative control. The existing highest-older-version description and release/install routing remain accurate; no prose or runtime release claim changes. All other previously reviewed source remains unchanged.","inputs":["README.md"]}
-  ]
-}

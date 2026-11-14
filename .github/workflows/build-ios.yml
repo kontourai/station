@@ -22,7 +22,10 @@ name: "PR: iOS build"
 # After landing, a `push` to main builds the POST-MERGE inputs: every source
 # root the UI bundle can import (src-ui/, src-shared/, and the workspace
 # packages it reaches) and the generic tooling this job executes (dependency
-# install, bundle budget, vite plugins, shared script libraries). The exact
+# install, bundle budget, vite plugins, shared script libraries). That
+# includes two files on the native path: scripts/vite-ui-assets.ts (its
+# `precompress: false` native branch) and scripts/lib/desktop-build-manifest.mjs
+# (imported by the native manifest writers). The exact
 # sets, and the rule that splits them, live in scripts/classify-ci-change.mjs;
 # classify-ci-change.test.ts derives what this job executes and what the UI
 # imports, and fails on a reached file neither set covers. Not seen by that

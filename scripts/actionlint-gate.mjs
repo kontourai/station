@@ -685,7 +685,7 @@ const ACTIONLINT_ARTIFACT_DOWNLOAD_KEYS = [
   'with',
 ];
 const EXACT_TARGET_SKIP_GUARDS = Object.freeze({
-  classify: `\${{ github.event_name != 'pull_request_target' }}`,
+  classify: `\${{ github.event_name != 'pull_request_target' && github.event_name != 'merge_group' }}`,
   'full-regression': `\${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' }}`,
   'manual-completion-diagnostics': `\${{ always() && !cancelled() && github.event_name == 'workflow_dispatch' && (needs['full-regression'].result == 'success' || needs['full-regression'].result == 'failure') }}`,
 });
@@ -1789,12 +1789,48 @@ function isExactDeliveryPlanner(job) {
   );
 }
 
+/**
+ * The one token-reading step in `classify`: it runs only on pushes to main,
+ * where the checkout is already-landed main rather than candidate code, and
+ * `classify` itself never runs on pull_request_target. It reads public
+ * Actions run data to skip a push lane the merge queue already verified on
+ * the same SHA (scripts/ci-merge-group-verdict.mjs). Any other shape, or the
+ * token anywhere else in the job, keeps the finding.
+ */
+const MERGE_GROUP_VERDICT_STEP = Object.freeze({
+  id: 'merge-group-verdict',
+  name: 'Reuse the merge queue verdict for this exact SHA',
+  if: "${{ github.event_name == 'push' }}",
+  'continue-on-error': true,
+  'timeout-minutes': 2,
+  env: {
+    GH_TOKEN: `\${{ github.token }}`,
+    PUSH_BEFORE: `\${{ github.event.before }}`,
+  },
+  run: 'node scripts/ci-merge-group-verdict.mjs',
+});
+
+function classifyWithoutVerdictToken(job) {
+  if (job?.if !== EXACT_TARGET_SKIP_GUARDS.classify) return job;
+  const stripped = structuredClone(job);
+  for (const step of stripped.steps ?? []) {
+    if (
+      JSON.stringify(canonicalValue(step)) ===
+      JSON.stringify(canonicalValue(MERGE_GROUP_VERDICT_STEP))
+    )
+      delete step.env.GH_TOKEN;
+  }
+  return stripped;
+}
+
 function ciCredentialFindings(file, jobs) {
   return Object.entries(jobs)
     .filter(([jobId, job]) => {
       if (jobId === 'delivery-plan' && isExactDeliveryPlanner(job))
         return false;
       if (jobId === 'pr-admission' && isExactPrAdmission(job)) return false;
+      if (jobId === 'classify')
+        return referencesCredential(classifyWithoutVerdictToken(job));
       if (jobId !== 'pr-title') return referencesCredential(job);
       const withoutReadToken = structuredClone(job);
       for (const step of withoutReadToken.steps ?? []) {
@@ -2626,6 +2662,8 @@ const FAST_CHECKS_SHARD_ZSH_STEP = Object.freeze({
   // full-regression and merge-queue-regression run. It installs a distro
   // package and reads no secret or credential; the shard's selection can
   // include tests that exec zsh (ops/nightly/macos-build-only-cleanup).
+  // Bounded retry of the bootstrap for transient apt/DNS failures; the last
+  // attempt's status fails the step.
   name: 'Provision and preflight zsh for process-heavy installer fixtures',
   env: {
     BOOTSTRAP_SOURCE_REPOSITORY: `\${{ github.repository }}`,
@@ -2639,7 +2677,17 @@ if [[ ! -x /bin/zsh ]]; then
     --output "$bootstrap"
   printf 'Ubuntu bootstrap workflow source: %s@%s\\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
   sha256sum "$bootstrap"
-  sudo bash "$bootstrap" zsh
+  attempt=1
+  until sudo bash "$bootstrap" zsh; do
+    status=$?
+    if [[ "$attempt" -ge 3 ]]; then
+      echo "::error::zsh provisioning failed after $attempt attempts (exit $status)" >&2
+      exit "$status"
+    fi
+    echo "::warning::zsh provisioning attempt $attempt failed (exit $status); retrying" >&2
+    sleep $((attempt * 10))
+    attempt=$((attempt + 1))
+  done
 fi
 command -v zsh
 test -x /bin/zsh
@@ -2858,13 +2906,18 @@ function actionlintArtifactFindings(file, jobs) {
   return findings;
 }
 
+/**
+ * The reviewed `source-policy` caller: source-changing PR events and merge
+ * groups (published in-run on the queue head), `statuses: write` only for the
+ * local callee, which reads policy from the base.
+ */
 function isExactSourcePolicyCall(job) {
   if (!job) return false;
   return (
     createHash('sha256')
       .update(JSON.stringify(canonicalValue(job)))
       .digest('hex') ===
-    'bb2c01de5e28347090a7b638e4b1a46f379c07e93ab053b8d82aca79c1234378'
+    '42a0b27e5e912470a42f2f005a69b7018f801ff57107efa9ccfc1fdbfc8bf5da'
   );
 }
 
@@ -2936,6 +2989,16 @@ function primaryCiRouterFindings(file, document) {
         jobId === 'full-regression' &&
         job.if === EXACT_TARGET_SKIP_GUARDS['full-regression'] &&
         job.uses === './.github/workflows/full-regression.yml' &&
+        hasExactKeys(job.permissions, ['contents', 'actions']) &&
+        job.permissions.contents === 'read' &&
+        job.permissions.actions === 'read'
+      ) &&
+      // `classify` never runs on pull_request_target, so its read-only
+      // Actions grant (for the push-only merge-group-verdict step) never
+      // reaches candidate code. Any other `if` keeps the finding.
+      !(
+        jobId === 'classify' &&
+        job.if === EXACT_TARGET_SKIP_GUARDS.classify &&
         hasExactKeys(job.permissions, ['contents', 'actions']) &&
         job.permissions.contents === 'read' &&
         job.permissions.actions === 'read'
@@ -3289,14 +3352,14 @@ function primaryCiRouterFindings(file, document) {
 // (the dequeue job fetches the candidate head as Git objects for merge-tree).
 // Any topology/authority change requires review and a new policy digest.
 const LANDING_POLICY_SHA256 =
-  '2d70117b7341f80d25b273127dd156a76cdfbb998509832b36f516a34f9fb9f2';
+  'fb659ff2499b70d55523ff70841f07aaa076e06b052b98a847bdea05d904b824';
 function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
   if (file === '.github/workflows/pr-ci-supersession.yml') {
     const digest = createHash('sha256')
       .update(JSON.stringify(canonicalValue(document)))
       .digest('hex');
     return digest ===
-      '7bdd49ac2e268b43fb9f91352e42af18a431b487213987351077b45f44b67c7d'
+      '1ad1ad73dacfb7c8501e6e62de9ffdb746e39e16ca8232c9f9c8c6113a222271'
       ? []
       : [
           {
@@ -3312,7 +3375,7 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
       .update(JSON.stringify(canonicalValue(document)))
       .digest('hex');
     return digest ===
-      'e6f5b25c8215c2d8f03aceb3060818f5b93de0b8f610d09b2bd2e96272b6129e'
+      '05fec52d933b88495b6e4e61eb57912a67574e7a3b2d9f9013e70bbf2a01b3c0'
       ? []
       : [
           {
@@ -3796,8 +3859,8 @@ export function readWorkflowDocuments() {
 // new schema field from a temporary lint copy. Security policy uses originals.
 const BACKGROUND_QUALIFICATION_GROUP = `\${{ inputs.capacity_class == 'background' && 'station-background-compute' || inputs.capacity_class == 'release' && 'station-release-qualification' || format('station-integration-qualification-{0}', inputs.source_sha) }}`;
 const PR_SOURCE_FIFO_GROUPS = {
-  'fast-checks-statics': `\${{ github.event_name == 'pull_request_target' && format('ci-pr-statics-{0}', (endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) && 'odd' || 'even') || format('ci-fast-statics-{0}-{1}-{2}-{3}', github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
-  'fast-checks-shard': `\${{ github.event_name == 'pull_request_target' && (matrix.shard == 1 || matrix.shard == 3) && (endsWith(format('{0}', github.event.pull_request.number), '0') || endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '2')) && 'ci-pr-shards-third' || github.event_name == 'pull_request_target' && format('ci-pr-shards-{0}', ((endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) != (matrix.shard == 1 || matrix.shard == 3)) && 'odd' || 'even') || format('ci-fast-shard-{0}-{1}-{2}-{3}-{4}', matrix.shard, github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
+  'fast-checks-statics': `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.ref == 'changeset-release/main' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'station-automation[bot]' && 'ci-pr-release-bot' || github.event_name == 'pull_request_target' && format('ci-pr-statics-{0}', (endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) && 'odd' || 'even') || format('ci-fast-statics-{0}-{1}-{2}-{3}', github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
+  'fast-checks-shard': `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.ref == 'changeset-release/main' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'station-automation[bot]' && 'ci-pr-release-bot' || github.event_name == 'pull_request_target' && ( (endsWith(format('{0}', github.event.pull_request.number), '0') || endsWith(format('{0}', github.event.pull_request.number), '5')) && (matrix.shard == 1 && 'ci-pr-shards-even' || matrix.shard == 2 && 'ci-pr-shards-odd' || matrix.shard == 3 && 'ci-pr-shards-third' || 'ci-pr-shards-fourth') || (endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '6')) && (matrix.shard == 1 && 'ci-pr-shards-odd' || matrix.shard == 2 && 'ci-pr-shards-third' || matrix.shard == 3 && 'ci-pr-shards-fourth' || 'ci-pr-shards-fifth') || (endsWith(format('{0}', github.event.pull_request.number), '2') || endsWith(format('{0}', github.event.pull_request.number), '7')) && (matrix.shard == 1 && 'ci-pr-shards-third' || matrix.shard == 2 && 'ci-pr-shards-fourth' || matrix.shard == 3 && 'ci-pr-shards-fifth' || 'ci-pr-shards-even') || (endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '8')) && (matrix.shard == 1 && 'ci-pr-shards-fourth' || matrix.shard == 2 && 'ci-pr-shards-fifth' || matrix.shard == 3 && 'ci-pr-shards-even' || 'ci-pr-shards-odd') || (endsWith(format('{0}', github.event.pull_request.number), '4') || endsWith(format('{0}', github.event.pull_request.number), '9')) && (matrix.shard == 1 && 'ci-pr-shards-fifth' || matrix.shard == 2 && 'ci-pr-shards-even' || matrix.shard == 3 && 'ci-pr-shards-odd' || 'ci-pr-shards-third') ) || format('ci-fast-shard-{0}-{1}-{2}-{3}-{4}', matrix.shard, github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
 };
 export function legacyActionlintSources(workflows) {
   const expected = {

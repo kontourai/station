@@ -1,7 +1,0 @@
-{
-  "revision": "38fc9ec80dd877cfb6638a832702551f7fc65542",
-
-  "notes": [
-    {"path":"docs/guides/e2e-coverage-matrix.md","note":"MonitoringWidgets.css change makes the base .status-dot static and drops an unscoped infinite pulse (no component emits .status-dot-connecting). The Monitoring row lists fixture history, filters, chips, time ranges, toolbar actions and sidebar/metric rendering; it makes no animation claim, so nothing stale.","inputs":["docs/guides/e2e-coverage-matrix.md","src-ui/src/views/MonitoringWidgets.css"]}
-  ]
-}

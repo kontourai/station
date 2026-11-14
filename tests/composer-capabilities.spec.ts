@@ -11,6 +11,7 @@ import {
   installMockOrchestrationSse,
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 
 /*
@@ -390,7 +391,11 @@ async function openDockStartComposer(page: Page) {
   const modal = page.getByRole('region', { name: 'New chat', exact: true });
   await expect(modal).toBeVisible({ timeout: 10_000 });
   const composer = modal.getByRole('form', { name: 'Start work' });
-  await composer.getByRole('button', { name: /^Agent:/ }).click();
+  await (
+    await runSetupControl(composer, (panel) =>
+      panel.getByRole('button', { name: /^Agent:/ }),
+    )
+  ).click();
   const agents = page.getByRole('dialog', { name: 'Choose agent' });
   const runtimeRow = agents.locator('[data-agent-slug="codex"]').first();
   await expect(runtimeRow).toBeVisible({ timeout: 10_000 });
@@ -408,7 +413,9 @@ async function openHomeStartComposer(page: Page) {
   await dismissSetupLauncher(page);
   const composer = page.getByRole('form', { name: 'Start work' });
   await expect(
-    composer.getByRole('button', { name: /^Agent: Codex/ }),
+    await runSetupControl(composer, (panel) =>
+      panel.getByRole('button', { name: /^Agent: Codex/ }),
+    ),
   ).toBeVisible({ timeout: 15_000 });
   return {
     composer,
@@ -463,6 +470,7 @@ for (const [label, width] of [
     });
     await seedRoutes(page, executionRequests, false, null, projectionWait);
     const { composer, started } = await openStartComposer(page, label);
+    await closeRunSetup(page);
     await composer
       .getByRole('textbox', { name: 'What would you like done?' })
       .fill('start without a profile');
@@ -473,6 +481,7 @@ for (const [label, width] of [
       name: 'Message composer',
       exact: true,
     });
+    await closeRunSetup(page);
     await input.getByRole('textbox').fill('keep this follow-up');
     try {
       for (const phase of ['pending', 'unavailable'] as const) {
@@ -530,6 +539,7 @@ test('blocked credential recovery explains its reason and retry at both widths a
     true,
   );
   const { composer, started } = await openStartComposer(page, 'desktop');
+  await closeRunSetup(page);
   await composer
     .getByRole('textbox', { name: 'What would you like done?' })
     .fill('start and reach the usage limit');
@@ -567,6 +577,7 @@ for (const [label, viewport] of [
     const prepared = await seedRoutes(page, executionRequests);
     const { composer, started } = await openStartComposer(page, label);
 
+    await closeRunSetup(page);
     await composer
       .getByRole('textbox', { name: 'What would you like done?' })
       .fill('read these notes');
@@ -606,7 +617,11 @@ for (const [label, viewport] of [
     await seedRoutes(page, executionRequests);
     const { composer, started } = await openStartComposer(page, label);
 
-    await composer.getByRole('button', { name: /^Permissions: / }).click();
+    await (
+      await runSetupControl(composer, (panel) =>
+        panel.getByRole('button', { name: /^Permissions: / }),
+      )
+    ).click();
     const sheet = page.getByRole('dialog', { name: 'Approval mode' });
     await expect(sheet).toBeVisible();
     await evidence(
@@ -620,12 +635,15 @@ for (const [label, viewport] of [
     await sheet.getByRole('button', { name: 'Enable full access' }).click();
     await expect(sheet).toBeHidden();
     await expect(
-      composer.getByRole('button', {
-        name: /^Permissions: Full access\. Chosen for this chat/,
-      }),
+      await runSetupControl(composer, (panel) =>
+        panel.getByRole('button', {
+          name: /^Permissions: Full access\. Chosen for this chat/,
+        }),
+      ),
     ).toBeVisible();
     await evidence(page, testInfo, `start-composer-approval-${label}.png`);
 
+    await closeRunSetup(page);
     await composer
       .getByRole('textbox', { name: 'What would you like done?' })
       .fill('go');
@@ -672,6 +690,60 @@ for (const [label, viewport] of [
     await expect(mic).toBeFocused();
   });
 
+  if (label === 'desktop') {
+    test(`${label}: typing keeps Stop fixed at the send-row edge`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize(viewport);
+      const executionRequests: Array<Record<string, unknown>> = [];
+      await installMockOrchestrationSse(page);
+      await seedRoutes(page, executionRequests);
+      const { composer, started } = await openStartComposer(page, label);
+      await closeRunSetup(page);
+      await composer
+        .getByRole('textbox', { name: 'What would you like done?' })
+        .fill('start the task');
+      await composer
+        .getByRole('button', { name: 'Start', exact: true })
+        .click();
+      await started();
+      await waitForMockOrchestrationSse(page);
+      await expect
+        .poll(() => executionRequests.length, { timeout: 15_000 })
+        .toBe(1);
+
+      const messageComposer = page.getByRole('group', {
+        name: 'Message composer',
+        exact: true,
+      });
+      const textarea = messageComposer.getByRole('textbox');
+      await expect(textarea).toHaveAttribute('placeholder', /follow-up|Steer/);
+      const stop = page.getByRole('button', { name: 'Stop the current turn' });
+      await expect(stop).toBeVisible();
+      await evidence(page, testInfo, `running-turn-empty-${label}.png`);
+
+      const before = (await stop.boundingBox())!;
+      await textarea.fill('a follow-up');
+      await expect(
+        page.getByRole('button', { name: 'Send', exact: true }),
+      ).toBeVisible();
+      const after = (await stop.boundingBox())!;
+      const geometry = await page
+        .locator('.chat-controls-row')
+        .evaluate((row) =>
+          [...row.children].map((el) => ({
+            className: el.className,
+            x: el.getBoundingClientRect().x,
+            width: el.getBoundingClientRect().width,
+            flex: getComputedStyle(el).flex,
+            minWidth: getComputedStyle(el).minWidth,
+          })),
+        );
+      expect(after.x, JSON.stringify(geometry)).toBeCloseTo(before.x, 0);
+      await evidence(page, testInfo, 'desktop-stop-after-typing.png');
+    });
+  }
+
   test(`${label}: a running turn keeps attach usable and says why files wait`, async ({
     page,
   }, testInfo) => {
@@ -680,6 +752,7 @@ for (const [label, viewport] of [
     await installMockOrchestrationSse(page);
     await seedRoutes(page, executionRequests);
     const { composer, started } = await openStartComposer(page, label);
+    await closeRunSetup(page);
     await composer
       .getByRole('textbox', { name: 'What would you like done?' })
       .fill('start the task');
@@ -701,28 +774,46 @@ for (const [label, viewport] of [
     await evidence(page, testInfo, `running-turn-empty-${label}.png`);
 
     // The Agent chip's name ends before its caret, in an ellipsis.
-    const agentChip = page.locator('#chat-dock .chat-input__agent-btn');
+    const agentChip = await runSetupControl(page, (panel) =>
+      panel.locator('.chat-input__agent-btn'),
+    );
     await expect(agentChip.locator('.chat-input__agent-name')).toHaveText(
       AGENTS[0].name,
     );
-    await expect(page.locator('#chat-dock .chat-input__model-name')).toHaveText(
-      'CODEX (BRIAN-MEDIA PROXY) / GPT 6.1 Sol',
+    await expect(
+      await runSetupControl(page, (panel) =>
+        panel.locator('.chat-input__model-name'),
+      ),
+    ).toHaveText('CODEX (BRIAN-MEDIA PROXY) / GPT 6.1 Sol');
+    const modelName = await runSetupControl(page, (panel) =>
+      panel.locator('.chat-input__model-name'),
     );
-    const modelName = page.locator('#chat-dock .chat-input__model-name');
     expect(
       await modelName.evaluate(
         (element) => getComputedStyle(element).textOverflow,
       ),
     ).toBe('ellipsis');
-    if (label === 'phone')
+    if (label === 'phone') {
+      // Truncation belongs to the compact trigger; the open sheet has room for full choices.
+      await closeRunSetup(page);
+      const summary = page
+        .getByTestId('run-setup-trigger')
+        .locator('.composer-choice__value');
+      await expect(summary).toHaveCSS('text-overflow', 'ellipsis');
       expect(
-        await modelName.evaluate(
+        await summary.evaluate(
           (element) => element.scrollWidth > element.clientWidth,
         ),
       ).toBe(true);
+      await runSetupControl(page, (panel) =>
+        panel.locator('.chat-input__model-name'),
+      );
+    }
     for (const control of [
       agentChip,
-      page.locator('.chat-input__model-btn'),
+      await runSetupControl(page, (panel) =>
+        panel.locator('.chat-input__model-btn'),
+      ),
       stop,
     ]) {
       const box = await control.boundingBox();
@@ -760,6 +851,7 @@ for (const [label, viewport] of [
         'Stop ends at the row edge, not beside a hidden Send/Queue gap',
       ).toBeLessThanOrEqual(1);
     }
+    await closeRunSetup(page);
     await textarea.fill('a follow-up');
     await expect(
       page.getByRole('button', { name: 'Send', exact: true }),
@@ -815,6 +907,7 @@ for (const [label, viewport] of [
     }
     // Horizontally: at 390px a running turn's full row (Clear, Send, Queue,
     // Stop) wraps onto a second line, which is a separate, existing limit.
+    await closeRunSetup(page);
     await textarea.fill('');
 
     // Attach is not disabled by the running turn; a file joins the draft and
@@ -829,10 +922,12 @@ for (const [label, viewport] of [
       { exact: false },
     );
     await expect(reason).toBeVisible();
+    await closeRunSetup(page);
     await textarea.fill('with a file');
     await expect(
       page.getByRole('button', { name: 'Send', exact: true }),
     ).toBeDisabled();
+    await closeRunSetup(page);
     await textarea.press('Enter');
     await evidence(page, testInfo, `running-turn-file-${label}.png`);
     expect(executionRequests).toHaveLength(1);
@@ -851,6 +946,7 @@ test("a pasted image the new chat's engine cannot see keeps the message for the 
   await installMockOrchestrationSse(page);
   const prepared = await seedRoutes(page, executionRequests, true);
   const { composer, started } = await openDockStartComposer(page);
+  await closeRunSetup(page);
   await composer
     .getByRole('textbox', { name: 'What would you like done?' })
     .fill('look at this screenshot');
@@ -937,6 +1033,7 @@ test.describe('on a touch phone', () => {
     await evidence(page, testInfo, 'touch-microphone-reason-phone.png');
     await page.keyboard.press('Escape');
     await field.tap();
+    await closeRunSetup(page);
     await field.fill('Fix the flaky upload test');
     const style = await field.evaluate((element) => {
       const computed = getComputedStyle(element);

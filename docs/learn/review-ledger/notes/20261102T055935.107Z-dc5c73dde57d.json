@@ -1,7 +1,0 @@
-{
-  "revision": "bcc017ca4dcc5fff3424f2e600c3481ae3c02e2c",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Reviewed Task clip admission, authority rechecks and failure claims against the four-active global limit and per-Task author limit; focused recording tests cover both.","inputs":["docs/architecture/module-map.md","src-server/routes/__tests__/browser-agent-capture.test.ts","src-server/services/projects/task-browser-recording.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "6f83220b65fd7985f674a4fa124d0262b47960fc",
-
-  "notes": [
-    {"path":"docs/guides/monitoring.md","note":"Rechecked after usage-telemetry-service.ts shutdown now joins a cancelled flush's ledger write and fire-and-forget flush() runs before returning. The network budget (1s, then abort) is unchanged; only local ledger settlement is joined. This document makes no claim about that ordering, so it remains accurate.","inputs":["docs/guides/monitoring.md","src-server/services/usage-telemetry-service.ts"]}
-  ]
-}

@@ -121,7 +121,7 @@ test('an unreported start and unreported usage render absent, not as zero', () =
   const meta = container.querySelector('.child-work-row__meta')?.textContent;
   // Only the kind: no elapsed (no start was reported) and no usage clause.
   expect(meta).toBe('Subagent');
-  expect(container.textContent).not.toMatch(/0 tokens|0:00|tool use/);
+  expect(container.textContent).not.toMatch(/0 tokens|0s|tool use/);
 });
 
 test('a failed provider Stop is translated once by the shared control', async () => {
@@ -157,11 +157,11 @@ test('reported values print — including a reported zero', () => {
     100_000,
   );
   expect(container.querySelector('.child-work-row__meta')?.textContent).toBe(
-    'Explore · 1:00',
+    'Explore · 1m 0s',
   );
-  expect(screen.queryByText('0 tokens · 1 tool use · ran 1:01')).toBeNull();
+  expect(screen.queryByText('0 tokens · 1 tool use · ran 1m 1s')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /Survey the repo/ }));
-  expect(screen.getByText('0 tokens · 1 tool use · ran 1:01')).toBeTruthy();
+  expect(screen.getByText('0 tokens · 1 tool use · ran 1m 1s')).toBeTruthy();
 });
 
 test('a settled child with no reported end shows no elapsed', () => {

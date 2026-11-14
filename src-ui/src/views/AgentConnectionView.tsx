@@ -647,7 +647,9 @@ export function AgentConnectionView({
               />
             )}
             {!form.config.proxyConnectionId &&
-              (form.type === 'claude' || form.type === 'codex') && (
+              (form.type === 'claude' ||
+                form.type === 'codex' ||
+                form.type === 'muse') && (
                 <EngineAccountOverview
                   connectionId={form.id}
                   engine={form.type}
@@ -846,7 +848,9 @@ export function AgentConnectionView({
                   />
                 )}
 
-                {(form.type === 'claude' || form.type === 'codex') && (
+                {(form.type === 'claude' ||
+                  form.type === 'codex' ||
+                  form.type === 'muse') && (
                   <CredentialProfileAccess
                     connectionId={form.id}
                     managementOnly

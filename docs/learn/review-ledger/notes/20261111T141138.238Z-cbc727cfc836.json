@@ -1,7 +1,0 @@
-{
-  "revision": "3ef9608c43484295acfbead390b242c79daadd66",
-
-  "notes": [
-    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed the #4771 change to its source docs/reference/session-api.md: a pointer paragraph for the worktree-settlement route beside Session goals. This ADR only routes readers to the session API for today's contract; the added paragraph does not touch the managed-chat routing, flag or rollback history it records. No change needed.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
-  ]
-}

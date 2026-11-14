@@ -1,7 +1,0 @@
-{
-  "revision": "395462fd4b684fd7cae9e4cc6a288222c563bd75",
-
-  "notes": [
-    {"path":"docs/guides/native-releases.md","note":"Correction to the prior staging review: koffi src contains runtime JavaScript and is retained on Windows. Only vendor and doc are omitted there. Non-Windows strips runtime contents because the policy reader loads koffi only on Windows. Reviewed the staging budget and resource claims; the 512 MiB ceiling and release flow remain unchanged.","inputs":["docs/guides/native-releases.md"]}
-  ]
-}

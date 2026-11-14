@@ -163,7 +163,10 @@ and the native-shell slice of `src-ui/` (`src/platform/`, `public/`, and the
 boot entry). Everything else the app can contain or be built with is built
 after it lands: every source root the UI bundle imports (`src-ui/`,
 `src-shared/`, and the workspace packages it reaches) and the generic
-tooling the job runs. `scripts/classify-ci-change.mjs` owns both lists, and
+tooling the job runs. Two of those files sit on the native path and still
+build only after landing: `scripts/vite-ui-assets.ts` (its native
+`precompress: false` branch) and `scripts/lib/desktop-build-manifest.mjs`
+(imported by the native manifest writers). `scripts/classify-ci-change.mjs` owns both lists, and
 its test derives them from the job's commands and the UI's imports; files
 read only at run time are not derived. A `main` push builds when its range
 has a post-merge change and no native input, since the merge queue

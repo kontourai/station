@@ -1,0 +1,7 @@
+{
+  "revision": "d3489597357a59a1e35bce7d940260e812a310f4",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the selected nine-screen golden update and its canonical comparison workflow. Capture 05fee05508fc passed on an isolated instance with matched lifecycle cleanup; inspected all nine current PNGs and five previous references. Merged five refreshed and four new entries, verified all 55 unselected expectations preserved and 9/9 selected comparisons unchanged. Older baseline chrome/copy catch-up is distinct from lane D source authorship; no threshold, volatile exception, fixture or gate was relaxed.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json","tests/screenshots.baseline/overlay-dock-project-bound.png","tests/screenshots.baseline/overlay-dock-project-mismatch.png"]}
+  ]
+}

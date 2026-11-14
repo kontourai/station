@@ -1,7 +1,0 @@
-{
-  "revision": "c3d5d242c7a742e1133a336e347ec863ef990e83",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"contracts/config.ts change only: isStoredValue moved here from the server leaf unchanged (null is a decision, blank string is absent), plus hasAppConfigStationDecision (stored value that is not the loader seed). Re-read the settings claims; the config route stored-value and no-op-drop sentences describe route behavior that did not change.","inputs":["docs/reference/api.md","packages/contracts/src/config.ts"]}
-  ]
-}

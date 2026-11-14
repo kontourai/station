@@ -1,7 +1,0 @@
-{
-  "revision": "16c029b65d04d8a6c2f4ff777dc8ce949d7f59f4",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Re-checked the host-bound required-tests section against scripts/check-required-tests-ran.mjs after the fix round: flag is --profile-name; a runtime skip counts once the test started, body or beforeEach hook (confirmed on Vitest 4.1.12: a beforeEach ctx.skip() result carries a duration, a test.skip result has none); exit 2 now covers missing, unreadable, directory, empty or malformed report/profile file, invalid entries including an empty or non-string reason, and usage errors; the check complements the test step's exit status. Headings and anchors unchanged.","inputs":["docs/guides/testing.md"]}
-  ]
-}

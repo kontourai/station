@@ -1,7 +1,0 @@
-{
-  "revision": "abd9494ef793245ce398b9eea83d720f16c96e56",
-
-  "notes": [
-    {"path":"docs/design/placement.md","note":"Reviewed composer/dock ownership, anchored popover and phone-sheet placement claims. The existing Send-mode status paragraph remains in the same popover and order; mode-note adds only text inset/typography. No positioning, region, anchor, breakpoint or control placement selector changed. Existing placement guidance remains accurate.","inputs":["docs/design/placement.md"]}
-  ]
-}

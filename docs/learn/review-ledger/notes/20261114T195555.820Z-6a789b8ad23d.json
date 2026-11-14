@@ -1,0 +1,7 @@
+{
+  "revision": "4019ae390a27f42301811a2baa3b64b22d4bd930",
+
+  "notes": [
+    {"path":"docs/design/project-membership.md","note":"Rechecked: the station-runtime.ts change is a comment-only correction (Muse credential profiles do get an app home, #1942); no code line changed, so no claim in this document is affected.","inputs":["docs/design/project-membership.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

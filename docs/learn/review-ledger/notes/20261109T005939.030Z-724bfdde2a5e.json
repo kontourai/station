@@ -1,7 +1,0 @@
-{
-  "revision": "68b5f26225f25000a68cbab9738f8532a18d277e",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Upstream development.md only gained the self-contained Seeding a dev home from real data section (scripts/seed-dev-home.mjs); no claim here depends on it.","inputs":["docs/architecture/module-map.md","docs/guides/development.md"]}
-  ]
-}

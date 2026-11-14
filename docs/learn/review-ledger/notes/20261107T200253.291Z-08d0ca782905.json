@@ -1,7 +1,0 @@
-{
-  "revision": "e9926a40add35173fe3d14cc01b5343be81dd5af",
-
-  "notes": [
-    {"path":".veritas/README.md","note":"Reviewed the opt-in exact-name runner delta against current Gate, Evidence Checks and Delivery-Conduct boundaries. Literal selected-case diagnostics retain active-root, provenance, resource and timeout policy; they do not replace required readiness families or full caller/hosted qualification. Existing Veritas commands/configuration/authority/protected standards remain unchanged. Only this changed verification input was reviewed; unrelated global freshness findings are not cleared.","inputs":[".veritas/README.md","scripts/run-focused-tests.mjs"]}
-  ]
-}

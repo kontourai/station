@@ -1,7 +1,0 @@
-{
-  "revision": "443525c6391299e53e8c8c63d12af330b36d51b9",
-
-  "notes": [
-    {"path":"docs/design/shell-plugins-distributions.md","note":"#4688 ProjectSidebarBoards still offers rename, delete and promote; delete and promote now run after the Undo window closes. Untitled Board create, empty section and update-mutation claims unchanged.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx"]}
-  ]
-}
