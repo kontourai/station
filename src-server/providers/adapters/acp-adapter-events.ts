@@ -51,6 +51,7 @@ import {
   mapEngineToolCallMeta,
   readAcpUsageCost,
 } from './acp-engine-extension-events.js';
+import { type AcpSteerState, trackAcpSteerActiveRun } from './acp-steer.js';
 import type { AcpToolUpdateSupervisor } from './acp-tool-update-supervisor.js';
 import {
   type ParagraphBoundaryState,
@@ -71,7 +72,7 @@ import {
  */
 const defaultMapperLogger = createLogger({ name: 'acp-adapter-events' });
 
-export interface AcpMapperState extends EngineExtensionState {
+export interface AcpMapperState extends EngineExtensionState, AcpSteerState {
   /** Paragraph breaks between the agent's messages within a turn. */
   textBoundary?: ParagraphBoundaryState;
   currentModeId?: string;
@@ -393,6 +394,8 @@ export function mapAcpSessionUpdate(
     }
 
     case 'session_info_update': {
+      // A run-steer engine names its running prompt here (`acp-steer.ts`).
+      trackAcpSteerActiveRun(update, ctx.state);
       // Vendor facts ride `_meta.<namespace>.kind`; the engine-extension
       // binding table says which kinds map to which Station event.
       mapEngineSessionInfo(update, { ...ctx, logger: mapperLogger(ctx) });

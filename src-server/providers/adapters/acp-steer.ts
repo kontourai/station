@@ -5,16 +5,40 @@ import {
   matchesAcpHandshakeIdentity,
 } from '../../services/acp/acp-handshake-facts.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { isRecord } from '../../utils/is-record.js';
 
 /**
  * How an ACP session injects mid-turn user input.
  *
- * Native channels (`_session/steer`, `_x.ai/interject`) are additive: the
- * in-flight `session/prompt` keeps running. The cancel + re-prompt fallback
+ * Native channels (`_session/steer`, `_x.ai/interject`, Goose's run steer)
+ * are additive: the in-flight `session/prompt` keeps running. A run steer
+ * names the run it joins, which the engine announced in `_meta`; with no
+ * run announced it is not sent. The cancel + re-prompt fallback
  * cancels that prompt and re-prompts on the same Station turn id —
  * interruptive, but still a steer (same turn), not a queued follow-up.
  */
-export type AcpSteerChannel = 'session-steer' | 'interject' | 'cancel-reprompt';
+export type AcpSteerChannel =
+  | 'session-steer'
+  | 'interject'
+  | 'run-steer'
+  | 'cancel-reprompt';
+
+/**
+ * Where an engine names its running prompt: `_meta.<namespace>.<key>` on a
+ * `session_info_update`, a run id string while a prompt runs and `null`
+ * once none does.
+ */
+export interface AcpSteerActiveRunSource {
+  namespace: string;
+  key: string;
+}
+
+/** The running prompt's id as the engine last announced it. */
+export interface AcpSteerState {
+  /** Set at session start from the handshake's steer selection. */
+  acpSteerActiveRunSource?: AcpSteerActiveRunSource;
+  acpActiveRunId?: string;
+}
 
 const NATIVE_STEER_METHODS: ReadonlyArray<{
   channel: Exclude<AcpSteerChannel, 'cancel-reprompt'>;
@@ -42,6 +66,8 @@ const ACP_UNDECLARED_STEER_ENGINES: ReadonlyArray<{
    * steers, so a caller can tell a dropped steer from a delivered one.
    */
   retract?: { method: string; observed: string };
+  /** Where a `run-steer` engine names the run a steer must join. */
+  activeRun?: AcpSteerActiveRunSource;
   observed: string;
 }> = [
   {
@@ -76,6 +102,22 @@ const ACP_UNDECLARED_STEER_ENGINES: ReadonlyArray<{
     methods: ['_x.ai/interject', 'x.ai/interject'],
     observed: 'grok 1.0.50 `agent stdio`',
   },
+  {
+    // Goose names itself `goose` and declares only `_meta.goose` feature
+    // flags, not its methods (acp/server.rs on_initialize,
+    // agent_capabilities_meta). The steer is `{sessionId, prompt,
+    // expectedRunId}` (goose-sdk-types custom_requests.rs
+    // SteerSessionRequest) and is refused unless `expectedRunId` is the
+    // running prompt's, which every prompt announces at its start as
+    // `_meta.goose.activeRunId` and clears with `null`
+    // (send_active_run_update). Read from source, not a live run.
+    identity: { agentInfoName: 'goose' },
+    channel: 'run-steer',
+    methods: ['_goose/unstable/session/steer'],
+    activeRun: { namespace: 'goose', key: 'activeRunId' },
+    observed:
+      'aaif-goose/goose v1.59.0 (5d03ef6ed07b) crates/goose/src/acp/server.rs on_steer_session, send_active_run_update; crates/goose-sdk-types/src/custom_requests.rs',
+  },
 ];
 
 export interface AcpSteerSelection {
@@ -85,6 +127,8 @@ export interface AcpSteerSelection {
   basis: 'declared' | 'undeclared-engine' | 'none';
   /** The method that takes back unread steers, where the engine has one. */
   retractMethod?: string;
+  /** Where the engine names the run a `run-steer` joins. */
+  activeRun?: AcpSteerActiveRunSource;
 }
 
 type SteerHandshake = AcpIdentityHandshake;
@@ -122,6 +166,7 @@ export function resolveAcpSteerChannel(
       methods: engine.methods,
       basis: 'undeclared-engine',
       ...(engine.retract ? { retractMethod: engine.retract.method } : {}),
+      ...(engine.activeRun ? { activeRun: engine.activeRun } : {}),
     };
   }
   return { channel: 'cancel-reprompt', methods: [], basis: 'none' };
@@ -146,14 +191,58 @@ export function isAcpMethodNotFound(error: unknown): boolean {
   );
 }
 
+/** Bound on a run id Station keeps; a longer one is not kept. */
+const ACTIVE_RUN_ID_MAX_CHARS = 256;
+
+/**
+ * Track the running prompt a `session_info_update` names, on a session
+ * whose engine announces it there. `null` clears it; anything else leaves
+ * the last value.
+ */
+export function trackAcpSteerActiveRun(
+  update: { _meta?: Record<string, unknown> | null },
+  state: AcpSteerState | undefined,
+): void {
+  const source = state?.acpSteerActiveRunSource;
+  if (!state || !source) return;
+  const vendor = update._meta?.[source.namespace];
+  if (!isRecord(vendor) || !Object.hasOwn(vendor, source.key)) return;
+  const runId = vendor[source.key];
+  if (runId === null) {
+    state.acpActiveRunId = undefined;
+  } else if (
+    typeof runId === 'string' &&
+    runId.length > 0 &&
+    runId.length <= ACTIVE_RUN_ID_MAX_CHARS
+  ) {
+    state.acpActiveRunId = runId;
+  }
+}
+
+/**
+ * The steer request for a native channel, or `undefined` when a `run-steer`
+ * has no announced run to join.
+ */
 export function acpSteerParams(
   channel: Exclude<AcpSteerChannel, 'cancel-reprompt'>,
   sessionId: string,
   input: string,
-): Record<string, unknown> {
-  return channel === 'session-steer'
-    ? acpSessionSteerParams(sessionId, input)
-    : acpInterjectParams(sessionId, input);
+  activeRunId?: string,
+): Record<string, unknown> | undefined {
+  switch (channel) {
+    case 'session-steer':
+      return acpSessionSteerParams(sessionId, input);
+    case 'interject':
+      return acpInterjectParams(sessionId, input);
+    case 'run-steer':
+      return activeRunId
+        ? {
+            sessionId,
+            prompt: [{ type: 'text', text: input }],
+            expectedRunId: activeRunId,
+          }
+        : undefined;
+  }
 }
 
 function acpSessionSteerParams(

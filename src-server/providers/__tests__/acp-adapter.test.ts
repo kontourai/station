@@ -7136,6 +7136,93 @@ describe('AcpAdapter.steerTurn', () => {
     await adapter.stopAll();
   });
 
+  /**
+   * Goose (aaif-goose/goose v1.59.0, 5d03ef6ed07b): `initialize` names it
+   * `goose` and declares `_meta.goose` feature flags, not methods
+   * (crates/goose/src/acp/server.rs on_initialize). Each prompt announces its
+   * run as a `session_info_update` with `_meta.goose.activeRunId`
+   * (`run_<uuid>`) and clears it with `null` (send_active_run_update).
+   */
+  const asGoose = (proc: FakeAcpProcess) => {
+    proc.initResult!.agentInfo = { name: 'goose', version: '1.59.0' };
+    proc.initResult!.agentCapabilities._meta = {
+      goose: { recipeParameterScopes: {} },
+    };
+  };
+  const GOOSE_RUN = 'run_3b0c6a52-9d1e-4f7a-8c2b-5e6f7a8b9c0d';
+  const announceGooseRun = (proc: FakeAcpProcess, runId: string | null) =>
+    proc.client.sessionUpdate({
+      sessionId: 'native-goose',
+      update: {
+        sessionUpdate: 'session_info_update',
+        _meta: { goose: { activeRunId: runId } },
+      },
+    } as any);
+  const gooseConnection = [{ id: 'kiro', command: 'goose', args: ['acp'] }];
+
+  test('Goose steers the run it announced, without cancelling the turn', async () => {
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-goose-steer',
+      { connectionOverrides: gooseConnection, onProcess: asGoose },
+    );
+    await announceGooseRun(processes[0]!, GOOSE_RUN);
+
+    await adapter.steerTurn('thread-goose-steer', 'go left', turn.turnId);
+
+    // SteerSessionRequest (crates/goose-sdk-types/src/custom_requests.rs),
+    // camelCase on the wire.
+    expect(processes[0]?.extMethodCalls).toEqual([
+      {
+        method: '_goose/unstable/session/steer',
+        params: {
+          sessionId: 'native-goose',
+          prompt: [{ type: 'text', text: 'go left' }],
+          expectedRunId: GOOSE_RUN,
+        },
+      },
+    ]);
+    expect(processes[0]?.cancelCalls).toBe(0);
+    expect(processes[0]?.promptContents).toHaveLength(1);
+    await adapter.stopAll();
+  });
+
+  test('Goose with no run announced, or one cleared, is steered by cancel + re-prompt', async () => {
+    // Goose refuses a steer whose expectedRunId is not the running prompt's
+    // (require_active_run), so Station never sends one it cannot name.
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-goose-no-run',
+      { connectionOverrides: gooseConnection, onProcess: asGoose },
+    );
+    await announceGooseRun(processes[0]!, GOOSE_RUN);
+    await announceGooseRun(processes[0]!, null);
+
+    await adapter.steerTurn('thread-goose-no-run', 'now', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls).toEqual([]);
+    expect(processes[0]?.cancelCalls).toBe(1);
+    expect(processes[0]?.promptContents).toHaveLength(2);
+    await adapter.stopAll();
+  });
+
+  test('a run id under _meta.goose from an engine that is not Goose selects nothing', async () => {
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-not-goose',
+      {
+        connectionOverrides: gooseConnection,
+        onProcess: (proc) => {
+          proc.initResult!.agentInfo = { name: 'goose-fork', version: '1' };
+        },
+      },
+    );
+    await announceGooseRun(processes[0]!, GOOSE_RUN);
+
+    await adapter.steerTurn('thread-not-goose', 'now', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls).toEqual([]);
+    expect(processes[0]?.cancelCalls).toBe(1);
+    await adapter.stopAll();
+  });
+
   test('unknown ACP cancels and re-prompts on the same turn', async () => {
     const { adapter, processes } = createAdapter({
       connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],

@@ -292,6 +292,7 @@ import {
   requestedAcpSessionMode,
 } from './acp-session-mode.js';
 import {
+  type AcpSteerActiveRunSource,
   acpSteerParams,
   isAcpMethodNotFound,
   resolveAcpSteerChannel,
@@ -812,6 +813,10 @@ export interface AcpSessionRecord {
   configOptionWaiters?: Set<() => void>;
   /** The subagent wires the handshake identified (`acp-child-work.ts`). */
   acpSubagentWires?: ReadonlySet<AcpSubagentWire>;
+  /** Where the engine names its running prompt, for a run steer (`acp-steer.ts`). */
+  acpSteerActiveRunSource?: AcpSteerActiveRunSource;
+  /** The running prompt the engine last named, if it names one. */
+  acpActiveRunId?: string;
   /** An in-place rewind is waiting on the engine; no turn may start. */
   rewinding?: boolean;
   /** A rewind past its deadline is still with the engine; no rewind may start. */
@@ -1606,6 +1611,9 @@ export class AcpAdapter implements ProviderAdapterShape {
       // Known from `initialize` on, so a subagent frame during session start
       // is read under the same identity.
       record.acpSubagentWires = acpSubagentWires(acpProcess.initResult);
+      record.acpSteerActiveRunSource = resolveAcpSteerChannel(
+        acpProcess.initResult,
+      ).activeRun;
       this.requireCurrentGeneration(input.threadId, record.generation);
       record.startedPublished = true;
       this.publish({
@@ -5333,12 +5341,18 @@ export class AcpAdapter implements ProviderAdapterShape {
     const selection = resolveAcpSteerChannel(record.process.initResult);
     const sessionId = record.process.sessionId;
     if (!sessionId || selection.channel === 'cancel-reprompt') return false;
+    // A run steer joins the prompt the engine announced; with none known it
+    // would be refused, so the turn is steered by cancel + re-prompt.
+    const params = acpSteerParams(
+      selection.channel,
+      sessionId,
+      text,
+      record.acpActiveRunId,
+    );
+    if (!params) return false;
     for (const method of selection.methods) {
       try {
-        await record.process.extMethod(
-          method,
-          acpSteerParams(selection.channel, sessionId, text),
-        );
+        await record.process.extMethod(method, params);
         return true;
       } catch (error) {
         if (!isAcpMethodNotFound(error)) throw error;
