@@ -880,12 +880,11 @@ export interface AcpSessionRecord {
    */
   knownEnginePromptIds?: string[];
   /**
-   * When Station first saw the engine report each prompt it ran (a Station
-   * turn's or its own), by engine prompt id, oldest first and bounded. The
-   * engine runs one prompt at a time, so a prompt's rewind point was created
-   * between its first notice and the next prompt's.
+   * The engine prompts Station last saw reported running (a Station turn's
+   * or the engine's own), most recent last and bounded: a notice naming one
+   * of them restates it and is not a prompt starting.
    */
-  enginePromptStarts?: Map<string, number>;
+  seenEnginePromptIds?: string[];
   /**
    * Recent readings of the engine's clock less Station's, from frames
    * stamped with the engine's own time (`_meta.agentTimestampMs`, Grok):
@@ -956,6 +955,12 @@ export interface AcpSessionRecord {
     promptText?: string;
     /** When the engine reported starting the turn's prompt, in epoch ms. */
     startedAt?: number;
+    /**
+     * When the engine reported starting the next prompt it ran after this
+     * one (a turn's or its own), in epoch ms. The engine runs one prompt at
+     * a time, so this turn's rewind point was made before it.
+     */
+    nextStartedAt?: number;
   }>;
   /** The start of the running Station turn's prompt text (see `turnMessages`). */
   activePromptText?: string;
@@ -1138,14 +1143,8 @@ const ACP_REWIND_NOTICE_LAG_MS = 250;
  */
 const ACP_ENGINE_CLOCK_MAX_OFFSET_MS = 500;
 
-/**
- * Prompt starts a session keeps, oldest dropped first: four for each turn
- * the ledger keeps, since wakes, steers and a rewind's hidden turns take one
- * too. The oldest are those before every remembered turn; past that, losing
- * a start a remembered turn needs widens its window, which then holds more
- * than one point and refuses.
- */
-const ACP_ENGINE_PROMPT_STARTS_MAX = 4 * ACP_TURN_MESSAGES_MAX;
+/** Recent engine prompt ids remembered to tell a restated notice from a new one. */
+const ACP_SEEN_ENGINE_PROMPTS_MAX = 64;
 
 /** Clock readings a session keeps; the largest of them is the estimate. */
 const ACP_ENGINE_CLOCK_SAMPLES_MAX = 32;
@@ -3839,7 +3838,6 @@ export class AcpAdapter implements ProviderAdapterShape {
       return {
         failed: `${record.engineName} listed its rewind points in a shape Station cannot read. Nothing was changed.`,
       };
-    const starts = [...(record.enginePromptStarts?.values() ?? [])];
     const resolved: number[] = [];
     // Every turn the ledger holds is resolved, not only the chosen one and
     // those after it: a turn shorter than the lag allowance can lose its
@@ -3849,9 +3847,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     for (const [k, turn] of turns.entries()) {
       const isChosen = k === position;
       const startedAt = turn.startedAt;
-      const next = starts.find(
-        (at) => startedAt !== undefined && at > startedAt,
-      );
+      const next = turn.nextStartedAt;
       const inWindow =
         startedAt === undefined
           ? []
@@ -5662,14 +5658,17 @@ export class AcpAdapter implements ProviderAdapterShape {
     enginePromptId: string,
   ): void {
     if (record.stopping) return;
-    const starts = (record.enginePromptStarts ??= new Map());
+    const seen = (record.seenEnginePromptIds ??= []);
     // Only a prompt's first notice says it started: the engine restates the
     // running prompt, and while a cancel finishes it still names the old one.
-    const first = !starts.has(enginePromptId);
+    const first = !seen.includes(enginePromptId);
     if (first) {
-      starts.set(enginePromptId, Date.now());
-      if (starts.size > ACP_ENGINE_PROMPT_STARTS_MAX)
-        starts.delete(starts.keys().next().value as string);
+      seen.push(enginePromptId);
+      if (seen.length > ACP_SEEN_ENGINE_PROMPTS_MAX) seen.shift();
+      // A new prompt closes the last remembered turn's window.
+      const last = record.turnMessages?.at(-1);
+      if (last && last.nextStartedAt === undefined)
+        last.nextStartedAt = Date.now();
     }
     if (record.activeTurnId) {
       if (!record.providerTurn) {

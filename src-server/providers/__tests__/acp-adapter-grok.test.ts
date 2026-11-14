@@ -1548,6 +1548,62 @@ describe('Grok rewind, fork and MCP reconnect, from the live answers', () => {
     await session.stop();
   });
 
+  test('a busy monitor waking Grok thousands of times between turns does not stop rewinds', async () => {
+    // 20 turns, each followed by 120 wakes: 2,400 prompts Grok has run.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const ambient = '[Timezone: America/Denver]';
+    const t = times[0]!;
+    const session = await startGrokSession();
+    const [live] = (points as { rewind_points: Record<string, unknown>[] })
+      .rewind_points;
+    const turns: Array<{ id: string; at: number }> = [];
+    for (let k = 0; k < 20; k += 1) {
+      const at = t + k * 200_000;
+      turns.push({
+        id: await grokTurn(session, `${ambient}\nturn`, `p-${k}`, at),
+        at,
+      });
+      for (let w = 0; w < 120; w += 1) {
+        const wake = `notifications-${k}-${w}`;
+        vi.setSystemTime(at + 1_000 + w * 1_000);
+        await session.agent.notify('_x.ai/queue/changed', {
+          sessionId: session.sessionId,
+          entries: [],
+          runningPromptId: wake,
+        });
+        await session.agent.notify('_x.ai/session_notification', {
+          sessionId: session.sessionId,
+          update: {
+            sessionUpdate: 'turn_completed',
+            prompt_id: wake,
+            stop_reason: 'end_turn',
+          },
+        });
+      }
+      await settle();
+    }
+    answerLive(session, {
+      '_x.ai/rewind/points': [
+        {
+          rewind_points: turns.map(({ at }, index) => ({
+            ...live,
+            prompt_index: index * 121,
+            prompt_preview: ambient,
+            created_at: new Date(at + NOTICE_BEFORE_POINT_MS).toISOString(),
+          })),
+        },
+      ],
+      '_x.ai/rewind/execute': [preview, commit],
+    });
+    expect(
+      await session.adapter.rewindSession(session.threadId, turns[10]!.id),
+    ).toMatchObject({ kind: 'rewound' });
+    expect(session.proc.extMethodCalls.at(-1)?.params.targetPromptIndex).toBe(
+      1210,
+    );
+    await session.stop();
+  }, 120_000);
+
   test('a long conversation with a rewind in it still resolves its turns', async () => {
     // 400 turns, a rewind hiding the last 300, then 150 more: 250 turns
     // remembered, and 550 prompts Grok has run.

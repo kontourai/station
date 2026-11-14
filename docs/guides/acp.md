@@ -731,8 +731,9 @@ session's own continuity, which
   the scrubbed fixture keeps the points' times but not the capture's), 10 to
   22 ms after the `_x.ai/queue/changed` notice first naming that prompt
   running, and later when a prompt hook runs first. Grok runs one prompt at
-  a time, so the adapter keeps when it first saw each prompt Grok reported
-  running (a wake's too), and a turn's point is the one point made in its
+  a time, so for each turn it remembers the adapter keeps when it first saw
+  Grok report the turn's prompt running and when it first saw the next
+  prompt Grok ran (a wake's too), and a turn's point is the one point made in its
   window: from its prompt's first notice to the next prompt's, both moved a
   quarter second earlier for Station reading a notice late, so consecutive
   windows tile time and a point belongs to one turn at most. Only a prompt's
