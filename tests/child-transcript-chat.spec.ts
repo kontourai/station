@@ -3,9 +3,13 @@ import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { expect } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
-import { seedMobileTaskSwitcher } from './helpers/chat-shell-fixture';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
-import { installMockOrchestrationSse } from './helpers/orchestration';
+import {
+  installMockOrchestrationEventWindow,
+  installMockOrchestrationSse,
+  seedActiveChats,
+  seedOrchestrationRoutes,
+} from './helpers/orchestration';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 
 const parent = 'conv-running';
@@ -21,7 +25,20 @@ const child: ChildWorkItem = {
   result: { summary: 'Files reviewed', source: 'child-message' },
 };
 async function seed(page: import('@playwright/test').Page) {
-  await seedMobileTaskSwitcher(page);
+  await seedOrchestrationRoutes(page);
+  await seedActiveChats(page, [
+    {
+      sessionId: parent,
+      conversationId: parent,
+      title: parentTitle,
+      agentSlug: 'dev-agent',
+      provider: 'codex',
+      model: 'model-selected',
+      orchestrationSessionStarted: true,
+      ephemeralMessages: [],
+      inputHistory: [],
+    },
+  ]);
   await installMockOrchestrationSse(page);
   const turns = buildLongSessionTurns({
     threadId: parent,
@@ -38,10 +55,13 @@ async function seed(page: import('@playwright/test').Page) {
     method: 'child-work.updated',
     delta: { kind: 'upsert', item: child },
   });
+  await installMockOrchestrationEventWindow(page, 'codex', {
+    [parent]: turns.flat(),
+  });
   await mockRuntimeConversation(page, {
     id: parent,
     title: parentTitle,
-    agentSlug: 'station',
+    agentSlug: 'dev-agent',
     provider: 'codex',
     model: 'model-selected',
     canContinue: true,
@@ -51,7 +71,7 @@ async function seed(page: import('@playwright/test').Page) {
     threadId: parent,
     conversationId: parent,
     provider: engineId('codex'),
-    assignedAgentSlug: agentId('station'),
+    assignedAgentSlug: agentId('dev-agent'),
     displayTitle: parentTitle,
     controlMode: 'station-owned',
     answerability: { answerable: true },
@@ -63,6 +83,9 @@ async function seed(page: import('@playwright/test').Page) {
     isPersisted: true,
     eventCount: 3,
   };
+  await page.route('**/api/orchestration/sessions/read-model', (route) =>
+    route.fulfill({ json: { success: true, data: [session] } }),
+  );
   await page.route(`**/api/orchestration/sessions/${parent}`, (route) =>
     route.request().method() === 'GET'
       ? route.fulfill({
@@ -117,7 +140,11 @@ for (const viewport of [
       await page.setViewportSize(viewport);
       await seed(page);
       await page.addInitScript(
-        (value) => localStorage.setItem('theme', value),
+        (value) =>
+          localStorage.setItem(
+            'station-device-settings-v1',
+            JSON.stringify({ version: 2, values: { theme: value } }),
+          ),
         theme,
       );
       await page.goto(`/?dock=bottom&maximize=true&chat=${parent}`);
