@@ -1,0 +1,11 @@
+{
+  "revision": "e8194574ef1644a246779cba61d347214df37ce2",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Only a test type annotation changed (the carrier-unlink UPDATE result is typed as { changes: number }); the asserted behaviour and this document's claims about seed refusal and redelivery are unchanged. No text change needed.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Only a test type annotation changed (the carrier-unlink UPDATE result is typed as { changes: number }); the asserted behaviour and this document's claims about seed refusal and redelivery are unchanged. No text change needed.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Only a test type annotation changed (the carrier-unlink UPDATE result is typed as { changes: number }); the asserted behaviour and this document's claims about seed refusal and redelivery are unchanged. No text change needed.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts"]}
+  ]
+}

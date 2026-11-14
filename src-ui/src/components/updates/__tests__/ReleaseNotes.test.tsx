@@ -124,3 +124,88 @@ test('a missing exact release never substitutes the rolling latest release', asy
   );
   expect(await screen.findByText('Newly published changelog')).toBeTruthy();
 });
+
+test('in-app changelogs omit installation instructions but retain later change sections', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json(
+        release(
+          'v0.1.11',
+          '## Features\n- Workspace changes\n\n## Installation\n\n```sh\ncurl https://example.test/install.sh | sh\n```\n\n## Fixes\n- Recovery fix',
+        ),
+      ),
+    ),
+  );
+  mount(<ReleaseNotes version="0.1.11" />);
+  await screen.findByText('Workspace changes');
+  expect(screen.queryByText('Installation')).toBeNull();
+  expect(screen.queryByText(/curl https/)).toBeNull();
+  expect(screen.getByText('Recovery fix')).toBeTruthy();
+});
+
+const legacyBody =
+  "Portable server Nightly 0.1.11-nightly.2026111300 from 76c30c3b8dbaf4b36795ec4b0ed73902b3674509. Install with: curl -fsSL https://raw.githubusercontent.com/kontourai/station/main/install.sh | STATION_CHANNEL=nightly sh (this release's install.sh and install.ps1 are the installers at 76c30c3b8dbaf4b36795ec4b0ed73902b3674509). These assets are immutable.";
+test.each([
+  '\n\n## Installation\n\nInstall fixture\n',
+  legacyBody,
+  'Portable server Nightly 0.1.11-nightly.247504 from f5e21369361e6edf855dc9a2671f68aa3473556f. Install through the signed rolling manifest (portable-nightly); these assets are immutable.',
+])(
+  'install-only published bodies show the missing changelog state: %s',
+  async (body) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json(release('v0.1.11', body))),
+    );
+    mount(<ReleaseNotes version="0.1.11" />);
+    expect(await screen.findByText('Release notes unavailable')).toBeTruthy();
+    expect(screen.queryByText(/Install fixture|curl -fsSL/)).toBeNull();
+  },
+);
+test('legacy stripping preserves ordinary installation discussion', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json(
+        release(
+          'v0.1.11',
+          '- Improved install.sh diagnostics. Install with curl as usual.',
+        ),
+      ),
+    ),
+  );
+  mount(<ReleaseNotes version="0.1.11" />);
+  expect(
+    await screen.findByText(
+      'Improved install.sh diagnostics. Install with curl as usual.',
+    ),
+  ).toBeTruthy();
+});
+
+test.each([false, true])(
+  'long notes show fifty entries and a full release link (fallback=%s)',
+  async (fallback) => {
+    const body =
+      '## What Changed\n' +
+      Array.from({ length: 2000 }, (_, i) => `- Entry ${i + 1}`).join('\n');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        fallback
+          ? new Response('', { status: 404 })
+          : Response.json(release('v0.1.11', body)),
+      ),
+    );
+    mount(
+      <ReleaseNotes version="0.1.11" notes={fallback ? body : undefined} />,
+    );
+    await screen.findByText('Entry 50');
+    expect(screen.queryByText('Entry 51')).toBeNull();
+    expect(screen.getAllByRole('listitem')).toHaveLength(50);
+    expect(
+      screen
+        .getByRole('link', { name: 'See all changes' })
+        .getAttribute('href'),
+    ).toBe('https://github.com/kontourai/station/releases/tag/v0.1.11');
+  },
+);

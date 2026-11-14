@@ -50,6 +50,13 @@ function registryInstallationKey(tab: RegistryCatalogTab, itemId: string) {
   return `${tab}:${itemId}`;
 }
 
+/**
+ * A source chosen together with a switch to its catalog tab. The route
+ * boundary keys this view by route (`RouteViewBoundary`), so the tab switch
+ * remounts it; the choice is handed to that next mount, for that tab only.
+ */
+let sourceForNextTab: { tab: RegistryCatalogTab; source: string } | null = null;
+
 export function RegistryView({
   initialTab,
   toolPicker = false,
@@ -76,13 +83,28 @@ export function RegistryView({
   useEffect(() => {
     setActiveTab(initialTab ?? 'agents');
   }, [initialTab]);
-  const selectTab = (tab: RegistryCatalogTab) => {
+  // The route remounts this view for each tab (`RouteViewBoundary` keys by
+  // route), so the chosen source is handed to the next mount: browsing a
+  // source keeps it across tabs.
+  const selectTab = (
+    tab: RegistryCatalogTab,
+    source: string = selectedSource,
+  ) => {
     setActiveTab(tab);
-    if (!toolPicker) navigate(`/registry/${tab}`);
+    if (!toolPicker) {
+      sourceForNextTab = { tab, source };
+      navigate(`/registry/${tab}`);
+    }
   };
   const [message, setMessage] = useState<string | null>(null);
   const [search, setSearch] = useState(installTarget ?? '');
-  const [selectedSource, setSelectedSource] = useState('all');
+  const [selectedSource, setSelectedSource] = useState(() => {
+    const handed = sourceForNextTab;
+    sourceForNextTab = null;
+    return handed && handed.tab === (initialTab ?? 'agents')
+      ? handed.source
+      : 'all';
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspectedSelection, setInspectedSelection] = useState<{
     tab: RegistryCatalogTab;
@@ -533,7 +555,15 @@ export function RegistryView({
       {!toolPicker && (
         <MarketplaceSources
           selected={selectedSource}
-          onSelect={setSelectedSource}
+          onSelect={(id, _kind, supplied) => {
+            setSelectedSource(id);
+            // Show the chosen source's catalog: keep the tab when the source
+            // supplies it, otherwise open its primary kind's tab.
+            const tabs: readonly RegistryCatalogTab[] = supplied ?? [];
+            if (tabs.length > 0 && !tabs.includes(activeTab))
+              selectTab(tabs[0]!, id);
+          }}
+          manage="dialog"
         />
       )}
       {installTarget ? (

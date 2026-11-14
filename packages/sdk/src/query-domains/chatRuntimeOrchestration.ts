@@ -694,14 +694,16 @@ const CHILD_WORK_TRANSCRIPT_PAGE_SIZE = 30;
 /**
  * #3163: an engine subagent's own read-only transcript, paged by message.
  * `fetchNextPage` continues where the last page ended. Off until `enabled`,
- * so a closed row reads nothing; a transcript is history, so it is fetched
- * once and not polled.
+ * so a closed row reads nothing. Running children poll every two seconds;
+ * the live child-work owner disables polling when the child settles.
  */
 export function useChildWorkTranscriptQuery(
   input: {
     threadId: string;
     childId: string;
     enabled?: boolean;
+    /** Re-read a live child through the query owner; stops when the reader unmounts. */
+    running?: boolean;
     requestScope?: ApiRequestScope;
   },
   apiBase?: string,
@@ -733,6 +735,7 @@ export function useChildWorkTranscriptQuery(
     getNextPageParam: (page) => page.nextOffset,
     retry: false,
     staleTime: 30_000,
+    refetchInterval: input.running ? 2_000 : false,
   });
 }
 

@@ -784,35 +784,23 @@ describe('CommandPalette', () => {
     }
   });
 
-  test('projects both registered region toggles into the command palette', async () => {
+  test('only registered shell chords are offered; Activity has no chord', async () => {
     const chat = REGION_SURFACE_REGISTRY.get('chat');
-    const activity = REGION_SURFACE_REGISTRY.get('activity');
-    expect(chat).toBeTruthy();
-    expect(activity).toBeTruthy();
+    expect(REGION_SURFACE_REGISTRY.has('activity')).toBe(false);
     registeredShortcutIdentity = {
       id: chat!.shortcut!.id,
       key: chat!.shortcut!.key,
       modifiers: [...chat!.shortcut!.modifiers],
-      description: `Toggle ${chat!.title} region`,
+      description: 'Toggle Chat region',
     };
-    additionalRegisteredShortcutIdentities = [
-      {
-        id: activity!.shortcut!.id,
-        key: activity!.shortcut!.key,
-        modifiers: [...activity!.shortcut!.modifiers],
-        description: `Toggle ${activity!.title} region`,
-      },
-    ];
-
+    additionalRegisteredShortcutIdentities = [];
     await renderCommandPalette();
     open();
-
+    expect(
+      screen.queryByRole('option', { name: /Toggle Activity region/ }),
+    ).toBeNull();
     fireEvent.click(screen.getByRole('option', { name: /Toggle Chat region/ }));
-    open();
-    fireEvent.click(
-      screen.getByRole('option', { name: /Toggle Activity region/ }),
-    );
-    expect(registeredCommand).toHaveBeenCalledTimes(2);
+    expect(registeredCommand).toHaveBeenCalledTimes(1);
   });
 
   // #766 item 4: the Report-a-problem entry point is a palette action that
@@ -915,24 +903,14 @@ describe('CommandPalette', () => {
 
   // Activity is a place: its palette entry is the same verb as its sidebar
   // row — go to the page — not the contextual dock reveal.
-  test('Activity navigation opens its region surface as the page', async () => {
+  test('Activity is absent from palette navigation', async () => {
     await renderCommandPalette();
     open();
     fireEvent.change(screen.getByRole('combobox'), {
       target: { value: 'activity' },
     });
-    // #928: `/activity` is not the only wrong destination any more — the
-    // registry's `route` field now holds the surface's deep link, so a
-    // palette entry that fell through to `navigate(surface.route)` would
-    // reach a real URL and look like it worked. Count the calls across the
-    // click instead of naming one absent path. (Mocks are not auto-cleared
-    // in this suite, so the baseline is read rather than assumed to be 0.)
-    const navigationsBefore = navigateMock.mock.calls.length;
-    fireEvent.click(screen.getByRole('option', { name: /^Activity/ }));
-
-    expect(showSurfacePageMock).toHaveBeenCalledWith('activity');
-    expect(showSurfaceMock).not.toHaveBeenCalled();
-    expect(navigateMock.mock.calls.length).toBe(navigationsBefore);
+    expect(screen.queryByRole('option', { name: /^Activity/ })).toBeNull();
+    expect(showSurfacePageMock).not.toHaveBeenCalled();
   });
 
   test('IME Enter does not run the highlighted command, then plain Enter does', async () => {
@@ -1711,9 +1689,9 @@ describe('CommandPalette plugin commands (#1418/#1419)', () => {
         commands: [
           {
             version: '1.0' as const,
-            id: 'demo.open-activity',
-            title: 'Open Activity (demo)',
-            intent: { kind: 'navigate' as const, surfaceId: 'activity' },
+            id: 'demo.open-home',
+            title: 'Open Home (demo)',
+            intent: { kind: 'navigate' as const, surfaceId: 'agents' },
           },
         ],
         permissions: { granted: [] },
@@ -1721,9 +1699,7 @@ describe('CommandPalette plugin commands (#1418/#1419)', () => {
     ];
     await renderCommandPalette();
     open();
-    fireEvent.click(
-      screen.getByRole('option', { name: /Open Activity \(demo\)/ }),
-    );
+    fireEvent.click(screen.getByRole('option', { name: /Open Home \(demo\)/ }));
     await vi.waitFor(() =>
       expect(pluginCommandRunMock).toHaveBeenCalledTimes(1),
     );
@@ -1736,9 +1712,9 @@ describe('CommandPalette plugin commands (#1418/#1419)', () => {
       },
     );
     try {
-      const applied = apply({ kind: 'navigate', destinationId: 'activity' });
+      const applied = apply({ kind: 'navigate', destinationId: 'home' });
       expect(applied).toBe(true);
-      expect(showSurfacePageMock).toHaveBeenCalledWith('activity');
+      expect(showSurfacePageMock).toHaveBeenCalledWith('home');
       expect(showSurfaceMock).not.toHaveBeenCalled();
       expect(navigateMock).not.toHaveBeenCalled();
     } finally {

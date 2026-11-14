@@ -7,30 +7,45 @@ import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 
 const LAST_VERSION_KEY = 'station.release-notes.last-version';
 
-export function usePostUpdateChangelog(version: string | null) {
+export function usePostUpdateChangelog(
+  version: string | null,
+  serverKey?: string,
+) {
   const { showReleaseNotesAfterUpdate } = useDeviceSettings();
-  const [pendingVersion, setPendingVersion] = useState<string | null>(null);
+  const storageKey = serverKey
+    ? `${LAST_VERSION_KEY}.server:${serverKey}`
+    : LAST_VERSION_KEY;
+  const [pending, setPending] = useState<{
+    key: string;
+    version: string;
+  } | null>(null);
   useEffect(() => {
     if (!version) return;
     const current = clientVersionInHostOrder(version);
     if (!current) return;
     try {
-      const previous = window.localStorage.getItem(LAST_VERSION_KEY);
+      const previous = window.localStorage.getItem(storageKey);
       if (previous === version) return;
       // Record even when disabled, so re-enabling does not replay old upgrades.
-      window.localStorage.setItem(LAST_VERSION_KEY, version);
+      window.localStorage.setItem(storageKey, version);
       const prior = previous && clientVersionInHostOrder(previous);
       if (
         showReleaseNotesAfterUpdate &&
         prior &&
         compareStationReleaseVersions(current, prior) === 1
       ) {
-        setPendingVersion(version);
+        setPending({ key: storageKey, version });
       }
     } catch {
       // Without durable presentation memory, skip automatic interruption.
     }
-  }, [version, showReleaseNotesAfterUpdate]);
-  const dismiss = useCallback(() => setPendingVersion(null), []);
-  return { pendingVersion, dismiss };
+  }, [version, storageKey, showReleaseNotesAfterUpdate]);
+  const dismiss = useCallback(() => setPending(null), []);
+  return {
+    pendingVersion:
+      version && pending?.key === storageKey && pending.version === version
+        ? pending.version
+        : null,
+    dismiss,
+  };
 }

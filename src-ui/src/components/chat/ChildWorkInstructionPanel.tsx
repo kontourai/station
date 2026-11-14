@@ -44,7 +44,6 @@ export function ChildWorkInstructionPanel({
   running,
   name,
   historyAvailable,
-  transcriptOpen = false,
 }: {
   threadId: string;
   childId: string;
@@ -52,7 +51,6 @@ export function ChildWorkInstructionPanel({
   running: boolean;
   name: string;
   historyAvailable: boolean;
-  transcriptOpen?: boolean;
 }) {
   const authority = useAuthorityPersistence();
   const host = useHostRequestAuthorityScope();
@@ -279,47 +277,28 @@ export function ChildWorkInstructionPanel({
       )}
       {entries.length > 0 && (
         <>
-          {transcriptOpen &&
-            entries.some((entry) => entry.delivery === 'delivered') && (
-              <p>
-                Sent instructions may also appear in the engine transcript. Open
-                an instruction to read it here.
-              </p>
-            )}
           <ol>
             {entries.map((entry) => (
               <li key={entry.clientInputId}>
-                {transcriptOpen && entry.delivery === 'delivered' ? (
-                  <details>
-                    <summary>
-                      Sent instruction ·{' '}
-                      {entry.principal?.display ?? 'Sender not recorded'} ·{' '}
-                      {entry.clientOrigin?.reported.surface ??
-                        'Source not recorded'}
-                    </summary>
-                    <p>{entry.text}</p>
-                  </details>
-                ) : (
-                  <>
-                    <p>{entry.text}</p>
-                    <small>
-                      {entry.principal?.display ?? 'Sender not recorded'} ·{' '}
-                      {entry.clientOrigin?.reported.surface ??
-                        'Source not recorded'}{' '}
-                    </small>
-                    <MessageDeliveryNote
-                      variant="inline"
-                      state={
-                        entry.delivery === 'delivered'
-                          ? 'delivered'
-                          : entry.delivery === 'refused'
-                            ? 'not-sent'
-                            : 'unconfirmed'
-                      }
-                      port={recordedDeliveryPort}
-                    />
-                  </>
-                )}
+                <>
+                  <p>{entry.text}</p>
+                  <small>
+                    {entry.principal?.display ?? 'Sender not recorded'} ·{' '}
+                    {entry.clientOrigin?.reported.surface ??
+                      'Source not recorded'}{' '}
+                  </small>
+                  <MessageDeliveryNote
+                    variant="inline"
+                    state={
+                      entry.delivery === 'delivered'
+                        ? 'delivered'
+                        : entry.delivery === 'refused'
+                          ? 'not-sent'
+                          : 'unconfirmed'
+                    }
+                    port={recordedDeliveryPort}
+                  />
+                </>
               </li>
             ))}
           </ol>

@@ -1,0 +1,7 @@
+{
+  "revision": "0f5882949fcf96e48041a2fa362a27f2b194754c",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Added one map entry for docs/reference/station-weight.md; the new link resolves and the surrounding entries are unchanged.","inputs":["docs/README.md"]}
+  ]
+}

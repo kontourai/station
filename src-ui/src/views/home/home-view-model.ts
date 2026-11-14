@@ -1035,12 +1035,53 @@ interface ChatSessionCorrelation {
   updatedAt: string;
 }
 
+/** The server's conversation record for this chat, read as work liveness. */
+function chatServerWorkLive(
+  chat: ChatUIState,
+  sessionId: string,
+): boolean | undefined {
+  const activity = chat.conversationActivity;
+  const childWorkOnOtherExecution =
+    activity?.runningChildWork !== undefined &&
+    chat.conversationId !== activity.conversationId &&
+    activity.currentThreadId !== sessionId &&
+    activity.openTurn === undefined;
+  return childWorkOnOtherExecution ? false : serverWorkLive(chat);
+}
+
+/**
+ * Whether the server reports this conversation's current execution as doing
+ * work: the chat's own copy of the conversation record, or the correlated
+ * session summary (keyed to the conversation's newest execution). A
+ * correlated failure is the server saying the current execution failed, so it
+ * never counts as live here.
+ */
+function serverReportsLiveWork(
+  chat: ChatUIState,
+  sessionId: string,
+  correlated: ChatSessionCorrelation | undefined,
+): boolean {
+  if (correlated?.failed) return false;
+  return (
+    chatServerWorkLive(chat, sessionId) === true ||
+    correlated?.hasActiveTurn === true ||
+    correlated?.hasActiveWork === true
+  );
+}
+
 function chatLifecycleLabel(
   chat: ChatUIState,
   sessionId: string,
   correlated: ChatSessionCorrelation | undefined,
 ): HomeWorkItem['lifecycleLabel'] {
   if (chat.status === 'error' || chat.orchestrationStatus === 'failed') {
+    // An earlier local failure (a send that failed while the server was
+    // restarting, an errored turn on a session a drain replaced) must not
+    // outlive the conversation's current execution. When the server's record
+    // of that execution says work is live (an open turn, or background work
+    // still running) and does not itself say failed, the conversation is
+    // Running — the same answer the server's own label gives.
+    if (serverReportsLiveWork(chat, sessionId, correlated)) return 'Running';
     return 'Failed';
   }
   if (
@@ -1056,13 +1097,7 @@ function chatLifecycleLabel(
   // #2309: the conversation's server record, when there is one, is THE
   // running answer — the same record every device reads. A local `status:
   // 'sending'` counts only inside this composer's unacknowledged send.
-  const activity = chat.conversationActivity;
-  const childWorkOnOtherExecution =
-    activity?.runningChildWork !== undefined &&
-    chat.conversationId !== activity.conversationId &&
-    activity.currentThreadId !== sessionId &&
-    activity.openTurn === undefined;
-  const serverLive = childWorkOnOtherExecution ? false : serverWorkLive(chat);
+  const serverLive = chatServerWorkLive(chat, sessionId);
   if (serverLive === true) return 'Running';
   if (serverLive === undefined && chat.status === 'sending') return 'Running';
   // #765 A2: the server recorded this conversation's current session as

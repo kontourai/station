@@ -79,7 +79,7 @@ _Avoid_: pane, panel, or a placement capability word from the Workspace Pane con
 
 **Surface**:
 A registered shell surface with an ID, presentation metadata and allowed/preferred
-regions. Chat and Activity are examples. Dock regions can retain several surface
+regions. Chat and Agents are examples. Dock regions can retain several surface
 tabs and select one; the main region holds at most one. Instance-keyed surfaces
 such as individual file previews are resolved through the same placement boundary.
 _Avoid_: a navigable destination (the app-shell destination registry); the Kontour Surface
