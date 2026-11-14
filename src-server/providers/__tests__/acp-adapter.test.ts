@@ -18,6 +18,7 @@ import {
   ACP_SESSION_STARTED_FRESH_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import { turnProvenanceEngineLabel } from '@kontourai/station-contracts/turn-provenance';
@@ -3493,14 +3494,49 @@ describe('AcpAdapter', () => {
       });
       const message = (warning as { message: string }).message;
       // The reason is neutral (a passing Google sign-in failure reads the
-      // same), the instructions are said to follow, and the fix is named.
+      // same), said once, and the fix is named.
       expect(message).toContain(
-        'refused to reload this conversation without a saved sign-in method',
+        'refused to reload this conversation without a saved sign-in method, so Station started a new',
       );
+      expect(message.match(/reload this conversation/g)).toHaveLength(1);
       expect(message).toContain('does not have them');
-      expect(message).toContain('instructions again');
       expect(message).toContain('choose its Gemini API key sign-in once');
       expect(message).not.toContain('signs in with an API key');
+      // This start carries no first-turn instructions, so none are promised.
+      expect(message).not.toContain('instructions again');
+      await adapter.stopAll();
+    });
+
+    test('the fresh-start notice promises the instructions again only when the start has some', async () => {
+      withGeminiKey();
+      const { adapter } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          asGemini(proc);
+          proc.loadSessionError = geminiNoSavedSignIn();
+        },
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        ...resumeKiroCursor('thread-gemini-with-instructions'),
+        metadata: {
+          connectionId: 'kiro',
+          // The receipt session-agent-resolution.ts stamps for an Agent
+          // whose prompt rides the first turn.
+          [SESSION_CAPABILITY_DELIVERY_METADATA_KEY]: {
+            systemPrompt: {
+              channel: 'first-turn',
+              firstTurnInstructions: 'Be terse.',
+            },
+          },
+        },
+      });
+      const warning = (await drain(iterator)).find(
+        (event) => event.method === 'runtime.warning',
+      ) as { message: string } | undefined;
+      expect(warning?.message).toContain(
+        "Station sends this chat's instructions again with your next message.",
+      );
       await adapter.stopAll();
     });
 

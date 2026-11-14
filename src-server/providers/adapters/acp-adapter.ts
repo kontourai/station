@@ -1051,6 +1051,30 @@ const ACP_REWIND_LATE_ANSWER_TIMEOUT_MS = 5 * 60_000;
 const ACP_REWIND_TIMED_OUT = Symbol('acp-rewind-timed-out');
 
 /**
+ * Whether this start carries instructions that ride the first turn (the
+ * Agent's prompt or Station's instructions on the first-turn channel), which
+ * orchestration sends again after a fresh start.
+ */
+function startHasFirstTurnInstructions(
+  metadata: Record<string, unknown> | undefined,
+): boolean {
+  const report = metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY] as
+    | {
+        systemPrompt?: { channel?: unknown; firstTurnInstructions?: unknown };
+        stationInstructions?: { channel?: unknown; firstTurnText?: unknown };
+      }
+    | undefined;
+  const text = (value: unknown) =>
+    typeof value === 'string' && value.trim().length > 0;
+  return (
+    (report?.systemPrompt?.channel === 'first-turn' &&
+      text(report.systemPrompt.firstTurnInstructions)) ||
+    (report?.stationInstructions?.channel === 'first-turn' &&
+      text(report.stationInstructions.firstTurnText))
+  );
+}
+
+/**
  * Fails a reattach the engine answered with another session
  * (`acp-reattach-identity.ts`), counted on every reattach path.
  */
@@ -2223,7 +2247,15 @@ export class AcpAdapter implements ProviderAdapterShape {
             method: 'runtime.warning',
             severity: 'warning',
             code: ACP_SESSION_STARTED_FRESH_CODE,
-            message: `${record.engineName} could not reload this conversation (${startedFresh.reason}), so Station started a new ${record.engineName} session. Earlier messages are still shown here, but ${record.engineName} does not have them; Station sends this chat's instructions again with your next message. ${startedFresh.remedy}`,
+            message: [
+              `${record.engineName} ${startedFresh.reason}, so Station started a new ${record.engineName} session. Earlier messages are still shown here, but ${record.engineName} does not have them.`,
+              ...(startHasFirstTurnInstructions(input.metadata)
+                ? [
+                    "Station sends this chat's instructions again with your next message.",
+                  ]
+                : []),
+              startedFresh.remedy,
+            ].join(' '),
             details: { connectionId: config.id },
           });
         }

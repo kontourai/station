@@ -118,8 +118,9 @@ const ACP_REATTACH_NEW_SESSION_ON_REFUSAL: ReadonlyArray<{
     identity: { agentInfoName: 'gemini-cli' },
     refusal: { code: -32000, messagePrefix: 'Authentication required' },
     requiresCredentialEnv: 'GEMINI_API_KEY',
+    // Completes "<engine name> …" in the notice.
     reason:
-      'Gemini CLI refused to reload this conversation without a saved sign-in method',
+      'refused to reload this conversation without a saved sign-in method',
     remedy:
       "To let Gemini CLI reload conversations, choose its Gemini API key sign-in once in this engine's sign-in options. If you sign in with Google, this can also follow a passing Google sign-in failure.",
     observed:
