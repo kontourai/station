@@ -15,6 +15,15 @@ const WORKFLOWS = new Set([
 ]);
 
 const SHA = /^[0-9a-f]{40}$/;
+
+// An obsolete run whose cancellation GitHub has accepted but not yet carried
+// out, or will not accept now. These outcomes leave nothing unsafe behind:
+// no run is cancelled on stale authority, and the next PR: CI event for the
+// branch re-reads every live obsolete run and tries again. They are reported
+// per target so one stuck run cannot stop the pass from reaching the others.
+// Every other error (ambiguous metadata, changed identity, API failure)
+// stays fatal.
+class CancellationNotSettled extends Error {}
 const LIVE_RUN_STATES = new Set([
   'queued',
   'in_progress',
@@ -403,7 +412,7 @@ async function settleObsoleteCancellation(run, pr, number, repository) {
   )
     throw new Error(`Obsolete run ${run.id} has ambiguous runner metadata`);
   if (jobs.some((job) => job.status !== 'completed' && job.runner_id))
-    throw new Error(
+    throw new CancellationNotSettled(
       `Obsolete run ${run.id} still has an assigned runner; force-cancel refused`,
     );
   live = await github(`actions/runs/${run.id}`);
@@ -437,7 +446,7 @@ async function settleObsoleteCancellation(run, pr, number, repository) {
     !sameObsoleteRun(live, run, pr, number, repository) ||
     live.status !== 'completed'
   )
-    throw new Error(
+    throw new CancellationNotSettled(
       `Force cancellation of obsolete run ${run.id} is not terminal`,
     );
   console.log(
@@ -684,6 +693,7 @@ async function main() {
     await retireReplacedGroups(event.workflow_run, repository);
     return;
   }
+  const unsettled = [];
   const numbers = event.pull_request
     ? [event.pull_request.number]
     : (event.workflow_run?.pull_requests ?? []).map((pr) => pr.number);
@@ -741,15 +751,38 @@ async function main() {
         current.head?.repo?.full_name !== repository
       )
         break;
-      await github(`actions/runs/${run.id}/cancel`, {
-        method: 'POST',
-        responseBody: 'none',
-      });
-      console.log(
-        `Requested cancellation of obsolete PR #${number} run ${run.id} (${run.head_sha}); current head ${pr.head.sha}`,
-      );
-      await settleObsoleteCancellation(run, pr, number, repository);
+      try {
+        await requestObsoleteCancellation(run);
+        console.log(
+          `Requested cancellation of obsolete PR #${number} run ${run.id} (${run.head_sha}); current head ${pr.head.sha}`,
+        );
+        await settleObsoleteCancellation(run, pr, number, repository);
+      } catch (error) {
+        if (!(error instanceof CancellationNotSettled)) throw error;
+        unsettled.push(error.message);
+        console.log(`::warning::${error.message}`);
+      }
     }
+  }
+  if (unsettled.length)
+    console.log(
+      `${unsettled.length} obsolete run(s) not yet terminal; the next PR: CI event for the branch retries them:\n${unsettled.join('\n')}`,
+    );
+}
+
+async function requestObsoleteCancellation(run) {
+  const path = `actions/runs/${run.id}/cancel`;
+  try {
+    await github(path, { method: 'POST', responseBody: 'none' });
+  } catch (error) {
+    // GitHub answers 409 when it will not cancel the run in its current
+    // state (observed on runs stuck queued with no jobs). Nothing was
+    // cancelled, so there is nothing to settle.
+    if (error.message === `GitHub POST ${path}: HTTP 409`)
+      throw new CancellationNotSettled(
+        `GitHub refused cancellation of obsolete run ${run.id} (HTTP 409)`,
+      );
+    throw error;
   }
 }
 

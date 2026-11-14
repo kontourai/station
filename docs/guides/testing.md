@@ -784,8 +784,13 @@ supersession still cancels obsolete source runs, including native FIFO
 cancellation request is followed to its observed state. If the same obsolete
 attempt still waits after a bounded settlement check, the controller may issue
 one force-cancel after revalidating the PR and run identities and confirming
-that no unfinished job has an assigned runner. Missing terminal confirmation
-fails the controller; cancellation never becomes source PASS. Same-head
+that no unfinished job has an assigned runner. A run that does not settle in
+the pass (an assigned runner has not yet acted on the cancellation, GitHub
+refuses it with HTTP 409, or a force-cancel is not yet terminal) is reported
+as a warning, and the pass continues to the branch's other obsolete runs; the
+next `PR: CI` event for the branch tries again. Ambiguous job metadata,
+changed identities and any other API failure still fail the controller;
+cancellation never becomes source PASS. Same-head
 duplicates wait rather than cancelling another run's proof. Merge-group, push and manual
 diagnostic jobs use separate source-specific groups. These five PR computation
 slots exclude planners, security checks, platform builds and status publishers;
