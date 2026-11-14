@@ -1,7 +1,0 @@
-{
-  "revision": "f965f7c7c3673e6bfaf958c1d07dd09a3528700e",
-
-  "notes": [
-    {"path":"CONTEXT.md","note":"Checked the context's Task/Session and approval/review/gate distinctions against the new module-map conversation composition. Receiver-owned execution and retained delivery evidence do not become Task completion or evaluated review evidence.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]}
-  ]
-}

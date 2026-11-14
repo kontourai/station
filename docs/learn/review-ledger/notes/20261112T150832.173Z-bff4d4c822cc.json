@@ -1,9 +1,0 @@
-{
-  "revision": "73040cc6109106435800b5a60bf043e35fb1c561",
-
-  "notes": [
-    {"path":"docs/guides/desktop-build.md","note":"Formatter-only change to the cited portability test (biome line wrapping of the new bundle-pack assertions); the assertions and the guide's prune description are unchanged.","inputs":["docs/guides/desktop-build.md","scripts/__tests__/server-build-portability.test.ts"]},
-
-    {"path":"examples/survey-review-workbench/README.md","note":"Formatter-only change to the cited plugin-server test (biome line wrapping of the new policy-id assertion); the assertions and the README's Survey 9 status note are unchanged.","inputs":["examples/survey-review-workbench/README.md","examples/survey-review-workbench/server/__tests__/plugin-server.test.ts"]}
-  ]
-}

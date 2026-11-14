@@ -1,0 +1,47 @@
+{
+  "revision": "7982eca15981ef7a1b38f653f8ecc8dee834c60d",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed removed Home starter cards, manifest primary labels, separate detected artwork with explicit No icon persistence, and route-following default Inbox scope against current service, storage, UI and focused tests. Clean-install browser completion is not established: first-run disclosure was absent before the changed journey.","inputs":["docs/guides/starter-work.md","packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the Inbox scope instructions against registry defaults, navigation-derived effective scope and explicit saved choices; reviewed the retained Project Task and Session entry points after Home starter removal. Focused component and gallery evidence is separate from live clean-install completion.","inputs":["docs/user/getting-started.md","docs/guides/starter-work.md","packages/contracts/src/project.ts","src-server/services/projects/project-service.ts","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/InboxScopeFilter.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Inspected the starting/resuming and mobile header claims against changed shared composer and header callers. Repository labels and tooltips change display only; drafts, sender authority, setup return and target choice still use the documented owners. Inbox caption now fits narrow widths; the control retains its visible words in its accessible name. No new engine or device qualification.","inputs":["docs/design/chat-composer.md","packages/contracts/src/device-settings.ts","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-start/StartMenus.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Bounded delta review: NewChatModal changes only workspace tooltip and repository context labels. Connection detection, setup, authentication, repair and capability passthrough paths remain as documented; historical provider audits retain their dates.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"Added static project identity and active chat captures; inspected selected PNGs. No motion tokens, reduced-motion assertions or animation owner changed, so the motion contract remains accurate. Extra captures do not qualify native-device motion.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed phone Inbox/reader and shared scope-filter section against InboxScopeFilter and mobile header. Default filter follows navigation while saved choices win; this changes neither surface placement nor retained reader state or navigation authority. Existing placement and grouping claims remain accurate.","inputs":["docs/design/placement.md","packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed Project settings delta: detectedIcon is not a saved icon, and choosing No icon sends a clear which persists iconDisabled through the existing Project owner. Device Inbox default changes inside the existing device registry. No new settings tier or policy authority is added.","inputs":["docs/design/settings-architecture.md","src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Bounded registry delta review: inboxScope default changes to current-project; persistence remains device scoped. No feature preview, managed grant, model default, launch admission or telemetry setting changes.","inputs":["docs/design/settings-launch-triage.md","packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Bounded ProjectSettingsView delta review: detected artwork notice and icon choice use existing loaded Project data and saved form. Loading, error, skeleton and settings route owners remain intact; gallery captures are visual evidence only.","inputs":["docs/design/shell-skeletons.md","src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/design/terminal.md","note":"API delta review: new Project display metadata paragraph does not alter terminal routes, shell binding, input, cleanup or authentication. Existing terminal claims remain unchanged; no fresh terminal runtime claim.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Updated Starter clean-install description to match retained real direct-chat Work and removed Home scheduled-check journey. Manifest tier and bucket ownership are unchanged. Executed clean-install spec failed at the earlier first-run disclosure; its completion remains unverified.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"API delta review: repositoryDisplay and derivedIcon are personal operator display fields and are omitted from member projections. No tenant data model, hosted route admission, credential binding or deployment guidance changes.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed changed mobile header and project picker through selected desktop, 390px and 412px captures plus the 320px Inbox state. Existing button, sheet and shared renderer owners remain in use; no target-size floor, threshold or responsive exception changed.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed two successful isolated screenshot runs, nine plus two selected captures, inspected all PNGs, and merged only those baselines. No thresholds or volatile exceptions changed. Mutation campaigns caught default scope, primary identity, byte cap, cached reads, first-candidate stopping, explicit None persistence and rendering assertions; restored focused suites passed. Clean-install failure is retained separately.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Bounded e2e manifest delta review: retired scheduled Home card steps were removed from the clean-install journey; the bucket, tier and primary designation remain. No ownership, acceptance threshold, resource lease or whole-app completion claim is changed.","inputs":["docs/plans/whole-app-ux-campaign.md","docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed additive optional Project display fields and default inboxScope change in their owning contract modules. Helpers remain environment free and consumers use the project subpath; no source/provider authority is moved into contracts.","inputs":["docs/reference/contracts.md","packages/contracts/src/project.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Bounded Project read delta review: optional repositoryDisplay and derivedIcon flow through existing project queries, with unchanged request scope and authority. No SDK endpoint, member projection or exported API entry point is added.","inputs":["docs/reference/sdk.md","src-server/services/projects/project-service.ts","src-ui/src/contexts/ProjectsContext.tsx"]},
+
+    {"path":"docs/reference/shared.md","note":"Updated ProjectConfig and ProjectMetadata display fields, saved iconDisabled behavior and separate bounded derivedIcon to match the contracts, service, route and actual UI fallback consumers. Execution and cross-Station identity rules remain unchanged.","inputs":["docs/reference/shared.md","packages/contracts/src/project.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Bounded screenshots fixture delta review: project identity fields and new captures do not alter telemetry disclosure, activation, aggregation or transport. Captures and fixtures do not establish clean-install disclosure or delivery; the clean-install failure is reported separately.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Inspected manifest delta: only Starter clean-install rationale changes, outside the nine-spec PR browser smoke contract. Existing deterministic smoke selection, retries and assertions remain unchanged; no smoke or live-provider qualification inferred.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed Project icon detection notice and explicit No icon choice with existing form and save owner. Inbox default remains a device preference and explicit choices persist. No settings category, capability grant, policy override or provider default changes.","inputs":["docs/user/settings.md","packages/contracts/src/device-settings.ts","src-ui/src/views/ProjectSettingsView.tsx"]}
+  ]
+}

@@ -99,6 +99,12 @@ const ACP_ENGINE_VARIANTS: ReadonlyArray<{
     identity: { agentInfoName: 'Kiro CLI Agent' },
     observed: 'kiro-cli 2.35.0 `acp --agent-engine v2` (2026-11-13)',
   },
+  {
+    // Grok sends no `agentInfo`; its `initialize` result flags itself.
+    variant: 'grok-build',
+    identity: { initializeMetaFlag: 'grokShell' },
+    observed: 'grok 1.0.77 `agent stdio` (2026-11-13)',
+  },
 ];
 
 export function resolveAcpEngineVariant(

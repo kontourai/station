@@ -1,7 +1,0 @@
-{
-  "revision": "467d00a941aa40676bfc3c293dd538c862bbbbda",
-
-  "notes": [
-    {"path":"docs/reference/usage-telemetry.md","note":"screenshots.spec.ts changed only the telemetry outbox capture's rest step (it now also clears the collapsed dock bar on a phone); this document's claims are unchanged.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
-  ]
-}

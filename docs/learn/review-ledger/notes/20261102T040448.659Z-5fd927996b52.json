@@ -1,7 +1,0 @@
-{
-  "revision": "86fcdc55ba35a9730f1bba26be190cea615f9a6b",
-
-  "notes": [
-    {"path":"docs/guides/browser-workspace.md","note":"Checked annotation and network behavior against Browser pane, picker and network routes; exercised Select and redacted failed Fetch on an isolated Mac Station. Composer delivery, human recording and other platforms remain unverified.","inputs":["docs/guides/browser-workspace.md","packages/contracts/src/workspace-browser-pane.ts","src-server/routes/browser-agent.ts","src-server/routes/browser.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/browser/browser-automation.ts","src-server/services/browser/browser-live-surfaces.ts","src-server/services/browser/browser-service.ts","src-server/services/browser/hosts/chromium-server-host.ts","src-server/tools/station-browser-policy.ts","src-server/tools/station-control-browser-tools.ts","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx","src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts"]}
-  ]
-}

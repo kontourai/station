@@ -1,7 +1,0 @@
-{
-  "revision": "0532a3f4a0df84289eada6cdf15677942c5a2dda",
-
-  "notes": [
-    {"path":"docs/testing/browser-smoke.md","note":"connect-remote-auth-recovery row still describes the journey: the pending Device request assertion now reads the waiting-for-approval status the dialog renders.","inputs":["docs/testing/browser-smoke.md","tests/connect-remote-auth-recovery.spec.ts"]}
-  ]
-}

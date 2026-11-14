@@ -816,8 +816,6 @@
 
     "src-ui/src/components/CommandPalette.tsx",
 
-    "src-ui/src/components/home/StarterWorkCard.tsx",
-
     "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx",
 
     "src-ui/src/components/plugins/plugin-frame-runtime.ts",

@@ -1,7 +1,0 @@
-{
-  "revision": "c3d5d242c7a742e1133a336e347ec863ef990e83",
-
-  "notes": [
-    {"path":"docs/reference/config.md","note":"contracts/config.ts change only: isStoredValue moved here from the server leaf unchanged (null is a decision, blank string is absent), plus hasAppConfigStationDecision (stored value that is not the loader seed). Re-read the settings claims; systemPrompt/templateVariables seed rows and builtinAgentEngineConnectionId null-as-authored-choice match the shared predicate the server and offline CLI now use.","inputs":["docs/reference/config.md","packages/contracts/src/config.ts"]}
-  ]
-}

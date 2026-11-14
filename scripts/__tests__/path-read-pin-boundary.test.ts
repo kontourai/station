@@ -272,6 +272,11 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'src-server/services/acp/__tests__/acp-client-announcements.process.test.ts',
   'src-server/services/acp/__tests__/acp-handshake-facts.test.ts',
   'src-server/services/acp/__tests__/acp-probe-terminal-facts.process.test.ts',
+  // Grok suites read only the scrubbed grok 1.0.77 capture under fixtures/
+  // (test data, excluded from source pins). Their direct adapter, reader and
+  // binding imports select them for changes.
+  'src-server/providers/__tests__/acp-adapter-grok.test.ts',
+  'src-server/providers/__tests__/acp-engine-extension-events.grok.test.ts',
 ]);
 
 /**

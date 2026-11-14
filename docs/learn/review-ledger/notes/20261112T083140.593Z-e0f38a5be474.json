@@ -1,7 +1,0 @@
-{
-  "revision": "a0660d5095e385d42c5b2b7674610898f61a6898",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Added the sentence that every background-task row expands to its full title, status, start/end times, and for a tool its tool name and one-line input summary; traced to backgroundTaskRows.tsx facts list and background-tasks-store.ts foldToolStarted/toolInputSummary. Bounded-cache paragraph unchanged and still accurate.","inputs":["docs/user/getting-started.md","src-ui/src/contexts/background-tasks-store.ts"]}
-  ]
-}

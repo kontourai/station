@@ -231,11 +231,30 @@ export function sessionAttentionKind(
     | 'pendingReview'
     | 'terminalAttribution'
     | 'transitionReason'
-  >,
+  > &
+    Partial<
+      Pick<
+        OrchestrationSessionSummary,
+        'blockingOpenRequestIds' | 'openRequestKinds'
+      >
+    >,
+  answeredRequestIds: readonly string[] = [],
 ): 'approval' | 'answer' | 'interrupted' | 'blocked' | 'waiting' {
   const disposition = sessionAttentionDisposition(session);
   if (disposition.state !== 'awaiting') return 'waiting';
-  if (disposition.via === 'review_pending') return 'approval';
+  if (disposition.via === 'review_pending') {
+    // Runtime retains review_pending (and pendingReview) for forms. Refine
+    // presentation only, per blocking request; unknown kinds stay approval.
+    const blocking = session.blockingOpenRequestIds?.filter(
+      (id) => !answeredRequestIds.includes(id),
+    );
+    if (
+      blocking?.length &&
+      blocking.every((id) => session.openRequestKinds?.[id] === 'input')
+    )
+      return 'answer';
+    return 'approval';
+  }
   if (disposition.via === 'blocked') return 'blocked';
   if (session.transitionReason === 'input_requested') return 'answer';
   if (session.transitionReason === 'runtime_exit') return 'interrupted';
@@ -250,7 +269,7 @@ export function sessionAttentionKind(
  */
 export const SESSION_STATUS_WORDS = {
   approval: 'Needs approval',
-  answer: 'Needs answer',
+  answer: 'Needs input',
   waiting: 'Waiting on you',
   queued: 'Queued to send',
   'delivery-unconfirmed': 'Delivery unconfirmed',

@@ -6,13 +6,9 @@ import type { WorkspaceHomeRoleStatus } from '@kontourai/station-contracts/works
 import { lazy, Suspense } from 'react';
 import { Button } from '../components/Button';
 import { FirstRunHomeChapter } from '../components/first-run/FirstRunHomeChapter';
-import { StarterInspectionCards } from '../components/home/StarterInspectionCards';
-import { StarterScheduledCheckCard } from '../components/home/StarterScheduledCheckCard';
-import { StarterWorkCard } from '../components/home/StarterWorkCard';
 import { PageCalloutStack } from '../components/PageCallout';
 import { SkeletonList } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
-import { useDeviceSettings } from '../contexts/DeviceSettingsContext';
 import type { NavigationView } from '../types';
 import { RequiredSlotHost } from '../workspace-panes/RequiredSlotHost';
 import { WorkspacePaneFrame } from '../workspace-panes/WorkspacePaneFrame';
@@ -81,7 +77,6 @@ export function HomeView({
 }) {
   const model = useHomeViewModel(onNavigate);
   const config = useConfig();
-  const { developerToolsEnabled } = useDeviceSettings();
   const selection = selectClientWorkspacePaneRenderer(
     WORKSPACE_HOME_PANE_DESCRIPTOR,
     {
@@ -188,19 +183,6 @@ export function HomeView({
       </WorkspacePaneFrame>
       <PageCalloutStack>
         <FirstRunHomeChapter intentFirst />
-        {/* Starter Work is a post-onboarding offer.  It reads the same durable
-            first-run decision as the chapter; a cached/default browser flag
-            cannot make a real Task offer appear before setup is complete. */}
-        {config?.firstRun?.status === 'completed' ? <StarterWorkCard /> : null}
-        {/* The developer starters are the same family — same offer shape, same
-            primitive — so they share the stack's rhythm rather than each
-            carrying spacing of their own. */}
-        {config?.firstRun?.status === 'completed' && developerToolsEnabled ? (
-          <>
-            <StarterInspectionCards />
-            <StarterScheduledCheckCard />
-          </>
-        ) : null}
       </PageCalloutStack>
     </section>
   );

@@ -20,8 +20,6 @@
 
     "src-server/security/outside-agent-release-guard.ts",
 
-    "src-server/security/pairing-route-scopes.ts",
-
     "src-server/runtime/bootstrap/runtime-http.ts",
 
     "src-server/services/outside-agent/oauth-store.ts",

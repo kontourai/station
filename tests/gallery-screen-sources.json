@@ -450,6 +450,26 @@
       "src-ui/src/views/project-page/ProjectRoom.tsx",
       "src-ui/src/views/project-page/ProjectRoomChannels.tsx"
     ],
+    "new-chat-dark-phone": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "new-chat-light-phone": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "active-chat-phone": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "detected-project-phone": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "detected-project-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
     "channel-nav-list-dark-desktop": [
       "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
       "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",

@@ -1,7 +1,0 @@
-{
-  "revision": "027d18fb057529e3000267c2c7b193759c83aa47",
-
-  "notes": [
-    {"path":"docs/learn/media/inspect-request.png","note":"Claude session-grant change: orchestration-service.ts now turns a sessionGrantScope 'rule' answer into a one-call accept for adapters that do not declare it, and records no Auto posture for a scoped answer. Viewed the PNG: an inspector showing only Deny and Approve once, with no session choice. This branch does not touch RequestInspectionDialog, and the capture makes no decision, so the changed answer path is not shown.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

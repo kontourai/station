@@ -1,7 +1,0 @@
-{
-  "revision": "0b93fffbca9c3aceb63bdb7e741a7c2fdbcb32fa",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Added the lite-core and Worker receiver paragraph to ProductTelemetryReceiver. Checked against lite-core.ts (shared rules), lite-store.ts/lite-routes.ts/app.ts (now import lite-core; SQL and routes unchanged), and deploy/telemetry-worker/src/receiver.ts (salt table, hourly alarm erasure, insights view). Existing Lite claims re-read against the refactored store: dedupe, finalization jobs, publication freeze and cursors are unchanged.","inputs":["docs/architecture/module-map.md","packages/telemetry-broker/src/app.ts","packages/telemetry-broker/src/lite-routes.ts","packages/telemetry-broker/src/lite-store.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "f43d545ed21daebf853a5483db2c11a205307ee5",
-
-  "notes": [
-    {"path":"docs/learn/media/inspect-request.webm","note":"Checked the capture against this branch's only change to orchestration-service.ts: pendingStationInstructions adds a Feature-Preview-gated Station guidance part to a new Session's first turn. The capture shows the request inspector (tool scope, Request identity, Approve once and Deny) and does not display first-turn composition, so the image and its media.json evidence (historical chrome, no decision made) remain accurate; no recapture needed and image identity is unchanged.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

@@ -711,6 +711,7 @@ function LiveConversationBody({
           ? [
               {
                 requestId: request.approvalId,
+                requestKind: request.requestKind,
                 threadId: request.approvalThreadId,
               },
             ]

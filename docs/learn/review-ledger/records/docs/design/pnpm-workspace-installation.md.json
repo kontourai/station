@@ -64,9 +64,17 @@
 
     "package.json#/packageManager",
 
-    "pnpm-lock.yaml#/packages",
+    "pnpm-lock.yaml#/importers/packages~1monument",
 
-    "pnpm-lock.yaml#/snapshots"
+    "pnpm-lock.yaml#/importers/packages~1supervisor",
+
+    "pnpm-lock.yaml#/importers/packages~1telemetry-broker/dependencies/pg",
+
+    "pnpm-lock.yaml#/importers/packages~1telemetry-broker/devDependencies/@electric-sql~1pglite",
+
+    "pnpm-lock.yaml#/importers/./dependencies/@kontourai~1monument/version",
+
+    "pnpm-lock.yaml#/importers/./devDependencies/@kontourai~1station-supervisor/version"
   ],
 
   "checks": [

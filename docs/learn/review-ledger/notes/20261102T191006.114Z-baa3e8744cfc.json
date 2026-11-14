@@ -1,7 +1,0 @@
-{
-  "revision": "8390e78ac7a0753d429dbaadbc142c41c5d33dbf",
-
-  "notes": [
-    {"path":"src-server/AGENTS.md","note":"Reviewed against the new conflict-deferral paragraph in docs/guides/testing.md: it concerns PR source admission in ci.yml only and does not change anything this document routes to or claims.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]}
-  ]
-}

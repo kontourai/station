@@ -1,7 +1,0 @@
-{
-  "revision": "6f2d42e8e4eeebcb84aded43c377a6464860c05b",
-
-  "notes": [
-    {"path":"docs/design/automations.md","note":"No claim affected: it links notification-delivery.md for delivery channels; the only change there is one sentence on touch swipe-dismiss of transient in-app toasts, which automations.md does not describe.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]}
-  ]
-}

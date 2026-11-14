@@ -1,7 +1,0 @@
-{
-  "revision": "0f5882949fcf96e48041a2fa362a27f2b194754c",
-
-  "notes": [
-    {"path":"src-server/AGENTS.md","note":"Testing guide only gained the station-weight pointer subsection; no server-scope route or claim changed.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]}
-  ]
-}
