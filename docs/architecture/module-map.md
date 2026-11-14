@@ -3039,6 +3039,22 @@ Google/GitHub portal flow with its loopback callback in
 session or probe registry. Its import graph never reaches Station's own
 principals; launch facts are injected at bootstrap.
 
+Remote task engines ([the decision](../decisions/remote-task-engines.md)) send
+work to cloud coding agents.
+[`services/remote-task-engines/service.ts`](../../src-server/services/remote-task-engines/service.ts)
+owns connections, the vendor-naming acknowledgement, the gate (Feature Preview,
+`limits.engines.remoteTasks`, acknowledgement, credential, capability) and every
+vendor call. The credential sits in the engine host-auth vault, one bucket per
+`remote-task-` connection
+([`credentials.ts`](../../src-server/services/remote-task-engines/credentials.ts)).
+Each vendor is a binding in
+[`bindings/`](../../src-server/services/remote-task-engines/bindings/index.ts).
+[`tracker.ts`](../../src-server/services/remote-task-engines/tracker.ts)
+polls active tasks and stores their messages under
+`<home>/remote-task-engines/tasks/`, and
+[`remote-task-engine-routes.ts`](../../src-server/routes/remote-task-engines/remote-task-engine-routes.ts)
+serves them under `/remote-task-engines`.
+
 [Exact-set tests](../../src-shared/__tests__/extension-notification-bindings.test.ts),
 ACP mapper tests and UI handler tests check lookup and current handling.
 Observation and pinned SDK contract tags are evidence pointers, not a fresh provider run.
