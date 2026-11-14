@@ -424,6 +424,59 @@ const SECURITY_SARIF_OUTPUT = `\${{ runner.temp }}/codeql-sarif`;
 const SECURITY_NORMALIZED_SARIF = `\${{ runner.temp }}/codeql-sarif-normalized/javascript.sarif`;
 const SECURITY_ANALYSIS_TIMEOUT_MINUTES = 30;
 /**
+ * CodeQL analyses each landing once, in its merge group. On pull_request_target
+ * it runs only when the base-controlled gate-change job did not positively
+ * answer analyse=false: a merge group runs its candidate's own workflow YAML,
+ * so a pull request touching .github/ must be analysed by base-defined code
+ * before it can be queued. Dropping this guard runs the analysis on every PR
+ * push again; loosening it (always(), or treating a failed classifier as
+ * "skip") lets a workflow change land with no trusted CodeQL verdict.
+ */
+const SECURITY_ANALYSIS_GATE_CHANGE_JOB = 'gate-change';
+const SECURITY_ANALYSIS_CODEQL_GUARD = `\${{ !cancelled() && (github.event_name != 'pull_request_target' || needs.gate-change.result != 'success' || needs.gate-change.outputs.analyse != 'false') }}`;
+const SECURITY_ANALYSIS_CODEQL_GUARD_MESSAGE =
+  'security-analysis CodeQL must keep its exact job guard: run in the merge group, on schedule and on dispatch, and on pull_request_target unless gate-change succeeded with analyse=false';
+const SECURITY_GATE_CHANGE_MESSAGE =
+  'security-analysis gate-change must keep its exact base-controlled, git-only, fail-closed classification';
+const SECURITY_GATE_CHANGE_RUN = `# Full commit history without trees or blobs (a few MB): enough for
+# an exact merge base, with only the .github/ trees fetched lazily.
+# A fork head is fetched by SHA from the base repository too; if that
+# ever fails, the analysis runs.
+classify() {
+  [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || return 10
+  repo="$(mktemp -d)" || return 11
+  git -C "$repo" init -q || return 11
+  git -C "$repo" remote add origin "$REPOSITORY_URL" || return 11
+  git -C "$repo" fetch -q --no-tags --filter=tree:0 origin "$BASE_SHA" "$HEAD_SHA" || return 12
+  [ "$(git -C "$repo" rev-parse --is-shallow-repository)" = false ] || return 13
+  merge_base="$(git -C "$repo" merge-base --all "$BASE_SHA" "$HEAD_SHA")" || return 14
+  [[ "$merge_base" =~ ^[0-9a-f]{40}$ ]] || return 14
+  # Exit 0: no .github/ change; 1: a change; anything else: an error.
+  git -C "$repo" diff --quiet --no-ext-diff "$merge_base" "$HEAD_SHA" -- .github/
+}
+status=0
+classify || status=$?
+analyse=true
+case "$status" in
+  0)
+    analyse=false
+    echo "No .github/ change since the merge base; CodeQL runs in the merge group."
+    ;;
+  1)
+    echo "This pull request changes .github/; running the base-defined CodeQL analysis now."
+    ;;
+  *)
+    echo "::warning::CodeQL gate-change classification failed closed (status $status); running the analysis now."
+    ;;
+esac
+echo "analyse=$analyse" >> "$GITHUB_OUTPUT"`;
+/**
+ * The daily main run that replaced the per-push run. With manual dispatch it
+ * is where a stale baseline entry fails rather than warns, and it uploads the
+ * default-branch TRAP cache that merge groups restore.
+ */
+const SECURITY_ANALYSIS_SCHEDULE_CRON = '11 9 * * *';
+/**
  * The only CodeQL configuration the scan accepts: test code out, nothing else.
  * Exported so the workflow test and the baseline test share one copy.
  */
@@ -574,9 +627,10 @@ if [ "\${#SARIF_FILES[@]}" -ne 1 ]; then
   exit 1
 fi
 node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-normalize.mjs" --input="\${SARIF_FILES[0]}" --output="$CODEQL_NORMALIZED_SARIF"
-# PRs read the baseline from the BASE checkout, so an entry a PR
-# removes is invisible here; warn instead of failing or the baseline
-# could never shrink through a green gate. Push-to-main enforces.
+# Pull requests and merge groups read the baseline from the BASE
+# checkout, so an entry the candidate removes is invisible here;
+# warn instead of failing or the baseline could never shrink
+# through a green gate. The daily run on main enforces.
 STALE_BASELINE_MODE=fail
 if [ "$GITHUB_EVENT_NAME" = "pull_request_target" ] || [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then
   STALE_BASELINE_MODE=warn
@@ -1875,8 +1929,17 @@ function hasExactSecurityAnalysisSteps(job) {
   const [base, setupNode, isolateBasePolicy, candidate, init, analyze, policy] =
     job?.steps ?? [];
   return (
-    hasExactKeys(job, ['name', 'runs-on', 'timeout-minutes', 'steps']) &&
+    hasExactKeys(job, [
+      'name',
+      'needs',
+      'if',
+      'runs-on',
+      'timeout-minutes',
+      'steps',
+    ]) &&
     job?.name === 'CodeQL JavaScript and TypeScript' &&
+    job?.needs === SECURITY_ANALYSIS_GATE_CHANGE_JOB &&
+    job?.if === SECURITY_ANALYSIS_CODEQL_GUARD &&
     job?.['runs-on'] === 'ubuntu-22.04' &&
     job?.['timeout-minutes'] === SECURITY_ANALYSIS_TIMEOUT_MINUTES &&
     (job?.steps?.length ?? 0) === 7 &&
@@ -2027,10 +2090,48 @@ function hasExactDependencyReviewSteps(job) {
   );
 }
 
+/**
+ * The gate-change job runs only git plumbing from this base-controlled YAML:
+ * no action, no checkout of candidate files, no secrets. Its exact script is
+ * pinned because every path through it must end in analyse=true unless the
+ * merge-base diff positively shows no .github/ change.
+ */
+function hasExactSecurityGateChangeJob(job) {
+  const [classify] = job?.steps ?? [];
+  return (
+    hasExactKeys(job, [
+      'name',
+      'if',
+      'runs-on',
+      'timeout-minutes',
+      'outputs',
+      'steps',
+    ]) &&
+    job.name === 'CodeQL gate-change classification' &&
+    job.if === `\${{ github.event_name == 'pull_request_target' }}` &&
+    job['runs-on'] === 'ubuntu-22.04' &&
+    job['timeout-minutes'] === 5 &&
+    hasExactKeys(job.outputs, ['analyse']) &&
+    job.outputs.analyse === `\${{ steps.classify.outputs.analyse }}` &&
+    job.steps.length === 1 &&
+    hasExactKeys(classify, ['id', 'name', 'env', 'run']) &&
+    classify.id === 'classify' &&
+    classify.name === 'Classify workflow changes since the merge base' &&
+    hasExactKeys(classify.env, ['BASE_SHA', 'HEAD_SHA', 'REPOSITORY_URL']) &&
+    classify.env.BASE_SHA === `\${{ github.event.pull_request.base.sha }}` &&
+    classify.env.HEAD_SHA === `\${{ github.event.pull_request.head.sha }}` &&
+    classify.env.REPOSITORY_URL ===
+      `\${{ github.server_url }}/\${{ github.repository }}` &&
+    typeof classify.run === 'string' &&
+    classify.run.trim() === SECURITY_GATE_CHANGE_RUN
+  );
+}
+
 function securityAnalysisTopologyFindings(file, jobs) {
   const findings = [];
   const expectedJobs = new Set([
     SECURITY_ANALYSIS_CODEQL_JOB,
+    SECURITY_ANALYSIS_GATE_CHANGE_JOB,
     DEPENDENCY_REVIEW_JOB,
   ]);
   for (const jobId of expectedJobs) {
@@ -2049,6 +2150,15 @@ function securityAnalysisTopologyFindings(file, jobs) {
         message: 'security-analysis must not add unreviewed jobs',
       });
   }
+  if (
+    Object.hasOwn(jobs, SECURITY_ANALYSIS_CODEQL_JOB) &&
+    jobs[SECURITY_ANALYSIS_CODEQL_JOB]?.if !== SECURITY_ANALYSIS_CODEQL_GUARD
+  )
+    findings.push({
+      file,
+      jobId: SECURITY_ANALYSIS_CODEQL_JOB,
+      message: SECURITY_ANALYSIS_CODEQL_GUARD_MESSAGE,
+    });
   return findings;
 }
 
@@ -2401,12 +2511,15 @@ function hasExactSecurityAnalysisWorkflow(document) {
     ]) &&
     document?.name === 'PR: Security analysis' &&
     hasExactKeys(document?.on, [
-      'push',
       PULL_REQUEST_TARGET,
       MERGE_GROUP,
+      'schedule',
       'workflow_dispatch',
     ]) &&
-    hasExactMainBranchTrigger(document.on.push) &&
+    Array.isArray(document.on.schedule) &&
+    document.on.schedule.length === 1 &&
+    hasExactKeys(document.on.schedule[0], ['cron']) &&
+    document.on.schedule[0].cron === SECURITY_ANALYSIS_SCHEDULE_CRON &&
     hasExactSecurityAnalysisPrTargetTrigger(document) &&
     hasExactMergeGroupTrigger(document) &&
     document.on.workflow_dispatch === null &&
@@ -3308,18 +3421,21 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
         ? hasExactSecurityAnalysisSteps(job)
         : file === SECURITY_ANALYSIS_WORKFLOW && jobId === DEPENDENCY_REVIEW_JOB
           ? hasExactDependencyReviewSteps(job)
-          : file === SECURITY_ANALYSIS_WORKFLOW
-            ? false
-            : file === AGENT_CONTEXT_BUDGET_WORKFLOW
-              ? isExactAgentContextBudgetJob(jobId, job)
-              : isExactMergeQueueRegressionAggregate(file, jobId, job) ||
-                exactDocsGateCall ||
-                exactDeliveryCall ||
-                hasExplicitCheckout(
-                  job,
-                  FAST_CHECKOUT_REPOSITORY,
-                  FAST_CHECKOUT_REF,
-                );
+          : file === SECURITY_ANALYSIS_WORKFLOW &&
+              jobId === SECURITY_ANALYSIS_GATE_CHANGE_JOB
+            ? hasExactSecurityGateChangeJob(job)
+            : file === SECURITY_ANALYSIS_WORKFLOW
+              ? false
+              : file === AGENT_CONTEXT_BUDGET_WORKFLOW
+                ? isExactAgentContextBudgetJob(jobId, job)
+                : isExactMergeQueueRegressionAggregate(file, jobId, job) ||
+                  exactDocsGateCall ||
+                  exactDeliveryCall ||
+                  hasExplicitCheckout(
+                    job,
+                    FAST_CHECKOUT_REPOSITORY,
+                    FAST_CHECKOUT_REF,
+                  );
     if (!hasExactReviewedSteps)
       findings.push({
         file,
@@ -3331,9 +3447,12 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
             : file === SECURITY_ANALYSIS_WORKFLOW &&
                 jobId === DEPENDENCY_REVIEW_JOB
               ? 'dependency-review must retain the exact hosted pull_request_target action-only topology'
-              : file === AGENT_CONTEXT_BUDGET_WORKFLOW
-                ? 'agent-context-budget must keep its exact no-checkout topology: one shell step, no actions, no secrets, contents: read, hosted ubuntu-22.04'
-                : 'base-controlled PR jobs must explicitly check out the pull-request head repository and SHA',
+              : file === SECURITY_ANALYSIS_WORKFLOW &&
+                  jobId === SECURITY_ANALYSIS_GATE_CHANGE_JOB
+                ? SECURITY_GATE_CHANGE_MESSAGE
+                : file === AGENT_CONTEXT_BUDGET_WORKFLOW
+                  ? 'agent-context-budget must keep its exact no-checkout topology: one shell step, no actions, no secrets, contents: read, hosted ubuntu-22.04'
+                  : 'base-controlled PR jobs must explicitly check out the pull-request head repository and SHA',
       });
     const jobWithoutSteps = { ...job, steps: undefined };
     if (containsSecretReference(jobWithoutSteps))

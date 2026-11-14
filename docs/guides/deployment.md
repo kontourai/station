@@ -153,13 +153,13 @@ the container smoke build:
 
 ```bash
 export STATION_RELEASE_SHA="$(git rev-parse HEAD)"
-export STATION_RELEASE_REF=v0.0.0-preview.1
+export STATION_RELEASE_REF=v0.0.0-rc.1
 export STATION_RELEASE_CREATED_AT="$(git show -s --format=%cI HEAD | xargs -I{} node -e 'process.stdout.write(new Date(process.argv[1]).toISOString())' '{}')"
-docker build --pull --tag station-local:preview \
+docker build --pull --tag station-local:rc \
   --build-arg "STATION_RELEASE_SHA=$STATION_RELEASE_SHA" \
   --build-arg "STATION_RELEASE_REF=$STATION_RELEASE_REF" \
   --build-arg "STATION_RELEASE_CREATED_AT=$STATION_RELEASE_CREATED_AT" .
-export STATION_IMAGE=station-local:preview
+export STATION_IMAGE=station-local:rc
 docker compose up -d
 ```
 
