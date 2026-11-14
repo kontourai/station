@@ -1,0 +1,7 @@
+{
+  "revision": "91978da65ff851fbdfa759fc83049406b733445c",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Rechecked against emitter.ts: config reference makes no claim about monitoring tool result fields; nothing affected. Source reading only.","inputs":["docs/reference/config.md","src-server/monitoring/emitter.ts"]}
+  ]
+}

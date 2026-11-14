@@ -55,10 +55,15 @@ describe('#3163 Claude subagent transcript', () => {
     expect(outcome.page.entries[1]).toMatchObject({
       kind: 'tool-call',
       name: 'Agent',
+      toolCallId: 'toolu_012ztKCBZn9mbB8MgGPTuHan',
       input: expect.stringContaining('Reply with exactly INNER DONE'),
     });
     expect(outcome.page.entries[2]).toEqual(
-      expect.objectContaining({ kind: 'tool-result', text: 'INNER DONE' }),
+      expect.objectContaining({
+        kind: 'tool-result',
+        toolCallId: 'toolu_012ztKCBZn9mbB8MgGPTuHan',
+        text: 'INNER DONE',
+      }),
     );
     expect(outcome.page.entries[3]).toMatchObject({
       kind: 'text',

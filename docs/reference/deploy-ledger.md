@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-14T00:16:41Z | nightly-npm | 0.11.0-nightly.20261113.43530636495 | `a5752ec` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43530636495) |
 | 2026-11-13T13:09:17Z | nightly-desktop | 0.1.11-nightly.20261113.1 | `ce3f226` | native cohort final receipt partial | [run](https://github.com/kontourai/station/actions/runs/43418305981) |
 | 2026-11-13T11:53:15Z | nightly-npm | 0.11.0-nightly.20261113.43418305981 | `ce3f226` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43418305981) |
 | 2026-11-13T05:17:58Z | nightly-desktop | 0.1.11-nightly.20261113 | `76c30c3` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43360033137) |
@@ -475,6 +476,43 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-14T00:16:41Z · nightly-npm · 0.11.0-nightly.20261113.43530636495
+
+- Ship SHA: `a5752ec5b31170072dbaabb9744f486d3a551321`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261113.43530636495 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `ce3f226` ([full sha](https://github.com/kontourai/station/commit/ce3f22639a3d22d56250ca6fa2686aa1296a6091)):
+
+**Features**
+
+- [#4904](https://github.com/kontourai/station/pull/4904) feat(chat): open child transcripts in chat and retire Activity
+- [#4879](https://github.com/kontourai/station/pull/4879) feat(ui): add a source by location and show what it provides
+- [#4876](https://github.com/kontourai/station/pull/4876) feat(registry): sources are a location; what they provide is detected from their content
+- [#4870](https://github.com/kontourai/station/pull/4870) feat(desktop): full-bleed desktop icons and a startup cover that matches the in-app splash
+- [#4865](https://github.com/kontourai/station/pull/4865) feat(automations): inbound webhooks and GitHub poll intake through Telltale
+- [#4855](https://github.com/kontourai/station/pull/4855) feat(projects): channels and Task rooms in the sidebar, full-screen channels on phones, and the dock inbox opens stored conversations (#4794, #4795, #4814)
+- [#4850](https://github.com/kontourai/station/pull/4850) feat(automations): agents propose sources and rules, a person confirms (#4830)
+
+**Fixes**
+
+- [#4924](https://github.com/kontourai/station/pull/4924) fix(deps): adopt Flow Agents 11 and Flow 6 together
+- [#4903](https://github.com/kontourai/station/pull/4903) fix(android): prevent startup loops on HTML fallback responses
+- [#4909](https://github.com/kontourai/station/pull/4909) fix: show outstanding branch reviews in delta inspection
+- [#4910](https://github.com/kontourai/station/pull/4910) fix(deps): pin jsdom back to 30 until the UI tests migrate to 31
+
+**Docs**
+
+- [#4902](https://github.com/kontourai/station/pull/4902) docs: state one public promise everywhere and check it
+
+**Other**
+
+- [#4921](https://github.com/kontourai/station/pull/4921) test(desktop): keep relay reuse fixture sockets blocking on accept
+- [#4906](https://github.com/kontourai/station/pull/4906) test(ui): derive AccountEntry Chromium pin from Playwright 1.65
 
 ## 2026-11-13T13:09:17Z · nightly-desktop · 0.1.11-nightly.20261113.1
 

@@ -1,0 +1,7 @@
+{
+  "revision": "2a598b444266e80e5106ec751b8f9ada0ce2af6d",
+
+  "notes": [
+    {"path":"packages/contracts/README.md","note":"Removed retired Activity pane subpaths from the public package inventory; reviewed the current package export map and remaining pane declarations. No runtime grant follows from a descriptor.","inputs":["packages/contracts/README.md","packages/contracts/package.json#/exports","packages/contracts/src/child-work.ts","packages/contracts/src/index.ts"]}
+  ]
+}

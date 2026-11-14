@@ -1,4 +1,3 @@
-import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import type { NavigationView } from '../types';
 
 type ManagementDestinationId =
@@ -7,7 +6,6 @@ type ManagementDestinationId =
   | 'registry'
   | 'connections'
   | 'plugins'
-  | 'activity'
   | 'developer'
   | 'notifications'
   | 'schedule';
@@ -462,41 +460,6 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     keywords: ['feature previews', 'previews', 'experimental'],
     hiddenFromNav: true,
     palette: { order: 75, params: { view: 'feature-previews' } },
-  },
-  {
-    // #928: Activity is a REGION surface — it has no standalone placement and
-    // therefore no route of its own to resolve. `route` still has to be an
-    // absolute Station path (the registry refuses anything else), and the one
-    // honest value is the surface's canonical deep link: minted by the same
-    // `activityDeepLink` builder the server-side producers use, it is where
-    // `/activity` and `/sessions` now redirect and it really does open this
-    // surface. `regionSurface` short-circuits both advertised entry points
-    // (the palette and the sidebar row open it as the page), so the field is
-    // only read when something asks this surface for a path — and what it
-    // hands back has to be one that works.
-    //
-    // No `view`: `view` registers an EXACT route, and Activity no longer has
-    // a view to register. (It would not resolve if it did — `byExactRoute` is
-    // keyed on the raw route string and only ever looked up with a
-    // query-stripped path, so this key could never match. A dead map entry,
-    // not a resolving pathname.) No
-    // `managementViewTypes` either, for the same reason the union no longer
-    // has an `activity` member. `sessions` remains a palette keyword for
-    // muscle memory.
-    id: 'activity',
-    route: activityDeepLink(),
-    regionSurface: 'activity',
-    label: () => 'Activity',
-    keywords: ['activity', 'sessions', 'monitor', 'events'],
-    icon: 'activity',
-    // SHELL-08 / lane 7's open question, decided yes: Activity resolved but
-    // had no sidebar entry, so its only advertised entry point was ⌘K.
-    // #2059 (D3): Home and Activity are the panel's two places, and Activity
-    // is the only one with a row here — Home is `hiddenFromNav` and
-    // `ProjectSidebar` renders it directly.
-    sidebar: { order: 10 },
-    palette: { order: 65 },
-    managementGroup: 'activity',
   },
   {
     // archive#3313: settings-gated ("Enable developer tools", a device

@@ -595,8 +595,9 @@ without retaining a stale continuation-turn row. Context acknowledgement remains
 exact-byte agreement, not evidence that a model remembers the supplied context.
 Scoped runtime facades can resolve metadata, but their provider invocation hooks
 refuse; actual dispatch uses the operation's separately admitted effect path.
-The pinned Flow Agents 9.14.0 controller uses the scoped host for recipient
-identity and discards its runtime; paid and sync launches use the base facade.
+The Flow Agents 11.0.0 controller resolves recipient identity and runtime through
+the supplied recipient binding; paid and sync dispatch retain their separately
+admitted effect path.
 The additional scoped invocation refusals are inspected defenses, not independently
 mutation-proven behavior against a different SDK or a deliberately misusing caller.
 
@@ -1914,7 +1915,7 @@ cause disclosure, while desktop incoming bubbles keep their sender treatment.
 Exact send/receive navigation uses the recorded request key, reads at most
 20 older pages to rule out ambiguity, and focuses a uniquely resolved record.
 Missing, ambiguous and page-limit outcomes remain visible. The public
-`SessionMessageAnchor` travels through the existing region outbox and Activity
+`SessionMessageAnchor` travels through the existing region outbox and Chat
 binding as one consumed intent, with repeat activations keyed by its token.
 Its parser requires a matching Session of 1–512 characters, sent/received
 direction and a request key of 1–128 characters; invalid anchors grant
@@ -2436,8 +2437,15 @@ carrier rebind cannot borrow that acknowledgement. A failed witness projection
 rolls back only that derived update; the observed canonical terminal remains
 independently persistable. These private projections remain in the existing EventStore. A consumed start
 boundary is not a delivery acknowledgement; uncertain or failed seed delivery
-refuses ordinary reuse. Deliberate empty context and the framework's native
-memory companion retain their separate contracts.
+refuses ordinary reuse. A handoff (not a native return) or a plain continuation
+(no deliberate context boundary) whose seed-bearing turn definitively failed or
+was stopped does not strand the conversation: the next ordinary turn starts a
+successor Session with a freshly pinned transcript seed of the whole
+conversation, never the failed Session's native cursor, and a stopped
+redelivery is redelivered the same way. An open or uncertain seed turn, a
+failed boundary seed and a failed fork seed stay refused. These refusals carry the closed
+`conversation-context-unavailable` code. Deliberate empty context and the
+framework's native memory companion retain their separate contracts.
 
 [Saved fork context](../../src-server/services/orchestration/conversation-fork-context.ts)
 is an owner-scoped immutable copy with an independent Conversation identity.
@@ -2738,7 +2746,7 @@ still unqualified.
 
 The personal-host continuation-finalizer route currently refuses, and its
 preview is not offered, until rounds-writer publication exclusion is
-qualified. The installed Flow Agents 9.14.0 contract supplies optional
+qualified. The installed Flow Agents 11.0.0 contract supplies optional
 transaction ownership and authenticates retained winner bytes; the metadata-only
 adapter does not grant provider execution or create a retry authorization.
 
@@ -2794,11 +2802,13 @@ block historical reads or replay. Current operator authority is checked through
 awaits and again before HTTP release. Independent advisory and explicitly selected
 Flow-run topology share this custody. The source owner privately supplies the
 workspace, definition and actor; published Flow rounds own readiness, claims,
-joins and evaluation. Station selects Flow Agents 9.14.0 and Flow 5.4.0.
-The installed rounds module, types and companion recipient/Flow/winner modules
-match the retained 9.14.0 public registry artifact. Earlier independent package
-checks retain their original revisions. Installed-entry, type and persistence/Flow-admission controls
-establish compatibility, not all-writer or funded-journey qualification.
+joins and evaluation. Station selects Flow Agents 11.0.0 and Flow 6.0.0.
+The earlier rounds, recipient, Flow and winner-module artifact comparison remains
+bound to 9.14.0; it does not qualify this upgrade. Inspection of the installed
+11.0.0 source retains the optional transaction owner and winner-byte authentication
+path. Merged-caller execution remains unverified. Earlier installed-entry, type
+and persistence/Flow-admission controls retain their original revisions and
+establish compatibility there, not all-writer or funded-journey qualification.
 Earlier controlled composed consumer suites passed 40 cases at their
 recorded source; positive execution uses a 240-second input. The earlier 120-second
 Flow input exhausted its deadline, so this is functional qualification rather
@@ -5128,10 +5138,10 @@ starts from exact authorized account/Session/correlation identity. The active
 row does not yet have a routing receipt; settlement adds the sealed receipt ID
 before terminal publication. [Tracking helpers](../../src-server/services/operations/action-operation-tracker.ts)
 use stable handoff identities and catch observation-storage failures so those
-failures do not replace the wrapped domain result. The SDK/Activity UI consume
+failures do not replace the wrapped domain result. The SDK/Monitoring UI consume
 these browser-safe records, not the private file store.
 
-The [Activity section](../../src-ui/src/components/action-operations/ActionOperationsSection.tsx)
+The [Monitoring section](../../src-ui/src/components/action-operations/ActionOperationsSection.tsx)
 keeps platform actions separate from filtered sessions: operation records have
 account and optional machine/Session scope, without the Project or client-origin
 attribution those filters need. Its disclosure shows running and attention counts,
@@ -5893,7 +5903,7 @@ JS fixtures do not establish installed-shell qualification.
 [ConversationBody](../../src-ui/src/components/conversation/ConversationBody.tsx),
 [useConversationController](../../src-ui/src/components/conversation/useConversationController.ts)
 and the [transport](../../src-ui/src/components/conversation/conversation-transport.ts)
-own the dock, Activity, attached-session and coding-tab conversation composition.
+own the dock, attached-session and coding-tab conversation composition.
 Record density changes framing; the adapters retain read-only access and explicit
 continuation into an owned child. [SharedTaskHistoryList](../../src-ui/src/components/conversation/SharedTaskHistoryList.tsx)
 receives owner/member/guest history projections and paging ports without changing

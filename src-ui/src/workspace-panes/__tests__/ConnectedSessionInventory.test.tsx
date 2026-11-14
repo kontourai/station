@@ -447,7 +447,7 @@ describe('ConnectedSessionInventory', () => {
     ).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Open session' }));
     expect(onDismiss).toHaveBeenCalledOnce();
-    expect(hooks.showSurface).toHaveBeenCalledWith('activity', {
+    expect(hooks.showSurface).toHaveBeenCalledWith('chat', {
       session: 'session',
     });
   });

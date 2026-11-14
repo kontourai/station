@@ -1,0 +1,7 @@
+{
+  "revision": "79cf30e1630c206a803ad46cd8348ad237e45a16",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Scoped generated-record review at 79cf30e1630c: current JSON entries validate and scripts/deploy-ledger.mjs renders byte-identical Markdown. The latest nightly-desktop entry retains partial-cohort and unknown Android-provider caveats. Flow adoption changes neither ledger content nor its appender. This records the projection and historical record meaning only; no provider availability, publication success or complete deployment inventory was re-verified.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

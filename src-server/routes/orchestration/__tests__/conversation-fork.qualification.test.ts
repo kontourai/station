@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import {
   agentId,
@@ -723,7 +724,18 @@ describe('scripted fork delivery and canonical history qualification', () => {
           )?.session.hasActiveTurn,
         ).toBe(false),
       );
-      if (outcome === 'failed') {
+      if (outcome === 'failed' && mode === 'continuation') {
+        // A plain continuation seed that definitively failed is redelivered:
+        // a fresh successor carries a new seed, never the failed native
+        // thread, instead of every later send being refused.
+        const failedSessionId = f.receiver.turns[1]!.threadId;
+        await f.execute('codex', 'Ordinary follow-up after that failure.');
+        await vi.waitFor(() => expect(f.receiver.turns).toHaveLength(3));
+        expect(f.receiver.turns[2]?.threadId).not.toBe(failedSessionId);
+        expect(f.receiver.turns[2]?.ambientContext).toContain(PARENT_ONLY);
+      } else if (outcome === 'failed') {
+        // A deliberate context boundary's seed stays refused: a plain
+        // successor would not reproduce the boundary's policy.
         await expect(
           f.execute('codex', 'Ordinary follow-up after that failure.'),
         ).rejects.toThrow('Continuation context delivery has not completed.');
@@ -738,6 +750,133 @@ describe('scripted fork delivery and canonical history qualification', () => {
       }
     },
   );
+
+  /** A plain continuation seed that completed, before any follow-up. */
+  async function completedPlainContinuation() {
+    const f = await stoppedNonpersistentFork();
+    await f.execute('codex', 'Continue in a replacement process.');
+    await vi.waitFor(() => expect(f.receiver.turns).toHaveLength(2));
+    const seeded = f.receiver.turns[1]!;
+    expect(seeded.ambientContext).toContain(PARENT_ONLY);
+    await vi.waitFor(async () => {
+      const current = await f.service.readCurrentConversationSession(
+        f.conversationId,
+        authority,
+      );
+      expect(current?.session.threadId).toBe(seeded.threadId);
+      expect(current?.session.hasActiveTurn).toBe(false);
+      expect(
+        f.store.conversationSeedWitness(seeded.threadId, seeded.clientTurnId!),
+      ).toBeDefined();
+    });
+    expect(f.store.conversationStartContext(seeded.threadId)).toBeDefined();
+    expect(
+      f.store.conversationContextBoundaryForSuccessor(seeded.threadId),
+    ).toBeUndefined();
+    return { f, seeded };
+  }
+
+  test('a plain continuation seed whose completion has no delivery witness stays refused, never redelivered', async () => {
+    const { f, seeded } = await completedPlainContinuation();
+    // The turn completed, but nothing proves the exact seed was delivered:
+    // the delivery is uncertain, not failed, so resending could duplicate it.
+    f.store['db']
+      .prepare(
+        'DELETE FROM orchestration_context_seed_witnesses WHERE thread_id = ?',
+      )
+      .run(seeded.threadId);
+    const sessions = f.store.conversationSessions(f.conversationId).length;
+    await expect(
+      f.execute('codex', 'Follow-up after an unwitnessed completion.'),
+    ).rejects.toMatchObject({
+      code: 'conversation-context-unavailable',
+      message: expect.stringContaining(
+        'Continuation context delivery has not completed.',
+      ),
+    });
+    expect(f.receiver.turns).toHaveLength(2);
+    expect(f.store.conversationSessions(f.conversationId)).toHaveLength(
+      sessions,
+    );
+  });
+
+  test('a plain continuation seed with no recorded carrier link stays refused, never redelivered', async () => {
+    const { f, seeded } = await completedPlainContinuation();
+    const unlinked = f.store['db']
+      .prepare(
+        `UPDATE orchestration_events
+         SET payload = json_remove(payload, '$.metadata.conversationStartSeedCarrier')
+         WHERE thread_id = ? AND method = 'session.started'
+           AND json_extract(payload, '$.metadata.conversationStartSeedCarrier') IS NOT NULL`,
+      )
+      .run(seeded.threadId) as { changes: number };
+    expect(unlinked.changes).toBe(1);
+    const sessions = f.store.conversationSessions(f.conversationId).length;
+    await expect(
+      f.execute('codex', 'Follow-up after the carrier link was lost.'),
+    ).rejects.toMatchObject({
+      code: 'conversation-context-unavailable',
+      message: expect.stringContaining(
+        'Continuation context delivery has not completed.',
+      ),
+    });
+    expect(f.receiver.turns).toHaveLength(2);
+    expect(f.store.conversationSessions(f.conversationId)).toHaveLength(
+      sessions,
+    );
+  });
+
+  test('a failed summary-boundary seed stays refused, never redelivered as a plain transcript', async () => {
+    const f = await stoppedNonpersistentFork();
+    const summary = 'SUMMARY-BOUNDARY-ONLY: keep the agreed decision.';
+    const sourceEventId = f.store
+      .listEvents(f.conversationId)
+      .filter((event) => event.payload.method === 'turn.completed')
+      .at(-1)!.id;
+    await f.service.reserveConversationContextBoundary(
+      f.conversationId,
+      authority,
+      {
+        policy: 'summary-next-cold-start',
+        idempotencyKey: 'summary-boundary',
+        expectedCurrentSessionId: f.conversationId,
+        actorId: OWNER,
+        seed: {
+          kind: 'semantic-summary',
+          text: summary,
+          digest: createHash('sha256').update(summary).digest('hex'),
+          sourceSessionId: f.conversationId,
+          sourceEventId,
+          sourceRevision: 'summary-revision-1',
+          model: 'summary-model',
+          generationUsage: { state: 'unknown' },
+        },
+      },
+    );
+    f.receiver.failNextTranscriptSeed = true;
+    await f.execute('codex', 'Continue after the summary boundary.');
+    await vi.waitFor(() => expect(f.receiver.turns).toHaveLength(2));
+    const seeded = f.receiver.turns[1]!;
+    expect(seeded.ambientContext).toContain(summary);
+    expect(seeded.ambientContext).not.toContain(PARENT_ONLY);
+    await vi.waitFor(async () =>
+      expect(
+        (
+          await f.service.readCurrentConversationSession(
+            f.conversationId,
+            authority,
+          )
+        )?.session.hasActiveTurn,
+      ).toBe(false),
+    );
+    expect(
+      f.store.conversationContextBoundaryForSuccessor(seeded.threadId)?.policy,
+    ).toBe('summary-next-cold-start');
+    await expect(
+      f.execute('codex', 'Follow-up after the failed summary seed.'),
+    ).rejects.toThrow('Continuation context delivery has not completed.');
+    expect(f.receiver.turns).toHaveLength(2);
+  });
 
   test('an intervening source append refuses the continuation pin before a replacement starts', async () => {
     const f = await stoppedNonpersistentFork();
