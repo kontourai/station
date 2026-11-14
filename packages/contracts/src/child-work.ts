@@ -176,7 +176,10 @@ export type ChildWorkModelSource =
    * Agent tool's model choice.
    */
   | 'subagent-reply'
-  /** Codex: `model` on the completed `spawnAgent` call that created the child. */
+  /**
+   * The engine's report of the spawn that created the child: Codex's `model`
+   * on the completed `spawnAgent` call, Grok's `model` on `subagent_spawned`.
+   */
   | 'spawn-result'
   /** Codex: `thread.model` on the child thread's own `thread/started`. */
   | 'child-thread';

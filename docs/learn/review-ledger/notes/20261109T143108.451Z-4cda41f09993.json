@@ -1,7 +1,0 @@
-{
-  "revision": "f684f179f8213adb0c571a9e5a99654a8052ce6a",
-
-  "notes": [
-    {"path":".veritas/README.md","note":"Reviewed all 157 lines of the current Veritas integration README against the #4748 workflow and ci-fast-checks-job-graph owner delta at source commit f6e774d737d1ff0b9a307b0ada253f8768193ab7. The pinned actionlint producer is a trusted prerequisite for admitted shards/statics/fork smoke; consumers require producer success and a validated exact artifact id, while required fast-checks aggregation and the statics Veritas/documentation-truth route remain fail-closed. The README describes those existing policy/evidence boundaries accurately without needing a prose or protected-standard change. The actual workflow gate passed and the single post-repair seven-owner run passed 899 tests with no skips; the committed-range code-health gate passed with no new unused exports/types. These are bounded local receipts, not hosted packaged-action/fork-route or all-platform proof. Freshness failed on this missing review; readiness for the committed range has not yet run. Existing classifications, authority settings, historical checks and their limits remain unchanged.","inputs":[".veritas/README.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]}
-  ]
-}

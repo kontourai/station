@@ -27,6 +27,33 @@ import {
 import type { AgentData } from '../contexts/AgentsContext';
 
 describe('new-chat-modal-utils', () => {
+  test('older servers retain repository labels from acquisition provenance in both projections', () => {
+    const project = {
+      slug: 'demo',
+      name: 'Demo',
+      workingDirectory: '/work/demo',
+      repositorySource: {
+        canonicalRemote: 'https://github.com/example/demo.git',
+      },
+    } as any;
+    expect(
+      buildContextOptions([project]).find((option) => option.value === 'demo'),
+    ).toMatchObject({
+      repository: 'example/demo',
+      repositoryRemote: 'https://github.com/example/demo.git',
+    });
+    expect(
+      resolveNewChatWorkspaceHint({
+        agent: undefined,
+        project,
+        acpConnections: [],
+      }),
+    ).toMatchObject({
+      repository: 'example/demo',
+      repositoryRemote: 'https://github.com/example/demo.git',
+    });
+  });
+
   test('scopes pre-session model overrides to context and provider binding', () => {
     const agent = {
       slug: agentId('station'),
@@ -1668,6 +1695,28 @@ describe('new-chat-modal-utils', () => {
    * read back `/private/tmp/s1089-elsewhere` — while this control said
    * "~ (defaults to home)".
    */
+  test('uses verified repository identity in workspace and project-picker labels while retaining the path', () => {
+    const project = {
+      id: 'repository-project',
+      slug: 'repository',
+      name: 'Repository',
+      workingDirectory: '/work/station',
+      repositoryDisplay: 'github.com/kontourai/station',
+    };
+    const hint = resolveNewChatWorkspaceHint({
+      project,
+      agent: undefined,
+      acpConnections: [],
+    });
+    expect(workspaceHintText(hint)).toBe('Runs in kontourai/station');
+    expect(hint).toMatchObject({ path: '/work/station' });
+    expect(buildContextOptions([project])[1]).toMatchObject({
+      repository: 'kontourai/station',
+      repositoryRemote: 'github.com/kontourai/station',
+      workingDirectory: '/work/station',
+    });
+  });
+
   describe('resolveNewChatWorkspaceHint (#1089)', () => {
     const acpConnections = [
       { id: 'oc-elsewhere', cwd: '/tmp/s1089-elsewhere', currentModel: null },

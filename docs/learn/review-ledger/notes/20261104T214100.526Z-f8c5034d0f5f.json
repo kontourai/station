@@ -1,7 +1,0 @@
-{
-  "revision": "4e705a1dceb4e99448faf8b7b7ea62f22f31b51c",
-
-  "notes": [
-    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Added the Coding terminal surface row for tests/terminal-mobile-keyboard.spec.ts (smoke-live) as recorded in tests/e2e-manifest.mjs; the rest of the matrix is unchanged by this manifest edit.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]}
-  ]
-}

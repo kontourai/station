@@ -17113,14 +17113,6 @@
         "count": 1
       }
     },
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx": {
-      "complexity_moderate": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 1
-      }
-    },
     "src-ui/src/components/chat-dock/ChatDockResizeHandle.tsx": {
       "complexity_moderate": {
         "count": 1

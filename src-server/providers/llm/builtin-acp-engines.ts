@@ -312,6 +312,14 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       },
     },
     auth: {
+      // `grok models` states the sign-in first, exit 0 either way (grok
+      // 1.0.77, live: "You are logged in with grok.com." / "You are not
+      // authenticated."). Other output stays unknown.
+      statusCommand: ['grok', 'models'],
+      statusRule: {
+        signedOutText: ['You are not authenticated'],
+        signedInText: ['You are logged in with'],
+      },
       signInHint:
         'Run grok login on the computer Station runs on, or provide an xAI API key.',
       credentialEnvVars: ['XAI_API_KEY'],

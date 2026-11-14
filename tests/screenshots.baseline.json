@@ -2,6 +2,12 @@
   "schemaVersion": 2,
   "screens": [
     {
+      "name": "active-chat-phone",
+      "width": 412,
+      "height": 915,
+      "sha256": "61ada5a062f0cff89ec64fd3f0b1dde91f4cb213201f3888abc398686d5ec7a5"
+    },
+    {
       "name": "agent-editor",
       "width": 1440,
       "height": 900,
@@ -155,7 +161,19 @@
       "name": "desktop-conversation-resync",
       "width": 1440,
       "height": 900,
-      "sha256": "7200caf34343097f82bf3a1df2f9e60e33b9fc88fd2714dcc13db4b1facb38f0"
+      "sha256": "8df7d323e6aba801fd9ab84f993bb864cac314e20753abf157654612f95aeb42"
+    },
+    {
+      "name": "detected-project-desktop",
+      "width": 1440,
+      "height": 900,
+      "sha256": "9923b661722f382ef8d4d411bdad3fc7c845ec3bb37a9e5859d9aef2a2bf2bce"
+    },
+    {
+      "name": "detected-project-phone",
+      "width": 412,
+      "height": 915,
+      "sha256": "33e8c65f457995eaa73a8e8d6d0e06b06b5c62e4bf7942dafba929badc31c44a"
     },
     {
       "name": "developer-telemetry",
@@ -167,7 +185,7 @@
       "name": "home",
       "width": 1440,
       "height": 900,
-      "sha256": "0c17dfae05d469d0f5be72914d2d06e58408d36d94436c08c020e401eeaea34d"
+      "sha256": "2eb0149fbce4692f4481c1cee9bdd8e5304d5c261bb2c973e50323abe25f3089"
     },
     {
       "name": "inventory-drilldown-older-host-dark-desktop",
@@ -257,7 +275,7 @@
       "name": "mobile-chat-dock-header-320",
       "width": 320,
       "height": 568,
-      "sha256": "79ec6f0c8e325003483d9a556a515c6f336cb03725fa65ed82434a799812f9f6"
+      "sha256": "18517dd404a6e13bf58a80e6828af634786b56e37dc0f57db83c49358a3281b4"
     },
     {
       "name": "mobile-connections",
@@ -275,7 +293,7 @@
       "name": "mobile-home",
       "width": 390,
       "height": 844,
-      "sha256": "4c799260d82ceb6710b551d5eea58c6f3478a2ac4be5fdd9dc0cfb8294cca41c"
+      "sha256": "a26177013bad0b4a315ab58a2763176707efab90352e857a72c5dc84b61a44dc"
     },
     {
       "name": "mobile-http-consent-320",
@@ -335,25 +353,37 @@
       "name": "new-chat-dark-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "7a4f3aa05675250948862975098c7bec4449e997d471b5694b09835a54782ca0"
+      "sha256": "734335e8d0c5acc3ddb76120db8482fc08ad9d83c9bda67307075e8ed4a20e0b"
     },
     {
       "name": "new-chat-dark-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "2640f9b53b4ec5b6ae15316f043ef7041162140100e01b49d12e6df42b004ab2"
+      "sha256": "9f8b3fa0b600704017d46dc4cf741cc496327a77d120b36072d8543cf0f61299"
+    },
+    {
+      "name": "new-chat-dark-phone",
+      "width": 412,
+      "height": 915,
+      "sha256": "59883c34686f6f0f16b7dcc1a3849f4c214b43a3483a5038ca7e2c9c11111fbd"
     },
     {
       "name": "new-chat-light-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "1963a3715c5f61e152a14b68b247dc3a4ca6e1385834d6442fb9d92d6550d04a"
+      "sha256": "8597831ad634eec6e47eaed54ce37558e174291798e38e988b25d3c008545621"
     },
     {
       "name": "new-chat-light-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "9fbadfd9929be47d492fd103aa43e1bdf491fdf93ae5d864ecb0af9b2bb9794d"
+      "sha256": "04588ea62f72ef4550d043b42c7a4be2e895c960063e23607ab554d4e1751655"
+    },
+    {
+      "name": "new-chat-light-phone",
+      "width": 412,
+      "height": 915,
+      "sha256": "c72705f2028421699eaf4f32e2e46a9a02edc2ccf1740fb5cadd6f87d4af447e"
     },
     {
       "name": "overlay-add-job-modal",
@@ -389,19 +419,19 @@
       "name": "overlay-dock-project-bound",
       "width": 1440,
       "height": 900,
-      "sha256": "7a4f3aa05675250948862975098c7bec4449e997d471b5694b09835a54782ca0"
+      "sha256": "404a07c1e326950ca78ebe6c829c34eaea6e858b24d8330d0a17e75898d543b9"
     },
     {
       "name": "overlay-dock-project-mismatch",
       "width": 1440,
       "height": 900,
-      "sha256": "1eb3b5876c9adfff1130892eb59122b963e240ab50622230c5c28cd6c304db67"
+      "sha256": "2910dafd8e55ce139adaf07c2198054efa6dc4f5a2eff5ed69a2858dc616e461"
     },
     {
       "name": "overlay-mobile-sheet",
       "width": 390,
       "height": 844,
-      "sha256": "ff7f2a2293d472ab6ab85fdf45ce55b12b733fbec6a0bc4a68f1296e2f757a2b"
+      "sha256": "f63c29c97691e4f672f5ba9fe837c2db2cef7f491ad4b458ba2edaecb3663abb"
     },
     {
       "name": "overlay-new-project-layout-control",

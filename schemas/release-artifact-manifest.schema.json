@@ -147,6 +147,7 @@
             "updater",
             "updater-signature",
             "updater-public-key",
+            "platform-signing-receipt",
             "portable-checksum",
             "release-ring",
             "host-archive",

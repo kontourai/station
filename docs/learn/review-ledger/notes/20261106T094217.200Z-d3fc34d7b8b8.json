@@ -1,7 +1,0 @@
-{
-  "revision": "751143758362625bfedda7d1e910a487884983f5",
-
-  "notes": [
-    {"path":"packaging/node-pty-prebuilds/README.md","note":"Traced managed Linux staging removal/confinement separately from the forced upstream source-build hook: staging removes only the current target; that upstream hook removes the entire prebuild tree before compiling. Other-platform installs retain their upstream path. Reviewed beta.18 patch/pin tuple and actual isolated Linux install/verify evidence with source addon and no degradation; no Linux ARM64 or released-package qualification is claimed.","inputs":["packaging/node-pty-prebuilds/README.md"]}
-  ]
-}

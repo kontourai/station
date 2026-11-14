@@ -1,7 +1,0 @@
-{
-  "revision": "523494108c03f57e072ff23a8afd04562ee4e12c",
-
-  "notes": [
-    {"path":"docs/design/motion.md","note":"Reviewed screenshot-only child-chat additions and breadcrumb CSS. No motion or reduced-motion contract changes; existing motion captures remain unchanged.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]}
-  ]
-}

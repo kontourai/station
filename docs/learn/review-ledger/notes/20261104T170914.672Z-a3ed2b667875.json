@@ -1,7 +1,0 @@
-{
-  "revision": "a27ab85af7f75804c5e04f050675f02cdc80163f",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Cited the final runs: the seven terminal process suites at 3882751 (99 passed, 14 POSIX-only skipped) and the restart journey at 8d1c4f9, which has the same code; rewrapped one line.","inputs":["docs/design/terminal.md"]}
-  ]
-}

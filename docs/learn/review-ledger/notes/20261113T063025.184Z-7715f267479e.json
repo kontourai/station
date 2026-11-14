@@ -1,7 +1,0 @@
-{
-  "revision": "784a70417b09c1f735ab8410f1d19fb0b823f570",
-
-  "notes": [
-    {"path":"docs/guides/starter-work.md","note":"Reviewed the media.json delta: only four Updates capture metadata entries changed (current digest/source revision/evidence after executed recapture). Starter Work launch, task/receipt flow, Project walkthrough captures and their limits remain unchanged. The cited Starter walkthrough entries and media files were not modified; the broad media manifest citation selects this record conservatively. Existing prose remains accurate; no new Starter runtime qualification is claimed.","inputs":["docs/guides/starter-work.md","docs/learn/media.json"]}
-  ]
-}

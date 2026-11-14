@@ -1,7 +1,0 @@
-{
-  "revision": "5f1eae7495c1da2cd13ffdb9055ee36f28d1dc09",
-
-  "notes": [
-    {"path":"scripts/AGENTS.md","note":"Checked against the vitest-resource-manifest change: the new child-process test (station-weight.end-to-end.process.test.ts) is classified in the manifest as this file requires; no claim here changes.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "6d0e351fe3e6213291398ab2ccd9326b1e3ed7b6",
-
-  "notes": [
-    {"path":"docs/user/personal-boards.md","note":"#4688 follow-up: ProjectSidebarBoards no longer reads the request authority scope; the Undo notice's Station scope ([connection, apiBase]) drops a pending Board write on a Station switch. Delete/Move-with-Undo, open-Board-to-Home and rename/promote claims re-checked; unchanged.","inputs":["docs/user/personal-boards.md","src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx"]}
-  ]
-}

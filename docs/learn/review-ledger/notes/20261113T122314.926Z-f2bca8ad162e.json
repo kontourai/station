@@ -1,7 +1,0 @@
-{
-  "revision": "5c3a844955ef18e877ffbf88e37d904204c04010",
-
-  "notes": [
-    {"path":"docs/reference/sdk.md","note":"The provider-failure inventory change only excludes two ACP runtime-warning codes; the SDK's failure-kind projection and its documented codes are unchanged.","inputs":["docs/reference/sdk.md","scripts/__tests__/provider-failure-inventory.test.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "58f1ee21778fead00a0ff18d3530fbcac3641b7e",
-
-  "notes": [
-    {"path":"docs/design/automations.md","note":"Re-checked against this change (the config-load write wording in the confinement preflight / doctor text of cli.md, config.md and approval-posture-server-ordered.md): this document makes no claim about what the config load writes or about the confinement preflight, so nothing here changes.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md"]}
-  ]
-}

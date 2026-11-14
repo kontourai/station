@@ -115,6 +115,11 @@ async function seed(page: import('@playwright/test').Page) {
                     role: 'assistant',
                     text: '## Child review\n\nThe files are ready.',
                   },
+                  {
+                    kind: 'tool-result',
+                    message: 2,
+                    text: '',
+                  },
                 ],
               },
             },
@@ -140,6 +145,16 @@ for (const viewport of [
     }, testInfo) => {
       await page.setViewportSize(viewport);
       await seed(page);
+      await page.route('**/api/me/preferences', (route) =>
+        route.request().method() === 'GET'
+          ? route.fulfill({
+              json: {
+                success: true,
+                data: { schemaVersion: 1, values: { theme } },
+              },
+            })
+          : rejectUnexpectedFixtureRequest(route),
+      );
       await page.addInitScript(
         (value) =>
           localStorage.setItem(
@@ -151,6 +166,7 @@ for (const viewport of [
       const childUrl = `/?dock=open&chat=${parent}&surface=chat&session=${parent}&child=child-review&childTitle=Review+files`;
       await page.goto(childUrl);
       await dismissSetupLauncher(page);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       const log = page.getByRole('log', { name: 'Conversation transcript' });
       const trail = page.getByRole('navigation', { name: 'Chat breadcrumb' });
       await expect(trail).toContainText('Review files');
@@ -161,6 +177,7 @@ for (const viewport of [
         childLog.getByRole('heading', { name: 'Child review' }),
       ).toBeVisible();
       await expect(childLog).toContainText('Read the child files');
+      await expect(childLog).toContainText('Text output unavailable.');
       await page.screenshot({
         path: testInfo.outputPath(`child-chat-${viewport.width}-${theme}.png`),
       });

@@ -1,7 +1,0 @@
-{
-  "revision": "755a7074506829161bb1aa8c9c3a2492120281c1",
-
-  "notes": [
-    {"path":"docs/reference/session-api.md","note":"Reviewed the dedicated five-case start-publication fixture after consolidating the regressions from the broad service suite. It asserts the durable event and recorded owner at accepted return, immediate authorized send, no owner/send authority after an indeterminate timeout, genuine deferred-start fallback under real peer contention, and failed-stop handle visibility without a durable start. Await removal fails the two intended assertions and restoration passes all five. The Session API creation/deferred-start limits remain accurate; provider-turn delivery is not inferred.","inputs":["docs/reference/session-api.md"]}
-  ]
-}

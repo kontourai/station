@@ -287,6 +287,7 @@ export type AcpInboundExtensionRequestHandlerId =
   | 'kiro.user-input'
   | 'kiro.mcp-elicitation'
   | 'kiro.open-external-url'
+  | 'grok.ask-user-question'
   | 'client.terminal-facts';
 
 export interface AcpReviewedInboundExtensionRequest {
@@ -330,6 +331,14 @@ export const REVIEWED_INBOUND_EXTENSION_REQUESTS: readonly AcpReviewedInboundExt
       handler: 'kiro.mcp-elicitation' as const,
       evidence:
         'kirocrew test/fixtures/acp_frames/kas/mcp-elicitation.jsonl (fields nested under params.elicitation)',
+    }),
+    // Grok sends its model's question unasked; a -32601 fails the tool and
+    // the model asks in plain text instead.
+    Object.freeze({
+      method: '_x.ai/ask_user_question',
+      handler: 'grok.ask-user-question' as const,
+      evidence:
+        'grok 1.0.77 live (src-server/services/acp/__tests__/fixtures/grok-1.0.77-session-frames.jsonl, ask-user-question-*): answer `{outcome: accepted, answers: {<question>: [<label>]}}` or `{outcome: cancelled}`',
     }),
     Object.freeze({
       method: '_kiro/openExternalUrl',

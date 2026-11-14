@@ -1,7 +1,0 @@
-{
-  "revision": "a686629c279d6cfb34b2ffa3221ad17dc07b67ec",
-
-  "notes": [
-    {"path":"docs/design/approval-posture-server-ordered.md","note":"Re-read the bubblewrap section of 4.10 against the refactored bubblewrap.ts: bubblewrapArgs now builds the hidden mounts (hiddenMounts) and the read-only denies (deniedMounts) in helpers, in the same order the 'The sandbox' bullet states (read-only root, private /dev and /proc, hidden paths, installs, write grants, .git and engine configuration directories read-only, hidden directories made read-only last) and with the same refusals. No prose change was needed; the Linux kernel legs passed again (46 of 46).","inputs":["docs/design/approval-posture-server-ordered.md","src-server/security/confinement/bubblewrap.ts"]}
-  ]
-}

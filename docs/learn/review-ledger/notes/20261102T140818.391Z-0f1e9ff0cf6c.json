@@ -1,7 +1,0 @@
-{
-  "revision": "91e23d60714badec9d7cafd256a51a237c735ca4",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Follow-up scoped delta: default cascade custody now stays unknown without a runtime binding or explicit adapter observation; delete-time settlement remains conservative. Health maintenance is single-flight and does not hold startup or future health ticks behind adapter Stop. Previous 198-test and eight-mutation receipts predate this follow-up; final guard tests are NOT_ADMITTED under another lane live heavy lock and remain pending.","inputs":["docs/architecture/module-map.md","src-server/runtime/bootstrap/runtime-health.ts","src-server/services/orchestration/__tests__/ownership-cascade-review.test.ts","src-server/services/orchestration/event-store.ts"]}
-  ]
-}

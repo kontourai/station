@@ -1097,6 +1097,81 @@ describe('CI verification workflow contracts', () => {
     expect(containerSmoke).not.toMatch(/^concurrency:/m);
   });
 
+  // The merge queue fast-forwards main to the candidate its merge_group run
+  // verified, so a queue landing's push skipped only the repeat of that
+  // verdict. The push run itself still exists and concludes, because
+  // qualification-after-repair and station-dogfood-reconcile consume a
+  // successful push-event `PR: CI` run for the exact main SHA.
+  it('skips the heavy push lane only on a proven merge-queue verdict for the exact SHA', () => {
+    type Step = {
+      id?: string;
+      if?: string;
+      run?: string;
+      env?: Record<string, string>;
+      'continue-on-error'?: boolean;
+    };
+    const ci = load(workflow('ci.yml')) as {
+      on: Record<string, unknown>;
+      jobs: Record<
+        string,
+        { if?: string; outputs?: Record<string, string>; steps?: Step[] }
+      >;
+    };
+    expect(Object.keys(ci.on)).toContain('push');
+    const classify = ci.jobs.classify;
+    expect(classify.outputs?.heavy).toBe(
+      "${{ steps.merge-group-verdict.outputs.verified == 'true' && 'false' || steps.classify.outputs.heavy }}",
+    );
+    const steps = classify.steps ?? [];
+    const classifyIndex = steps.findIndex((step) => step.id === 'classify');
+    const verdictIndex = steps.findIndex(
+      (step) => step.id === 'merge-group-verdict',
+    );
+    expect(classifyIndex).toBeGreaterThanOrEqual(0);
+    // After the classifier, so a lookup can never prevent classification.
+    expect(verdictIndex).toBeGreaterThan(classifyIndex);
+    const verdict = steps[verdictIndex];
+    // Merge-group and dispatch runs never consult it.
+    expect(verdict.if).toBe("${{ github.event_name == 'push' }}");
+    // A crashed step leaves `verified` unset, which keeps the full lane.
+    expect(verdict['continue-on-error']).toBe(true);
+    expect(verdict.run).toBe('node scripts/ci-merge-group-verdict.mjs');
+    expect(verdict.env).toEqual({
+      GH_TOKEN: '${{ github.token }}',
+      PUSH_BEFORE: '${{ github.event.before }}',
+    });
+
+    const repair = load(workflow('qualification-after-repair.yml')) as {
+      on: { workflow_run: { workflows: string[] } };
+      jobs: { dispatch: { if: string } };
+    };
+    expect(repair.on.workflow_run.workflows).toEqual(['PR: CI']);
+    expect(repair.jobs.dispatch.if).toContain(
+      "github.event.workflow_run.event == 'push'",
+    );
+  });
+
+  it('runs the advisory docs gate on the merge queue instead of repeating it on main pushes', () => {
+    const docsKit = load(workflow('docs-kit.yml')) as {
+      name: string;
+      on: Record<string, unknown>;
+    };
+    expect(Object.keys(docsKit.on).sort()).toEqual([
+      'merge_group',
+      'pull_request_target',
+      'workflow_dispatch',
+    ]);
+    // A future workflow_run consumer of this gate would need its push runs back.
+    const consumers = readWorkflowDocuments().filter(({ document }) => {
+      const on = (
+        document as { on?: { workflow_run?: { workflows?: string[] } } }
+      ).on;
+      return on?.workflow_run?.workflows?.includes(docsKit.name) ?? false;
+    });
+    expect(docsKit.name).toBe('PR: Docs kit');
+    expect(consumers).toEqual([]);
+  });
+
   it('lets the container smoke wait out every desktop-win lease it cannot share the host with', () => {
     // Run 33589882367: the smoke (weight 9 of 10) waited 600s behind the
     // Windows PR floor (weight 5, budgeted 45 min, runs on every PR), timed
@@ -2319,9 +2394,11 @@ describe('CI verification workflow contracts', () => {
         'merge_group:\n    branches: [main]\n    types: [checks_requested]',
       );
     }
+    // The queue's own combined-diff check reads the queue base; the full-diff
+    // classifier no longer runs on merge groups, so it does not.
     expect(ci).toContain(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-      "BEFORE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '0000000000000000000000000000000000000000' }}",
+      "BASE_SHA: ${{ github.event.merge_group.base_sha || github.event.before || 'origin/main' }}",
     );
     expect(ci).toContain(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
@@ -2969,16 +3046,21 @@ describe('CI verification workflow contracts', () => {
     expect(smoke.job['runs-on']).toBe('ubuntu-22.04');
 
     // The part that is allowed to differ, and only in one direction: a
-    // workflow handles merge_group in its BEFORE/AFTER expressions if and
-    // only if it declares the merge_group trigger. That is what makes
+    // classify job handles merge_group in its BEFORE/AFTER expressions if
+    // and only if it can run on merge_group — its workflow declares the
+    // trigger and its job `if` does not skip that event. That is what makes
     // container-smoke's shorter expression correct rather than stale, and it
-    // is also what would catch a merge_group trigger added without the
-    // matching base_sha branch — the actual drift shape here.
-    for (const { name, triggers, step } of [
+    // would catch a merge_group run admitted without the matching base_sha
+    // branch (the actual drift shape here) or a dead branch left behind
+    // when the job stops running there. ci.yml skips classify on merge
+    // groups, whose consumers all admit merge_group by event.
+    for (const { name, triggers, job, step } of [
       { name: 'ci.yml', ...ci },
       { name: 'container-smoke.yml', ...smoke },
     ]) {
-      const declaresMergeGroup = triggers.includes('merge_group');
+      const runsOnMergeGroup =
+        triggers.includes('merge_group') &&
+        !String(job.if ?? '').includes("github.event_name != 'merge_group'");
       const expressions = `${step.env?.BEFORE ?? ''}${step.env?.AFTER ?? ''}`;
       expect(
         expressions,
@@ -2986,9 +3068,14 @@ describe('CI verification workflow contracts', () => {
       ).toContain('github.sha');
       expect(
         expressions.includes('github.event.merge_group'),
-        `${name}: merge_group trigger ${declaresMergeGroup ? 'declared' : 'absent'}, expression ${expressions.includes('github.event.merge_group') ? 'handles' : 'ignores'} it`,
-      ).toBe(declaresMergeGroup);
+        `${name}: classify ${runsOnMergeGroup ? 'runs' : 'never runs'} on merge_group, expression ${expressions.includes('github.event.merge_group') ? 'handles' : 'ignores'} it`,
+      ).toBe(runsOnMergeGroup);
     }
+    expect(ci.triggers).toContain('merge_group');
+    expect(ci.job.if).toContain("github.event_name != 'merge_group'");
+    // Neither copy runs on merge_group now, so their event handling is the
+    // same too.
+    expect(ci.step.env).toEqual(smoke.step.env);
 
     // The guards that read as dead code and are not. Neither workflow
     // declares the event its job-level `if` excludes; the guard is what keeps

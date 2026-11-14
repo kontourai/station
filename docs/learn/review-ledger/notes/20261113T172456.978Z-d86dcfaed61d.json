@@ -1,7 +1,0 @@
-{
-  "revision": "2ec68ac53bbb2d601289d5fe18ad164313c002e1",
-
-  "notes": [
-    {"path":"scripts/AGENTS.md","note":"Re-read 'Reuse scripts/lib/owned-process.mjs for process-tree ownership and bounded output' against owned-process.mjs at this change: only the forceTerminate doc comment changed (calling-context restriction of the strict mode, #4920); the API and behavior are unchanged. No prose change needed.","inputs":["scripts/AGENTS.md","scripts/lib/owned-process.mjs"]}
-  ]
-}
