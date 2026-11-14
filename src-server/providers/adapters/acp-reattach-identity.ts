@@ -46,7 +46,7 @@ const ACP_REATTACHED_SESSION_NAMES: ReadonlyArray<{
  * The id an engine says its reattach answer attached, when its handshake
  * identifies one that names it, or `undefined`.
  */
-export function acpReattachedSessionId(
+function acpReattachedSessionId(
   handshake: AcpIdentityHandshake | null | undefined,
   answer: unknown,
 ): string | undefined {
@@ -151,7 +151,7 @@ export function acpReattachRefusalStartsNewSession(
   return row ? { reason: row.reason, remedy: row.remedy } : undefined;
 }
 
-export class AcpReattachedOtherSessionError extends Error {
+class AcpReattachedOtherSessionError extends Error {
   constructor(
     readonly requestedSessionId: string,
     readonly attachedSessionId: string,
