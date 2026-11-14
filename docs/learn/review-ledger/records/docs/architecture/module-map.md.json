@@ -1740,7 +1740,13 @@
 
     "src-server/services/approvals/guardian-conversation.ts",
 
-    "src-server/services/orchestration/turn-authorship.ts"
+    "src-server/services/orchestration/turn-authorship.ts",
+
+    "src-server/providers/registries/registry-source-detection.ts",
+
+    "src-server/providers/registries/agent-registry-provider.ts",
+
+    "src-server/providers/registries/confined-local-read.ts"
   ],
 
   "checks": [

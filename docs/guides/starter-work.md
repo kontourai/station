@@ -119,7 +119,7 @@ visible. Run `station doctor` for a local diagnosis.
 
 ## Continue an Attached Session
 
-Open the terminal Session in **Activity**, where it reads like any chat, then
+Open the terminal Session from the **inbox**, where it reads like any chat, then
 type a message and press Send. Chat asks once, **Continue here?**,
 and **Continue and send** continues it there with that message.
 Claude and Codex create independent children, so the original terminal Session
@@ -134,12 +134,8 @@ confined to its folder once you confirm that choice, and only in a folder
 inside your home folder that Station allows (see
 [Continue an Attached Session](../user/getting-started.md#continue-an-attached-session)).
 
-Quick review hands its reply to the Chat reader on the same verified Station
-and API; the review does not adopt a Session itself. The reader's pending
-delivery is revoked when that Station, API, thread or mounted lifetime changes.
-A completed response is not permission to open or send in a later view. The
-server's durable continuation and retry identity remain separate from whether
-that particular reader is still allowed to present the result.
+Session links open the Chat reader on the verified Station. Attached continuation
+still asks for confirmation before creating and sending into its continuation.
 
 An attached terminal Session stays read only. The first eligible continuation
 launches the bounded `continue-session` Starter: Station

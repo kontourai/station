@@ -220,7 +220,7 @@ describe('e2e manifest', () => {
       // instance; their only writes are their own browser context's
       // localStorage — the `regionArrangement` device setting and the
       // dock-chrome settings a region write mirrors.
-      'tests/activity-pane.spec.ts': expect.any(String),
+      'tests/child-transcript-chat.spec.ts': expect.any(String),
       'tests/project-architecture.spec.ts': expect.any(String),
       'tests/browser-relay-route-acceptance.spec.ts': expect.any(String),
       'tests/buffered-answer-delivery.spec.ts': expect.any(String),

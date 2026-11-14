@@ -6,14 +6,14 @@
  * path — `RegionShells` → `RegionPaneHost` → `DockShell` → chromeless
  * `WorkspacePaneHost` — against the real region model, navigation and
  * device stores, with only the two pane renderers stubbed (Chat's would
- * mount the whole chat stack; Activity's the whole sessions surface).
+ * mount the whole chat stack; Agents's the whole sessions surface).
  *
  * Every assertion that names a storage key spells the literal out rather
  * than deriving it from the host's constants: the test's job is to notice
  * the constants moving.
  */
 
-import { WORKSPACE_ACTIVITY_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_AGENTS_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-agents-pane';
 import {
   act,
   cleanup,
@@ -39,8 +39,8 @@ import {
   warmRegionHostImports,
 } from './warmRegionHostImports';
 
-vi.mock('../../views/SessionsView', () => ({
-  SessionsView: () => <div data-testid="sessions-view" />,
+vi.mock('../../workspace-panes/AgentsWorkspacePane', () => ({
+  AgentsWorkspacePane: () => <div data-testid="sessions-view" />,
 }));
 /** The open action Chat's pane sees: the region host's own controller. */
 const openProbe = vi.hoisted(() => ({
@@ -198,19 +198,19 @@ function chatDocument(id: string, rootId: string): string {
 }
 
 /**
- * Reverting #2045 (per-occupant shells, Chat on `chat-dock`, Activity in
+ * Reverting #2045 (per-occupant shells, Chat on `chat-dock`, Agents in
  * its own shell with no host) fails this three ways: no `ambient:bottom`
  * document is ever written, no `ambient:right` document is ever written,
- * and the Activity pane does not sit inside a host frame at all.
+ * and the Agents pane does not sit inside a host frame at all.
  */
-test('Activity in `right` and Chat in `bottom` both render through their region hosts and persist per-region documents', async () => {
+test('Agents in `right` and Chat in `bottom` both render through their region hosts and persist per-region documents', async () => {
   renderShells();
   await waitFor(() => expect(model).not.toBeNull());
   await waitFor(() =>
     expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
   );
 
-  act(() => currentModel().placeSurface('activity', 'right'));
+  act(() => currentModel().placeSurface('workspace-agents', 'right'));
   await act(async () => {
     await vi.dynamicImportSettled();
   });
@@ -220,13 +220,13 @@ test('Activity in `right` and Chat in `bottom` both render through their region 
   expect(shells).toHaveLength(2);
   const chatShell = document.querySelector<HTMLElement>('#chat-dock');
   const activityShell = document.querySelector<HTMLElement>(
-    'section[aria-label="Activity"]',
+    'section[aria-label="Agents"]',
   );
   if (!chatShell || !activityShell) throw new Error('both shells must render');
   expect(chatShell.dataset.region).toBe('bottom');
   expect(activityShell.dataset.region).toBe('right');
   // Each pane renders inside ITS region's shell: Chat's occupant inside
-  // `bottom`'s, Activity's sessions surface inside `right`'s, in the shared
+  // `bottom`'s, Agents's sessions surface inside `right`'s, in the shared
   // `.dock-slot__body` scroll container the dock pane wraps it in.
   expect(
     within(chatShell).queryByTestId('ambient-chat-occupant'),
@@ -247,7 +247,7 @@ test('Activity in `right` and Chat in `bottom` both render through their region 
   await waitFor(() =>
     expect(
       storedDocument(RIGHT_KEY)?.instances.map((i) => i.descriptorId),
-    ).toEqual(['pane:builtin:activity']),
+    ).toEqual(['pane:builtin:workspace-agents']),
   );
   expect(storedDocument(BOTTOM_KEY)?.id).toBe('bottom');
   expect(storedDocument(RIGHT_KEY)?.id).toBe('right');
@@ -319,7 +319,7 @@ test('the legacy document is adopted into the region Chat occupies, not into `bo
 
 /**
  * The open path of a region host admits only the panes of surfaces occupying
- * the region: opening Activity's pane into the region Chat holds is refused
+ * the region: opening Agents's pane into the region Chat holds is refused
  * by admission (`reason: 'refused'`, not `no-lease` — the lease is held, as
  * the persisted document proves first), and the region's document does not
  * gain it. Before #2045 only the model-less mount pinned this.
@@ -334,7 +334,7 @@ test('a region host refuses opening a pane of a surface that does not occupy the
 
   let outcome: unknown;
   act(() => {
-    outcome = openProbe.action?.open(WORKSPACE_ACTIVITY_PANE_INSTANCE);
+    outcome = openProbe.action?.open(WORKSPACE_AGENTS_PANE_INSTANCE);
   });
 
   expect(outcome).toEqual({ ok: false, reason: 'refused' });
@@ -371,15 +371,15 @@ test('a region document that already exists is not overwritten by the legacy one
 
 /**
  * A region document persisted while another surface held the region (a
- * swap moved Chat out and Activity in) restores as the CURRENT occupant's
- * baseline: the stale Chat pane is not admitted into Activity's region.
+ * swap moved Chat out and Agents in) restores as the CURRENT occupant's
+ * baseline: the stale Chat pane is not admitted into Agents's region.
  */
 test('a stale region document naming the previous occupant restores as the current occupant', async () => {
   window.localStorage.setItem(RIGHT_KEY, chatDocument('right', 'stale-group'));
 
   renderShells();
   await waitFor(() => expect(model).not.toBeNull());
-  act(() => currentModel().placeSurface('activity', 'right'));
+  act(() => currentModel().placeSurface('workspace-agents', 'right'));
   await act(async () => {
     await vi.dynamicImportSettled();
   });
@@ -388,13 +388,13 @@ test('a stale region document naming the previous occupant restores as the curre
   await waitFor(() =>
     expect(
       storedDocument(RIGHT_KEY)?.instances.map((i) => i.descriptorId),
-    ).toEqual(['pane:builtin:activity']),
+    ).toEqual(['pane:builtin:workspace-agents']),
   );
   expect(storedDocument(RIGHT_KEY)?.root.id).toBe('root');
   expect(document.querySelectorAll('#chat-dock')).toHaveLength(1);
   expect(
     within(
-      document.querySelector<HTMLElement>('section[aria-label="Activity"]')!,
+      document.querySelector<HTMLElement>('section[aria-label="Agents"]')!,
     ).queryByTestId('ambient-chat-occupant'),
   ).toBeNull();
 });
@@ -416,32 +416,32 @@ test('a two-pane region persists both panes with the selected one active and rel
     expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
   );
 
-  act(() => currentModel().placeSurface('activity', 'bottom'));
+  act(() => currentModel().placeSurface('workspace-agents', 'bottom'));
   await act(async () => {
     await vi.dynamicImportSettled();
   });
   await screen.findByTestId('sessions-view');
   expect(currentModel().regions.bottom).toMatchObject({
-    panes: ['chat', 'activity'],
-    occupant: 'activity',
+    panes: ['chat', 'workspace-agents'],
+    occupant: 'workspace-agents',
   });
   // One shell, the region's; the chromeless host shows the selected pane
-  // only, so Chat's occupant is not mounted while Activity is selected.
+  // only, so Chat's occupant is not mounted while Agents is selected.
   expect(document.querySelectorAll('.chat-dock')).toHaveLength(1);
   expect(screen.queryByTestId('ambient-chat-occupant')).toBeNull();
   await waitFor(() =>
     expect(
       storedDocument(BOTTOM_KEY)?.instances.map((i) => i.descriptorId),
-    ).toEqual(['pane:builtin:chat', 'pane:builtin:activity']),
+    ).toEqual(['pane:builtin:chat', 'pane:builtin:workspace-agents']),
   );
   await waitFor(() =>
     expect(
       (storedDocument(BOTTOM_KEY) as { activeInstanceId?: string } | null)
         ?.activeInstanceId,
-    ).toBe('workspace-activity'),
+    ).toBe('workspace-agents'),
   );
 
-  // The model's select reaches the host: Chat's tab shows, Activity's does
+  // The model's select reaches the host: Chat's tab shows, Agents's does
   // not, and the persisted document follows.
   act(() => currentModel().selectPane('bottom', 'chat'));
   await waitFor(() =>
@@ -466,7 +466,7 @@ test('a two-pane region persists both panes with the selected one active and rel
       kind: 'pane-host',
       panes: [
         { kind: 'surface', id: 'chat' },
-        { kind: 'surface', id: 'activity' },
+        { kind: 'surface', id: 'workspace-agents' },
       ],
       selected: 'chat',
     });
@@ -481,7 +481,7 @@ test('a two-pane region persists both panes with the selected one active and rel
   await waitFor(() => expect(model).not.toBeNull());
   await waitFor(() =>
     expect(currentModel().regions.bottom).toMatchObject({
-      panes: ['chat', 'activity'],
+      panes: ['chat', 'workspace-agents'],
       occupant: 'chat',
       visible: true,
     }),
@@ -492,13 +492,13 @@ test('a two-pane region persists both panes with the selected one active and rel
   expect(screen.queryByTestId('sessions-view')).toBeNull();
   expect(
     storedDocument(BOTTOM_KEY)?.instances.map((i) => i.descriptorId),
-  ).toEqual(['pane:builtin:chat', 'pane:builtin:activity']);
+  ).toEqual(['pane:builtin:chat', 'pane:builtin:workspace-agents']);
 });
 
 /**
  * The test the #2045 docblock named as the condition for dropping the
  * host's `occupants.join('+')` key (#2046 2a, decision 4): the pane set of a
- * MOUNTED region changes — Activity joins `right` while it holds Chat, then
+ * MOUNTED region changes — Agents joins `right` while it holds Chat, then
  * Chat leaves for `bottom` (the swap's end state, reached without a swap) —
  * under a stale persisted document, and the controller's authority-
  * fingerprint path alone, no remount, lands the region on its current
@@ -528,9 +528,9 @@ test('a region host follows its pane set through the fingerprint path alone: no 
     expect(storedDocument(RIGHT_KEY)?.root.id).toBe('stale-group'),
   );
 
-  // Activity joins `right`: the fingerprint changes, the host restores the
-  // derived two-pane document with Activity active, and persists it.
-  act(() => currentModel().placeSurface('activity', 'right'));
+  // Agents joins `right`: the fingerprint changes, the host restores the
+  // derived two-pane document with Agents active, and persists it.
+  act(() => currentModel().placeSurface('workspace-agents', 'right'));
   await act(async () => {
     await vi.dynamicImportSettled();
   });
@@ -539,12 +539,12 @@ test('a region host follows its pane set through the fingerprint path alone: no 
   await waitFor(() =>
     expect(
       storedDocument(RIGHT_KEY)?.instances.map((i) => i.descriptorId),
-    ).toEqual(['pane:builtin:chat', 'pane:builtin:activity']),
+    ).toEqual(['pane:builtin:chat', 'pane:builtin:workspace-agents']),
   );
   expect(storedDocument(RIGHT_KEY)?.root.id).toBe('root');
 
   // Chat leaves for `bottom`: `right`'s fingerprint changes again, Chat's
-  // pane is revoked from `right`'s document, and Activity stays selected.
+  // pane is revoked from `right`'s document, and Agents stays selected.
   act(() => currentModel().placeSurface('chat', 'bottom'));
   await waitFor(() =>
     expect(
@@ -553,13 +553,13 @@ test('a region host follows its pane set through the fingerprint path alone: no 
   );
   expect(document.querySelector('[data-region="right"]')).toBe(rightShell);
   expect(currentModel().regions.right).toMatchObject({
-    panes: ['activity'],
-    occupant: 'activity',
+    panes: ['workspace-agents'],
+    occupant: 'workspace-agents',
   });
   await waitFor(() =>
     expect(
       storedDocument(RIGHT_KEY)?.instances.map((i) => i.descriptorId),
-    ).toEqual(['pane:builtin:activity']),
+    ).toEqual(['pane:builtin:workspace-agents']),
   );
   await waitFor(() =>
     expect(
@@ -624,14 +624,14 @@ test('a visible region with no panes renders the chooser, no pane host and no st
 /**
  * #2154 A1, through the shipped path: a fresh home's Right region, opened
  * empty, lists the registry's dock surfaces in its body and choosing
- * Activity places it there as the region's selected tab — the host's
- * document is then derived from the arrangement and Activity's pane
+ * Agents places it there as the region's selected tab — the host's
+ * document is then derived from the arrangement and Agents's pane
  * renders in that shell. No project is bound in this file, so the coding
  * rows list disabled with the reason. Reverting the host's inline chooser
  * to the bare placeholder reds the row lookup; reverting the chooser's
  * `openSurfaceInRegion` to a no-op reds the `panes` assertion.
  */
-test('choosing Activity in an empty Right region places it there and renders it', async () => {
+test('choosing Agents in an empty Right region places it there and renders it', async () => {
   renderShells();
   await waitFor(() =>
     expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
@@ -651,15 +651,7 @@ test('choosing Activity in an empty Right region places it there and renders it'
     within(list)
       .getAllByRole('button')
       .map((row) => row.querySelector('.region-chooser__title')?.textContent),
-  ).toEqual([
-    'Chat',
-    'Activity',
-    'Agents',
-    'Device',
-    'Terminal',
-    'Diff',
-    'Files',
-  ]);
+  ).toEqual(['Chat', 'Agents', 'Device', 'Terminal', 'Diff', 'Files']);
   expect(
     within(list)
       .getByRole('button', {
@@ -668,10 +660,10 @@ test('choosing Activity in an empty Right region places it there and renders it'
       .getAttribute('aria-disabled'),
   ).toBe('true');
 
-  fireEvent.click(within(list).getByRole('button', { name: 'Activity' }));
+  fireEvent.click(within(list).getByRole('button', { name: 'Agents' }));
   expect(currentModel().regions.right).toMatchObject({
-    panes: ['activity'],
-    occupant: 'activity',
+    panes: ['workspace-agents'],
+    occupant: 'workspace-agents',
     visible: true,
   });
   await act(async () => {

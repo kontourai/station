@@ -654,7 +654,11 @@
 
     "src-server/runtime/__tests__/peer-chat-tunnel-boundary.test.ts",
 
-    "src-server/routes/orchestration/worktree-output-settlement.ts"
+    "src-server/routes/orchestration/worktree-output-settlement.ts",
+
+    "src-server/providers/registries/registry-source-detection.ts",
+
+    "src-server/providers/registries/agent-registry-provider.ts"
   ],
 
   "checks": [

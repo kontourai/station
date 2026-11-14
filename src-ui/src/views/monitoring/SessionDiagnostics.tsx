@@ -1,7 +1,5 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
-import { Button } from '../../components/Button';
 import { Empty } from '../../components/state';
-import { useNavigationOptional } from '../../contexts/NavigationContext';
 import { sessionRecency, sessionTitle } from '../../utils/sessionDisplay';
 
 export function SessionDiagnostics({
@@ -11,7 +9,6 @@ export function SessionDiagnostics({
   sessions: OrchestrationSessionSummary[] | undefined;
   readStatus: 'pending' | 'success' | 'error';
 }) {
-  const navigation = useNavigationOptional();
   if (readStatus !== 'success') return null;
   const active = (sessions ?? [])
     .filter(
@@ -35,11 +32,6 @@ export function SessionDiagnostics({
         <p className="developer-tab__hint">
           Current session records, independent of the event time filter.
         </p>
-        {navigation && (
-          <Button size="sm" onClick={() => navigation.navigate('/activity')}>
-            Open Activity
-          </Button>
-        )}
       </div>
       {active.length ? (
         <div className="diagnostic-table-scroll">
@@ -78,12 +70,6 @@ export function SessionDiagnostics({
               ))}
             </tbody>
           </table>
-          {active.length > 50 && (
-            <p>
-              Showing 50 of {active.length} session records. Open Activity for
-              the full inventory.
-            </p>
-          )}
         </div>
       ) : (
         <Empty

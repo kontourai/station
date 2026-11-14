@@ -1,3 +1,4 @@
+import { ChildChatPresentationContext } from '../components/chat-dock/ChildChatNavigationContext';
 /**
  * @vitest-environment jsdom
  */
@@ -114,72 +115,81 @@ function renderHeader(
     extentToggle?: ChatDockMobileExtentToggle | null;
     hasConversation?: boolean;
     inboxActive?: boolean;
+    childTrail?: string;
   } = {},
 ) {
   const onClear = overrides.onClear ?? vi.fn<() => void>();
   renderWithIsolatedConnections(
-    <ChatDockMobileHeader
-      inboxActive={overrides.inboxActive}
-      hasConversation={overrides.hasConversation}
-      extentToggle={overrides.extentToggle}
-      showDrawerToggle={false}
-      showConnection={overrides.showConnection ?? true}
-      sessionTitle="New chat"
-      sessionProjectMismatchLabel={overrides.sessionProjectMismatchLabel}
-      projectScope={
-        overrides.projectScope === null
-          ? undefined
-          : (overrides.projectScope ?? { name: 'Kontour AI', onClear })
+    <ChildChatPresentationContext.Provider
+      value={
+        overrides.childTrail
+          ? { trail: overrides.childTrail, pane: null }
+          : null
       }
-      dockToggle={
-        overrides.dockToggle !== undefined
-          ? overrides.dockToggle
-          : {
-              state: 'open',
-              onExpand: vi.fn(),
-              onCollapse: vi.fn(),
-            }
-      }
-      agentIdentity={
-        overrides.agentIdentity !== undefined
-          ? overrides.agentIdentity
-          : { name: 'Codex', slug: 'codex' }
-      }
-      activeCount={overrides.activeCount ?? 0}
-      unreadCount={overrides.unreadCount ?? 0}
-      inboxTriggerRef={createRef<HTMLButtonElement>()}
-      onToggleInbox={overrides.onToggleInbox ?? vi.fn()}
-      onToggleSidebar={vi.fn()}
-      onDragPointerDown={vi.fn()}
-      onDragClickCapture={vi.fn()}
-      onNewChat={overrides.onNewChat ?? vi.fn()}
-      overflow={{
-        onTurnIntoTask: overrides.onTurnIntoTask,
-        onOpenInventory: overrides.onOpenInventory,
-        onOpenConversation: vi.fn(),
-        onToggleHistory: vi.fn(),
-        onOpenChatSettings: vi.fn(),
-        onOpenProject: overrides.onOpenProject ?? null,
-        openProjectName: overrides.openProjectName ?? null,
-        onOpenProfile: vi.fn(),
-        onOpenAppSettings: vi.fn(),
-        onCollapseDock: vi.fn(),
-        onExpandDock: vi.fn(),
-        onRestoreDock: vi.fn(),
-        isDockMaximized: false,
-        regionPanes: overrides.regionPanes,
-        onSelectRegionPane: overrides.onSelectRegionPane,
-        onOpenBackgroundTasks: overrides.onOpenBackgroundTasks,
-        backgroundTasksRunningCount: overrides.backgroundTasksRunningCount,
-        copyActions: overrides.copyActions,
-        conversationStats: overrides.conversationStats && {
-          agentSlug: 'codex',
-          conversationId: 'c-1',
-          apiBase: 'http://station.test',
-          ...overrides.conversationStats,
-        },
-      }}
-    />,
+    >
+      <ChatDockMobileHeader
+        inboxActive={overrides.inboxActive}
+        hasConversation={overrides.hasConversation}
+        extentToggle={overrides.extentToggle}
+        showDrawerToggle={false}
+        showConnection={overrides.showConnection ?? true}
+        sessionTitle="New chat"
+        sessionProjectMismatchLabel={overrides.sessionProjectMismatchLabel}
+        projectScope={
+          overrides.projectScope === null
+            ? undefined
+            : (overrides.projectScope ?? { name: 'Kontour AI', onClear })
+        }
+        dockToggle={
+          overrides.dockToggle !== undefined
+            ? overrides.dockToggle
+            : {
+                state: 'open',
+                onExpand: vi.fn(),
+                onCollapse: vi.fn(),
+              }
+        }
+        agentIdentity={
+          overrides.agentIdentity !== undefined
+            ? overrides.agentIdentity
+            : { name: 'Codex', slug: 'codex' }
+        }
+        activeCount={overrides.activeCount ?? 0}
+        unreadCount={overrides.unreadCount ?? 0}
+        inboxTriggerRef={createRef<HTMLButtonElement>()}
+        onToggleInbox={overrides.onToggleInbox ?? vi.fn()}
+        onToggleSidebar={vi.fn()}
+        onDragPointerDown={vi.fn()}
+        onDragClickCapture={vi.fn()}
+        onNewChat={overrides.onNewChat ?? vi.fn()}
+        overflow={{
+          onTurnIntoTask: overrides.onTurnIntoTask,
+          onOpenInventory: overrides.onOpenInventory,
+          onOpenConversation: vi.fn(),
+          onToggleHistory: vi.fn(),
+          onOpenChatSettings: vi.fn(),
+          onOpenProject: overrides.onOpenProject ?? null,
+          openProjectName: overrides.openProjectName ?? null,
+          onOpenProfile: vi.fn(),
+          onOpenAppSettings: vi.fn(),
+          onCollapseDock: vi.fn(),
+          onExpandDock: vi.fn(),
+          onRestoreDock: vi.fn(),
+          isDockMaximized: false,
+          regionPanes: overrides.regionPanes,
+          onSelectRegionPane: overrides.onSelectRegionPane,
+          onOpenBackgroundTasks: overrides.onOpenBackgroundTasks,
+          backgroundTasksRunningCount: overrides.backgroundTasksRunningCount,
+          copyActions: overrides.copyActions,
+          conversationStats: overrides.conversationStats && {
+            agentSlug: 'codex',
+            conversationId: 'c-1',
+            apiBase: 'http://station.test',
+            ...overrides.conversationStats,
+          },
+        }}
+      />
+    </ChildChatPresentationContext.Provider>,
     { wrapper: NavigationProvider },
   );
   return onClear;
@@ -649,4 +659,12 @@ describe('first-run bar without a chat (#4404 A44)', () => {
     expect(screen.getByRole('button', { name: 'Back to chat' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
   });
+});
+
+test('Inbox title takes precedence over an open child breadcrumb', () => {
+  renderHeader({ inboxActive: true, childTrail: 'Parent / Child' });
+  expect(
+    screen.getByText('Inbox', { selector: '.chat-dock__mobile-title' }),
+  ).toBeTruthy();
+  expect(screen.queryByText('Parent / Child')).toBeNull();
 });

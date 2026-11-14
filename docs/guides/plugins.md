@@ -569,9 +569,20 @@ Managing connected sources requires the Station operator and an
 `access:manage` credential. Standard paired clients can browse ordinary
 catalog items without gaining host source-management authority.
 
-The Registry's Add marketplace flow connects additional public GitHub Skill
-libraries, local Skill directories and local/HTTPS Station manifests without
-changing `registryUrl`. Sources persist separately, can be refreshed or disabled,
+The Registry's **Add source** flow connects additional sources without
+changing `registryUrl`. A source is a location, with an optional ref for a
+GitHub repository. Station detects what it provides from its content:
+`SKILL.md` packages, a Station manifest's plugins and agents, and a Claude Code
+marketplace index or MCP definitions, which are recognized but not yet
+installable ([decision](../decisions/registry-sources-detected-by-structure.md)). Each
+source under **Manage sources** (opened from the Registry toolbar, so the
+catalog comes first) shows its trust tier
+(Station, Default, Plugin, or Unverified for one a person added), what it was
+detected to provide with counts (a default catalog shows its last count, or
+that it has not been scanned yet), and when it was last read and last changed
+upstream. Sources with the same name are told apart by their location, and a
+source that reads the same repository or folder as another says they overlap.
+Choosing a source keeps it selected across the Registry tabs. Sources persist separately, can be refreshed or disabled,
 and report offline/stale/error status independently. Offline plugin rows retain
 the current installed state from the local Library, even after an update or
 removal; cached catalog metadata cannot declare a package installed. Removing one preserves
@@ -1181,7 +1192,14 @@ module.exports = () => ({
 });
 ```
 
-Alternatively, point `module` at a JSON file and the server auto-wraps it with `JsonManifestRegistryProvider`.
+Alternatively, point `module` at a JSON file and the server auto-wraps it with
+`JsonManifestRegistryProvider`, whose agent view lists only the manifest's
+`type: "agent"` entries. Every registered agent registry is listed: rows carry
+`catalogSourceName`, and an ID that two registries offer is marked
+`ambiguous-source` and refused at install rather than taken from the first. A
+plain-ID install is also refused while any agent registry cannot be read, since
+it might offer the same ID. The same rule holds on the plugin install, preview
+and update paths for an ID that a readable registry offers as an agent.
 
 ### integrationRegistry
 
@@ -2029,7 +2047,7 @@ selector. Grant `agents.invoke` in Library, configure the native model or extern
 engine connection, and make the Agent available in the Project before running it.
 
 The host confirms that a conversation was accepted and offers **Open
-conversation**. If delivery is uncertain, inspect Activity; the host does not
+conversation**. If delivery is uncertain, inspect the Chat inbox; the host does not
 retry a possibly started action. Revoked permissions, changed packages, missing
 Agents, and unavailable execution modes remain visible failures.
 

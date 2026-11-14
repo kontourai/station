@@ -1051,7 +1051,7 @@ describe('linked pull requests', () => {
     expect(row.textContent).toContain('Parser fix');
     showSurfaceStub.mockClear();
     fireEvent.click(row);
-    expect(showSurfaceStub).toHaveBeenCalledWith('activity', {
+    expect(showSurfaceStub).toHaveBeenCalledWith('chat', {
       session: 'thread-1',
     });
   });

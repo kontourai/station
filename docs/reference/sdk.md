@@ -24,6 +24,12 @@ dispatch or publication. This also fences whole-body readers, clones, stream
 readers, iterators, branches and pipes; cancellation remains available after
 retirement. Unscoped calls retain the selected host contract.
 
+Credential recovery ignores successful responses declared as `text/html` or
+`application/xhtml+xml`: a sign-in page or a stale address's HTML fallback
+must not clear a recorded credential rejection or restart authority checks.
+The response remains available to the caller for normal content validation.
+
+
 `dispatchOrchestrationCommandWithReceipt(command, apiBase?, timeoutMs?, options?)`
 accepts `{ requestScope }` as its fourth argument. Pass a captured
 `requestScope` when a command follows a delayed confirmation or Undo window;
@@ -2524,7 +2530,18 @@ request authority remain distinct. `interruptOrchestrationTurn` and
 `dispatchOrchestrationCommand` accepts it in its fourth options argument.
 The runtime-event-content hooks accept `apiBase` and `requestScope` in their
 input. `useChildWorkTranscriptQuery` also accepts `requestScope` in its input
-and the target API base as its second argument. Explicit target reads partition
+and the target API base as its second argument. Its optional `running` input
+refreshes a visible engine transcript every two seconds through React Query.
+The caller supplies current child-work state and stops polling after settlement;
+a changed revision can request the final read. The shell refreshes the parent
+inventory when opening a child reader and derives delegate streaming state from
+the current Session's child-work facts.
+Chat opens engine children with a parent `session` and `child` selector;
+delegates use `childSession` for their own Session thread. `childTitle` labels
+the breadcrumb. These selectors choose a read-only child view and grant no
+additional authority. The pane consumes each child request once and retains
+an already-open parent Chat, including its draft, when the bound parent matches.
+Explicit target reads partition
 cache entries by that target and authority. These options grant no access and
 expose no outbound peer credential.
 
@@ -3357,7 +3374,7 @@ SDK request scope. Source reads and actions require `access:manage` plus the
 Station operator principal; the hooks do not grant that authority.
 `useRegistrySourceActionMutation()` accepts `{action, id?,
 source?}` with `add`, `enable`, `disable`, `remove` or `refresh`; `add` supplies
-`{displayName, adapter, location}`. Mutations invalidate Registry queries.
+`{location, ref?, displayName?}`. Mutations invalidate Registry queries.
 `useRegistrySkillContentQuery(id)` inspects the unchanged opaque catalog
 selection ID and is disabled without an ID. These hooks use the existing
 React Query/request authority rather than a separate marketplace cache.
@@ -3426,7 +3443,9 @@ The server obtains the claim and signing policy from host owners and returns
 `registry-trust-refused` with a closed reason when the review or continuity no
 longer matches. A managed policy's signature requirement instead answers `403`
 with `managed-policy-capability-disabled` and reason
-`managed-signature-required`. See [registry trust policy](../design/registry-trust-policy.md).
+`managed-signature-required`. A plain ID whose agent catalog owner is
+ambiguous or unknown answers `agent-catalog-ambiguous` (409) or
+`agent-catalog-unavailable` (503). See [registry trust policy](../design/registry-trust-policy.md).
 
 `consent` is required (archive#4288). It records the operator's decision from
 the preview they read: the permission set the preview derived, the digest of
@@ -5624,8 +5643,8 @@ The portable client exports `getWorkspacePaneHostActions`,
 Project-bound one-shot ticket, held in memory for 60 seconds. A restart loses
 unused tickets. Execution consumes it before any provider work.
 Do not store or log tickets, and never retry execution automatically. An
-`indeterminate` result means work may have started; use existing Activity and
-conversation evidence to inspect it. An accepted result carries distinct
+`indeterminate` result means work may have started; use the inbox and
+conversation evidence in Chat to inspect it. An accepted result carries distinct
 conversation, execution-session, and provider-turn identities.
 
 For an external client, obtain the Station API credential through the deployment's
@@ -5669,7 +5688,7 @@ export async function runPackageAction(
 Render an `unavailable` reason for the user to resolve, and expose the returned
 Session/conversation identities for an `accepted` result. Treat a thrown catalog
 or preparation error as an unavailable operation; do not downgrade to an ordinary
-chat launch. For `indeterminate`, direct the user to Activity without calling
+chat launch. For `indeterminate`, direct the user to the inbox without calling
 this function again automatically. Catalog availability is a display snapshot;
 preparation and execution repeat authorization against the current installation.
 
