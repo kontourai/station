@@ -860,7 +860,7 @@ on this computer's `PATH`; detection does not mean it is signed in or ready.
 | GitHub Copilot | `copilot --acp` | Agent Client Protocol |
 | Grok Build | `grok agent stdio` | Agent Client Protocol |
 | Mistral Vibe | `vibe-acp` | Agent Client Protocol |
-| Google Antigravity | `agy_acp_server.par` | Agent Client Protocol, macOS only; Google ships the server as a download, so put it on `PATH` yourself |
+| Google Antigravity | `agy acp --process-per-session` | Agent Client Protocol; needs Antigravity CLI 1.5.0 or later, and Station names an older install and says to run `agy update` |
 | Factory Droid | `droid exec --output-format acp-daemon` | Agent Client Protocol |
 | Hermes Agent | `hermes acp` | Agent Client Protocol |
 | pi | `pi-acp` | Agent Client Protocol through the community `pi-acp` bridge, which does not pass Station tool servers and has no model switching |

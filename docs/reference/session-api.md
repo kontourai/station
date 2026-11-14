@@ -1287,7 +1287,9 @@ The remaining controls are defined by
 `src-server/routes/orchestration/orchestration.ts`:
 
 - `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId?, clientInputId }` sends steering
-  input where the engine supports it. An ACP engine without a native steer
+  input where the engine supports it. An ACP engine whose handshake matches a
+  prompt hand-off entry (Antigravity) takes the steer as a second prompt on the
+  running turn, cancelling nothing. Any other ACP engine without a native steer
   method is steered by cancelling and re-prompting the running turn; that
   steer's `turn.started` carries `steerInterruptedRun: true`. A Muse Session
   on `muse serve` steers natively with `turn/steer`; one on the `muse exec`

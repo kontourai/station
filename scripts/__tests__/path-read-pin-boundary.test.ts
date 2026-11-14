@@ -269,6 +269,7 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'src-server/providers/__tests__/acp-kiro-announce.process.test.ts',
   'src-server/providers/__tests__/acp-kiro-parity.process.test.ts',
   'src-server/providers/__tests__/acp-kiro-parity.test.ts',
+  'src-server/providers/__tests__/acp-session-answers.process.test.ts',
   'src-server/services/acp/__tests__/acp-client-announcements.process.test.ts',
   'src-server/services/acp/__tests__/acp-handshake-facts.test.ts',
   'src-server/services/acp/__tests__/acp-probe-terminal-facts.process.test.ts',
@@ -277,6 +278,10 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // binding imports select them for changes.
   'src-server/providers/__tests__/acp-adapter-grok.test.ts',
   'src-server/providers/__tests__/acp-engine-extension-events.grok.test.ts',
+  // The steer suite reads only the scrubbed Antigravity 1.5.8 capture under
+  // services/acp/__tests__/fixtures/ (test data, excluded from source pins).
+  // Its direct acp-steer import selects it for changes.
+  'src-server/providers/__tests__/acp-steer.test.ts',
 ]);
 
 /**

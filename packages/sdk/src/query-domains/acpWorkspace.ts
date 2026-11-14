@@ -106,8 +106,10 @@ export interface ACPConnectionInfo {
     message: string;
     phase: string;
     /**
-     * A failure Station can name (`managed-runtime-not-installed`); a surface
-     * says it in its own words rather than showing the probe's text.
+     * A failure Station can name (`managed-runtime-not-installed`,
+     * `engine-update-required`). A surface says it in its own words rather
+     * than showing the probe's text; for `engine-update-required` the
+     * message is Station's own, from the engine's built-in entry.
      */
     code?: string;
   };
@@ -186,8 +188,10 @@ export interface ACPConnectionProbeStatus {
     message: string;
     phase: string;
     /**
-     * A failure Station can name (`managed-runtime-not-installed`); a surface
-     * says it in its own words rather than showing the probe's text.
+     * A failure Station can name (`managed-runtime-not-installed`,
+     * `engine-update-required`). A surface says it in its own words rather
+     * than showing the probe's text; for `engine-update-required` the
+     * message is Station's own, from the engine's built-in entry.
      */
     code?: string;
   };
