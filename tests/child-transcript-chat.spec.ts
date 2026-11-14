@@ -8,7 +8,6 @@ import {
   dismissSetupLauncher,
   installMockOrchestrationEventWindow,
   installMockOrchestrationSse,
-  openChatRegion,
   seedActiveChats,
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
@@ -152,7 +151,6 @@ for (const viewport of [
       const childUrl = `/?dock=open&chat=${parent}&surface=chat&session=${parent}&child=child-review&childTitle=Review+files`;
       await page.goto(childUrl);
       await dismissSetupLauncher(page);
-      await openChatRegion(page);
       const log = page.getByRole('log', { name: 'Conversation transcript' });
       const trail = page.getByRole('navigation', { name: 'Chat breadcrumb' });
       await expect(trail).toContainText('Review files');
