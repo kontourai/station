@@ -357,9 +357,11 @@ main push, `PR: CI` still runs its classifier, then
 merge-group run for that exact SHA succeeded, its queue base equals the push's
 `before`, and its `fast-checks` and `Merge-queue regression` jobs succeeded.
 Direct or admin pushes, pushes carrying several queue entries, and any API
-error or unexpected response keep the classifier's full lane. A failed,
-refused or unreadable lookup also raises a warning annotation, so a lookup
-that always fails cannot end the saving unnoticed; the `classify` job declares
+error or unexpected response keep the classifier's full lane. Every answer an
+ordinary push cannot produce (a failed, refused or unreadable lookup, a
+truncated listing, an unrecognized queue branch, a missing or duplicated
+required job) also raises a warning annotation, so a condition that repeats on
+every push cannot end the saving unnoticed; the `classify` job declares
 `actions: read` for it rather than relying on the repository being public. The push run
 still concludes, so `Main: Qualify landed repair` and the dogfood reconcile,
 which read a successful push run for the exact main SHA, keep working.
