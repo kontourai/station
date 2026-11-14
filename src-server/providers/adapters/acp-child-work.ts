@@ -482,7 +482,8 @@ function rememberSettledNestedSubagent(
  * settled is not in the roster, so a late result settles nothing.
  */
 export function settleAcpNestedSubagent(
-  update: Record<string, unknown>,
+  // Only the two fields it reads; any `tool_call_update` has this shape.
+  update: { readonly toolCallId?: unknown; readonly status?: unknown },
   ctx: AcpChildWorkContext,
 ): void {
   const roster = ctx.state?.acpNestedSubagents;

@@ -87,9 +87,9 @@ describe('settleAcpNestedSubagentsAtPromptEnd', () => {
         },
         ctx,
       );
+      // The Agent call's `tool_call_update` end, as the settle reads it.
       settleAcpNestedSubagent(
         {
-          sessionUpdate: 'tool_call_update',
           toolCallId: id,
           status: 'completed',
         },

@@ -339,7 +339,7 @@ export function mapAcpSessionUpdate(
       });
       mapEngineToolCallMeta(update, { ...ctx, logger: mapperLogger(ctx) });
       // The end of the Agent call a listed nested subagent runs in ends it.
-      settleAcpNestedSubagent(update as unknown as Record<string, unknown>, {
+      settleAcpNestedSubagent(update, {
         ...ctx,
         logger: mapperLogger(ctx),
       });
