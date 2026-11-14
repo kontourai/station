@@ -407,10 +407,12 @@ jobs:
             echo "verdict=$1" >> "$GITHUB_OUTPUT"
             exit 0
           }
+          # Every git command below ignores refs/replace (it covers what
+          # core.useReplaceRefs=false would, so that is not repeated).
           export GIT_NO_REPLACE_OBJECTS=1
           base_root="$RUNNER_TEMP/gallery-base"
           if [[ "$NODE_BIN" != /* ]] ||
-            ! git -c core.useReplaceRefs=false worktree add --detach "$base_root" "$BASE_SHA" ||
+            ! git worktree add --detach "$base_root" "$BASE_SHA" ||
             [[ "$(git -C "$base_root" rev-parse HEAD)" != "$BASE_SHA" ]] ||
             [[ -n "$(git -C "$base_root" status --porcelain --untracked-files=all)" ]]; then
             echo "::warning::Cannot check out a clean copy of main at ${BASE_SHA}; the failure is not attributed."

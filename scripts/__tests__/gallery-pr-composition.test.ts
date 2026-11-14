@@ -437,12 +437,14 @@ function attributionFixture({
   capture = 'failure',
   diffStatus = 0,
   nodeBin = process.execPath,
+  shimNode = false,
 }: {
   composed: unknown[];
   composedManifest?: string;
   capture?: string;
   diffStatus?: number;
   nodeBin?: string;
+  shimNode?: boolean;
   baseCapture: string | null;
   baseScreens?: string[];
   baseAllowlist?: Record<string, string[]>;
@@ -508,6 +510,22 @@ function attributionFixture({
     ].join('\n'),
   );
   chmodSync(join(bin, 'npm'), 0o755);
+  if (shimNode) {
+    // A `node` on PATH that forges an excuse, as GITHUB_PATH could plant.
+    writeFileSync(
+      join(bin, 'node'),
+      [
+        '#!/usr/bin/env bash',
+        'case " $* " in',
+        "  *' plan '*) echo screens=child-chat-dark-390 ;;",
+        "  *' compare '*) printf 'FORGED\\nverdict=main\\n' ;;",
+        '  *) printf home ;;',
+        'esac',
+        '',
+      ].join('\n'),
+    );
+    chmodSync(join(bin, 'node'), 0o755);
+  }
   const temp = runner();
   const run = () => {
     const result = runStep(
@@ -980,6 +998,81 @@ describe('the base checkout is not what a planted replace ref says', () => {
     writeFileSync(forged, honest);
     fixture.git('add', '.');
     const result = fixture.run();
+    expect(result.out).not.toContain('FORGED');
+    expect(result.output, result.out).toBe('verdict=pr\n');
+  });
+
+  // A hook in the shared .git runs in the new worktree after its checkout.
+  const plantHook = (
+    fixture: ReturnType<typeof attributionFixture>,
+    body: string,
+  ) => {
+    const hooks = join(fixture.root, '.git/hooks');
+    mkdirSync(hooks, { recursive: true });
+    writeFileSync(
+      join(hooks, 'post-checkout'),
+      `#!/usr/bin/env bash\n[[ -n "$PLANTED" ]] && exit 0\nexport PLANTED=1\n${body}\n`,
+    );
+    chmodSync(join(hooks, 'post-checkout'), 0o755);
+    // The shared config is the candidate's to write too; pin it here so a
+    // developer's global hooksPath does not hide the planted hook.
+    fixture.git('config', 'core.hooksPath', hooks);
+  };
+  const honestIsPr = () =>
+    attributionFixture({
+      composed: [failedCapture('child-chat-dark-390'), screen('home')],
+      baseCapture: manifest(
+        [screen('child-chat-dark-390')],
+        ['child-chat-dark-390'],
+      ),
+    });
+  const forger =
+    "console.log(process.argv[2] === 'plan' ? 'screens=child-chat-dark-390' : 'FORGED\\nverdict=main');";
+
+  it('refuses a base checkout a hook rewrote', () => {
+    const fixture = honestIsPr();
+    plantHook(
+      fixture,
+      `printf '%s\\n' "${forger}" > scripts/gallery-main-attribution.mjs`,
+    );
+    const result = fixture.run();
+    expect(result.out).not.toContain('FORGED');
+    expect(result.out).toContain('Cannot check out a clean copy of main');
+    expect(result.output).toBe('verdict=pr\n');
+  });
+
+  it('refuses a base checkout a hook moved to another commit', () => {
+    const fixture = honestIsPr();
+    const forged = join(fixture.root, 'scripts/gallery-main-attribution.mjs');
+    const honest = readFileSync(forged, 'utf8');
+    writeFileSync(forged, `${forger}\n`);
+    fixture.git('add', '.');
+    const forgedCommit = fixture.git(
+      'commit-tree',
+      fixture.git('write-tree'),
+      '-p',
+      fixture.base,
+      '-m',
+      'forged',
+    );
+    writeFileSync(forged, honest);
+    fixture.git('add', '.');
+    plantHook(fixture, `git checkout -q --detach ${forgedCommit}`);
+    const result = fixture.run();
+    expect(result.out).not.toContain('FORGED');
+    expect(result.out).toContain('Cannot check out a clean copy of main');
+    expect(result.output).toBe('verdict=pr\n');
+  });
+
+  it('runs the node resolved before candidate code, not one on PATH', () => {
+    const result = attributionFixture({
+      composed: [failedCapture('child-chat-dark-390'), screen('home')],
+      baseCapture: manifest(
+        [screen('child-chat-dark-390')],
+        ['child-chat-dark-390'],
+      ),
+      shimNode: true,
+    }).run();
     expect(result.out).not.toContain('FORGED');
     expect(result.output, result.out).toBe('verdict=pr\n');
   });

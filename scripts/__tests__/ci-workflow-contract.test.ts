@@ -1866,10 +1866,8 @@ describe('CI verification workflow contracts', () => {
       NODE_BIN: `\${{ steps.compose.outputs.node }}`,
     });
     expect(attribution?.run).toContain('export GIT_NO_REPLACE_OBJECTS=1');
-    expect(attribution?.run).toContain(
-      'git -c core.useReplaceRefs=false worktree add --detach "$base_root" "$BASE_SHA"',
-    );
-    expect(attribution?.run).not.toMatch(/(^|[^_"])node "/m);
+    // gallery-pr-composition.test.ts proves the replace-ref, base-checkout
+    // and absolute-node guards behaviourally.
     // The rule that excuses a failure comes from the base worktree.
     expect(attribution?.run).toContain(
       'attribution="$base_root/scripts/gallery-main-attribution.mjs"',
