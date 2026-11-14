@@ -454,7 +454,7 @@ describe('ChatDockInboxPanel', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'elsewhere title, elsewhere project',
+        name: 'elsewhere title, elsewhere project, Station: Living Room Mac',
       }),
     );
     await waitFor(() =>
