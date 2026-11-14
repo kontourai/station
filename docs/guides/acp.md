@@ -852,6 +852,35 @@ OpenCode runs some code without any permission request, so no approval mode reac
 
 The `build`/`plan` agents are overridden in place rather than given approval copies selected through `session/set_config_option`: OpenCode attaches plan behaviour to the agent named `plan` (its plan-mode reminder, and `plan_exit` switching to the agent named `build`), so a renamed copy would lose plan mode.
 
+#### OpenCode 2 and OpenCode 1
+
+Everything above about how OpenCode is governed over ACP was checked against
+OpenCode 1.18.18 (npm `opencode-ai`). OpenCode 2.x behaves differently, and
+Station reads the binary's `--version` to tell the two apart
+([version probe](../../src-server/providers/adapters/opencode-version-probe.ts)).
+
+- **Approval rules.** Station's check reads 1.x's `opencode debug agent <name>`.
+  2.x has no such subcommand: it exits 1 with "Unknown subcommand", which is the
+  failure reported in #4435. 2.x's `debug agents` (plural) lists each agent's
+  configured rules but not the approvals the person saved. Over ACP, Station
+  therefore does not govern 2.x (ruling R1). A start or takeover that asks for a
+  Station approval mode on 2.x is refused with `acp_approval_governance_refused`,
+  and the reason names the version. Without a Station mode, OpenCode's own
+  approvals apply as before. No launch overlay is built for 2.x.
+- **Steering.** 2.x's `initialize` declares `_meta.steering.supported`, and
+  Station steers it through `_session/steering`
+  ([steer channels](../../src-server/providers/adapters/acp-steer.ts)). 1.x
+  declares nothing and keeps cancel and re-prompt.
+- **Native engine.** With the `opencode-native-engine` Feature Preview on, new
+  chats on an OpenCode connection run on the `opencode` engine. It drives 2.x
+  over its own `opencode serve`, where Station verified the served API, and
+  governs it through the session's permission rules. That path does not
+  need `debug agent`, so it is where #4435 is resolved. 1.x, an unverified 2.x,
+  and every chat while the preview is off still run over ACP. The design,
+  fallback rules and limits are in
+  [the OpenCode native transport decision](../decisions/opencode-native-transport.md).
+  #4435 stays open until this ships.
+
 **Every other ACP engine (`engine`).** Station has no channel into its permission rules. It answers the requests the engine chooses to send, but it cannot make the engine ask for others. Such a connection gets no approval mode: the server sends none, a `setApprovalMode` is refused with "This engine has no approval control.", a carried `approvalMode` is refused as an unsupported option, and the composer's approval control reads "Set by engine" and explains that the engine decides. An engine whose own modes are approval levels (claude-code-acp advertises `default`, `acceptEdits`, `plan`, `auto` and, when allowed, `bypassPermissions`) is changed through its Mode picker; Station does not map those modes onto its own, and a full-access mode is withheld outside a `host` session (#2569).
 
 A permission request belongs to the prompt that raised it. When `session/prompt` settles while one is still open — the turn completed or failed without waiting for the answer — the adapter settles it as `cancelled` (`request.resolved`) before the turn's terminal, the same way an interrupt does, so no approval surface keeps offering a decision nothing will read.

@@ -1,0 +1,277 @@
+---
+status: current
+subject: OpenCode 2.x runs as its own engine over a verified `opencode serve`, with ACP as the fallback, behind a Feature Preview
+decided: 2026-11-14
+evidence:
+  - kind: doc
+    ref: src-server/providers/adapters/opencode-adapter.ts
+  - kind: doc
+    ref: src-server/providers/adapters/opencode-serve-fingerprint.ts
+  - kind: doc
+    ref: src-server/providers/adapters/opencode-serve-client.ts
+  - kind: doc
+    ref: src-server/providers/adapters/opencode-serve-pool.ts
+  - kind: doc
+    ref: src-server/providers/adapters/opencode-serve-session.ts
+  - kind: doc
+    ref: src-server/providers/adapters/opencode-native-mcp.ts
+  - kind: doc
+    ref: src-server/services/acp/opencode-approval-native.ts
+  - kind: doc
+    ref: src-server/security/managed-engine-limits.ts
+  - kind: doc
+    ref: src-server/providers/engine-command-dispatch.ts
+  - kind: doc
+    ref: src-server/providers/__tests__/fixtures/capture-opencode-serve-fixtures.mjs
+  - kind: doc
+    ref: src-server/providers/__tests__/fixtures/opencode-serve-2.3.0-openapi.json
+  - kind: doc
+    ref: src-server/providers/__tests__/opencode-serve-fixtures.test.ts
+  - kind: doc
+    ref: src-server/providers/__tests__/opencode-adapter.replay.test.ts
+  - kind: doc
+    ref: src-server/providers/__tests__/opencode-identity-policy.test.ts
+  - kind: issue
+    ref: https://github.com/kontourai/station/issues/4435
+---
+
+# OpenCode native transport
+
+## Decision
+
+OpenCode becomes its own engine, `opencode`
+([`OpenCodeAdapter`](../../src-server/providers/adapters/opencode-adapter.ts)),
+behind the off-by-default `opencode-native-engine` Feature Preview. It picks a
+transport for each session when the session starts or resumes:
+
+- **Native**, for OpenCode 2.x: Station starts `opencode serve` and drives it
+  over HTTP and its SSE event feed
+  ([session](../../src-server/providers/adapters/opencode-serve-session.ts)).
+- **ACP**, for everything else, through an unregistered `AcpAdapter` the
+  OpenCode adapter owns under the `opencode` id. That covers OpenCode 1.x (npm
+  `opencode-ai`), which stays ACP-only, a 2.x server whose API is not on the
+  allowlist, a 2.x server that does not start, a session that asks for an
+  `effort` setting, and every session while the preview is off.
+
+Saved connections stay ACP connection records. The adapter runs the ones
+`isOpenCodeAcpConnection` recognises: the OpenCode descriptor's own id, or a
+command whose executable is `opencode` launched as `opencode acp`. It adopts no
+session.
+
+The preview decides which provider a **new** chat on such a connection gets
+(`claimsAcpConnection`) and whether native may run (checked at every start and
+resume, and by the pool before every spawn). A chat keeps the provider it
+started with (`keepConversationProvider`). Chats from before the preview stay
+`acp`, and no stored record is rewritten. Turning the preview off makes
+existing `opencode` chats run over ACP. The adapter is always registered, so
+those chats still have an engine.
+
+## Why native first, with ACP as the fallback
+
+OpenCode 2.x's ACP is a client of the same server: `opencode acp` starts a
+private `serve --stdio` child and translates its events. A probe of v2.3.0
+compared the two surfaces. The repository's evidence is the scrubbed capture of
+that release
+(`src-server/providers/__tests__/fixtures/opencode-serve-2.3.0-*.jsonl`) and
+the findings the [fixture suite](../../src-server/providers/__tests__/opencode-serve-fixtures.test.ts)
+asserts on it. Native serve offers things ACP does not:
+
+| Capability | ACP (2.3.0) | Native serve (2.3.0) |
+|---|---|---|
+| Revert | No method (`-32601`) | Stage, commit, and clear (`revert` fixture) |
+| Steer | A second prompt fails `-32603`; `_session/steering` works | `POST .../prompt {delivery:'steer'}`, acknowledged by `inbox.delivered` (`steer`) |
+| Slash commands | Turn ends before the model runs; the command's output never streams | `POST .../command`; the output streams as the turn (`catalog`) |
+| MCP status and control | None | `GET /api/mcp`, add, connect, disconnect, status events (`mcp`, `mcp-add`) |
+| Approval rules | Station's 1.x check reads `debug agent <name>`, which 2.x does not have | Session `permissions` ruleset, agent rules and saved approvals readable over the API (`governed`, `permission-saved`) |
+| Subagents | Opt-in `_meta` extension | Child sessions on the same feed with `parentID` (`subagent`) |
+
+ACP stays as the fallback because the native API is new, changes between
+releases, and is checked against an exact allowlist. OpenCode 1.x has no
+`serve` API that Station checked.
+
+The capture also settled what the design relied on
+([fixture suite](../../src-server/providers/__tests__/opencode-serve-fixtures.test.ts)
+findings a to f):
+
+- An ACP session id is the native session id, both ways (`crossload`), so a
+  session can move between transports.
+- A user turn's message id is the prompt answer's id and its inbox id.
+- 2.x has no `debug agent <name>`. `debug agents` lists the configured rules,
+  not the approvals the person saved (`debug-agents`).
+- Just after `/api/info` is ready, `GET /api/agent/{id}` answers 404 for a
+  short time.
+- `PATCH permissions: null` keeps a session's rules, and `[]` clears them.
+- An interrupt drops a pending ask without `permission.replied`, and a late
+  answer gets 404.
+
+## Transport selection and the fingerprint allowlist
+
+1. `<binary> --version`, cached by binary identity (real path, size, mtime).
+   Only a first line exactly of the form `[opencode ][v]X.Y.Z[-pre]` is read.
+   Anything else means unknown, which means ACP.
+   ([probe](../../src-server/providers/adapters/opencode-version-probe.ts))
+2. For 2.x, the pool starts a server and waits for it to be ready.
+3. Station reads `GET /openapi.json`. It keeps only the operations in the
+   client's route table, the component schemas they reach, and the event type
+   list. Documentation keywords are dropped. The SHA-256 of that projection as
+   canonical JSON must equal `OPENCODE_SERVE_VERIFIED_FINGERPRINTS[version]`
+   exactly ([fingerprint](../../src-server/providers/adapters/opencode-serve-fingerprint.ts)).
+   Only `2.3.0` is listed. A pre-release keeps its suffix, so it never matches.
+4. On a mismatch, the server is stopped and the session runs over ACP with a
+   `runtime.warning` coded `OPENCODE_NATIVE_UNVERIFIED`. A server that did not
+   start gives `OPENCODE_NATIVE_UNAVAILABLE`, and an `effort` setting gives
+   `OPENCODE_NATIVE_UNSUPPORTED_SETTING`.
+5. A verdict from a document that was actually read is kept per binary identity
+   and version. A failed read is not kept.
+
+## Server pool and isolation
+
+[`OpenCodeServePool`](../../src-server/providers/adapters/opencode-serve-pool.ts)
+runs one server per connection, binary identity, real working directory,
+launch environment and tool-server digest. Every session with that key shares
+the server, which stops after five minutes unused.
+
+- The server runs as `serve --stdio --hostname 127.0.0.1 --port 0`.
+  `--stdio` ties the server's life to Station's end of its stdin pipe.
+- It is started through `spawnOwnedChild`, so the startup sweep reaps a server
+  a crashed Station left behind. `TMPDIR` is the engine spawn directory.
+- It uses the real path of the working directory, because OpenCode keys
+  locations by the path it is given (`/tmp` and `/private/tmp` would be two
+  projects). Session create also sends `location.directory`.
+- `OPENCODE_PASSWORD` is 32 random bytes held only in memory, used for HTTP
+  Basic auth as user `opencode`. An inherited `OPENCODE_SERVER_PASSWORD` is
+  dropped.
+- The [client](../../src-server/providers/adapters/opencode-serve-client.ts)
+  sends only the method and path templates in `OPENCODE_NATIVE_ROUTES`,
+  matched segment by segment. It refuses any path holding `%`, `//`, `;`, a
+  backslash or a dot segment. A never-allow list is checked first, so a route
+  added to the table by mistake still cannot reach these: credentials, provider
+  sign-in, pairing, server sign-in, client MCP and terminal tokens, and config
+  writes. Refusals happen before any network I/O.
+- Redaction covers configuration only: `GET /api/model` and `GET /api/mcp`
+  answers and the configuration-type feed events. Conversation content is
+  never rewritten.
+- Station's tool servers for a session are the ones the ACP path would pass,
+  resolved the same way. Each is added with
+  `PUT /api/experimental/mcp/{name}`
+  ([native MCP](../../src-server/providers/adapters/opencode-native-mcp.ts)).
+  An added server belongs to the server's location, which every session on
+  that server shares. So the pool key includes `openCodeMcpDigest` of the
+  session's set, and sessions whose tool servers differ never share a server.
+  Station's built-in servers carry per-session bearer tokens, so in practice a
+  chat with Station tool servers gets a server of its own.
+
+The SSE feed has no event ids and no replay. When the feed drops, or is silent
+for longer than three missed heartbeats (45 seconds), the session reconnects
+with back-off. After `server.connected` it re-reads over REST: the session's
+status, its history (with the text a part finished during the gap), pending
+asks and forms, and the inbox. It also emits the terminal event if the
+execution ended while the feed was down.
+
+## Governance
+
+Ruling R1 covers OpenCode 2.x over ACP. Station's ACP approval check reads
+1.x's `debug agent <name>`, and 2.x keeps saved approvals that check cannot
+see. So when a Station approval mode is asked for on 2.x over ACP, the ACP
+adapter refuses it with `acp_approval_governance_refused` and a reason naming
+the version (`openCodeAcpApprovalUnsupportedReason`). Without a Station mode,
+OpenCode's own approvals still apply. No 2.x `OPENCODE_CONFIG_CONTENT` overlay
+is built.
+
+Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
+
+- **Full access in a `host` session** sends no Station session rules. The
+  agent's own rules decide, OpenCode asks only where they say ask, and Station
+  answers `once`.
+- **Ask, Auto, and full access confined to Auto** send only `ask` rules: for
+  `shell`, `edit`, `webfetch`, `websearch`, `external_directory`, `*_*` (MCP
+  tools) and `subagent`. OpenCode appends a session's rules after the agent's
+  and lets the last match win, so these asks reach Station even for actions the
+  agent's own rules deny.
+- **Answering an ask** from the session's own engine: if the agent's rules
+  alone deny it, or it is `subagent`, Station rejects it without a person.
+  Otherwise, a session grant or the mode (full access answers everything, Auto
+  answers `edit`) answers `once`. Otherwise a person decides. A child session's
+  ask always goes to a person. Station never answers `always` (ruling R4).
+  "Allow for this session" is a grant the adapter holds, scoped to the asked
+  patterns, and dropped when the mode changes.
+- **Before a governed start**, the #3924 project-code scan runs, then Station
+  reads the agent's rules and the saved approvals. It refuses the start if a
+  saved allow would let a governed action run without asking. A governed
+  session runs only `build` or `plan`.
+
+This resolves #4435 on the native path. Over ACP, 2.x gets R1's refusal
+instead. The issue stays open until this lands.
+
+## Managed policy (R5′)
+
+`opencode` is not a managed-policy engine id. OpenCode, on either transport and
+with the preview on or off, is governed by the policy's `acp` entry
+(`managedPolicyEngineId` maps `opencode` to `acp`) and pinned by `instances.acp`.
+`acpRegistryAgents: false` covers it the same way. The native path applies the
+`acp` pin's binary and environment to `serve`. Pinned arguments belong to the
+`acp` command line and are not given to `serve`.
+
+Naming `opencode` in a policy is deferred. Whether a connection runs OpenCode is
+read from its user-controlled id and command, so an `opencode` entry could be
+bypassed and could not pin a binary. That waits for OpenCode to have a verified
+identity, such as a pinned single-binary install.
+[`opencode-identity-policy.test.ts`](../../src-server/providers/__tests__/opencode-identity-policy.test.ts)
+covers that turning the preview on neither widens nor narrows a policy.
+
+## Generic seams lifted
+
+These changes widen shared abstractions instead of adding OpenCode-only
+features:
+
+- **Rewind on the adapter shape.** `ProviderAdapterShape.rewindSession` is
+  optional, gated by `metadata.continuity.rewind`. Native rewind stages a revert
+  at the first dropped user message, then commits it, and clears the revert on
+  failure. Today it is reached only through OpenCode's `/rewind` command. No
+  Station route asks an ACP session to rewind.
+  `sessionContinuity(threadId)` reports one live session's fork and rewind.
+  Nothing reads it yet.
+- **Engine-command dispatch.**
+  [`engine-command-dispatch.ts`](../../src-server/providers/engine-command-dispatch.ts)
+  decides once, for every adapter, what each route kind does: prompt text, an
+  engine request, or an adapter action. ACP's `sendTurn` moved onto it with no
+  behaviour change. Natively, `/compact` and `/rewind` are adapter actions, a
+  listed OpenCode command runs as the engine's own command and keeps its
+  output, and anything else is prompt text.
+- **Steer-channel gating by declaration.** The ACP `_session/steering` channel
+  is chosen by the handshake identity `initializeMetaFeature: 'steering'`
+  (`_meta.steering.supported === true` on `initialize`), never by
+  `agentInfo.name`. OpenCode 1.x names itself the same and keeps cancel and
+  re-prompt. Only that channel's `{outcome: 'promptRequired'}` answer is read
+  as a decline.
+- **`listedInProviderInventory`.** An adapter behind an off preview leaves the
+  provider inventory (`GET /api/orchestration/providers`).
+- **`connectionBacking: 'acp-registry'`.** An adapter that runs saved ACP
+  records reserves no connection id (#3355). It is not inspected or listed as
+  an engine connection of its own, and it has no readiness of its own. The
+  connection projection names it as the engine (`engineId` and `provider`) only
+  while it claims the connection. Shared code asks `isAcpFamilyEngine` (`acp`,
+  `opencode`) where a behaviour belongs to the ACP connection a session runs
+  on.
+
+## Deferred and accepted gaps
+
+- **Credential-responder lift**: deferred, because there is no second
+  implementer. The native client's route allowlist and never-allow list stand
+  in for it ([engine credentials](engine-credential-provider.md)).
+- **Server password**: visible to same-user `ps eww` in the server's
+  environment. OpenCode removes it from its own tools' environment.
+- **No replay on the SSE feed**: Station reconciles over REST after a
+  reconnect, as described above.
+- **Durability provider-branch gate**: `isAcpFamilyEngine`'s hard-coded list is
+  invisible to the gate (`check-durability-provider-branches.mjs`), which
+  matches provider literals.
+- **Not done natively**: fork, `/log` replay, and a managed single-binary
+  install of OpenCode 2.x.
+- **OpenCode 1.x** stays ACP-only. **2.x over ACP** refuses Station approval
+  modes (R1).
+- **CI coverage of the real binary**:
+  [`opencode-native.process.test.ts`](../../src-server/providers/__tests__/opencode-native.process.test.ts)
+  drives a real 2.x server. It is skipped, with the reason in its title, unless
+  `STATION_TEST_OPENCODE_2_BINARY` (or `PATH`) gives a verified version. CI has
+  none, so CI runs the replay suites against the captured fixtures.
