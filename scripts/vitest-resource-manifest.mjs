@@ -141,6 +141,9 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real launcher exit/stderr protocol with in-memory ChildProcess/streams
+  // and substituted spawnOwnedChild; no child launch or wall-clock assertion.
+  'src-server/services/browser/__tests__/chromium-server-host.test.ts',
   // Real Node sidecars verify native model relay framing, queued delivery and cancellation settlement.
   'src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts',
   // #4828: short-lived `git init`, `git config` and `git status` children
