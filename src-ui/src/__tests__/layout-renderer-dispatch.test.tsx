@@ -9,8 +9,9 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { captureTroubleshootSeeds } from '../components/troubleshoot/__tests__/captureTroubleshootSeeds';
 import type { LayoutDefinition } from '../types';
 
-const { getLayoutMock } = vi.hoisted(() => ({
+const { getLayoutMock, reloadMock } = vi.hoisted(() => ({
   getLayoutMock: vi.fn(),
+  reloadMock: vi.fn(),
 }));
 
 // Mutable registry status the mocked pluginRegistry serves; tests reassign it
@@ -59,7 +60,10 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 vi.mock('../core/PluginRegistry', () => ({
+  PLUGIN_INVENTORY_UNAVAILABLE_MESSAGE:
+    'Station could not read the installed plugin inventory.',
   pluginRegistry: {
+    reload: reloadMock,
     getLayout: getLayoutMock,
     subscribe: (listener: () => void) => {
       registryListeners.add(listener);
@@ -212,6 +216,44 @@ describe('LayoutRenderer component dispatch', () => {
     expect(
       screen.getByText(
         'This view needs extension code from the selected Station.',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('names an unreadable plugin inventory instead of claiming the component is not installed, and retries the read', () => {
+    reloadMock.mockReset();
+    registryLoadStatus = {
+      state: 'degraded',
+      failedPluginNames: [],
+      failure: 'registry-unavailable',
+    };
+    getLayoutMock.mockReturnValue(undefined);
+
+    renderSingleTab('knowledge-sources');
+
+    expect(screen.getByText('Extensions could not load')).toBeTruthy();
+    expect(
+      screen.getByText('Station could not read the installed plugin inventory.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Unsupported layout tab')).toBeNull();
+    expect(screen.queryByText(/not installed or registered/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(reloadMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('keeps the uninstalled wording when only some plugin bundles failed', () => {
+    registryLoadStatus = {
+      state: 'degraded',
+      failedPluginNames: ['other-plugin'],
+      failure: 'bundle-load-failure',
+    };
+    getLayoutMock.mockReturnValue(undefined);
+
+    renderSingleTab('knowledge-sources');
+
+    expect(
+      screen.getByText(
+        'Plugin layout component "knowledge-sources" is not installed or registered.',
       ),
     ).toBeTruthy();
   });

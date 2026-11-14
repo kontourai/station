@@ -19,7 +19,8 @@
  *  3. Bundled-content smoke — installs every plugin in the bundled registry
  *     manifest (examples/registry/default.json), applies each plugin layout to
  *     a project, opens every declared tab, and asserts none renders
- *     "Unsupported layout tab" or "Temporarily unavailable".
+ *     "Unsupported layout tab", "Extensions could not load" or
+ *     "Temporarily unavailable".
  *
  * Run with `npm run walkthrough:fresh-home` (executed through tsx so the
  * routing tables import directly). This is release-train/nightly work, not
@@ -175,6 +176,13 @@ function attachConsoleBudget(page) {
   page.on('requestfailed', (request) => {
     if (request.headers()[SUITE_REQUEST_HEADER]) return;
     const failure = request.failure()?.errorText ?? 'unknown failure';
+    // The plugin inventory read is aborted by its own client deadline, which
+    // also reads as ERR_ABORTED; log how long it ran so a run that leaves
+    // plugin tabs unloaded shows whether that deadline was the cause.
+    if (new URL(request.url()).pathname === '/api/plugins') {
+      const ranMs = Math.round(Date.now() - request.timing().startTime);
+      console.log(`[${phase}] GET /api/plugins ${failure} after ${ranMs}ms`);
+    }
     // Navigating away mid-flight aborts in-progress fetches; that is the
     // sweep's own doing, not a product failure.
     if (failure.includes('ERR_ABORTED')) return;
@@ -475,6 +483,7 @@ async function bundledContentSmoke(page) {
         }
         for (const forbidden of [
           'Unsupported layout tab',
+          'Extensions could not load',
           'Temporarily unavailable',
         ]) {
           if ((await page.getByText(forbidden).count()) > 0) {

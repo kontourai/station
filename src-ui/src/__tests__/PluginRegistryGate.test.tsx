@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   },
   apiBase: 'http://127.0.0.1:3141',
   connectionStatus: 'connected' as 'connected' | 'connecting' | 'error',
+  checking: false,
+  retryUnavailableInventory: vi.fn(),
   listeners: new Set<() => void>(),
   queryClient: { invalidateQueries: vi.fn() },
   reload: vi.fn(),
@@ -43,7 +45,10 @@ vi.mock('../contexts/NavigationContext', () => ({
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({ activeConnection: mocks.activeConnection }),
-  useConnectionStatus: () => ({ status: mocks.connectionStatus }),
+  useConnectionStatus: () => ({
+    status: mocks.connectionStatus,
+    checking: mocks.checking,
+  }),
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -54,6 +59,7 @@ vi.mock('../core/PluginRegistry', () => ({
   pluginRegistry: {
     getLoadStatus: () => mocks.status,
     reload: mocks.reload,
+    retryUnavailableInventory: mocks.retryUnavailableInventory,
     setApiBase: mocks.setApiBase,
     subscribe: (listener: () => void) => {
       mocks.listeners.add(listener);
@@ -84,6 +90,8 @@ describe('PluginRegistryGate', () => {
     mocks.navigate.mockReset();
     mocks.activeConnection.id = 'local-station';
     mocks.connectionStatus = 'connected';
+    mocks.checking = false;
+    mocks.retryUnavailableInventory.mockReset();
     setLoadStatus('loading');
   });
 
@@ -167,6 +175,32 @@ describe('PluginRegistryGate', () => {
       );
     },
   );
+
+  test('asks the registry to re-read the inventory after each healthy probe, never after a failed one', () => {
+    // A fresh element each time: React skips re-rendering an identical one.
+    const shell = () => (
+      <PluginRegistryGate>
+        <main>Station shell</main>
+      </PluginRegistryGate>
+    );
+    const view = render(shell());
+    const probe = (status: 'connected' | 'error') => {
+      mocks.connectionStatus = status;
+      mocks.checking = true;
+      view.rerender(shell());
+      mocks.checking = false;
+      view.rerender(shell());
+    };
+
+    probe('connected');
+    probe('connected');
+    expect(mocks.retryUnavailableInventory).toHaveBeenCalledTimes(2);
+    probe('error');
+    expect(mocks.retryUnavailableInventory).toHaveBeenCalledTimes(2);
+    // A re-render that is not the end of a probe is not a cue.
+    view.rerender(shell());
+    expect(mocks.retryUnavailableInventory).toHaveBeenCalledTimes(2);
+  });
 
   test('reloads on reconnect even when the outage-era attempt has not settled yet', async () => {
     // The reconnect can land while the offline attempt is still in flight.

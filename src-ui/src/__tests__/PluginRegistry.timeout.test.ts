@@ -65,7 +65,10 @@ describe('PluginRegistry inventory timeout', () => {
       const registry = new PluginRegistry(Promise.resolve({ platform: 'web' }));
       registry.setApiBase('http://127.0.0.1:3141');
       const states = recordStates(registry);
-      const reloading = registry.reload();
+      let settled: string | undefined;
+      void registry.reload().then((result) => {
+        settled = result;
+      });
 
       for (
         let attempt = 1;
@@ -80,8 +83,11 @@ describe('PluginRegistry inventory timeout', () => {
         await vi.advanceTimersByTimeAsync(1_000);
       }
 
-      await expect(reloading).resolves.toBe('degraded');
+      // A fourth read would hang on a deadline nobody aborts: the count, not
+      // the test timeout, is what catches an unbounded retry.
+      await vi.advanceTimersByTimeAsync(60_000);
       expect(inventoryReads).toHaveBeenCalledTimes(3);
+      expect(settled).toBe('degraded');
       expect(PLUGIN_REGISTRY_INVENTORY_ATTEMPTS).toBe(3);
       expect(deadlines.map((deadline) => deadline.ms)).toEqual([
         PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,
@@ -175,6 +181,204 @@ describe('PluginRegistry inventory timeout', () => {
     await expect(registry.reload()).resolves.toBe('degraded');
     expect(inventoryReads).toHaveBeenCalledTimes(1);
     expect(registry.getLoadStatus().failure).toBe('registry-unavailable');
+  });
+
+  /** Answers each `GET /api/plugins` with the next scripted outcome. */
+  function scriptInventory(
+    outcomes: Array<'503' | '403' | 'network' | 'hang' | 'ok'>,
+  ) {
+    const reads = { count: 0 };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (!String(input).endsWith('/api/plugins')) return new Response('');
+        const outcome = outcomes[reads.count] ?? outcomes.at(-1);
+        reads.count += 1;
+        if (outcome === 'network') throw new TypeError('Failed to fetch');
+        if (outcome === 'hang') return hangUntilAborted(init);
+        if (outcome === '503') return new Response('', { status: 503 });
+        if (outcome === '403') return new Response('', { status: 403 });
+        return Response.json({ plugins: [] });
+      }),
+    );
+    return reads;
+  }
+
+  function loopbackRegistry() {
+    const registry = new PluginRegistry(Promise.resolve({ platform: 'web' }));
+    registry.setApiBase('http://127.0.0.1:3141');
+    return registry;
+  }
+
+  test('a 5xx inventory answer is retried', async () => {
+    vi.useFakeTimers();
+    try {
+      const reads = scriptInventory(['503', 'ok']);
+      const registry = loopbackRegistry();
+      const reloading = registry.reload();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expect(reloading).resolves.toBe('ready');
+      expect(reads.count).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a network failure on the inventory read is retried', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(log, 'api').mockImplementation(() => {});
+      const reads = scriptInventory(['network', 'ok']);
+      const registry = loopbackRegistry();
+      const reloading = registry.reload();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expect(reloading).resolves.toBe('ready');
+      expect(reads.count).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('waits 1 s between inventory attempts', async () => {
+    vi.useFakeTimers();
+    try {
+      const reads = scriptInventory(['503', 'ok']);
+      const registry = loopbackRegistry();
+      const reloading = registry.reload();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(reads.count).toBe(1);
+      await vi.advanceTimersByTimeAsync(999);
+      expect(reads.count).toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(reads.count).toBe(2);
+      await expect(reloading).resolves.toBe('ready');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a connection change during the attempts stops them, with no later read or state change', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(log, 'api').mockImplementation(() => {});
+      const reads = scriptInventory(['503']);
+      const registry = loopbackRegistry();
+      let settled: string | undefined;
+      void registry.reload().then((result) => {
+        settled = result;
+      });
+      await vi.waitFor(() => expect(reads.count).toBe(1));
+      // Inside the pause before attempt 2.
+      registry.setApiBase('http://127.0.0.1:3142');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe('degraded');
+      const states = recordStates(registry);
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(reads.count).toBe(1);
+      expect(states).toEqual(['degraded']);
+      // An aborted load is not a reason to re-read on the next healthy probe.
+      registry.retryUnavailableInventory();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(reads.count).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a healthy probe after the attempts ran out re-reads the inventory, registers its components and clears the failure', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(log, 'api').mockImplementation(() => {});
+      let recovered = false;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL) => {
+          if (!String(input).endsWith('/api/plugins')) return new Response('');
+          if (!recovered) throw new TypeError('Failed to fetch');
+          return Response.json({
+            plugins: [
+              { name: 'knowledge-docs-starter', version: '1.0.0', hasBundle: true },
+            ],
+          });
+        }),
+      );
+      const registry = new PluginRegistry(Promise.resolve({ platform: 'web' }));
+      registry.setApiBase('http://localhost:3000');
+      const first = registry.reload();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expect(first).resolves.toBe('degraded');
+      expect(registry.getLoadStatus().failure).toBe('registry-unavailable');
+
+      recovered = true;
+      registry.retryUnavailableInventory();
+      const script = await vi.waitFor(() => {
+        const element = document.head.querySelector<HTMLScriptElement>(
+          'script[data-station-plugin]',
+        );
+        if (!element) throw new Error('Plugin script was not appended.');
+        return element;
+      });
+      const KnowledgeSources = () => null;
+      (window as any).__station_ai_plugins = {
+        'knowledge-docs-starter': {
+          components: { 'knowledge-sources': KnowledgeSources },
+        },
+      };
+      script.dispatchEvent(new Event('load'));
+      await vi.waitFor(() =>
+        expect(registry.getLoadStatus().state).toBe('ready'),
+      );
+      expect(registry.getLoadStatus().failure).toBeUndefined();
+      expect(registry.getLayout('knowledge-sources')).toBe(KnowledgeSources);
+    } finally {
+      document.head
+        .querySelectorAll('[data-station-plugin]')
+        .forEach((node) => node.remove());
+      delete (window as any).__station_ai_plugins;
+      vi.useRealTimers();
+    }
+  });
+
+  test('healthy-probe re-reads back off, and never start while a load is in flight', async () => {
+    vi.useFakeTimers();
+    try {
+      const reads = scriptInventory(['503']);
+      const registry = loopbackRegistry();
+      const first = registry.reload();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expect(first).resolves.toBe('degraded');
+      expect(reads.count).toBe(3);
+
+      const reloadedOnProbe: number[] = [];
+      for (let probe = 1; probe <= 24; probe += 1) {
+        const before = reads.count;
+        registry.retryUnavailableInventory();
+        if (registry.getLoadStatus().state === 'loading') {
+          // A second cue while that load is in flight starts nothing.
+          registry.retryUnavailableInventory();
+          await vi.advanceTimersByTimeAsync(0);
+          expect(reads.count - before).toBe(1);
+        }
+        await vi.advanceTimersByTimeAsync(5_000);
+        if (reads.count > before) {
+          expect(reads.count - before).toBe(3);
+          reloadedOnProbe.push(probe);
+        }
+      }
+      expect(reloadedOnProbe).toEqual([1, 2, 4, 8, 16, 24]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a refused inventory read is not re-read on healthy probes', async () => {
+    const reads = scriptInventory(['403']);
+    const registry = loopbackRegistry();
+    await expect(registry.reload()).resolves.toBe('degraded');
+    registry.retryUnavailableInventory();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(reads.count).toBe(1);
   });
 
   test('a hung CSS fetch degrades the load at its deadline', async () => {

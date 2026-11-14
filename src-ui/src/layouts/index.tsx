@@ -13,9 +13,13 @@ import { useSyncExternalStore } from 'react';
 import { FlowRunConsole } from '../components/flow/FlowRunConsole';
 import { MCPToolUIFrame } from '../components/mcp-ui/MCPToolUIFrame';
 import { StationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
-import { Empty, SkeletonBlock } from '../components/state';
+import { Button } from '../components/Button';
+import { Empty, ErrorState, SkeletonBlock } from '../components/state';
 import { TroubleshootAction } from '../components/troubleshoot/TroubleshootAction';
-import { pluginRegistry } from '../core/PluginRegistry';
+import {
+  PLUGIN_INVENTORY_UNAVAILABLE_MESSAGE,
+  pluginRegistry,
+} from '../core/PluginRegistry';
 import type { AgentSummary, LayoutDefinition, LayoutTab } from '../types';
 import { log } from '../utils/logger';
 import { PersonalBoardDashboard } from '../views/personal-board/PersonalBoardDashboard';
@@ -163,6 +167,26 @@ const UnsupportedLayoutComponent: AgentLayoutComponent = ({ activeTab }) => {
           label="Extensions are off on this device"
           description="This view needs extension code from the selected Station."
           action={<StationExtensionsAccess onlyWhenOff />}
+        />
+      </div>
+    );
+  }
+
+  // The registry never learned which plugins are installed, so it cannot say
+  // this component is missing; name the real cause and offer another read.
+  if (
+    typeof component === 'string' &&
+    loadStatus.state === 'degraded' &&
+    loadStatus.failure === 'registry-unavailable'
+  ) {
+    return (
+      <div className="workspace-default">
+        <ErrorState
+          title="Extensions could not load"
+          description={PLUGIN_INVENTORY_UNAVAILABLE_MESSAGE}
+          action={
+            <Button onClick={() => void pluginRegistry.reload()}>Retry</Button>
+          }
         />
       </div>
     );
