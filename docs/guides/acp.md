@@ -111,7 +111,10 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    (Antigravity 1.5.8 resumes on its account default), so the start's
    explicit mode, model and effort are applied again, in that order, where
    the resumed session differs. A value the session no longer advertises is
-   skipped rather than refusing the reopen; `session.configured`'s
+   skipped rather than refusing the reopen, and a model or effort the engine
+   refuses or will not confirm is logged and leaves the engine's own; a mode
+   that fails still refuses the start, and so does an engine that exits
+   meanwhile. `session.configured`'s
    `reportedModel` says what the engine runs (`effectiveModel` stays what was
    requested). No governed default mode is applied; a
    governed start refuses a mode outside build and plan before launch, for

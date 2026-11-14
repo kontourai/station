@@ -501,7 +501,7 @@ export class SessionTranscriptReads {
         (isReportedAmount(event.payload.contextTokens) ||
           isReportedAmount(event.payload.contextWindowTokens) ||
           isReportedAmount(event.payload.contextPercent) ||
-          event.payload.reportedCost !== undefined)
+          isReportedAmount(event.payload.reportedCost?.amount))
       ) {
         // Context (the token pair or an engine's percent) or an engine's own
         // cost (Kiro credits, Grok USD, scoped by its unit), with no token

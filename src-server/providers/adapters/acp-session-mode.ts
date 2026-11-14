@@ -342,11 +342,6 @@ export function requestedAcpEffort(
 }
 
 /**
- * Apply `effort` through the session's effort option and read the answer
- * back. Throws, naming the connection, when the session has no such option,
- * the option does not list the value, or the engine reports another value.
- */
-/**
  * The engine would not take a setting Station asked for: it did not
  * advertise it, or answered with another value. Distinct from a failed
  * request (a closed connection, an exited engine), which a caller may treat
@@ -354,6 +349,11 @@ export function requestedAcpEffort(
  */
 export class AcpSettingUnverifiedError extends Error {}
 
+/**
+ * Apply `effort` through the session's effort option and read the answer
+ * back. Throws, naming the connection, when the session has no such option,
+ * the option does not list the value, or the engine reports another value.
+ */
 export async function applyAcpEffort(
   process: Pick<AcpModeProcess, 'setConfigOption'>,
   configOptions: unknown,
