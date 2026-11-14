@@ -609,6 +609,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
   'scripts/__tests__/seed-dev-home.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/ci-event-environment.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/promotion-full-regression-workflow.test.ts':
+    'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/test-impact-incidents.test.ts':
     'lists src-server/runtime/bootstrap to pin every gate module to its impact edge; asserts nothing about their content',
   'packages/cli/src/__tests__/profile.test.ts':
