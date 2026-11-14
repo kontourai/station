@@ -4,7 +4,13 @@
  * (`opencode-serve-replay.ts`).
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
@@ -3356,6 +3362,155 @@ describe('OpenCodeAdapter native reconnect re-reads (2.3.0 replay)', () => {
         }),
     );
     expect(reported.has(many[200]!.id)).toBe(false);
+  });
+
+  test("a session's own list is trusted only for that session: another session's ask in it is not reopened", async () => {
+    const recorded = loadOpenCodeFixture('move-gap').find(
+      (record) =>
+        record.kind === 'http' &&
+        record.method === 'GET' &&
+        /^\/api\/session\/ses_[^/]+\/permission$/.test(record.path ?? ''),
+    )?.response as { data: unknown[] };
+    const h = await setup(
+      {
+        scenario: 'move-gap',
+        respond: (request) =>
+          request.method === 'GET' &&
+          /^\/api\/session\/ses_[^/]+\/permission$/.test(request.path)
+            ? {
+                status: 200,
+                body: {
+                  data: [
+                    {
+                      id: 'per_foreignAsk',
+                      sessionID: 'ses_foreignfoForeignForeign1',
+                      action: 'shell',
+                      resources: ['echo other chat'],
+                      save: ['echo *'],
+                    },
+                    ...recorded.data,
+                  ],
+                },
+              }
+            : governance(request),
+      },
+      { findProjectCode: async () => [] },
+    );
+    await h.start({ approvalMode: 'ask' });
+    const first = await h.turn('DO_MOVE sub-gap');
+    await h.waitFor(completedFor(first.turnId));
+    await h.turn('DO_BASH moved');
+    await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.requestId === MOVE_GAP_ASK,
+      10_000,
+    );
+    expect(opened(h.events).map((event) => event.requestId)).toEqual([
+      MOVE_GAP_ASK,
+    ]);
+  });
+
+  /** A directory, and a path to it through a symbolic link (as `/tmp` is `/private/tmp` on macOS). */
+  function aliasedDirectory(): { named: string; real: string } {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), 'oc-moved-')));
+    open.push({
+      stop: async () => rmSync(base, { recursive: true, force: true }),
+    });
+    const real = join(base, 'real');
+    mkdirSync(real);
+    symlinkSync(real, join(base, 'alias'));
+    return { named: join(base, 'alias'), real };
+  }
+
+  test('a move OpenCode names by an aliased path is followed at its real path', async () => {
+    const dir = aliasedDirectory();
+    const h = await setup(
+      {
+        scenario: 'move-gap',
+        respond: governance,
+        rewrite: movedTo(dir.named),
+      },
+      { findProjectCode: async () => [] },
+    );
+    await h.start({ approvalMode: 'ask' });
+    const first = await h.turn('DO_MOVE sub-gap');
+    await h.waitFor(completedFor(first.turnId));
+    const [session] = await h.adapter.listSessions();
+    expect(session?.resumeCursor).toMatchObject({ cwd: dir.real });
+  });
+
+  /** The subagent-gap capture's reconnect reads, with its descendants in `directory`. */
+  function gapDescendantsIn(directory: string) {
+    const listsDescendants = (record: OpenCodeReplayRecord) =>
+      record.kind === 'http' &&
+      record.method === 'GET' &&
+      record.path?.startsWith('/api/session?parentID=') === true;
+    const ask = (
+      loadOpenCodeFixture('subagent-gap').find(
+        (record) =>
+          record.kind === 'http' && record.path === '/api/permission/request',
+      )?.response as { data: Array<{ id: string; sessionID: string }> }
+    ).data[0]!;
+    const rewrite = (record: OpenCodeReplayRecord): OpenCodeReplayRecord => {
+      if (!listsDescendants(record)) return record;
+      const answer = record.response as {
+        data: Array<Record<string, unknown>>;
+      };
+      return {
+        ...record,
+        response: {
+          ...answer,
+          data: answer.data.map((item) => ({
+            ...item,
+            location: { directory },
+          })),
+        },
+      };
+    };
+    return { rewrite, ask };
+  }
+
+  test('a descendant in another directory has its ask from a feed gap read from its own list, which the server-wide one does not hold', async () => {
+    const { rewrite, ask } = gapDescendantsIn('/replay/elsewhere');
+    const h = await setup({
+      scenario: 'subagent-gap',
+      rewrite,
+      respond: (request) => {
+        if (request.method !== 'GET') return undefined;
+        if (request.path === '/api/permission/request')
+          return { status: 200, body: { data: [] } };
+        if (request.path === `/api/session/${ask.sessionID}/permission`)
+          return { status: 200, body: { data: [ask] } };
+        return undefined;
+      },
+    });
+    await h.start();
+    await h.turn('DO_TASK_DEEP now');
+    expect(
+      await h.waitFor((event) => event.method === 'request.opened', 10_000),
+    ).toMatchObject({ requestId: ask.id });
+  });
+
+  test("a descendant in the server's directory, named by an aliased path, is read from the server-wide list only", async () => {
+    const dir = aliasedDirectory();
+    const { rewrite, ask } = gapDescendantsIn(dir.named);
+    const h = await setup({ scenario: 'subagent-gap', rewrite }, {}, dir.real);
+    await h.start();
+    await h.turn('DO_TASK_DEEP now');
+    await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.requestId === ask.id,
+      10_000,
+    );
+    // The reconnect's re-reads are done once it reads the inbox.
+    await h.waitFor(
+      () => h.replay.made('GET', '/api/session/:id/inbox').length > 0,
+    );
+    expect(
+      h.replay.requests
+        .filter((request) => /\/permission$/.test(request.path))
+        .map((request) => request.path),
+    ).toEqual([expect.not.stringContaining(ask.sessionID)]);
   });
 
   test("a failed descendant lookup is reported and the session's own ask is still reopened", async () => {
