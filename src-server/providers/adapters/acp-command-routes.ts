@@ -36,14 +36,10 @@ import {
 import { errorMessage } from '../../utils/error-message.js';
 import { isAcpMethodNotFound } from './acp-steer.js';
 import {
+  type EngineRequestRoute,
   readSlashCommandInvocation,
   type SlashCommandInvocation,
 } from './engine-command-dispatch.js';
-
-type EngineRequestRoute = Extract<
-  EngineCommandRoute,
-  { kind: 'engine-request' }
->;
 
 interface AcpCommandRouteEntry {
   /** The slash command's name, without the slash. */

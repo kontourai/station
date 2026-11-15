@@ -178,6 +178,39 @@ writers always receive temporary provider directories; never seed test history
 into the host's authenticated CLI home or treat an empty auth directory as
 evidence that the host is logged out.
 
+#### OpenCode engine captures
+
+The `opencode` engine's native transport is tested against what a real
+OpenCode 2.3.0 server sent, not hand-written frames. The
+[capture script](../../src-server/providers/__tests__/fixtures/capture-opencode-serve-fixtures.mjs)
+is run by hand with `--opencode <2.x binary> --work <empty scratch dir>`. It
+runs OpenCode with `HOME`, `XDG_*` and `TMPDIR` inside the scratch directory,
+against an inline mock model on loopback ports from `--port-base` (default
+47300). No model account is used. It writes one scrubbed
+`opencode-serve-<version>-<scenario>.jsonl` per scenario, plus the served
+`openapi.json`, which must be formatted with Biome before committing. The
+replay harness
+([`opencode-serve-replay.ts`](../../src-server/providers/__tests__/opencode-serve-replay.ts))
+serves those exchanges over `node:http` to the adapter suites.
+[`opencode-serve-fixtures.test.ts`](../../src-server/providers/__tests__/opencode-serve-fixtures.test.ts)
+checks three things: that every replayed scenario was captured (the
+`subagent-gap` scenario raises `experimental.subagent_depth` in the capture's
+configuration so a child can start its own child), that no
+credential, machine path or private name remains, and the findings the
+design relies on. The fingerprint allowlist entry is recomputed from the
+captured document
+([`opencode-serve-fingerprint.test.ts`](../../src-server/providers/__tests__/opencode-serve-fingerprint.test.ts)).
+Re-capture when a new OpenCode version is to be allowlisted.
+
+Real-binary process tests ask for the OpenCode major version they cover
+([`opencode-real-binary.ts`](../../src-server/providers/__tests__/opencode-real-binary.ts)).
+The 1.x ACP probes (`opencode-client-write`, `opencode-project-config`) skip on
+a 2.x `opencode`. `opencode-native.process.test.ts` drives a real 2.x server
+through the real pool. It uses `STATION_TEST_OPENCODE_2_BINARY` when set,
+otherwise `opencode` on `PATH`, and only a version on the allowlist. Each
+skips loudly, with the reason in its title, when no matching binary resolves.
+CI has none, so a skip there is not native evidence.
+
 Use the shared typed factory and assert the rendered engine/model/approval state before exercising that path. A chat titled “Claude” is not evidence that it runs in the external-engine mode. For restored chats, supply the authoritative conversation-open response and the conversation-scoped transcript endpoint; sessionStorage is only a client seed. In a mock API router, declare optional reads with their actual envelopes or a deliberate unavailable response. End an unknown branch with `rejectUnexpectedFixtureRequest` and use the audited `test` fixture so those failures cannot disappear at teardown.
 
 User journeys use normal `click`, `fill`, keyboard, and pointer actions. Do not use forced clicks, `dispatchEvent('click')`, DOM `.click()`, or remove a disabled/inert guard to get past an obstruction. Establish the right surface first, then assert its prerequisite. A test may deliberately inject provider protocol events or a clipboard payload when that is its named seam; this is not a substitute for a user's click.

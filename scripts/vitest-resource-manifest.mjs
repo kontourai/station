@@ -150,6 +150,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // prove the persistence protection reads the effective core.hooksPath from
   // git and runs no repository-named program; no wall-clock assertion.
   'src-server/services/plugins/__tests__/untrusted-persistence-protection.test.ts',
+  // #4828 on the OpenCode native transport: short-lived `git init` and
+  // `git config` children build a repository whose core.hooksPath the
+  // fixture replay's persistence decline reads; no wall-clock assertion.
+  'src-server/providers/__tests__/opencode-adapter.replay.test.ts',
   'src-server/providers/__tests__/claude-adapter-native-web-read.test.ts',
   // #3075: one short-lived tsx child writes a person's first acknowledgement
   // as another process would, while this suite holds the event store open.
@@ -1439,13 +1443,20 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // The fake ACP agent, driven by the recorded Antigravity profile, through
   // the real adapter and ACPProcess: what session and prompt answers carry.
   'src-server/providers/__tests__/acp-session-answers.process.test.ts',
-  // #3924: runs the real `opencode` (when this host has one) with fresh XDG
-  // directories against a planted project plugin; skips loudly where no
-  // opencode binary resolves.
+  // #3924: runs the real `opencode` (when this host has a 1.x one) with fresh
+  // XDG directories against a planted project plugin; skips loudly where no
+  // OpenCode 1.x binary resolves.
   'src-server/providers/__tests__/opencode-project-config.process.test.ts',
-  // #3957: runs the real `opencode` (when this host has one) against a local
-  // mock model; skips loudly where no opencode binary resolves.
+  // #3957: runs the real `opencode` (when this host has a 1.x one) against a
+  // local mock model; skips loudly where no OpenCode 1.x binary resolves.
   'src-server/providers/__tests__/opencode-client-write.process.test.ts',
+  // Runs a real OpenCode 2.x `opencode serve` (STATION_TEST_OPENCODE_2_BINARY
+  // or PATH, a verified version only) through the real server pool against a
+  // local mock model; skips loudly otherwise.
+  'src-server/providers/__tests__/opencode-native.process.test.ts',
+  // One case stops a real detached node child (the `opencode serve --stdio`
+  // stand-in) by process group, so the process boundary is the claim.
+  'src-server/providers/__tests__/opencode-serve-pool.test.ts',
   // Runs npm and the real lockfile gate against an isolated two-workspace
   // fixture. The children are network-free and short-lived, but the actual
   // process boundary is the claim, so it belongs in the bounded spawn pool.
