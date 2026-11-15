@@ -430,8 +430,11 @@ manual retry, a credential change or the network returning. It also checks
 whenever the app returns to the foreground. The app's own supervised local
 Station is not probed, so its row has no check time.
 
-After you choose a Station, the app names it, its address and the step it is
-on while it verifies access. If that takes longer than six seconds, it says it
+After you choose a Station, the app shows the launch screen's mark and
+animation with "Connecting to" the Station's name, its address, and the step it
+is on: checking access, then (in the desktop and phone apps) loading its data,
+then any later preparation such as loading your preferences, each named as it
+starts. If checking access takes longer than six seconds, it says it
 has had no answer and offers **Try again**, **Back to** the Station most
 recently used before it, and **Manage Stations**, instead of waiting out the
 request deadline. In the desktop and phone apps, a Station that answered but is
@@ -2516,7 +2519,11 @@ corrects two source-confirmed lifecycle errors in that exact upstream release:
 rejected goodbye could skip socket shutdown. The patch propagates probe and
 announcement failure (including empty or partially failed send sets) to the caller,
 closes sockets in shutdown's `finally`, and prevents pending binds from escaping
-shutdown. An owner withdraws its own service before releasing a shared responder.
+shutdown. It also removes the package's import-time `source-map-support/register`,
+which replaced the server's stack-trace formatter: the first stack read then
+parsed and cached the whole server bundle's source map, about 690 MB of heap
+held for the life of the process
+([test](../../src-server/services/connections/__tests__/ciao-stack-trace.test.ts)). An owner withdraws its own service before releasing a shared responder.
 The [installed-package UDP tests](../../src-server/services/connections/__tests__/ciao-lifecycle.test.ts)
 exercise those contracts through the real dependency. No runtime private fields
 or DNS record overrides are used. Interface changes are checked every five

@@ -4083,6 +4083,16 @@ last watcher cancels sampling. Idle external edits can therefore take up to two
 seconds plus scheduling delays to notify readers; this polling runs in the
 worker, separately from the server event loop.
 
+**Worker lifecycle.** The [working-state](../../src-server/services/orchestration/project-task-room-working-state.ts)
+and [history](../../src-server/services/orchestration/project-task-room-history.ts)
+workers are each a V8 isolate and start on their first request, not at
+composition. Each is retired after 60 seconds with no request in flight (and,
+for working state, no watcher), and the next request starts a fresh one over
+the same database. Every reply follows its commit and the workers keep no
+durable state in memory, so retirement is not a failure: it neither makes
+working state terminal nor starts the history worker's failure cooldown. A
+worker that fails is handled as before.
+
 ## SharedWorkingStateEditingCapability
 
 **Purpose and interface.** [The editing capability](../../src-server/domain/shared-working-state-editing.ts)
@@ -4846,12 +4856,24 @@ inventory at 256 and materialize the newest 512 receipts. They may repair the
 reference index under its lock. Unreadable/contended Projects are reported;
 a missing workspace contributes no receipts rather than proving it has none.
 
-Confirmed-start shutdown failure and executor timeout retain the workspace.
-There is a current exception: if Session start returns an indeterminate outcome
-by throwing, the executor has not set its `started` flag, reports the workspace
-safe and skips stop. The module can then close that workspace despite possible
-live reviewer work. This path needs uncertainty propagation and confirmed
-cleanup before the general retention guarantee can be claimed.
+Confirmed-start shutdown failure, executor timeout and an unconfirmed Session
+start retain the workspace. A start invocation whose reply throws or lacks a
+confirmed Session does not classify its checkout as safe to remove.
+
+**Task association.** [TaskCodeReviewModule](../../src-server/services/evidence/task-code-review-module.ts)
+projects the submission owner's server-derived Task/Project incarnation binding.
+The association is published with request admission, before reviewer invocation;
+it is not guessed from titles, commits or receipt content. Requests retain the
+original Project ID and creation time as equality preconditions. Recreating a
+Project with the same slug and checkout cannot rebind a saved request.
+Receipt publication retains the admitted storage identity and rechecks authority
+at commit. Project and aggregate readers keep Task-associated evidence behind
+the same personal-only boundary; delta ancestry cannot drop that association.
+The personal-host [Task code-review routes](../../src-server/routes/evidence/task-code-reviews.ts)
+recheck current Task authority and keep checkout observation, revision freshness
+and reviewer outcomes separate. The [Overview panel](../../src-ui/src/views/task-workspace/TaskCodeReviewPanel.tsx)
+uses Project-scoped SDK queries and preserves the original request across response
+loss. Task checkout facts do not prove placement parity for independent room requests.
 
 **Consumers and evidence.** API, SDK client, CLI and station-control MCP share
 `REVIEW_EVIDENCE_OPERATOR_SURFACE`. Project Review UI uses that client; the old
