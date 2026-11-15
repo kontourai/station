@@ -57,7 +57,10 @@ export function finishedSessionParkAfterMs(options: {
 export interface FinishedSessionParkingPorts {
   /** Grace after the settle; `0` turns early parking off. */
   afterMs: number;
-  /** The newest own turn's recorded origin; `undefined` when it has none. */
+  /**
+   * The recorded origin of the newest own turn a send produced (an
+   * engine-opened turn is skipped); `undefined` when there is none.
+   */
   latestTurnDispatchOrigin(threadId: string): TurnDispatchOrigin | undefined;
   /** Whether a person has sent any turn or steer into the Session. */
   hasPersonTurn(threadId: string): boolean;
@@ -80,8 +83,9 @@ export interface FinishedSessionParkingPorts {
  * turn settles, instead of after the idle threshold. Deciding nothing itself
  * about pending work: the park re-runs every idle-park refusal (open
  * request, running child work, engine-reported open work, an active turn,
- * no resume cursor, recent activity) when the timer fires. A refused park is
- * left to the idle sweep.
+ * no resume cursor, recent activity) when the timer fires, and parks only an
+ * engine whose adapter declares `openEngineWork: 'complete'`. A refused park
+ * is left to the idle sweep.
  */
 export class FinishedSessionParking {
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();

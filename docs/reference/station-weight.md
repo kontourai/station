@@ -39,7 +39,9 @@ decomposes what reached it, and the
    separately.
 5. Samples the instance's process tree, sends `hi` to the Claude agent in the
    fixture repository, creates more idle sessions the same way, runs the
-   control request, then runs `station stop` and looks for survivors.
+   optional [delegated run](#delegated-run-optional-report-only) when asked,
+   runs the control request, then runs `station stop` and looks for
+   survivors.
 
 Every turn is answered by the stub (`ok`). No real model is called.
 
@@ -58,35 +60,6 @@ Every turn is answered by the stub (`ok`). No real model is called.
 | `request.stationAddedToolCount` | Tools Station's request carries beyond the control's, with schemas or named only (deferred). |
 | `request.stationAddedToolDefinitionBytes` | JSON size of the added tool definitions, plus the byte growth of any tool both requests carry whose definition Station changed. Tools are compared by whole definition, not by name. |
 | `request.sideCallCount` | Other Messages requests during the turn window, such as a title request. |
-
-### Delegated run (optional, report-only)
-
-`--delegated-run` adds one step after the idle-session sample. It delegates one
-stub-answered task as the operator (`POST /api/orchestration/delegations`), the
-way an agent's delegation starts a child Session. It then writes a
-`delegatedRun` section to `result.json`. That section is never a budget and
-never recorded in the baseline:
-
-- `engineProcessesBefore`, `engineProcessesAtFinish`: Claude engine processes
-  in the tree, counted by executable name, before the task and when its turn
-  completed.
-- `engineReleasedAfterMs`: how long after the turn completed the count fell
-  back to `engineProcessesBefore`. A finished delegated run is
-  [parked early](../architecture/module-map.md#conversationsessionlineage).
-  `null` when that did not happen within `--delegated-release-max-ms` (default
-  90 s).
-- `finishedMemoryBytes`: the tree's memory, settled as for the other memory
-  metrics, after the task finished. Compare it with `idleSessionsMemoryBytes`.
-- `warmFollowUpMs`, `releasedFollowUpMs`: medians of three stub-answered
-  follow-ups each, timed from the request to its reply, polled every 50 ms
-  (samples in `followUpSamplesMs`). A warm follow-up goes through `/chat` into
-  an idle session whose engine is still running. A released one goes into the
-  parked task through `/delegations/:taskId/continue`, which restarts its
-  engine in place from its resume cursor. Before each later round the task is
-  parked again (`engineReleasedAgainAfterMs`).
-
-A failed step is written as `delegatedRun.status: not_measured` with its
-reason. It does not fail the run.
 | `repoRules` | Whether the `CLAUDE.md` and `AGENTS.md` markers reached the first request: yes or no for each. |
 
 **Process tree.** The tree is found three ways, and the union is measured:
@@ -252,6 +225,40 @@ not measured.
 
 **Sizes.** Sizes are UTF-8 bytes and Unicode code points. No tokenizer is
 applied, so the results contain no token counts or estimates.
+
+### Delegated run (optional, report-only)
+
+`--delegated-run` adds one step after the idle-session sample. It writes a
+`delegatedRun` section to `result.json`, which is never a budget and never
+recorded in the baseline. The step runs three rounds. Each round delegates a
+new stub-answered task as the operator (`POST /api/orchestration/delegations`),
+the way an agent's delegation starts a child Session. It waits for that task's
+engine to be [parked early](../architecture/module-map.md#conversationsessionlineage),
+then sends the task two stub-answered follow-ups through
+`POST /api/orchestration/delegations/:taskId/continue`. The first restarts the
+released engine in place from its resume cursor; the second reaches it warm.
+Each round needs a new task because the operator's follow-up is a person's
+turn, which keeps that engine for the ordinary idle park afterwards.
+
+- `engineProcessesBefore`: Claude engine processes in the tree, counted by
+  executable name, before the first task.
+- `engineProcessesAtFinish`, `engineReleasedAfterMs`: for the first task, the
+  count when its turn completed, and how long after that the count fell back
+  to what it was before the task. `null` when that did not happen within
+  `--delegated-release-max-ms` (default 90 s).
+- `finishedMemoryBytes`: the tree's memory after the first task's engine was
+  released, settled as for the other memory metrics. Compare it with
+  `idleSessionsMemoryBytes`.
+- `releasedFollowUpMs`, `warmFollowUpMs`: the medians, over the rounds, of
+  the first and second follow-up, each timed from the request to its reply,
+  polled every 50 ms. A round whose engine was not released records no
+  released follow-up.
+- `rounds`: each round's `enginesAtFinish`, `releasedAfterMs`,
+  `releasedFollowUpMs` (`null` when its engine was not released) and
+  `warmFollowUpMs`.
+
+A failed step is written as `delegatedRun.status: not_measured` with its
+reason. It does not fail the run.
 
 ## Budgets and baseline
 

@@ -93,6 +93,7 @@ import {
   type CanonicalRuntimeEvent,
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
+  TURN_DISPATCH_ORIGINS,
   type TurnDispatchOrigin,
   turnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
@@ -1094,6 +1095,10 @@ function spilledTypeSql(path: string, payload = 'payload') {
  * A turn's own `turn.started`. A steer re-announces its turn with another
  * `turn.started` of the same id; it neither starts a turn nor marks one.
  */
+/** Every origin this build classifies, as an SQL list (fixed literals). */
+const KNOWN_TURN_DISPATCH_ORIGINS_SQL = TURN_DISPATCH_ORIGINS.map(
+  (origin) => `'${origin}'`,
+).join(', ');
 const OWN_TURN_START_SQL = `method = 'turn.started' AND (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.inputKind') END) IS NOT 'steer'`;
 
 /**
@@ -9398,9 +9403,32 @@ export class EventStore {
   }
 
   /**
-   * Whether a person has sent into `threadId`: any of its turn starts,
-   * steers included, that Station placed as a person's (`interactive`,
-   * #4512) or marked person-typed (`authoredBy`, #4827).
+   * #2540: {@link latestTurnDispatchOrigin}, skipping turns the engine opened
+   * on its own (`PROVIDER_TURN_TRIGGER`): such a turn records no origin and
+   * continues whatever the last send started. `undefined` with no such turn.
+   */
+  latestSentTurnDispatchOrigin(
+    threadId: string,
+  ): TurnDispatchOrigin | undefined {
+    const row = this.readStatement(
+      `SELECT json_extract(payload, '$.dispatchOrigin') AS origin
+         FROM orchestration_events
+         WHERE thread_id = ? AND ${OWN_TURN_START_SQL}
+           AND COALESCE(json_extract(payload, '$.metadata.trigger'), '') <> '${PROVIDER_TURN_TRIGGER}'
+         ORDER BY sequence DESC
+         LIMIT 1`,
+    ).get(threadId) as { origin: unknown } | undefined;
+    return row ? turnDispatchOrigin({ dispatchOrigin: row.origin }) : undefined;
+  }
+
+  /**
+   * Whether a person has, or may have, sent into `threadId`: any of its turn
+   * starts, steers included, that Station placed as a person's
+   * (`interactive`, #4512) or marked person-typed (`authoredBy`, #4827), and
+   * any own turn start that records no origin this build recognises: a turn
+   * from before the field existed, or a newer Station's value, read
+   * conservatively as a person's. A turn the engine opened on its own
+   * (`PROVIDER_TURN_TRIGGER`) is demonstrably no one's send and does not count.
    */
   hasPersonTurn(threadId: string): boolean {
     return (
@@ -9408,7 +9436,11 @@ export class EventStore {
         `SELECT 1 FROM orchestration_events
          WHERE thread_id = ? AND method = 'turn.started' AND json_valid(payload)
            AND (json_extract(payload, '$.dispatchOrigin') = 'interactive'
-             OR json_extract(payload, '$.authoredBy') = 'person')
+             OR json_extract(payload, '$.authoredBy') = 'person'
+             OR (json_extract(payload, '$.inputKind') IS NOT 'steer'
+               AND COALESCE(json_extract(payload, '$.metadata.trigger'), '') <> '${PROVIDER_TURN_TRIGGER}'
+               AND (json_extract(payload, '$.dispatchOrigin') IS NULL
+                 OR json_extract(payload, '$.dispatchOrigin') NOT IN (${KNOWN_TURN_DISPATCH_ORIGINS_SQL}))))
          LIMIT 1`,
       ).get(threadId) !== undefined
     );

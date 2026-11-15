@@ -322,6 +322,15 @@ export interface ProviderAdapterMetadata {
   /** Optional bounded same-session recovery declaration; absence is unsupported. */
   recovery?: ConnectionRecoveryCapability;
   /**
+   * #2540 `complete`: {@link ProviderAdapterShape.hasOpenEngineWork} reports
+   * every kind of work this engine keeps in its process past a turn
+   * (background tasks and commands, subagents, scheduled wakeups, open
+   * terminals). Only then may Station park a finished-by-design Session
+   * seconds after its turn settles. Absent: the report is partial or there is
+   * none, and such Sessions wait for the ordinary idle park.
+   */
+  openEngineWork?: 'complete';
+  /**
    * Plugin-safe additive continuity declaration. Absent third-party adapters
    * are read as `none` until they opt in with a version they actually support.
    */

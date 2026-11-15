@@ -71,6 +71,21 @@ async function start(threadId: string) {
   await adapter.startSession({ provider: 'claude', threadId });
   const options = mockQuery.mock.calls[0]![0].options;
   const signal = new AbortController().signal;
+  const postToolUse = (tool_name: string) =>
+    (options.hooks.PostToolUse[0].hooks[0] as Hook)(
+      {
+        hook_event_name: 'PostToolUse',
+        session_id: 'engine-session',
+        transcript_path: '/dev/null',
+        cwd: '/workspace',
+        tool_name,
+        tool_input: {},
+        tool_response: 'scheduled',
+        tool_use_id: `post-${tool_name}`,
+      },
+      `post-${tool_name}`,
+      { signal },
+    );
   const stop = (extra: Record<string, unknown>) =>
     (options.hooks.Stop[0].hooks[0] as Hook)(
       {
@@ -84,7 +99,7 @@ async function start(threadId: string) {
       undefined,
       { signal },
     );
-  return { adapter, stop };
+  return { adapter, stop, postToolUse };
 }
 
 describe('a Claude engine with a scheduled wakeup has open work', () => {
@@ -107,6 +122,32 @@ describe('a Claude engine with a scheduled wakeup has open work', () => {
 
     await stop({ session_crons: [] });
     expect(adapter.hasOpenEngineWork('wakeup-thread')).toBe(false);
+    await adapter.stopAll();
+  });
+
+  test.each(['CronCreate', 'ScheduleWakeup', 'CronDelete'])(
+    'a %s call leaves the wakeups unknown until a stop reports them, so a turn that fails after it keeps the engine',
+    async (tool) => {
+      const { adapter, stop, postToolUse } = await start(`wakeup-${tool}`);
+      await stop({ session_crons: [] });
+      expect(adapter.hasOpenEngineWork(`wakeup-${tool}`)).toBe(false);
+      await postToolUse(tool);
+      // The turn then ends through StopFailure: no Stop hook runs.
+      expect(adapter.hasOpenEngineWork(`wakeup-${tool}`)).toBe(true);
+      // An engine that omits the field cannot settle it either.
+      await stop({});
+      expect(adapter.hasOpenEngineWork(`wakeup-${tool}`)).toBe(true);
+      await stop({ session_crons: [] });
+      expect(adapter.hasOpenEngineWork(`wakeup-${tool}`)).toBe(false);
+      await adapter.stopAll();
+    },
+  );
+
+  test('an unrelated tool call leaves the reported wakeups as they were', async () => {
+    const { adapter, stop, postToolUse } = await start('wakeup-other');
+    await stop({ session_crons: [] });
+    await postToolUse('Bash');
+    expect(adapter.hasOpenEngineWork('wakeup-other')).toBe(false);
     await adapter.stopAll();
   });
 });

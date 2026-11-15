@@ -2281,10 +2281,14 @@ has a saved resume cursor, and is not known to lack resume support. "Unused" is
 measured from the later of the session row's `updatedAt` and the engine's latest
 event, so a backgrounded subagent's progress keeps its engine. An adapter that
 implements `hasOpenEngineWork` also vetoes the park while its engine still has
-work of its own: Claude while a task it started has not reported an end, or
-while its last Stop hook listed a wakeup it scheduled for itself (CronCreate,
-ScheduleWakeup, a loop); an ACP engine while a terminal command it opened is
-still running. That veto holds whatever the child-work record says.
+work of its own. Claude vetoes while a task it started has not reported an
+end, while its last Stop hook listed a wakeup it scheduled for itself
+(CronCreate, ScheduleWakeup, a loop), and from any call to a scheduling tool
+until a Stop hook reports the wakeups again (a turn that ends through
+StopFailure runs none). An ACP engine vetoes while it holds a terminal it
+opened and has not released, running or exited: the command's output is read
+through that engine's bridge by terminal id, which a restarted engine does not
+know. That veto holds whatever the child-work record says.
 Parking stops the process but absorbs its exit, so the session stays dormant
 rather than ending: the next turn restarts it in place. No worktree, claim or
 room effect fires.
@@ -2292,14 +2296,23 @@ room effect fires.
 A Session that is finished by design does not wait for that threshold.
 [`FinishedSessionParking`](../../src-server/services/orchestration/finished-session-parking.ts)
 watches every turn terminal the service commits. When the Session's newest turn
-was unattended and no person has sent a turn or steer into it (none placed
-`interactive` or marked person-typed), it parks the engine
-`finishedSessionParkAfterMs` (15 seconds) after the turn settled. Unattended
+a send produced was unattended and no person has sent a turn or steer into it,
+it parks the engine `finishedSessionParkAfterMs` (15 seconds) after the turn
+settled. A person has sent when any turn start was placed `interactive` or
+marked person-typed, or records no origin this build recognises: a turn from
+before the field existed counts as a person's. A turn the engine opened on its
+own (`metadata.trigger` `provider`) is skipped by both reads. Unattended
 means `dispatchOrigin` `delegation`, `automation` or `task-dispatch`. It also
 means `unknown` in a Session started as a delegated child whose context
 Station derived or attested, because a delegator's `continue_task` follow-up
 records no origin. This covers a delegated child, a dedicated Automation run
-and a Task dispatch nobody typed in. The park is the idle park
+and a Task dispatch nobody typed in. Only an engine whose adapter declares
+`openEngineWork: 'complete'` is parked this early: its `hasOpenEngineWork`
+reports everything the engine keeps running past a turn. Claude declares it.
+Codex, whose background command processes no veto tracks, and ACP engines,
+whose own tools can run processes Station never sees, do not, so their
+Sessions wait for the ordinary threshold, as does any new engine until it
+declares. The park is the idle park
 with that grace as its threshold, so every refusal above still applies under
 the lifecycle lock. An engine event after the settle restarts the grace. A
 delegator's follow-up or a queued inbox entry starts a turn, which the park

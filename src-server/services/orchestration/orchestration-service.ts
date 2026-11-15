@@ -2859,7 +2859,7 @@ export class OrchestrationService {
         finishedSessionParkAfterMs: options.finishedSessionParkAfterMs,
       }),
       latestTurnDispatchOrigin: (threadId) =>
-        options.eventStore?.latestTurnDispatchOrigin(threadId),
+        options.eventStore?.latestSentTurnDispatchOrigin(threadId),
       hasPersonTurn: (threadId) =>
         options.eventStore?.hasPersonTurn(threadId) ?? true,
       isDelegatedChild: (threadId) =>
@@ -16454,6 +16454,13 @@ export class OrchestrationService {
   ): Promise<boolean> {
     const adapter = this.sessionAdapters.get(threadId);
     if (!adapter || this.eventConsumptionStopped) return false;
+    // Seconds after a turn, only an engine that reports everything it still
+    // runs can be told apart from one serving a quiet background process.
+    if (
+      adapter.metadata.openEngineWork !== 'complete' ||
+      !adapter.hasOpenEngineWork
+    )
+      return false;
     try {
       return await this.parkIdleSession(threadId, adapter, Date.now(), afterMs);
     } catch (error) {

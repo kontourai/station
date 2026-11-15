@@ -60,6 +60,16 @@ class EngineProcessAdapter extends GateTestAdapter {
   openWork = new Set<string>();
   private nextProcess = 1;
 
+  /**
+   * `reportsAllOpenWork: false` is an engine like Codex today: resumable, but
+   * its adapter cannot tell which of its processes outlive a turn.
+   */
+  constructor(readonly reportsAllOpenWork = true) {
+    super();
+    if (reportsAllOpenWork)
+      Object.assign(this.metadata, { openEngineWork: 'complete' });
+  }
+
   override async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
@@ -126,6 +136,32 @@ class EngineProcessAdapter extends GateTestAdapter {
     return this.openWork.has(threadId);
   }
 
+  /**
+   * A turn Station never classified, as every turn recorded before
+   * `dispatchOrigin` existed reads: the engine reports it with no send.
+   */
+  async runUnclassifiedTurn(
+    threadId: string,
+    opened: 'by-a-send' | 'by-the-engine' = 'by-a-send',
+  ): Promise<void> {
+    const turnId = `turn-${randomUUID()}`;
+    // An engine-opened turn (a background task's result) says so.
+    const metadata =
+      opened === 'by-the-engine' ? { metadata: { trigger: 'provider' } } : {};
+    this.push(threadId, {
+      method: 'turn.started',
+      turnId,
+      prompt: 'hello',
+      ...metadata,
+    });
+    this.push(threadId, {
+      method: 'turn.completed',
+      turnId,
+      finishReason: 'stop',
+      ...metadata,
+    });
+  }
+
   push(threadId: string, event: Record<string, unknown>): void {
     this.events.push({
       eventId: randomUUID(),
@@ -151,16 +187,18 @@ afterEach(async () => {
   for (const close of open.splice(0)) await close();
 });
 
-async function boot(
-  options: {
-    finishedSessionParkAfterMs?: number;
-    idleSessionParkAfterMs?: number;
-  } = {},
-) {
+async function boot({
+  reportsAllOpenWork = true,
+  ...options
+}: {
+  finishedSessionParkAfterMs?: number;
+  idleSessionParkAfterMs?: number;
+  reportsAllOpenWork?: boolean;
+} = {}) {
   const store = new EventStore(
     join(makeTempDir('station-finished-park-'), 'orchestration.sqlite'),
   );
-  const adapter = new EngineProcessAdapter();
+  const adapter = new EngineProcessAdapter(reportsAllOpenWork);
   const service = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
     eventBus: new EventBus(),
@@ -352,6 +390,45 @@ describe('finished-by-design Sessions release their engine early', () => {
     await runTurn(threadId, 'person');
     await new Promise((resolve) => setTimeout(resolve, SETTLED_WAIT_MS));
     expect(adapter.stopped).toEqual([]);
+  });
+
+  test('an engine whose adapter cannot report all of its open work is left to the idle park', async () => {
+    const { adapter, runTurn, start } = await boot({
+      reportsAllOpenWork: false,
+    });
+    const threadId = await start();
+    await runTurn(threadId, 'delegation');
+    await new Promise((resolve) => setTimeout(resolve, SETTLED_WAIT_MS));
+    expect(adapter.stopped).toEqual([]);
+  });
+
+  test('a chat whose earlier turns predate the origin record keeps its engine', async () => {
+    const { adapter, lifecycle, runTurn, start } = await boot();
+    const threadId = await start();
+    // A person's turn from before Station recorded who sent it.
+    await adapter.runUnclassifiedTurn(threadId);
+    await vi.waitFor(async () =>
+      expect(await lifecycle(threadId)).toBe('idle'),
+    );
+    await runTurn(threadId, 'automation');
+    await new Promise((resolve) => setTimeout(resolve, SETTLED_WAIT_MS));
+    expect(adapter.stopped).toEqual([]);
+  });
+
+  test('a turn the engine opened on its own does not count as a person sending', async () => {
+    const { adapter, runTurn, start } = await boot();
+    const threadId = await start();
+    await runTurn(threadId, 'delegation');
+    await vi.waitFor(() => expect(adapter.stopped).toEqual([threadId]), {
+      timeout: 5_000,
+    });
+    // Restarted by the delegator's next turn; then the engine opens one.
+    await runTurn(threadId, 'delegation');
+    await adapter.runUnclassifiedTurn(threadId, 'by-the-engine');
+    await vi.waitFor(
+      () => expect(adapter.stopped).toEqual([threadId, threadId]),
+      { timeout: 5_000 },
+    );
   });
 
   test("an Automation run queued into a person's chat keeps its engine", async () => {

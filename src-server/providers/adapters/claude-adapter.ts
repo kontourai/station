@@ -335,6 +335,12 @@ type PendingRequest = {
 
 /** The command Station resolves on PATH for this engine. */
 const CLAUDE_CLI_COMMAND = 'claude';
+/** #2540: tools that change the engine's session-scoped wakeups. */
+const CLAUDE_WAKEUP_SCHEDULING_TOOLS: ReadonlySet<string> = new Set([
+  'CronCreate',
+  'CronDelete',
+  'ScheduleWakeup',
+]);
 /** #2494: id of the confined-credential readiness entry (macOS only). */
 const CLAUDE_CONFINED_CREDENTIAL_PREREQUISITE_ID = 'claude-confined-credential';
 
@@ -824,6 +830,13 @@ type ClaudeSessionRecord = {
    * Absent until a Stop hook reports the field.
    */
   scheduledWakeups?: number;
+  /**
+   * The engine called a scheduling tool (CronCreate, CronDelete,
+   * ScheduleWakeup) since a Stop hook last reported `session_crons`: how many
+   * wakeups it holds is unknown, so it is treated as holding one. A turn that
+   * ends through StopFailure runs no Stop hook and leaves this set.
+   */
+  scheduledWakeupsUnknown?: boolean;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
   /** The engine's live permission mode, as Station last sent it or the
@@ -1703,6 +1716,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     engineId: engineId('claude'),
     abortSettlement: 'await',
     workloadScope: 'engine-process' as const,
+    // #2540: task frames cover every task the engine registers (agents,
+    // shells, monitors, workflows; not the housekeeping ones the SDK marks
+    // `skip_transcript`), and the Stop hook and scheduling-tool calls cover
+    // its self-scheduled wakeups.
+    openEngineWork: 'complete' as const,
     // `respondToRequest` forwards only the offered Bash prefix rules.
     sessionGrantScopes: ['rule'] as const,
     recovery: {
@@ -3967,7 +3985,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    */
   hasOpenEngineWork(threadId: string): boolean {
     const record = this.sessions.get(threadId);
-    if ((record?.scheduledWakeups ?? 0) > 0) return true;
+    if (record?.scheduledWakeupsUnknown || (record?.scheduledWakeups ?? 0) > 0)
+      return true;
     const tasks = record?.activeTasks;
     if (!tasks) return false;
     for (const task of tasks.values()) {
@@ -5011,8 +5030,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                   Array.isArray(hookInput.session_crons)
                 ) {
                   const record = this.sessions.get(input.threadId);
-                  if (record)
+                  if (record) {
                     record.scheduledWakeups = hookInput.session_crons.length;
+                    record.scheduledWakeupsUnknown = false;
+                  }
                 }
                 return { continue: true };
               },
@@ -5032,6 +5053,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                 const ledger =
                   this.options.untrustedContentLedger ??
                   sharedUntrustedContentLedger;
+                // #2540: a schedule changed; only the next Stop says how.
+                if (CLAUDE_WAKEUP_SCHEDULING_TOOLS.has(hookInput.tool_name)) {
+                  const record = this.sessions.get(input.threadId);
+                  if (record) record.scheduledWakeupsUnknown = true;
+                }
                 if (CLAUDE_NATIVE_WEB_READ_TOOLS.has(hookInput.tool_name))
                   markNativeWebRead([input.threadId], {
                     ledger,

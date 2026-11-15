@@ -225,12 +225,14 @@ describe('ACP terminal/create without terminal sessions', () => {
 });
 
 /**
- * #2540: a terminal command the engine opened reports its result only to
- * that engine, so while one runs the session has open engine work and an
- * idle or finished-session park must leave the engine alone.
+ * #2540: a terminal the engine opened holds state only that engine can use:
+ * the command's output and exit status, read by terminal id. A park and
+ * restart builds a new bridge with no such id, so until the engine releases
+ * the terminal — whether or not its command still runs — the session has
+ * open engine work and an idle or finished-session park leaves it alone.
  */
-describe('a running terminal command keeps the engine', () => {
-  test('on terminal sessions, until the command exits', async () => {
+describe('an unreleased terminal keeps the engine', () => {
+  test('on terminal sessions, after its command exits, until it is released', async () => {
     const held = heldProcess();
     const { adapter, engine, threadId, create } = await startSession({
       confinement: 'host',
@@ -245,10 +247,13 @@ describe('a running terminal command keeps the engine', () => {
       sessionId: 'native',
       terminalId,
     });
+    // Exited, its output not yet read: still the engine's.
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(true);
+    await engine.client.releaseTerminal({ sessionId: 'native', terminalId });
     expect(adapter.hasOpenEngineWork(threadId)).toBe(false);
   });
 
-  test('as a plain child process, until the command exits', async () => {
+  test('as a plain child process, after it is killed, until it is released', async () => {
     const { adapter, engine, threadId, create } = await startSession({
       confinement: 'host',
       terminalSessions: false,
@@ -260,6 +265,8 @@ describe('a running terminal command keeps the engine', () => {
       sessionId: 'native',
       terminalId,
     });
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(true);
+    await engine.client.releaseTerminal({ sessionId: 'native', terminalId });
     expect(adapter.hasOpenEngineWork(threadId)).toBe(false);
   });
 });
