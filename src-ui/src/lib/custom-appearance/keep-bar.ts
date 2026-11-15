@@ -79,22 +79,26 @@ const HOST_STYLE = [
   .map((rule) => `${rule} !important`)
   .join('; ');
 
-const BAR_CSS = `
-.bar { box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
-  padding: 12px 16px; background: #10151c; color: #f4f6f8; border-top: 2px solid #f0b429;
-  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
-.text { flex: 1 1 240px; min-width: 0; }
-.title { font-weight: 600; }
-.note { color: #c9d1d9; font-size: 13px; }
-.blocked { color: #ffd479; font-size: 13px; }
-.actions { display: flex; gap: 8px; }
-button { font: 600 14px/1 system-ui, -apple-system, "Segoe UI", sans-serif; min-height: 44px; min-width: 88px;
-  padding: 0 16px; border-radius: 6px; border: 1px solid #8b949e; cursor: pointer; }
-button.keep { background: #f4f6f8; color: #10151c; border-color: #f4f6f8; }
-button.keep:disabled { background: #30363d; color: #8b949e; border-color: #30363d; cursor: not-allowed; }
-button.discard { background: transparent; color: #f4f6f8; }
-button:focus-visible { outline: 3px solid #f0b429; outline-offset: 2px; }
-`;
+/** The bar's own styles, inside the shadow root; literal values only. */
+const BAR_CSS = [
+  '.bar { box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; }',
+  '.bar { gap: 8px 16px; padding: 12px 16px; background: #10151c; color: #f4f6f8; }',
+  '.bar { border-top: 2px solid #f0b429; }',
+  '.bar { font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }',
+  '.text { flex: 1 1 240px; min-width: 0; }',
+  '.title { font-weight: 600; }',
+  '.note { color: #c9d1d9; font-size: 13px; }',
+  '.blocked { color: #ffd479; font-size: 13px; }',
+  '.actions { display: flex; gap: 8px; }',
+  'button { font: 600 14px/1 system-ui, -apple-system, "Segoe UI", sans-serif; }',
+  'button { min-height: 44px; min-width: 88px; padding: 0 16px; border-radius: 6px; }',
+  'button { border: 1px solid #8b949e; cursor: pointer; }',
+  'button.keep { background: #f4f6f8; color: #10151c; border-color: #f4f6f8; }',
+  'button.keep:disabled { background: #30363d; color: #8b949e; border-color: #30363d; }',
+  'button.keep:disabled { cursor: not-allowed; }',
+  'button.discard { background: transparent; color: #f4f6f8; }',
+  'button:focus-visible { outline: 3px solid #f0b429; outline-offset: 2px; }',
+].join('\n');
 
 const NUMERIC_ONE = (value: string) => value === '' || Number(value) === 1;
 
