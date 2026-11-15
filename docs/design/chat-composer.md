@@ -866,8 +866,8 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   Agent mark uses the generic Agent glyph. Its accessible name starts with the full Agent · model label and adds only
   available approval and mode values. The trigger has no setup caption. Full access,
   pending or refused approval changes add a corner warning badge with matching
-  accessible text; inside the open panel the same mark precedes that choice's
-  value. The trigger and Model row name a requested reasoning effort after the
+  accessible text; inside the open panel the same mark follows that choice's
+  value, outside its visible label so Label in Name still holds. The trigger and Model row name a requested reasoning effort after the
   model only when the model reports that level. Conversation overrides use a neutral dot, announced as
   "changed for this conversation". ACP uses the connection engine mark when its
   command resolves a known engine; unknown engines omit the engine mark. It opens a sheet on phones
