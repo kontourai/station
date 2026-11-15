@@ -85,11 +85,7 @@ export function RoomAgentActivity({
               Stop
             </Button>
           ) : (
-            <Button
-              size="sm"
-              aria-label={`Retry ${agent}`}
-              onClick={onRetry}
-            >
+            <Button size="sm" aria-label={`Retry ${agent}`} onClick={onRetry}>
               Retry
             </Button>
           )}

@@ -19,7 +19,10 @@ const legacyPage = {
       actor: { kind: 'human', label: 'Maya Chen', id: 'human:deployment:maya' },
       sequence: 1,
       occurredAt: '2026-10-15T10:00:00.000Z',
-      body: { kind: 'human-message', text: '**@Scout** can you find the cause?' },
+      body: {
+        kind: 'human-message',
+        text: '**@Scout** can you find the cause?',
+      },
       digests: { proposal: 'a'.repeat(64), checkpoint: 'b'.repeat(64) },
       integrity: 'L0',
     },
@@ -38,7 +41,8 @@ test('an old **@Name** message in its stored shape still renders the chip', asyn
   const page = parseProjectTaskRoomBrowserHistory(legacyPage);
   if (page?.kind !== 'available') throw new Error('fixture must parse');
   const body = page.records[0]!.body;
-  if (body.kind !== 'human-message') throw new Error('fixture must be a message');
+  if (body.kind !== 'human-message')
+    throw new Error('fixture must be a message');
   const { container } = render(<RoomMessageText text={body.text} />);
   const chip = container.querySelector('.task-room-mention');
   expect(chip?.textContent).toBe('@Scout');

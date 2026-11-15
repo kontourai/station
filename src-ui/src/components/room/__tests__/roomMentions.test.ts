@@ -23,5 +23,7 @@ test('typing reads as a short sentence', () => {
   expect(roomTypingLabel([])).toBe('');
   expect(roomTypingLabel(['Lin'])).toBe('Lin is typing…');
   expect(roomTypingLabel(['Lin', 'Ada'])).toBe('Lin and Ada are typing…');
-  expect(roomTypingLabel(['Lin', 'Ada', 'Jo'])).toBe('Several people are typing…');
+  expect(roomTypingLabel(['Lin', 'Ada', 'Jo'])).toBe(
+    'Several people are typing…',
+  );
 });

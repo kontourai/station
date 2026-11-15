@@ -301,7 +301,8 @@ export type ProjectRoomAgentActivity = Pick<
 /** Requests a live frame carries: the newest, and every unsettled one. */
 export const PROJECT_ROOM_LIVE_AGENT_REQUESTS = 20;
 /** Rooms one live connection may carry (#4798): every channel a Project lists. */
-export const PROJECT_ROOM_LIVE_MAX_ROOMS = PROJECT_ROOM_LIMITS.channelsPerProject;
+export const PROJECT_ROOM_LIVE_MAX_ROOMS =
+  PROJECT_ROOM_LIMITS.channelsPerProject;
 /** Messages one `update` frame carries; more is a `resync`. */
 export const PROJECT_ROOM_LIVE_UPDATE_MESSAGES = 25;
 /** How long a typing signal lasts unless it is renewed (#4798). */
@@ -383,7 +384,9 @@ function agentActivity(value: unknown): ProjectRoomAgentActivity {
   if (
     !requestStates.has(v.state as ProjectRoomAgentActivity['state']) ||
     (v.failure !== undefined &&
-      !failures.has(v.failure as NonNullable<ProjectRoomAgentActivity['failure']>))
+      !failures.has(
+        v.failure as NonNullable<ProjectRoomAgentActivity['failure']>,
+      ))
   )
     throw new Error('Invalid Room agent activity');
   return {

@@ -36,7 +36,9 @@ export async function notifyProjectRoomMention(
   notificationService: Pick<NotificationService, 'scheduleEnveloped'>,
   event: ProjectRoomMentionEvent,
 ) {
-  const where = event.channelName ? `#${event.channelName}` : 'the Project room';
+  const where = event.channelName
+    ? `#${event.channelName}`
+    : 'the Project room';
   const excerpt =
     event.message.text.length > EXCERPT_LENGTH
       ? `${event.message.text.slice(0, EXCERPT_LENGTH - 1)}…`

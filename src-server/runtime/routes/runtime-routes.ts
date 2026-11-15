@@ -63,7 +63,6 @@ import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.j
 import { createTaskReviewCaptureRoutes } from '../../routes/orchestration/task-review-captures.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
-import { notifyProjectRoomMention } from '../../services/projects/project-room-mention-notifications.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
 import { createAccountSharingRoutes } from '../../routes/system/account-sharing-routes.js';
 import { createApplicationSessionRoutes } from '../../routes/system/application-session-routes.js';
@@ -214,6 +213,7 @@ import { ProjectMembershipRefusal } from '../../services/projects/project-member
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { createProjectRoomAgentRuntime } from '../../services/projects/project-room-agent-module.js';
 import { createProjectRoomAgentPublication } from '../../services/projects/project-room-agent-publication.js';
+import { notifyProjectRoomMention } from '../../services/projects/project-room-mention-notifications.js';
 import { ProjectRoomService } from '../../services/projects/project-room-service.js';
 import {
   createProjectRoomRuntime,
@@ -9547,13 +9547,11 @@ export function configureRuntimeRoutes(
     (event) => {
       const service = roomMentionNotifications;
       if (!service) return;
-      void notifyProjectRoomMention(service, event).catch(
-        (error: unknown) => {
-          context.logger.warn('Project room mention notification failed', {
-            error,
-          });
-        },
-      );
+      void notifyProjectRoomMention(service, event).catch((error: unknown) => {
+        context.logger.warn('Project room mention notification failed', {
+          error,
+        });
+      });
     },
   );
   let roomAgentRuntime:

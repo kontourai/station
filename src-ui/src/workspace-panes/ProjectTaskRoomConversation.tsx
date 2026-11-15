@@ -513,7 +513,8 @@ export function ProjectTaskRoomConversation({
               />
             ),
             footer:
-              !inThread && (replies.length || workingOn(execution.sessionId)) ? (
+              !inThread &&
+              (replies.length || workingOn(execution.sessionId)) ? (
                 <RoomThreadSummary
                   repliers={repliers.map((actor) => ({
                     key: actor.id ?? `${actor.kind}:${actor.label}`,

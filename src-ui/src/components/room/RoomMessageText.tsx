@@ -38,7 +38,10 @@ function rehypeMentions(labels: readonly { name: string; self: boolean }[]) {
       for (const match of child.value.matchAll(MARK)) {
         const label = labels[Number(match[1])];
         if (match.index > last)
-          parts.push({ type: 'text', value: child.value.slice(last, match.index) });
+          parts.push({
+            type: 'text',
+            value: child.value.slice(last, match.index),
+          });
         parts.push({
           type: 'element',
           tagName: 'span',
@@ -82,7 +85,8 @@ export function RoomMessageText({
   const legacyLength = legacy?.[0].length ?? 0;
   const { body, plain, plugins } = useMemo(() => {
     const source = text.slice(legacyLength);
-    if (!mentions?.length) return { body: source, plain: source, plugins: undefined };
+    if (!mentions?.length)
+      return { body: source, plain: source, plugins: undefined };
     const labels = mentions.map((mention) => ({
       name: nameOf?.(mention.actorId) ?? mention.display,
       self: mention.actorId === selfId,
@@ -91,7 +95,9 @@ export function RoomMessageText({
     let plainText = '';
     let at = 0;
     mentions.forEach((mention, index) => {
-      const before = source.slice(at, mention.offset).replace(/[\uE000\uE001]/g, '');
+      const before = source
+        .slice(at, mention.offset)
+        .replace(/[\uE000\uE001]/g, '');
       marked += `${before}${OPEN}${index}${CLOSE}`;
       plainText += `${before}@${labels[index]!.name}`;
       at = mention.offset + 1 + mention.display.length;

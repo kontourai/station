@@ -410,6 +410,54 @@ const CONSUMED_FLAGS: Record<
       runtime.close();
     }
   },
+  // GET /:slug/rooms/live streams the room; typing and members answer too.
+  projectRoomLive: async () => {
+    const runtime = createProjectRoomRuntime(makeTempDir('room-live-flag-'));
+    try {
+      const scope = {
+        stationId: 'station',
+        localProjectId: 'project-id',
+        portableProjectId: 'portable',
+        localProjectSlug: 'project',
+      };
+      const actor = { id: 'ada', displayName: 'Ada', kind: 'person' as const };
+      const caps = { view: true, discuss: true, edit: true, execute: false };
+      const service = new ProjectRoomService(runtime.store, {
+        withAction: async (_request, _slug, _action, _actorId, operation) =>
+          operation(scope, actor, caps, () => {}),
+        current: async () => true,
+      });
+      const { roomId } = runtime.store.ensureRoom(scope, () => {});
+      const routes = createProjectRoomRoutes(service);
+      const live = await routes.request(
+        `/project/rooms/live?channel=${roomId}&client=${randomUUID()}`,
+      );
+      const first = live.body
+        ? new TextDecoder().decode((await live.body.getReader().read()).value)
+        : '';
+      const typing = await routes.request('/project/room/typing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expectedRoomId: roomId,
+          expectedProjectId: scope.localProjectId,
+          expectedActorId: actor.id,
+          clientId: randomUUID(),
+          typing: true,
+        }),
+      });
+      const members = await routes.request('/project/room/members');
+      service.close();
+      return (
+        live.status === 200 &&
+        first.includes('event: subscribed') &&
+        typing.status === 200 &&
+        members.status === 200
+      );
+    } finally {
+      runtime.close();
+    }
+  },
   // GET /sessions/:threadId/event-window answers a bounded window.
   sessionEventWindow: async (deployment) => {
     const routes = orchestrationRoutes(deployment, {
@@ -696,6 +744,7 @@ describe('consumed capability flags match what their routes serve', () => {
     privateMemoryReview: { personal: true, hosted: false },
     privateOperationalOutcomes: { personal: true, hosted: true },
     projectRoomMessageActions: { personal: true, hosted: true },
+    projectRoomLive: { personal: true, hosted: true },
     readMarkers: { personal: true, hosted: true },
     scheduledConversationTarget: { personal: true, hosted: false },
     sessionEventWindow: { personal: true, hosted: true },

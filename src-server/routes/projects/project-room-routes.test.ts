@@ -2417,7 +2417,12 @@ function liveReader(response: Response) {
   };
   return { next, until, cancel: () => reader.cancel() };
 }
-function live(h: Harness, who: 'alice' | 'bob', channels: string[], client = randomUUID()) {
+function live(
+  h: Harness,
+  who: 'alice' | 'bob',
+  channels: string[],
+  client = randomUUID(),
+) {
   const query = new URLSearchParams(channels.map((id) => ['channel', id]));
   query.set('client', client);
   return api(h, who, `/rooms/live?${query}`);
@@ -2464,7 +2469,10 @@ test('live (#4798): ten rooms stream over one connection, each admitted on its o
     text: 'over one connection',
   });
   const appended = await stream.until('append', tenth);
-  expect(appended.message).toMatchObject({ seq: 1, text: 'over one connection' });
+  expect(appended.message).toMatchObject({
+    seq: 1,
+    text: 'over one connection',
+  });
   await stream.cancel();
 });
 
@@ -2511,7 +2519,9 @@ test('live (#4798): appends carry the next sequence; a reaction, edit and delete
       activity: activity + 1,
     });
     activity += 1;
-    expect(update.messages.map((m) => m.messageId)).toEqual([message.messageId]);
+    expect(update.messages.map((m) => m.messageId)).toEqual([
+      message.messageId,
+    ]);
   }
   const deleted = parseProjectRoomHistory(
     await data(await h.request('bob', '/messages')),
@@ -2644,7 +2654,12 @@ test('mentions (#4799): a message names a member by id; only that person is told
   const h = await harness();
   const a = await h.discover('alice');
   const text = '@Bob can you check this?';
-  const mention = { kind: 'person', actorId: member.id, display: 'Bob', offset: 0 };
+  const mention = {
+    kind: 'person',
+    actorId: member.id,
+    display: 'Bob',
+    offset: 0,
+  };
   const response = await h.request('alice', '/messages', 'POST', {
     ...guard(a),
     intentId: randomUUID(),
@@ -2730,7 +2745,9 @@ test('mentions (#4799): the read summary marks a room whose unread messages name
     ...guard(a),
     intentId: randomUUID(),
     text: '@Bob look',
-    mentions: [{ kind: 'person', actorId: member.id, display: 'Bob', offset: 0 }],
+    mentions: [
+      { kind: 'person', actorId: member.id, display: 'Bob', offset: 0 },
+    ],
   });
   await h.request('alice', '/messages', 'POST', {
     ...guard(a),

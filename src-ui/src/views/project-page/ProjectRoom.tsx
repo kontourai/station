@@ -6,6 +6,7 @@ import {
   PROJECT_ROOM_LIMITS,
   type ProjectRoomAttachment,
 } from '@kontourai/station-contracts/project-room';
+import type { ProjectRoomAgentActivity } from '@kontourai/station-contracts/project-room-browser';
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import {
   type ApiRequestScope,
@@ -29,7 +30,6 @@ import {
   useProjectRoomRetainedHistory,
   workingProjectRoomAgents,
 } from '@kontourai/station-sdk/project-rooms';
-import type { ProjectRoomAgentActivity } from '@kontourai/station-contracts/project-room-browser';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   type Ref,
@@ -58,6 +58,10 @@ import {
 } from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import {
+  RoomAgentActivity,
+  type RoomAgentPhase,
+} from '../../components/room/RoomAgentActivity';
+import {
   RoomAttachmentList,
   type RoomAttachmentSource,
 } from '../../components/room/RoomAttachmentList';
@@ -81,10 +85,6 @@ import {
   TrashGlyph,
 } from '../../components/room/RoomReactions';
 import { RoomThreadSummary } from '../../components/room/RoomThreadSummary';
-import {
-  type RoomAgentPhase,
-  RoomAgentActivity,
-} from '../../components/room/RoomAgentActivity';
 import {
   type RoomMentionPerson,
   roomMentionsIn,
@@ -1099,7 +1099,14 @@ function ProjectRoomSession({
       root = parent;
     }
     if (threadRoot !== root) openFocusThread(root);
-  }, [threadsOn, focusRoot, focusMessage, openFocusThread, messages, threadRoot]);
+  }, [
+    threadsOn,
+    focusRoot,
+    focusMessage,
+    openFocusThread,
+    messages,
+    threadRoot,
+  ]);
   // While the root is missing, the query is idle and successful, a next
   // cursor exists and the bound allows, fetch the next window. Progress is
   // read from the history result itself (how many windows are loaded and the
@@ -1117,7 +1124,11 @@ function ProjectRoomSession({
   const [seekSettled, setSeekSettled] = useState(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the loaded windows, the oldest cursor and each settled fetch re-check for the root.
   useEffect(() => {
-    if ((!awaitingThreadRoot && !awaitingFocus) || historyFetching || historyFailed)
+    if (
+      (!awaitingThreadRoot && !awaitingFocus) ||
+      historyFetching ||
+      historyFailed
+    )
       return;
     void fetchNextPage({ cancelRefetch: false }).finally(() =>
       setSeekSettled((count) => count + 1),
@@ -1453,9 +1464,12 @@ function ProjectRoomSession({
   // Agent requests from their records (#4800): working ones, and one that
   // ended without an answer until the conversation moves past it.
   const agentName = (agentId: string) =>
-    [...messages].reverse().find(
-      (message) => message.actor.kind === 'agent' && message.actor.id === agentId,
-    )?.actor.displayName ?? agentLabel(agentId);
+    [...messages]
+      .reverse()
+      .find(
+        (message) =>
+          message.actor.kind === 'agent' && message.actor.id === agentId,
+      )?.actor.displayName ?? agentLabel(agentId);
   const working = workingProjectRoomAgents(room.agents);
   const workingIn = new Map<string, string>();
   if (threadsOn)
@@ -1470,7 +1484,7 @@ function ProjectRoomSession({
     return room.agents
       .filter((request) => {
         const inThread =
-          threadsOn && !!request.replyTo && byId.has(request.replyTo)
+          threadsOn && request.replyTo && byId.has(request.replyTo)
             ? rootOf(request.replyTo)
             : undefined;
         if (inThread !== root) return false;
@@ -1495,7 +1509,9 @@ function ProjectRoomSession({
             key={request.requestId}
             agent={agentName(request.agentId)}
             phase={phase}
-            detail={request.failure ? AGENT_FAILURES[request.failure] : undefined}
+            detail={
+              request.failure ? AGENT_FAILURES[request.failure] : undefined
+            }
             askedBy={
               request.actor.id === view.actor.id
                 ? 'you'
@@ -1504,10 +1520,14 @@ function ProjectRoomSession({
             }
             at={request.createdAt}
             onStop={
-              mine ? () => agentControl.current?.cancel(request.requestId) : undefined
+              mine
+                ? () => agentControl.current?.cancel(request.requestId)
+                : undefined
             }
             onRetry={
-              mine ? () => agentControl.current?.retry(request.requestId) : undefined
+              mine
+                ? () => agentControl.current?.retry(request.requestId)
+                : undefined
             }
           />
         );

@@ -701,7 +701,13 @@ export class ProjectRoomService {
       channelId,
     ).then(({ data, admission }) => {
       // Only people the edit newly names are told.
-      this.announce(admission.scope, slug, channelId, data.message, data.before);
+      this.announce(
+        admission.scope,
+        slug,
+        channelId,
+        data.message,
+        data.before,
+      );
       return { data: data.message, admission };
     });
   }

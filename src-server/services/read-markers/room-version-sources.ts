@@ -1,6 +1,6 @@
 import type { ProjectRoomBrowserView } from '@kontourai/station-contracts/project-room-browser';
-import { READ_MARKER_UNREAD_COUNT_CAP } from '@kontourai/station-contracts/read-markers';
 import type { ProjectTaskRoomReadOutcome } from '@kontourai/station-contracts/project-task-room';
+import { READ_MARKER_UNREAD_COUNT_CAP } from '@kontourai/station-contracts/read-markers';
 import { FileStorageNotFoundError } from '../../domain/project-file-transactions.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
 import { ProjectMembershipRefusal } from '../projects/project-membership-store.js';

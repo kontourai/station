@@ -1,7 +1,7 @@
 import {
-  type ProjectRoomActor,
   isProjectRoomUuid,
   PROJECT_ROOM_LIMITS as LIMITS,
+  type ProjectRoomActor,
 } from '@kontourai/station-contracts/project-room';
 import {
   PROJECT_ROOM_LIVE_MAX_ROOMS,
@@ -60,7 +60,9 @@ async function data(response: Response): Promise<unknown> {
     throw envelopeError(response, body, 'Project room request failed.');
   const value = body as { success?: unknown; data?: unknown } | undefined;
   if (value?.success !== true)
-    throw new ProjectRoomProtocolError('Project room response is incompatible.');
+    throw new ProjectRoomProtocolError(
+      'Project room response is incompatible.',
+    );
   return value.data;
 }
 
@@ -127,7 +129,10 @@ export type ProjectRoomLiveEvent =
  */
 class ProjectRoomLiveHub {
   readonly clientId = randomCorrelationId();
-  private listeners = new Map<string, Set<(event: ProjectRoomLiveEvent) => void>>();
+  private listeners = new Map<
+    string,
+    Set<(event: ProjectRoomLiveEvent) => void>
+  >();
   private connection: FetchSseConnection | undefined;
   private connected = new Set<string>();
   private timer: ReturnType<typeof setTimeout> | undefined;
@@ -187,7 +192,8 @@ class ProjectRoomLiveHub {
     query.set('client', this.clientId);
     const url = `${this.scope.apiBase}/api/projects/${encodeURIComponent(this.slug)}${PROJECT_ROOM_LIVE_SUFFIX}?${query}`;
     const drop = () => {
-      for (const key of this.connected) this.emit(key, { kind: 'disconnected', key });
+      for (const key of this.connected)
+        this.emit(key, { kind: 'disconnected', key });
       this.connected.clear();
     };
     this.connection = fetchSSE(url, {
@@ -207,10 +213,7 @@ class ProjectRoomLiveHub {
         }
         if (!this.listeners.has(frame.key)) return true;
         if (frame.kind === 'subscribed') this.connected.add(frame.key);
-        if (
-          frame.kind === 'revoked' ||
-          frame.kind === 'unavailable'
-        )
+        if (frame.kind === 'revoked' || frame.kind === 'unavailable')
           this.connected.delete(frame.key);
         this.emit(frame.key, frame);
         return true;
@@ -220,7 +223,8 @@ class ProjectRoomLiveHub {
   private close() {
     this.connection?.close();
     this.connection = undefined;
-    for (const key of this.connected) this.emit(key, { kind: 'disconnected', key });
+    for (const key of this.connected)
+      this.emit(key, { kind: 'disconnected', key });
     this.connected.clear();
   }
 }

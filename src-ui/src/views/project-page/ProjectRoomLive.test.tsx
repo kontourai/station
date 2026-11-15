@@ -18,12 +18,15 @@ import { navigationStore } from '../../contexts/navigation-store';
 
 // This host serves the shared live stream, typing and the member directory
 // (#4798, #4799); the handshake itself has its own suite.
-vi.mock('../../../../packages/sdk/src/client/project-room-live', async (original) => ({
-  ...(await original<
-    typeof import('../../../../packages/sdk/src/client/project-room-live')
-  >()),
-  readProjectRoomLiveCapability: async () => true,
-}));
+vi.mock(
+  '../../../../packages/sdk/src/client/project-room-live',
+  async (original) => ({
+    ...(await original<
+      typeof import('../../../../packages/sdk/src/client/project-room-live')
+    >()),
+    readProjectRoomLiveCapability: async () => true,
+  }),
+);
 const { ProjectRoom } = await import('./ProjectRoom');
 
 const roomId = '11111111-1111-4111-8111-111111111111';
@@ -51,7 +54,11 @@ function push(event: string, data: Record<string, unknown>) {
       ),
     );
 }
-function message(seq: number, text: string, extra: Record<string, unknown> = {}) {
+function message(
+  seq: number,
+  text: string,
+  extra: Record<string, unknown> = {},
+) {
   return {
     intentId: randomCorrelationId(),
     text,
@@ -110,8 +117,12 @@ beforeEach(() => {
       if (url.pathname.endsWith('/presence')) return ok([]);
       if (url.pathname.endsWith('/messages') && init?.method === 'POST') {
         writes.push(body);
-        const { expectedRoomId: _r, expectedProjectId: _p, expectedActorId: _a, ...rest } =
-          body;
+        const {
+          expectedRoomId: _r,
+          expectedProjectId: _p,
+          expectedActorId: _a,
+          ...rest
+        } = body;
         const stored = {
           ...rest,
           roomId,
@@ -160,7 +171,11 @@ async function mount() {
   });
   render(
     <QueryClientProvider client={client}>
-      <ProjectRoom slug="team" projectId="project" requestScope={requestScope} />
+      <ProjectRoom
+        slug="team"
+        projectId="project"
+        requestScope={requestScope}
+      />
     </QueryClientProvider>,
   );
   await waitFor(() => expect(live.length).toBeGreaterThan(0));
@@ -238,7 +253,9 @@ test('the Agent working row appears and clears with the request record', async (
   expect(within(list).getByText('Writer')).toBeTruthy();
   expect(within(list).getByText(/Asked by Lin/)).toBeTruthy();
   // Someone else's request: no Stop for this reader.
-  expect(within(list).queryByRole('button', { name: 'Stop Writer' })).toBeNull();
+  expect(
+    within(list).queryByRole('button', { name: 'Stop Writer' }),
+  ).toBeNull();
   push('agents', {
     requests: [{ ...request, state: 'published', updatedAt: at }],
   });

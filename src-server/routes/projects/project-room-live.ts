@@ -214,8 +214,7 @@ export async function projectRoomLiveResponse(
       }
       if (checkpoint.activity > sub.sentActivity) {
         if (
-          !changed ||
-          !changed.size ||
+          !changed?.size ||
           changed.size > PROJECT_ROOM_LIVE_UPDATE_MESSAGES
         ) {
           await resync(sub, checkpoint);
@@ -245,7 +244,11 @@ export async function projectRoomLiveResponse(
       ] as const) {
         const json = JSON.stringify(value);
         if (json === sub.last[name]) continue;
-        await write({ kind: name, key: sub.key, ...value } as ProjectRoomLiveFrame);
+        await write({
+          kind: name,
+          key: sub.key,
+          ...value,
+        } as ProjectRoomLiveFrame);
         sub.last[name] = json;
       }
     };

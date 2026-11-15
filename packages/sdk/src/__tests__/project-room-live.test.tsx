@@ -148,7 +148,9 @@ function wrapper() {
 function push(event: string, data: Record<string, unknown>) {
   const connection = connections[connections.length - 1];
   if (!connection) throw new Error('No live connection');
-  connection.response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  connection.response.write(
+    `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+  );
 }
 function append(text: string, who: ProjectRoomActor = other) {
   return store.append(scope, who, { intentId: randomUUID(), text }, current);
@@ -208,13 +210,20 @@ test('ten rooms and the open one share one live connection', async () => {
       ),
     { wrapper: wrapper() },
   );
-  await waitFor(() => expect(room.result.current.discovery.isSuccess).toBe(true));
+  await waitFor(() =>
+    expect(room.result.current.discovery.isSuccess).toBe(true),
+  );
   await waitFor(() => expect(connections.length).toBeGreaterThan(0));
   // Give the hub its settle time: any second connection would open now.
   await new Promise((resolve) => setTimeout(resolve, 150));
   expect(connections).toHaveLength(1);
   expect([...connections[0]!.channels].sort()).toEqual([...channels].sort());
-  push('subscribed', { key: channels[4]!, roomId: channels[4]!, lastSeq: 0, activity: 0 });
+  push('subscribed', {
+    key: channels[4]!,
+    roomId: channels[4]!,
+    lastSeq: 0,
+    activity: 0,
+  });
   push('typing', { key: channels[4]!, actors: [other] });
   await waitFor(() =>
     expect(index.result.current.get(channels[4]!)?.typing).toEqual([other]),
@@ -257,7 +266,13 @@ test('an update whose activity range does not start where the cache is re-reads 
   // In order: merged, no read.
   push('update', {
     key: roomId,
-    messages: [{ ...message, text: 'edited in place', editedAt: new Date().toISOString() }],
+    messages: [
+      {
+        ...message,
+        text: 'edited in place',
+        editedAt: new Date().toISOString(),
+      },
+    ],
     fromActivity: 0,
     activity: 1,
   });
@@ -283,7 +298,9 @@ test('typing shows other people only, and the reader’s own typing is sent and 
   await waitFor(() => expect(hook.result.current.typing).toEqual([other]));
   act(() => hook.result.current.notifyTyping(true));
   act(() => hook.result.current.notifyTyping(true));
-  await waitFor(() => expect(typingPosts).toEqual([expect.objectContaining({ typing: true })]));
+  await waitFor(() =>
+    expect(typingPosts).toEqual([expect.objectContaining({ typing: true })]),
+  );
   act(() => hook.result.current.notifyTyping(false));
   await waitFor(() =>
     expect(typingPosts.map((post) => post.typing)).toEqual([true, false]),
@@ -309,8 +326,13 @@ test('agent activity comes from the stream’s request records', async () => {
   await waitFor(() =>
     expect(hook.result.current.agents.map((r) => r.state)).toEqual(['started']),
   );
-  push('agents', { key: roomId, requests: [{ ...request, state: 'published' }] });
+  push('agents', {
+    key: roomId,
+    requests: [{ ...request, state: 'published' }],
+  });
   await waitFor(() =>
-    expect(hook.result.current.agents.map((r) => r.state)).toEqual(['published']),
+    expect(hook.result.current.agents.map((r) => r.state)).toEqual([
+      'published',
+    ]),
   );
 });

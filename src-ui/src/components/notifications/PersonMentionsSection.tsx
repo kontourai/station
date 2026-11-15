@@ -90,7 +90,9 @@ export function PersonMentionsSection() {
                     {unread && <span className="sr-only">, unread</span>}
                   </span>
                   {item.body && (
-                    <span className="person-mentions__excerpt">{item.body}</span>
+                    <span className="person-mentions__excerpt">
+                      {item.body}
+                    </span>
                   )}
                 </span>
                 <time

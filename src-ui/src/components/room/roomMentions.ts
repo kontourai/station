@@ -16,8 +16,12 @@ export function roomMentionsIn(
   people: readonly RoomMentionPerson[] | undefined,
 ) {
   if (!people?.length) return undefined;
-  const found: { kind: 'person'; actorId: string; display: string; offset: number }[] =
-    [];
+  const found: {
+    kind: 'person';
+    actorId: string;
+    display: string;
+    offset: number;
+  }[] = [];
   const ordered = [...people].sort((a, b) => b.name.length - a.name.length);
   const taken: [number, number][] = [];
   for (const person of ordered) {

@@ -6,12 +6,15 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { setClientCredentialResolver } from '../../../../../packages/sdk/src/client/http';
 
-vi.mock('../../../../../packages/sdk/src/client/project-room-live', async (original) => ({
-  ...(await original<
-    typeof import('../../../../../packages/sdk/src/client/project-room-live')
-  >()),
-  readProjectRoomLiveCapability: async () => true,
-}));
+vi.mock(
+  '../../../../../packages/sdk/src/client/project-room-live',
+  async (original) => ({
+    ...(await original<
+      typeof import('../../../../../packages/sdk/src/client/project-room-live')
+    >()),
+    readProjectRoomLiveCapability: async () => true,
+  }),
+);
 const { ProjectConversationList } = await import('../ProjectConversationList');
 
 const API = 'https://live-list.example';
@@ -38,7 +41,11 @@ beforeEach(() => {
   _setApiBase(API);
   setClientCredentialResolver(() => ({
     origin: API,
-    requestAuthority: { apiBase: API, authorityKey: 'one', isCurrent: () => true },
+    requestAuthority: {
+      apiBase: API,
+      authorityKey: 'one',
+      isCurrent: () => true,
+    },
   }));
   vi.stubGlobal(
     'fetch',
@@ -65,7 +72,8 @@ beforeEach(() => {
       }
       if (url.pathname === '/api/tasks') return ok([]);
       if (url.pathname === '/api/agents') return ok([]);
-      if (url.pathname === '/api/orchestration/sessions/read-model') return ok([]);
+      if (url.pathname === '/api/orchestration/sessions/read-model')
+        return ok([]);
       if (url.pathname === '/api/read-markers/summary') {
         summaries += 1;
         const { targets } = JSON.parse(String(init?.body)) as {
@@ -78,7 +86,9 @@ beforeEach(() => {
             seenVersion: target.roomId === general ? 1 : 3,
             unread: target.roomId === general,
             unreadCount: target.roomId === general ? 2 : 0,
-            ...(target.roomId === general && mentioned ? { mentioned: true } : {}),
+            ...(target.roomId === general && mentioned
+              ? { mentioned: true }
+              : {}),
           })),
         });
       }
@@ -96,7 +106,11 @@ afterEach(async () => {
 
 test('every channel rides one connection; a working Agent and a mention of the reader mark their rows', async () => {
   render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
       <ProjectConversationList
         project={{ slug: 'team', id: 'project-team', name: 'Team' }}
         requestScope={{ apiBase: API, authorityKey: 'one' }}

@@ -28,7 +28,10 @@ async function fixture() {
     storage,
     new ProjectManifestStore(home, storage),
   );
-  const project = await projects.createProject({ name: 'Example', slug: 'example' });
+  const project = await projects.createProject({
+    name: 'Example',
+    slug: 'example',
+  });
   const membership = createProjectMembershipRuntime(home, 'station', storage);
   close.push(() => membership.close());
   let actor = owner;
@@ -38,7 +41,11 @@ async function fixture() {
       if (actor.id !== owner.id) throw new Error('operator required');
     },
   };
-  const enabled = await membership.service.enable('example', project.id, authority);
+  const enabled = await membership.service.enable(
+    'example',
+    project.id,
+    authority,
+  );
   for (const person of [alice, bob]) {
     actor = owner;
     const invitation = await membership.service.invite(

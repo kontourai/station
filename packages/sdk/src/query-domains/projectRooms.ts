@@ -22,6 +22,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StationHttpError } from '../client/api-error-message';
 import type { ApiRequestScope } from '../client/http';
 import {
+  fetchProjectRoomMembers,
+  type ProjectRoomLiveEvent,
+  projectRoomLiveHub,
+  readProjectRoomLiveCapability,
+  setProjectRoomTyping,
+} from '../client/project-room-live';
+import {
   createProjectRoomChannel,
   deleteProjectRoomMessage,
   discoverProjectRoom,
@@ -42,20 +49,13 @@ import {
   subscribeProjectRoom,
   updateProjectRoomChannel,
 } from '../client/project-rooms';
-import {
-  fetchProjectRoomMembers,
-  type ProjectRoomLiveEvent,
-  projectRoomLiveHub,
-  readProjectRoomLiveCapability,
-  setProjectRoomTyping,
-} from '../client/project-room-live';
 
 export type { ApiRequestScope } from '../client/http';
-export * from '../client/project-rooms';
 export {
   fetchProjectRoomMembers,
   readProjectRoomLiveCapability,
 } from '../client/project-room-live';
+export * from '../client/project-rooms';
 /**
  * Whether this Station serves one live stream for a Project's rooms, typing
  * and person mentions (#4798, #4799). Read once per Station.
@@ -157,7 +157,8 @@ export function useProjectRoomLiveIndex(
           // Typing and working state are only as true as the connection.
           update(id, { connected: false, typing: [], agents: [] });
         else if (event.kind === 'typing') update(id, { typing: event.actors });
-        else if (event.kind === 'agents') update(id, { agents: event.requests });
+        else if (event.kind === 'agents')
+          update(id, { agents: event.requests });
         else if (
           event.kind === 'append' ||
           event.kind === 'update' ||
@@ -563,18 +564,25 @@ export function useProjectRoom(
             : page,
         );
         const tail = pages[0]!;
-        const held = new Set(pages.flatMap((p) => p.messages.map((m) => m.messageId)));
+        const held = new Set(
+          pages.flatMap((p) => p.messages.map((m) => m.messageId)),
+        );
         const fresh = append
           ? messages.filter((m) => !held.has(m.messageId))
           : [];
         if (fresh.length) {
-          const rows = [...tail.messages, ...fresh].sort((a, b) => a.seq - b.seq);
+          const rows = [...tail.messages, ...fresh].sort(
+            (a, b) => a.seq - b.seq,
+          );
           pages[0] = {
             ...tail,
             messages: rows,
             checkpoint: {
               ...tail.checkpoint,
-              lastSeq: Math.max(tail.checkpoint.lastSeq, rows[rows.length - 1]!.seq),
+              lastSeq: Math.max(
+                tail.checkpoint.lastSeq,
+                rows[rows.length - 1]!.seq,
+              ),
             },
             readSeq,
           };
@@ -582,7 +590,9 @@ export function useProjectRoom(
         // The newest window now ends at its newest row, so a refetch of it
         // reads the merged rows again rather than dropping them.
         const pageParams = [...data.pageParams];
-        const first = pageParams[0] as { after: number; end: number } | undefined;
+        const first = pageParams[0] as
+          | { after: number; end: number }
+          | undefined;
         if (fresh.length && first)
           pageParams[0] = {
             ...first,
@@ -593,8 +603,14 @@ export function useProjectRoom(
       if (!append)
         client.setQueryData(
           [...contentKey, 'retained'],
-          (current: { messages: ProjectRoomMessage[]; readSeq: number } | undefined) =>
-            current ? { messages: [...messages], readSeq: nextHistoryRead() } : current,
+          (
+            current:
+              | { messages: ProjectRoomMessage[]; readSeq: number }
+              | undefined,
+          ) =>
+            current
+              ? { messages: [...messages], readSeq: nextHistoryRead() }
+              : current,
         );
       return merged;
     },
@@ -766,7 +782,10 @@ export function useProjectRoom(
         }
         case 'update':
           if (!state) return;
-          if (event.fromActivity !== state.activity || !merge(event.messages, false))
+          if (
+            event.fromActivity !== state.activity ||
+            !merge(event.messages, false)
+          )
             await reconcile();
           state.activity = event.activity;
           return;
@@ -849,8 +868,7 @@ export function useProjectRoom(
   ]);
   // A host without the shared stream: this room's own stream, as before.
   useEffect(() => {
-    if (!roomId || !actorId || stopped || liveCapability.data !== false)
-      return;
+    if (!roomId || !actorId || stopped || liveCapability.data !== false) return;
     let active = true;
     const guards = {
       expectedRoomId: roomId,
@@ -941,7 +959,10 @@ export function useProjectRoom(
   // "Is typing" (#4798): sent at most every few seconds while typing, and
   // stopped on send, on a pause, and when the room closes. The server lets an
   // unrenewed signal lapse on its own.
-  const typingState = useRef<{ sentAt: number; timer?: ReturnType<typeof setTimeout> }>({
+  const typingState = useRef<{
+    sentAt: number;
+    timer?: ReturnType<typeof setTimeout>;
+  }>({
     sentAt: 0,
   });
   const notifyTyping = useCallback(
