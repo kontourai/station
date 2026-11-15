@@ -150,6 +150,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // prove the persistence protection reads the effective core.hooksPath from
   // git and runs no repository-named program; no wall-clock assertion.
   'src-server/services/plugins/__tests__/untrusted-persistence-protection.test.ts',
+  // #4828 on the OpenCode native transport: short-lived `git init` and
+  // `git config` children build a repository whose core.hooksPath the
+  // fixture replay's persistence decline reads; no wall-clock assertion.
+  'src-server/providers/__tests__/opencode-adapter.replay.test.ts',
   'src-server/providers/__tests__/claude-adapter-native-web-read.test.ts',
   // #3075: one short-lived tsx child writes a person's first acknowledgement
   // as another process would, while this suite holds the event store open.

@@ -178,7 +178,7 @@ function nativePlanKey(plan: NativePlan): string {
  * A saved connection this adapter runs: the OpenCode descriptor's own id,
  * or a command whose executable is `opencode` launched as `opencode acp`.
  */
-export function isOpenCodeConnection(config: ACPConnectionConfig): boolean {
+function isOpenCodeConnection(config: ACPConnectionConfig): boolean {
   return isOpenCodeAcpConnection(config);
 }
 

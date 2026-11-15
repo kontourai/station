@@ -71,7 +71,7 @@ type MintOptions = Pick<
 >;
 
 /** OpenCode's config for one ACP-shaped server (`cli/src/acp/sessions.ts` mcpConfig). */
-export function openCodeMcpConfig(server: McpServer): OpenCodeMcpServer {
+function openCodeMcpConfig(server: McpServer): OpenCodeMcpServer {
   if ('type' in server && server.type === 'http')
     return {
       name: server.name,

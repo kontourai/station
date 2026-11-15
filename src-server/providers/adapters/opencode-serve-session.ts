@@ -48,6 +48,7 @@ import {
   type ApprovalStatus,
   type ProviderRuntimeEvent as CanonicalRuntimeEvent,
   PROVIDER_TURN_TRIGGER,
+  type ProviderRuntimeErrorBody,
 } from '@kontourai/station-contracts/runtime-events';
 import {
   ownArray,
@@ -211,7 +212,7 @@ let idCounter = 0;
  * in hex, then 14 random characters). Station chooses a prompt's id so the
  * turn (or steer) is known by it before the engine can report it.
  */
-export function newOpenCodeMessageId(timestamp = Date.now()): string {
+function newOpenCodeMessageId(timestamp = Date.now()): string {
   if (timestamp !== lastIdTimestamp) {
     lastIdTimestamp = timestamp;
     idCounter = 0;
@@ -2705,7 +2706,7 @@ export class OpenCodeNativeSession {
           message: failure
             ? `${reason}, and Station could not stop it (${failure}); ${engine} may still be running it.`
             : `${reason}, so Station interrupted it.`,
-        });
+        } satisfies ProviderRuntimeErrorBody);
       });
       return;
     }
@@ -3188,7 +3189,7 @@ export class OpenCodeNativeSession {
   private settleFailed(turn: NativeTurn, error: unknown): void {
     const detail = readString(ownRecord(error)?.message);
     this.settle(turn, {
-      method: 'runtime.error',
+      method: 'failed',
       message: `The ${this.deps.engineName} turn failed${detail ? `: ${redactSecrets(detail).slice(0, 1000)}` : '.'}`,
     });
   }
@@ -3211,14 +3212,15 @@ export class OpenCodeNativeSession {
           finishReason: 'stop' | 'cancelled' | 'other';
         }
       | { method: 'turn.aborted'; reason: string }
-      | { method: 'runtime.error'; message: string },
+      // Ends in a `runtime.error` with this message.
+      | { method: 'failed'; message: string },
   ): void {
     if (turn.settled) return;
     if (turn.failClose) clearTimeout(turn.failClose.timer);
     // However it ends, a turn Station stopped ends with why.
     const outcome = turn.failClose
       ? {
-          method: 'runtime.error' as const,
+          method: 'failed' as const,
           message: this.failCloseMessage(turn.failClose),
         }
       : requested;
@@ -3250,7 +3252,7 @@ export class OpenCodeNativeSession {
         severity: 'error',
         code: ENGINE_TURN_FAILED_CODE,
         message: outcome.message,
-      });
+      } satisfies ProviderRuntimeErrorBody);
     for (const [key, part] of this.parts) {
       if (part.turnId === turn.turnId) this.parts.delete(key);
     }

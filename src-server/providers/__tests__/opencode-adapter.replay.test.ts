@@ -4,19 +4,13 @@
  * (`opencode-serve-replay.ts`).
  */
 import { execFileSync } from 'node:child_process';
-import {
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { ACP_APPROVAL_TAKEOVER_FAILED_CODE } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import type { PreToolPolicyDecision } from '../../runtime/agents/pre-tool-policy.js';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
@@ -70,6 +64,9 @@ const CONNECTION: ACPConnectionConfig = {
 
 type Event = CanonicalRuntimeEvent & Record<string, unknown>;
 
+// Created before the hook that stops what a test opened, so its directories
+// are removed after (vitest runs after-hooks in reverse order).
+const makeTempDir = trackTempDirs();
 const open: Array<{ stop(): Promise<void> }> = [];
 afterEach(async () => {
   for (const item of open.splice(0).reverse()) await item.stop();
@@ -2741,10 +2738,7 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
 
   /** A git repository whose hooks live in `.hooks-custom` (`core.hooksPath`). */
   function customHooksRepo(): string {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'oc-hooks-')));
-    open.push({
-      stop: async () => rmSync(dir, { recursive: true, force: true }),
-    });
+    const dir = realpathSync(makeTempDir('oc-hooks-'));
     execFileSync('git', ['init', '-q', dir], { windowsHide: true });
     execFileSync(
       'git',
@@ -4860,10 +4854,7 @@ describe('OpenCodeAdapter native reconnect re-reads (2.3.0 replay)', () => {
 
   /** A directory, and a path to it through a symbolic link (as `/tmp` is `/private/tmp` on macOS). */
   function aliasedDirectory(): { named: string; real: string } {
-    const base = realpathSync(mkdtempSync(join(tmpdir(), 'oc-moved-')));
-    open.push({
-      stop: async () => rmSync(base, { recursive: true, force: true }),
-    });
+    const base = realpathSync(makeTempDir('oc-moved-'));
     const real = join(base, 'real');
     mkdirSync(real);
     symlinkSync(real, join(base, 'alias'));

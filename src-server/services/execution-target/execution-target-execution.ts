@@ -401,7 +401,7 @@ export interface ExecutionSessionBinding {
  * record is rewritten). Another connection, or a provider outside the ACP
  * family, is a real change of engine and resolves as before.
  */
-export function keepConversationProvider<
+function keepConversationProvider<
   T extends {
     provider: EngineId;
     engine: ResolvedExecutionEngine;

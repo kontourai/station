@@ -6,8 +6,6 @@
  * - Ruling R5′: every engine start (`assertAdapterReady`) is governed by the
  *   managed policy's `acp` entry for an `opencode` session.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   parseManagedPolicyDocument,
@@ -15,6 +13,7 @@ import {
 } from '@kontourai/station-contracts/managed-policy';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import { OpenCodeAdapter } from '../../../providers/adapters/opencode-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
@@ -33,17 +32,17 @@ function stubAcp(): ProviderAdapterShape {
 }
 
 describe('provider inventory under the OpenCode preview', () => {
+  const makeTempDir = trackTempDirs();
   let directory: string;
   let eventStore: EventStore;
 
   beforeEach(() => {
-    directory = mkdtempSync(join(tmpdir(), 'opencode-inventory-'));
+    directory = makeTempDir('opencode-inventory-');
     eventStore = new EventStore(join(directory, 'orchestration.sqlite'));
   });
 
   afterEach(() => {
     eventStore.close();
-    rmSync(directory, { recursive: true, force: true });
   });
 
   async function providers(previewOn: boolean): Promise<string[]> {
@@ -86,18 +85,18 @@ describe('provider inventory under the OpenCode preview', () => {
 });
 
 describe('managed policy at an opencode engine start (R5′)', () => {
+  const makeTempDir = trackTempDirs();
   let directory: string;
   let eventStore: EventStore;
 
   beforeEach(() => {
-    directory = mkdtempSync(join(tmpdir(), 'opencode-policy-'));
+    directory = makeTempDir('opencode-policy-');
     eventStore = new EventStore(join(directory, 'orchestration.sqlite'));
   });
 
   afterEach(() => {
     installManagedEngineLimits(null);
     eventStore.close();
-    rmSync(directory, { recursive: true, force: true });
   });
 
   function install(allowed: string[]) {

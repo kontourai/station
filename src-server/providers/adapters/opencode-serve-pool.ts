@@ -33,13 +33,13 @@ import {
   OpenCodeServeHttpError,
 } from './opencode-serve-client.js';
 
-export const OPENCODE_SERVE_READY_TIMEOUT_MS = 10_000;
+const OPENCODE_SERVE_READY_TIMEOUT_MS = 10_000;
 /** How long an unused server stays up for the next session. */
-export const OPENCODE_SERVE_IDLE_STOP_MS = 5 * 60_000;
+const OPENCODE_SERVE_IDLE_STOP_MS = 5 * 60_000;
 /** After stdin closes, how long the server has to exit before SIGTERM, then SIGKILL. */
 const STOP_GRACE_MS = 3_000;
 
-export class OpenCodeServeStartError extends Error {
+class OpenCodeServeStartError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'OpenCodeServeStartError';

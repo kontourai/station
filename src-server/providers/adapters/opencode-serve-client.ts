@@ -27,11 +27,11 @@
 
 export const OPENCODE_SERVE_USER = 'opencode';
 /** Three missed heartbeats (the server sends one about every 15s). */
-export const OPENCODE_EVENT_HEARTBEAT_TIMEOUT_MS = 45_000;
+const OPENCODE_EVENT_HEARTBEAT_TIMEOUT_MS = 45_000;
 /** Longest wait for a JSON answer, unless the caller passes its own signal. */
-export const OPENCODE_REQUEST_TIMEOUT_MS = 30_000;
+const OPENCODE_REQUEST_TIMEOUT_MS = 30_000;
 /** Longest wait for the event feed's response headers. */
-export const OPENCODE_EVENT_CONNECT_TIMEOUT_MS = 10_000;
+const OPENCODE_EVENT_CONNECT_TIMEOUT_MS = 10_000;
 /** Longest SSE frame Station buffers before refusing the feed. */
 const MAX_FRAME_BYTES = 8 * 1024 * 1024;
 
@@ -589,7 +589,7 @@ export class OpenCodeServeClient {
  * a recorded body exactly as the live one. Frames end with a blank line
  * (`\n\n`), the only form OpenCode's feed sends.
  */
-export async function* readOpenCodeEventStream(
+async function* readOpenCodeEventStream(
   body: ReadableStream<Uint8Array>,
   options: { heartbeatTimeoutMs: number; signal?: AbortSignal },
 ): AsyncGenerator<OpenCodeServeEvent> {
