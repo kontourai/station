@@ -166,20 +166,42 @@ export function sanitizeCustomCss(css: string): SanitizedCss {
   if (!constructedSheetsSupported())
     return { sheet: null, text: '', stripped: [] };
   const stripped: CustomCssStripped[] = [];
-  const sheet = new CSSStyleSheet();
+  const refuse = (reason: CustomCssViolationKind): SanitizedCss => {
+    stripped.push({ where: '(sheet)', what: '*', reason });
+    return { sheet: new CSSStyleSheet(), text: '', stripped };
+  };
   try {
-    sheet.replaceSync(css);
+    // Top-level rules are not deleted in place (a sheet refuses to drop an
+    // @namespace while other rules follow it): the kept rules' text is parsed
+    // into a fresh sheet, which is walked again and must then keep all of it.
+    const parsed = new CSSStyleSheet();
+    parsed.replaceSync(css);
+    const kept: string[] = [];
+    sanitizeRules(
+      parsed.cssRules,
+      (i) => {
+        kept[i] = '';
+      },
+      stripped,
+    );
+    const text = Array.from(parsed.cssRules, (rule, i) =>
+      kept[i] === '' ? '' : rule.cssText,
+    )
+      .filter(Boolean)
+      .join('\n');
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(text);
+    const again: CustomCssStripped[] = [];
+    sanitizeRules(sheet.cssRules, () => undefined, again);
+    if (again.length > 0) return refuse(again[0]!.reason);
+    const final = Array.from(sheet.cssRules, (rule) => rule.cssText).join('\n');
+    const left = fetchingValueKind(final.toLowerCase());
+    // Unreachable unless a rule type serializes a fetch it did not expose to
+    // the walk; refuse the sheet rather than trust it.
+    if (left) return refuse(left);
+    return { sheet, text: final, stripped };
   } catch {
-    return { sheet: new CSSStyleSheet(), text: '', stripped };
+    // A parse or CSSOM failure applies nothing.
+    return refuse('at-rule');
   }
-  sanitizeRules(sheet.cssRules, (i) => sheet.deleteRule(i), stripped);
-  const text = Array.from(sheet.cssRules, (rule) => rule.cssText).join('\n');
-  const left = fetchingValueKind(text.toLowerCase());
-  if (left) {
-    // Unreachable unless a rule type above serializes a fetch it did not
-    // expose to the walk; refuse the sheet rather than trust it.
-    stripped.push({ where: '(sheet)', what: '*', reason: left });
-    return { sheet: new CSSStyleSheet(), text: '', stripped };
-  }
-  return { sheet, text, stripped };
 }

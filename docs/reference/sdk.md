@@ -6605,6 +6605,20 @@ Station. They grant no execution permissions and do not provide cross-Station
 cloud synchronization. See the [settings architecture](../design/settings-architecture.md#account-preferences-and-device-settings).
 
 
+## Custom appearance
+
+The client barrel exports `getCustomAppearance`, `proposeCustomAppearance`,
+`saveCustomAppearance`, `keepCustomAppearanceProposal`,
+`dismissCustomAppearanceProposal` and `reportCustomAppearanceRender` over
+`/api/me/appearance`. Shapes come from
+`@kontourai/station-contracts/custom-appearance`. Only the proposal is open to
+Station-control tool requests; the others are the person's own steps and
+answer 403 to them. Propose, save and keep take the document's `revision`; a
+stale one is 409. `useCustomAppearanceQuery(requestScope)` reads the document
+(polling every 15 seconds by default) and `useCustomAppearanceMutation` runs
+the person's steps and updates that cache. See the
+[decision](../decisions/custom-appearance.md).
+
 ## Personal Board authoring
 
 The `@kontourai/station-contracts/personal-board` contract defines a versioned,

@@ -210,6 +210,27 @@ measures the applied sizes and the startup stamp in Chromium;
 and [appearance-page-keyboard.test.ts](../../src-ui/src/__tests__/appearance-page-keyboard.test.ts)
 cover the controls, keyboard use, 44px hit areas and a reload.
 
+## Custom appearance
+
+A signed-in person can add their own palette and CSS on top of everything
+above, and an agent can propose one for them to preview and keep
+([decision](../decisions/custom-appearance.md), [user guide](../user/appearance.md)).
+The palette sets `APPEARANCE_ROLE_PROPERTIES` (the same list the color-theme
+catalog reads, now owned by the contracts) and an accent per mode, as one
+adopted sheet of `!important` values, so it wins over Station's tokens, a
+named theme, white-label branding and a device accent for what it sets. The
+CSS is a second adopted sheet, parsed and walked by
+[sanitize-css.ts](../../src-ui/src/lib/custom-appearance/sanitize-css.ts)
+before it is adopted, and switched off while any approval or consent surface
+is mounted. `main.tsx` applies the last applied copy before the first render,
+after the color theme is bound. Custom CSS should select only the stable hooks
+in `APPEARANCE_HOOKS`; a component that owns one of them keeps its attribute,
+and its suite renders it. A component that shows a decision (a person granting
+authority) calls `useDecisionSurface` with an id added to `DECISION_SURFACES`.
+[custom-appearance.browser.test.ts](../../src-ui/src/__tests__/custom-appearance.browser.test.ts)
+measures the guard, the palette over a named theme, suspension, the keep bar
+against hostile CSS and the countdown in Chromium.
+
 ## White-label branding theme
 
 A branding provider's `getTheme()` answer is applied by

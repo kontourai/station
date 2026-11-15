@@ -27,7 +27,7 @@ import {
   setActiveCustomAppearance,
   getCustomAppearanceSnapshot,
 } from '@/lib/custom-appearance/controller';
-import { customAppearancePreviewBar, previewCustomAppearance } from '@/lib/custom-appearance/preview';
+import { cancelCustomAppearancePreview, customAppearancePreviewBar, previewCustomAppearance } from '@/lib/custom-appearance/preview';
 import { PermissionRequestModal } from '@/components/modals/PermissionRequestModal';
 
 const events = [];
@@ -61,6 +61,16 @@ window.harness = {
     return { reason: bar.keepBlockedReason(), x: r.left + r.width / 2, y: r.top + r.height / 2, width: r.width };
   },
   showApproval: (value) => showApproval(value),
+  report: (css, palette) => new Promise((resolve) => previewCustomAppearance(appearance(css, palette), {
+    fromAgent: true,
+    proposalId: 'proposal-1',
+    onKeep: () => undefined,
+    onDiscard: () => undefined,
+    onReport: (report) => {
+      cancelCustomAppearancePreview();
+      resolve(report);
+    },
+  })),
   preview: (css, seconds = 20) => previewCustomAppearance(appearance(css), {
     fromAgent: true,
     seconds,
@@ -285,6 +295,45 @@ describe('custom appearance in Chromium', () => {
     expect(await lastEvent()).not.toBe('keep');
     await page.keyboard.press('Escape');
     expect(await lastEvent()).toBe('revert');
+  });
+
+  test('a previewed proposal reports matched hooks, the contrast it changed and what the guard removed', async () => {
+    await page.evaluate(() =>
+      document.documentElement.setAttribute('data-theme', 'dark'),
+    );
+    const report = await harness<{
+      proposalId: string;
+      mode: string;
+      hooks: { id: string; matched: number }[];
+      contrast: { foreground: string; surface: string; pass: boolean }[];
+      stripped: { what: string }[];
+    }>(
+      'report',
+      // @namespace must lead the sheet to parse at all.
+      '@namespace svg "http://www.w3.org/2000/svg"; #probe { color: red; } #probe { background-image: url(data:image/png;base64,AAAA); }',
+      { dark: { roles: { '--k-bg': '#101418', '--k-text': '#1a1a1a' } } },
+    );
+    expect(report.proposalId).toBe('proposal-1');
+    expect(report.mode).toBe('dark');
+    expect(report.hooks.find((h) => h.id === 'sidebar')?.matched).toBe(1);
+    expect(report.hooks.find((h) => h.id === 'composer')?.matched).toBe(0);
+    // The text it made unreadable is reported; a pair it did not touch is not.
+    expect(report.contrast).toContainEqual(
+      expect.objectContaining({
+        foreground: '--k-text',
+        surface: '--k-bg',
+        pass: false,
+      }),
+    );
+    expect(
+      report.contrast.every(
+        (r) =>
+          ['--k-text', '--k-bg'].includes(r.foreground) ||
+          ['--k-text', '--k-bg'].includes(r.surface),
+      ),
+    ).toBe(true);
+    expect(report.stripped.map((s) => s.what)).toContain('@namespace');
+    expect(await host().count()).toBe(0);
   });
 
   test('the countdown reverts a preview nobody answers', async () => {

@@ -82,6 +82,7 @@ The optional [Durable Station Agent](#durable-station-agent) owner sits above th
 | [KnowledgeStoreProvider](#knowledgestoreprovider) | Register canonical roots and resolve their record adapters. | `src-server/knowledge-store/knowledge-store-provider.ts` |
 | [SqliteVecIndexProvider](#sqlitevecindexprovider) | Rebuild and query derived root partitions, scoped to one embedding generation. | `src-server/knowledge-index/sqlite-vec-index-provider.ts` |
 | [Workspace checkpoints](#workspace-checkpoints) | Capture turn-associated file snapshots and restore one through current workspace and caller checks. | `src-server/services/checkpoints/checkpoint-restore.ts` |
+| [Custom appearance](#custom-appearance) | Let a person, or an agent proposing for them, restyle Station with a palette and sandboxed CSS. | `src-server/services/identity/custom-appearance.ts` |
 | [Personal Board authoring](#personal-board-authoring) | Preview, edit and publish personal dashboards through user and chat authoring. | `src-server/services/layouts/personal-board-authoring.ts` |
 | [Personal Work Board](#personal-work-board) | Arrange exact work references without copying their owners' state. | `src-server/services/spatial-board/spatial-board-store.ts` |
 | [BrowserSessionService](#browsersessionservice) | Own browser acquisition, profile-scoped sessions and authorized automation independently of viewers. | `src-server/services/browser/browser-service.ts` |
@@ -6315,6 +6316,24 @@ ownership, revision conflicts, publication, rename and move. Browser journeys
 cover desktop/phone authoring, live Task visibility, persistence and explicit
 proposal Apply. These are controlled runtime journeys, not physical multi-device
 or external Agent-provider evidence.
+
+## Custom appearance
+
+A person's own palette and CSS ([decision](../decisions/custom-appearance.md)).
+The [contract](../../packages/contracts/src/custom-appearance.ts) owns the
+shapes, the CSS text check, the contrast rules and the stable hook selectors.
+The [personal route](../../src-server/routes/me/custom-appearance.ts) resolves
+the request principal and refuses agents every step but read and propose; the
+[store](../../src-server/services/identity/custom-appearance.ts) keeps one
+revisioned document per person. Agents use
+[`get_appearance` and `propose_appearance`](../../src-server/tools/station-control-appearance-tools.ts).
+In the browser, the [controller](../../src-ui/src/lib/custom-appearance/controller.ts)
+adopts the palette and the [sanitized](../../src-ui/src/lib/custom-appearance/sanitize-css.ts)
+CSS, suspends the CSS while a [decision surface](../../src-ui/src/lib/custom-appearance/decision-surfaces.ts)
+is mounted and caches it for pre-paint; [previews](../../src-ui/src/lib/custom-appearance/preview.ts)
+run under the [keep bar](../../src-ui/src/lib/custom-appearance/keep-bar.ts).
+Evidence: [route tests](../../src-server/routes/me/__tests__/custom-appearance.routes.test.ts)
+and the [Chromium suite](../../src-ui/src/__tests__/custom-appearance.browser.test.ts).
 
 ## Personal Work Board
 

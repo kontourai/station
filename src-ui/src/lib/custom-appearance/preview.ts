@@ -30,19 +30,34 @@ function computedHex(style: CSSStyleDeclaration, property: string) {
   return isAppearanceHex(value) ? value : undefined;
 }
 
-export function measureCustomAppearance(
-  proposalId: string,
-  stripped: CustomAppearanceRenderReport['stripped'],
-): Omit<CustomAppearanceRenderReport, 'reportedAt'> {
-  const root = document.documentElement;
-  const mode: AppearanceMode =
-    root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-  const style = getComputedStyle(root);
-  const values: Record<string, string | undefined> = {};
+type RoleValues = Record<string, string | undefined>;
+
+/** The computed roles on the root now, keyed as the contrast rules name them. */
+function computedRoles(): RoleValues {
+  const style = getComputedStyle(document.documentElement);
+  const values: RoleValues = {};
   for (const role of APPEARANCE_ROLE_PROPERTIES)
     values[role] = computedHex(style, role);
   values.accent = computedHex(style, '--k-action');
   values['accent-contrast'] = computedHex(style, '--k-action-contrast');
+  return values;
+}
+
+/**
+ * `before` is what was on screen before the preview. Only pairs the preview
+ * changed are reported: a theme's own pair (Station's light status tones sit
+ * just under 4.5:1 as text) is not the proposal's doing.
+ */
+export function measureCustomAppearance(
+  proposalId: string,
+  stripped: CustomAppearanceRenderReport['stripped'],
+  before: RoleValues = {},
+): Omit<CustomAppearanceRenderReport, 'reportedAt'> {
+  const root = document.documentElement;
+  const mode: AppearanceMode =
+    root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  const values = computedRoles();
+  const changed = (key: string) => values[key] !== before[key];
   return {
     proposalId,
     mode,
@@ -53,7 +68,9 @@ export function measureCustomAppearance(
         (element) => !element.closest(KEEP_BAR_TAG),
       ).length,
     })),
-    contrast: rateAppearancePalette(mode, values, contrastRatio),
+    contrast: rateAppearancePalette(mode, values, contrastRatio).filter(
+      (result) => changed(result.foreground) || changed(result.surface),
+    ),
     stripped: stripped.slice(0, 256),
   };
 }
@@ -74,6 +91,7 @@ export function previewCustomAppearance(
   options: PreviewOptions,
 ): void {
   cancelCustomAppearancePreview();
+  const before = computedRoles();
   const applied = startCustomAppearancePreview(appearance);
   const end = () => {
     current = null;
@@ -106,7 +124,7 @@ export function previewCustomAppearance(
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
         if (current?.bar === bar)
-          report(measureCustomAppearance(proposalId, applied.stripped));
+          report(measureCustomAppearance(proposalId, applied.stripped, before));
       }),
     );
   }
