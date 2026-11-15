@@ -21,6 +21,7 @@ import {
   type CustomCssStripped,
   type CustomCssViolationKind,
   fetchingValueKind,
+  splitCssDeclarations,
 } from '@kontourai/station-contracts/custom-appearance';
 
 export interface SanitizedCss {
@@ -65,32 +66,38 @@ const GROUPING = [
   'CSSLayerBlockRule',
 ];
 
+/** Functions whose argument is a URL or image the browser resolves. */
+const URL_TAKING =
+  /(?:^|[^a-z0-9_-])(?:url|src|(?:-webkit-)?image-set|image|(?:-webkit-)?cross-fade)\(/;
+
 /**
- * A backslash only matters where the text is tokenized again later: a custom
- * property's raw value, and a value holding `var()`, whose substitution
- * re-tokenizes it (`\75 rl(` would become `url(`). Elsewhere the parser has
- * already resolved escapes, and the CSSOM adds its own when it serializes a
- * string or attribute selector (`[title='"']` reads back as `"\""`), which
- * cannot fetch. So outside those two places backslashes are ignored and the
- * value is checked for fetches without them.
+ * Whether one declaration fetches. A backslash is refused where the text is
+ * tokenized again later (a custom property's raw value, any value holding
+ * `var()`, whose substitution re-tokenizes it so `\75 rl(` becomes `url(`)
+ * and anywhere near a URL-taking function (the URL parser reads `\` as `/`,
+ * so `url("\\data:…")` and `url("\\#x")` load a same-origin path).
+ * Elsewhere the parser has already resolved escapes, and the CSSOM adds its
+ * own when it serializes a string or attribute selector (`[title='"']` reads
+ * back as `"\""`), which cannot fetch; there backslashes are ignored.
  */
-function fetchKind(text: string, retokenized: boolean) {
-  const lower = text.toLowerCase();
-  if (retokenized || lower.includes('var(')) return fetchingValueKind(lower);
-  return fetchingValueKind(lower.replace(/\\/g, ''));
+function declarationFetchKind(property: string, value: string) {
+  const lower = value.toLowerCase();
+  const name = property.trim().toLowerCase();
+  if (name.startsWith('--') || lower.includes('var(') || URL_TAKING.test(lower))
+    return fetchingValueKind(lower, name);
+  return fetchingValueKind(lower.replace(/\\/g, ''), name);
 }
 
-/** Block or sheet text: a backslash counts only next to a `var(`. */
-function blockFetchKind(text: string) {
-  const lower = text.toLowerCase();
-  for (const block of lower.split(/[{}]/))
-    for (const declaration of block.split(';')) {
-      const kind = fetchKind(
-        declaration,
-        declaration.trimStart().startsWith('--'),
-      );
-      if (kind) return kind;
-    }
+/**
+ * Block or sheet text, split into declarations outside strings and
+ * parentheses (a `;` inside a string does not end a declaration), each
+ * checked as above.
+ */
+function textFetchKind(text: string) {
+  for (const { property, value } of splitCssDeclarations(text)) {
+    const kind = declarationFetchKind(property, value);
+    if (kind) return kind;
+  }
   return null;
 }
 
@@ -102,14 +109,14 @@ function sanitizeDeclarations(
   const names: string[] = [];
   for (let i = 0; i < style.length; i += 1) names.push(style.item(i));
   for (const name of names) {
-    const kind = fetchKind(style.getPropertyValue(name), name.startsWith('--'));
+    const kind = declarationFetchKind(name, style.getPropertyValue(name));
     if (!kind) continue;
     style.removeProperty(name);
     stripped.push({ where: cut(where), what: cut(name), reason: kind });
   }
   // A shorthand with var() is kept whole and its longhands read empty, so the
   // block's own text is the last word.
-  const rest = blockFetchKind(style.cssText);
+  const rest = textFetchKind(style.cssText);
   if (rest) {
     style.cssText = '';
     stripped.push({ where: cut(where), what: '*', reason: rest });
@@ -224,7 +231,7 @@ export function sanitizeCustomCss(css: string): SanitizedCss {
     sanitizeRules(sheet.cssRules, () => undefined, again);
     if (again.length > 0) return refuse(again[0]!.reason);
     const final = Array.from(sheet.cssRules, (rule) => rule.cssText).join('\n');
-    const left = blockFetchKind(final);
+    const left = textFetchKind(final);
     // Unreachable unless a rule type serializes a fetch it did not expose to
     // the walk; refuse the sheet rather than trust it.
     if (left) return refuse(left);

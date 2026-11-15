@@ -89,8 +89,11 @@ the reason in the tool result:
 - shape, name length, hex values and known roles;
 - CSS over 50,000 characters, any backslash, `@import`, `@font-face`,
   `image-set()`, `cross-fade()`, `image()`, `src()`, `attr()`, and `url()`
-  other than `data:` and `#fragment` (a text check over lowercased CSS with
-  comments removed; deliberately conservative);
+  other than `data:`, or `#id` in `filter`, `mask*`, `clip-path` and
+  `marker*` (elsewhere `url(#x)` resolves against the page and fetches the
+  page itself). The text is lowercased, comments are removed outside strings,
+  and it is checked declaration by declaration, split outside strings and
+  parentheses; deliberately conservative;
 - contrast, at 4.5:1, of each pair whose two values the proposal sets itself:
   the text ramp on page, panel and raised panel, the accent as text on those
   surfaces, status tones on page and panel, status-contrast text on each tone,
@@ -102,11 +105,20 @@ The browser is the guard. The CSS is parsed into a constructed stylesheet and
 the parsed rules are walked (`sanitize-css.ts`): style rules, nested rules,
 `@media`, `@supports`, `@container`, `@layer` and `@keyframes` are kept, every
 other at-rule is dropped, and a declaration whose parsed value fetches is
-removed, including custom properties (whose raw value `var()` re-tokenizes, so
-a backslash there is refused). A block that still fetches after that (a
-shorthand holding `var()`) loses its declarations, and a sheet whose final text
-still fetches applies nothing. Checking parsed values is what defeats escapes
-and case tricks: `\75 rl(` and `URL(` both serialize as `url(`.
+removed, including custom properties. A backslash is refused where it could
+still matter: in a custom property's raw value or any value holding `var()`
+(substitution re-tokenizes it, so `\75 rl(` becomes `url(`), and in any value
+with a URL-taking function (the URL parser reads `\` as `/`, so
+`url("\\data:…")` and `url("\\#x")` load a same-origin path; found in
+review). Elsewhere it is ignored, because the CSSOM adds its own escapes when
+it serializes strings and attribute selectors (`[title='"']`), which the
+server accepts. A block that still fetches after that (a shorthand holding
+`var()`) loses its declarations, and a sheet whose final text still fetches
+applies nothing. Block and sheet text is split into declarations outside
+strings and parentheses, so a `";"` cannot cut a declaration in two (found in
+review: `var(--e) ";" \75 rl(…)` slipped through a naive split). Checking
+parsed values is what defeats escapes and case tricks: `\75 rl(` and `URL(`
+both serialize as `url(`.
 
 The palette is one adopted sheet of `:root[data-theme="<mode>"]` blocks with
 `!important` values, so it applies over Station's tokens, a named theme's sheet
@@ -178,7 +190,9 @@ The bar must not be hideable or spoofable by the CSS it previews:
   moved off screen, anything covers Keep, or a hit test at five points of the
   page lands on `<html>` or `<body>` themselves (the app fills the viewport, so
   that is a pseudo-element overlay such as `html::after { position: fixed;
-  inset: 0 }`), Keep is disabled and says why. Keep is also off while
+  inset: 0 }`), Keep is disabled and says why. The hit test assumes the app
+  root fills the viewport, which it does today (`100dvh`); a page that left
+  body showing would disable Keep. Keep is also off while
   an approval holds the preview's CSS back (the person would keep CSS they did
   not see), in a safe-mode tab, and when a text pair the preview changed fails
   contrast on the palette over the theme, in either mode (the mode not on
@@ -275,7 +289,8 @@ the cache; a network failure keeps it.
   origin. On a browser shared by two people, or on the signed-out connect
   screen, the previous person's custom appearance shows until the account
   boundary's read answers for someone else or refuses. It holds only that
-  person's own palette and sanitized CSS.
+  person's own palette and the CSS text the server accepted, which is checked
+  and sanitized again before it applies.
 - The registry relies on each decision owner calling the hook. Render tests
   prove registration for 18 of the 41 ids (named in
   `decision-surfaces.test.tsx`: permission request, tool approval, URL input

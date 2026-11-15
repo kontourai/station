@@ -158,37 +158,148 @@ const FETCHING_FUNCTIONS: readonly [RegExp, CustomCssViolationKind][] = [
   [/(?:^|[^a-z0-9_-])attr\(/, 'remote-url'],
 ];
 
-/** `url(` arguments other than `data:` and `#fragment`, in normalized text. */
-function remoteUrl(text: string): string | null {
+/**
+ * Properties whose `url(#id)` names an element in this document (an SVG
+ * filter, mask, clip path or marker) rather than a resource to load. Anywhere
+ * else a fragment-only URL resolves against the page and fetches the page
+ * itself (`background-image: url(#x)`), so it counts as remote.
+ */
+export function isLocalReferenceProperty(property: string): boolean {
+  const name = property
+    .trim()
+    .toLowerCase()
+    .replace(/^-webkit-/, '');
+  return (
+    name === 'filter' ||
+    name === 'clip-path' ||
+    name.startsWith('mask') ||
+    name.startsWith('marker')
+  );
+}
+
+/**
+ * `url(` arguments that load something, in normalized text: anything but
+ * `data:`, and `#fragment` only where `property` takes a local reference.
+ */
+function remoteUrl(text: string, property = ''): string | null {
   const pattern = /url\(\s*(['"]?)\s*([^'")\s]*)/g;
+  const fragmentAllowed = isLocalReferenceProperty(property);
   for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
     const target = match[2] ?? '';
-    if (!target.startsWith('data:') && !target.startsWith('#')) return target;
+    if (target.startsWith('data:')) continue;
+    if (target.startsWith('#') && fragmentAllowed) continue;
+    return target;
   }
   return null;
 }
 
 /**
- * The fetching constructs in one normalized value (lowercased, no comments),
- * for a declaration value or a whole sheet. `null` when it fetches nothing.
+ * The fetching constructs in one normalized declaration value (lowercased, no
+ * comments) of `property`. `null` when it fetches nothing. Any backslash is an
+ * `escape`; the browser guard decides first where a backslash is harmless.
  */
 export function fetchingValueKind(
   normalized: string,
+  property = '',
 ): CustomCssViolationKind | null {
   if (normalized.includes('\\')) return 'escape';
-  if (remoteUrl(normalized) !== null) return 'remote-url';
+  if (remoteUrl(normalized, property) !== null) return 'remote-url';
   for (const [pattern, kind] of FETCHING_FUNCTIONS)
     if (pattern.test(normalized)) return kind;
   return null;
 }
 
-const stripComments = (css: string) =>
-  css.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, '');
+/**
+ * Comments removed, outside strings only: `content: "/*"` keeps its string,
+ * and a quote inside a real comment does not open one.
+ */
+export function stripCssComments(css: string): string {
+  let out = '';
+  let quote: string | null = null;
+  for (let i = 0; i < css.length; i += 1) {
+    const char = css[i]!;
+    if (quote) {
+      out += char;
+      if (char === '\\' && i + 1 < css.length) {
+        out += css[i + 1];
+        i += 1;
+        // As in CSS, an unescaped newline ends an unterminated string.
+      } else if (char === quote || char === '\n') quote = null;
+      continue;
+    }
+    if (char === '/' && css[i + 1] === '*') {
+      const close = css.indexOf('*/', i + 2);
+      i = close === -1 ? css.length : close + 1;
+      out += ' ';
+      continue;
+    }
+    if (char === '"' || char === "'") quote = char;
+    out += char;
+  }
+  return out;
+}
+
+export interface CssDeclarationText {
+  /** Lowercased text before the first top-level `:`, or '' if there is none. */
+  property: string;
+  /** The rest, as written. */
+  value: string;
+}
+
+/**
+ * Split CSS text (comments already removed) into declaration-shaped pieces
+ * at `;`, `{` and `}` outside strings and parentheses. Selectors and at-rule
+ * preludes come out as pieces too; checking them as values is conservative.
+ * A `;` inside a string (`";"`) does not split a declaration.
+ */
+export function splitCssDeclarations(text: string): CssDeclarationText[] {
+  const pieces: CssDeclarationText[] = [];
+  let current = '';
+  let colon = -1;
+  let quote: string | null = null;
+  let depth = 0;
+  const flush = () => {
+    if (current.trim())
+      pieces.push(
+        colon === -1
+          ? { property: '', value: current }
+          : {
+              property: current.slice(0, colon).trim().toLowerCase(),
+              value: current.slice(colon + 1),
+            },
+      );
+    current = '';
+    colon = -1;
+  };
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i]!;
+    if (quote) {
+      current += char;
+      if (char === '\\' && i + 1 < text.length) {
+        current += text[i + 1];
+        i += 1;
+      } else if (char === quote || char === '\n') quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") quote = char;
+    else if (char === '(') depth += 1;
+    else if (char === ')') depth = Math.max(0, depth - 1);
+    else if (depth === 0 && (char === ';' || char === '{' || char === '}')) {
+      flush();
+      continue;
+    } else if (depth === 0 && char === ':' && colon === -1)
+      colon = current.length;
+    current += char;
+  }
+  flush();
+  return pieces;
+}
 
 /**
  * The text check: length, escapes, `@import`, `@font-face` and every
- * fetching function. Conservative on purpose: a string that only looks like
- * `url(https://…)` (inside `content: "…"`) is refused too.
+ * fetching function, per declaration so `url(#id)` is allowed only where it
+ * is a local reference. Conservative on purpose: a string that only looks
+ * like `url(https://…)` (inside `content: "…"`) is refused too.
  */
 export function customCssTextViolations(
   css: string,
@@ -199,9 +310,7 @@ export function customCssTextViolations(
       kind: 'too-long',
       message: `CSS is ${css.length} characters; the limit is ${CUSTOM_APPEARANCE_CSS_MAX_LENGTH}.`,
     });
-  // Both the text with comments removed (so `ur/**/l(` cannot hide a url)
-  // and the raw text (so a `/*` inside a string cannot hide what follows).
-  const text = `${stripComments(css)}\n${css}`.toLowerCase();
+  const text = stripCssComments(css).toLowerCase();
   if (text.includes('\\'))
     violations.push({
       kind: 'escape',
@@ -217,12 +326,16 @@ export function customCssTextViolations(
       kind: 'font-face',
       message: '@font-face is not allowed: custom CSS cannot load fonts.',
     });
-  const url = remoteUrl(text);
-  if (url !== null)
-    violations.push({
-      kind: 'remote-url',
-      message: `url(${url.slice(0, 60)}) is not allowed: only data: and #fragment URLs are.`,
-    });
+  for (const { property, value } of splitCssDeclarations(text)) {
+    const url = remoteUrl(value, property);
+    if (url !== null) {
+      violations.push({
+        kind: 'remote-url',
+        message: `url(${url.slice(0, 60)}) is not allowed: only data: URLs, and #fragment in filter, mask, clip-path and marker.`,
+      });
+      break;
+    }
+  }
   for (const [pattern, kind] of FETCHING_FUNCTIONS) {
     const match = pattern.exec(text);
     if (match)
@@ -551,7 +664,7 @@ export const CUSTOM_APPEARANCE_GUIDE = {
     `${CUSTOM_APPEARANCE_PREVIEW_SECONDS} seconds. After they preview, get_appearance returns a render report: which hooks matched, contrast on the computed colours, and any CSS the browser removed.`,
   palette:
     'palette.dark and palette.light each take roles (a map of the roles below to #rgb or #rrggbb) and accent (one hex for brand, action and focus; its text colour is derived). Unset roles keep the current theme. Text roles must reach 4.5:1 on bg, panel and panel-raised.',
-  css: `At most ${CUSTOM_APPEARANCE_CSS_MAX_LENGTH} characters, applied after Station's styles. No @import, @font-face, backslash escapes, image-set(), cross-fade(), image(), src(), attr(), or url() other than data: and #fragment. Allowed at-rules: ${CUSTOM_CSS_ALLOWED_AT_RULES.map((r) => `@${r}`).join(', ')}. Use the hook selectors; class names change without notice. When you set a background, set its text colour too: contrast is rated on the palette, not on your CSS. In the render report, a stripped entry for (sheet) means the browser refused the whole CSS. Custom CSS is switched off while any approval or consent prompt is on screen.`,
+  css: `At most ${CUSTOM_APPEARANCE_CSS_MAX_LENGTH} characters, applied after Station's styles. No @import, @font-face, backslash escapes, image-set(), cross-fade(), image(), src(), attr(), or url() other than data: (and #fragment in filter, mask, clip-path and marker). Allowed at-rules: ${CUSTOM_CSS_ALLOWED_AT_RULES.map((r) => `@${r}`).join(', ')}. Use the hook selectors; class names change without notice. When you set a background, set its text colour too: contrast is rated on the palette, not on your CSS. In the render report, a stripped entry for (sheet) means the browser refused the whole CSS. Custom CSS is switched off while any approval or consent prompt is on screen.`,
   roles: APPEARANCE_ROLE_PROPERTIES,
   hooks: APPEARANCE_HOOKS,
   openPath: '/appearance',

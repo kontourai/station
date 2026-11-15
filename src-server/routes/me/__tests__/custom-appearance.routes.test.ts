@@ -247,6 +247,14 @@ describe('/api/me/appearance', () => {
       ['body{background:image-set("x.png" 1x)}', 'image-function'],
       ['body{background:\\75rl(https://evil.test)}', 'escape'],
       ['@font-face{font-family:x;src:local(x)}', 'font-face'],
+      // A fragment URL is a local reference only in filter, mask, clip-path
+      // and marker; elsewhere it loads the page itself.
+      ['#a{background-image:url(#x)}', 'remote-url'],
+      // A ";" inside a string does not end the declaration it sits in.
+      [
+        '#a{content:";"; background-image: url(http://evil.test/s)}',
+        'remote-url',
+      ],
       // A comment opener inside a string must not hide what follows it.
       [
         '#a{content:"/*"; background-image:url(http://evil.test/x); content:"*/"}',

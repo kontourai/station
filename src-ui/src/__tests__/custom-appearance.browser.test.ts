@@ -51,6 +51,17 @@ createRoot(document.getElementById('root')).render(React.createElement(App));
 const appearance = (css, palette = {}) => ({ version: 1, name: 'Fixture', palette, css });
 window.harness = {
   events,
+  // The guard alone, with no text check in front of it (the case where only
+  // the browser stands between the CSS and the network).
+  adoptSanitized: (css) => {
+    const { sheet, stripped } = sanitizeCustomCss(css);
+    window.__guarded = sheet;
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    return stripped;
+  },
+  dropSanitized: () => {
+    document.adoptedStyleSheets = document.adoptedStyleSheets.filter((s) => s !== window.__guarded);
+  },
   sanitize: (css) => {
     const { text, stripped } = sanitizeCustomCss(css);
     return { text, stripped };
@@ -95,6 +106,8 @@ describe('custom appearance in Chromium', () => {
   let browser: Browser;
   let page: Page;
   const fetched: string[] = [];
+  /** Every image or stylesheet request, same origin included. */
+  const subresources: string[] = [];
 
   beforeAll(async () => {
     if (!chromiumIsInstalled(REPO_ROOT))
@@ -110,6 +123,8 @@ describe('custom appearance in Chromium', () => {
     page.on('request', (request) => {
       const url = request.url();
       if (!url.startsWith('http://station.test/')) fetched.push(url);
+      if (['image', 'stylesheet', 'font'].includes(request.resourceType()))
+        subresources.push(url);
     });
     await page.route('http://evil.test/**', (route) => route.abort());
     await page.waitForFunction(() => 'harness' in window);
@@ -474,6 +489,70 @@ describe('custom appearance in Chromium', () => {
     expect(await lastEvent()).toBe('revert');
     expect(await probe('color')).not.toBe('rgb(3, 3, 3)');
     expect(await host().count()).toBe(0);
+  });
+
+  test.each([
+    [
+      'a ";" inside a string cannot split a var() declaration',
+      '#probe { display: list-item; --e: inside; list-style: var(--e) ";" \\75 rl(http://evil.test/split2.png); }',
+    ],
+    [
+      'a backslash in a url() cannot turn data: into a same-origin path',
+      '#probe { background-image: url("\\\\data:/../same-origin-probe.png"); }',
+    ],
+    [
+      'a backslash in a url() cannot turn #fragment into a page load',
+      '#probe { background-image: url("\\\\#frag"); }',
+    ],
+    [
+      'url(#id) outside filter, mask, clip-path and marker is a page load',
+      '#probe { background-image: url(#frag2); }',
+    ],
+  ])('the guard alone: %s', async (_name, css) => {
+    subresources.length = 0;
+    const before = fetched.length;
+    await harness('adoptSanitized', css);
+    await page.waitForTimeout(400);
+    await page.evaluate(
+      () => getComputedStyle(document.getElementById('probe')!).backgroundImage,
+    );
+    await page.waitForTimeout(200);
+    await harness('dropSanitized');
+    expect(subresources).toEqual([]);
+    expect(fetched.slice(before)).toEqual([]);
+  });
+
+  test('url(#id) in a filter stays a local reference', async () => {
+    const stripped = await harness<{ what: string }[]>(
+      'adoptSanitized',
+      '#probe { filter: url(#glow); }',
+    );
+    await harness('dropSanitized');
+    expect(stripped).toEqual([]);
+  });
+
+  test('hostile CSS written straight into the pre-paint cache fetches nothing', async () => {
+    subresources.length = 0;
+    const before = fetched.length;
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'station-custom-appearance-v1',
+        JSON.stringify({
+          version: 2,
+          appearance: {
+            version: 1,
+            name: 'Cached',
+            palette: {},
+            css: '#probe { background-image: url(http://evil.test/cache.png); } #probe { border-image: url(/same-origin-cache.png) 30; border: 3px solid; } @import url(http://evil.test/cache.css);',
+          },
+        }),
+      );
+    });
+    await harness('applyCached');
+    await page.waitForTimeout(500);
+    expect(subresources).toEqual([]);
+    expect(fetched.slice(before)).toEqual([]);
+    await harness('setActive', null);
   });
 
   // Last: it reloads the page.

@@ -114,7 +114,6 @@ const BAR_CSS = [
 
 const NUMERIC_ONE = (value: string) => value === '' || Number(value) === 1;
 
-/** Why the page cannot be trusted to show what Keep would keep, or `null`. */
 /** Whether this element's own rendering hides or moves everything inside it. */
 function hidesItsContent(element: Element): boolean {
   const style = getComputedStyle(element);
@@ -159,6 +158,7 @@ function pageCovered(host: HTMLElement): boolean {
   return false;
 }
 
+/** Why the page cannot be trusted to show what Keep would keep, or `null`. */
 function pageIntegrityProblem(host: HTMLElement): string | null {
   if (
     hidesItsContent(document.documentElement) ||
