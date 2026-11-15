@@ -346,14 +346,40 @@ describe('finished-by-design Sessions release their engine early', () => {
       expect(adapter.stopped).toEqual([]);
     });
 
-    test('engine activity after the turn settled', async () => {
+    test('engine activity after the turn settled restarts the grace', async () => {
+      const grace = 2_000;
+      const { adapter, runTurn, start } = await boot({
+        finishedSessionParkAfterMs: grace,
+      });
+      const threadId = await start();
+      await runTurn(threadId, 'delegation');
+      const settledAt = Date.now();
+      // Halfway through the grace, a backgrounded subagent reports progress.
+      await new Promise((resolve) => setTimeout(resolve, grace / 2));
+      adapter.push(threadId, {
+        method: 'tool.progress',
+        itemId: 'toolu-subagent',
+        toolCallId: 'toolu-subagent',
+        message: 'still committing',
+      });
+      // Past when a park counted from the settle would have run, well before
+      // one counted from that progress can.
+      await new Promise((resolve) =>
+        setTimeout(resolve, settledAt + grace * 1.5 - Date.now()),
+      );
+      expect(adapter.stopped).toEqual([]);
+      // Quiet for a whole grace since: released.
+      await vi.waitFor(() => expect(adapter.stopped).toEqual([threadId]), {
+        timeout: grace * 2,
+      });
+    });
+
+    test('engine activity dated past the grace', async () => {
       const { adapter, runTurn, start } = await boot({
         finishedSessionParkAfterMs: 400,
       });
       const threadId = await start();
       await runTurn(threadId, 'delegation');
-      // A backgrounded subagent's progress, inside the grace, dated after
-      // the timer would fire: the engine is still in use.
       adapter.push(threadId, {
         method: 'tool.progress',
         itemId: 'toolu-subagent',

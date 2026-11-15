@@ -2298,8 +2298,9 @@ marked person-typed), it parks the engine `finishedSessionParkAfterMs` (15
 seconds) after the turn settled. This covers a delegated child, a dedicated
 Automation run and a Task dispatch nobody typed in. The park is the idle park
 with that grace as its threshold, so every refusal above still applies under
-the lifecycle lock. Activity inside the grace keeps the engine: an engine
-event, the delegator's follow-up, a queued inbox entry. A refused park is left
+the lifecycle lock. An engine event after the settle restarts the grace. A
+delegator's follow-up or a queued inbox entry starts a turn, which the park
+never stops, and that turn's own settle decides again. A refused park is left
 to the sweep. A person's chat, including one an Automation run or a delegated
 result was queued into, keeps the ordinary threshold. So do `unknown` turns.
 `idleSessionParkAfterMs: 0` turns both parks off.

@@ -13803,6 +13803,16 @@ export class OrchestrationService {
             this.lastEngineActivityAt.delete(normalized.threadId);
           } else {
             this.noteEngineActivity(normalized);
+            // A terminal schedules the early park after this point, in
+            // `observeCommittedEvent`; anything later restarts its grace.
+            if (
+              normalized.method !== 'turn.completed' &&
+              normalized.method !== 'turn.aborted' &&
+              normalized.method !== 'runtime.error'
+            )
+              this.finishedSessionParking.observeEngineActivity(
+                normalized.threadId,
+              );
           }
           this.flowPolicy.applyPostHocToolPolicies(adapter, normalized);
           this.flowPolicy.spoolCommandEvidence(normalized);

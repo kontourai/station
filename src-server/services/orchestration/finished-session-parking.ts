@@ -1,8 +1,8 @@
 import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-events';
 
 /**
- * How long after an unattended turn settles its engine is parked, when
- * nothing has happened on the Session since. Long enough for the engine's
+ * How long after an unattended turn settles, or after the engine's last
+ * event since, its engine is parked. Long enough for the engine's
  * own trailing events (a background task's notification, a late child-work
  * report) and for a delegator's immediate follow-up or a queued inbox entry
  * to arrive and keep the engine; short against the 30-minute idle park.
@@ -71,6 +71,20 @@ export class FinishedSessionParking {
     this.cancel(threadId);
     if (this.stopped || this.ports.afterMs <= 0 || !this.isUnattended(threadId))
       return;
+    this.schedule(threadId);
+  }
+
+  /**
+   * The engine reported something after the settle (a trailing tool event, a
+   * subagent's progress): the grace starts again from now.
+   */
+  observeEngineActivity(threadId: string): void {
+    if (this.stopped || !this.timers.has(threadId)) return;
+    this.cancel(threadId);
+    this.schedule(threadId);
+  }
+
+  private schedule(threadId: string): void {
     const timer = setTimeout(() => {
       this.timers.delete(threadId);
       // A person's turn that started and settled inside the grace replaced
