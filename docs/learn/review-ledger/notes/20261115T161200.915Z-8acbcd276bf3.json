@@ -1,0 +1,7 @@
+{
+  "revision": "7741f351e5c6e604023fbbde424617c8eedd4d68",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"AuthorityQueryContext change is only the desktop loading step label passed to StationConnectingScreen; no SDK API, export or documented behavior changed.","inputs":["docs/reference/sdk.md","src-ui/src/contexts/AuthorityQueryContext.tsx"]}
+  ]
+}

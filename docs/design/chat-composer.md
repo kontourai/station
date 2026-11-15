@@ -22,9 +22,10 @@ Start on the right. The reply's next-turn destination notice and conversation
 status/resync action stay above the box when present.
 
 Run setup is a quiet ghost pill with overlapping Agent and engine marks, a
-secondary-weight Agent · model label, and the shared caret. Safety warnings stay
-on the marks. The Agent name truncates first; in narrow composers the label
-hides, keeping marks and caret. On phones, More draft options groups Saved drafts
+secondary-weight model label, and the shared caret. The Agent mark names the
+Agent, so the label spends its text on the model; without an Agent mark it reads
+Agent · model and the Agent name truncates first. Safety warnings stay on the
+marks. In narrow composers the label hides, keeping marks and caret. On phones, More draft options groups Saved drafts
 and Clear message to preserve the toolbar targets. The full summary remains in the accessible name
 and hover title, and the touch target stays at least 44px. The existing setup
 owner opens above the toolbar on desktop and as a bottom sheet on phones.
@@ -866,9 +867,10 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 ### 3.1 Provider and model picker
 
 - Chat replies, Home and dock starts share one **Run setup** button, with the
-  Agent and engine marks and a compact Agent/model label. Identical marks appear
+  Agent and engine marks and a compact model label (Agent · model when no
+  Agent mark is shown). Identical marks appear
   once; different marks overlap with the smaller engine mark underneath. A missing
-  Agent mark uses the generic Agent glyph. Its accessible name starts with the visible Agent/model label and adds only
+  Agent mark uses the generic Agent glyph. Its accessible name starts with the full Agent · model label and adds only
   available approval and mode values. The trigger has no setup caption. Full access,
   pending or refused approval changes add a corner warning badge with matching
   accessible text. Conversation overrides use a neutral dot, announced as
@@ -877,8 +879,8 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   and a popover on desktop containing the existing Agent, Model, Approval and
   advertised Mode controls. Picker ownership, unavailable reasons, pending
   approval states and engine-owned approval disclosures are preserved.
-  The Agent name truncates first to keep the model visible inside the button;
-  the full values remain accessible.
+  When the Agent name is visible it truncates first to keep the model visible
+  inside the button; the full values remain accessible.
   Once a chat has a Session, the Engine & model
   caption names the engine that Session runs on (its own connection for a generic ACP
   engine), not the Agent's current connection: repointing an Agent does not move an

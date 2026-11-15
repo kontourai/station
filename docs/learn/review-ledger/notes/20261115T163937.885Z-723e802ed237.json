@@ -1,0 +1,7 @@
+{
+  "revision": "b0ab36cc5399de4dc2d4a59048ce0375f7f27ff0",
+
+  "notes": [
+    {"path":"docs/pages/README.md","note":"Root inspected the public bundle/exclude explanation and added the exact retained Task review evidence path to its existing per-file evidence list. Public guides, topics, product metadata and gate requirements remain unchanged; source classification only, not hosted/provider/native qualification.","inputs":["docs/pages/README.md"]}
+  ]
+}
