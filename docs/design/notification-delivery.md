@@ -1174,4 +1174,3 @@ and the right conversation.
   message anchor `surfaceDeepLink` can carry. Android still suppresses every
   Station's notification while the app is in the foreground, including one
   from a Station other than the connected one, which then shows nowhere.
-
