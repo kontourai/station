@@ -3631,7 +3631,9 @@
 .chat-input .chat-controls-row {
   flex-wrap: nowrap;
 }
-/* Beat the global toolbar's fixed-child reset while keeping setup shrinkable. */
+/* Beat the global toolbar's fixed-child reset while keeping setup shrinkable.
+   No share cap: the row does not wrap, so setup shrinks when Send appears and
+   otherwise uses room the row has free instead of truncating beside it. */
 div.chat-input
   .chat-controls-row
   > .composer-choices.chat-input__settings:has(
@@ -3639,7 +3641,7 @@ div.chat-input
   ) {
   flex: 0 1 auto;
   min-width: 44px;
-  max-width: 45%;
+  max-width: 100%;
   overflow: visible;
 }
 .chat-controls-row > .chat-input__send-group {
