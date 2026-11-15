@@ -30,9 +30,18 @@
  * profile or the Windows policy registry) or by the server are not files
  * Station can read: a modern `instructionFiles` there still outranks
  * Station's value, a legacy `projectInstructions` there does not.
+ *
+ * Sending the legacy key (`projectInstructions: "both"`) instead was tried
+ * against the real engine with a real managed tier. A managed legacy value
+ * then wins, but a managed `instructionFiles` set explicitly to its default
+ * loses, and the engine reports the legacy key as honoured only "for now".
+ * Station prefers an installed engine that is newer than the bundled one, so
+ * relying on that key could silently drop AGENTS.md wherever an engine stops
+ * reading it. The modern key is what the engine documents.
  */
 import {
   closeSync,
+  type Dirent,
   constants as fsConstants,
   fstatSync,
   openSync,
@@ -63,7 +72,7 @@ export const CLAUDE_USER_SETTINGS_MAX_BYTES = 1024 * 1024;
  * More managed drop-in files than this and Station sets nothing rather than
  * read only some of them.
  */
-const CLAUDE_MANAGED_DROP_IN_MAX_FILES = 256;
+export const CLAUDE_MANAGED_DROP_IN_MAX_FILES = 256;
 
 /**
  * The engine's managed settings folder for this platform. Claude Code fixes
@@ -134,7 +143,21 @@ function readBounded(path: string, max: number): string | undefined {
   }
 }
 
-/** The settings files to check, in no particular order. */
+/**
+ * Whether the engine reads this entry of `managed-settings.d`: a file or a
+ * link whose name ends in `.json` and does not start with a dot, so a
+ * `.disabled-policy.json` is skipped. Taken from Claude Code's own drop-in
+ * walk, which reads the entries in sorted name order.
+ */
+function isEngineDropIn(entry: Dirent): boolean {
+  return (
+    (entry.isFile() || entry.isSymbolicLink()) &&
+    entry.name.endsWith('.json') &&
+    !entry.name.startsWith('.')
+  );
+}
+
+/** The settings files to check, drop-ins in the engine's order. */
 function settingsFiles(
   configHome: string,
   managedRoot: string,
@@ -147,21 +170,24 @@ function settingsFiles(
     },
   ];
   const dropIns = nodePath.join(managedRoot, 'managed-settings.d');
-  let names: string[];
+  let entries: Dirent[];
   try {
-    names = readdirSync(dropIns);
+    entries = readdirSync(dropIns, { withFileTypes: true });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { files };
+    // The engine reads a missing folder, or a file in its place, as no
+    // drop-ins.
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return { files };
     return {
       reason: `the managed drop-in folder ${dropIns} was not read (${error instanceof Error ? error.message : String(error)})`,
     };
   }
-  const json = names.filter((name) => name.endsWith('.json'));
-  if (json.length > CLAUDE_MANAGED_DROP_IN_MAX_FILES)
+  const names = entries.filter(isEngineDropIn).map((entry) => entry.name);
+  if (names.length > CLAUDE_MANAGED_DROP_IN_MAX_FILES)
     return {
-      reason: `the managed drop-in folder ${dropIns} holds more than ${CLAUDE_MANAGED_DROP_IN_MAX_FILES} .json files`,
+      reason: `the managed drop-in folder ${dropIns} holds more than ${CLAUDE_MANAGED_DROP_IN_MAX_FILES} drop-in files`,
     };
-  for (const name of json)
+  for (const name of names.sort())
     files.push({ tier: 'managed', path: nodePath.join(dropIns, name) });
   return { files };
 }

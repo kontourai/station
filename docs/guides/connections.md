@@ -1011,19 +1011,22 @@ settings. It leaves the option out when any settings file it can read already se
 `instructionFiles`, or its older name `projectInstructions`, under
 `pluginConfigs["agents-md@builtin"].options`. It reads `settings.json` in the session's Claude
 configuration directory, resolving a relative `CLAUDE_CONFIG_DIR` against the session's working
-folder as Claude Code does. It also reads this machine's `managed-settings.json` and the `.json`
-files in `managed-settings.d` in Claude Code's managed settings folder
+folder as Claude Code does. It also reads this machine's `managed-settings.json` and the drop-ins
+in `managed-settings.d` that Claude Code reads (files whose names end in `.json` and do not start
+with a dot), in Claude Code's managed settings folder
 (`/Library/Application Support/ClaudeCode` on macOS, `/etc/claude-code` on Linux,
 `C:\Program Files\ClaudeCode` on Windows). It also leaves the option out when it cannot read
 one of those files as a regular JSON file of at most 1 MiB, or when `managed-settings.d` holds
-more than 256 `.json` files. Then Claude Code's own setting applies.
+more than 256 such drop-ins. Then Claude Code's own setting applies.
 
 Managed settings that your organization delivers by MDM (a macOS configuration profile or the
 Windows policy registry) or from the server are not files Station can read. An
 `instructionFiles` value set there still takes precedence over the session's option. A
 `projectInstructions` value set only there does not, because Claude Code reads that older name
-only while `instructionFiles` is unset or at its default. A Claude Code version without the option ignores it and
-loads `CLAUDE.md` alone.
+only while `instructionFiles` is unset or at its default. Claude Code reports that older name as
+honoured only for now and asks for `instructionFiles` in its place, so set `instructionFiles` to
+keep a managed choice. A Claude Code version without the option ignores it and loads `CLAUDE.md`
+alone.
 
 ### Engines from the public registry
 

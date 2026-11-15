@@ -13,7 +13,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { bundledClaudeExecutable } from '../../../scripts/bench/station-weight.mjs';
 import { startStubAnthropic } from '../../../scripts/bench/station-weight-stub.mjs';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
-import { CLAUDE_USER_SETTINGS_MAX_BYTES } from '../adapters/claude-instruction-files.js';
+import {
+  CLAUDE_MANAGED_DROP_IN_MAX_FILES,
+  CLAUDE_USER_SETTINGS_MAX_BYTES,
+} from '../adapters/claude-instruction-files.js';
 
 const { mockQuery, mockFindCliBinaryAsync, mockRunCliCommand } = vi.hoisted(
   () => ({
@@ -241,6 +244,46 @@ describe('Claude sessions ask the engine for AGENTS.md beside CLAUDE.md', () => 
     });
     managed('managed-settings.d/notes.txt', legacyNone);
     expect((await startOptions()).settings).toEqual(STATION_SETTING);
+  });
+
+  test('drop-ins the engine skips are skipped: a dot-prefixed name, a folder, a non-.json name', async () => {
+    const legacyNone = {
+      pluginConfigs: {
+        'agents-md@builtin': { options: { projectInstructions: 'none' } },
+      },
+    };
+    configHome();
+    managed('managed-settings.d/.disabled-policy.json', legacyNone);
+    managed('managed-settings.d/policy.json.off', legacyNone);
+    mkdirSync(join(managedRoot, 'managed-settings.d', '20-folder.json'));
+    expect((await startOptions()).settings).toEqual(STATION_SETTING);
+    // Control: the same choice under a name the engine reads is kept.
+    managed('managed-settings.d/30-policy.json', legacyNone);
+    expect((await startOptions()).settings).toBeUndefined();
+  });
+
+  test('a file in place of managed-settings.d is no drop-ins, as the engine reads it', async () => {
+    configHome();
+    writeFileSync(join(managedRoot, 'managed-settings.d'), '');
+    expect((await startOptions()).settings).toEqual(STATION_SETTING);
+  });
+
+  test('the drop-in cap counts only drop-ins the engine reads', async () => {
+    configHome();
+    const dropIns = join(managedRoot, 'managed-settings.d');
+    mkdirSync(dropIns);
+    for (let index = 0; index < CLAUDE_MANAGED_DROP_IN_MAX_FILES; index += 1) {
+      writeFileSync(
+        join(dropIns, `${String(index).padStart(3, '0')}.json`),
+        '{}',
+      );
+      writeFileSync(join(dropIns, `.${index}-disabled.json`), '{}');
+    }
+    // At the cap, with as many skipped names again: read and set.
+    expect((await startOptions()).settings).toEqual(STATION_SETTING);
+    // One more drop-in the engine reads: Station cannot read them all.
+    writeFileSync(join(dropIns, 'zzz.json'), '{}');
+    expect((await startOptions()).settings).toBeUndefined();
   });
 
   test('a relative CLAUDE_CONFIG_DIR is read where the engine reads it: under the session cwd', async () => {
