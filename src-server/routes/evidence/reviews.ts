@@ -19,6 +19,7 @@ interface ReviewEvidenceRouteDeps {
    */
   getOwner(context: Context): SessionOwnerStamp;
   getTenantExecutionContext(): TenantExecutionContext | undefined;
+  readAccess?(context: Context): ReviewReadAccess;
   taskContext?(
     context: Context,
     request: IndependentReviewRequest,
@@ -28,17 +29,29 @@ interface ReviewEvidenceRouteDeps {
   reportError(operation: string, error: unknown): void;
 }
 
+interface ReviewReadAccess {
+  includeTaskReviews: boolean;
+  assertCurrent(): void;
+}
+
 export function createReviewEvidenceAggregateRoutes(
   reviews: Pick<ReviewEvidenceModule, 'listAll'>,
   listProjectSlugs: () => string[],
   reportError: (operation: string, error: unknown) => void = () => {},
+  readAccess?: (context: Context) => ReviewReadAccess,
 ) {
   const app = new Hono();
   app.get('/', async (context) => {
     try {
+      const access = readAccess?.(context);
+      access?.assertCurrent();
+      const data = access
+        ? await reviews.listAll(listProjectSlugs(), access.includeTaskReviews)
+        : await reviews.listAll(listProjectSlugs());
+      access?.assertCurrent();
       return context.json({
         success: true,
-        data: await reviews.listAll(listProjectSlugs()),
+        data,
       });
     } catch (error) {
       reportError('route.listAll', error);
@@ -57,9 +70,15 @@ export function createReviewEvidenceRoutes(
   app.get('/', async (context) => {
     const projectSlug = context.req.param('slug') ?? '';
     try {
+      const access = deps.readAccess?.(context);
+      access?.assertCurrent();
+      const data = access
+        ? await reviews.list(projectSlug, access.includeTaskReviews)
+        : await reviews.list(projectSlug);
+      access?.assertCurrent();
       return context.json({
         success: true,
-        data: await reviews.list(projectSlug),
+        data,
       });
     } catch (error) {
       deps.reportError('route.list', error);
@@ -70,10 +89,17 @@ export function createReviewEvidenceRoutes(
   app.get('/requests/:requestId', async (context) => {
     const projectSlug = context.req.param('slug') ?? '';
     try {
-      const status = await reviews.status(
-        context.req.param('requestId') ?? '',
-        projectSlug,
-      );
+      const access = deps.readAccess?.(context);
+      access?.assertCurrent();
+      const requestId = context.req.param('requestId') ?? '';
+      const status = access
+        ? await reviews.status(
+            requestId,
+            projectSlug,
+            access.includeTaskReviews,
+          )
+        : await reviews.status(requestId, projectSlug);
+      access?.assertCurrent();
       if (!status) {
         return context.json(
           {
@@ -96,10 +122,13 @@ export function createReviewEvidenceRoutes(
   app.get('/:receiptId', async (context) => {
     const projectSlug = context.req.param('slug') ?? '';
     try {
-      const receipt = await reviews.read(
-        context.req.param('receiptId') ?? '',
-        projectSlug,
-      );
+      const access = deps.readAccess?.(context);
+      access?.assertCurrent();
+      const receiptId = context.req.param('receiptId') ?? '';
+      const receipt = access
+        ? await reviews.read(receiptId, projectSlug, access.includeTaskReviews)
+        : await reviews.read(receiptId, projectSlug);
+      access?.assertCurrent();
       if (!receipt) {
         return context.json(
           {
@@ -137,6 +166,8 @@ export function createReviewEvidenceRoutes(
     try {
       const owner = deps.getOwner(context);
       const userId = owner.ownerUserId;
+      const access = deps.readAccess?.(context);
+      access?.assertCurrent();
       const taskContext = await deps.taskContext?.(context, request);
       const status = await reviews.run(request, {
         requestedBy: { actorId: userId },
@@ -145,9 +176,11 @@ export function createReviewEvidenceRoutes(
           ? { ownerAttribution: owner.ownerAttribution }
           : {}),
         tenantExecutionContext: deps.getTenantExecutionContext(),
+        ...(access ? { includeTaskReviews: access.includeTaskReviews } : {}),
         ...taskContext,
       });
       taskContext?.assertCurrent();
+      access?.assertCurrent();
       const code =
         status.state === 'completed'
           ? 201

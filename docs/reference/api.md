@@ -6580,7 +6580,9 @@ exception, or gate completion. A cleanup result can retain the workspace when
 shutdown was not confirmed.
 
 The [SDK helper](../../packages/sdk/src/client/reviews.ts) defaults each HTTP
-request to 30 seconds. After submission failure it reads status; if that read
+request to 30 seconds. An explicit `409 review_request_conflict` is returned
+immediately, without status recovery or retry; it is distinct from a recorded
+indeterminate outcome. After other submission failures it reads status; if that read
 also fails, it retries the same request ID once. It polls a running status every
 500 ms and honors the caller's AbortSignal. This is a per-request timeout, not a
 30-second deadline for the whole review. Terminal rejected/indeterminate status
@@ -7437,6 +7439,13 @@ Task/Project incarnation is retained in the review submission record before
 reviewer invocation. Task-associated submission rows use private schema version
 2; older binaries refuse those rows rather than execute them without their
 binding. Immutable review receipt format remains unchanged.
+Project lists, direct receipt/status reads and the aggregate also exclude these
+Task-associated results for deployment-account readers. An unavailable admission
+association refuses rather than treating the result as ordinary Project evidence.
+Delta ancestry cannot transfer Task findings into an unbound Project review.
+Task review publication retains the admitted filesystem identity and rechecks
+current authority before receipt/index and submission commits; a Project change
+or revocation during execution cannot redirect publication to its replacement.
 
 ### Anchored feedback
 

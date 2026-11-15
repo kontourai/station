@@ -21,9 +21,11 @@ import {
   type ReviewReceiptReference,
   type ReviewReceiptStore,
   ReviewRequestConflictError,
+  type ReviewStorageIdentity,
   type ReviewSubmissionAdmission,
   type ReviewSubmissionStore,
   type ReviewTaskBinding,
+  type ReviewWriteGuard,
 } from './review-evidence-module.js';
 
 const RECEIPT_DIRECTORY = join('.station', 'review-evidence', 'receipts');
@@ -40,12 +42,7 @@ const REQUEST_DIRECTORY = '.requests';
 const MAX_INDEX_BYTES = 128 * 1024;
 const MAX_SUBMISSION_BYTES = 64 * 1024;
 
-interface RootIdentity {
-  path: string;
-  realpath: string;
-  dev: number;
-  ino: number;
-}
+type RootIdentity = ReviewStorageIdentity;
 
 interface StoredSubmission {
   schemaVersion: 1 | 2;
@@ -117,6 +114,7 @@ export class FileReviewReceiptStore
 
   async write(
     input: Omit<IndependentReviewReceipt, 'receiptId'>,
+    guard?: ReviewWriteGuard,
   ): Promise<IndependentReviewReceipt> {
     const receiptId = reviewEvidenceId(input);
     const receipt: IndependentReviewReceipt = { ...input, receiptId };
@@ -124,46 +122,68 @@ export class FileReviewReceiptStore
     if (Buffer.byteLength(serialized) > MAX_RECEIPT_BYTES) {
       throw new Error('Review receipt exceeds the byte limit.');
     }
-    return this.#withProjectLock(input.target.projectSlug, async (root) => {
-      const directory = await this.#receiptDirectory(root, true);
-      const directoryIdentity = await captureRootIdentity(directory);
-      const existing = await this.read(receiptId, input.target.projectSlug);
-      if (existing) {
-        if (canonicalReviewJson(existing) !== canonicalReviewJson(receipt)) {
-          throw new Error('Review receipt identity collision.');
-        }
-        await this.#ensureIndexed(directory, receipt, root, directoryIdentity);
-        return existing;
-      }
-      const names = await this.#receiptNames(directory);
-      if (names.length >= this.#maxReceiptsPerProject) {
-        throw new Error(
-          'Review receipt capacity is exhausted by protected evidence.',
+    return this.#withProjectLock(
+      input.target.projectSlug,
+      async (root) => {
+        const directory = await this.#receiptDirectory(root, true);
+        const directoryIdentity = await captureRootIdentity(directory);
+        const existing = await this.read(
+          receiptId,
+          input.target.projectSlug,
+          root,
         );
-      }
-      await publishJsonFileWithOwnedLock(
-        join(directory, `${receiptId}.json`),
-        receipt,
-        {
-          maxBytes: MAX_RECEIPT_BYTES,
-          label: 'Review receipt',
-          beforeCommit: async () => {
-            await this.#beforeReceiptCommit?.();
-            await validatePublicationIdentity(root, directoryIdentity);
+        if (existing) {
+          if (canonicalReviewJson(existing) !== canonicalReviewJson(receipt)) {
+            throw new Error('Review receipt identity collision.');
+          }
+          await this.#ensureIndexed(
+            directory,
+            receipt,
+            root,
+            directoryIdentity,
+            guard?.assertCurrent,
+          );
+          return existing;
+        }
+        const names = await this.#receiptNames(directory);
+        if (names.length >= this.#maxReceiptsPerProject) {
+          throw new Error(
+            'Review receipt capacity is exhausted by protected evidence.',
+          );
+        }
+        await publishJsonFileWithOwnedLock(
+          join(directory, `${receiptId}.json`),
+          receipt,
+          {
+            maxBytes: MAX_RECEIPT_BYTES,
+            label: 'Review receipt',
+            beforeCommit: async () => {
+              await this.#beforeReceiptCommit?.();
+              await validatePublicationIdentity(root, directoryIdentity);
+              guard?.assertCurrent?.();
+            },
           },
-        },
-      );
-      await this.#ensureIndexed(directory, receipt, root, directoryIdentity);
-      return receipt;
-    });
+        );
+        await this.#ensureIndexed(
+          directory,
+          receipt,
+          root,
+          directoryIdentity,
+          guard?.assertCurrent,
+        );
+        return receipt;
+      },
+      guard,
+    );
   }
 
   async read(
     receiptId: string,
     projectSlug: string,
+    storageIdentity?: RootIdentity,
   ): Promise<IndependentReviewReceipt | null> {
     if (!RECEIPT_ID.test(receiptId)) return null;
-    const root = await this.#rootIdentity(projectSlug);
+    const root = storageIdentity ?? (await this.#rootIdentity(projectSlug));
     const directory = await this.#receiptDirectory(root, false);
     const directoryIdentity = await captureRootIdentity(directory).catch(
       (error: NodeJS.ErrnoException) => {
@@ -260,74 +280,78 @@ export class FileReviewReceiptStore
     assertCurrent?: () => void;
   }): Promise<ReviewSubmissionAdmission> {
     const projectSlug = input.request.target.projectSlug;
-    return this.#withProjectLock(projectSlug, async (root) => {
-      const existing = await this.#readSubmission(
-        input.request.requestId,
-        projectSlug,
-        root,
-      );
-      const requestSha256 = reviewEvidenceId(input.request);
-      if (existing) {
-        if (
-          existing.requestSha256 !== requestSha256 ||
-          canonicalReviewJson(existing.taskBinding ?? null) !==
-            canonicalReviewJson(input.taskBinding ?? null)
-        ) {
-          throw new ReviewRequestConflictError();
-        }
-        if (
-          existing.state === 'running' &&
-          existing.ownerId === this.#ownerId &&
-          existing.phase === 'prepared'
-        ) {
-          return { kind: 'acquired' };
-        }
-        if (
-          existing.state === 'running' &&
-          existing.ownerId === this.#ownerId &&
-          existing.phase === 'invoking'
-        ) {
-          const reconciled: StoredSubmission = {
-            ...existing,
-            state: 'indeterminate',
-            updatedAt: input.startedAt,
-            failureReason:
-              'The independent review outcome is uncertain and must not be retried automatically.',
-          };
-          await this.#writeSubmission(reconciled, root);
+    return this.#withProjectLock(
+      projectSlug,
+      async (root) => {
+        const existing = await this.#readSubmission(
+          input.request.requestId,
+          projectSlug,
+          root,
+        );
+        const requestSha256 = reviewEvidenceId(input.request);
+        if (existing) {
+          if (
+            existing.requestSha256 !== requestSha256 ||
+            canonicalReviewJson(existing.taskBinding ?? null) !==
+              canonicalReviewJson(input.taskBinding ?? null)
+          ) {
+            throw new ReviewRequestConflictError();
+          }
+          if (
+            existing.state === 'running' &&
+            existing.ownerId === this.#ownerId &&
+            existing.phase === 'prepared'
+          ) {
+            return { kind: 'acquired', storageIdentity: { ...root } };
+          }
+          if (
+            existing.state === 'running' &&
+            existing.ownerId === this.#ownerId &&
+            existing.phase === 'invoking'
+          ) {
+            const reconciled: StoredSubmission = {
+              ...existing,
+              state: 'indeterminate',
+              updatedAt: input.startedAt,
+              failureReason:
+                'The independent review outcome is uncertain and must not be retried automatically.',
+            };
+            await this.#writeSubmission(reconciled, root, input.assertCurrent);
+            return {
+              kind: 'existing',
+              status: await this.#projectSubmission(reconciled, root),
+            };
+          }
           return {
             kind: 'existing',
-            status: await this.#projectSubmission(reconciled),
+            status: await this.#projectSubmission(existing, root),
           };
         }
-        return {
-          kind: 'existing',
-          status: await this.#projectSubmission(existing),
+        const requestNames = await this.#submissionNames(root);
+        if (requestNames.length >= this.#maxReceiptsPerProject) {
+          throw new Error(
+            'Review request capacity is exhausted by protected evidence.',
+          );
+        }
+        const record: StoredSubmission = {
+          schemaVersion: input.taskBinding ? 2 : 1,
+          ...(input.taskBinding ? { taskBinding: input.taskBinding } : {}),
+          requestId: input.request.requestId,
+          projectSlug,
+          requestSha256,
+          ownerId: this.#ownerId,
+          ownerPid: process.pid,
+          phase: 'prepared',
+          state: 'running',
+          startedAt: input.startedAt,
+          updatedAt: input.startedAt,
         };
-      }
-      const requestNames = await this.#submissionNames(root);
-      if (requestNames.length >= this.#maxReceiptsPerProject) {
-        throw new Error(
-          'Review request capacity is exhausted by protected evidence.',
-        );
-      }
-      const record: StoredSubmission = {
-        schemaVersion: input.taskBinding ? 2 : 1,
-        ...(input.taskBinding ? { taskBinding: input.taskBinding } : {}),
-        requestId: input.request.requestId,
-        projectSlug,
-        requestSha256,
-        ownerId: this.#ownerId,
-        ownerPid: process.pid,
-        phase: 'prepared',
-        state: 'running',
-        startedAt: input.startedAt,
-        updatedAt: input.startedAt,
-      };
-      input.assertCurrent?.();
-      await this.#writeSubmission(record, root, input.assertCurrent);
-      return { kind: 'acquired' };
-    });
+        input.assertCurrent?.();
+        await this.#writeSubmission(record, root, input.assertCurrent);
+        return { kind: 'acquired', storageIdentity: { ...root } };
+      },
+      { assertCurrent: input.assertCurrent },
+    );
   }
 
   async hasTaskRequest(
@@ -404,28 +428,38 @@ export class FileReviewReceiptStore
   async invoking(input: {
     request: IndependentReviewRequest;
     updatedAt: string;
+    guard?: ReviewWriteGuard;
   }): Promise<void> {
-    await this.#settleSubmission(input.request, (current) => ({
-      ...current,
-      phase: 'invoking',
-      updatedAt: input.updatedAt,
-    }));
+    await this.#settleSubmission(
+      input.request,
+      (current) => ({
+        ...current,
+        phase: 'invoking',
+        updatedAt: input.updatedAt,
+      }),
+      input.guard,
+    );
   }
 
   async complete(input: {
     request: IndependentReviewRequest;
     result: IndependentReviewRunResult;
     completedAt: string;
+    guard?: ReviewWriteGuard;
   }): Promise<IndependentReviewRequestStatus> {
-    return this.#settleSubmission(input.request, (current) => ({
-      ...current,
-      state: 'completed',
-      updatedAt: input.completedAt,
-      receiptId: input.result.receipt.receiptId,
-      attachment: input.result.attachment,
-      cleanup: input.result.cleanup,
-      failureReason: undefined,
-    }));
+    return this.#settleSubmission(
+      input.request,
+      (current) => ({
+        ...current,
+        state: 'completed',
+        updatedAt: input.completedAt,
+        receiptId: input.result.receipt.receiptId,
+        attachment: input.result.attachment,
+        cleanup: input.result.cleanup,
+        failureReason: undefined,
+      }),
+      input.guard,
+    );
   }
 
   async fail(input: {
@@ -434,22 +468,42 @@ export class FileReviewReceiptStore
     updatedAt: string;
     unavailableLenses?: string[];
     failureReason?: string;
+    guard?: ReviewWriteGuard;
   }): Promise<IndependentReviewRequestStatus> {
-    return this.#settleSubmission(input.request, (current) => ({
-      ...current,
-      state: input.state,
-      updatedAt: input.updatedAt,
-      failureReason:
-        input.state === 'rejected'
-          ? 'The independent review request was rejected before reviewer execution.'
-          : input.state === 'not-verified'
-            ? (input.failureReason ??
-              'No eligible read-only reviewer was available; human review is required.')
-            : 'The independent review outcome is uncertain and must not be retried automatically.',
-      ...(input.state === 'not-verified'
-        ? { unavailableLenses: input.unavailableLenses ?? ['human-review'] }
-        : {}),
-    }));
+    return this.#settleSubmission(
+      input.request,
+      (current) => ({
+        ...current,
+        state: input.state,
+        updatedAt: input.updatedAt,
+        failureReason:
+          input.state === 'rejected'
+            ? 'The independent review request was rejected before reviewer execution.'
+            : input.state === 'not-verified'
+              ? (input.failureReason ??
+                'No eligible read-only reviewer was available; human review is required.')
+              : 'The independent review outcome is uncertain and must not be retried automatically.',
+        ...(input.state === 'not-verified'
+          ? { unavailableLenses: input.unavailableLenses ?? ['human-review'] }
+          : {}),
+      }),
+      input.guard,
+    );
+  }
+
+  async taskBinding(
+    requestId: string,
+    projectSlug: string,
+  ): Promise<ReviewTaskBinding | null | undefined> {
+    return this.#withProjectLock(
+      projectSlug,
+      async (root) => {
+        const record = await this.#readSubmission(requestId, projectSlug, root);
+        if (!record) return null;
+        return record.taskBinding ? { ...record.taskBinding } : undefined;
+      },
+      { lockTimeoutMs: READ_LOCK_TIMEOUT_MS },
+    );
   }
 
   async status(
@@ -478,9 +532,9 @@ export class FileReviewReceiptStore
             'The independent review outcome is uncertain and must not be retried automatically.',
         };
         await this.#writeSubmission(reconciled, root);
-        return this.#projectSubmission(reconciled);
+        return this.#projectSubmission(reconciled, root);
       }
-      return this.#projectSubmission(record);
+      return this.#projectSubmission(record, root);
     });
   }
 
@@ -542,9 +596,11 @@ export class FileReviewReceiptStore
   async #withProjectLock<T>(
     projectSlug: string,
     operation: (root: RootIdentity) => Promise<T>,
-    options?: { lockTimeoutMs?: number },
+    options?: ReviewWriteGuard & { lockTimeoutMs?: number },
   ): Promise<T> {
-    const root = await this.#rootIdentity(projectSlug);
+    options?.assertCurrent?.();
+    const root =
+      options?.storageIdentity ?? (await this.#rootIdentity(projectSlug));
     await ensurePrivateDirectory(this.#coordinationDirectory);
     const lockIdentity = createHash('sha256')
       .update(`${root.realpath}\0${root.dev}\0${root.ino}`)
@@ -565,6 +621,7 @@ export class FileReviewReceiptStore
     let operationError: unknown;
     try {
       await validateRootIdentity(root);
+      options?.assertCurrent?.();
       value = await operation(root);
       operationCompleted = true;
     } catch (error) {
@@ -600,6 +657,7 @@ export class FileReviewReceiptStore
     entries: ReviewReceiptReference[],
     root: RootIdentity,
     directoryIdentity: RootIdentity,
+    assertCurrent?: () => void,
   ): Promise<void> {
     const sorted = sortReferences(entries);
     if (sorted.length > this.#maxReceiptsPerProject) {
@@ -608,7 +666,10 @@ export class FileReviewReceiptStore
     await publishJsonFileWithOwnedLock(join(directory, INDEX_FILE), sorted, {
       maxBytes: MAX_INDEX_BYTES,
       label: 'Review receipt index',
-      beforeCommit: () => validatePublicationIdentity(root, directoryIdentity),
+      beforeCommit: async () => {
+        await validatePublicationIdentity(root, directoryIdentity);
+        assertCurrent?.();
+      },
     });
   }
 
@@ -617,13 +678,20 @@ export class FileReviewReceiptStore
     receipt: IndependentReviewReceipt,
     root: RootIdentity,
     directoryIdentity: RootIdentity,
+    assertCurrent?: () => void,
   ): Promise<void> {
     const current = await this.#readIndex(directory).catch(() => []);
     const next = current.filter(
       (entry) => entry.receiptId !== receipt.receiptId,
     );
     next.push(referenceFor(receipt));
-    await this.#writeIndex(directory, next, root, directoryIdentity);
+    await this.#writeIndex(
+      directory,
+      next,
+      root,
+      directoryIdentity,
+      assertCurrent,
+    );
   }
 
   async #submissionPath(
@@ -711,28 +779,35 @@ export class FileReviewReceiptStore
   async #settleSubmission(
     request: IndependentReviewRequest,
     transition: (current: StoredSubmission) => StoredSubmission,
+    guard?: ReviewWriteGuard,
   ): Promise<IndependentReviewRequestStatus> {
-    return this.#withProjectLock(request.target.projectSlug, async (root) => {
-      const current = await this.#readSubmission(
-        request.requestId,
-        request.target.projectSlug,
-        root,
-      );
-      if (!current || current.requestSha256 !== reviewEvidenceId(request)) {
-        throw new Error('Review request state is unavailable.');
-      }
-      if (current.state !== 'running') return this.#projectSubmission(current);
-      if (current.ownerId !== this.#ownerId) {
-        throw new Error('Review request is owned by another runtime.');
-      }
-      const next = transition(current);
-      await this.#writeSubmission(next, root);
-      return this.#projectSubmission(next);
-    });
+    return this.#withProjectLock(
+      request.target.projectSlug,
+      async (root) => {
+        const current = await this.#readSubmission(
+          request.requestId,
+          request.target.projectSlug,
+          root,
+        );
+        if (!current || current.requestSha256 !== reviewEvidenceId(request)) {
+          throw new Error('Review request state is unavailable.');
+        }
+        if (current.state !== 'running')
+          return this.#projectSubmission(current, root);
+        if (current.ownerId !== this.#ownerId) {
+          throw new Error('Review request is owned by another runtime.');
+        }
+        const next = transition(current);
+        await this.#writeSubmission(next, root, guard?.assertCurrent);
+        return this.#projectSubmission(next, root);
+      },
+      guard,
+    );
   }
 
   async #projectSubmission(
     record: StoredSubmission,
+    root: RootIdentity,
   ): Promise<IndependentReviewRequestStatus> {
     if (record.state !== 'completed') {
       return {
@@ -752,7 +827,7 @@ export class FileReviewReceiptStore
     if (!record.receiptId || !record.attachment || !record.cleanup) {
       throw new Error('Completed review request state is corrupt.');
     }
-    const receipt = await this.read(record.receiptId, record.projectSlug);
+    const receipt = await this.read(record.receiptId, record.projectSlug, root);
     if (!receipt || receipt.requestId !== record.requestId) {
       throw new Error('Completed review request receipt is unavailable.');
     }

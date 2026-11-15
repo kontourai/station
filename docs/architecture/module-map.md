@@ -4824,6 +4824,9 @@ The association is published with request admission, before reviewer invocation;
 it is not guessed from titles, commits or receipt content. Requests retain the
 original Project ID and creation time as equality preconditions. Recreating a
 Project with the same slug and checkout cannot rebind a saved request.
+Receipt publication retains the admitted storage identity and rechecks authority
+at commit. Project and aggregate readers keep Task-associated evidence behind
+the same personal-only boundary; delta ancestry cannot drop that association.
 The personal-host [Task code-review routes](../../src-server/routes/evidence/task-code-reviews.ts)
 recheck current Task authority and keep checkout observation, revision freshness
 and reviewer outcomes separate. The [Overview panel](../../src-ui/src/views/task-workspace/TaskCodeReviewPanel.tsx)

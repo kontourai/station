@@ -10951,9 +10951,30 @@ export function configureRuntimeRoutes(
         agent.execution?.agentConnectionId === 'codex',
     }),
   });
+  const reviewReadAccess: NonNullable<
+    Parameters<typeof createReviewEvidenceRoutes>[1]['readAccess']
+  > = (c) => {
+    const owner = sessionOwnerForRequest(
+      resolveOrchestrationRequestPrincipal(
+        c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+      ).id,
+      c.req.raw,
+    );
+    return {
+      includeTaskReviews: !isDeploymentAccountPrincipalId(owner.ownerUserId),
+      assertCurrent: () => {
+        if (!isRequestPrincipalCurrent(c.req.raw))
+          throw new TaskCodeReviewError(
+            'forbidden',
+            'Review read authority changed.',
+          );
+      },
+    };
+  };
   context.app.route(
     '/api/projects/:slug/reviews',
     createReviewEvidenceRoutes(reviewEvidence, {
+      readAccess: reviewReadAccess,
       taskContext: async (c, request) => {
         if (isHostedTenantExecutionRequired()) return undefined;
         const authority = stationControlRequestAuthority(c.req.raw);
@@ -11182,6 +11203,7 @@ export function configureRuntimeRoutes(
       () =>
         context.projectService.listProjects().map((project) => project.slug),
       (operation, error) => reviewObserver.diagnostic({ operation, error }),
+      reviewReadAccess,
     ),
   );
   const surveyReview = new SurveyFlowReviewService(

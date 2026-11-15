@@ -9,6 +9,9 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
+import { GitReviewWorkspaceSource } from '../../../services/evidence/git-review-workspace-source.js';
+import { ReviewEvidenceModule } from '../../../services/evidence/review-evidence-module.js';
+import { FileReviewReceiptStore } from '../../../services/evidence/review-receipt-store.js';
 import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
@@ -85,6 +88,7 @@ async function fixture(options: { codeReviewCheckout?: boolean } = {}) {
   const featurePreviews = new FeaturePreviewRegistry(home, logger);
   await featurePreviews.setEnabled('task-review', true);
   let checkout: string | undefined;
+  let base: string | undefined;
   let head: string | undefined;
   if (options.codeReviewCheckout) {
     checkout = join(root, 'checkout');
@@ -97,6 +101,9 @@ async function fixture(options: { codeReviewCheckout?: boolean } = {}) {
     writeFileSync(join(checkout, 'work.txt'), 'Task source\n');
     await git('add', 'work.txt');
     await git('commit', '-m', 'Task source');
+    base = await git('rev-parse', 'HEAD');
+    writeFileSync(join(checkout, 'work.txt'), 'Task review change\n');
+    await git('commit', '-am', 'Task review change');
     head = await git('rev-parse', 'HEAD');
   }
   const storage = new FileStorageAdapter(home);
@@ -315,8 +322,10 @@ async function fixture(options: { codeReviewCheckout?: boolean } = {}) {
     security,
     project,
     checkout,
+    base,
     head,
     operatorCredential,
+    home,
     scope,
     task,
     privateTask,
@@ -324,6 +333,183 @@ async function fixture(options: { codeReviewCheckout?: boolean } = {}) {
     request,
   };
 }
+
+test('Project readers hide Task reviews from members while preserving ordinary Project evidence', async () => {
+  const f = await fixture({ codeReviewCheckout: true });
+  if (!f.checkout || !f.base || !f.head)
+    throw new Error('Missing real review checkout');
+  const store = new FileReviewReceiptStore(
+    { workspace: () => f.checkout },
+    { coordinationDirectory: join(f.home, '.review-evidence-coordination') },
+  );
+  const execute = vi.fn(async () => ({
+    kind: 'completed' as const,
+    workspaceRelease: 'safe' as const,
+    output: {
+      findings: [
+        {
+          location: { file: 'work.txt', line: 1 },
+          scenario: {
+            stateOrInput: 'Task-only review source',
+            wrongOutcome: 'Private Task findings reach a Project member',
+          },
+          severity: 'high',
+          confidence: 'high',
+          basis: 'reasoned-from-code',
+          summary: 'Task-only finding sentinel.',
+        },
+      ],
+      deltaAssessments: [],
+    },
+  }));
+  const reviews = new ReviewEvidenceModule({
+    source: new GitReviewWorkspaceSource(
+      { workspace: () => f.checkout },
+      join(f.home, 'controlled-review-workspaces'),
+    ),
+    receipts: store,
+    submissions: store,
+    executor: {
+      workspaceAccess: 'read-only',
+      execute,
+    },
+    principals: {
+      resolveAgent: async (slug) => ({ actorId: `agent:${slug}` }),
+    },
+    observer: { record() {}, diagnostic() {} },
+  });
+  const receipts = [];
+  for (const kind of ['task', 'project']) {
+    const result = await reviews.run(
+      {
+        requestId: `${kind}-review`,
+        mode: 'initial',
+        target: {
+          kind: 'git-range',
+          projectSlug: f.project.slug,
+          baseRevision: f.base,
+          headRevision: f.head,
+        },
+        implementerAgentSlug: 'implementer',
+        reviewers: [
+          {
+            reviewerId: 'reviewer',
+            executorAgentSlug: 'reviewer',
+            lens: {
+              id: 'correctness',
+              instructions: 'Inspect controlled fixture source.',
+            },
+          },
+        ],
+      },
+      {
+        requestedBy: { actorId: operator.id },
+        ...(kind === 'task'
+          ? {
+              taskBinding: {
+                projectId: f.project.id,
+                projectCreatedAt: f.project.createdAt,
+                taskId: f.task.id,
+                taskCreatedAt: f.task.createdAt,
+              },
+            }
+          : {}),
+      },
+    );
+    expect(result.state).toBe('completed');
+    if (!result.result) throw new Error('Controlled reviewer did not publish');
+    receipts.push(result.result.receipt);
+  }
+  const request = (path: string, member: boolean) =>
+    f.app.request(`${origin}${path}`, {
+      headers: {
+        Authorization: `Bearer ${f.operatorCredential}`,
+        Origin: origin,
+        ...(member ? { Cookie: f.people[0]!.cookie } : {}),
+      },
+    });
+  const base = `/api/projects/${f.project.slug}/reviews`;
+  const operatorList = await request(base, false);
+  expect(operatorList.status, await operatorList.clone().text()).toBe(200);
+  const operatorPayload = (await operatorList.json()) as {
+    data: Array<{ requestId: string }>;
+  };
+  expect(operatorPayload.data).toHaveLength(2);
+  const memberList = await request(base, true);
+  expect(memberList.status, await memberList.clone().text()).toBe(200);
+  const memberPayload = (await memberList.json()) as {
+    data: Array<{ requestId: string }>;
+  };
+  expect(
+    memberPayload.data.map((entry: { requestId: string }) => entry.requestId),
+  ).toEqual(['project-review']);
+  for (const receipt of receipts) {
+    for (const path of [
+      `${base}/${receipt.receiptId}`,
+      `${base}/requests/${receipt.requestId}`,
+    ]) {
+      const response = await request(path, true);
+      expect(response.status, await response.clone().text()).toBe(
+        receipt.requestId === 'task-review' ? 404 : 200,
+      );
+    }
+  }
+  const aggregate = await request('/api/review-evidence', true);
+  expect(aggregate.status, await aggregate.clone().text()).toBe(200);
+  const aggregatePayload = (await aggregate.json()) as {
+    data: { receipts: Array<{ requestId: string }> };
+  };
+  expect(
+    aggregatePayload.data.receipts.map(
+      (entry: { requestId: string }) => entry.requestId,
+    ),
+  ).toEqual(['project-review']);
+  writeFileSync(join(f.checkout, 'work.txt'), 'Next review change\n');
+  await execGit(['commit', '-am', 'Next review change'], {
+    cwd: f.checkout,
+    timeout: 5000,
+  });
+  const head = (
+    await execGit(['rev-parse', 'HEAD'], { cwd: f.checkout, timeout: 5000 })
+  ).stdout.trim();
+  const taskReceipt = receipts.find(
+    (receipt) => receipt.requestId === 'task-review',
+  )!;
+  await reviews.run(
+    {
+      requestId: 'member-delta',
+      mode: 'delta',
+      target: {
+        kind: 'git-range',
+        projectSlug: f.project.slug,
+        baseRevision: f.head,
+        headRevision: head,
+      },
+      implementerAgentSlug: 'implementer',
+      reviewers: [
+        {
+          reviewerId: 'reviewer',
+          executorAgentSlug: 'reviewer',
+          lens: {
+            id: 'correctness',
+            instructions: 'Inspect controlled fixture source.',
+          },
+        },
+      ],
+      delta: {
+        priorReceiptId: taskReceipt.receiptId,
+        claimedFindingIds: taskReceipt.findings.map(
+          (finding) => finding.findingId,
+        ),
+      },
+    },
+    {
+      requestedBy: { actorId: f.people[0]!.principal.id },
+      includeTaskReviews: false,
+    },
+  );
+  expect(execute).toHaveBeenCalledTimes(2);
+}, 60000);
 
 test('Task code review refuses account identity even with valid operator or unbound Device transport', async () => {
   const f = await fixture({ codeReviewCheckout: true });

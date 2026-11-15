@@ -274,7 +274,7 @@ describe('FileReviewReceiptStore', () => {
     const request = reviewRequest('idempotent-request');
     await expect(
       store.begin({ request, startedAt: '2026-08-16T00:00:00.000Z' }),
-    ).resolves.toEqual({ kind: 'acquired' });
+    ).resolves.toMatchObject({ kind: 'acquired' });
     await store.invoking({
       request,
       updatedAt: '2026-08-16T00:00:00.500Z',

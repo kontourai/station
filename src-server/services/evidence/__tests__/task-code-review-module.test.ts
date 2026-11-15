@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -13,7 +14,7 @@ import {
 
 const makeTempDir = trackTempDirs();
 
-async function fixture() {
+async function fixture(options: { beforeReceiptCommit?: () => void } = {}) {
   const root = await realpath(makeTempDir('station-task-code-review-'));
   const git = async (...args: string[]) =>
     (await execGit(args, { cwd: root, timeout: 5000 })).stdout.trim();
@@ -40,6 +41,7 @@ async function fixture() {
     workingDirectory: root,
     agents: [],
   };
+  let workspace = root;
   let current = true;
   const scope: TaskCodeReviewScope = {
     project,
@@ -65,8 +67,8 @@ async function fixture() {
     },
   };
   const store = new FileReviewReceiptStore(
-    { workspace: () => root },
-    { coordinationDirectory: join(root, 'coordination') },
+    { workspace: () => workspace },
+    { coordinationDirectory: join(root, 'coordination'), ...options },
   );
   const execute = vi.fn(async () => ({
     kind: 'completed' as const,
@@ -113,10 +115,43 @@ async function fixture() {
     revoke: () => {
       current = false;
     },
+    replaceWorkspace: (replacement: string) => {
+      workspace = replacement;
+      current = false;
+    },
   };
 }
 
 describe('Task code review producer and consumer', () => {
+  it('does not publish the old Task review into a replacement Project after execution', async () => {
+    const f = await fixture();
+    const replacement = await realpath(
+      makeTempDir('station-replacement-review-'),
+    );
+    f.execute.mockImplementationOnce(async () => {
+      f.replaceWorkspace(replacement);
+      return {
+        kind: 'completed',
+        workspaceRelease: 'safe',
+        output: { findings: [], deltaAssessments: [] },
+      };
+    });
+    await expect(f.module.run(f.scope, f.request)).rejects.toThrow();
+    expect(f.execute).toHaveBeenCalledTimes(1);
+    expect(existsSync(join(replacement, '.station'))).toBe(false);
+  });
+
+  it('rechecks Task authority at the actual receipt publication seam', async () => {
+    let revoke = () => {};
+    const f = await fixture({ beforeReceiptCommit: () => revoke() });
+    revoke = f.revoke;
+    await expect(f.module.run(f.scope, f.request)).rejects.toThrow(
+      'Task revoked',
+    );
+    expect(f.execute).toHaveBeenCalledTimes(1);
+    expect(await f.store.list(f.scope.project.slug)).toEqual([]);
+  });
+
   it.each([
     { id: 'replacement-project', createdAt: '2026-01-01T00:00:00Z' },
     { id: 'project-1', createdAt: '2026-01-03T00:00:00Z' },
