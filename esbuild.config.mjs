@@ -8,6 +8,7 @@ import {
 import { generateStationDocs } from './scripts/generate-station-docs.mjs';
 import { authorTelemetryEndpoint } from './scripts/lib/author-telemetry-build.mjs';
 import { deriveServerBuildIdentity } from './scripts/lib/desktop-build-manifest.mjs';
+import { assertAsciiServerBundles } from './scripts/lib/server-bundle-ascii.mjs';
 import { STATION_SERVER_EXTERNALS } from './scripts/lib/server-build-config.mjs';
 
 // jsonc-parser exposes its CommonJS UMD entry as `main` and its fully
@@ -215,3 +216,5 @@ await Promise.all([
     outfile: `${serverDir}/project-task-room-working-state-worker.js`,
   }),
 ]);
+
+assertAsciiServerBundles(serverDir);
