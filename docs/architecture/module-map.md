@@ -3807,13 +3807,16 @@ upload first releases its uploader's day-old unsent files. Uploads, releases
 and messages naming files hold one store-wide cross-process file lock (the
 yielding form, taken before the request's authority check so access revoked
 while waiting refuses). Records are written whole (staging, then rename). A
-release reads every record first and deletes only bytes no record names,
-counting references recovered from damaged records; if any record's
-reference cannot be known it fails closed (nothing removed, a
-`reclamation-blocked.json` marker, new uploads refused with
-`project_room_files_unavailable` until a scan reads every record). The store
-never evicts by age or size. Task rooms keep age and size retention (#4947)
-and share only the whole-record write. Persisted records are validated
+release reads every record first (including any in `repair/`), deletes only
+bytes no record names, and removes a record only once its bytes are confirmed
+gone. A damaged record counts only with one whole `blobRef` hash; any record
+whose reference cannot be known fails the release closed (nothing removed,
+uploads refused with `project_room_files_unavailable`, latched in memory and
+re-checked before each process's first upload; the marker is best effort).
+Repairs go through `repair/` and are applied under the store lock; direct
+`bindings/` edits other than removal or permission fixes need Station
+stopped. The store never evicts by age or size. Task rooms keep age and size
+retention (#4947) and share only the whole-record write. Persisted records are validated
 against their row identities before use. History reads use a deferred transaction;
 discovery is lookup-only. Explicit opening requires current discussion authority.
 

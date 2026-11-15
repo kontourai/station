@@ -1139,20 +1139,40 @@ reacted. The stored message row is never rewritten.
   files hold one store-wide lock across processes, with access re-checked
   once it is held, and the store never evicts by age or size.
 - **What a release deletes.** Before changing anything a release reads every
-  file record in the room's store. It deletes a released file's bytes only
-  if no other record names them; a damaged record still protects any blob
-  reference recoverable from its text. If any record's reference cannot be
-  known (it is unreadable, or damaged with nothing recoverable), the release
-  fails closed: it removes and deletes nothing, keeps the released records
-  and their bytes, and writes `reclamation-blocked.json` in the store,
-  naming each such record and its error. Until a scan reads every record,
-  new attachments are refused with `503 project_room_files_unavailable`;
-  sending text, reading and downloading existing files keep working.
-  Recovery: inspect the records that file names under
-  `<STATION_HOME>/project-room-attachments/bindings/`, restore or fix each
-  (for example its permissions), or remove it once you have decided its file
-  is not needed. The next upload re-checks the store, clears the block, and
-  the kept releases are reclaimed by later uploads' sweeps.
+  file record in the room's store, including any waiting in `repair/`. It
+  deletes a released file's bytes only if no other record names them, and it
+  removes a released record only once its bytes are confirmed gone: if a
+  deletion fails, the record stays, still counts against its uploader, and a
+  later upload's sweep retries it. A damaged record names a reference only
+  when its text holds exactly one `sha256-` token and that token is a whole
+  `"blobRef":"sha256-<64 hex>"`. If any record's reference cannot be known
+  (unreadable, or damaged in any other way, such as a truncated, over-long or
+  second hash), the release fails closed: it removes and deletes nothing and
+  keeps the released records and their bytes. New attachments are then
+  refused with `503 project_room_files_unavailable` until a scan reads every
+  record; sending text, reading and downloading existing files keep working.
+  The refusal does not depend on any file being written: the server holds it
+  in memory, and every server process re-checks the store before its first
+  upload, so a restart refuses too. `reclamation-blocked.json` in the store
+  names each damaged record and its error when it can be written.
+- **Supported repair.** With Station running, change records only in these
+  ways:
+  - To restore or correct a record, leave the damaged record where it is
+    (it keeps every release blocked) and write the corrected record to
+    `<STATION_HOME>/project-room-attachments/repair/` at the same relative
+    path it has under `bindings/`. Each upload and release first takes the
+    store's cross-process lock, then moves each complete repair record whose
+    bytes are still stored into place; one that is incomplete, or whose bytes
+    are gone, stays in `repair/` and is named in the marker.
+  - To fix an unreadable record's permissions, change them in place.
+  - To give up a file, remove its record from `bindings/` once you have
+    decided it is not needed.
+
+  Adding or rewriting a record directly under `bindings/` while Station runs
+  is not supported: a release scanning at that moment could miss it and
+  delete its bytes. To change `bindings/` directly, stop every Station process
+  using that home first. After any repair, the next upload re-checks the
+  store, clears the block, and later sweeps reclaim the kept releases.
 - **Bound.** Live data is bounded per binding, not across the store: one
   uploader in one room holds at most 1280 files of up to 5 MiB (6.25 GiB),
   unsent uploads included until that uploader's next upload after a day.

@@ -346,7 +346,7 @@ channel uploads use another store under
 apply to: it never evicts by age or size, deletes only bytes no file names,
 and stops deleting and pauses new uploads if any file record cannot be read
 (see [Project room files](api.md#reactions-edits-deletes-and-files) for the
-recovery step). Task downloads use the scoped room attachment route;
+supported repair, which goes through its `repair/` directory). Task downloads use the scoped room attachment route;
 conversation-deletion cleanup described above applies to chat attachments, not
 this separate Task store. See [Task images and files](../design/task-room-agent-requests.md#images-and-files)
 for per-message limits and Task incarnation binding.
