@@ -1,5 +1,6 @@
 import { useConnections } from '@kontourai/station-connect';
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import {
@@ -16,6 +17,12 @@ import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import { ErrorState } from '../state';
 import './NotificationStationOpener.css';
+
+/**
+ * How long a tap waits for the active Station's verified id before it is
+ * opened without it (on the active Station, as an older Station's would be).
+ */
+const IDENTITY_WAIT_MS = 8_000;
 
 /** The message `sw.js` posts to an open tab for a notification tap. */
 export const SERVICE_WORKER_OPEN_MESSAGE = 'station-notification-open';
@@ -52,21 +59,56 @@ export function serviceWorkerOpenRequest(
 export function NotificationStationOpener() {
   const { connections, activeConnection, setActiveConnection } =
     useConnections();
+  const { status, observation } = useAuthorityPersistence();
   const { navigate } = useNavigationActions();
-  const latest = useRef({ connections, activeConnection, setActiveConnection });
-  latest.current = { connections, activeConnection, setActiveConnection };
+  // A same-origin browser connection may never have saved its Station's id;
+  // the verified authority observation is that id.
+  const activeEnvironmentId =
+    activeConnection?.environmentId ??
+    (status === 'verified' ? observation?.environmentId : undefined) ??
+    null;
+  const latest = useRef({
+    connections,
+    activeConnection,
+    setActiveConnection,
+    activeEnvironmentId,
+  });
+  latest.current = {
+    connections,
+    activeConnection,
+    setActiveConnection,
+    activeEnvironmentId,
+  };
+  const [waitedForIdentity, setWaitedForIdentity] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setWaitedForIdentity(true),
+      IDENTITY_WAIT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, []);
+  // Taps wait (queued) until the active Station's id is known, so a link
+  // from this very Station is not mistaken for another one's.
+  const identitySettled =
+    activeEnvironmentId !== null ||
+    status === 'unavailable' ||
+    waitedForIdentity;
 
   useEffect(
     () =>
-      installNotificationOpener((request) => {
-        void openNotificationTarget(request, {
-          connections: () => latest.current.connections,
-          active: () => latest.current.activeConnection,
-          setActiveConnection: (id) => latest.current.setActiveConnection(id),
-          navigate: (pathname, params) => navigate(pathname, params),
-        });
-      }),
-    [navigate],
+      identitySettled
+        ? installNotificationOpener((request) => {
+            void openNotificationTarget(request, {
+              connections: () => latest.current.connections,
+              active: () => latest.current.activeConnection,
+              activeEnvironmentId: () => latest.current.activeEnvironmentId,
+              setActiveConnection: (id) =>
+                latest.current.setActiveConnection(id),
+              navigate: (pathname, params) => navigate(pathname, params),
+            });
+          })
+        : undefined,
+    [identitySettled, navigate],
   );
 
   useEffect(() => {
@@ -129,7 +171,7 @@ export function NotificationOpenNoticeView({
   return (
     <div className="notification-station-notice">
       <ErrorState
-        variant="compact"
+        variant="default"
         title={copy.title}
         description={copy.description}
         action={

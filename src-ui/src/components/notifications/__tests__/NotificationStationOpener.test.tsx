@@ -8,6 +8,7 @@
  */
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { AuthorityPersistenceContext } from '../../../contexts/AuthorityPersistenceContext';
 import { subscribeToNotificationOpen } from '../../../lib/notificationOpen';
 import {
   requestNotificationOpen,
@@ -30,6 +31,7 @@ const B = {
 };
 
 const connections = vi.hoisted(() => ({
+  list: null as unknown[] | null,
   active: null as unknown,
   order: [] as string[],
   release: undefined as (() => void) | undefined,
@@ -52,7 +54,7 @@ const setActiveConnection = vi.fn(
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
-    connections: [A, B],
+    connections: connections.list ?? [A, B],
     activeConnection: connections.active,
     setActiveConnection,
   }),
@@ -72,6 +74,7 @@ class FakeServiceWorkerContainer extends EventTarget {
 let worker: FakeServiceWorkerContainer;
 
 beforeEach(() => {
+  connections.list = null;
   connections.order = [];
   connections.release = undefined;
   navigate.mockClear();
@@ -193,5 +196,47 @@ describe('NotificationStationOpener', () => {
       screen.getByRole('button', { name: 'Manage Stations' }),
     ).toBeTruthy();
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  test('web: a tap from this very Station opens here though its saved connection has no id', async () => {
+    // A same-origin browser connection never recorded its Station's id; the
+    // verified authority observation names it.
+    const sameOrigin = { ...A, environmentId: null };
+    connections.list = [sameOrigin, B];
+    connections.active = sameOrigin;
+    const view = render(
+      <AuthorityPersistenceContext.Provider
+        value={{ status: 'unverified', namespace: null, observation: null }}
+      >
+        <NotificationStationOpener />
+      </AuthorityPersistenceContext.Provider>,
+    );
+    await act(async () => {
+      requestNotificationOpen({
+        pathname: '/',
+        params: { chat: 'thread-a', dock: 'open' },
+        stationId: 'env-a',
+      });
+      await settle();
+    });
+    // Waits for the id rather than calling this Station another one.
+    expect(navigate).not.toHaveBeenCalled();
+    expect(screen.queryByText('Station not on this device')).toBeNull();
+    view.rerender(
+      <AuthorityPersistenceContext.Provider
+        value={{
+          status: 'verified',
+          namespace: 'ns',
+          observation: { environmentId: 'env-a' } as never,
+        }}
+      >
+        <NotificationStationOpener />
+      </AuthorityPersistenceContext.Provider>,
+    );
+    await act(settle);
+    expect(setActiveConnection).not.toHaveBeenCalled();
+    expect(connections.order).toEqual([
+      'navigate:/?chat=thread-a&dock=open@conn-a',
+    ]);
   });
 });

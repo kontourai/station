@@ -4458,6 +4458,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             <SkeletonBlock
                               count={2}
                               label="Opening conversation"
+                              className="chat-dock__deep-link-opening"
                             />
                           ) : null}
                           {/* The chat the draft opened over stays mounted under it,

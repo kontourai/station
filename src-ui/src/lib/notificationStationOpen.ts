@@ -73,8 +73,12 @@ function servesOrigin(
  * Which saved connection a notification belongs to. With an origin (the
  * desktop host's record), the connection serving that origin, provided its
  * environment id does not contradict the link's; else the connection with
- * the link's environment id. A request naming no Station (an older Station
- * that sends none) opens on the active one, as before.
+ * the link's environment id. The active Station's id is
+ * `activeEnvironmentId` (the verified authority observation) when given,
+ * else its saved one: a same-origin browser connection may never have saved
+ * one. A request naming no Station (an older Station that sends none), or
+ * one this device cannot place while the active Station's own id is unknown,
+ * opens on the active one, as before.
  */
 export function resolveNotificationStation<
   C extends NotificationStationConnection,
@@ -82,7 +86,9 @@ export function resolveNotificationStation<
   request: Pick<NotificationOpenRequest, 'stationId' | 'origin'>,
   connections: readonly C[],
   active: C | null,
+  activeEnvironmentId?: string | null,
 ): NotificationStationResolution<C> {
+  const activeId = activeEnvironmentId || active?.environmentId || null;
   const stationId = isNotificationStationId(request.stationId)
     ? request.stationId
     : undefined;
@@ -98,20 +104,23 @@ export function resolveNotificationStation<
       (connection) => servesOrigin(connection, normalizedOrigin),
     );
     if (byOrigin) {
-      if (
-        stationId &&
-        byOrigin.environmentId &&
-        byOrigin.environmentId !== stationId
-      )
+      const byOriginId =
+        byOrigin.environmentId ||
+        (byOrigin.id === active?.id ? activeId : null);
+      if (stationId && byOriginId && byOriginId !== stationId)
         return { kind: 'not-saved' };
       return pick(byOrigin);
     }
   }
   if (stationId) {
-    if (active?.environmentId === stationId) return { kind: 'active' };
-    return pick(
-      connections.find((connection) => connection.environmentId === stationId),
+    if (activeId === stationId) return { kind: 'active' };
+    const saved = connections.find(
+      (connection) => connection.environmentId === stationId,
     );
+    if (saved) return pick(saved);
+    // The active Station's own id is unknown: it may be the sender.
+    if (!activeId && !normalizedOrigin) return { kind: 'active' };
+    return { kind: 'not-saved' };
   }
   if (normalizedOrigin) return { kind: 'not-saved' };
   return { kind: 'active' };
@@ -177,6 +186,8 @@ export function takeNotificationChat(chatId: string): boolean {
 export interface NotificationOpenDeps<C extends NotificationStationConnection> {
   connections(): readonly C[];
   active(): C | null;
+  /** The active Station's verified environment id, when known. */
+  activeEnvironmentId?(): string | null | undefined;
   setActiveConnection(id: string): Promise<unknown>;
   navigate(pathname: string, params: Record<string, string>): void;
 }
@@ -196,6 +207,7 @@ export async function openNotificationTarget<
     request,
     deps.connections(),
     deps.active(),
+    deps.activeEnvironmentId?.(),
   );
   const open = () => {
     if (request.params.chat) markNotificationChat(request.params.chat);

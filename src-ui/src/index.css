@@ -2402,6 +2402,14 @@ button:hover {
 }
 
 /* A collapsed dock that holds a New chat draft keeps it mounted, hidden. */
+/* A deep-linked conversation still opening: fills the reader where the
+   previous conversation would otherwise show (useChatDockActiveChatSync). */
+.chat-dock__deep-link-opening {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--k-space-4);
+}
+
 .chat-dock__workspace[hidden] {
   display: none;
 }

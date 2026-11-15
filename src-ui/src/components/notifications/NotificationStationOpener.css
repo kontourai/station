@@ -15,6 +15,10 @@
   color: var(--k-text);
 }
 
+.notification-station-notice .empty {
+  padding: 0;
+}
+
 .notification-station-notice--pending {
   display: flex;
   align-items: center;

@@ -100,6 +100,55 @@ describe('resolveNotificationStation', () => {
     });
   });
 
+  test('a same-origin connection that never saved its id is placed by the verified observation', () => {
+    const sameOrigin = { ...A, environmentId: null };
+    const connections = [sameOrigin, B];
+    // The tap from this very Station opens here, not as "not saved".
+    expect(
+      resolveNotificationStation(
+        { stationId: 'env-a' },
+        connections,
+        sameOrigin,
+        'env-a',
+      ),
+    ).toEqual({ kind: 'active' });
+    expect(
+      resolveNotificationStation(
+        { stationId: 'env-b' },
+        connections,
+        sameOrigin,
+        'env-a',
+      ),
+    ).toEqual({ kind: 'switch', connection: B });
+    expect(
+      resolveNotificationStation(
+        { stationId: 'env-gone' },
+        connections,
+        sameOrigin,
+        'env-a',
+      ),
+    ).toEqual({ kind: 'not-saved' });
+  });
+
+  test('with the active id still unknown, an unplaceable Station opens on the active one', () => {
+    const sameOrigin = { ...A, environmentId: null };
+    expect(
+      resolveNotificationStation(
+        { stationId: 'env-a' },
+        [sameOrigin, B],
+        sameOrigin,
+      ),
+    ).toEqual({ kind: 'active' });
+    // A saved Station it names is still switched to.
+    expect(
+      resolveNotificationStation(
+        { stationId: 'env-b' },
+        [sameOrigin, B],
+        sameOrigin,
+      ),
+    ).toEqual({ kind: 'switch', connection: B });
+  });
+
   test('a malformed Station id is ignored rather than matched', () => {
     expect(
       resolveNotificationStation({ stationId: '../env-b' }, CONNECTIONS, A),
