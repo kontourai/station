@@ -48,6 +48,8 @@ COPY scripts ./scripts
 # calls generateStationDocs() before bundling. Shipped wholesale, like scripts/,
 # so a new docs input is a docs edit and not a fifth container build failure.
 COPY docs ./docs
+# The docs bundle also takes its identity and search synonyms from corpus.json.
+COPY corpus.json ./
 # generateStationDocs({ check: true }) formats its output through Biome and
 # compares it byte-for-byte with src-server/tools/station-docs-content.ts, so the
 # build needs the repository's formatter config; biome.json's vcs.useIgnoreFile

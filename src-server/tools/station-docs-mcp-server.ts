@@ -1,10 +1,12 @@
+/// <reference path="../corpus-search.d.ts" />
+import { searchBundles } from '@kontourai/corpus/search';
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import packageJson from '../../package.json' with { type: 'json' };
 import {
-  STATION_DOCS_TOPICS,
-  type StationDocsTopic,
+  STATION_DOCS_BUNDLE,
+  type StationDocsBundleTopic,
 } from './station-docs-content.js';
 
 /**
@@ -18,11 +20,14 @@ import {
  * The registration surface here is small enough that duplicating four lines
  * is cheaper than the coupling.
  *
- * Every tool below answers from `STATION_DOCS_TOPICS`, a static array
- * compiled into the bundle. There is no tool that reads this Station's live
- * or user state, and there must never be one: that requires authentication
- * and belongs to `station-control`, a different server with a different
- * review. `createRuntimeDocsIntegration()`
+ * Every tool below answers from `STATION_DOCS_BUNDLE`, a static Corpus docs
+ * bundle compiled into this server's bundle (#4831). Search ranks it with
+ * `@kontourai/corpus/search`, the Corpus entry that is guaranteed free of file,
+ * network, process, and timer access. Never import the root
+ * `@kontourai/corpus` entry here: it reads files when it loads. There is no
+ * tool that reads this Station's live or user state, and there must never be
+ * one: that requires authentication and belongs to `station-control`, a
+ * different server with a different review. `createRuntimeDocsIntegration()`
  * (`src-server/runtime/agents/runtime-default-agent.ts`) therefore declares
  * NO `env`, removing credential custody as a delivery prerequisite. An engine
  * still needs a supported tool-server channel and the genuine runtime server;
@@ -34,60 +39,77 @@ import {
 // The content digest below identifies the exact compiled documentation only.
 export const STATION_DOCS_VERSION: string = packageJson.version;
 
-/** A topic without its `body` — the shape list/search results return. */
+/**
+ * A topic without its `body` — the shape list/search results return. These
+ * are the field names the tools returned before the bundle existed, kept so
+ * agents written against them keep working. Only the two root topics
+ * (`manual`, `architecture`) have no `parentId`.
+ */
 interface StationDocsTopicSummary {
   id: string;
   title: string;
   summary: string;
   tags: string[];
-  parentId: string;
+  parentId?: string;
   sourcePath: string;
   sourceAnchor: string;
 }
 
-function toSummary(topic: StationDocsTopic): StationDocsTopicSummary {
+/** A whole topic, as get_station_docs_topic returns it. */
+export interface StationDocsTopic extends StationDocsTopicSummary {
+  body: string;
+}
+
+function toSummary(topic: StationDocsBundleTopic): StationDocsTopicSummary {
+  const anchorAt = topic.source.indexOf('#');
   return {
     id: topic.id,
     title: topic.title,
     summary: topic.summary,
     tags: [...topic.tags],
-    parentId: topic.parentId,
-    sourcePath: topic.sourcePath,
-    sourceAnchor: topic.sourceAnchor,
+    ...(topic.parentId !== undefined ? { parentId: topic.parentId } : {}),
+    sourcePath:
+      anchorAt === -1 ? topic.source : topic.source.slice(0, anchorAt),
+    sourceAnchor: anchorAt === -1 ? '' : topic.source.slice(anchorAt + 1),
   };
 }
 
+const TOPICS_BY_ID: ReadonlyMap<string, StationDocsBundleTopic> = new Map(
+  STATION_DOCS_BUNDLE.topics.map((topic) => [topic.id, topic]),
+);
+
 export function findStationDocsTopic(id: string): StationDocsTopic | undefined {
-  const wanted = id.trim().toLowerCase();
-  return STATION_DOCS_TOPICS.find((topic) => topic.id === wanted);
+  const topic = TOPICS_BY_ID.get(id.trim().toLowerCase());
+  return topic ? { ...toSummary(topic), body: topic.markdown } : undefined;
+}
+
+export function listStationDocsTopics(
+  parentId?: string,
+): StationDocsTopicSummary[] {
+  return STATION_DOCS_BUNDLE.topics
+    .filter((topic) => parentId === undefined || topic.parentId === parentId)
+    .map(toSummary);
 }
 
 interface StationDocsSearchHit extends StationDocsTopicSummary {
-  /** The matched line of the topic body, or `null` when only metadata matched. */
-  excerpt: string | null;
+  /** Corpus's snippet: plain text around the first matched query word. */
+  excerpt: string;
 }
 
-/** Case-insensitive substring search, bounded to the requested topic count. */
+/**
+ * Corpus ranked search over the shipped bundle, best match first: BM25 over
+ * each topic's title, id, tags, summary, headings, code, and text, with
+ * stemming and synonyms (Corpus's suite list and corpus.json's own).
+ */
 export function searchStationDocs(
   query: string,
   limit = 10,
 ): StationDocsSearchHit[] {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return [];
   const hits: StationDocsSearchHit[] = [];
-  for (const topic of STATION_DOCS_TOPICS) {
-    const metadataMatch =
-      topic.id.toLowerCase().includes(needle) ||
-      topic.title.toLowerCase().includes(needle) ||
-      topic.summary.toLowerCase().includes(needle) ||
-      topic.tags.some((tag) => tag.toLowerCase().includes(needle));
-    const excerpt =
-      topic.body
-        .split('\n')
-        .find((line) => line.toLowerCase().includes(needle)) ?? null;
-    if (!metadataMatch && !excerpt) continue;
-    hits.push({ ...toSummary(topic), excerpt });
-    if (hits.length >= limit) break;
+  for (const result of searchBundles([STATION_DOCS_BUNDLE], query, limit)) {
+    // The bundle has topics and no documents, so every result is a topic.
+    const topic = result.kind === 'topic' && TOPICS_BY_ID.get(result.id);
+    if (topic) hits.push({ ...toSummary(topic), excerpt: result.snippet });
   }
   return hits;
 }
@@ -105,7 +127,7 @@ function jsonToolResult(data: unknown) {
 let shippedSource: Promise<Readonly<Record<string, string>>> | undefined;
 
 /**
- * `documentationDigest` is SHA-256 over the compiled topics, the same value
+ * `documentationDigest` is SHA-256 over the compiled bundle, the same value
  * `stationDocsDigest()` in scripts/generate-station-docs.mjs reports. It is
  * computed here rather than committed to the generated content file because a
  * committed digest line changed with every docs edit, so every pair of
@@ -116,7 +138,7 @@ function shippedSourceEnvelope(): Promise<Readonly<Record<string, string>>> {
   shippedSource ??= globalThis.crypto.subtle
     .digest(
       'SHA-256',
-      new TextEncoder().encode(JSON.stringify(STATION_DOCS_TOPICS)),
+      new TextEncoder().encode(JSON.stringify(STATION_DOCS_BUNDLE)),
     )
     .then((hash) => ({
       source: 'station-docs',
@@ -151,7 +173,7 @@ const STATION_DOCS_TOOLS = [
     name: 'search_station_docs',
     title: 'Search documentation',
     description:
-      "Case-insensitive substring search across Station's SHIPPED DOCUMENTATION. Returns matching bundled documentation topics, never live state: it searches Station's manual, not this Station's data.",
+      "Ranked search across Station's SHIPPED DOCUMENTATION, best match first. Returns bundled documentation topics, never live state: it searches Station's manual, not this Station's data.",
     group: 'Documentation',
     readOnly: true,
   },
@@ -195,9 +217,7 @@ export function createStationDocsMcpServer(): McpServer {
     async ({ parentId }) =>
       jsonToolResult({
         ...(await shippedSourceEnvelope()),
-        topics: STATION_DOCS_TOPICS.filter(
-          (topic) => parentId === undefined || topic.parentId === parentId,
-        ).map(toSummary),
+        topics: listStationDocsTopics(parentId),
       }),
   );
 
@@ -217,7 +237,7 @@ export function createStationDocsMcpServer(): McpServer {
         return jsonToolResult({
           ...(await shippedSourceEnvelope()),
           error: `Unknown documentation topic '${id}'.`,
-          availableTopicIds: STATION_DOCS_TOPICS.map((entry) => entry.id),
+          availableTopicIds: [...TOPICS_BY_ID.keys()],
         });
       }
       return jsonToolResult({ ...(await shippedSourceEnvelope()), topic });
@@ -231,7 +251,7 @@ export function createStationDocsMcpServer(): McpServer {
       annotations: { readOnlyHint: true },
       _meta: { 'ai.kontour/tool-group': 'Documentation' },
       inputSchema: z.object({
-        query: z.string().describe('Substring to look for, e.g. "approval".'),
+        query: z.string().describe('Words to look for, e.g. "cron job".'),
         limit: z
           .number()
           .int()

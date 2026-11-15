@@ -30,10 +30,12 @@ The core owns durable product responsibilities including Projects, Tasks, Sessio
 
 ## These docs, and what they cannot do
 
-`station-docs` serves this manual and the architecture topics as static content
-compiled into Station. Its tools list topics, retrieve a topic, and search by
-case-insensitive substring. They do not read user files, make network calls, or
-require a credential at request time.
+`station-docs` serves this manual and the architecture topics as a static
+Corpus docs bundle compiled into Station. Its tools list topics, retrieve a
+topic, and run a ranked search: ask in plain words, and matching uses word
+stems and synonyms, best match first. It matches words, not meaning, so a
+question in words the docs never use can miss. The tools do not read user
+files, make network calls, or require a credential at request time.
 
 The returned version and documentation digest identify shipped content, not
 live state. These tools cannot tell you which Agents exist, what is running,
