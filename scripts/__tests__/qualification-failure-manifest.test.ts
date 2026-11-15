@@ -853,6 +853,28 @@ it('forges the group entry', () => {
       titlePath: ['outer', 'inner [ipv6]', 'fails here'],
     });
   }, 60_000);
+
+  it('leaves a visible stray entry when it cannot replace the target', async () => {
+    const holder = makeTempDir('station-unreplaceable-group-');
+    const manifestDirectory = join(holder, 'groups');
+    // A directory at the target: the rename over it fails.
+    mkdirSync(join(manifestDirectory, 'process-heavy.json'), {
+      recursive: true,
+    });
+    const root = fixture({ 'a.test.mjs': FAILING });
+    const result = await runVitestGroup(group, ['a.test.mjs'], {
+      root,
+      manifestDirectory,
+    });
+    expect(result.status).toBe(1);
+    const { groups, errors } = readPhaseGroups(manifestDirectory, [
+      'process-heavy',
+    ]);
+    expect(groups).toEqual([]);
+    expect(errors).toContainEqual(
+      expect.stringMatching(/^unexpected entry \.process-heavy\.json\..*\.tmp/),
+    );
+  }, 60_000);
 });
 
 describe('the real producer CLIs remove the manifest location from their own environment', () => {
