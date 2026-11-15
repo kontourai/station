@@ -245,7 +245,7 @@ export function startingPoint(
 ): Locator {
   const label = {
     model: /^Use a model connection/,
-    cli: /^Use an AI app/,
+    cli: /^Use a connected engine/,
     copy: /^Copy an existing agent/,
   }[which];
   return page.getByRole('button', { name: label });
@@ -253,7 +253,7 @@ export function startingPoint(
 
 /** The one primary action in the editor's DetailHeader while creating. */
 export function createButton(page: Page): Locator {
-  return page.getByRole('button', { name: 'Create Agent' });
+  return page.getByRole('button', { name: 'Create agent' });
 }
 
 /**

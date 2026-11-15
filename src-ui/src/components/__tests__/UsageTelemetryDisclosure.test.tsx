@@ -885,3 +885,43 @@ test('a lapsed snooze, or a changed inventory, re-offers the disclosure', async 
   ).toBeTruthy();
   resetUsageTelemetryDisclosureDismissal();
 });
+
+test('a saved anonymous tier offers to allow detailed usage telemetry', async () => {
+  appConfig.current = {
+    telemetryEnabled: false,
+    telemetryTier: { operator: 'lite' },
+  } as typeof appConfig.current;
+  authenticatedFetch.mockReset();
+  authenticatedFetch.mockImplementation(
+    async () =>
+      new Response(
+        JSON.stringify({
+          data: {
+            acknowledged: false,
+            inventoryRevision: 'rev-tier',
+            events: {
+              station_started: {
+                description: 'Station completed startup.',
+                properties: { platform: { domain: ['linux'] } },
+              },
+            },
+          },
+        }),
+        { status: 200 },
+      ),
+  );
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <UsageTelemetryDisclosure />
+    </QueryClientProvider>,
+  );
+  expect(
+    await screen.findByRole('button', {
+      name: 'Allow detailed usage telemetry',
+    }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Turn off usage telemetry' }),
+  ).toBeTruthy();
+  appConfig.current = undefined;
+});
