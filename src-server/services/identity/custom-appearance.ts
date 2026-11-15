@@ -70,7 +70,7 @@ const digest = (value: unknown) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
 /** Parse, then rate the proposal's own pairs: an agent hears why at once. */
-export function admitCustomAppearance(input: unknown): CustomAppearance {
+function admitCustomAppearance(input: unknown): CustomAppearance {
   const parsed = parseCustomAppearance(input);
   if (!parsed.ok) throw new InvalidCustomAppearanceError(parsed.violations);
   const contrast = appearanceContrastViolations(parsed.value, contrastRatio);
