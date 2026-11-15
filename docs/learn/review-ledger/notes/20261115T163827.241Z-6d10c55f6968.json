@@ -1,0 +1,9 @@
+{
+  "revision": "971d4ec09054e2b04c563c9b29501833dde34b7b",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Root bounded Corpus-manifest claim-impact review at971d4ec090. Checked the public-doc publication/bundle mapping explanation against the one exact retained evidence README classification, matching existing review-packet entries. Canonical documents, sections/order, topics, product purpose, builtOn contracts and workflow gate requirements are unchanged. Local Corpus check passed reachability and official MCP generation produced unchanged source bytes. This note classifies historical delivery evidence; it supplies no provider, native or hosted qualification.","inputs":["docs/guides/documentation.md","corpus.json","scripts/public-docs-hygiene.mjs"]},
+
+    {"path":"docs/pages/README.md","note":"Root bounded Corpus-manifest claim-impact review at971d4ec090. Checked the public-doc publication/bundle mapping explanation against the one exact retained evidence README classification, matching existing review-packet entries. Canonical documents, sections/order, topics, product purpose, builtOn contracts and workflow gate requirements are unchanged. Local Corpus check passed reachability and official MCP generation produced unchanged source bytes. This note classifies historical delivery evidence; it supplies no provider, native or hosted qualification.","inputs":["docs/pages/README.md","corpus.json"]}
+  ]
+}

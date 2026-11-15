@@ -1,0 +1,95 @@
+{
+  "kind": "Task code review controlled browser visual evidence",
+  "baseSource": "d026736c3be7ec51b7cad1ea6ba81eaf67be4409",
+  "afterSource": "bf8e31df0ca4737a47b4d01a9f43c2bff8d0cb60",
+  "productSourceReviewedAt": "75a9e13c304b88d194e26da44204350e10df1ca3",
+  "baseGallery": "4 selected Task capabilities scenes; different sample Task and preview choices from after journeys; not a pixel-matched comparison",
+  "afterJourney": "4 passing extended browser journeys; real checkout reads plus controlled reviewer transport, keyboard setup action, touch retry, denial recovery",
+  "limits": [
+    "No actual reviewer provider invocation",
+    "No invited-member execution",
+    "No two-human, physical-device, native, hosted, packaging or release qualification"
+  ],
+  "files": [
+    {
+      "path": "after-denied-dark-1440.png",
+      "bytes": 88455,
+      "sha256": "bf0b1b25d0d718eeb7f0c0ac72200413b273689336863631c5e1ec325fa2e716"
+    },
+    {
+      "path": "after-denied-dark-390.png",
+      "bytes": 51399,
+      "sha256": "2cab5318b0fd23c6a5dd4dcc8af974647ab69dd4cd39590d0006be9c15b1942c"
+    },
+    {
+      "path": "after-denied-light-1440.png",
+      "bytes": 85784,
+      "sha256": "52c45c2cfe65757e13fba36d5fff3b268f5f51c15525195126a520db6c74b0f6"
+    },
+    {
+      "path": "after-denied-light-390.png",
+      "bytes": 50788,
+      "sha256": "ca41e51338dbf3cab3ec040c07ec978f43591a7ab866902911416453b06a958e"
+    },
+    {
+      "path": "after-review-dark-1440.png",
+      "bytes": 103899,
+      "sha256": "5c250825680a41899836c97ab6fbbda5575b0f35a3f39f6ae9c7a15664feb17b"
+    },
+    {
+      "path": "after-review-dark-390.png",
+      "bytes": 66409,
+      "sha256": "933e75b3ab0ed4953c9c0faca94d283b6ab3347e6e75b036ef8434aafaa3fbcb"
+    },
+    {
+      "path": "after-review-light-1440.png",
+      "bytes": 100073,
+      "sha256": "aea02e64ceb6e9ebc22f507d935834b47a7bd3658bf12ad8c26273f35b611222"
+    },
+    {
+      "path": "after-review-light-390.png",
+      "bytes": 64469,
+      "sha256": "43be5c88c342211a447327361a8993ffdd9863bd2f693210d139e10ebdd290a3"
+    },
+    {
+      "path": "after-setup-dark-1440.png",
+      "bytes": 94215,
+      "sha256": "420f78d832264c2d806d51fe2079c229aefd016b644a57c65deaf64b5a5cc58c"
+    },
+    {
+      "path": "after-setup-dark-390.png",
+      "bytes": 64454,
+      "sha256": "747f1d7f71d9df8d83f5d937528f43262f87a99dd608d3ebabf6b77b515bd91b"
+    },
+    {
+      "path": "after-setup-light-1440.png",
+      "bytes": 91771,
+      "sha256": "9465cdcc361b88d0e2e0f3854d9a7f13ad347a3e07c7f0d0b61b80c3a80a1664"
+    },
+    {
+      "path": "after-setup-light-390.png",
+      "bytes": 62348,
+      "sha256": "ab0d1491c622694bcfc34cdacaa7649d259627c853175d1f0d71aecdd90eb7d2"
+    },
+    {
+      "path": "before-overview-dark-1440.png",
+      "bytes": 161163,
+      "sha256": "f81c613bed6fa3f23ca561b8a717dc672eeab7d810d17b9a488b1c08aea1e2ac"
+    },
+    {
+      "path": "before-overview-dark-390.png",
+      "bytes": 63375,
+      "sha256": "771c3d0f8eef127761f3580760bb2ba9a06ce3b9bf159ef499da9a2c2707014c"
+    },
+    {
+      "path": "before-overview-light-1440.png",
+      "bytes": 156229,
+      "sha256": "17abdf7011f4aeaeea675f0d6e396208ed8a1e23cad1d961fa7a55d85bcd5c9e"
+    },
+    {
+      "path": "before-overview-light-390.png",
+      "bytes": 60759,
+      "sha256": "f42936ba5184f9483072673b82cf33390ee93e043df24e1116cff9b05854d8ba"
+    }
+  ]
+}
