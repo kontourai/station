@@ -1,7 +1,0 @@
-{
-  "revision": "6df421286ffbeac02ef2d953330827fb8291cbd0",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"The generated bundle changed only by regeneration from the edited canonical pages (module map ProjectTaskRoom worker lifecycle); the reference's claims about how the bundle is built, served and digested are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}
