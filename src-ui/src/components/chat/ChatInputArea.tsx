@@ -37,6 +37,7 @@ import {
 import {
   type ModelProviderOption,
   modelIdentityLabel,
+  requestedEffortLabel,
   resolvedModelLabel,
   type SelectableModel,
 } from '../../utils/modelCapabilities';
@@ -733,6 +734,15 @@ export function ChatInputArea({
   const modelLabel = effectiveModelId
     ? modelIdentityLabel(effectiveModelId, availableModels)
     : 'Model';
+  // Only an effort this chat requests is named; otherwise the engine's own
+  // default applies and the pill does not guess it.
+  const effortLabel =
+    modelLabel !== 'Model'
+      ? requestedEffortLabel(
+          effectiveModelInfo?.capabilities,
+          modelRuntimeOptions,
+        )
+      : undefined;
   const modelSource =
     currentModelSource ??
     defaultModelSource ??
@@ -767,6 +777,7 @@ export function ChatInputArea({
       ? `${modelProviderLabel} — ${fullModelIdentity}`
       : fullModelIdentity,
     modelSource !== 'unknown' ? `(${modelSourceLabel(modelSource)})` : '',
+    effortLabel ? `Effort: ${effortLabel}.` : '',
     !canModelSelect
       ? `Unavailable: ${modelSelectionReason ?? 'You can’t change the model for this chat'}`
       : '',
@@ -1724,6 +1735,7 @@ export function ChatInputArea({
               ]
                 .filter(Boolean)
                 .join(' · ')}
+              effort={effortLabel}
               icon={agentIcon}
               engineId={parseEngineId(
                 acpApproval?.engineId ?? executionEngineId,
@@ -1801,7 +1813,9 @@ export function ChatInputArea({
                     ) : null}
                   </>
                 }
-                value={modelLabel}
+                value={
+                  effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel
+                }
                 valueClassName="chat-input__model-name"
               />
               {/* A reset the conversation cannot take at all is not offered. While
