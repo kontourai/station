@@ -1,4 +1,5 @@
 import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
+import type { CustomAppearanceDocument } from '@kontourai/station-contracts/custom-appearance';
 import {
   AUTHORITY_OBSERVATION_SCHEMA_VERSION,
   type AuthorityObservation,
@@ -20,6 +21,16 @@ const READS: Readonly<Record<string, unknown>> = {
       values: {},
       revision: 'shell-fixture',
     } satisfies AccountPreferencesView,
+  },
+  // Nobody in these fixtures has a custom appearance or a pending proposal.
+  '/api/me/appearance': {
+    success: true,
+    data: {
+      revision: 'shell-fixture',
+      active: null,
+      proposal: null,
+      renderReport: null,
+    } satisfies CustomAppearanceDocument,
   },
   '/api/agents': { success: true, data: [] },
   '/api/connections/agents': { success: true, data: [] },
