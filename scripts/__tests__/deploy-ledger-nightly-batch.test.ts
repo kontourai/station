@@ -74,6 +74,84 @@ const nativeRecordScript = () =>
     workflow('nightly-native-cohort.yml').jobs['record-native-completion'],
     'Record durable completion only after the verified final receipt',
   );
+/**
+ * A GitHub `if:` as the runner evaluates it. An expression that calls none
+ * of always(), success(), failure() or cancelled() is implicitly ANDed with
+ * success(): every need (a job) or every earlier step (a step) succeeded and
+ * the run is not cancelled. Without that, a guard that lost its always()
+ * reads as if it still had one.
+ */
+function evaluateIf(
+  condition: string,
+  {
+    needs = {},
+    steps = {},
+    priorSuccess,
+    cancelled = false,
+  }: {
+    needs?: Record<
+      string,
+      { result: string; outputs?: Record<string, string> }
+    >;
+    steps?: Record<string, { outputs?: Record<string, string> }>;
+    priorSuccess?: boolean;
+    cancelled?: boolean;
+  },
+): boolean {
+  const inner = condition
+    .trim()
+    .replace(/^\$\{\{\s*/, '')
+    .replace(/\s*\}\}$/, '');
+  const succeeded =
+    priorSuccess ??
+    Object.values(needs).every((need) => need.result === 'success');
+  const value = Boolean(
+    Function(
+      'needs',
+      'steps',
+      'github',
+      'always',
+      'success',
+      'failure',
+      'cancelled',
+      `return (${inner.replace(/needs\.([\w-]+)/g, 'needs["$1"]').replace(/steps\.([\w-]+)/g, 'steps["$1"]')})`,
+    )(
+      needs,
+      steps,
+      { ref: 'refs/heads/main', sha: 'a'.repeat(40), event_name: 'schedule' },
+      () => true,
+      () => succeeded && !cancelled,
+      () => !succeeded,
+      () => cancelled,
+    ),
+  );
+  return /\b(?:always|success|failure|cancelled)\(\)/.test(inner)
+    ? value
+    : value && succeeded && !cancelled;
+}
+
+/** Whether the cohort's marker step runs after the ledger step ended so. */
+function markerRuns(ledgerExit: number | null, output: string) {
+  const marker = (
+    workflow('nightly-native-cohort.yml').jobs['record-native-completion']
+      .steps ?? []
+  ).find(
+    (step) =>
+      step.name === 'Advance final Android marker with exact REST readback',
+  ) as Step & { if?: string };
+  expect(marker?.if).toBeDefined();
+  const outputs = Object.fromEntries(
+    output
+      .split('\n')
+      .filter((line) => line.includes('='))
+      .map((line) => line.split('=') as [string, string]),
+  );
+  return evaluateIf(marker.if ?? '', {
+    steps: { durable_ledger: { outputs } },
+    priorSuccess: ledgerExit === 0,
+  });
+}
+
 const fallbackScript = () =>
   stepRun(
     workflow('nightly.yml').jobs['record-cli-ledger'],
@@ -153,6 +231,33 @@ function makeFixture() {
     mkdirSync(dirname(join(seed, path)), { recursive: true });
     copyFileSync(resolve(root, path), join(seed, path));
   }
+  // A record group that fails is the seam the record step's fallback
+  // exists for. The real appender runs as `deploy-ledger-real.mjs`; this
+  // front exits 1 for the channel FIXTURE_REFUSE_CHANNEL names, as a
+  // validation refusal would, and is the real appender otherwise.
+  copyFileSync(
+    resolve(root, 'scripts/deploy-ledger.mjs'),
+    join(seed, 'scripts/deploy-ledger-real.mjs'),
+  );
+  writeFileSync(
+    join(seed, 'scripts/deploy-ledger.mjs'),
+    [
+      "import { main } from './deploy-ledger-real.mjs';",
+      "export * from './deploy-ledger-real.mjs';",
+      "import { realpathSync } from 'node:fs';",
+      "import { fileURLToPath } from 'node:url';",
+      'if (realpathSync(process.argv[1] ?? "") === realpathSync(fileURLToPath(import.meta.url))) {',
+      '  const argv = process.argv.slice(2);',
+      '  const refused = process.env.FIXTURE_REFUSE_CHANNEL;',
+      "  if (refused && argv[argv.indexOf('--channel') + 1] === refused) {",
+      '    console.error(`::error::fixture refusal of ${refused}`);',
+      '    process.exit(1);',
+      '  }',
+      '  process.exit(main(argv));',
+      '}',
+      '',
+    ].join('\n'),
+  );
   // The attested final receipt is release-cohort's contract; here it only
   // has to let the step reach its ledger writes.
   writeFileSync(
@@ -255,11 +360,13 @@ function makeFixture() {
     registryGitHead = sourceSha,
     android = 'complete',
     macos = 'complete',
+    refuseChannel = '',
   }: {
     receipt?: Record<string, unknown> | null;
     registryGitHead?: string;
     android?: string;
     macos?: string;
+    refuseChannel?: string;
   } = {}) => {
     const clone = runner();
     const write = (path: string, value: unknown) => {
@@ -294,18 +401,20 @@ function makeFixture() {
       SOURCE_SHA: sourceSha,
       GITHUB_OUTPUT: output,
       STUB_REGISTRY_GITHEAD: registryGitHead,
+      FIXTURE_REFUSE_CHANNEL: refuseChannel,
     });
     return { ...result, output: readFileSync(output, 'utf8') };
   };
 
   /** Run nightly.yml's real record-cli-ledger step in a fresh job checkout. */
-  const runFallback = () => {
+  const runFallback = (refuseChannel = '') => {
     const script = fallbackScript();
     expect(script).not.toContain('${{');
     return bash(runner(), script, {
       CLI_VERSION,
       CLI_RECORDED_AT,
       SOURCE_SHA: sourceSha,
+      FIXTURE_REFUSE_CHANNEL: refuseChannel,
     });
   };
 
@@ -435,6 +544,76 @@ describe.skipIf(process.platform === 'win32')(
       ).toHaveLength(1);
     });
 
+    it('when the npm group is refused, records Android and desktop in their own commits as main did, moves the marker, and leaves npm to the fallback', () => {
+      const f = makeFixture();
+      const before = f.mainHead();
+      const native = f.runNativeRecord({ refuseChannel: 'nightly-npm' });
+      expect(native.status, native.stderr).toBe(0);
+      expect(native.stdout).toContain(
+        'The combined ledger commit failed; recording each native row in its own commit',
+      );
+      expect(f.commitsSince(before).map((commit) => commit.subject)).toEqual([
+        `docs(ledger): record nightly-android ${NATIVE_VERSION} from run ${RUN_ID}`,
+        `docs(ledger): record nightly-desktop ${NATIVE_VERSION} from run ${RUN_ID}`,
+      ]);
+      expect(markerRuns(native.status, native.output)).toBe(true);
+      // The fallback then refuses on its own (same cause), or records it.
+      expect(f.runFallback('nightly-npm').status).toBe(1);
+      expect(f.commitsSince(before)).toHaveLength(2);
+      expect(f.runFallback().status).toBe(0);
+      expect(f.commitsSince(before).map((commit) => commit.subject)).toEqual([
+        `docs(ledger): record nightly-android ${NATIVE_VERSION} from run ${RUN_ID}`,
+        `docs(ledger): record nightly-desktop ${NATIVE_VERSION} from run ${RUN_ID}`,
+        `docs(ledger): record nightly-npm ${CLI_VERSION} from run ${RUN_ID}`,
+      ]);
+    });
+
+    it('when the desktop group is refused, records Android as main did and holds the marker as main did', () => {
+      const f = makeFixture();
+      const before = f.mainHead();
+      const native = f.runNativeRecord({ refuseChannel: 'nightly-desktop' });
+      expect(native.status).not.toBe(0);
+      expect(f.commitsSince(before).map((commit) => commit.subject)).toEqual([
+        `docs(ledger): record nightly-android ${NATIVE_VERSION} from run ${RUN_ID}`,
+      ]);
+      // On main the Android commit lands, the desktop record fails the step,
+      // and the marker's implicit success() keeps it behind.
+      expect(native.output).toContain('android=complete');
+      expect(markerRuns(native.status, native.output)).toBe(false);
+      expect(f.runFallback().status).toBe(0);
+      expect(
+        f.ledgerAt('main').filter((entry) => entry.version === CLI_VERSION),
+      ).toHaveLength(1);
+    });
+
+    it('refuses rather than writes duplicates when the step runs again after its combined commit landed', () => {
+      const f = makeFixture();
+      const before = f.mainHead();
+      const first = f.runNativeRecord();
+      expect(first.status, first.stderr).toBe(0);
+      expect(first.stdout).toContain("recorded this run's rows in one commit");
+      expect(first.stdout).not.toContain('combined ledger commit failed');
+      expect(markerRuns(first.status, first.output)).toBe(true);
+      const landed = f.mainHead();
+      const again = f.runNativeRecord();
+      expect(again.status).not.toBe(0);
+      expect(again.stderr).toContain('already records this ship');
+      expect(f.mainHead()).toBe(landed);
+      const ledger = f.ledgerAt('main');
+      for (const channel of [
+        'nightly-npm',
+        'nightly-android',
+        'nightly-desktop',
+      ])
+        expect(
+          ledger.filter(
+            (entry) => entry.channel === channel && entry.sha === f.sourceSha,
+          ),
+          channel,
+        ).toHaveLength(1);
+      expect(f.commitsSince(before)).toHaveLength(1);
+    });
+
     it('records the npm row alone when the cohort never reaches its record job', () => {
       const f = makeFixture();
       const before = f.mainHead();
@@ -493,6 +672,20 @@ describe.skipIf(process.platform === 'win32')(
           }),
         ],
         ['the registry disagrees', () => ({ registryGitHead: 'f'.repeat(40) })],
+        [
+          'a verifiedAt in the future',
+          (sha) => ({
+            receipt: cliReceipt(sha, { verifiedAt: '2099-01-01T00:00:00Z' }),
+          }),
+        ],
+        [
+          'a version that only ends in the run id',
+          (sha) => ({
+            receipt: cliReceipt(sha, {
+              version: `0.11.0-nightly.20261114.x.${RUN_ID}`,
+            }),
+          }),
+        ],
         ['no receipt in this run', () => ({ receipt: null })],
       ];
       for (const [label, options] of cases) {
@@ -807,25 +1000,9 @@ describe('the workflow wiring of the one-commit Nightly ledger', () => {
   const nightly = workflow('nightly.yml');
   const fallback = nightly.jobs['record-cli-ledger'];
   const evaluate = (
-    needs: Record<string, unknown>,
+    needs: Record<string, { result: string; outputs?: Record<string, string> }>,
     { cancelled = false } = {},
-  ) => {
-    const expression = (fallback.if ?? '')
-      .slice(3, -2)
-      .replace(/needs\.([\w-]+)/g, 'needs["$1"]');
-    return Function(
-      'needs',
-      'github',
-      'always',
-      'cancelled',
-      `return (${expression})`,
-    )(
-      needs,
-      { ref: 'refs/heads/main', sha: 'a'.repeat(40), event_name: 'schedule' },
-      () => true,
-      () => cancelled,
-    ) as boolean;
-  };
+  ) => evaluateIf(fallback.if ?? '', { needs, cancelled });
   const needsFor = (
     cohort: string,
     ledgerReady = 'success',
@@ -877,14 +1054,21 @@ describe('the workflow wiring of the one-commit Nightly ledger', () => {
         .split('\n')
         .find((candidate) => candidate.includes('--channel nightly-npm'));
       expect(line).toBeDefined();
-      const start = (line ?? '').indexOf(
-        '--record node scripts/deploy-ledger.mjs',
-      );
+      const start = (line ?? '').indexOf('node scripts/deploy-ledger.mjs');
       expect(start).toBeGreaterThanOrEqual(0);
       return (line ?? '').slice(start).replace(/\)\s*$/, '');
     };
     expect(npmRecord(nativeRecordScript())).toBe(npmRecord(fallbackScript()));
     expect(npmRecord(fallbackScript())).toContain('--if-absent');
+    // A registry stall must not eat the job: npm's own bounded fetch, and a
+    // failure only defers the row to record-cli-ledger.
+    const registryRead = nativeRecordScript()
+      .split('\n')
+      .find((line) => line.includes('npm view'));
+    expect(registryRead).toContain(
+      'npm view --prefer-online --fetch-timeout=30000 --fetch-retries=2 --fetch-retry-maxtimeout=10000',
+    );
+    expect(registryRead).toMatch(/^\s*if handoff=/);
     for (const step of nightly.jobs['nightly-cli'].steps ?? [])
       expect(step.run ?? '', step.name).not.toContain('deploy-ledger');
   });

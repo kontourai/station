@@ -597,6 +597,30 @@ would not peel. A failure of `record-cli-ledger` counts against the CLI leg in
 health monitoring. Stable releases and package publication still write one
 record per commit.
 
+If the combined commit fails for any reason, the record job falls back to the
+earlier behaviour. It records the Android and then the desktop row in their own
+commits, using exactly the earlier invocation, and leaves the npm row to
+`record-cli-ledger`. So one bad row cannot take the others with it, and the
+Android marker moves when the native rows land, as it did before. If a
+combined commit did land, these per-row writes are refused as duplicates rather
+than written twice.
+
+Roll this back workflows first. Revert `nightly.yml` and
+`nightly-native-cohort.yml`, and keep the script changes: `--if-absent`,
+`--record` and `--subject-run-id` are additive, and the single-record
+`--commit-subject … --` form the stable workflows use is unchanged. Never
+revert `scripts/deploy-ledger.mjs` while a run of the new workflow is in
+flight. The commit helper runs from the job's checkout, but the appender it
+spawns runs from `origin/main` after the detach, and the older appender
+rejects `--if-absent`. In that case the record job's per-row fallback still
+records the native rows, because it passes no new flag. `record-cli-ledger`
+fails, though, and the npm row is missing. To add a missing row by hand, take the version and `verifiedAt` from
+that run's `nightly-cli-provider-receipt-<run id>` artifact, or the native
+versions from its `nightly-cohort-final-<run id>` receipt. Then run the
+appender with the arguments the workflow passes, through
+`node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record <channel> <version> from run <run id>" -- node scripts/deploy-ledger.mjs …`
+on a checkout of `main`, with a token allowed to push there.
+
 Preview
 and Stable are evidence-driven owner decisions, not automatic calendar releases.
 No public release is created merely by merging a normal PR. Package-version

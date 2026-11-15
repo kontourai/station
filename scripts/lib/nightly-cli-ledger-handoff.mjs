@@ -23,20 +23,28 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { DEPLOY_LEDGER_VERSION_PATTERN } from '../deploy-ledger.mjs';
+import { FUTURE_TIMESTAMP_SKEW_MS } from '../deploy-ledger.mjs';
 import { invokedDirectly } from './module-entry.mjs';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const RUN_ID_PATTERN = /^[1-9][0-9]*$/;
 const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const CLI_PACKAGE = '@kontourai/station-cli';
+/** nightlyCliVersion's exact shape: `<MAJOR.MINOR.PATCH>-nightly.<YYYYMMDD>.<run id>`. */
+const NIGHTLY_CLI_VERSION_PREFIX =
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-nightly\.\d{8}\./;
 
 /**
  * @param {unknown} receipt The parsed receipt.
- * @param {{ sourceSha: string, runId: string }} binding
+ * @param {{ sourceSha: string, runId: string, now?: number }} binding
+ *   `now` is the record job's clock: a `verifiedAt` the appender would refuse
+ *   as future is refused here, before it can fail the combined commit.
  * @returns {{ version: string, verifiedAt: string }}
  */
-export function readNightlyCliHandoff(receipt, { sourceSha, runId }) {
+export function readNightlyCliHandoff(
+  receipt,
+  { sourceSha, runId, now = Date.now() },
+) {
   if (!SHA_PATTERN.test(sourceSha ?? '')) {
     throw new Error('source sha must be 40 lowercase hex characters');
   }
@@ -58,8 +66,8 @@ export function readNightlyCliHandoff(receipt, { sourceSha, runId }) {
     failures.push('registryGitHead is not the source this job records');
   if (
     typeof receipt.version !== 'string' ||
-    !DEPLOY_LEDGER_VERSION_PATTERN.test(receipt.version) ||
-    !receipt.version.endsWith(`.${runId}`)
+    !NIGHTLY_CLI_VERSION_PREFIX.test(receipt.version) ||
+    receipt.version.replace(NIGHTLY_CLI_VERSION_PREFIX, '') !== runId
   )
     failures.push(`version is not a Nightly CLI version of run ${runId}`);
   if (
@@ -68,6 +76,8 @@ export function readNightlyCliHandoff(receipt, { sourceSha, runId }) {
     Number.isNaN(Date.parse(receipt.verifiedAt))
   )
     failures.push('verifiedAt is not an ISO 8601 UTC second');
+  else if (Date.parse(receipt.verifiedAt) > now + FUTURE_TIMESTAMP_SKEW_MS)
+    failures.push('verifiedAt is in the future');
   if (failures.length > 0) {
     throw new Error(`refusing the CLI receipt: ${failures.join('; ')}`);
   }

@@ -208,7 +208,10 @@ jobs:
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['test-gate'].outputs.source_sha == github.sha }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
-    permissions: { contents: write, id-token: write, actions: read }
+    # Nothing here writes the repository any more (the deploy-ledger push
+    # moved out), so contents is read: checkout, OIDC npm publish, the run's
+    # created_at lookup (actions: read) and the receipt upload need no more.
+    permissions: { contents: read, id-token: write, actions: read }
     # This job no longer writes the deploy ledger. Its registry-verified
     # publish is recorded in the run's one ledger commit: by the native
     # cohort's record job, or by record-cli-ledger below when the cohort

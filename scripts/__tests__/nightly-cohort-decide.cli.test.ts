@@ -82,7 +82,6 @@ function nightlyLedgerSubject(
   expect(workflow).toContain(
     'node scripts/lib/deploy-ledger-commit.mjs --subject-run-id "$GITHUB_RUN_ID"',
   );
-  expect(workflow).not.toContain('--commit-subject');
   return generatedLedgerSubject(rows, runId);
 }
 

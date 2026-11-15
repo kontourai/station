@@ -565,31 +565,55 @@ jobs:
           while IFS= read -r line; do
             test -n "$line" && cohort_notes+=(--note "$line")
           done < <(node scripts/release-cohort-workflow.mjs final-platform-notes cohort/final-cohort-receipt.json "${{ inputs.source_sha }}")
-          # One ledger commit per run: every push to main discards the merge
-          # groups in flight. This run's npm row joins the native rows only
-          # when the CLI receipt names this run's own version at this source
-          # and the registry still binds that version to it; otherwise
+          # One ledger commit per run: every push to main has discarded the
+          # merge groups in flight. This run's npm row joins the native rows
+          # only when the CLI receipt names this run's own version at this
+          # source and the registry still binds that version to it; otherwise
           # record-cli-ledger in nightly.yml records it alone after this
           # workflow ends. --if-absent lets whichever lands second leave it.
-          records=()
+          npm_record=()
+          android_record=()
+          desktop_record=()
           if [ -f cli-receipt/nightly-cli.json ]; then
             registry_record=$(mktemp)
-            if handoff=$(node scripts/lib/nightly-cli-ledger-handoff.mjs cli-receipt/nightly-cli.json "$SOURCE_SHA" "$GITHUB_RUN_ID") && IFS=$'\t' read -r CLI_VERSION CLI_RECORDED_AT <<< "$handoff" && npm view --prefer-online "@kontourai/station-cli@$CLI_VERSION" gitHead --json > "$registry_record" && node scripts/verify-npm-registry-provenance.mjs "$registry_record" "$SOURCE_SHA" > /dev/null; then
-              records+=(--record node scripts/deploy-ledger.mjs --if-absent --channel nightly-npm --version "$CLI_VERSION" --sha "$SOURCE_SHA" --timestamp "$CLI_RECORDED_AT" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'Nightly exact gates success; npm registry gitHead equals source SHA' --github-repo "$GITHUB_REPOSITORY" --artifact "npm:@kontourai/station-cli@$CLI_VERSION (dist-tag nightly; artifactBuiltAt unknown)" --note 'artifactBuiltAt is null: npm package has no native artifact manifest')
+            if handoff=$(node scripts/lib/nightly-cli-ledger-handoff.mjs cli-receipt/nightly-cli.json "$SOURCE_SHA" "$GITHUB_RUN_ID") && IFS=$'\t' read -r CLI_VERSION CLI_RECORDED_AT <<< "$handoff" && npm view --prefer-online --fetch-timeout=30000 --fetch-retries=2 --fetch-retry-maxtimeout=10000 "@kontourai/station-cli@$CLI_VERSION" gitHead --json > "$registry_record" && node scripts/verify-npm-registry-provenance.mjs "$registry_record" "$SOURCE_SHA" > /dev/null; then
+              npm_record=(node scripts/deploy-ledger.mjs --if-absent --channel nightly-npm --version "$CLI_VERSION" --sha "$SOURCE_SHA" --timestamp "$CLI_RECORDED_AT" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'Nightly exact gates success; npm registry gitHead equals source SHA' --github-repo "$GITHUB_REPOSITORY" --artifact "npm:@kontourai/station-cli@$CLI_VERSION (dist-tag nightly; artifactBuiltAt unknown)" --note 'artifactBuiltAt is null: npm package has no native artifact manifest')
             else
               echo '::warning::The CLI receipt did not verify here; record-cli-ledger records the npm row on its own.'
             fi
           fi
           if [ "$android_state" = complete ]; then
             androidVersion=$(node -e 'console.log(require("./cohort/final-cohort-receipt.json").versionIdentities.android.versionName)')
-            records+=(--record node scripts/deploy-ledger.mjs --channel nightly-android --version "$androidVersion" --sha "${{ inputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result "native cohort final receipt $final_state" --github-repo "$GITHUB_REPOSITORY" --artifact-manifest cohort/cohort-android/station-client-build.json --artifact 'play-internal-aab:cohort-finalized' --note "ios: TestFlight delivery $IOS_DELIVERY_RESULT (run $GITHUB_RUN_ID)" "${cohort_notes[@]}")
+            android_record=(node scripts/deploy-ledger.mjs --channel nightly-android --version "$androidVersion" --sha "${{ inputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result "native cohort final receipt $final_state" --github-repo "$GITHUB_REPOSITORY" --artifact-manifest cohort/cohort-android/station-client-build.json --artifact 'play-internal-aab:cohort-finalized' --note "ios: TestFlight delivery $IOS_DELIVERY_RESULT (run $GITHUB_RUN_ID)" "${cohort_notes[@]}")
           fi
           if [ "$macos_state" = complete ]; then
             desktopVersion=$(node -e 'console.log(require("./cohort/final-cohort-receipt.json").versionIdentities.desktop.version)')
-            records+=(--record node scripts/deploy-ledger.mjs --channel nightly-desktop --version "$desktopVersion" --sha "${{ inputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result "native cohort final receipt $final_state" --github-repo "$GITHUB_REPOSITORY" --artifact-manifest cohort/cohort-macos/station-client-build.json --artifact 'github-release:nightly-desktop (cohort-finalized)' --note "ios: TestFlight delivery $IOS_DELIVERY_RESULT (run $GITHUB_RUN_ID)" "${cohort_notes[@]}")
+            desktop_record=(node scripts/deploy-ledger.mjs --channel nightly-desktop --version "$desktopVersion" --sha "${{ inputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result "native cohort final receipt $final_state" --github-repo "$GITHUB_REPOSITORY" --artifact-manifest cohort/cohort-macos/station-client-build.json --artifact 'github-release:nightly-desktop (cohort-finalized)' --note "ios: TestFlight delivery $IOS_DELIVERY_RESULT (run $GITHUB_RUN_ID)" "${cohort_notes[@]}")
           fi
-          if [ "${#records[@]}" -gt 0 ]; then
-            node scripts/lib/deploy-ledger-commit.mjs --subject-run-id "$GITHUB_RUN_ID" "${records[@]}"
+          records=()
+          if [ "${#npm_record[@]}" -gt 0 ]; then records+=(--record "${npm_record[@]}"); fi
+          if [ "${#android_record[@]}" -gt 0 ]; then records+=(--record "${android_record[@]}"); fi
+          if [ "${#desktop_record[@]}" -gt 0 ]; then records+=(--record "${desktop_record[@]}"); fi
+          if [ "${#records[@]}" -eq 0 ]; then
+            echo 'Deploy ledger: no row to record for this run.'
+          elif node scripts/lib/deploy-ledger-commit.mjs --subject-run-id "$GITHUB_RUN_ID" "${records[@]}"; then
+            echo 'Deploy ledger: recorded this run'"'"'s rows in one commit.'
+          else
+            # Never worse than one commit per row: a group that fails inside
+            # the combined commit must not take the others with it. Record
+            # each native row on its own with the invocation it always had
+            # (same order, arguments and subject, no --if-absent, so an older
+            # helper and appender accept it too); a failure here fails the
+            # step and holds the marker exactly as before. The npm row is left
+            # to record-cli-ledger. A combined commit that did land makes
+            # these duplicates, which the appender refuses rather than writes.
+            echo '::warning::The combined ledger commit failed; recording each native row in its own commit and leaving the npm row to record-cli-ledger.'
+            if [ "${#android_record[@]}" -gt 0 ]; then
+              node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record nightly-android $androidVersion from run $GITHUB_RUN_ID" --summary-line "- finalized cohort Android $androidVersion" -- "${android_record[@]}"
+            fi
+            if [ "${#desktop_record[@]}" -gt 0 ]; then
+              node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record nightly-desktop $desktopVersion from run $GITHUB_RUN_ID" --summary-line "- finalized cohort macOS $desktopVersion" -- "${desktop_record[@]}"
+            fi
           fi
       - id: nightly_marker
         name: Advance final Android marker with exact REST readback

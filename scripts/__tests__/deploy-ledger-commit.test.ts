@@ -381,4 +381,33 @@ describe('deploy-ledger commit-back with bounded re-derive-and-retry (MED-2)', (
     ).toThrow(/positive decimal run id/);
     expect(git(origin, 'rev-parse', 'main').trim()).toBe(before);
   });
+
+  it('refuses a derived subject the head normalizer would not peel, with nothing committed', () => {
+    const { origin, writerA } = makeTwoWriterScratch();
+    const before = git(origin, 'rev-parse', 'main').trim();
+    // A row whose channel the subject shape does not know (a channel added
+    // to the ledger without updating GENERATED_LEDGER_SUBJECT): the record
+    // writes it, the derived subject cannot peel, and the helper must refuse.
+    const writeUnknownChannel = [
+      process.execPath,
+      '-e',
+      `const fs = require('node:fs');
+       const path = 'docs/reference/deploy-ledger.json';
+       const rows = JSON.parse(fs.readFileSync(path, 'utf8'));
+       rows.unshift({ ...rows[0], channel: 'nightly-ios', version: '1.0.0' });
+       fs.writeFileSync(path, JSON.stringify(rows, null, 2) + '\\n');
+       fs.appendFileSync('docs/reference/deploy-ledger.md', 'ios\\n');`,
+    ];
+    expect(() =>
+      commitLedgerWithRetry({
+        repoRoot: writerA,
+        recordArgvs: [writeUnknownChannel],
+        subjectRunId: '7',
+        env: testEnv(),
+      }),
+    ).toThrow(
+      /does not match the shape normalize-deploy-ledger-head\.mjs peels/,
+    );
+    expect(git(origin, 'rev-parse', 'main').trim()).toBe(before);
+  });
 });

@@ -359,7 +359,9 @@ describe('the desktop nightly workflow records what it ships (station#575)', () 
     ].flatMap((workflow) =>
       Array.from(workflow.matchAll(/--commit-subject "([^"]+)"/g), (m) => m[1]),
     );
-    expect(subjects).toHaveLength(2);
+    // publish-release, publish-packages, and the cohort's per-row fallback
+    // (Android, desktop), which keeps the invocation main always used.
+    expect(subjects).toHaveLength(4);
     for (const subject of subjects) {
       const substituted = subject
         .replace(/\$GITHUB_RUN_ID\b/g, '34252063142')

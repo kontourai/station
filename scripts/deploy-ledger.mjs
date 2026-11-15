@@ -97,7 +97,7 @@ export const DEPLOY_LEDGER_VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+~-]*$/;
 
 /** Workflow clocks can lag the recorder's; five minutes of skew is
  * generous for a `date -u` taken in the same second as the publish. */
-const FUTURE_TIMESTAMP_SKEW_MS = 5 * 60_000;
+export const FUTURE_TIMESTAMP_SKEW_MS = 5 * 60_000;
 
 function validateChangelog(changelog) {
   if (changelog === undefined || changelog === null) return [];
@@ -387,7 +387,7 @@ export function renderLedgerMarkdown({ entries, githubRepo }) {
     '',
     '### JSON schema (one array element per ship)',
     '',
-    '- `timestampUtc` — ISO 8601 UTC. When the recording workflow step ran (immediately after the publish it records); never in the future.',
+    '- `timestampUtc` — ISO 8601 UTC, never in the future. For a `nightly-npm` row, the moment the publishing job verified the publish against the registry (the row itself may be written later in the run); for every other row, when the recording workflow step ran, immediately after the publish it records.',
     '- `artifactBuiltAt` — canonical ISO 8601 UTC from the immutable packaged artifact manifest, or `null` when a provider/package artifact cannot prove one. It is never a provider upload, device install, or ledger-recording timestamp.',
     `- \`channel\` — one of \`${DEPLOY_LEDGER_CHANNELS.join('`, `')}\`.`,
     '- `version` — the channel-specific version identity users see (`station --version`, Play console, npm); alphanumeric plus `. + ~ -` only.',

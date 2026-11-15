@@ -303,6 +303,18 @@ export function commitLedgerWithRetry({
     // earlier workflow steps leaving tracked modifications is exactly the
     // kind of state this commit must not silently absorb.
     git(['checkout', '--detach', remoteHead]);
+    // The checkout carries uncommitted ledger edits forward, and a record
+    // that failed part-way (an earlier call's later group refused) leaves
+    // exactly that: rows appended but never committed. Reset the two files
+    // to origin/main so every attempt derives from main's ledger alone.
+    for (const path of [DEPLOY_LEDGER_JSON_PATH, DEPLOY_LEDGER_MD_PATH]) {
+      if (
+        git(['cat-file', '-e', `${remoteHead}:${path}`], {
+          allowFailure: true,
+        }) !== null
+      )
+        git(['checkout', remoteHead, '--', path]);
+    }
     const before = readLedgerEntries(repoRoot);
 
     for (const argv of records) {
