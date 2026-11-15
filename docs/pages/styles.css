@@ -432,6 +432,20 @@ nav a:focus-visible,
   aspect-ratio: 390 / 666;
 }
 
+/* The Task figure loads its phone capture at max-width 640px (its <source>
+   media). Engines that ignore width/height on <source> but support
+   aspect-ratio would otherwise reserve the <img>'s 1440x900 box for a
+   390x844 capture, and the page would grow under a jump to a later anchor. */
+.story-media.task-figure img {
+  aspect-ratio: 1440 / 900;
+}
+
+@media (max-width: 640px) {
+  .story-media.task-figure img {
+    aspect-ratio: 390 / 844;
+  }
+}
+
 .section-heading {
   max-width: 780px;
   margin-bottom: 34px;

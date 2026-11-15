@@ -344,11 +344,47 @@ describe('public product documentation source links', () => {
         const height = attribute(tag, 'height');
         const reserved = width && height ? `${width}x${height}` : imgBox;
         expect(reserved, `reserved box for ${name}`).toBe(size.get(name!));
+        // The manifest's size must be the committed PNG's own: read the
+        // IHDR width and height (bytes 16-23) so a resized image fails even
+        // when the JSON and HTML are unchanged.
+        const png = readFileSync(`tests/screenshots.baseline/${name}.png`);
+        expect(
+          png.subarray(0, 8).equals(Buffer.from('\x89PNG\r\n\x1a\n', 'latin1')),
+          `${name} is a PNG`,
+        ).toBe(true);
+        expect(png.subarray(12, 16).toString('latin1'), `${name} IHDR`).toBe(
+          'IHDR',
+        );
+        expect(
+          `${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`,
+          `${name} PNG size`,
+        ).toBe(size.get(name!));
         variants += 1;
       }
     }
     // 12 captures: the hero pair, two phone figures and the Task figure.
     expect(variants).toBe(12);
+
+    // Engines that ignore <source> width/height still reserve the right box
+    // from CSS: the Task figure's ratio follows the capture each breakpoint
+    // loads, under the same media condition as its phone <source>.
+    const css = readFileSync('docs/pages/styles.css', 'utf8');
+    const ratio = (block: string) =>
+      /\.story-media\.task-figure img\s*\{\s*aspect-ratio:\s*(\d+)\s*\/\s*(\d+);/
+        .exec(block)
+        ?.slice(1)
+        .join('x');
+    const phoneSource = /<source media="\(max-width: (\d+)px\)"/.exec(index);
+    expect(phoneSource, 'Task phone <source> media').not.toBeNull();
+    const phoneBlock = new RegExp(
+      `@media \\(max-width: ${phoneSource![1]}px\\) \\{\\s*\\.story-media\\.task-figure img \\{[^}]*\\}`,
+    ).exec(css)?.[0];
+    expect(ratio(css), 'Task figure desktop ratio').toBe(
+      size.get('task-capabilities-light-desktop'),
+    );
+    expect(ratio(phoneBlock ?? ''), 'Task figure phone ratio').toBe(
+      size.get('task-capabilities-light-mobile'),
+    );
   });
 
   it('links contributors to the repository and public documentation boundaries', () => {

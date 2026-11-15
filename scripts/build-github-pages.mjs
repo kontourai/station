@@ -522,7 +522,7 @@ async function writeDocPage(outputPath, title, body, sourcePath) {
       cssPath,
       docsHref: docsIndexPath,
       homeHref: homePath,
-      platformHref: `${homePath}#platform`,
+      howHref: `${homePath}#how`,
       title: `${title} | Station Docs`,
     }),
     'utf8',
@@ -575,14 +575,14 @@ async function writeDocsIndex(docs) {
       cssPath: '../styles.css',
       docsHref: './index.html',
       homeHref: '../index.html',
-      platformHref: '../index.html#platform',
+      howHref: '../index.html#how',
       title: 'Station Documentation',
     }),
     'utf8',
   );
 }
 
-function pageShell({ body, cssPath, docsHref, homeHref, platformHref, title }) {
+function pageShell({ body, cssPath, docsHref, homeHref, howHref, title }) {
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -595,7 +595,7 @@ function pageShell({ body, cssPath, docsHref, homeHref, platformHref, title }) {
     <header class="site-header">
       <a class="brand" href="${escapeAttribute(homeHref)}">Station</a>
       <nav aria-label="Primary">
-        <a href="${escapeAttribute(platformHref)}">Platform</a>
+        <a href="${escapeAttribute(howHref)}">How it works</a>
         <a href="${escapeAttribute(docsHref)}">Docs</a>
         <a href="${escapeAttribute(repositoryUrl)}">GitHub</a>
       </nav>
