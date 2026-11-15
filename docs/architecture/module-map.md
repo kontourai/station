@@ -2301,11 +2301,18 @@ these hold:
 - No person has, or may have, sent into it. Counted as a person's: a turn
   start placed `interactive` or marked person-typed, every steer (a steer
   inherits its turn's origin, so a person's steer from an unmarked surface
-  reads as the turn's), and a turn start with no origin this build
-  recognises (history from before the field). Engine-opened turns do not
-  count.
+  reads as the turn's) except a child's result Station steered in (Station's
+  internal actor with the server-stamped `delegation-result` sender), and a
+  turn start with no origin this build recognises (history from before the
+  field). Engine-opened turns do not count.
 - The engine's adapter declares `openEngineWork: 'complete'` and its
-  `earlyParkRefusal` gives no reason. Only Claude declares it. Claude refuses
+  `earlyParkRefusal` gives no reason. Only Claude declares it. Claude runs
+  with `includeHookEvents`, and Station's own hooks are SDK callbacks that
+  report no hook events, so any reported hook is one Station did not install
+  (user, project, local, plugin or managed): from then on that engine refuses,
+  since an `async` or `asyncRewake` hook can outlive the turn. It also
+  refuses on a Claude Code older than the one this was checked against, or
+  one whose `init` reported no version. It refuses
   while it has a housekeeping task running (`skip_transcript`, such as a
   post-turn memory save), while its last `init` reported any MCP server that
   is not one of Station's in-process (`sdk`) servers or reported none, and
@@ -2318,8 +2325,13 @@ these hold:
   sees, do not declare it, and neither does any engine until it can.
 
 So a delegated child, a dedicated Automation run or a Task dispatch nobody
-typed in qualifies when it runs on Claude with only Station's own MCP servers,
-scheduled nothing, and has no housekeeping running. The park is the idle park
+typed in qualifies when it runs on Claude with only Station's own MCP servers
+and hooks, scheduled nothing, and has no housekeeping running. Not seen: a
+hook that is configured but has not fired in that engine (nothing of it is
+running; one that fires only after idling, such as an idle `Notification`,
+does not fire once parked, as after the idle park), and a process a command
+leaves running after its tool call returned without making it a background
+task. The park is the idle park
 with that grace as its threshold, so every refusal above still applies under
 the lifecycle lock. An engine event after the settle restarts the grace. A
 delegator's follow-up or a queued inbox entry starts a turn, which the park
