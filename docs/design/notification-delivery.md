@@ -1122,7 +1122,7 @@ and the right conversation.
   seconds, before they are placed. With no Station named (an older
   Station), the active one, or one it cannot place while the active id is
   still unknown, it navigates at once. For another saved Station it shows "Opening
-  conversation on <Station>…", switches (`setActiveConnection`), and only
+  conversation on <Station>" with a spinner, switches (`setActiveConnection`), and only
   then navigates. A Station not saved on this device, or a failed switch,
   shows a notice with Manage Stations (and Retry for a failed switch)
   instead of dropping the tap.

@@ -9,7 +9,7 @@
  * id), the tap route's verified Station id, and on the desktop the origin
  * the native host read the alert from. When that Station is not the active
  * one, the app switches to the saved connection first ("Opening
- * conversation on <Station>…") and only then navigates, so a session id is
+ * conversation on <Station>") and only then navigates, so a session id is
  * never looked up on the wrong Station. A Station that is not saved here,
  * or a switch that fails, says so instead of silently dropping the tap.
  *

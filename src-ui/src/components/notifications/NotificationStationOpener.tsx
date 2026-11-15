@@ -155,10 +155,10 @@ export function NotificationOpenNoticeView({
       <div className="notification-station-notice notification-station-notice--pending">
         <Spinner
           size={16}
-          label={`Opening conversation on ${notice.stationName}…`}
+          label={`Opening conversation on ${notice.stationName}`}
         />
         <p className="notification-station-notice__line" aria-hidden="true">
-          Opening conversation on <strong>{notice.stationName}</strong>…
+          Opening conversation on <strong>{notice.stationName}</strong>
         </p>
       </div>
     );
