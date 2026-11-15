@@ -2570,13 +2570,18 @@ test('live (#4798): typing shows, clears when the typist stops, and clears when 
   let actors = await nextTyping();
   if (!actors.length) actors = await nextTyping();
   expect(actors.map((actor) => actor.id)).toEqual([member.id]);
+  // Cleared by the stop itself, well before the signal would lapse.
+  let stoppedAt = Date.now();
   expect((await type(false)).status).toBe(200);
   expect(await nextTyping()).toEqual([]);
+  expect(Date.now() - stoppedAt).toBeLessThan(PROJECT_ROOM_TYPING_TTL_MS / 2);
   // Typing again, then the typist's stream goes away: cleared with it.
   await type(true);
   expect((await nextTyping()).map((actor) => actor.id)).toEqual([member.id]);
+  stoppedAt = Date.now();
   await typist.cancel();
   expect(await nextTyping()).toEqual([]);
+  expect(Date.now() - stoppedAt).toBeLessThan(PROJECT_ROOM_TYPING_TTL_MS / 2);
   // A viewer cannot type: typing is a discuss action.
   await watcher.cancel();
 });
@@ -2741,6 +2746,16 @@ test('mentions (#4799): the read summary marks a room whose unread messages name
   });
   const target = { projectSlug: 'example', roomId: a.roomId };
   expect(await source.mentionedAfter?.(target, 0, bobRequest)).toBe(false);
+  // A message naming only someone else is no mention of Bob.
+  await h.request('alice', '/messages', 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+    text: '@Alice note to self',
+    mentions: [
+      { kind: 'person', actorId: owner.id, display: 'Alice', offset: 0 },
+    ],
+  });
+  expect(await source.mentionedAfter?.(target, 0, bobRequest)).toBe(false);
   await h.request('alice', '/messages', 'POST', {
     ...guard(a),
     intentId: randomUUID(),
@@ -2756,7 +2771,7 @@ test('mentions (#4799): the read summary marks a room whose unread messages name
   });
   expect(await source.mentionedAfter?.(target, 0, bobRequest)).toBe(true);
   // Read past the mention: nothing unread names Bob.
-  expect(await source.mentionedAfter?.(target, 1, bobRequest)).toBe(false);
+  expect(await source.mentionedAfter?.(target, 2, bobRequest)).toBe(false);
   // Alice wrote it; it does not mention her.
   const aliceRequest = new Request('http://localhost', {
     headers: { authorization: 'Bearer alice-session' },

@@ -139,8 +139,20 @@ test('every channel rides one connection; a working Agent and a mention of the r
     ],
   });
   await screen.findByRole('button', { name: 'design, agent working' });
-  // The request settles: the mark goes with it.
-  push(design, 'agents', { requests: [] });
+  // The request settles (its answer posted): the mark goes with it, though
+  // the record is still listed.
+  push(design, 'agents', {
+    requests: [
+      {
+        requestId: '33333333-3333-4333-8333-333333333333',
+        agentId: 'writer',
+        actor: { id: 'human:x:lin', displayName: 'Lin', kind: 'person' },
+        state: 'published',
+        createdAt: '2026-11-15T12:00:00.000Z',
+        updatedAt: '2026-11-15T12:01:00.000Z',
+      },
+    ],
+  });
   await screen.findByRole('button', { name: 'design' });
   // A new message in #general re-reads the summary, which now says the
   // reader is mentioned.
