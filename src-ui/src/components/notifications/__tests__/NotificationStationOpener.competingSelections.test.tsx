@@ -15,6 +15,7 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   getNotificationOpenNotice,
+  openingConversationLabel,
   requestNotificationOpen,
   setNotificationOpenNotice,
 } from '../../../lib/notificationStationOpen';
@@ -113,6 +114,11 @@ describe('competing Station selections', () => {
     expect(opened).toEqual([{ chat: 'C-thread', station: 'C' }]);
     // The overtaken tap is not reported as a failed switch over C's thread.
     expect(getNotificationOpenNotice()).toBeNull();
+    // The dock names the Station it switched to while the thread opens.
+    expect(openingConversationLabel('C-thread')).toBe(
+      'Opening conversation on C',
+    );
+    expect(openingConversationLabel('B-thread')).toBe('Opening conversation');
   });
 
   test('tap B then C, B finishing first: B never opens, C opens on C', async () => {
