@@ -1677,12 +1677,13 @@ test('message files: a record whose reference is unknown stops reclamation and n
   }[];
   await f.send([kept]);
   const damaged = await bobsRecord(h, f);
-  writeFileSync(damaged.path, '{');
   const blobsBefore = await blobCount(f.root);
   const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
     id: string;
   }[];
   const deleted = await f.send([gone]);
+  // Uploads re-check the store, so the damage happens after this upload.
+  writeFileSync(damaged.path, '{');
   // The delete commits; its release cannot prove references, so it deletes
   // nothing and keeps the released record.
   expect(await f.remove(deleted.messageId)).toBe(200);
@@ -1744,11 +1745,11 @@ test('message files: one damaged record cannot turn upload-delete cycles into un
     const message = await f.send([uploaded[0]]);
     expect(await f.remove(message.messageId)).toBe(200);
   }
-  // The first cycle's release finds the damaged record and stops; every
-  // later upload is refused, so bytes stay bounded: bob's interrupted upload
-  // and the first cycle's file, both kept rather than deleted unproven.
-  expect(statuses).toEqual(['stored', 503, 503, 503, 503, 503]);
-  expect(await blobCount(f.root)).toBe(2);
+  // Every upload re-checks the store and finds the damaged record, so none
+  // is admitted: only bob's interrupted upload is on disk (round 4 admitted
+  // the first cycle before a release found the damage, so it kept 2).
+  expect(statuses).toEqual([503, 503, 503, 503, 503, 503]);
+  expect(await blobCount(f.root)).toBe(1);
 });
 
 test('message files: a damaged record whose reference is recoverable keeps its bytes, and other files still reclaim (#4852)', async () => {
@@ -1786,13 +1787,15 @@ test('message files: a record that cannot be read at all (EISDIR) fails closed (
   const h = await harness();
   const f = await aliceFiles(h);
   const damaged = await bobsRecord(h, f);
-  rmSync(damaged.path);
-  mkdirSync(damaged.path);
   const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
     id: string;
   }[];
+  const sent = await f.send([gone]);
+  // Uploads re-check the store, so the damage happens after this upload.
+  rmSync(damaged.path);
+  mkdirSync(damaged.path);
   const blob = await aliceBlob(f, gone!.id);
-  expect(await f.remove((await f.send([gone])).messageId)).toBe(200);
+  expect(await f.remove(sent.messageId)).toBe(200);
   expect(existsSync(blob)).toBe(true);
   await unavailable(
     await h.request('alice', '/attachments', 'POST', {
@@ -1809,13 +1812,15 @@ test.skipIf(process.getuid?.() === 0)(
     const h = await harness();
     const f = await aliceFiles(h);
     const damaged = await bobsRecord(h, f);
+    const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
+      id: string;
+    }[];
+    const sent = await f.send([gone]);
+    // Uploads re-check the store, so the damage happens after this upload.
     chmodSync(damaged.path, 0o000);
     try {
-      const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
-        id: string;
-      }[];
       const blob = await aliceBlob(f, gone!.id);
-      expect(await f.remove((await f.send([gone])).messageId)).toBe(200);
+      expect(await f.remove(sent.messageId)).toBe(200);
       expect(existsSync(blob)).toBe(true);
       await unavailable(
         await h.request('alice', '/attachments', 'POST', {
@@ -2051,12 +2056,13 @@ test.skipIf(process.getuid?.() === 0)(
     const h = await harness();
     const f = await aliceFiles(h);
     const damaged = await bobsRecord(h, f);
-    writeFileSync(damaged.path, '{');
     const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
       id: string;
     }[];
     const blob = await aliceBlob(f, gone!.id);
     const message = await f.send([gone]);
+    // Uploads re-check the store, so the damage happens after this upload.
+    writeFileSync(damaged.path, '{');
     // Nothing can be written into the store's staging directory now, so the
     // block marker cannot be published.
     const staging = join(f.root, 'staging');
@@ -2236,12 +2242,14 @@ test('message files: a repair waits for the store lock, then replaces the damage
   const f = await aliceFiles(h);
   const damaged = await bobsRecord(h, f);
   const intact = readFileSync(damaged.path, 'utf8');
-  writeFileSync(damaged.path, '{');
-  // Blocked: a release finds the damaged record.
   const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
     id: string;
   }[];
-  expect(await f.remove((await f.send([gone])).messageId)).toBe(200);
+  const sent = await f.send([gone]);
+  // Uploads re-check the store, so the damage happens after this upload.
+  writeFileSync(damaged.path, '{');
+  // Blocked: a release finds the damaged record.
+  expect(await f.remove(sent.messageId)).toBe(200);
   await unavailable(
     await h.request('alice', '/attachments', 'POST', {
       ...guard(f.a),
@@ -2282,11 +2290,12 @@ test('message files: a repair written while a release scans cannot cost its byte
   const f = await aliceFiles(h);
   const damaged = await bobsRecord(h, f);
   const intact = fs.readFileSync(damaged.path, 'utf8');
-  fs.writeFileSync(damaged.path, '{');
   // Alice sends and deletes the same bytes Bob's record names.
   const [same] = (await f.upload(png('interrupted.png'))) as { id: string }[];
   const blob = await aliceBlob(f, same!.id);
   const sent = await f.send([same]);
+  // Uploads re-check the store, so the damage happens after this upload.
+  fs.writeFileSync(damaged.path, '{');
   const repaired = repairPath(f.root, damaged.path);
   const list = fs.readdirSync;
   let written = false;
@@ -2778,3 +2787,222 @@ test('mentions (#4799): the read summary marks a room whose unread messages name
   });
   expect(await source.mentionedAfter?.(target, 0, aliceRequest)).toBe(false);
 });
+
+// Independent round-5 review probes. No production seam is added.
+test.skipIf(process.getuid?.() === 0)(
+  'message files: a blob directory that cannot be traversed keeps the record and its charge until deletion is proven, and recovers once readable (#4852 review)',
+  async () => {
+    const fs = await import('node:fs');
+    const { dirname } = await import('node:path');
+    const h = await harness();
+    const f = await aliceFiles(h);
+    const [file] = (await f.upload(pngVariant('hidden.png', 'hidden'))) as {
+      id: string;
+    }[];
+    const blob = await aliceBlob(f, file!.id);
+    const dir = dirname(blob);
+    const record = join(
+      await bindingDirectory(f.root, f.binding),
+      `${file!.id}.json`,
+    );
+    const sent = await f.send([file]);
+    fs.chmodSync(dir, 0o000);
+    let status: number;
+    try {
+      status = await f.remove(sent.messageId);
+    } finally {
+      fs.chmodSync(dir, 0o700);
+    }
+    console.log(
+      'R5_INACCESSIBLE_UNLINK',
+      JSON.stringify({
+        status,
+        blob: fs.existsSync(blob),
+        record: fs.existsSync(record),
+      }),
+    );
+    expect(fs.existsSync(blob)).toBe(true);
+    expect(fs.existsSync(record)).toBe(true);
+    await f.upload(pngVariant('retry.png', 'retry'));
+    expect(fs.existsSync(blob)).toBe(false);
+  },
+);
+
+for (const [label, raw] of [
+  ['partial', '{'],
+  ['garbage', 'garbage'],
+  ['oversize', '{' + 'x'.repeat(8 * 1024 * 1024)],
+] as const)
+  test(`message files: a warmed store refuses an upload while the repair inbox holds ${label} content (#4852 review)`, async () => {
+    const fs = await import('node:fs');
+    const h = await harness();
+    const f = await aliceFiles(h);
+    await f.upload(pngVariant('warm.png', 'warm'));
+    const repair = join(f.root, 'repair', 'operator');
+    fs.mkdirSync(repair, { recursive: true });
+    fs.writeFileSync(join(repair, 'pending.json'), raw);
+    const response = await h.request('alice', '/attachments', 'POST', {
+      ...guard(f.a),
+      attachments: [pngVariant('next.png', 'next')],
+    });
+    const body = (await response.clone().json()) as {
+      error?: { code?: string };
+    };
+    console.log(
+      'R5_REPAIR_ADMISSION',
+      JSON.stringify({
+        label,
+        status: response.status,
+        code: body.error?.code,
+        marker: fs.existsSync(join(f.root, 'reclamation-blocked.json')),
+      }),
+    );
+    await unavailable(response);
+  });
+
+test('message files: a stray entry directly under repair/ is storage unavailable, not invalid input (#4852 review)', async () => {
+  const fs = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  await f.upload(png('warm.png'));
+  fs.mkdirSync(join(f.root, 'repair'), { recursive: true });
+  fs.writeFileSync(join(f.root, 'repair', 'partial.tmp'), '{');
+  const response = await h.request('alice', '/attachments', 'POST', {
+    ...guard(f.a),
+    attachments: [png('next.png')],
+  });
+  console.log(
+    'R5_REPAIR_TOPLEVEL',
+    response.status,
+    JSON.stringify(await response.clone().json()),
+  );
+  await unavailable(response);
+});
+
+test('message files: a repair whose bytes are gone stays pending and blocks, then a corrected repair resumes uploads (#4852 review)', async () => {
+  const fs = await import('node:fs');
+  const { dirname } = await import('node:path');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const damaged = await bobsRecord(h, f);
+  const intact = fs.readFileSync(damaged.path, 'utf8');
+  const parsed = JSON.parse(intact);
+  const path = repairPath(f.root, damaged.path);
+  const attempt = () =>
+    h.request('alice', '/attachments', 'POST', {
+      ...guard(f.a),
+      attachments: [png('next.png')],
+    });
+  // A release finds the damage (uploads re-check the store, so the damage
+  // and the pending repair happen after this upload).
+  const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
+    id: string;
+  }[];
+  const sent = await f.send([gone]);
+  fs.writeFileSync(damaged.path, '{');
+  fs.mkdirSync(dirname(path), { recursive: true });
+  fs.writeFileSync(
+    path,
+    JSON.stringify({ ...parsed, blobRef: 'sha256-' + 'f'.repeat(64) }),
+  );
+  await f.remove(sent.messageId);
+  await unavailable(await attempt());
+  expect(fs.readFileSync(damaged.path, 'utf8')).toBe('{');
+  expect(fs.existsSync(path)).toBe(true);
+  const marker = JSON.parse(
+    fs.readFileSync(join(f.root, 'reclamation-blocked.json'), 'utf8'),
+  );
+  expect(marker.records).toContainEqual({
+    path,
+    reason: 'its bytes are no longer stored',
+  });
+  fs.writeFileSync(path, intact);
+  expect((await attempt()).status).toBe(200);
+  expect(fs.readFileSync(damaged.path, 'utf8')).toBe(intact);
+  console.log('R5_MISSING_BLOB_REPAIR blocked, diagnosed, corrected, resumed');
+});
+
+test('message files: a repair is published from the bytes Station validated, even if the operator rewrites it meanwhile (#4852 review)', async () => {
+  const fs = await import('node:fs');
+  const { dirname } = await import('node:path');
+  const { syncBuiltinESMExports } = await import('node:module');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const damaged = await bobsRecord(h, f);
+  const intact = fs.readFileSync(damaged.path, 'utf8');
+  fs.writeFileSync(damaged.path, '{');
+  const path = repairPath(f.root, damaged.path);
+  fs.mkdirSync(dirname(path), { recursive: true });
+  fs.writeFileSync(path, intact);
+  const rename = fs.renameSync;
+  let raced = false;
+  const spy = vi
+    .spyOn(fs.default, 'renameSync')
+    .mockImplementation((from, to) => {
+      // The operator rewrites the repair entry after Station read and
+      // validated it, just before Station publishes into bindings/.
+      if (to === damaged.path && !raced) {
+        raced = true;
+        fs.writeFileSync(path, '{');
+      }
+      return rename(from, to);
+    });
+  syncBuiltinESMExports();
+  let response: Response;
+  try {
+    response = await h.request('alice', '/attachments', 'POST', {
+      ...guard(f.a),
+      attachments: [png('next.png')],
+    });
+  } finally {
+    spy.mockRestore();
+    syncBuiltinESMExports();
+  }
+  console.log(
+    'R5_REPAIR_TOCTOU',
+    JSON.stringify({
+      raced,
+      status: response!.status,
+      inbox: fs.existsSync(path),
+      binding: fs.readFileSync(damaged.path, 'utf8'),
+    }),
+  );
+  expect(raced).toBe(true);
+  expect(fs.readFileSync(damaged.path, 'utf8')).toBe(intact);
+  // The newer, incomplete entry is left for the next pass, which reports it.
+  expect(fs.readFileSync(path, 'utf8')).toBe('{');
+});
+
+test.skipIf(process.getuid?.() === 0)(
+  'message files: the same process keeps refusing after marker writes work again, until the record is repaired (#4852 review)',
+  async () => {
+    const fs = await import('node:fs');
+    const h = await harness();
+    const f = await aliceFiles(h);
+    const damaged = await bobsRecord(h, f);
+    const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
+      id: string;
+    }[];
+    const sent = await f.send([gone]);
+    fs.writeFileSync(damaged.path, '{');
+    const staging = join(f.root, 'staging');
+    fs.chmodSync(staging, 0o500);
+    try {
+      expect(await f.remove(sent.messageId)).toBe(200);
+    } finally {
+      fs.chmodSync(staging, 0o700);
+    }
+    expect(fs.existsSync(join(f.root, 'reclamation-blocked.json'))).toBe(false);
+    const bob = await h.discover('bob');
+    const response = await h.request('bob', '/attachments', 'POST', {
+      ...guard(bob),
+      attachments: [pngVariant('next.png', 'next')],
+    });
+    console.log(
+      'R5_LATCH_AFTER_IO_RECOVERY',
+      response.status,
+      JSON.stringify(await response.clone().json()),
+    );
+    await unavailable(response);
+  },
+);

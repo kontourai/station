@@ -1,12 +1,14 @@
 import { createHash, randomBytes } from 'node:crypto';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
+  unlinkSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
@@ -277,14 +279,32 @@ export class AttachmentBlobStore {
   }
 
   /**
-   * {@link removeByRef}, then reports whether the bytes are gone: `false`
-   * when they are still on disk (the unlink failed), so a caller that must
-   * not give up its record of them until deletion is confirmed can keep it.
+   * Deletes one blob and reports whether its absence is proven: `true` only
+   * when the unlink succeeded or the path does not exist (`ENOENT`). Any
+   * other failure (EACCES, EIO, a path that cannot be traversed) is `false`,
+   * so a caller that must not give up its record of the bytes until they are
+   * gone keeps it (#4852 review).
    */
   removeByRefConfirmed(ref: string): boolean {
     if (!isAttachmentBlobRef(ref)) return false;
-    this.removeByRef(ref);
-    return !existsSync(this.pathForDigest(ref.slice('sha256-'.length)));
+    const path = this.pathForDigest(ref.slice('sha256-'.length));
+    try {
+      const size = lstatSync(path).size;
+      unlinkSync(path);
+      count(() => attachmentBlobBytesReclaimed, size);
+      count(() => attachmentBlobOperations, 1, {
+        operation: 'reclaim',
+        outcome: 'unreferenced',
+      });
+      return true;
+    } catch (error) {
+      return (
+        !!error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      );
+    }
   }
 
   /**
