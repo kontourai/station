@@ -8,6 +8,7 @@ import { markNotificationRead } from '@kontourai/station-sdk/notification-read';
 import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { navigationStore } from '../contexts/NavigationContext';
 import { CLIENT_DOCUMENT_SESSION_ID } from '../hooks/clientDocumentSession';
+import { openNotificationTargetHere } from './notificationStationOpen';
 
 /** `from <agent> · session <id>` — derived from the envelope, never the title. */
 export function agentAttributionLabel(
@@ -55,7 +56,12 @@ export interface NotificationActivationDeps {
 }
 
 const defaultDeps: NotificationActivationDeps = {
-  navigate: (path, params) => navigationStore.navigate(path, params),
+  // Marked like an OS tap, so a deleted or refused conversation is reported
+  // rather than cleared silently.
+  navigate: (path, params) =>
+    openNotificationTargetHere(path, params ?? {}, (pathname, query) =>
+      navigationStore.navigate(pathname, query),
+    ),
   markRead: (id) =>
     markNotificationRead({ id, clientSessionId: CLIENT_DOCUMENT_SESSION_ID }),
 };

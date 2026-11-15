@@ -738,6 +738,61 @@ describe('useChatDockActiveChatSync', () => {
       });
     });
 
+    it('a refusal of a chat no notification asked for keeps the bounded retry and the Chat surface', async () => {
+      fetchConversationById.mockRejectedValue(
+        Object.assign(new Error('forbidden'), { status: 403 }),
+      );
+      hook('shared-link-chat');
+      await waitFor(
+        () =>
+          expect(showSurface).toHaveBeenCalledWith('chat', {
+            session: 'shared-link-chat',
+          }),
+        { timeout: 2000 },
+      );
+      expect(fetchConversationById).toHaveBeenCalledTimes(2);
+      expect(getNotificationOpenNotice()).toBeNull();
+    });
+
+    it('an unreachable notice belongs to its Station: another Station retires it, and its Retry does nothing there', async () => {
+      fetchConversationById.mockRejectedValue(new Error('network down'));
+      markNotificationChat('thread-on-a');
+      const { rerender } = renderHook(
+        ({ apiBase }) =>
+          useChatDockActiveChatSync({
+            activeChat: 'thread-on-a',
+            agentCatalogKey: 'claude',
+            agentsLoaded: true,
+            apiBase,
+            sessions: [],
+            openConversation: vi.fn(),
+            setActiveSessionId: vi.fn(),
+            updateParams,
+            showSurface,
+          }),
+        { initialProps: { apiBase: 'https://a.example' } },
+      );
+      await waitFor(
+        () =>
+          expect(getNotificationOpenNotice()).toMatchObject({
+            kind: 'unreachable',
+            apiBase: 'https://a.example',
+          }),
+        { timeout: 2000 },
+      );
+      const notice = getNotificationOpenNotice();
+      if (notice?.kind !== 'unreachable') throw new Error('no retry');
+      fetchConversationById.mockReset();
+      fetchConversationById.mockReturnValue(new Promise(() => {}));
+      // The person switches to Station B by hand.
+      rerender({ apiBase: 'https://b.example' });
+      await waitFor(() => expect(getNotificationOpenNotice()).toBeNull());
+      updateParams.mockClear();
+      notice.retry();
+      // A's conversation id is never asked for on B.
+      expect(updateParams).not.toHaveBeenCalled();
+    });
+
     it('the catalog loading mid-lookup reuses the lookup in flight (#6)', async () => {
       let answer: (value: unknown) => void = () => {};
       fetchConversationById.mockReturnValue(

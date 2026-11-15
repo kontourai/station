@@ -2,6 +2,8 @@ import { fetchConversationById } from '@kontourai/station-sdk';
 import { useEffect, useRef, useState } from 'react';
 import type { OpenConversationOptions } from '../../hooks/useChatDockActions';
 import {
+  getNotificationOpenNotice,
+  isNotificationChat,
   markNotificationChat,
   setNotificationOpenNotice,
   takeNotificationChat,
@@ -84,10 +86,20 @@ export function useChatDockActiveChatSync({
   const updateParamsRef = useRef(updateParams);
   const showSurfaceRef = useRef(showSurface);
   const sessionsRef = useRef(sessions);
+  const apiBaseRef = useRef(apiBase);
+  apiBaseRef.current = apiBase;
   openConversationRef.current = openConversation;
   updateParamsRef.current = updateParams;
   showSurfaceRef.current = showSurface;
   sessionsRef.current = sessions;
+
+  // An unreachable notice belongs to the Station whose lookup failed: once
+  // another Station is active, its Retry would look the id up there.
+  useEffect(() => {
+    const notice = getNotificationOpenNotice();
+    if (notice?.kind === 'unreachable' && notice.apiBase !== apiBase)
+      setNotificationOpenNotice(null);
+  }, [apiBase]);
 
   useEffect(() => {
     if (!activeChat) return;
@@ -174,7 +186,10 @@ export function useChatDockActiveChatSync({
         failure === 'unreachable'
           ? {
               kind: 'unreachable',
+              apiBase,
               retry: () => {
+                // Only on the Station that failed to answer.
+                if (apiBaseRef.current !== apiBase) return;
                 markNotificationChat(activeChat);
                 updateParamsRef.current({ chat: activeChat, dock: 'open' });
               },
@@ -282,10 +297,12 @@ export function useChatDockActiveChatSync({
           typeof error === 'object' && error !== null && 'status' in error
             ? (error as { status: unknown }).status
             : undefined;
-        // A refusal is the Station's answer, not a transient miss: retrying
-        // cannot change it, and there is nothing this device may show. (A
-        // 401 is a credential being renewed, which the auth recovery owns.)
-        if (status === 403) {
+        // For a notification's conversation a refusal is the Station's
+        // answer, not a transient miss: retrying cannot change it, and the
+        // person is told why it did not open. (A 401 is a credential being
+        // renewed, which the auth recovery owns.) Any other `?chat=` link
+        // keeps the bounded retry and the Chat surface below.
+        if (status === 403 && isNotificationChat(activeChat)) {
           clearDeadChatPointer();
           reportFailedNotificationOpen('forbidden');
           return;

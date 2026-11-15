@@ -58,8 +58,12 @@ export function serviceWorkerOpenRequest(
  * tap messages, and shows what opening is doing.
  */
 export function NotificationStationOpener() {
-  const { connections, activeConnection, setActiveConnection } =
-    useConnections();
+  const {
+    connections,
+    activeConnection,
+    setActiveConnection,
+    captureCredentialEvidence,
+  } = useConnections();
   const { status, observation } = useAuthorityPersistence();
   const { navigate } = useNavigationActions();
   // A same-origin browser connection may never have saved its Station's id;
@@ -72,12 +76,14 @@ export function NotificationStationOpener() {
     connections,
     activeConnection,
     setActiveConnection,
+    captureCredentialEvidence,
     activeEnvironmentId,
   });
   latest.current = {
     connections,
     activeConnection,
     setActiveConnection,
+    captureCredentialEvidence,
     activeEnvironmentId,
   };
   const [waitedForIdentity, setWaitedForIdentity] = useState(false);
@@ -105,6 +111,12 @@ export function NotificationStationOpener() {
               activeEnvironmentId: () => latest.current.activeEnvironmentId,
               setActiveConnection: (id) =>
                 latest.current.setActiveConnection(id),
+              // The provider's one live read of the active connection: a
+              // render's `activeConnection` can lag a selection that has
+              // just committed (or been overtaken).
+              committedActiveId: () =>
+                latest.current.captureCredentialEvidence()?.connectionId ??
+                null,
               navigate: (pathname, params) => navigate(pathname, params),
             });
           })
@@ -164,7 +176,9 @@ export function NotificationOpenNoticeView({
     );
   const copy = noticeCopy(notice);
   const retry =
-    notice.kind === 'switch-failed' || notice.kind === 'unreachable'
+    notice.kind === 'switch-failed' ||
+    notice.kind === 'unreachable' ||
+    notice.kind === 'unconfirmed'
       ? () => {
           dismiss();
           notice.retry();
@@ -222,6 +236,13 @@ function noticeCopy(
         title: 'Station not on this device',
         description:
           "The notification came from a Station that isn't saved here.",
+        manage: true,
+      };
+    case 'unconfirmed':
+      return {
+        title: "Couldn't confirm the Station",
+        description:
+          "This Station's identity isn't known yet, so the conversation was not opened.",
         manage: true,
       };
     case 'switch-failed':

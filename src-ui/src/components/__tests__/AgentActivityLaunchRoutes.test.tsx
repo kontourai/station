@@ -101,6 +101,7 @@ describe('AgentActivityLaunchRoutes', () => {
       void openNotificationTarget(request, {
         connections: () => [STATION_A, STATION_B],
         active: () => active,
+        committedActiveId: () => active.id,
         setActiveConnection: async (id) => {
           switched.push(id);
           active = id === STATION_B.id ? STATION_B : STATION_A;
@@ -218,6 +219,42 @@ describe('AgentActivityLaunchRoutes', () => {
       '/projects/web',
       { chat: 'thread-ios', dock: 'open' },
       'conn-b',
+    );
+  });
+
+  it('an alert tap names its record, so opening it reads it (iOS and Android)', async () => {
+    for (const platform of ['ios', 'android'] as const) {
+      navigate.mockClear();
+      target = platform;
+      adapterPromise = phoneAdapter(platform);
+      // The plugin's route: the sealed alert's `notification_id` rides it.
+      pending = {
+        stationId: 'env-a',
+        sessionId: 'thread-1',
+        notificationId: 'notif-0001',
+      };
+      const { unmount } = render(<AgentActivityLaunchRoutes />);
+      await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
+      expect(navigate).toHaveBeenCalledWith(
+        '/',
+        { chat: 'thread-1', dock: 'open', openedNotification: 'notif-0001' },
+        'conn-a',
+      );
+      unmount();
+    }
+    // An id outside the record grammar drops only the read.
+    navigate.mockClear();
+    pending = {
+      stationId: 'env-a',
+      sessionId: 'thread-1',
+      notificationId: 'a/b',
+    };
+    render(<AgentActivityLaunchRoutes />);
+    await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
+    expect(navigate).toHaveBeenCalledWith(
+      '/',
+      { chat: 'thread-1', dock: 'open' },
+      'conn-a',
     );
   });
 

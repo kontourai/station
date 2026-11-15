@@ -47,10 +47,31 @@ final class AlertTapRouteTests: XCTestCase {
     fields["project_slug"] = "login-app"
     XCTAssertEqual(
       AlertTapRouteResolver.resolve(userInfo: try alert(fields), registration: holding(registration)),
-      AlertTapRoute(stationId: stationId, sessionId: "thread-1", projectSlug: "login-app"))
+      AlertTapRoute(
+        stationId: stationId, sessionId: "thread-1", projectSlug: "login-app", notificationId: "notif-0001"))
     fields.removeValue(forKey: "project_slug")
     let route = AlertTapRouteResolver.resolve(userInfo: try alert(fields), registration: holding(registration))
-    XCTAssertEqual(route?.json as? [String: String], ["stationId": stationId, "sessionId": "thread-1"])
+    XCTAssertEqual(
+      route?.json as? [String: String],
+      ["stationId": stationId, "sessionId": "thread-1", "notificationId": "notif-0001"])
+  }
+
+  /// The tap reads its record: the seal's `notification_id` rides the route
+  /// to the web opener (`openedNotification`). An id outside the record
+  /// grammar drops only the read, never the session.
+  func testTheRouteCarriesTheAlertsRecordForItsRead() throws {
+    var fields = base
+    fields["session_id"] = "thread-1"
+    XCTAssertEqual(
+      AlertTapRouteResolver.resolve(userInfo: try alert(fields), registration: holding(registration))?.json[
+        "notificationId"] as? String,
+      "notif-0001")
+    for bad in ["", "a/b", "a b", "é", String(repeating: "x", count: 129)] {
+      fields["notification_id"] = bad
+      let route = AlertTapRouteResolver.resolve(userInfo: try alert(fields), registration: holding(registration))
+      XCTAssertEqual(route?.sessionId, "thread-1", bad)
+      XCTAssertNil(route?.notificationId, bad)
+    }
   }
 
   func testAnAlertWithoutASessionOpensNothing() throws {

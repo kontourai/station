@@ -729,6 +729,11 @@ function parseAgentActivityLaunchRoute(
       ...(typeof candidate.projectSlug === 'string'
         ? { projectSlug: candidate.projectSlug }
         : {}),
+      // Optional and never a reason to refuse the route: an odd value only
+      // loses the read (`agentActivitySessionTarget` checks its grammar).
+      ...(typeof candidate.notificationId === 'string'
+        ? { notificationId: candidate.notificationId }
+        : {}),
     },
   };
 }

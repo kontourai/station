@@ -94,6 +94,26 @@ describe('resolveNotificationStation', () => {
     ).toEqual({ kind: 'not-saved' });
   });
 
+  test("desktop: an unsaved origin cannot borrow a saved Station's id from the link", () => {
+    // The host read the alert from an origin no saved connection serves;
+    // the link's id names a saved Station. The host's record wins.
+    expect(
+      resolveNotificationStation(
+        { origin: 'https://untrusted.example', stationId: 'env-b' },
+        CONNECTIONS,
+        A,
+      ),
+    ).toEqual({ kind: 'not-saved' });
+    const unknownActive = { ...A, environmentId: null };
+    expect(
+      resolveNotificationStation(
+        { origin: 'https://untrusted.example', stationId: 'env-b' },
+        [unknownActive, B],
+        unknownActive,
+      ),
+    ).toEqual({ kind: 'not-saved' });
+  });
+
   test('a request naming no Station (an older Station) opens on the active one', () => {
     expect(resolveNotificationStation({}, CONNECTIONS, A)).toEqual({
       kind: 'active',
@@ -130,7 +150,7 @@ describe('resolveNotificationStation', () => {
     ).toEqual({ kind: 'not-saved' });
   });
 
-  test('with the active id still unknown, an unplaceable Station opens on the active one', () => {
+  test('with the active id still unknown, an unplaceable Station is unconfirmed, never guessed active', () => {
     const sameOrigin = { ...A, environmentId: null };
     expect(
       resolveNotificationStation(
@@ -138,7 +158,7 @@ describe('resolveNotificationStation', () => {
         [sameOrigin, B],
         sameOrigin,
       ),
-    ).toEqual({ kind: 'active' });
+    ).toEqual({ kind: 'unconfirmed' });
     // A saved Station it names is still switched to.
     expect(
       resolveNotificationStation(
@@ -163,6 +183,7 @@ function harness(active: NotificationStationConnection) {
   const deps = {
     connections: () => CONNECTIONS,
     active: () => state.active,
+    committedActiveId: () => state.active.id,
     setActiveConnection: vi.fn(
       (id: string) =>
         new Promise<void>((resolve) => {
@@ -223,6 +244,31 @@ describe('openNotificationTarget', () => {
     ).resolves.toBe('not-saved');
     expect(deps.navigate).not.toHaveBeenCalled();
     expect(getNotificationOpenNotice()).toEqual({ kind: 'not-saved' });
+  });
+
+  test('an explicit Station the device cannot confirm never opens here', async () => {
+    const unknown = { ...A, environmentId: null };
+    const navigate = vi.fn();
+    await expect(
+      openNotificationTarget(
+        {
+          pathname: '/',
+          params: { chat: 'remote', openedNotification: 'remote-note' },
+          stationId: 'unsaved-station',
+        },
+        {
+          connections: () => [unknown],
+          active: () => unknown,
+          committedActiveId: () => unknown.id,
+          setActiveConnection: async () => {},
+          navigate,
+        },
+      ),
+    ).resolves.toBe('unconfirmed');
+    // Neither looked up nor marked read on the current Station.
+    expect(navigate).not.toHaveBeenCalled();
+    expect(takeNotificationChat('remote')).toBe(false);
+    expect(getNotificationOpenNotice()).toMatchObject({ kind: 'unconfirmed' });
   });
 
   test('a failed switch says so, and Retry tries again', async () => {

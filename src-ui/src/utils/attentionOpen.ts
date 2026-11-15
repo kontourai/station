@@ -1,5 +1,6 @@
 import { navigationStore } from '../contexts/NavigationContext';
 import { notificationOpenTarget } from '../lib/notificationOpen';
+import { openNotificationTargetHere } from '../lib/notificationStationOpen';
 
 /**
  * archive#3203: opening a notification's target is an acknowledgement.
@@ -35,7 +36,7 @@ export async function openThenAcknowledge({
 
 /**
  * Navigation seam for the attention surfaces: an in-app navigation, never a
- * document reload. A stored Activity-surface link opens the Chat surface
+ * document reload, opened like a notification tap (a failed open is told). A stored Activity-surface link opens the Chat surface
  * that replaced it (the same translation `routing.ts` applies to a loaded
  * URL). Anything that is not an in-app path is left to the browser.
  * Component tests mock this export to observe the target.
@@ -50,7 +51,11 @@ export function navigateToAttentionTarget(href: string): void {
     target.params.surface === 'activity'
       ? { ...target.params, surface: 'chat' }
       : target.params;
-  navigationStore.navigate(target.pathname, params);
+  // Marked like a notification tap: a conversation that is gone or refused
+  // says so instead of clearing silently.
+  openNotificationTargetHere(target.pathname, params, (pathname, query) =>
+    navigationStore.navigate(pathname, query),
+  );
 }
 
 /**

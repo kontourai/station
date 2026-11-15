@@ -57,6 +57,11 @@ vi.mock('@kontourai/station-connect', () => ({
     connections: connections.list ?? [A, B],
     activeConnection: connections.active,
     setActiveConnection,
+    // The provider's live read of the active connection.
+    captureCredentialEvidence: () =>
+      connections.active
+        ? { connectionId: (connections.active as { id: string }).id }
+        : null,
   }),
 }));
 vi.mock('../../../contexts/NavigationContext', () => ({

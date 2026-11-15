@@ -1,6 +1,7 @@
 import {
   isNotificationStationId,
   notificationSessionHref,
+  OPENED_NOTIFICATION_QUERY_PARAM,
 } from '@kontourai/station-contracts/notification';
 import { describeStationFailure } from '../../utils/stationFailure';
 /**
@@ -604,13 +605,16 @@ export interface AgentActivitySessionTarget {
  * project route when the session has one, else the home route, with the
  * chat dock open on the session. Which Station it opens on is the route's
  * Station id: the notification opener switches to that saved Station first
- * when another one is connected (`notificationStationOpen.ts`).
+ * when another one is connected (`notificationStationOpen.ts`). An alert
+ * tap's route also names its record (`notificationId`): it rides as
+ * `openedNotification`, so opening the alert reads it, as a Web Push or
+ * desktop link does. An id outside the record grammar drops only the read.
  */
 export function agentActivitySessionTarget(
   route: unknown,
 ): AgentActivitySessionTarget | null {
   if (typeof route !== 'object' || route === null) return null;
-  const { stationId, sessionId, projectSlug } = route as Record<
+  const { stationId, sessionId, projectSlug, notificationId } = route as Record<
     string,
     unknown
   >;
@@ -627,10 +631,19 @@ export function agentActivitySessionTarget(
   );
   return {
     pathname: href.pathname,
-    params: Object.fromEntries(href.searchParams),
+    params: {
+      ...Object.fromEntries(href.searchParams),
+      ...(typeof notificationId === 'string' &&
+      NOTIFICATION_RECORD_ID_PATTERN.test(notificationId)
+        ? { [OPENED_NOTIFICATION_QUERY_PARAM]: notificationId }
+        : {}),
+    },
     stationId,
   };
 }
+
+/** A notification record id as the phone accepts it (`NOTIFICATION_ID_PATTERN`). */
+const NOTIFICATION_RECORD_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 /**
  * Takes the pending card-tap route from the plugin and hands it to `open`

@@ -853,8 +853,9 @@ the route answers 503. The gateway is deployed by hand
   key and the extension's checks (version, `rid`, pinned `sk`, alert domain,
   `user_id`), takes the reference only in the contract grammar, and keeps
   the route for `take_launch_route` with a `launchRoute` event: the same
-  path, shape and opener as Android. A route has no freshness bound; it
-  only navigates. The hook and the take command are unit-tested on macOS
+  path, shape and opener as Android. The route also carries the seal's
+  `notification_id` (record grammar only), so the tap reads the record. A
+  route has no freshness bound; it only navigates and reads. The hook and the take command are unit-tested on macOS
   and compile for the iOS simulator; cold- and warm-start taps on a device
   are not verified.
 - **Remaining alert-specific work.** Foreground alert presentation and
@@ -1110,8 +1111,11 @@ and the right conversation.
   Station when it connected), added by `withOpenedNotification` beside
   `openedNotification`; one already in the link is replaced, never trusted,
   and an id outside the contract grammar is left out. A phone's route
-  carries its registration's verified Station id; the desktop host adds the
-  origin it read the alert from. None of these names an origin to open: the
+  carries its registration's verified Station id, and an alert tap's route
+  also carries the alert's record id (the APNs seal's `notification_id`, the
+  FCM plaintext's `id`), which the web layer adds as `openedNotification` so
+  opening the alert reads it; an id outside the record grammar drops only the
+  read. The desktop host adds the origin it read the alert from. None of these names an origin to open: the
   identity only selects among connections already saved on the device, and
   the link stays a relative in-app path with every same-origin check intact.
 - **One opener.** `requestNotificationOpen` (`src-ui/src/lib/notificationStationOpen.ts`)
@@ -1120,30 +1124,49 @@ and the right conversation.
   verified authority observation's when the connection never saved one (a
   same-origin browser connection does not); taps wait for it, up to eight
   seconds, before they are placed. With no Station named (an older
-  Station), the active one, or one it cannot place while the active id is
-  still unknown, it navigates at once. For another saved Station it shows "Opening
-  conversation on <Station>" with a spinner, switches (`setActiveConnection`), and only
-  then navigates. A Station not saved on this device, or a failed switch,
+  Station) or the active one, it navigates at once. A Station id that
+  matches no saved connection while the active id is still unknown is never
+  opened on a guess: "Couldn't confirm the Station", with Retry. On the
+  desktop the host's origin outranks the link: an origin no saved
+  connection serves is "not saved", whatever id the link names. For another
+  saved Station it shows "Opening conversation on <Station>" with a spinner,
+  switches (`setActiveConnection`), and only then navigates, and only when
+  this is still the newest tap and the store committed that Station (the
+  connection provider resolves a selection a newer one overtook without
+  committing it). A tap for the active Station while an earlier tap is
+  still switching away re-selects the active Station, so the last tap wins.
+  A Station not saved on this device, or a failed or overtaken switch,
   shows a notice with Manage Stations (and Retry for a failed switch)
-  instead of dropping the tap.
+  instead of dropping the tap. On a phone-width screen the notice sits just
+  above the collapsed dock rather than over the top of the page.
 - **Cold loads.** A tab loaded on a link that names a Station has `chat`,
   `dock`, `openedNotification` and `station` taken off the URL before the
   first render, and the request waits for the opener: the dock never looks
   the conversation up on whichever Station happened to be active, and the
-  read marker is sent to the right one.
+  read marker is sent to the right one. A request that waited is dropped
+  when the person navigated (or went Back) before the opener mounted
+  (`installNavigationPosition`, the navigation store's history index).
 - **No reload where the app runs.** The service worker posts
   `station-notification-open` with the link's on-origin URL to the focused
   tab and waits up to 1.5 seconds for its acknowledgement
   (`NotificationStationOpener`); a tab that does not answer is navigated to
-  the link, and with no tab one is opened. The attention inbox's Open
-  navigates in the app and records its acknowledgement after.
+  the link, and with no tab one is opened. The attention inbox's Open and
+  the in-app toast's Open navigate in the app (`openNotificationTargetHere`),
+  marked like a tap so a missing or refused conversation is reported; the
+  attention Open records its acknowledgement after.
 - **Opening and failure states.** While the dock resolves a deep-linked
-  conversation it shows "Opening conversation" instead of the conversation it
-  showed before. When a notification asked for the conversation, a miss is
-  said rather than only cleared: not found (also what an unreadable session
-  answers), no access (403), or the Station did not answer, with Retry. A
-  `?chat=` that no notification opened (a reload of a draft that was never
-  saved, #1582) keeps its quiet behavior. A second attempt for the same chat
+  conversation it shows a visible "Opening conversation" label ("Opening
+  conversation on <Station>" after a switch) over the conversation it showed
+  before, which stays mounted hidden and inert; the header names the open,
+  and the inbox selection and This Chat card stand down until it lands.
+  When a notification asked for the conversation, a miss is said rather
+  than only cleared: not found (also what an unreadable session answers),
+  no access (403, at once: a refusal is the Station's answer), or the
+  Station did not answer, with Retry. That Retry belongs to the Station that
+  did not answer: once another Station is active the notice is retired and
+  its Retry does nothing. A `?chat=` that no notification opened (a reload
+  of a draft that was never saved, #1582) keeps its quiet behavior,
+  including a 403, which keeps the bounded retry and then the Chat surface. A second attempt for the same chat
   while its lookup is in flight (the agent catalog loading mid-lookup) reuses
   that lookup.
 - **Not covered.** Approval notifications open their session, not the
