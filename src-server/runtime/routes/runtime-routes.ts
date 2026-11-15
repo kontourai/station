@@ -4311,7 +4311,7 @@ export function configureRuntimeRoutes(
       }),
       context.logger,
       // station#1896 logging slice 2: same directory slice 1's
-      // `installServerLogSink` call (src-server/index.ts) writes to —
+      // `installServerLogSink` call (src-server/server-main.ts) writes to —
       // constructed inline the same way DiagnosticsService is above.
       createServerLogReader({
         directory: join(

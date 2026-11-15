@@ -436,7 +436,8 @@ runtime activation distinct from the existence of an interface.
 ### `src-server/` — Core Server
 
 Node server code owns bootstrap, API admission, domain coordination and runtime
-adapters. The build produces `dist-server/command-station.js`; launchers/native
+adapters. The build produces `dist-server/command-station.js` and the
+code-split chunks it loads beside it ([desktop build](guides/desktop-build.md)); launchers/native
 hosts still own startup configuration and process lifetime. Source imports and
 an available build artifact do not themselves establish a running instance.
 

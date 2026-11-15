@@ -774,7 +774,7 @@ The historical renderer/stdio work is
 [archive#2006](https://github.com/kontourai/station-archive/issues/2006).
 
 Server stdout EPIPE handling does exist. Before runtime initialization,
-[`src-server/index.ts`](../../src-server/index.ts) installs the once-only guard
+[`src-server/server-main.ts`](../../src-server/server-main.ts) installs the once-only guard
 from [`readiness-handshake.ts`](../../src-server/runtime/bootstrap/readiness-handshake.ts),
 then routes a broken supervising pipe to graceful shutdown without logging
 recursively to that pipe. Synchronous handshake-write refusal and asynchronous

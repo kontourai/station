@@ -183,7 +183,7 @@ export function withStationControlRuntimeEnv(
  * adapter's in-process MCP passthrough — shares one definition. `port` must
  * be the ACTUALLY bound port for this instance (not `process.env.PORT`,
  * which is stale/unset under `PORT=0`/auto-allocate — see
- * `resolveRuntimePort`/`allocateFreePortBlock` in `index.ts`).
+ * `resolveRuntimePort`/`allocateFreePortBlock` in `server-main.ts`).
  */
 export function stationControlSpawnEnv(port: number): Record<string, string> {
   return {

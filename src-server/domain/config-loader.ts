@@ -1862,7 +1862,7 @@ export class ConfigLoader {
    * every time.
    *
    * Deferring works because `StationRuntime.shutdown()`'s only caller exits
-   * immediately afterwards (`src-server/index.ts` → `process.exit()`), which
+   * immediately afterwards (`src-server/server-main.ts` → `process.exit()`), which
    * runs before any `setImmediate` callback — so on the quit path the block is
    * never paid at all and the kernel reclaims the handle with the process. A
    * process that keeps running instead pays it one turn later, off the path

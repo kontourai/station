@@ -111,7 +111,7 @@ Enable explicitly per instance, only after R6's compiled release gate (section
 11). Configure one canonical origin `O`, normally HTTPS. A separate explicit
 same-machine HTTP opt-in requires a literal `127.0.0.1` or `[::1]` issuer.
 The runtime currently defaults to `0.0.0.0` in
-[index.ts](../../src-server/index.ts); binding alone cannot establish local-only
+[server-main.ts](../../src-server/server-main.ts); binding alone cannot establish local-only
 requests. For **every request** in the outside OAuth/MCP route family, including
 metadata and preflight, loopback HTTP is admitted only if all conditions hold:
 

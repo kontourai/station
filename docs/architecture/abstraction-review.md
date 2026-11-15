@@ -416,7 +416,7 @@ implementation.
 
 ### Some historical warnings should remain near the decision
 
-In [server startup](../../src-server/index.ts), the home-schema gate precedes
+In [server startup](../../src-server/server-main.ts), the home-schema gate precedes
 creation of the durable log directory because an early write can make a fresh
 home look like incompatible existing data. That comment explains a non-obvious
 ordering constraint. Removing it as narration would lose useful information.

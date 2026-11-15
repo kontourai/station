@@ -1543,8 +1543,8 @@ export class StationRuntime {
         : []),
     ];
     const projectHomeDir = options.projectHomeDir || resolveHomeDir();
-    // archive#3217, and it has to be HERE rather than in `index.ts`: the
-    // pre-boot hooks `index.ts` runs are not on every entry point's path, so
+    // archive#3217, and it has to be HERE rather than in `server-main.ts`: the
+    // pre-boot hooks `server-main.ts` runs are not on every entry point's path, so
     // a quarantine wired there would never run for the CLI. Above the runtime
     // lease because the quarantine takes the MAINTENANCE lease, which proves no
     // runtime holds this home — and this process's own runtime lease would be

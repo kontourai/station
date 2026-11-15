@@ -914,7 +914,7 @@ entrypoint evidence must name the configuration and revision actually tested.
   [Pion composition](../../src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts),
   and [lifecycle](../../src-server/runtime/bootstrap/self-hosted-broker-runtime.ts)
   own registration, peer admission, and shutdown.
-- [Normal entrypoint](../../src-server/index.ts) consumes the
+- [Normal server boot](../../src-server/server-main.ts) consumes the
   [private connector configuration](../../src-server/runtime/bootstrap/self-hosted-connector-config.ts).
   [Offline identity initialization](../../scripts/self-hosted-connector-identity.ts)
   owns its home lease, schema admission, and public descriptor output.

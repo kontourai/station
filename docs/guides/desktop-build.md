@@ -299,15 +299,46 @@ Server bundles are minified with function/class names retained. The esbuild
 external map and a `sourceMappingURL` comment. Normal server launches do not
 enable Node's automatic source-map stack rewriting. For a diagnostic launch,
 `node --enable-source-maps dist-server/command-station.js` rewrites stack frames
-when the exact matching map is beside the bundle; mapping repeated error
+when the exact matching maps are beside the bundle; mapping repeated error
 stacks can add cost, so this is opt-in.
 
-For offline diagnosis, preserve the exact bundle and map from the same build.
-Do not use a fresh checkout's map for a different released bundle. To map one
-raw stack frame, pass its 1-based line and column to Node's built-in mapper:
+The main server bundle is code-split ([`esbuild.config.mjs`](../../esbuild.config.mjs)).
+`command-station.js` is a small entry; the server's code is in
+`station-chunk-<hash>.js` files beside it, named by content hash. A boot loads
+only the chunks its imports reach. Subsystems a boot does not use load their
+chunk at first use through `await import()`: the OTel SDK (only with an
+endpoint configured), local-account authentication, the Project S3 client
+and the Strands durable model wrapper. The other server bundles
+(`station-control.js`, the workers and helpers) stay single files. Chunks sit
+in the server directory itself, not a subdirectory, because bundled code
+finds its workers, helpers and schemas relative to its own `import.meta.url`.
+Every consumer of the server directory (desktop staging, the portable archive,
+the container image, CLI build promotion) copies or renames it whole, so the
+chunks travel with the entry.
+
+Each build first removes the `station-chunk-*` files an earlier build left in
+its output directory. A server already running from that directory then fails
+on its next first-use import, because the chunk it would load is gone. The CLI
+builds into a fresh candidate directory and promotes it whole, but a server
+still running from the replaced directory has the same exposure until it
+restarts. The build's ASCII check (`scripts/lib/server-bundle-ascii.mjs`)
+covers the chunks as well as the entry.
+
+The entry orders boot with awaited imports. It loads `.env` first, then
+registers telemetry providers, then evaluates the server (`server-main.ts`).
+Static imports cannot keep that order once the bundle is split: esbuild
+evaluates the shared chunks an entry imports before the entry's own modules.
+The [portability test](../../scripts/__tests__/server-build-portability.test.ts)
+checks the emitted chunk graph for this order. It also checks that each
+subsystem above sits outside the boot chunks and loads from a staged tree.
+
+For offline diagnosis, preserve the exact bundle and maps from the same build.
+Do not use a fresh checkout's map for a different released bundle. A raw stack
+frame names the chunk it ran in: use that file's map. To map one frame, pass
+its map, 1-based line and column to Node's built-in mapper:
 
 ```sh
-node --input-type=module - dist-server/command-station.js.map <line> <column> <<'JS'
+node --input-type=module - dist-server/station-chunk-<hash>.js.map <line> <column> <<'JS'
 import { readFileSync } from 'node:fs';
 import { SourceMap } from 'node:module';
 const [mapPath, line, column] = process.argv.slice(2);

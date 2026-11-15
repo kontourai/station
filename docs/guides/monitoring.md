@@ -1374,14 +1374,17 @@ older Station overwrite a newer one's history.
 
 ```
 Station server
-  └─ OTel SDK (src-server/telemetry.ts)
+  └─ OTel SDK (src-server/telemetry.ts, telemetry-sdk.ts)
        ├─ Traces  → OTLP HTTP /v1/traces  → Collector → Tempo → Grafana
        └─ Metrics → OTLP HTTP /v1/metrics → Collector → Prometheus → Grafana
 ```
 
-`src-server/index.ts` imports `src-server/telemetry.ts` before runtime/instrument
-modules. Provider registration runs before the initializer's first await;
-installation identity and export readiness remain asynchronous. A failure
+`src-server/index.ts` awaits `src-server/telemetry.ts` before it imports
+`src-server/server-main.ts`, which holds the runtime and instrument modules.
+With an endpoint configured, `telemetry.ts` loads the SDK
+(`src-server/telemetry-sdk.ts`) on demand, and its module evaluation waits
+until the providers register. Without one, the SDK is never loaded.
+Installation identity and export readiness remain asynchronous. A failure
 warns and Station continues. Alternate entry points must preserve registration
 before instrument creation. The configured SDK includes:
 - `HttpInstrumentation` — auto-instruments HTTP requests, rewriting long hexadecimal, colon-bearing, and encoded-colon path segments to `:id` (not every route parameter). Scheduler job paths use `:target` and omit query values in trace URL attributes, so job names do not become span names or URL attributes.
