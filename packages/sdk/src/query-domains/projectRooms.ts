@@ -55,11 +55,14 @@ export * from '../client/project-rooms';
 
 /**
  * Whether this Station serves one live stream for a Project's rooms, typing
- * and person mentions (#4798, #4799). Read once per Station.
+ * and person mentions (#4798, #4799). Read once per Station, and only once a
+ * caller has rooms to stream: a room that is not open, or a list with no
+ * channels, asks the public handshake nothing.
  */
-function useProjectRoomLiveCapability(apiBase: string) {
+function useProjectRoomLiveCapability(apiBase: string, enabled: boolean) {
   return useQuery({
     queryKey: ['project-room-live-capability', apiBase],
+    enabled,
     queryFn: () => readProjectRoomLiveCapability(apiBase),
     staleTime: Number.POSITIVE_INFINITY,
     retry: false,
@@ -120,7 +123,10 @@ export function useProjectRoomLiveIndex(
   onActivity?: (channelId: string) => void,
 ) {
   const { apiBase, authorityKey } = incomingScope;
-  const capability = useProjectRoomLiveCapability(apiBase);
+  const capability = useProjectRoomLiveCapability(
+    apiBase,
+    enabled && channelIds.length > 0,
+  );
   const [rooms, setRooms] = useState<ReadonlyMap<string, ProjectRoomLiveRoom>>(
     () => new Map(),
   );
@@ -482,8 +488,6 @@ export function useProjectRoom(
   );
   const [stopped, setStopped] = useState(false);
   const [streamError, setStreamError] = useState(false);
-  const liveCapability = useProjectRoomLiveCapability(apiBase);
-  const live = liveCapability.data === true;
   const [typing, setTyping] = useState<ProjectRoomActor[]>([]);
   const [agents, setAgents] = useState<ProjectRoomAgentActivity[]>([]);
   /** Sequence and activity the cached history reflects, per the stream. */
@@ -504,6 +508,13 @@ export function useProjectRoom(
   const room = discovery.data;
   const roomId = room?.roomId;
   const actorId = room?.actor.id;
+  // Asked only for a discovered room that is not stopped (#4796 keeps the
+  // handshake unread while a room is unavailable).
+  const liveCapability = useProjectRoomLiveCapability(
+    apiBase,
+    !!roomId && !stopped,
+  );
+  const live = liveCapability.data === true;
   const contentKey = useMemo(
     () => [...root, roomId ?? 'unopened', 'history'],
     [root, roomId],
