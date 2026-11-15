@@ -1,7 +1,0 @@
-{
-  "revision": "38fc9ec80dd877cfb6638a832702551f7fc65542",
-
-  "notes": [
-    {"path":"docs/user/settings.md","note":"ProjectSettingsView.css change swaps a radial-gradient/linear-gradient card background for flat --k-panel. Checked Project settings sections and the Workspace branch warning: they describe controls and behavior, not card backgrounds. Nothing stale.","inputs":["docs/user/settings.md","src-ui/src/views/ProjectSettingsView.css"]}
-  ]
-}

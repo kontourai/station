@@ -1,7 +1,0 @@
-{
-  "revision": "ae8e7424e01da43085f107391bb83e7a305406db",
-
-  "notes": [
-    {"path":"docs/design/notification-delivery.md","note":"orchestration-service.ts gained only an optional type-only `filter?: UsageReceiptFilter` on the readUsageReceipts options signature (no runtime change). Checked native capability reporting and push-delivery claims; unaffected.","inputs":["docs/design/notification-delivery.md","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

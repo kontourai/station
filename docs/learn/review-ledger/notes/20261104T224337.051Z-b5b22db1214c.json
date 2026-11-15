@@ -1,7 +1,0 @@
-{
-  "revision": "3114c734e52526593611b43ac13482e7fbb9d455",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Updated ProductTelemetryReceiver: sources map to a publisher and allowed channels (lite-core.ts parseLiteSource/admitLiteObservation, lite-store.ts migration 10 and store.ts migration count); the Worker keeps only the open day's salt, erasure covers live storage while Durable Object point-in-time recovery can restore 30 days (Cloudflare SQLite storage API docs), refuses closed-day arrivals and finalizes once (receiver.ts closedThrough, lite_finalized).","inputs":["docs/architecture/module-map.md","packages/telemetry-broker/qualify-lite.mjs","packages/telemetry-broker/qualify-resilience.mjs","packages/telemetry-broker/src/lite-store.ts","packages/telemetry-broker/src/store.ts"]}
-  ]
-}

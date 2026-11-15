@@ -8,7 +8,8 @@ import {
 export function parseSurfaceDeepLink(
   params: URLSearchParams,
 ): SurfaceDeepLinkIntent | null {
-  const surfaceId = params.get(SURFACE_DEEP_LINK_QUERY_KEYS.surface)?.trim();
+  const requested = params.get(SURFACE_DEEP_LINK_QUERY_KEYS.surface)?.trim();
+  const surfaceId = requested === 'activity' ? 'chat' : requested;
   if (!surfaceId) return null;
   const sessionId = params.get(SURFACE_DEEP_LINK_QUERY_KEYS.session)?.trim();
   if (!sessionId) return { surfaceId };
@@ -31,14 +32,31 @@ export function parseSurfaceDeepLink(
       ? { focus: 'evidence' as const }
       : {}),
     ...(messageAnchor ? { messageAnchor } : {}),
+    ...(params.get('childSession')?.trim()
+      ? {
+          childSessionId: params.get('childSession')!.trim(),
+          childTitle: params.get('childTitle')?.slice(0, 200) || 'Delegate',
+        }
+      : params.get('child')?.trim()
+        ? {
+            childId: params.get('child')!.trim(),
+            childTitle: params.get('childTitle')?.slice(0, 200) || 'Subagent',
+          }
+        : {}),
   };
 }
 
 export function clearSurfaceDeepLinkParams(): Record<
-  keyof typeof SURFACE_DEEP_LINK_QUERY_KEYS,
+  | keyof typeof SURFACE_DEEP_LINK_QUERY_KEYS
+  | 'child'
+  | 'childTitle'
+  | 'childSession',
   null
 > {
   return {
+    child: null,
+    childTitle: null,
+    childSession: null,
     [SURFACE_DEEP_LINK_QUERY_KEYS.surface]: null,
     [SURFACE_DEEP_LINK_QUERY_KEYS.session]: null,
     [SURFACE_DEEP_LINK_QUERY_KEYS.focus]: null,

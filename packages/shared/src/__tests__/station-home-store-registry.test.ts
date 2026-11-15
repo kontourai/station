@@ -174,6 +174,8 @@ describe('Station home store registry (#2675 D)', () => {
   it('excludes users repositories and the browser bytes from update rollback, and each path is one Station source writes (#2675 D review F1)', () => {
     expect(classifyStationHomeRoot('workspaces')).toBe('external');
     expect(STATION_HOME_EXTERNAL_PATHS.map((path) => path.join('/'))).toEqual([
+      // Pinned engine installs, re-acquirable per version (managed-install.ts).
+      'engines',
       'media-tools',
       'workspaces',
       'browser/chromium',

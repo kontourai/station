@@ -222,6 +222,10 @@ import {
   isSqliteContentionError,
 } from '../../utils/sqlite-wal.js';
 import {
+  type AutomationProposalStore,
+  createSqliteAutomationProposalStore,
+} from '../automation/automation-proposals.js';
+import {
   type OperationalEventConsumer,
   type OperationalEventConsumerConfig,
   type OperationalEventConsumerOpenOutcome,
@@ -2901,6 +2905,7 @@ export class EventStore {
   private taskWriteBack?: TaskWriteBackStore;
   private worktreeOutputSettlements?: WorktreeOutputSettlementStore;
   private agentSchedule?: AgentScheduleStore;
+  private automationProposals?: AutomationProposalStore;
   private coordinator?: CoordinatorStore;
   private resumeChoices?: UsageLimitResumeChoices;
   private mcpAppResourceResolver?: (toolRef: string) => string | undefined;
@@ -7909,6 +7914,8 @@ export class EventStore {
    * The usage fold's facts, in canonical order. The method index excludes
    * transcript deltas; SQL removes large input/output fields before JS sees
    * them. Keep optional usage fields absent rather than manufacturing nulls.
+   * A method the fold reads (`foldUsageEvents`) must be listed here, or it
+   * never reaches the fold in production.
    */
   listUsageEventPayloads(
     threadId: string,
@@ -7919,14 +7926,15 @@ export class EventStore {
          WHEN method = 'turn.started' THEN json_remove(payload, '$.prompt', '$.attachments', '$.metadata')
          WHEN method = 'turn.completed' THEN json_remove(payload, '$.outputText')
          WHEN method = 'tool.completed' THEN json_remove(payload, '$.output', '$.result', '$.images', '$.attachments', '$.metadata')
-         WHEN method IN ('session.started', 'session.configured', 'turn.completed', 'token-usage.updated') THEN payload
+         WHEN method IN ('session.started', 'session.configured', 'turn.completed', 'token-usage.updated', 'engine-mcp.status') THEN payload
          ELSE json_object('eventId', id, 'threadId', thread_id,
            'provider', provider, 'method', method, 'createdAt', created_at)
          END AS payload, observed_at
        FROM orchestration_events
        WHERE thread_id = ? AND (
          method IN ('session.started', 'session.configured', 'turn.started',
-           'turn.completed', 'tool.completed', 'token-usage.updated')
+           'turn.completed', 'tool.completed', 'token-usage.updated',
+           'engine-mcp.status')
          OR id = (SELECT id FROM orchestration_events WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1)
          OR id = (SELECT id FROM orchestration_events WHERE thread_id = ? AND provider != 'station-agent' LIMIT 1))
        ORDER BY sequence ASC`,
@@ -16946,6 +16954,12 @@ export class EventStore {
   agentScheduleStore(): AgentScheduleStore {
     this.agentSchedule ??= createSqliteAgentScheduleStore(this.db);
     return this.agentSchedule;
+  }
+
+  /** #4830: agent-proposed Automation sources and rules (`automation-proposals.ts`). */
+  automationProposalStore(): AutomationProposalStore {
+    this.automationProposals ??= createSqliteAutomationProposalStore(this.db);
+    return this.automationProposals;
   }
 
   /** #3628: coordinator designations and their wakes (`coordinator-session.ts`). */

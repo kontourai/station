@@ -142,20 +142,15 @@ vi.mock('../../../hooks/useDockShellChrome', async (importOriginal) => {
 vi.mock('../ChatDockMobileHeader', () => ({
   ChatDockMobileHeader: ({
     activeCount,
-    projectSwitcher,
     sessionProjectMismatchLabel,
     onToggleInbox,
   }: {
     activeCount: number;
-    projectSwitcher?: { projectName: string } | null;
     sessionProjectMismatchLabel?: string;
     onToggleInbox?: () => void;
   }) => (
     <>
       <div data-testid="mobile-dock-work-badge">{activeCount}</div>
-      <div data-testid="mobile-dock-project-name">
-        {projectSwitcher?.projectName}
-      </div>
       <div data-testid="mobile-dock-mismatch">
         {sessionProjectMismatchLabel}
       </div>
@@ -693,14 +688,6 @@ test('a foreign chat’s code layout is its own Project’s, not the future defa
   expect(navigationStore.getSnapshot().pathname).toBe(
     '/projects/other/layouts/other-code',
   );
-});
-
-test('the mobile header receives the dock’s future Project binding', async () => {
-  dockProbe.mobile = true;
-  openForeignChatInPulseBoundDock();
-  expect(
-    (await screen.findByTestId('mobile-dock-project-name')).textContent,
-  ).toBe('Pulse');
 });
 
 test('a changed future Project binding preserves the active chat and supplies the next draft', async () => {
@@ -1861,14 +1848,10 @@ test('the header shows no project destination while a draft is open', async () =
   navigationStore.navigate('/', { dock: 'open' });
   renderDockedPane();
   await act(async () => {});
-  expect(screen.getByTestId('mobile-dock-project-name').textContent).toBe(
-    'Pulse',
-  );
   act(() => {
     dispatchNewChatIntent({});
   });
   await screen.findByRole('region', { name: 'New chat picker' });
-  expect(screen.getByTestId('mobile-dock-project-name').textContent).toBe('');
 });
 
 // A phone opens the draft full height from a half sheet; a dismissed draft
@@ -1924,8 +1907,7 @@ test('a phone draft dismissed from a half sheet restores the half sheet', async 
   expect(navigationStore.lastDockMaximized).toBe(true);
 });
 
-// On a phone the header's project switcher comes back with the draft gone,
-// and the covered chat's project-mismatch note stands down while it is open.
+// The covered chat's project-mismatch note stands down while a draft is open.
 test('the phone header hides the chat’s project facts only while a draft is open', async () => {
   dockProbe.mobile = true;
   openForeignChatInPulseBoundDock();
@@ -1933,22 +1915,13 @@ test('the phone header hides the chat’s project facts only while a draft is op
   const mismatch = () =>
     screen.getByTestId('mobile-dock-mismatch').textContent ?? '';
   expect(mismatch()).not.toBe('');
-  expect(screen.getByTestId('mobile-dock-project-name').textContent).toBe(
-    'Pulse',
-  );
   act(() => {
     dispatchNewChatIntent({});
   });
   await screen.findByRole('region', { name: 'New chat picker' });
   expect(mismatch()).toBe('');
-  expect(screen.getByTestId('mobile-dock-project-name').textContent).toBe('');
   act(() => pickerProps.at(-1)!.onClose());
-  await waitFor(() =>
-    expect(screen.getByTestId('mobile-dock-project-name').textContent).toBe(
-      'Pulse',
-    ),
-  );
-  expect(mismatch()).not.toBe('');
+  await waitFor(() => expect(mismatch()).not.toBe(''));
 });
 
 // Leaving a phone draft for a chat is going to that chat: the dock that the

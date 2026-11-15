@@ -1,0 +1,7 @@
+{
+  "revision": "51374b20424193747f8265411b5b160e403bc961",
+
+  "notes": [
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Re-checked after merging main's second baseline advance: the input-note section, compaction and archive text still match the record command and store; no claim changed.","inputs":["docs/guides/documentation-review-ledger.md"]}
+  ]
+}

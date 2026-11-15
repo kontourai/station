@@ -58,6 +58,7 @@ export function inboxRowChips(
   item: Pick<HomeWorkItem, 'environmentLabel' | 'receivedAgentMessage'>,
   local: {
     isWoken?: boolean;
+    stationLabel?: string;
     claims?: readonly WorkClaimView[];
   } = {},
 ): InboxRowChip[] {
@@ -66,8 +67,9 @@ export function inboxRowChips(
     chips.push({ kind: 'agent-message', label: 'Agent message' });
   const claim = local.claims ? claimChip(local.claims) : undefined;
   if (claim) chips.push(claim);
-  if (item.environmentLabel) {
-    chips.push({ kind: 'remote', label: item.environmentLabel });
+  const station = local.stationLabel ?? item.environmentLabel;
+  if (station) {
+    chips.push({ kind: 'remote', label: `Station: ${station}` });
   }
   if (local.isWoken) {
     chips.push({ kind: 'woke', label: 'Woke from snooze' });

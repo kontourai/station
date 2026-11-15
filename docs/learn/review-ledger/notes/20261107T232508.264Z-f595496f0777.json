@@ -1,7 +1,0 @@
-{
-  "revision": "ae8e7424e01da43085f107391bb83e7a305406db",
-
-  "notes": [
-    {"path":"docs/design/event-store-ledger-migration.md","note":"orchestration-service.ts gained only an optional type-only `filter?: UsageReceiptFilter` on the readUsageReceipts options signature (no runtime change). event-store.ts changes are confined to the windowed usage-rollup receipt query (optional connection columns/filter) and do not touch what this document describes. Checked the migration-order table (AdoptionLedger etc.) and the statement that not every EventStore method is in scope; no usage-query claims.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "b0f5026a632a74c90263349ff4fc2cee266fbfe2",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Reviewed canonical answer availability, per-Session lifecycle recovery, startup readiness, blocked presence, and retry/idempotency against TaskRoomConversationModule, ProjectTaskRoomRuntime and runtime-routes. Focused regression fails before the repair and passes after it; unexpected answer-read errors still propagate. No provider restart or successful-answer acknowledgement is introduced.","inputs":["docs/architecture/module-map.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/project-task-room-runtime.ts","src-server/services/projects/task-room-conversation-module.ts"]}
-  ]
-}

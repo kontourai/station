@@ -108,9 +108,11 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 test('the pane lists the ACTIVE chat’s running and finished work', () => {
+  vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
   mount({
     running: [entry()],
     finished: [
@@ -128,7 +130,7 @@ test('the pane lists the ACTIVE chat’s running and finished work', () => {
   expect(screen.getByText('Investigate flaky test')).toBeTruthy();
   expect(screen.getByText('Rebuild index')).toBeTruthy();
   // Elapsed comes from `startedAt`, which IS carried.
-  expect(screen.getByText(/Agent · 1:0\d/)).toBeTruthy();
+  expect(screen.getByText('Agent · 1m 5s')).toBeTruthy();
 });
 
 test('no chat shows every conversation’s work; an empty chat says so rather than showing zeroes', () => {
@@ -194,8 +196,8 @@ test('a running delegate can be stopped; a provider task with no session thread 
 
 test('opening a delegate’s transcript reveals it on Activity', () => {
   mount({ running: [entry({ delegateThreadId: 'delegate-1' })], finished: [] });
-  screen.getByText('View transcript').click();
-  expect(showSurface).toHaveBeenCalledWith('activity', {
+  screen.getByText('Open chat').click();
+  expect(showSurface).toHaveBeenCalledWith('chat', {
     session: 'delegate-1',
   });
 });

@@ -323,19 +323,43 @@ describe('container release metadata', () => {
     );
   });
 
-  test('derives preview rather than latest channel tags', () => {
-    expect(
-      createContainerReleaseMetadata({
-        tag: 'v1.2.3-preview.4',
-        sha,
-        createdAt,
-        repository: 'kontourai/station',
-      }),
-    ).toMatchObject({
-      channel: 'preview',
-      tags: ['v1.2.3-preview.4', '1.2.3-preview.4', `sha-${sha}`, 'preview'],
+  test('tags a release candidate only with its own tag and source SHA (#4929)', () => {
+    const metadata = createContainerReleaseMetadata({
+      tag: 'v1.2.3-rc.4',
+      sha,
+      createdAt,
+      repository: 'kontourai/station',
     });
+    expect(metadata).toMatchObject({
+      channel: 'stable',
+      tag: 'v1.2.3-rc.4',
+      tags: ['v1.2.3-rc.4', `sha-${sha}`],
+      stationManifest: {
+        ref: 'v1.2.3-rc.4',
+        channel: 'stable',
+        releaseChannel: 'stable',
+        prerelease: false,
+      },
+    });
+    // `latest` and the bare version move only when a candidate is promoted.
+    expect(metadata.tags).not.toContain('latest');
+    expect(metadata.tags).not.toContain('1.2.3');
+    expect(metadata.tags).not.toContain('v1.2.3');
   });
+
+  test.each(['v1.2.3-preview.4', 'v1.2.3-rc.0', 'v1.2.3-rc.99'])(
+    'refuses container metadata for %s',
+    (tag) => {
+      expect(() =>
+        createContainerReleaseMetadata({
+          tag,
+          sha,
+          createdAt,
+          repository: 'kontourai/station',
+        }),
+      ).toThrow('Invalid container release metadata');
+    },
+  );
 
   test('derives the strict Station packaged-release manifest from the same parser', () => {
     const manifest = createPackagedReleaseManifest({
@@ -384,6 +408,8 @@ describe('container release metadata', () => {
       'v1.2.3-nightly.0',
       'v1.2.3-nightly.1.2',
       'v1.2.3-preview',
+      'v1.2.3-rc.0',
+      'v1.2.3-rc.99',
       '1.2.3',
     ])
       expect(
@@ -392,7 +418,7 @@ describe('container release metadata', () => {
       ).toThrow(/tag must be one release ring's version/);
   });
 
-  test('publishes container images for stable and preview tags only', () => {
+  test('publishes container images for stable tags only', () => {
     expect(() =>
       createContainerReleaseMetadata({
         tag: 'v0.1.11-nightly.245600',
@@ -400,12 +426,12 @@ describe('container release metadata', () => {
         createdAt,
         repository: 'kontourai/station',
       }),
-    ).toThrow(/stable and preview tags only, not nightly/);
+    ).toThrow(/stable tags only, not nightly/);
   });
 
   test('binds immutable digest promotion to the same release metadata', () => {
     const metadata = createContainerReleaseMetadata({
-      tag: 'v1.2.3-preview.4',
+      tag: 'v1.2.3-rc.4',
       sha,
       createdAt,
       repository: 'kontourai/station',
@@ -419,10 +445,10 @@ describe('container release metadata', () => {
       image: 'ghcr.io/kontourai/station',
       digest: `sha256:${'b'.repeat(64)}`,
       sha,
-      tag: 'v1.2.3-preview.4',
+      tag: 'v1.2.3-rc.4',
       createdAt,
       platforms: ['linux/amd64', 'linux/arm64'],
-      tags: ['v1.2.3-preview.4', '1.2.3-preview.4', `sha-${sha}`, 'preview'],
+      tags: ['v1.2.3-rc.4', `sha-${sha}`],
     });
   });
 
@@ -631,7 +657,7 @@ describe('container source contract', () => {
     expect(smoke).not.toContain('COMPOSE_PROJECT_NAME=${');
     expect(smoke).not.toContain('down --volumes');
     expect(smoke).toContain('randomBytes(12)');
-    expect(smoke).toContain("printf 'v0.0.0-preview.1'");
+    expect(smoke).toContain("printf 'v0.0.0-rc.1'");
     expect(smoke).toContain('Number.isFinite(epochSeconds)');
     expect(smoke).not.toContain('/^\\\\d+$/');
     expect(smoke).toContain('com.docker.compose.project');

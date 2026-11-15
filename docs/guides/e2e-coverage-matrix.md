@@ -36,11 +36,12 @@ intercepts before extending its evidence to a backend or provider.
 | --- | --- | --- |
 | Home / continuity rail | `task-first-home`, `root-route-restore`, Android `mobile-layout`, `mobile-chat-composer` | Continuation, first steps, deep links, loading/retry state, mobile geometry, and composer reachability; many Home responses are mocked |
 | Projects | `project-lifecycle`, `project-forms`, `project-architecture`, `project-icons`, `coding-layout-plan-panel` | Create/edit/delete, layout selection, unsaved guards, failed saves, phone-sized form containment, and an icon set in settings reaching the sidebar, a Home row and the switcher through the live server |
+| Project channels | `project-channel-navigation`, `chat-dock-inbox-open` | Against a real Station: sidebar unread from the server's read markers, cleared for a second client on open; Up/Down/Enter; on a phone the channel list, a pushed full-screen channel, send, a thread page, Back keeping the list's place, no horizontal scroll at 390 and 360. The dock inbox opens a stored conversation with no open chat (#4814). |
 | Coding terminal | `terminal-mobile-keyboard` | In Pixel 7 emulation on an isolated Station, a phone soft keyboard's input as Android sends it reaching a real shell (the command runs, deletions apply), a shell redrawn after another shell's tab hid it, and a long touch selecting without stopping the terminal; emulation is not physical-phone evidence |
 | Settings / Customize | `settings`, `project-architecture`, `registry` | Topic navigation, legacy links, scope captions, save/readback and discard guards, mobile controls and overflow, and Customize → Plugins → Registry |
 | Agents | `agents-pane`, `agents-readiness-board`, `agents-editor-gates`, `agents-editor-roundtrip`, `agents-copy-existing`, `agents-new-model-turn`, `agents-new-cli-turn`, `agents-new-muse-echo-turn`, `default-agent-workflow` | Separate browsing, readiness, editing, copying, and engine-specific turn journeys; `agents.spec.ts` is no longer the owner |
 | Skills | `skills` | Create/edit/source labeling, command switches, variable resolution, test runs, read-only explanation, the retired playbook redirect, and the detail header's two-labelled-action cap at 1280 and 390 pixels |
-| Activity | `activity-pane`, `activity-related-review` | Surface placement and real Related quick review, filtered Previous/Next, Main selection/search/filter/scroll preservation, reply Cancel, Keep/reopen and phone Back/Up; Session data fixtures do not establish native or provider qualification |
+| Child transcripts | `child-transcript-chat` | Chat-format child reader, ancestor breadcrumb, desktop/phone renders and legacy session URLs. Fixture browser evidence is separate from physical providers and native shells. |
 | Registry | `registry`, `skills` | Tabs including Layouts, preview, search, install/remove, enable/disable, and action failures |
 | Connections | `connections-crud`, `connect-modal`, `connect-remote-auth-recovery`, `connect-reconnect-banner` | Model/runtime/tool-server setup, manual consent, connection repair, keyboard focus, and phone-sized dialogs |
 | Task review | `task-review` (extended) | Isolated Station comments, quote relocation, resolve/reopen, Send refusal, real Chromium capture and keyboard region pins; a seeded Task clip uses authorized reads and renders the list and player at 390 and 1440 pixels in both themes. The clip fixture does not record from a live Browser. The signed-in Claude reply variant requires `STATION_REVIEW_USE_CLAUDE=1`; credential-free runs explicitly skip it. PR-smoke admission remains unqualified. |
@@ -63,8 +64,9 @@ app or physical-device receipt.
 
 - The Starter clean-install bucket boots a runner-owned, freshly created home
   with provider discovery and inherited product/OTLP telemetry disabled. It
-  proves the Starter journey without reading a developer's Station state or
-  sending to an endpoint configured in the parent shell. Scheduler admission
+  exercises first-run setup and real direct-chat Work without reading a
+  developer's Station state or sending to an inherited endpoint. It no longer
+  expects the retired Home scheduled-check card. Scheduler admission
   is covered at the service and ledger seams; host resource observations are
   diagnostic only and do not control product work.
 - The app now has a promoted product Playwright gate covering primary nav,

@@ -136,9 +136,9 @@ export function useChatDockActiveChatSync({
      * otherwise opened an unrequested region full of nonexistent-session
      * skeletons after reloading an unpromoted chat.
      */
-    const revealActivityForSession = () => {
+    const revealSessionInChat = () => {
       clearDeadChatPointer();
-      showSurfaceRef.current('activity', { session: activeChat });
+      showSurfaceRef.current('chat', { session: activeChat });
     };
     /**
      * A locally hydrated tab wins over a cold lookup (#3782). The generation
@@ -199,9 +199,9 @@ export function useChatDockActiveChatSync({
         const inconclusive = !catalogWasLoadedForThisAttempt;
         if (opened === false && !(inconclusive && retryStillAvailable)) {
           // The lookup returned this conversation; only its owning agent is
-          // gone. There is a real session behind the id, so Activity has
+          // gone. There is a real session behind the id, so the Chat reader has
           // something to show (archive#801, station#1284).
-          revealActivityForSession();
+          revealSessionInChat();
         }
       } catch {
         if (!isCurrent()) return;
@@ -220,7 +220,7 @@ export function useChatDockActiveChatSync({
         // The lookup never answered, so whether the conversation exists is
         // unknown rather than settled. An unresolved pointer keeps
         // station#1284's reveal; only a definitive miss loses it.
-        revealActivityForSession();
+        revealSessionInChat();
       } finally {
         request?.finish();
       }

@@ -1,7 +1,0 @@
-{
-  "revision": "e74d51c94fadce24c3bf5af64254d41afedd84f7",
-
-  "notes": [
-    {"path":"docs/guides/documentation.md","note":"Added the actual Corpus integration inputs to this guide's dependency map: the public API import, product-specific external relationships and exact-pinned CLI package. The shared checker owns matching and byte comparison; these source links make later Station routing changes require a guide review without claiming that a note proves public prose true.","inputs":["docs/guides/documentation.md","corpus-content.json","scripts/documentation-impact.mjs","package.json#/devDependencies/@kontourai~1corpus"]}
-  ]
-}

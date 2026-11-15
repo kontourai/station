@@ -1,7 +1,0 @@
-{
-  "revision": "fbaa4c99b4ca2eeeaae3e26e7b9bfb60ec200ea8",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Reviewed send-route-key-inventory keeper against runtime route registration and selected MCP registration. The keeper inspects registered Zod inputs, exercises inline parsers and pre-effect chat key generation, and reports uncovered key-bearing send shapes. It does not establish actual provider delivery, crash recovery, or retention. This test-only attachment probe repair changes none of the module interfaces or existing-key conflict scope described by the map; no prose change required.","inputs":["docs/architecture/module-map.md","src-server/runtime/routes/__tests__/send-route-key-inventory.test.ts"]}
-  ]
-}

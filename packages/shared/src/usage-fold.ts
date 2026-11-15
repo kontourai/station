@@ -1,4 +1,10 @@
 import {
+  CONVERSATION_REPORTED_COST_UNITS_MAX,
+  type ConversationEngineMcpStatus,
+  foldEngineMcpStatus,
+  isReportedCostUnit,
+} from '@kontourai/station-contracts/runtime';
+import {
   type CacheAwareTokenComponents,
   CUMULATIVE_USAGE_PROVIDERS,
   isValidContextObservation,
@@ -70,6 +76,20 @@ export interface SessionUsageAggregate {
    * the engine reported no cost; `0` would mean it reported zero.
    */
   reportedCostUsd?: number;
+  /**
+   * Costs the engine reported in its own unit (`token-usage.updated
+   * .reportedCost`), one total per unit, never converted and never added to
+   * `reportedCostUsd`. Absent when no event carried one. See
+   * {@link EngineReportedCostTotals} for how turn and session scopes fold.
+   */
+  reportedCosts?: EngineReportedCostTotal[];
+  /** The engine's latest own context reading, 0-100; never derived from tokens. */
+  contextPercent?: number;
+  /**
+   * The engine's MCP servers as its `engine-mcp.status` events left them
+   * (`foldEngineMcpStatus`). Absent when no event reported any.
+   */
+  engineMcp?: ConversationEngineMcpStatus;
   /**
    * Provider id observed on the folded events (`event.provider`), or
    * `undefined` when the stream was empty. Lets a consumer say WHICH
@@ -230,6 +250,102 @@ export class CumulativeCostSegments {
     this.banked = addOptional(this.banked, this.running);
     this.running = undefined;
   }
+}
+
+/** One unit's folded engine-reported cost. */
+export interface EngineReportedCostTotal {
+  /** As the engine spelled it: `credit`, `USD`, `EUR`. */
+  unit: string;
+  amount: number;
+}
+
+/**
+ * Folds `reportedCost` figures, per unit, by their declared scope:
+ *
+ * - `turn`: the figure is that turn's whole cost, so the latest figure for a
+ *   turn REPLACES the earlier one (a repeated or replayed report never adds),
+ *   and the turns are summed. An event without a `turnId` counts once.
+ * - `session`: a running total for the engine session, folded like
+ *   {@link CumulativeCostSegments} (a non-resumed engine start or a lower
+ *   figure opens a new segment; segments sum).
+ *
+ * When a unit has session-scope figures they are the authority for that
+ * unit, and its turn figures are not added on top: an engine that reports
+ * both (Kiro reports each turn and the session total) would otherwise be
+ * counted twice. Units are never converted or combined.
+ *
+ * Only a unit the stats wire can carry is folded ({@link isReportedCostUnit}),
+ * and at most {@link CONVERSATION_REPORTED_COST_UNITS_MAX} of them: a unit past
+ * the cap is refused, so the stats response stays within what its parser
+ * accepts.
+ */
+export class EngineReportedCostTotals {
+  private readonly turns = new Map<string, Map<string, number>>();
+  private readonly sessions = new Map<string, CumulativeCostSegments>();
+  private readonly order: string[] = [];
+  /** Figures dropped because their unit came past the cap. */
+  refusedUnits = 0;
+
+  sessionStarted(resumed: boolean): void {
+    for (const segments of this.sessions.values())
+      segments.sessionStarted(resumed);
+  }
+
+  observe(event: {
+    eventId: string;
+    turnId?: string;
+    reportedCost?: { amount: unknown; unit: unknown; scope: unknown };
+  }): void {
+    const cost = event.reportedCost;
+    if (!cost || !isUsableCost(cost.amount) || !isReportedCostUnit(cost.unit))
+      return;
+    if (cost.scope !== 'turn' && cost.scope !== 'session') return;
+    if (!this.order.includes(cost.unit)) {
+      if (this.order.length >= CONVERSATION_REPORTED_COST_UNITS_MAX) {
+        this.refusedUnits += 1;
+        return;
+      }
+      this.order.push(cost.unit);
+    }
+    if (cost.scope === 'turn') {
+      let turns = this.turns.get(cost.unit);
+      if (!turns) {
+        turns = new Map();
+        this.turns.set(cost.unit, turns);
+      }
+      turns.set(event.turnId ?? `event:${event.eventId}`, cost.amount);
+      return;
+    }
+    let segments = this.sessions.get(cost.unit);
+    if (!segments) {
+      segments = new CumulativeCostSegments();
+      this.sessions.set(cost.unit, segments);
+    }
+    segments.observe(cost.amount);
+  }
+
+  totals(): EngineReportedCostTotal[] | undefined {
+    const totals = this.order.flatMap((unit) => {
+      const session = this.sessions.get(unit)?.total();
+      if (session !== undefined) return [{ unit, amount: session }];
+      const turns = this.turns.get(unit);
+      if (!turns || turns.size === 0) return [];
+      let amount = 0;
+      for (const value of turns.values()) amount += value;
+      return [{ unit, amount }];
+    });
+    return totals.length > 0 ? totals : undefined;
+  }
+}
+
+/** A usable engine context reading: finite, 0-100. */
+function usableContextPercent(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 100
+  );
 }
 
 /**
@@ -636,9 +752,20 @@ function foldUsageEventsInner(
   const cumulativeCost = new CumulativeCostSegments();
   /** Sum of every `per-turn` (or undeclared) provider's reported cost. */
   let perTurnCostUsd: number | undefined;
+  /** `reportedCost` in the engine's own units (never USD-converted). */
+  const engineCosts = new EngineReportedCostTotals();
+  /** The Session whose engine reported `aggregate.engineMcp`. */
+  let engineMcpThread: string | undefined;
 
   for (const event of events) {
     if (event.provider) aggregate.provider = event.provider;
+    // A lineage folds its Sessions one after another. The next Session's
+    // engine is another process: its predecessor's MCP servers go, as a
+    // handoff drops them from the live chat.
+    if (engineMcpThread !== undefined && event.threadId !== engineMcpThread) {
+      delete aggregate.engineMcp;
+      engineMcpThread = undefined;
+    }
     observations?.observe(event);
     switch (event.method) {
       case 'token-usage.updated': {
@@ -748,6 +875,9 @@ function foldUsageEventsInner(
             ? cacheWriteTokens
             : addOptional(aggregate.cacheWriteTokens, cacheWriteTokens);
         }
+        engineCosts.observe(event);
+        if (usableContextPercent(event.contextPercent))
+          aggregate.contextPercent = event.contextPercent;
         if (isUsableCost(event.reportedCostUsd)) {
           if (providerCostScope(event.provider) === 'engine-process-cumulative')
             cumulativeCost.observe(event.reportedCostUsd);
@@ -789,6 +919,7 @@ function foldUsageEventsInner(
         cumulativeCost.sessionStarted(
           sessionStartedResumedNativeSession(event),
         );
+        engineCosts.sessionStarted(sessionStartedResumedNativeSession(event));
         break;
       }
       case 'turn.completed': {
@@ -817,10 +948,18 @@ function foldUsageEventsInner(
         if (model) aggregate.lastModelId = model;
         break;
       }
+      case 'engine-mcp.status': {
+        aggregate.engineMcp = foldEngineMcpStatus(aggregate.engineMcp, event);
+        engineMcpThread = event.threadId;
+        break;
+      }
       default:
         break;
     }
   }
+
+  const reportedCosts = engineCosts.totals();
+  if (reportedCosts) aggregate.reportedCosts = reportedCosts;
 
   const cumulativeCostUsd = cumulativeCost.total();
   if (cumulativeCostUsd !== undefined || perTurnCostUsd !== undefined) {

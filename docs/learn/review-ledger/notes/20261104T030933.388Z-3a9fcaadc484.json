@@ -1,7 +1,0 @@
-{
-  "revision": "39dd3b5bae17b73ddab5593864b16633fe757fb0",
-
-  "notes": [
-    {"path":"docs/plans/README.md","note":"Reviewed generated plans navigation: docs:index adds only whole-app-ux-campaign.md and its heading-derived title; all pre-existing entries and generator boundaries are unchanged. The linked plan is an execution contract whose live evidence remains issue 4506; index presence is not semantic or runtime qualification. docs:index:check and docs:links:check passed.","inputs":["docs/plans/README.md"]}
-  ]
-}

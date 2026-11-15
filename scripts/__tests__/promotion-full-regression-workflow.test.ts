@@ -1,8 +1,12 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
 import { VERIFIED_PNPM_SETUP_ACTION } from '../actionlint-gate.mjs';
+import {
+  DEPLOY_LEDGER_PATHS,
+  LEDGER_WALK_LIMIT,
+} from '../qualification-evidence.mjs';
 import { runnerProfile } from '../release-pipeline.mjs';
 import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 
@@ -96,6 +100,7 @@ describe('promotion full-regression workflow', () => {
     expect(resolveSource.env).toMatchObject({
       SOURCE_SHA: githubExpression('inputs.source_sha'),
       ALLOW_REUSE: githubExpression('inputs.allow_reuse'),
+      SKIP_FAILED_SOURCE: githubExpression('inputs.skip_failed_source'),
     });
     const covered: string[] = [];
     for (const id of [
@@ -153,7 +158,7 @@ describe('promotion full-regression workflow', () => {
                 selection.match(/--process-heavy-shard=(\d+\/\d+)/u)?.[1],
             )
             .sort(),
-        ).toEqual(['1/2', '2/2']);
+        ).toEqual(['1/3', '2/3', '3/3']);
       for (const selection of selections)
         covered.push(
           ...selection
@@ -181,6 +186,8 @@ describe('promotion full-regression workflow', () => {
         ...FULL_REGRESSION_PHASES.map((phase) => phase.id).filter(
           (id) => id !== 'browser-prerequisite',
         ),
+        // Three process-heavy slices: two more invocations of the one phase.
+        'test-full-process-heavy',
         'test-full-process-heavy',
       ].sort(),
     );
@@ -203,6 +210,7 @@ describe('promotion full-regression workflow', () => {
       NEEDS: githubExpression('toJSON(needs)'),
       SOURCE_SHA: githubExpression('inputs.source_sha'),
       REUSE_RUN: githubExpression('needs.resolve.outputs.reuse_run'),
+      FAILED_RUN: githubExpression('needs.resolve.outputs.failed_run'),
     });
     expect(attest).not.toHaveProperty('continue-on-error');
   });
@@ -240,7 +248,16 @@ describe('promotion full-regression workflow', () => {
 
   test('qualifies coalesced main pushes without adding a packaging wave per merge', () => {
     const main = workflow('main-qualification.yml');
-    expect(main.on?.push).toEqual({ branches: ['main'] });
+    // Release-bot deploy-ledger commits start no push run. The literal list
+    // is pinned here as well as against the resolver's own constant.
+    expect(main.on?.push).toEqual({
+      branches: ['main'],
+      'paths-ignore': [
+        'docs/reference/deploy-ledger.json',
+        'docs/reference/deploy-ledger.md',
+      ],
+    });
+    expect(main.on?.push?.['paths-ignore']).toEqual([...DEPLOY_LEDGER_PATHS]);
     expect(main.on?.schedule).toEqual([{ cron: '17 */6 * * *' }]);
     const qualification = main.jobs?.qualification;
     expect(qualification?.if).toBe("github.ref == 'refs/heads/main'");
@@ -266,6 +283,61 @@ describe('promotion full-regression workflow', () => {
       expect(group(event, 3)).not.toBe(group(event, 4));
     }
     expect(qualification?.concurrency?.['cancel-in-progress']).toBe(false);
+    // Only a scheduled run may decline to repeat a corpus that already failed
+    // tests on its exact source; pushes and manual dispatches always execute.
+    const skipFailed = qualification?.with?.skip_failed_source;
+    if (typeof skipFailed !== 'string')
+      throw new Error('Main qualification must decide skip_failed_source');
+    for (const event of ['push', 'schedule', 'workflow_dispatch'])
+      expect(
+        Function(
+          'github',
+          `return (${skipFailed.slice(3, -2)});`,
+        )({
+          event_name: event,
+        }),
+        event,
+      ).toBe(event === 'schedule');
+    // Every other caller inherits the input's default, so the default must
+    // stay false and no other caller may set it. Callers are discovered from
+    // the workflow directory, and the expected set is pinned beside it.
+    const reusable = workflow('full-regression.yml');
+    expect(reusable.on?.workflow_call?.inputs?.skip_failed_source).toEqual({
+      description: expect.any(String),
+      default: false,
+      type: 'boolean',
+    });
+    const callers = readdirSync(resolve(root, '.github/workflows'))
+      .filter((file) => file.endsWith('.yml'))
+      .filter((file) =>
+        Object.values(workflow(file).jobs ?? {}).some(
+          (job) => job.uses === './.github/workflows/full-regression.yml',
+        ),
+      )
+      .sort();
+    expect(callers).toEqual([
+      'ci.yml',
+      'main-qualification.yml',
+      'merge-queue-regression.yml',
+      'publish-packages.yml',
+      'publish-release.yml',
+      'release.yml',
+    ]);
+    for (const file of callers.filter(
+      (file) => file !== 'main-qualification.yml',
+    ))
+      for (const job of Object.values(workflow(file).jobs ?? {}))
+        if (job.uses === './.github/workflows/full-regression.yml')
+          expect(job.with ?? {}, file).not.toHaveProperty('skip_failed_source');
+    // The scheduled ledger walk needs history; every other resolve needs one
+    // commit. At depth 1 the walk would reach the clone boundary at once.
+    const resolveCheckout = reusable.jobs?.resolve.steps?.find((step) =>
+      step.uses?.startsWith('actions/checkout@'),
+    );
+    expect(resolveCheckout?.with?.['fetch-depth']).toBe(
+      githubExpression('inputs.skip_failed_source && 32 || 1'),
+    );
+    expect(LEDGER_WALK_LIMIT + 2).toBeLessThanOrEqual(32);
     // Evaluate the actual downstream admission condition at the event boundary.
     // Push must never fan out delivery; source failure/skip must never do so.
     const condition = main.jobs?.['delivery-validation'].if;
@@ -359,7 +431,7 @@ describe('promotion full-regression workflow', () => {
     );
     const jobs = reusable.jobs ?? {};
     const continueSuites =
-      "always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == ''";
+      "always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == '' && needs.resolve.outputs.failed_run == ''";
     expect(jobs.exclusive).toMatchObject({
       needs: ['resolve', 'static'],
       if: continueSuites,
@@ -382,7 +454,7 @@ describe('promotion full-regression workflow', () => {
           count + (jobs[id].strategy?.matrix?.include?.length ?? 1),
         0,
       ),
-    ).toBe(11);
+    ).toBe(12);
     for (const [name, total, expectedPeak] of [
       ['free', '20', 4],
       ['expanded', '40', 7],

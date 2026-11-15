@@ -561,7 +561,8 @@ jobs:
         # No GITHUB_TOKEN: v2 takes the token through the `github-token`
         # input and errors when an env var of that name disagrees with it —
         # and nothing this step runs reads the env form (the changelog
-        # generator is `@changesets/cli/changelog`, not changelog-github).
+        # generator is scripts/changeset-changelog.mjs, a whitespace-trimming
+        # wrapper over `@changesets/cli/changelog`, not changelog-github).
         #
         # No NODE_OPTIONS heap raise any more either: the 8GB mitigation
         # (#3715) proved the v1 path's allocation was unbounded — it ate the

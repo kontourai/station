@@ -1,7 +1,0 @@
-{
-  "revision": "58f1ee21778fead00a0ff18d3530fbcac3641b7e",
-
-  "notes": [
-    {"path":"docs/design/approval-posture-server-ordered.md","note":"Re-checked the confinement-preflight / doctor sentence about the ordinary config load against loadAppConfigFileInternal: it may write a default config/app.json when none exists and may rewrite an existing one when it normalizes it; wording now matches the code.","inputs":["docs/design/approval-posture-server-ordered.md"]}
-  ]
-}

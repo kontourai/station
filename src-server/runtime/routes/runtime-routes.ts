@@ -74,7 +74,10 @@ import {
 } from '../../routes/system/native-relay-enrollment-routes.js';
 import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay-surface-routes.js';
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
-import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
+import {
+  createRelayManagementRoutes,
+  createUnconfiguredRelayManagementRoutes,
+} from '../../routes/system/relay-management-routes.js';
 import { createTelemetryCompanionRoutes } from '../../routes/system/telemetry-companion-routes.js';
 import { createTelemetryIncidentLinkRoutes } from '../../routes/system/telemetry-incident-link-routes.js';
 import { createToolLibraryRoutes } from '../../routes/tool-library.js';
@@ -109,6 +112,8 @@ import {
   isPrincipalScopedAgentRequest,
   stationControlRequestAuthority,
 } from '../../security/station-control-request-authority.js';
+import { proposingTurnId } from '../../services/automation/automation-proposals.js';
+import { AutomationStore } from '../../services/automation/automation-store.js';
 import {
   type BrowserProjectAuthorizer,
   createBrowserOperatorAuthorizer,
@@ -528,6 +533,7 @@ import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-a
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
+import { createAutomationProposalRoutes } from '../../routes/orchestration/automation-proposals.js';
 import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createDeclarePullRequestRoutes } from '../../routes/orchestration/declare-pull-request.js';
 import {
@@ -2989,10 +2995,20 @@ export function configureRuntimeRoutes(
       createNativeRelayEnrollmentOperatorRoutes(context.nativeRelayEnrollment),
     );
   }
+  const relayCapabilityDeps = {
+    resolveActor: (c: Context) => resolveOrchestrationRequestPrincipal(c),
+    isManager: (request: Request) =>
+      hasRelayManagementAuthority(
+        request,
+        context.environmentSecurityService,
+        context.environmentSecurityService.devicePairing,
+      ),
+  };
   if (context.relayInvitationOwner && context.nativeSurfaceRegistry)
     context.app.route(
       '/api/relay-management',
       createRelayManagementRoutes({
+        ...relayCapabilityDeps,
         owner: context.relayInvitationOwner,
         registry: context.nativeSurfaceRegistry,
         managedRemoteRefusal: () =>
@@ -3001,7 +3017,6 @@ export function configureRuntimeRoutes(
             ? managedRemoteClientsDenial(context.managedPolicy.summary)
             : undefined,
         enrollment: context.nativeRelayEnrollment,
-        resolveActor: (c) => resolveOrchestrationRequestPrincipal(c),
         actorCurrency: (request, actor) =>
           captureRelayManagementActor(
             request,
@@ -3045,13 +3060,12 @@ export function configureRuntimeRoutes(
             authority: native ? 'native-device-proof' : principal?.authority,
           });
         },
-        isManager: (request) =>
-          hasRelayManagementAuthority(
-            request,
-            context.environmentSecurityService,
-            context.environmentSecurityService.devicePairing,
-          ),
       }),
+    );
+  else
+    context.app.route(
+      '/api/relay-management',
+      createUnconfiguredRelayManagementRoutes(relayCapabilityDeps),
     );
   if (context.nativeSurfaceRegistry)
     context.app.route(
@@ -4313,6 +4327,11 @@ export function configureRuntimeRoutes(
             environmentId: async () =>
               (await context.environmentSecurityService.getPublicHandshake())
                 .environmentId ?? null,
+            // Says when the seeded conversation is not stored here (a paired
+            // Station's conversation), as scheduled conversation runs check.
+            ...(context.orchestrationEventStore
+              ? { conversations: context.orchestrationEventStore }
+              : {}),
           },
         ),
         ...(context.readConfinementPreflight
@@ -7311,6 +7330,69 @@ export function configureRuntimeRoutes(
       ),
     agentProject: async (agentSlug) =>
       (await context.agentService.getAgent(agentSlug)).project,
+    // #4830: an agent proposes Automation sources and rules; a person
+    // confirms. Not hosted: Automations have no tenant binding.
+    ...(hostedTenantRegistry === undefined
+      ? {
+          automationProposals: {
+            store: context.orchestrationEventStore?.automationProposalStore(),
+            // Stateless per call (it re-reads the file under its own lock),
+            // so this instance and the runtime's never disagree.
+            automations: new AutomationStore(
+              context.configLoader.getProjectHomeDir(),
+            ),
+            projectSlugForId: (projectId: string) =>
+              context.projectService
+                .listProjects()
+                .find((project) => project.id === projectId)?.slug,
+            projectName: (projectId: string) =>
+              context.projectService
+                .listProjects()
+                .find((project) => project.id === projectId)?.name,
+            agentDefinition: async (agentSlug: string) =>
+              context.agentService.getAgent(agentSlug),
+            proposingTurn: (sessionId: string) => {
+              const eventStore = context.orchestrationEventStore;
+              if (!eventStore) return undefined;
+              return proposingTurnId(
+                {
+                  callingTurn: (id) =>
+                    context.orchestrationService.stationControlCallingTurn(id),
+                  store: eventStore,
+                },
+                sessionId,
+              );
+            },
+            untrustedContent: async (conversationId: string) =>
+              (await sharedUntrustedContentLedger.conversationHasRead(
+                conversationId,
+              )) ||
+              sharedUntrustedContentLedger.hasDescendantRead(conversationId),
+            // The isolated-repair setup's operator gate: the operator in
+            // person, never an agent, re-checked inside the store's lock.
+            operator: async (request: Request) => {
+              const assertCurrent = async () => {
+                if (
+                  isHostedTenantExecutionRequired() ||
+                  !isOperatorInPersonNotAgent(request) ||
+                  !isRuntimeRequestPrincipalCurrent(
+                    request,
+                    context.environmentSecurityService,
+                  )
+                )
+                  throw new Error('Operator access required');
+                await projectMembershipAuthority(request).operator();
+              };
+              try {
+                await assertCurrent();
+              } catch {
+                return undefined;
+              }
+              return { id: getCachedUser().alias, assertCurrent };
+            },
+          },
+        }
+      : {}),
     // Read when a chat asks, after the scheduler below exists.
     ...(hostedTenantRegistry === undefined
       ? {
@@ -7355,6 +7437,10 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/orchestration',
     createAgentScheduleRoutes(agentSchedule.routeDeps),
+  );
+  context.app.route(
+    '/api/orchestration',
+    createAutomationProposalRoutes(agentSchedule.automationProposalRouteDeps),
   );
   // #3628: a person's coordinator Session, woken through the same inbox when
   // work they can read needs them, finished or failed. Not on a hosted

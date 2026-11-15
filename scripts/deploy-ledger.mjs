@@ -97,7 +97,7 @@ export const DEPLOY_LEDGER_VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+~-]*$/;
 
 /** Workflow clocks can lag the recorder's; five minutes of skew is
  * generous for a `date -u` taken in the same second as the publish. */
-const FUTURE_TIMESTAMP_SKEW_MS = 5 * 60_000;
+export const FUTURE_TIMESTAMP_SKEW_MS = 5 * 60_000;
 
 function validateChangelog(changelog) {
   if (changelog === undefined || changelog === null) return [];
@@ -387,7 +387,7 @@ export function renderLedgerMarkdown({ entries, githubRepo }) {
     '',
     '### JSON schema (one array element per ship)',
     '',
-    '- `timestampUtc` — ISO 8601 UTC. When the recording workflow step ran (immediately after the publish it records); never in the future.',
+    '- `timestampUtc` — ISO 8601 UTC, never in the future. For a `nightly-npm` row, the moment the publishing job verified the publish against the registry (the row itself may be written later in the run); for every other row, when the recording workflow step ran, immediately after the publish it records.',
     '- `artifactBuiltAt` — canonical ISO 8601 UTC from the immutable packaged artifact manifest, or `null` when a provider/package artifact cannot prove one. It is never a provider upload, device install, or ledger-recording timestamp.',
     `- \`channel\` — one of \`${DEPLOY_LEDGER_CHANNELS.join('`, `')}\`.`,
     '- `version` — the channel-specific version identity users see (`station --version`, Play console, npm); alphanumeric plus `. + ~ -` only.',
@@ -445,18 +445,25 @@ function usage() {
     '         --version <version> --sha <40-hex> --gate-result <sentence> \\',
     '         --github-repo owner/name [--timestamp <ISO-UTC>] [--workflow-run-url <https-url>] [--package <npm-name>]',
     '         [--artifact-manifest <path>] [--artifact <descriptor>]... [--note <caveat>]... \\',
-    '         [--repo-root <path>] [--ledger-json <path>] [--ledger-md <path>]',
+    '         [--repo-root <path>] [--ledger-json <path>] [--ledger-md <path>] [--if-absent]',
     '',
     '--timestamp defaults to the current UTC moment (the workflow passes its own).',
     'Fails loud on any invalid field or duplicate ship; never commits or pushes.',
+    '--if-absent: a ship the ledger already records (same channel, sha, version',
+    'and package) exits 0 without writing, for a row two jobs of one run may both offer.',
   ].join('\n');
 }
 
 function parseArgs(argv) {
   const flags = new Map();
   const repeated = new Map();
+  let ifAbsent = false;
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i];
+    if (flag === '--if-absent') {
+      ifAbsent = true;
+      continue;
+    }
     const value = argv[i + 1];
     if (!flag.startsWith('--') || value === undefined) {
       throw new Error(`malformed argument pair: ${flag} ${String(value)}`);
@@ -470,7 +477,7 @@ function parseArgs(argv) {
     flags.set(flag, value);
     i += 1;
   }
-  return { flags, repeated };
+  return { flags, repeated, ifAbsent };
 }
 
 export function main(argv) {
@@ -482,7 +489,7 @@ export function main(argv) {
     console.error(usage());
     return 1;
   }
-  const { flags, repeated } = parsed;
+  const { flags, repeated, ifAbsent } = parsed;
   const required = [
     '--channel',
     '--version',
@@ -562,6 +569,22 @@ export function main(argv) {
   };
   try {
     assertValidEntry(entry);
+    // The Nightly's npm row is offered by the native record job and, after
+    // it, by a fallback job (one commit per run when the cohort ships, the
+    // row alone when it does not). Whichever lands second finds the identity
+    // already on main and must leave the ledger untouched rather than fail.
+    // Every other caller omits the flag and keeps the loud duplicate refusal.
+    const recorded = ifAbsent
+      ? entries.find(
+          (existing) => entryIdentityKey(existing) === entryIdentityKey(entry),
+        )
+      : undefined;
+    if (recorded) {
+      process.stdout.write(
+        `already recorded: ${recorded.channel} ${recorded.version} at ${shortSha(recorded.sha)}; ledger unchanged\n`,
+      );
+      return 0;
+    }
     entry.changelog = leader
       ? sameShaCompanionChangelog(leader, sha)
       : deriveChangelogSlice({

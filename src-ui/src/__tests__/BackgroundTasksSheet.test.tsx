@@ -154,7 +154,7 @@ describe('BackgroundTasksSheet', () => {
     ).toBeNull();
   });
 
-  test('elapsed time renders as m:ss and ticks forward with the shared 1s timer', () => {
+  test('elapsed time renders in duration words and ticks forward with the shared 1s timer', () => {
     renderSheet({
       running: [
         runningEntry({
@@ -163,12 +163,12 @@ describe('BackgroundTasksSheet', () => {
       ],
       finished: [],
     });
-    expect(screen.getByText(/Tool · 1:05/)).not.toBeNull();
+    expect(screen.getByText('Tool · 1m 5s')).not.toBeNull();
 
     act(() => {
       vi.advanceTimersByTime(2000);
     });
-    expect(screen.getByText(/Tool · 1:07/)).not.toBeNull();
+    expect(screen.getByText('Tool · 1m 7s')).not.toBeNull();
   });
 
   test('Recent activity section is collapsed by default and shows an outcome chip once expanded', () => {
@@ -320,8 +320,11 @@ describe('BackgroundTasksSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
     expect(interruptTask).toHaveBeenCalledWith({ taskId: 'task:delegate-1' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
-    expect(onOpenTranscript).toHaveBeenCalledWith('task:delegate-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+    expect(onOpenTranscript).toHaveBeenCalledWith(
+      'task:delegate-1',
+      'Run tests',
+    );
   });
 
   test.each(['running', 'completed'] as const)(
@@ -627,9 +630,7 @@ test('a peer background sheet selects its Station partition and never invokes ho
   fireEvent.click(stop);
   expect(interruptTask).not.toHaveBeenCalled();
   expect(
-    screen
-      .getByRole('button', { name: 'View transcript' })
-      .hasAttribute('disabled'),
+    screen.getByRole('button', { name: 'Open chat' }).hasAttribute('disabled'),
   ).toBe(true);
   expect(useOrchestrationSessionActivityQuery).toHaveBeenCalledWith(
     'peer-child',

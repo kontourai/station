@@ -487,6 +487,10 @@ describe('usage attribution to connections', () => {
     }
   });
 
+  // `acp` is declared per-turn for the engines whose prompt answer carries
+  // `usage`, but most ACP engines report only the context pair. The reason
+  // comes from what the unreported turns carried, so such an engine still
+  // reads as context-only rather than as missing reports.
   test('ACP coverage says it reports context occupancy, not totals', async () => {
     store.appendEvent({
       eventId: 'acp-started',
@@ -531,6 +535,86 @@ describe('usage attribution to connections', () => {
         state: 'partial',
         reason:
           'engine reports context occupancy only, not token or cost totals',
+      }),
+    ]);
+  });
+
+  test('an ACP turn with only an engine context percent and credits reads as context-only', async () => {
+    // Kiro's shape: `contextPercent` and a credit `reportedCost`, no pair.
+    store.appendEvent({
+      eventId: 'kiro-started',
+      provider: 'acp',
+      threadId: 'kiro-thread',
+      sessionId: 'kiro-thread',
+      createdAt: new Date().toISOString(),
+      method: 'session.started',
+      initialState: 'created',
+      metadata: { userId: OWNER, cwd: '/work', connectionId: 'kiro-cli' },
+    });
+    store.appendEvent({
+      eventId: 'kiro-usage',
+      provider: 'acp',
+      threadId: 'kiro-thread',
+      turnId: 'kiro-turn',
+      createdAt: new Date().toISOString(),
+      method: 'token-usage.updated',
+      contextPercent: 12,
+      reportedCost: { amount: 0.4, unit: 'credit', scope: 'turn' },
+    } as never);
+    store.appendEvent({
+      eventId: 'kiro-completed',
+      provider: 'acp',
+      threadId: 'kiro-thread',
+      turnId: 'kiro-turn',
+      createdAt: new Date().toISOString(),
+      method: 'turn.completed',
+      finishReason: 'stop',
+    });
+    const response = await usageRoute(store, home).request(
+      rollupPath({ connectionId: 'kiro-cli' }),
+    );
+    expect(response.status).toBe(200);
+    const body = await readJson<{ data: UsageRollup }>(response);
+    expect(body.data.coverage[0].providers).toEqual([
+      expect.objectContaining({
+        provider: 'acp',
+        state: 'partial',
+        reason:
+          'engine reports context occupancy only, not token or cost totals',
+      }),
+    ]);
+  });
+
+  test('an ACP turn with no usage at all is a missing usage report', async () => {
+    store.appendEvent({
+      eventId: 'acp-silent-started',
+      provider: 'acp',
+      threadId: 'acp-silent',
+      sessionId: 'acp-silent',
+      createdAt: new Date().toISOString(),
+      method: 'session.started',
+      initialState: 'created',
+      metadata: { userId: OWNER, cwd: '/work', connectionId: 'antigravity' },
+    });
+    store.appendEvent({
+      eventId: 'acp-silent-completed',
+      provider: 'acp',
+      threadId: 'acp-silent',
+      turnId: 'acp-silent-turn',
+      createdAt: new Date().toISOString(),
+      method: 'turn.completed',
+      finishReason: 'stop',
+    });
+    const response = await usageRoute(store, home).request(
+      rollupPath({ connectionId: 'antigravity' }),
+    );
+    expect(response.status).toBe(200);
+    const body = await readJson<{ data: UsageRollup }>(response);
+    expect(body.data.coverage[0].providers).toEqual([
+      expect.objectContaining({
+        provider: 'acp',
+        state: 'partial',
+        reason: 'terminal turns missing usage reports',
       }),
     ]);
   });

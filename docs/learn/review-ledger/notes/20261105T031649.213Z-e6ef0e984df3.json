@@ -1,7 +1,0 @@
-{
-  "revision": "3d6325c2787fcbbc582caeaba3ce0c1b18955bfe",
-
-  "notes": [
-    {"path":"docs/reference/cli.md","note":"#4515 integration: lifecycle.ts combines #4519, #4521 and #4522's managed-policy hunks (merge glue is import order only). Checked each managed-policy sentence here against the combined behavior and checked that its guide anchor (#settings, #capability-switches, #network-exposure, #update-control) exists in the merged guide. Added that station policy check prints the number of limits a policy sets; checked the policy check/show contract against packages/cli/src/commands/policy.ts.","inputs":["docs/reference/cli.md","packages/cli/src/commands/lifecycle.ts"]}
-  ]
-}

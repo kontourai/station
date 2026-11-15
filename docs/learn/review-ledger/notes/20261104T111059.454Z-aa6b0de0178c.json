@@ -1,7 +1,0 @@
-{
-  "revision": "c3d5d242c7a742e1133a336e347ec863ef990e83",
-
-  "notes": [
-    {"path":"docs/user/native-recovery.md","note":"Doctor change only: External-agent readiness now reads agentConnections with the installed managed policy applied (CLI offline overlay), and an unusable policy adds a fail-level Managed policy check. Re-read the doctor passages; 'checks local prerequisites and readiness' stays accurate; readiness now honours a managed policy, documented in docs/reference/cli.md doctor.","inputs":["docs/user/native-recovery.md","packages/cli/src/commands/lifecycle-doctor.ts"]}
-  ]
-}

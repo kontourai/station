@@ -121,6 +121,53 @@ describe('a saved engine that never connected', () => {
     ).toBeNull();
   });
 
+  test('an engine install older than Station supports says which version and how to update', () => {
+    const original = unregistered[0];
+    const message =
+      'Google Antigravity 1.4.4 is installed, and Station needs 1.5.0 or later. Run agy update on the computer Station runs on, then check again.';
+    unregistered[0] = {
+      ...unregistered[0],
+      name: 'Google Antigravity',
+      lastError: {
+        phase: 'initialize',
+        code: 'engine-update-required',
+        message,
+      },
+    } as never;
+    try {
+      render(<Page index={0} custom={false} />);
+      expect(screen.getByText(message)).toBeTruthy();
+      expect(screen.queryByText('Try again in a moment.')).toBeNull();
+    } finally {
+      unregistered[0] = original!;
+    }
+  });
+
+  test('a managed engine that is not installed says so, rather than "try again"', () => {
+    const original = unregistered[0];
+    unregistered[0] = {
+      ...unregistered[0],
+      name: 'Kiro (KAS, no CLI)',
+      lastError: {
+        phase: 'spawn',
+        code: 'managed-runtime-not-installed',
+        message:
+          "Kiro (KAS, no CLI) isn't installed yet. Install it from the engine's sign-in panel in Connections.",
+      },
+    } as never;
+    try {
+      render(<Page index={0} custom={false} />);
+      expect(
+        screen.getByText(
+          "Kiro (KAS, no CLI) isn't installed yet. Install it from its sign-in panel.",
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByText('Try again in a moment.')).toBeNull();
+    } finally {
+      unregistered[0] = original!;
+    }
+  });
+
   // #4470.
   test('offers Troubleshoot seeded with the engine’s last failure', () => {
     window.history.pushState({}, '', '/connections/engines/stub');

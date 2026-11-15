@@ -57,7 +57,7 @@ only when this Station's build can run it; if none is, the section says
 | `project-supervision` | Project supervision | Retains opted-in Task supervision and reconciles missed next actions through the conversation inbox. | Needs Coordinator chat. May queue model turns; current access, Task incarnation, waits, capacity and original delivery keys still govern placement. |
 | `github-automation-actions` | GitHub automation actions | Dispatches explicitly granted, matching rules into durable Tasks and their first inbox turn. | Can spend model tokens under retained budgets. Off by default; observation alone grants no execution authority. Repair publication requires credential separation. |
 | `isolated-github-repairs` | Isolated GitHub repairs | Runs explicitly granted GitHub repairs in Docker, retaining a Task and exact proposal for operator review. | Can spend provider credits. Separate single-use publication grants open drafts only; audit and cleanup remain available when disabled. |
-| `session-goals` | Session goals | Adds engine Goal inspection and paused-objective editing to Chat settings. | The current Codex adapter supports read, save paused, pause and clear. Activation and Station-managed goal loops are unavailable; reads do not start an engine. |
+| `session-goals` | Session goals | Adds engine Goal inspection and paused-objective editing to Chat settings. | The current Codex adapter supports read, save paused, pause and clear; Muse on `muse serve` supports read, pause and clear and reports no token or time figures. Activation and Station-managed goal loops are unavailable; reads do not start an engine. |
 | `coordinator-session` | Coordinator chat | Lets you make one chat your personal agent ([Houston](https://github.com/kontourai/station/blob/main/docs/user/houston.md)), shown on Home and woken when work you can read needs you, fails or finishes. | Each wake is a model call. On an engine with Station tools it acts with your permissions. Turning it off keeps your choice of chat; nothing is woken and queued updates are not sent. |
 | `coordinator-picture` | Coordinator working picture | Lets the designated coordinator keep short notes about readable work, shown on Home. | Needs Coordinator chat. Notes can contain work details; access to each source is rechecked. Finished notes expire after seven days. |
 | `conversation-resolution` | Open and Settled inbox | Keeps conversations Open until explicitly settled. Task closure follows the existing Task close-on-merge setting. | Personal resolution state syncs across devices. Turning it off preserves saved choices and restores turn-based grouping; no provider cost. |
@@ -281,14 +281,23 @@ switch says whether publication succeeded; enabling it does not change your
 network or firewall. Connecting still needs your approval. See
 [Connect your phone](getting-started.md#connect-your-phone).
 
+A server connection loss shows a brief reconnecting notice after three failed
+checks. Recovery shows a notice only if a loss was announced; an active event
+stream must catch up first. Pairing and other blocking failures still need the
+action shown in Station details.
+
 ## Updates and changelogs
 
 Open **Updates** in the sidebar to review an app or server update. **What’s
-new** shows the offered version’s release notes. **Previous versions and
+new** shows release notes for the installed server and any offered update. **Previous versions and
 changelogs** lets you browse published releases without starting an update.
 The circle around the sidebar update icon fills as a download progresses.
 
-After an app upgrade, its changelog opens once on this device. To turn that
+After an app or connected-server upgrade, its changelog opens once on this device.
+A browser served by the updated server shows one popup for that upgrade.
+In-app changelogs omit installation instructions; those remain on GitHub.
+Long lists show the first 50 changes. **See all changes** opens the full release.
+Server versions are remembered separately for each server. To turn that
 off, clear **Show changelog after updates** in the dialog, Updates, or
 **Settings → System**. Release history stays available. The first launch on a
 new device establishes the starting version without showing an upgrade dialog.

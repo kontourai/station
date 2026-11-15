@@ -141,6 +141,11 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real launcher exit/stderr protocol with in-memory ChildProcess/streams
+  // and substituted spawnOwnedChild; no child launch or wall-clock assertion.
+  'src-server/services/browser/__tests__/chromium-server-host.test.ts',
+  // Real Node sidecars verify native model relay framing, queued delivery and cancellation settlement.
+  'src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts',
   // #4828: short-lived `git init`, `git config` and `git status` children
   // prove the persistence protection reads the effective core.hooksPath from
   // git and runs no repository-named program; no wall-clock assertion.
@@ -221,6 +226,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',
   'packages/cli/src/__tests__/passive-cli.test.ts',
   'scripts/__tests__/server-scenario.test.ts',
+  // Builds and starts an isolated Station on free ports, runs the bundled
+  // Claude engine against a loopback stub, and owns detached process trees.
+  'scripts/__tests__/station-weight.end-to-end.process.test.ts',
+  // Detached and double-forked node children, a CPU-burning worker, git
+  // fixtures and the runner's gate as a child process.
+  'scripts/__tests__/station-weight.process.test.ts',
   // Real IPC child observes the native histogram at reset acknowledgement and blocks for 80ms.
   'scripts/__tests__/server-scenario-probe.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
@@ -294,18 +305,30 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/ci-ubuntu-bootstrap-source.test.ts',
   // Runs the evidence CLI against temporary Git roots and a loopback Actions API.
   'scripts/__tests__/qualification-evidence.test.ts',
-  // Runs the advisory review gate as a real child against a loopback GitHub API.
-  'scripts/__tests__/advisory-review-gate.test.ts',
   // #2675: runs the Nightly plan step's shell under bash in a temporary dir.
   'scripts/__tests__/ios-web-build-version.test.ts',
   // Executes cancellation against a loopback Actions API; owns one short Node child.
   'scripts/__tests__/pr-ci-supersession.test.ts',
+  // Runs the main-push verdict step as one short Node child against a loopback Actions API.
+  'scripts/__tests__/ci-merge-group-verdict.test.ts',
+  // Runs the source-policy publisher CLI as one short Node child against a loopback Actions API.
+  'scripts/__tests__/source-verification-policy.test.ts',
   // Runs the signer diagnostic CLI against a loopback Actions API.
   'scripts/__tests__/pr-conflict-signer-diagnostic.test.ts',
   // #3101: runs the conflict-deferral CLI against a loopback GitHub API.
   'scripts/__tests__/pr-source-admission.test.ts',
   // Executes repair publication against real temporary checkouts and a loopback API.
   'scripts/__tests__/qualification-repair.test.ts',
+  // Runs the real Vitest corpus runner on tiny fixture projects (one child
+  // Vitest per case, including a leaked child and a deadline kill) and the
+  // real phase driver once, to assert the failure manifest they write.
+  'scripts/__tests__/qualification-failure-manifest.test.ts',
+  // Runs the repair prepare CLI against a loopback API with on-disk
+  // failure manifests and a temporary known-failure list.
+  'scripts/__tests__/qualification-failure-signal.test.ts',
+  // Runs the real Playwright test runner on tiny fixture projects (no
+  // browser) to assert the e2e failure manifest built from its JSON report.
+  'scripts/__tests__/playwright-failure-manifest.test.ts',
   // #3101: runs the dequeue report as a child against temporary Git remotes
   // (git fetch + merge-tree) and a loopback GitHub API.
   'scripts/__tests__/merge-queue-dequeue.test.ts',
@@ -404,6 +427,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/pending-pairing-journal.browser.test.ts',
   // Executes the hosted Android identity admission step in bounded bash children.
   'scripts/__tests__/android-channel-release-generation.test.ts',
+  // Runs the release identity shell step and real Android helpers on private fixtures.
+  'scripts/__tests__/android-pairing-scheme.test.ts',
   'scripts/__tests__/local-collaboration-lab.test.ts',
   // Owns a UDP relay child and private command-output diagnostics.
   'scripts/__tests__/browser-transport-fixture.test.ts',
@@ -706,6 +731,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // paths' EXIT STATUS and printed verdicts are proven, not just the pure
   // evaluation functions.
   'scripts/__tests__/codeql-sarif-policy.cli.test.ts',
+  // Runs the security-analysis gate-change job's real bash/git script as a
+  // child process against throwaway fixture repositories (partial fetch,
+  // merge base, .github/ diff). Single-shot spawns, no wall-clock assertion.
+  'scripts/__tests__/security-analysis-gate-change.test.ts',
   // station#1312: same shape again — the issue-lifecycle module graph is
   // loaded in fresh node children, one entry module per case, because only a
   // cold import proves the graph has no evaluation-order cycle; in-process
@@ -804,6 +833,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Runs the PR workflow's allowlist-ceiling step under bash against
   // disposable Git repositories (fetch, judge child).
   'scripts/__tests__/gallery-allowlist-ceiling.test.ts',
+  // Runs the PR workflow's composition, attribution and verdict steps under
+  // bash against disposable Git repositories (merge, worktree, judge child,
+  // a fake npm standing in for the capture).
+  'scripts/__tests__/gallery-pr-composition.test.ts',
   // Launches one headless Chromium for the gallery audit's fixture pages.
   'scripts/__tests__/gallery-ui-audit.browser.test.ts',
   'scripts/__tests__/code-hygiene.test.ts',
@@ -1083,9 +1116,25 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // processes with release.yml's arguments. Single-shot spawns, no wall-clock
   // assertion.
   'scripts/__tests__/release-artifacts.test.ts',
+  // #3591: runs release.yml's desktop-windows signing-mode and receipt
+  // staging bash steps as real child processes. Single-shot spawns, no
+  // wall-clock assertion.
+  'scripts/__tests__/windows-release-signing.test.ts',
+  // #3591: on Windows, runs release.yml's Authenticode observation step under
+  // real pwsh against MSI/PE fixtures it signs at test time (skipped off
+  // Windows). Single-shot spawns, no wall-clock assertion.
+  'scripts/__tests__/windows-release-authenticode.process.test.ts',
   // #2977: runs release.yml's assemble-draft admission step as a real bash
   // child against a download-artifact-shaped fixture root.
   'scripts/__tests__/release-admit-producer-assets.test.ts',
+  // #4929: runs release.yml's portable, container-descriptor, host-manifest,
+  // admission and inventory step text as real bash children, plus the SBOM
+  // context and generation CLIs, for a release-candidate producer set.
+  // Single-shot spawns under owned temp dirs, no wall-clock assertion.
+  'scripts/__tests__/release-candidate-staging.test.ts',
+  // #4929: runs the shared release-tag parser's CLI, which the portable
+  // packager calls from bash, as a real child to prove its exit statuses.
+  'scripts/__tests__/release-tag.test.ts',
   // #1776: runs the pinned tauri-cli `icon` fan-out twice as a real child
   // process to prove the committed iOS channel sets are byte-reproducible.
   // #1797 adds two more runs for the desktop `.icns`, whose writer was the
@@ -1126,6 +1175,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // tracked NUL/clean fixture repositories. The child is single-shot and has
   // no wall-clock assertion, but still belongs in the bounded spawn pool.
   'scripts/__tests__/run-ci-fast.test.ts',
+  // Drives the real Conduit conformance generator through the fast lane
+  // against a fixture root; one single-shot child per case.
+  'scripts/__tests__/ci-fast-conformance.test.ts',
   // Runs the installed analyzer against committed Git fixtures to prove
   // new-versus-inherited attribution and resistance to candidate rebaselining.
   'scripts/__tests__/code-health-gate.test.ts',
@@ -1155,6 +1207,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // exhaustion, and the duplicate re-record refusal all assert real git
   // state, so the child processes are the claim.
   'scripts/__tests__/deploy-ledger-commit.test.ts',
+  // Runs the Nightly's real ledger step scripts under bash against a local
+  // fixture origin, then every ledger reader as a child process on the
+  // resulting history: one commit per run is a claim about real git state.
+  'scripts/__tests__/deploy-ledger-nightly-batch.test.ts',
   // Proves the published-packages
   // JSON parse's success and refusal exit statuses as a real child process,
   // the same "gate as a real child" shape as the entry-point gates above.
@@ -1357,9 +1413,32 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3290: spawns an OpenCode-shaped ACP engine through the real
   // ACPProcess, so the launch environment is the one actually delivered.
   'src-server/providers/__tests__/acp-approval-mode.process.test.ts',
+  // Installs a fake Kiro agent service with the real installer and launches
+  // it through the real ACPProcess, managed and as a custom command.
+  'src-server/services/engine-host-auth/__tests__/engine-host-auth-launch.process.test.ts',
+  // Runs a managed runtime's `--version` (Node, and a slow shell stand-in
+  // killed by an abort) through the ACP adapter's readiness.
+  'src-server/providers/__tests__/acp-managed-runtime-readiness.test.ts',
+  // Two real processes race one expiring credential through the vault's
+  // cross-process refresh lock against a local stub issuer.
+  'src-server/services/engine-host-auth/__tests__/engine-host-auth-refresh-lock.process.test.ts',
+  // Extracts fixture archives with the host's own tar and runs the installed
+  // runtime, so the extraction and launch are the real ones.
+  'src-server/services/engines/__tests__/managed-install.test.ts',
+  // Launches the fake ACP agent through the real ACPProcess so the agent
+  // records the client capabilities `initialize` actually announced.
+  'src-server/services/acp/__tests__/acp-client-announcements.process.test.ts',
   // Launches the profile-driven fake engine through the real ACPProcess,
   // adapter and probe; the process boundary is the qualification claim.
   'src-server/providers/__tests__/acp-engine-qualification.process.test.ts',
+  // Kiro parity: the fake ACP agent, driven by recorded kiro-cli profiles,
+  // through the real adapter and ACPProcess; it records what Station
+  // announced and answered.
+  'src-server/providers/__tests__/acp-kiro-announce.process.test.ts',
+  'src-server/providers/__tests__/acp-kiro-parity.process.test.ts',
+  // The fake ACP agent, driven by the recorded Antigravity profile, through
+  // the real adapter and ACPProcess: what session and prompt answers carry.
+  'src-server/providers/__tests__/acp-session-answers.process.test.ts',
   // #3924: runs the real `opencode` (when this host has one) with fresh XDG
   // directories against a planted project plugin; skips loudly where no
   // opencode binary resolves.
@@ -1552,6 +1631,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/__tests__/strict-indexeddb.browser.test.ts',
   // Owns Chromium to decode, resize and encode a real photo into a thumbnail.
   'src-ui/src/__tests__/attachment-thumbnails.browser.test.ts',
+  // Owns Chromium (routed origins, no listener) to prove the visual
+  // reply viewer's script execution: proxy parity with preview, the srcdoc
+  // fallback's inherited-refusal under an app-shell CSP, and the staged
+  // scheme's escape from that inheritance.
+  'src-ui/src/__tests__/html-reply-viewer-scripts.browser.test.tsx',
   // station#4474: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved layout (sibling
   // toolbar control x-offsets across connection states).
@@ -1725,7 +1809,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // jsdom, then launch a real Chromium to lay that DOM out against index.css —
   // whether the dock body scrolls inside the shell, and whether a collapsed
   // bottom dock is its bar alone. A rule-text scan could not see an override.
-  'src-ui/src/app-shell/__tests__/ActivityRegionShell.dock-body.test.tsx',
+  // Renders the actual child chat DOM in Chromium at desktop and phone widths.
+  'src-ui/src/__tests__/child-transcript-navigation.test.tsx',
   'src-ui/src/app-shell/__tests__/CollapsedRegionDockBody.test.tsx',
   // Runs the full-regression phase driver CLI and real npm children, including
   // one it must kill at a deadline.

@@ -1,7 +1,0 @@
-{
-  "revision": "d5e3c3757b2dfb3fd2d38d801292f5c5a3bbfed6",
-
-  "notes": [
-    {"path":"docs/guides/starter-work.md","note":"Reviewed device-settings contract change; starter work claims unaffected.","inputs":["docs/guides/starter-work.md","packages/contracts/src/device-settings.ts"]}
-  ]
-}

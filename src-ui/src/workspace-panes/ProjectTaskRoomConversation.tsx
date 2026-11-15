@@ -12,6 +12,7 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { formatDuration } from '../utils/relativeTime';
 
 /** Rows revealed per step when reading back through loaded history. */
 const HISTORY_WINDOW = 50;
@@ -28,13 +29,14 @@ import { createTaskConversationActions } from '../components/conversation/task-c
 import { taskHistoryReadDenied } from '../components/conversation/task-history-policy';
 import { IconButton } from '../components/IconButton';
 import { CloseGlyph } from '../components/icons/Glyph';
-import { roomShortTime } from '../components/room/groupRows';
 import { RoomAvatar } from '../components/room/RoomAvatar';
 import { RoomComposer } from '../components/room/RoomComposer';
 import {
   RoomConversation,
   type RoomConversationRow,
 } from '../components/room/RoomConversation';
+import { RoomThreadSummary } from '../components/room/RoomThreadSummary';
+import { useMarkRoomRead } from '../components/room/useMarkRoomRead';
 import { roomDraftKey, useRoomDraft } from '../components/room/useRoomDraft';
 import { SplitPaneCompanion } from '../components/SplitPaneLayout';
 import { SkeletonBlock } from '../components/state';
@@ -224,6 +226,23 @@ export function ProjectTaskRoomConversation({
     history.fetchNextPage,
     readable,
   ]);
+  // Read through the checkpoint once every page up to it is shown (#3075,
+  // #4794): the Task's row in the sidebar loses its unread state.
+  const shownThrough =
+    readable && history.data && !history.hasNextPage
+      ? Math.max(
+          0,
+          ...history.data.pages.map((page) =>
+            'checkpoint' in page && page.checkpoint
+              ? page.checkpoint.throughSeq
+              : 0,
+          ),
+        )
+      : undefined;
+  useMarkRoomRead(
+    readable ? { kind: 'task-room', taskId } : undefined,
+    shownThrough,
+  );
   const followup = useMutation({
     mutationFn: async () => {
       if (!scope?.isCurrent() || !thread || !taskCreatedAt)
@@ -487,31 +506,17 @@ export function ProjectTaskRoomConversation({
             ),
             footer:
               !inThread && replies.length ? (
-                <span className="task-room-thread-summary">
-                  <span className="task-room-thread-summary__faces">
-                    {repliers.map((actor) => (
-                      <RoomAvatar
-                        key={actor.id ?? `${actor.kind}:${actor.label}`}
-                        name={actor.label}
-                        agent={actor.kind === 'agent'}
-                      />
-                    ))}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="task-room-thread-summary__count"
-                    disabled={followup.isPending}
-                    onClick={() => changeThread(execution.sessionId)}
-                  >
-                    {`${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
-                  </Button>
-                  {lastReply && Number.isFinite(Date.parse(lastReply)) && (
-                    <span className="task-room-thread-summary__last">
-                      Last reply {roomShortTime(lastReply)}
-                    </span>
-                  )}
-                </span>
+                <RoomThreadSummary
+                  repliers={repliers.map((actor) => ({
+                    key: actor.id ?? `${actor.kind}:${actor.label}`,
+                    label: actor.label,
+                    agent: actor.kind === 'agent',
+                  }))}
+                  count={replies.length}
+                  lastAt={lastReply}
+                  disabled={followup.isPending}
+                  onOpen={() => changeThread(execution.sessionId)}
+                />
               ) : undefined,
             actions: (
               <ActionRow
@@ -604,7 +609,7 @@ export function ProjectTaskRoomConversation({
                       ? participant.work.workName
                       : '',
                     participant.work.startedAt
-                      ? `${Math.max(0, Math.floor((now - participant.work.startedAt) / 60000))}m`
+                      ? formatDuration(now - participant.work.startedAt)
                       : '',
                   ]
                     .filter(Boolean)
@@ -675,6 +680,7 @@ export function ProjectTaskRoomConversation({
         sheet={{
           label: `${threadRecords[0]?.actor.label ?? 'Agent'} · Thread`,
           onDismiss: () => changeThread(),
+          page: true,
         }}
         companion={
           thread ? (

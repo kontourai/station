@@ -1,7 +1,0 @@
-{
-  "revision": "1adf4880d7803fee28ad3dd6b7ffff361e7aa1bc",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"Scoped review at 1adf4880d7803fee28ad3dd6b7ffff361e7aa1bc of the Task-room recovery and Room polish claims affected by tests/task-room-reload-recovery.spec.ts. The existing lost-ack case now asserts real committed/duplicate receipts, authenticated fully paginated single-message history with stable identity before response loss, after exact Retry and after final reload, using real Restore/Retry controls and unchanged production. This is authored test intent, not an executed journey receipt. Explicit deterministicReadiness:false applies to both existing cases. The documented proposal/text/time preservation and conditional recovery semantics remain accurate; no prose change is needed. ROOT610 canonical typecheck:e2e and test:fixtures:check both exited0; these establish compilation and fixture-policy checks only. E2E remains UNEXECUTED, and browser timing, real authority/revocation, provider, native/device, release and other design claims are not renewed.","inputs":["docs/design/task-room-agent-requests.md","tests/task-room-reload-recovery.spec.ts"]}
-  ]
-}

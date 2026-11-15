@@ -18,6 +18,12 @@ import type { HomeWorkItem } from '../views/home/home-view-model';
 import { buildOrchestrationItems } from '../views/home/home-view-model';
 import { peerRecordSummary } from './fixtures/peer-delegation-record';
 
+// The app supplies connection authority; these isolated row tests supply the
+// project catalogue used by the scope labels without starting remote reads.
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
+}));
+
 const NOW = Date.parse('2026-07-27T18:00:00Z');
 
 function item(
@@ -448,7 +454,7 @@ describe('ChatDockInboxPanel', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'elsewhere title, elsewhere project',
+        name: 'elsewhere title, elsewhere project, Station: Living Room Mac',
       }),
     );
     await waitFor(() =>

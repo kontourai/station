@@ -207,7 +207,7 @@ be inferred from ordinary execution completion.
 
 A Task is a durable, user-addressable work identity belonging to a Project. It survives restarts and can span execution episodes. Sessions also retain persisted history; their purpose is to record an execution episode rather than own the durable work identity. A Task may correlate an exact Session, or none at all.
 
-**New Task** on a Project, its Tasks layout, or Activity starts a shaping
+**New Task** on a Project, its Tasks layout, or Home starts a shaping
 chat in the normal composer, with a compact, removable **Shaping a Task** chip and the existing Project and Agent choices. Describe a rough idea or a clear one-liner. The
 Agent can ask questions or return a proposal with a title, goal, **Done when**
 checklist and suggested first step. Only **Create Task** on that card accepts
@@ -295,7 +295,10 @@ The built-in Station Agent receives visual replies through its default
 station-control attachment. For an authored Claude/Codex Agent, attach
 station-control and select `html_preview` and `html_render`; ACP must attach the
 whole server without an `available` filter. Preview self-contained HTML, inspect the returned screenshot,
-height and console output, then publish the same HTML. Pages appear at the tool
+height and console output, then publish the same HTML. Reach for `html_preview`
+then `html_render` by default for chart or visual replies; if an Artifact tool
+refuses with an auth-token message, publish the same page with `html_render`
+instead of leaving a local file. Pages appear at the tool
 result and survive reload. Use the host theme CSS variables. App/session access
 and ordinary network loads are blocked. In the published viewer, WebRTC isolation is incomplete: nested
 srcdoc can send ICE UDP, exposing viewer IP or data entered into the page. Do not

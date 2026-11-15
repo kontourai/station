@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import {
   lstat,
   mkdir,
@@ -18,8 +19,10 @@ import {
 } from '../build-github-pages.mjs';
 import {
   marketingHygieneFindings,
+  PUBLIC_PROMISE_SOURCE,
   publicDocsHygieneFindings,
   publicProjectionLinkFindings,
+  publicPromiseFindings,
   runPublicDocsHygiene,
 } from '../public-docs-hygiene.mjs';
 
@@ -225,6 +228,8 @@ describe('public documentation admission', () => {
     const documents = [{ source: 'user/start.md' }];
     const page = (link: string) =>
       new Map([['docs/user/start.md', `# Start\n\nSee [guide](${link}).`]]);
+    // Marketing and promise surfaces come from the checkout.
+    const repo = (file: string) => readFileSync(file, 'utf8');
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const logs = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
@@ -232,7 +237,7 @@ describe('public documentation admission', () => {
       await expect(
         runPublicDocsHygiene({
           documents,
-          read: (file) => broken.get(file) ?? '',
+          read: (file) => broken.get(file) ?? repo(file),
         }),
       ).resolves.toBe(1);
       expect(errors).toHaveBeenCalledWith(
@@ -247,7 +252,7 @@ describe('public documentation admission', () => {
       await expect(
         runPublicDocsHygiene({
           documents,
-          read: (file) => fixed.get(file) ?? '',
+          read: (file) => fixed.get(file) ?? repo(file),
         }),
       ).resolves.toBe(0);
     } finally {
@@ -305,6 +310,100 @@ describe('public documentation admission', () => {
         () => 'Configure a supported Codex engine connection.',
       ),
     ).toEqual([]);
+  });
+});
+
+const PROMISE = 'Ship it. Together.';
+
+function promiseSurfaces(promise = PROMISE) {
+  return new Map([
+    [
+      PUBLIC_PROMISE_SOURCE,
+      `# Differentiators\n\nThe public promise is “${promise.replace(' ', '\n')}”\nMore.`,
+    ],
+    ['README.md', `# Station\n\n**${promise}**\n\nBody.`],
+    [
+      'docs/pages/index.html',
+      [
+        `<title>Station: ${promise}</title>`,
+        `<meta\n  name="description"\n  content="${promise} More."\n/>`,
+        `<meta property="og:title" content="Station: ${promise}" />`,
+        `<meta property="og:description" content="${promise}" />`,
+        `<meta name="twitter:title" content="Station: ${promise}" />`,
+        `<meta name="twitter:description" content="${promise} More." />`,
+        `<h1>\n  ${promise}\n</h1>`,
+      ].join('\n'),
+    ],
+    ['corpus.json', JSON.stringify({ purpose: promise, tagline: promise })],
+  ]);
+}
+
+describe('public promise', () => {
+  it('accepts every surface that repeats the source promise', () => {
+    const files = promiseSurfaces();
+    expect(publicPromiseFindings((file) => files.get(file) ?? '')).toEqual([]);
+  });
+
+  it('names the file and location of each drifted surface', () => {
+    const files = promiseSurfaces();
+    const edit = (file: string, from: string, to: string) =>
+      files.set(file, (files.get(file) ?? '').replace(from, to));
+    edit('README.md', `**${PROMISE}**`, '**Ship it.**');
+    edit(
+      'docs/pages/index.html',
+      `<title>Station: ${PROMISE}`,
+      '<title>Station',
+    );
+    edit(
+      'docs/pages/index.html',
+      `content="${PROMISE} More."`,
+      'content="More."',
+    );
+    edit('docs/pages/index.html', `<h1>\n  ${PROMISE}`, '<h1>Ship it');
+    files.set('corpus.json', JSON.stringify({ purpose: 'Receipts.' }));
+    const source = `(source: ${PUBLIC_PROMISE_SOURCE})`;
+    expect(publicPromiseFindings((file) => files.get(file) ?? '')).toEqual([
+      `README.md public-promise: tagline under the H1 is "**Ship it.**"; expected "**${PROMISE}**" ${source}`,
+      `docs/pages/index.html public-promise: <title> is "Station"; expected "Station: ${PROMISE}" ${source}`,
+      `docs/pages/index.html public-promise: meta description is "More."; expected to start with "${PROMISE}" ${source}`,
+      `docs/pages/index.html public-promise: hero <h1> is "Ship it"; expected "${PROMISE}" ${source}`,
+      `corpus.json public-promise: purpose is "Receipts."; expected "${PROMISE}" ${source}`,
+      `corpus.json public-promise: tagline is missing; expected "${PROMISE}" ${source}`,
+    ]);
+  });
+
+  it('fails closed when the source does not state the promise exactly once', () => {
+    for (const record of [
+      '# Differentiators',
+      `${promiseSurfaces().get(PUBLIC_PROMISE_SOURCE)}\nThe public promise is “Other.”`,
+    ]) {
+      const files = promiseSurfaces();
+      files.set(PUBLIC_PROMISE_SOURCE, record);
+      expect(publicPromiseFindings((file) => files.get(file) ?? '')).toEqual([
+        `${PUBLIC_PROMISE_SOURCE} public-promise: state the promise exactly once as The public promise is “...”`,
+      ]);
+    }
+  });
+
+  it('fails the hygiene gate when one surface drifts', async () => {
+    const files = promiseSurfaces();
+    files.set('README.md', '# Station\n\n**Something else.**');
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await expect(
+        runPublicDocsHygiene({
+          documents: [],
+          read: (file) => files.get(file) ?? '',
+        }),
+      ).resolves.toBe(1);
+      expect(errors).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'README.md public-promise: tagline under the H1',
+        ),
+      );
+    } finally {
+      errors.mockRestore();
+    }
   });
 });
 
