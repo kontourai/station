@@ -135,7 +135,8 @@ serves `docs:truth:gate`, Veritas readiness, `docs:learn:check`, captures and
   base touches needs a new note covering those inputs (one command can write
   that note for every document citing a changed source; see
   [below](#one-note-for-a-widely-cited-input)). Human record edits also
-  need a note. Dependencies at the merge base and in the working tree are both
+  need a note. The version PR's mechanical output is the one exception; see
+  [generated release records](#generated-release-records-and-removed-notes). Dependencies at the merge base and in the working tree are both
   considered, so dropping a citation cannot hide a changed input. A removed
   record whose document remains cannot hide source changes either. Committed
   notes must name a revision inside `merge base..HEAD`; an
@@ -385,5 +386,58 @@ Any existing check claim needs an explicit reviewed reclassification first.
 The review records absence, not release consumption or publication.
 The README, current guides, malformed records and missing behavioral dependencies
 are still errors. Catch-up reporting keeps these lifecycle states separate from
-claims that need source review. New generated owners need their own reviewed
-contract and refusal tests; `kind: generated` alone never exempts a file.
+claims that need source review.
+
+The version PR's own output has a second contract,
+[`release-versioning-review.mjs`](../../scripts/lib/release-versioning-review.mjs),
+which the scoped check and the history replay apply to each change unit (a
+PR's merge base..HEAD, or one landed commit), to committed bytes only. The
+unit must be exactly `changeset version` on its starting tree:
+
+- It deletes exactly the pending notes changesets deletes (every
+  `.changeset/*.md` it reads, except the ones naming a private or ignored
+  package, which stay untouched), adds or edits nothing else under
+  `.changeset/`, and does not edit the contract's owners
+  (`release-versioning-review.mjs`, `scripts/changeset-changelog.mjs`,
+  `.changeset/config.json`). Every note must parse and name only workspace
+  packages. Only the dependency-update rules of
+  `updateInternalDependencies: "patch"` with
+  `onlyUpdatePeerDependentsWhenOutOfRange` and
+  `bumpVersionsWithWorkspaceProtocolOnly` off are reproduced; any other value,
+  pre mode, a non-empty `ignore` list and workspace globs recognise nothing.
+- The expected versions come from changesets' own planner
+  (`@changesets/assemble-release-plan`) fed the starting tree's workspace
+  manifests, config and notes, read from Git.
+- Every package the plan versions must carry its exact planned manifest and
+  changelog output; if any one does not, nothing in the unit is recognised.
+
+Within such a unit, a whole-file `package.json` citation needs no note for a
+planned package's manifest, or the root manifest, when only its `"version"`
+line (old to planned version) and dependency lines of versioned packages
+(same `^`, `~` or exact operator, planned version) change, byte for byte. Any
+other byte, including reformatting, reordered keys or a duplicate key, is
+refused. A `historical` record's own `CHANGELOG.md` needs no note when the
+change adds, above the unchanged older entries, exactly the section the CLI
+writes for that release, rebuilt from the plan and the notes: `## <planned
+version>`, then `### Major`, `Minor` and `Patch Changes` blocks holding each
+planned note naming the package, in the CLI's sorted file order, as
+`- <first 7 characters of the commit that added the note>: <summary>` (no
+prefix when no commit added it; a shallow checkout that cannot resolve the
+commit recognises nothing) with its later lines indented two spaces; and,
+last in the patch block, one `- Updated dependencies [<commit>]` line per note
+of the dependencies the CLI updates, followed by `  - <name>@<planned version>`
+for exactly those dependencies (only the list, its first item unindented, when
+they have no notes). `No changes in this release.` stands alone when none of
+this applies. The only tolerance is trailing whitespace on each line, kept
+while version PRs generated before `scripts/changeset-changelog.mjs` remain
+open. A value citation such as `package.json#/version`
+or a dependency range, an uncommitted edit, and every other document still
+need a note. There is no actor check: a human PR that produces the same
+output is treated the same way. A landed release is recognised in history
+only when its landing commit is exactly that operation on its parent. A
+release that landed after newer notes reached `main`, or that consumed notes
+changesets would have kept (such as notes naming a then-private package), is
+reported as needing review. The contract proves where the changelog text came from, not that the
+notes are accurate or that anything was published.
+New generated owners need their own reviewed contract and refusal tests;
+`kind: generated` alone never exempts a file.
