@@ -16174,6 +16174,141 @@ describe('OrchestrationService', () => {
     }
   }, 60_000);
 
+  // #4992: the read model is listed several times a second while any session
+  // streams, and each list folded every readable thread again. A repeated
+  // list now folds and counts only the threads whose events moved.
+  test('#4992: a repeated listSessionReadModel folds and counts only the threads whose events moved', async () => {
+    const cacheTmp = mkdtempSync(
+      join(tmpdir(), 'orchestration-service-read-model-cache-'),
+    );
+    const cacheEventStore = new EventStore(
+      join(cacheTmp, 'orchestration.sqlite'),
+    );
+    const cacheService = new OrchestrationService({
+      adapterRegistry: createRegistry([new FakeAdapter('claude')]),
+      eventBus: new EventBus(),
+      eventStore: cacheEventStore,
+      adoptionLedger: cacheEventStore.createAdoptionLedger(),
+      flowRunService: new FlowRunService(),
+      listProjects: () => [],
+      agentPolicyService: new AgentPolicyService({
+        env: { ...process.env, SA_HOOK_PROFILE: '', SA_DISABLED_HOOKS: '' },
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      }),
+      workflowSidecarService: new WorkflowSidecarService({
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      }),
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    try {
+      cacheService.initialize();
+      await awaitSessionRecoveryCompleted(cacheService);
+      const threadIds = Array.from(
+        { length: 40 },
+        (_, index) => `read-model-cache-thread-${index}`,
+      );
+      for (const [index, threadId] of threadIds.entries()) {
+        const createdAt = new Date(2026, 0, 1, 0, 0, index).toISOString();
+        cacheEventStore.upsertSession({
+          provider: 'claude',
+          threadId,
+          status: 'ready',
+          createdAt,
+          updatedAt: createdAt,
+        });
+        cacheEventStore.appendEvent({
+          eventId: `${threadId}-started`,
+          provider: 'claude',
+          threadId,
+          createdAt,
+          method: 'session.started',
+          sessionId: threadId,
+          metadata: { agentSlug: 'claude', userId: 'owner-user' },
+        });
+        cacheEventStore.appendEvent({
+          eventId: `${threadId}-turn1-started`,
+          provider: 'claude',
+          threadId,
+          turnId: 'turn-1',
+          createdAt,
+          method: 'turn.started',
+          prompt: `Prompt ${index}`,
+        });
+      }
+
+      // Record the thread ids bound to each fact-join and count statement
+      // the store runs, at the database seam the service cannot bypass.
+      const rawDb = (cacheEventStore as unknown as { db: DatabaseSync }).db;
+      const originalPrepare = rawDb.prepare.bind(rawDb);
+      const factReads: unknown[][] = [];
+      const countReads: unknown[][] = [];
+      rawDb.prepare = ((sql: string) => {
+        const statement = originalPrepare(sql);
+        const shape = sql.replace(/\s+/g, ' ');
+        const sink = shape.includes(
+          'FROM orchestration_session_projection_facts AS fact',
+        )
+          ? factReads
+          : shape.includes(
+                'SELECT thread_id AS threadId, COUNT(*) AS c FROM orchestration_events WHERE thread_id IN',
+              )
+            ? countReads
+            : undefined;
+        if (!sink) return statement;
+        const all = statement.all.bind(statement);
+        statement.all = ((...params: unknown[]) => {
+          sink.push(params);
+          return all(...(params as []));
+        }) as typeof statement.all;
+        return statement;
+      }) as typeof originalPrepare;
+      const authority = personalReadAuthority('owner-user');
+      const eventCountOf = (
+        sessions: Awaited<ReturnType<typeof cacheService.listSessionReadModel>>,
+        threadId: string,
+      ) =>
+        sessions.find((session) => session.threadId === threadId)?.eventCount;
+
+      const first = await cacheService.listSessionReadModel(authority);
+      expect(first).toHaveLength(threadIds.length);
+      expect(factReads).toHaveLength(1);
+      expect([...factReads[0]!].sort()).toEqual([...threadIds].sort());
+      expect(countReads).toHaveLength(1);
+
+      const unchanged = await cacheService.listSessionReadModel(authority);
+      expect(unchanged).toEqual(
+        first.map((session) =>
+          expect.objectContaining({
+            threadId: session.threadId,
+            eventCount: session.eventCount,
+          }),
+        ),
+      );
+      expect(factReads).toHaveLength(1);
+      expect(countReads).toHaveLength(1);
+
+      const moved = threadIds[7]!;
+      cacheEventStore.appendEvent({
+        eventId: `${moved}-turn1-completed`,
+        provider: 'claude',
+        threadId: moved,
+        turnId: 'turn-1',
+        createdAt: new Date(2026, 0, 2).toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as any);
+      const after = await cacheService.listSessionReadModel(authority);
+      expect(factReads.slice(1)).toEqual([[moved]]);
+      expect(countReads.slice(1)).toEqual([[moved]]);
+      expect(eventCountOf(after, moved)).toBe((eventCountOf(first, moved) ?? 0) + 1);
+      expect(eventCountOf(after, threadIds[8]!)).toBe(eventCountOf(first, threadIds[8]!));
+      rawDb.prepare = originalPrepare;
+    } finally {
+      cacheEventStore.close();
+      rmSync(cacheTmp, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   // archive#4466: `listAgentRuns` is `listSessionReadModel`'s copy-pasted
   // sibling — same `.map` over `listSessionProjectionEvents`/
   // `countEventsByThread` per thread, in this same service. Switched to the
