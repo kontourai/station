@@ -2,7 +2,7 @@
   "stationControlToolListJsonBytes": 100098,
   "stationBrowserToolListJsonBytes": 12561,
   "stationKnowledgeToolListJsonBytes": 2035,
-  "stationDocsToolListJsonBytes": 1595,
+  "stationDocsToolListJsonBytes": 1580,
   "stationInstructionsClaudeBytes": 4735,
   "workloadBudgetContextBytes": 486,
   "hostImageInstructionBytes": 226
