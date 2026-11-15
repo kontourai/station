@@ -3,6 +3,7 @@
  */
 
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { FOCUSABLE_SELECTOR } from '../../src-ui/src/utils/focusable';
 import { mockEmptyKnowledgeRegistry } from '../helpers/knowledge-setup';
 import { dismissSetupLauncher } from '../helpers/orchestration';
 import { MIN_TOUCH_TARGET_PX } from '../helpers/touch-target';
@@ -334,20 +335,29 @@ test.describe('Android — Mobile Layout', () => {
 
     // Shift+Tab from Close reaches the drawer's first control, the brand
     // home button. Another must wrap to its last control rather than leave
-    // the drawer, and Tab from there must come back to the first.
+    // the drawer, and Tab from there must come back to the first. The edges
+    // are read from the drawer's own tab stops: with a control added ahead of
+    // the home button, the same key presses would pass without ever reaching
+    // an edge.
+    const atEdge = (edge: 'first' | 'last') =>
+      navigation.evaluate(
+        (element, [selector, which]) => {
+          const stops = Array.from(
+            element.querySelectorAll<HTMLElement>(selector),
+          ).filter((stop) => stop.getClientRects().length > 0);
+          return (
+            document.activeElement ===
+            (which === 'first' ? stops[0] : stops.at(-1))
+          );
+        },
+        [FOCUSABLE_SELECTOR, edge] as const,
+      );
     const firstControl = navigation.locator('.sidebar__home-button');
     await page.keyboard.press('Shift+Tab');
     await expect(firstControl).toBeFocused();
+    expect(await atEdge('first')).toBe(true);
     await page.keyboard.press('Shift+Tab');
-    await expect
-      .poll(() =>
-        navigation.evaluate(
-          (element) =>
-            element.contains(document.activeElement) &&
-            !document.activeElement?.matches('.sidebar__home-button'),
-        ),
-      )
-      .toBe(true);
+    await expect.poll(() => atEdge('last')).toBe(true);
     await page.keyboard.press('Tab');
     await expect(firstControl).toBeFocused();
 
