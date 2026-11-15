@@ -414,8 +414,7 @@
 
 /* An always-on invisible hit area: the drawn control stays 26px while the
  * target is 44px tall on every pointer, with no media query deciding who
- * gets it. It starts at the ROW's top edge (the slot sits `--space-2` below
- * it) and extends downward, so it never reaches into the row above or
+ * gets it. It starts at the row's top edge and extends downward, so it never reaches into the row above or
  * below. Horizontally it reaches only to the midpoint of the gap, so
  * neighbouring targets never overlap. */
 .inbox-row__action::after {

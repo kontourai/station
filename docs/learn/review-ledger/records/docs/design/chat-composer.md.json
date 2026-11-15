@@ -332,7 +332,11 @@
 
     "src-server/services/orchestration/post-tool-inbox.ts",
 
-    "src-server/services/orchestration/attachment-blob-store.ts"
+    "src-server/services/orchestration/attachment-blob-store.ts",
+
+    "src-ui/src/components/chat/IndexedTranscriptTurnRail.tsx",
+
+    "src-ui/src/components/chat/useTranscriptTurnDirectory.ts"
   ],
 
   "checks": [
