@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
-import { realpath, writeFile } from 'node:fs/promises';
+import { readdir, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { execGit } from '../../../utils/git-exec.js';
 import { GitReviewWorkspaceSource } from '../git-review-workspace-source.js';
@@ -13,6 +13,43 @@ import {
 } from '../task-code-review-module.js';
 
 const makeTempDir = trackTempDirs();
+
+const publication = vi.hoisted(() => {
+  let afterReceiptSync: (() => void) | undefined;
+  return {
+    set(callback: (() => void) | undefined) {
+      afterReceiptSync = callback;
+    },
+    take() {
+      const callback = afterReceiptSync;
+      afterReceiptSync = undefined;
+      return callback;
+    },
+  };
+});
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...actual,
+    open: async (...args: Parameters<typeof actual.open>) => {
+      const descriptor = await actual.open(...args);
+      if (
+        typeof args[0] === 'string' &&
+        /\/receipts\/[0-9a-f]{64}\.json\..+\.tmp$/.test(args[0])
+      ) {
+        const sync = descriptor.sync.bind(descriptor);
+        descriptor.sync = async () => {
+          await sync();
+          publication.take()?.();
+        };
+      }
+      return descriptor;
+    },
+  };
+});
+
+afterEach(() => publication.set(undefined));
 
 async function fixture(options: { beforeReceiptCommit?: () => void } = {}) {
   const root = await realpath(makeTempDir('station-task-code-review-'));
@@ -66,10 +103,11 @@ async function fixture(options: { beforeReceiptCommit?: () => void } = {}) {
       this.assertCurrent();
     },
   };
-  const store = new FileReviewReceiptStore(
-    { workspace: () => workspace },
-    { coordinationDirectory: join(root, 'coordination'), ...options },
-  );
+  const resolver = { workspace: () => workspace };
+  const store = new FileReviewReceiptStore(resolver, {
+    coordinationDirectory: join(root, 'coordination'),
+    ...options,
+  });
   const execute = vi.fn(async () => ({
     kind: 'completed' as const,
     workspaceRelease: 'safe' as const,
@@ -108,6 +146,8 @@ async function fixture(options: { beforeReceiptCommit?: () => void } = {}) {
     root,
     git,
     module,
+    reviews,
+    resolver,
     scope,
     store,
     execute,
@@ -123,6 +163,63 @@ async function fixture(options: { beforeReceiptCommit?: () => void } = {}) {
 }
 
 describe('Task code review producer and consumer', () => {
+  it('refuses revocation after temporary receipt sync but before rename', async () => {
+    const f = await fixture();
+    publication.set(f.revoke);
+    await expect(f.module.run(f.scope, f.request)).rejects.toThrow(
+      'Task revoked',
+    );
+    expect(f.execute).toHaveBeenCalledTimes(1);
+    expect(await f.store.list(f.scope.project.slug)).toEqual([]);
+  });
+
+  it('never pairs a Task receipt with a replacement Project admission', async () => {
+    const f = await fixture();
+    const completed = await f.module.run(f.scope, f.request);
+    if (!completed.result) throw new Error('Task reviewer did not complete');
+    const replacement = await realpath(
+      makeTempDir('station-reader-replacement-'),
+    );
+    const other = new FileReviewReceiptStore(
+      { workspace: () => replacement },
+      { coordinationDirectory: join(replacement, 'coordination') },
+    );
+    await other.begin({
+      request: {
+        requestId: f.request.requestId,
+        mode: 'initial',
+        target: {
+          kind: 'git-range',
+          projectSlug: f.scope.project.slug,
+          baseRevision: f.request.baseSha,
+          headRevision: f.request.headSha,
+        },
+        implementerAgentSlug: 'implementer',
+        reviewers: [
+          {
+            reviewerId: 'reviewer',
+            executorAgentSlug: 'reviewer',
+            lens: {
+              id: 'correctness',
+              instructions: 'Review the Project change.',
+            },
+          },
+        ],
+      },
+      startedAt: '2026-11-15T00:00:00Z',
+    });
+    vi.spyOn(f.resolver, 'workspace')
+      .mockReturnValueOnce(f.root)
+      .mockReturnValue(replacement);
+    expect(
+      await f.reviews.read(
+        completed.result.receipt.receiptId,
+        f.scope.project.slug,
+        false,
+      ),
+    ).toBeNull();
+  });
+
   it('does not publish the old Task review into a replacement Project after execution', async () => {
     const f = await fixture();
     const replacement = await realpath(
@@ -139,6 +236,11 @@ describe('Task code review producer and consumer', () => {
     await expect(f.module.run(f.scope, f.request)).rejects.toThrow();
     expect(f.execute).toHaveBeenCalledTimes(1);
     expect(existsSync(join(replacement, '.station'))).toBe(false);
+    expect(
+      (await readdir(join(f.root, 'review-workspaces'))).filter((name) =>
+        name.startsWith('review-'),
+      ),
+    ).toEqual([]);
   });
 
   it('rechecks Task authority at the actual receipt publication seam', async () => {

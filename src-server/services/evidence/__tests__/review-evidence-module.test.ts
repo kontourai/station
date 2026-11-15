@@ -732,7 +732,6 @@ describe('ReviewEvidenceModule', () => {
         references: vi.fn(async () => []),
       },
       submissions: {
-        taskBinding: vi.fn(async () => undefined),
         begin: vi.fn(async () => ({ kind: 'acquired' as const })),
         invoking: vi.fn(async () => {}),
         complete: vi.fn(async () => Promise.reject(new Error('unused'))),
@@ -777,7 +776,6 @@ describe('ReviewEvidenceModule', () => {
         references,
       },
       submissions: {
-        taskBinding: vi.fn(async () => undefined),
         begin: vi.fn(async () => ({ kind: 'acquired' as const })),
         invoking: vi.fn(async () => {}),
         complete: vi.fn(async () => Promise.reject(new Error('unused'))),
@@ -952,7 +950,6 @@ describe('ReviewEvidenceModule', () => {
         references: vi.fn(async () => [reference]),
       },
       submissions: {
-        taskBinding: vi.fn(async () => undefined),
         begin: vi.fn(async () => ({ kind: 'acquired' as const })),
         invoking: vi.fn(async () => {}),
         complete: vi.fn(async () => Promise.reject(new Error('unused'))),

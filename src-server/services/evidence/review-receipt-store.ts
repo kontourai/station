@@ -18,6 +18,7 @@ import {
 import {
   ReviewProjectLockUnavailableError,
   ReviewProjectWorkspaceMissingError,
+  type ReviewReceiptReadOptions,
   type ReviewReceiptReference,
   type ReviewReceiptStore,
   ReviewRequestConflictError,
@@ -127,11 +128,9 @@ export class FileReviewReceiptStore
       async (root) => {
         const directory = await this.#receiptDirectory(root, true);
         const directoryIdentity = await captureRootIdentity(directory);
-        const existing = await this.read(
-          receiptId,
-          input.target.projectSlug,
-          root,
-        );
+        const existing = await this.read(receiptId, input.target.projectSlug, {
+          storageIdentity: root,
+        });
         if (existing) {
           if (canonicalReviewJson(existing) !== canonicalReviewJson(receipt)) {
             throw new Error('Review receipt identity collision.');
@@ -157,6 +156,7 @@ export class FileReviewReceiptStore
           {
             maxBytes: MAX_RECEIPT_BYTES,
             label: 'Review receipt',
+            assertCurrent: guard?.assertCurrent,
             beforeCommit: async () => {
               await this.#beforeReceiptCommit?.();
               await validatePublicationIdentity(root, directoryIdentity);
@@ -180,10 +180,11 @@ export class FileReviewReceiptStore
   async read(
     receiptId: string,
     projectSlug: string,
-    storageIdentity?: RootIdentity,
-  ): Promise<IndependentReviewReceipt | null> {
+    options?: ReviewReceiptReadOptions,
+  ): Promise<IndependentReviewReceipt | null | undefined> {
     if (!RECEIPT_ID.test(receiptId)) return null;
-    const root = storageIdentity ?? (await this.#rootIdentity(projectSlug));
+    const root =
+      options?.storageIdentity ?? (await this.#rootIdentity(projectSlug));
     const directory = await this.#receiptDirectory(root, false);
     const directoryIdentity = await captureRootIdentity(directory).catch(
       (error: NodeJS.ErrnoException) => {
@@ -221,14 +222,39 @@ export class FileReviewReceiptStore
     if (parsed.target.projectSlug !== projectSlug) {
       throw new Error('Review receipt project binding is invalid.');
     }
+    let visible = true;
+    if (options?.includeTaskReviews === false || options?.taskAssociation) {
+      const submission = await this.#readSubmission(
+        parsed.requestId,
+        projectSlug,
+        root,
+      );
+      if (!submission && options.includeTaskReviews === false)
+        throw new Error('Review request association is unavailable.');
+      visible =
+        !submission?.taskBinding ||
+        (options.includeTaskReviews !== false &&
+          (!options.taskAssociation ||
+            canonicalReviewJson(submission.taskBinding) ===
+              canonicalReviewJson(options.taskAssociation.binding ?? null)));
+    }
+    await validateRootIdentity(root);
+    if (directoryIdentity) await validateRootIdentity(directoryIdentity);
+    if (!visible) return undefined;
     return parsed;
   }
 
-  async list(projectSlug: string): Promise<IndependentReviewReceipt[]> {
+  async list(
+    projectSlug: string,
+    includeTaskReviews = true,
+  ): Promise<IndependentReviewReceipt[]> {
     const entries = await this.references(projectSlug);
     const receipts: IndependentReviewReceipt[] = [];
     for (const entry of entries) {
-      const receipt = await this.read(entry.receiptId, projectSlug);
+      const receipt = await this.read(entry.receiptId, projectSlug, {
+        includeTaskReviews,
+      });
+      if (receipt === undefined) continue;
       if (!receipt) {
         throw new Error('Review receipt index references missing evidence.');
       }
@@ -255,7 +281,9 @@ export class FileReviewReceiptStore
         ) {
           const rebuilt: ReviewReceiptReference[] = [];
           for (const receiptId of actualIds) {
-            const receipt = await this.read(receiptId, projectSlug);
+            const receipt = await this.read(receiptId, projectSlug, {
+              storageIdentity: root,
+            });
             if (!receipt) {
               throw new Error(
                 'Review receipt inventory changed during repair.',
@@ -491,29 +519,16 @@ export class FileReviewReceiptStore
     );
   }
 
-  async taskBinding(
-    requestId: string,
-    projectSlug: string,
-  ): Promise<ReviewTaskBinding | null | undefined> {
-    return this.#withProjectLock(
-      projectSlug,
-      async (root) => {
-        const record = await this.#readSubmission(requestId, projectSlug, root);
-        if (!record) return null;
-        return record.taskBinding ? { ...record.taskBinding } : undefined;
-      },
-      { lockTimeoutMs: READ_LOCK_TIMEOUT_MS },
-    );
-  }
-
   async status(
     requestId: string,
     projectSlug: string,
     currentOwnerActive = false,
+    includeTaskReviews = true,
   ): Promise<IndependentReviewRequestStatus | null> {
     return this.#withProjectLock(projectSlug, async (root) => {
       const record = await this.#readSubmission(requestId, projectSlug, root);
       if (!record) return null;
+      if (!includeTaskReviews && record.taskBinding) return null;
       const lostSameOwnerInvocation =
         record.ownerId === this.#ownerId &&
         record.phase === 'invoking' &&
@@ -532,9 +547,9 @@ export class FileReviewReceiptStore
             'The independent review outcome is uncertain and must not be retried automatically.',
         };
         await this.#writeSubmission(reconciled, root);
-        return this.#projectSubmission(reconciled, root);
+        return this.#projectSubmission(reconciled, root, includeTaskReviews);
       }
-      return this.#projectSubmission(record, root);
+      return this.#projectSubmission(record, root, includeTaskReviews);
     });
   }
 
@@ -666,6 +681,7 @@ export class FileReviewReceiptStore
     await publishJsonFileWithOwnedLock(join(directory, INDEX_FILE), sorted, {
       maxBytes: MAX_INDEX_BYTES,
       label: 'Review receipt index',
+      assertCurrent,
       beforeCommit: async () => {
         await validatePublicationIdentity(root, directoryIdentity);
         assertCurrent?.();
@@ -769,6 +785,7 @@ export class FileReviewReceiptStore
     await publishJsonFileWithOwnedLock(path, record, {
       maxBytes: MAX_SUBMISSION_BYTES,
       label: 'Review request state',
+      assertCurrent,
       beforeCommit: async () => {
         await validatePublicationIdentity(root, requestDirectoryIdentity);
         assertCurrent?.();
@@ -808,6 +825,7 @@ export class FileReviewReceiptStore
   async #projectSubmission(
     record: StoredSubmission,
     root: RootIdentity,
+    includeTaskReviews = true,
   ): Promise<IndependentReviewRequestStatus> {
     if (record.state !== 'completed') {
       return {
@@ -827,7 +845,10 @@ export class FileReviewReceiptStore
     if (!record.receiptId || !record.attachment || !record.cleanup) {
       throw new Error('Completed review request state is corrupt.');
     }
-    const receipt = await this.read(record.receiptId, record.projectSlug, root);
+    const receipt = await this.read(record.receiptId, record.projectSlug, {
+      storageIdentity: root,
+      includeTaskReviews,
+    });
     if (!receipt || receipt.requestId !== record.requestId) {
       throw new Error('Completed review request receipt is unavailable.');
     }

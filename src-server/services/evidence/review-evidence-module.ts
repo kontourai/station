@@ -21,10 +21,7 @@ import {
 } from '@kontourai/station-contracts/review-evidence';
 import { mapWithConcurrency } from '../../utils/bounded-async.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
-import {
-  canonicalReviewJson,
-  reviewEvidenceId,
-} from './review-evidence-identity.js';
+import { reviewEvidenceId } from './review-evidence-identity.js';
 
 export interface ReviewTaskBinding {
   projectId: string;
@@ -108,6 +105,12 @@ export interface ReviewWriteGuard {
   assertCurrent?: () => void;
 }
 
+export interface ReviewReceiptReadOptions {
+  storageIdentity?: ReviewStorageIdentity;
+  includeTaskReviews?: boolean;
+  taskAssociation?: { binding?: ReviewTaskBinding };
+}
+
 interface ReviewExecutionContext extends ReviewWriteGuard {
   requestedBy: { actorId: string; displayName?: string };
   userId?: string;
@@ -145,8 +148,12 @@ export interface ReviewReceiptStore {
   read(
     receiptId: string,
     projectSlug: string,
-  ): Promise<IndependentReviewReceipt | null>;
-  list(projectSlug: string): Promise<IndependentReviewReceipt[]>;
+    options?: ReviewReceiptReadOptions,
+  ): Promise<IndependentReviewReceipt | null | undefined>;
+  list(
+    projectSlug: string,
+    includeTaskReviews?: boolean,
+  ): Promise<IndependentReviewReceipt[]>;
   references(projectSlug: string): Promise<ReviewReceiptReference[]>;
 }
 
@@ -191,11 +198,8 @@ export interface ReviewSubmissionStore {
     requestId: string,
     projectSlug: string,
     currentOwnerActive?: boolean,
+    includeTaskReviews?: boolean,
   ): Promise<IndependentReviewRequestStatus | null>;
-  taskBinding(
-    requestId: string,
-    projectSlug: string,
-  ): Promise<ReviewTaskBinding | null | undefined>;
 }
 
 /** Server-only resolver for the `selection: { kind: 'repo-map' }` contract. */
@@ -379,13 +383,8 @@ export class ReviewEvidenceModule {
       requestId,
       projectSlug,
       this.#inflight.has(`${projectSlug}\0${requestId}`),
+      includeTaskReviews,
     );
-    if (
-      status &&
-      !includeTaskReviews &&
-      (await this.#taskBoundRequest(requestId, projectSlug))
-    )
-      return null;
     return status;
   }
 
@@ -397,6 +396,8 @@ export class ReviewEvidenceModule {
     const operationStarted = Date.now();
     let workspace: ReadOnlyReviewWorkspace | undefined;
     let reviewerBoundaryEntered = false;
+    let reviewerSettlementConfirmed = false;
+    let workspaceCloseAttempted = false;
     let retainWorkspace = false;
     let cleanup: IndependentReviewRunResult['cleanup'] = {
       status: 'completed',
@@ -496,6 +497,7 @@ export class ReviewEvidenceModule {
       retainWorkspace = reviewerOutcomes.some(
         (outcome) => outcome.workspaceRelease === 'retain',
       );
+      reviewerSettlementConfirmed = true;
       const executions = reviewerOutcomes.map((outcome) => outcome.record);
       const completedAt = this.#now().toISOString();
       context.assertCurrent?.();
@@ -539,6 +541,7 @@ export class ReviewEvidenceModule {
         };
       } else {
         try {
+          workspaceCloseAttempted = true;
           await workspace.close();
           workspace = undefined;
         } catch (error) {
@@ -560,7 +563,12 @@ export class ReviewEvidenceModule {
       return completed;
     } catch (error) {
       this.#diagnostic('run', error, request);
-      if (workspace && !retainWorkspace && !reviewerBoundaryEntered) {
+      if (
+        workspace &&
+        !retainWorkspace &&
+        !workspaceCloseAttempted &&
+        (!reviewerBoundaryEntered || reviewerSettlementConfirmed)
+      ) {
         try {
           await workspace.close();
         } catch (cleanupError) {
@@ -670,28 +678,18 @@ export class ReviewEvidenceModule {
     projectSlug: string,
     includeTaskReviews = true,
   ): Promise<IndependentReviewReceipt | null> {
-    const receipt = await this.#receipts.read(receiptId, projectSlug);
-    if (
-      receipt &&
-      !includeTaskReviews &&
-      (await this.#taskBoundRequest(receipt.requestId, projectSlug))
-    )
-      return null;
-    return receipt;
+    return (
+      (await this.#receipts.read(receiptId, projectSlug, {
+        includeTaskReviews,
+      })) ?? null
+    );
   }
 
   async list(
     projectSlug: string,
     includeTaskReviews = true,
   ): Promise<IndependentReviewReceipt[]> {
-    const receipts = await this.#receipts.list(projectSlug);
-    if (includeTaskReviews) return receipts;
-    const visible: IndependentReviewReceipt[] = [];
-    for (const receipt of receipts) {
-      if (!(await this.#taskBoundRequest(receipt.requestId, projectSlug)))
-        visible.push(receipt);
-    }
-    return visible;
+    return this.#receipts.list(projectSlug, includeTaskReviews);
   }
 
   /**
@@ -757,18 +755,12 @@ export class ReviewEvidenceModule {
         const receipt = await this.#receipts.read(
           reference.receiptId,
           reference.projectSlug,
+          { includeTaskReviews },
         );
+        if (receipt === undefined) continue;
         if (!receipt) {
           throw new Error('Review receipt index references missing evidence.');
         }
-        if (
-          !includeTaskReviews &&
-          (await this.#taskBoundRequest(
-            receipt.requestId,
-            reference.projectSlug,
-          ))
-        )
-          continue;
         receipts.push(receipt);
       } catch (error) {
         // A workspace that vanishes from the resolver between the reference
@@ -795,16 +787,6 @@ export class ReviewEvidenceModule {
     };
   }
 
-  async #taskBoundRequest(
-    requestId: string,
-    projectSlug: string,
-  ): Promise<boolean> {
-    const binding = await this.#submissions.taskBinding(requestId, projectSlug);
-    if (binding === null)
-      throw new Error('Review request association is unavailable.');
-    return binding !== undefined;
-  }
-
   async #resolvePrincipal(agentSlug: string): Promise<ReviewActorIdentity> {
     const actor = await this.#principals.resolveAgent(agentSlug);
     if (!actor || actor.actorId !== `agent:${agentSlug}`) {
@@ -821,6 +803,10 @@ export class ReviewEvidenceModule {
     const prior = await this.#receipts.read(
       request.delta.priorReceiptId,
       request.target.projectSlug,
+      {
+        includeTaskReviews: context.includeTaskReviews,
+        taskAssociation: { binding: context.taskBinding },
+      },
     );
     if (!prior) throw new Error('prior review receipt was not found');
     if (prior.target.projectSlug !== request.target.projectSlug) {
@@ -864,22 +850,14 @@ export class ReviewEvidenceModule {
     }
     seen.add(receipt.receiptId);
     try {
-      const binding = await this.#submissions.taskBinding(
-        receipt.requestId,
-        projectSlug,
-      );
-      if (
-        (binding === null && context.includeTaskReviews === false) ||
-        (binding &&
-          (context.includeTaskReviews === false ||
-            canonicalReviewJson(binding) !==
-              canonicalReviewJson(context.taskBinding ?? null)))
-      )
-        throw new Error('Task review ancestry is not authorized.');
       if (!receipt.delta) return receipt.findings;
       const parent = await this.#receipts.read(
         receipt.delta.priorReceiptId,
         projectSlug,
+        {
+          includeTaskReviews: context.includeTaskReviews,
+          taskAssociation: { binding: context.taskBinding },
+        },
       );
       if (!parent || parent.target.projectSlug !== projectSlug) {
         throw new Error('delta review receipt ancestry is unavailable');
