@@ -666,7 +666,14 @@ test.describe
             timeout: 30_000,
           });
           if (await limit(client).count()) break;
-          await older.focus();
+          // The list's own scroll loading can take the button away between
+          // that check and this focus (it may have loaded the last page):
+          // look again rather than wait for a button that will not return.
+          const focused = await older
+            .focus({ timeout: 2_000 })
+            .then(() => true)
+            .catch(() => false);
+          if (!focused) continue;
           await client.page.keyboard.press(press % 2 ? 'Space' : 'Enter');
           // The button names itself "Loading earlier messages" while a page
           // is in flight; wait for that to finish.
