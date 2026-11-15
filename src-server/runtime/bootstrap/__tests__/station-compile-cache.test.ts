@@ -229,15 +229,14 @@ describe('a cache root that is not a plain directory in the home', () => {
     const outside = outsideTree(link(home));
     const warn = vi.fn();
     // Over the size bound and with an old directory: both passes would act.
-    await expect(
-      scheduleStationCompileCachePrune(home, {
-        delayMs: 0,
-        now: NOW,
-        maxBytes: 1,
-        warn,
-      }),
-    ).resolves.toBeUndefined();
+    const pruned = await scheduleStationCompileCachePrune(home, {
+      delayMs: 0,
+      now: NOW,
+      maxBytes: 1,
+      warn,
+    });
     untouched(outside);
+    expect(pruned).toBeUndefined();
     // The children are not handed it either, and the refusal is logged once
     // for the home across both uses.
     expect(
