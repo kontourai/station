@@ -1034,10 +1034,11 @@ function createWorkerStorage(
     clearTimeout(idleTimer);
     idleTimer = undefined;
     if (closed || inFlight || !current) return;
+    // request() and close() clear this timer, so it fires only while idle.
     idleTimer = setTimeout(() => {
       idleTimer = undefined;
       const generation = current;
-      if (closed || inFlight || !generation) return;
+      if (!generation) return;
       current = undefined;
       retiring = generation.close().catch(() => undefined);
     }, idleRetireMs);

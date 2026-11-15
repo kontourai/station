@@ -288,10 +288,11 @@ export function createProjectTaskRoomWorkingState(
     clearTimeout(idleTimer);
     idleTimer = undefined;
     if (!worker || closed || terminal || pending.size || watchers.size) return;
+    // acquire() and close() clear this timer, so it fires only while idle.
     idleTimer = setTimeout(() => {
       idleTimer = undefined;
       const idle = worker;
-      if (!idle || closed || terminal || pending.size || watchers.size) return;
+      if (!idle) return;
       // Detached first, so its exit is a retirement rather than a failure.
       worker = undefined;
       const termination = idle.terminate().catch(() => undefined);
