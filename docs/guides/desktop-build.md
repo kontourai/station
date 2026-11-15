@@ -286,11 +286,43 @@ sidecar supervisor checks child exit every two seconds; restart and shutdown
 messages wake it immediately, and startup retains its 150 ms exit check.
 
 The desktop sidecar enables Node 24's compile cache before loading the server,
-under `<STATION_HOME>/cache/node-compile`. Home schema preparation precedes
-that launch. Child-process environments scrub `NODE_COMPILE_CACHE`, including
-terminal PTYs and engine children, so user Node programs do not write into this
-server cache. The server does not enable a cache after loading its bundle:
-that is too late to cache compilation of the entry point. Node's
+under `<STATION_HOME>/cache/node-compile`. `station start` (and
+`station service run` through it) sets the same home directory for the process
+it spawns: the supervisor, every core generation it forks and its PTY workload
+host, or a direct server. A `--watch` start sets none. Home schema
+preparation precedes both launches, since Node creates the directory before
+the server's home check. The server does not enable a cache after loading its
+bundle: that is too late to cache compilation of the entry point.
+
+[`station-compile-cache.ts`](../../src-server/runtime/bootstrap/station-compile-cache.ts)
+owns the rest. The server, the PTY workload host and the built-in MCP
+children remove `NODE_COMPILE_CACHE` from their own environment at startup;
+the supervisor keeps it only to pass to the core generations it forks.
+Child-process environments still scrub it, so user and third-party Node
+programs, terminal PTYs and engine children never write into this cache. The server remembers the directory Node is actually
+using and hands it only to the built-in `station-control` and
+`station-knowledge` bundles, through the same exact-binary check that gates
+their API credential. That covers the pooled MCP children and the copies an
+engine starts from its MCP configuration. Those children write their cache
+once after startup, because an engine may end them with a signal, after which
+Node writes nothing. `station-docs`, worker threads and the occasional helper
+children receive no cache: the docs server's delivered definition carries no
+environment by design, and the rest were not measured as worth it.
+
+Node never prunes the cache. One minute after boot, the server removes another
+Node version's subdirectory once nothing has written to it for 30 days, then
+removes the whole cache if it is still over 256 MiB. It does this only when
+the cache is the home's own `cache/node-compile`, never a directory an operator
+pointed `NODE_COMPILE_CACHE` at. A warm cache makes startup faster and uses
+less memory. A cold one, the first start of a build or Node version in a home,
+costs some memory: Node keeps each new entry in memory until the process exits.
+A `--temp-home` start is always cold for its server.
+
+No pre-generated cache ships with the desktop build. Node keys the cache
+directory by Node version, architecture, V8 flags and the user id, and each
+entry by the bundle's absolute path, so a cache generated on the build machine
+misses for other users. Its portable mode removes only the path dependency.
+The gain would be limited to the first start after each update. Node's
 `NODE_DISABLE_COMPILE_CACHE=1` opt-out remains supported; cache failure must
 not prevent startup.
 
