@@ -794,8 +794,12 @@ export class OpenCodeNativeSession {
     }
     if (steer.withdrawn) {
       // Withdrawn while in flight: the item it made must not wait for the
-      // next execution.
+      // next execution. This steer takes it back itself, so it leaves the
+      // set first: a stop's sweep, resuming once the prompt has landed,
+      // would otherwise take it back a second time.
+      this.steers.delete(inboxId);
       await this.deleteInboxItem(inboxId);
+      steer.reject(new ProviderTurnEndedError());
     } else if (turn.settled) {
       // The execution ended while the prompt was in flight.
       void this.withdrawSteer(inboxId);

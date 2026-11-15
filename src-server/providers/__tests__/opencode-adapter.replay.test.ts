@@ -1941,13 +1941,20 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
   test('a steer still in flight when the session stops is withdrawn once its prompt lands', async () => {
     const steerId = 'msg_1d71b024d001crEY1solwrshJq';
     let released = false;
+    let releasedAt = 0;
     const h = await setup({
       scenario: 'steer',
       omit: withdrawnSteer,
-      holdUntil: (request) =>
-        JSON.stringify(request.body ?? null).includes('STEER-delivered')
-          ? () => released
-          : undefined,
+      holdUntil: (request) => {
+        if (JSON.stringify(request.body ?? null).includes('STEER-delivered'))
+          return () => released;
+        // The stop's interrupt answers only after the steer's prompt has
+        // landed, so the stop's own sweep runs once the steer is no longer
+        // in flight: it must not take the item back a second time.
+        if (request.method === 'POST' && request.path.endsWith('/interrupt'))
+          return () => released && Date.now() - releasedAt > 150;
+        return undefined;
+      },
     });
     await h.start();
     const { turnId } = await h.turn('DO_BASH steer');
@@ -1956,9 +1963,15 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     await h.waitFor(
       () => h.replay.made('POST', '/api/session/:id/prompt').length === 2,
     );
+    // Refused as soon as its own withdrawal is done, which can be before
+    // the stop returns.
+    const refused = expect(steer).rejects.toBeInstanceOf(
+      ProviderTurnEndedError,
+    );
+    releasedAt = Date.now();
     released = true;
     await h.adapter.stopSession('thread-1');
-    await expect(steer).rejects.toBeInstanceOf(ProviderTurnEndedError);
+    await refused;
     await h.waitFor(
       () => h.replay.made('DELETE', '/api/session/:id/inbox/:id').length > 0,
     );
