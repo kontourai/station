@@ -480,6 +480,10 @@ work is running, the user chooses between waiting for it and stopping it.
   with binary framing. Engine JSON-RPC lines and terminal bytes pass through
   as bytes, never re-encoded.
 - **Journaling:** a ring buffer plus appends. Nothing rewrites a whole file.
+- **Core memory:** each core generation is forked with the supervisor's own
+  Node flags dropped and `--max-semi-space-size=16` added. That flag bounds a young
+  generation V8 would otherwise size from host memory and keep at rest
+  ([measurement](../reference/station-weight.md#server-memory-at-rest)).
 - **Budget:** the added hop must stay under 1 ms at p99 on a local machine,
   measured before and after the engine phase. If it does not, the transport is
   fixed before engines move.

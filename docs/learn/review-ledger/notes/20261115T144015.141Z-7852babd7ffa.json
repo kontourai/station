@@ -1,0 +1,7 @@
+{
+  "revision": "ceb8ff3ead53de03e4b73515c3e52ee6ad6a635c",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Merge of main: kept main's new rewind-in-place paragraph and this branch's Finish setup / Open setup wording, which matches FirstRunHomeChapter's card label.","inputs":["docs/user/getting-started.md","packages/cli/src/commands/lifecycle-doctor.ts","src-ui/src/__tests__/child-transcript-navigation.test.tsx","src-ui/src/components/chat-dock/ChildChatNavigation.tsx","src-ui/src/components/chat-dock/ChildChatNavigationContext.ts","src-ui/src/components/chat-dock/__tests__/useChatDockOverlays.child-intents.test.tsx","src-ui/src/components/chat-dock/useInboxPanelController.ts","src-ui/src/components/chat/composer-mentions.ts","src-ui/src/components/conversation/ConversationReader.tsx","src-ui/src/components/conversation/SessionReaderBinding.tsx","src-ui/src/components/home/HomeActionSection.tsx","src-ui/src/views/ProjectPage.tsx","src-ui/src/views/home/HomeSurface.tsx","src-ui/src/views/home/home-view-model.ts","src-ui/src/views/home/useHomeViewModel.ts","src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx"]}
+  ]
+}

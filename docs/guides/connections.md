@@ -83,7 +83,7 @@ that server's authentication requirements; some permit anonymous access or
 host-managed credentials. Blank fields alone do not establish readiness. A
 refused check retains its reason so you can correct the settings and retry.
 
-**Test Connection** first requests the model catalog. If no usable catalog is
+**Test connection** first requests the model catalog. If no usable catalog is
 available, it can send one minimal chat request using the connection's default
 model; that request may be billable. A successful catalog check alone does not
 prove chat, tool calling, images, or other model features. See the
@@ -162,11 +162,13 @@ provider's dated breakdown and active/group/model/surface annotations.
 Unavailable fields remain **Not reported**. An unavailable quota percentage does
 not discard readable account/credit details.
 
-**Data captured** shows the reading's source, credential storage kind, storage policy, unmapped non-null
-field paths and deliberate exclusions. Only field names leave the server for
-unmapped values. This bounded shape audit excludes null/empty fields, value
-validation, credential stores and other endpoints; “none in this response” does
-not establish complete provider coverage. The full quota response remains a live projection. **Allowance history** retains
+**Data captured** lists the reading's source, **Stored in** (secure store or
+credential file), **History**, **Fields Station didn't recognize**,
+**Excluded fields** and **Complete** (No when the response was too large to
+check). Only field names leave the server for unrecognized values, and the panel
+ends with “Values and credentials are never shown.” This bounded check excludes
+null/empty fields, value validation, credential stores and other endpoints;
+**None** does not establish complete provider coverage. The full quota response remains a live projection. **Allowance history** retains
 only window labels, percentages, durations, reset times and observation timestamps.
 It saves a 30-day window of the latest observation per UTC hour, at most 720 observations
 and 32 windows per observation, under this Station's `analytics/engine-allowance/`.
@@ -320,8 +322,8 @@ Project access administration still requires Project IAM. See the
 
 Choose **Manage Stations**, then **Connect a Station**; a phone with no saved
 Station also offers **Enter Station address** on its welcome screen, beside
-**Enter a pairing code**, with **Find nearby Stations** under **More connection
-options**. Enter its address, a pairing code,
+**Enter a pairing code**, with **Find nearby Stations** and **Manage Stations**
+under **More ways to connect**. Enter its address, a pairing code,
 or scan a QR code. Return in the address field continues. Without a controlling
 Station there is no peer option to weigh, so the destination goes straight to
 its one Device request instead of a second **Request selected access** step.
@@ -405,12 +407,18 @@ uses the name the chip shows. Holding the phone's chip shows the full name
 without switching or opening the chooser. On a phone the chooser offers
 **Connect another device** where a computer offers **Pair phone**.
 
-Opening the chooser checks whether each other Station answers its public
-handshake, from this device, without credentials. Each row reads **Checking…**
-until its answer arrives, then **Online** or **Unreachable**, with why and
-when: "no answer in time" or "nothing answered", "checked just now", and when
-this device last connected to it. Answering proves only that the address
-responds, not that this device still has access. Stations reached through a
+Opening the chooser checks each other Station's public handshake, from this
+device, without credentials, and checks again every 15 seconds while it stays
+open. Each row reads **Checking…** until its answer arrives, then **Online**
+only when a Station handshake answered; **Recovering** when the Station's own
+proxy answered that its server is down or restarting; **Not confirmed** when
+something answered but not as a Station this page can read (its address does
+not admit this app, or something else answers there); or **Unreachable**. Each
+says why and when: "no answer in time" or "nothing answered", "checked just
+now", and when this device last connected to it. **Recovering** and
+**Unreachable** rows are greyed out and cannot be chosen until a later check
+finds them answering; they can still be forgotten. **Online** proves only that
+the server is serving, not that this device still has access. Stations reached through a
 broker route are not checked, nor, from an HTTPS page, a plain-HTTP address
 other than loopback, which the browser would block; those rows show the last
 failure this device saved and how old it is, or **Not checked**. A Station that
@@ -424,8 +432,11 @@ manual retry, a credential change or the network returning. It also checks
 whenever the app returns to the foreground. The app's own supervised local
 Station is not probed, so its row has no check time.
 
-After you choose a Station, the app names it, its address and the step it is
-on while it verifies access. If that takes longer than six seconds, it says it
+After you choose a Station, the app shows the launch screen's mark and
+animation with "Connecting to" the Station's name, its address, and the step it
+is on: checking access, then (in the desktop and phone apps) loading its data,
+then any later preparation such as loading your preferences, each named as it
+starts. If checking access takes longer than six seconds, it says it
 has had no answer and offers **Try again**, **Back to** the Station most
 recently used before it, and **Manage Stations**, instead of waiting out the
 request deadline. In the desktop and phone apps, a Station that answered but is
@@ -498,7 +509,7 @@ and is not yet verified; inspect it under **Connection details**. Saving does
 not connect, sign in, approve a Device, or grant Project access.
 
 Choose **Share device details**, then **Copy device details**, and send them to
-the Station owner for approval. These are public installation details, not a
+the Station operator for approval. These are public installation details, not a
 password or private key. This action is available even when the Station is
 already confirmed. It does not rotate trust or issue an invitation.
 
@@ -667,7 +678,7 @@ For a native signing-key approval, select the saved broker route and choose
 **Share device details**. Station creates or reopens this install's
 proof key in the OS keyring and shows only its public key, thumbprint, client
 instance, app/channel, and selected route. Choose **Copy device details** and
-send this public installation proof to the Station owner. On the owner's machine, with the self-hosted connector
+send this public installation proof to the Station operator. On the operator's machine, with the self-hosted connector
 configured and online, save that JSON to a private file and run:
 
 ```sh
@@ -861,6 +872,7 @@ on this computer's `PATH`; detection does not mean it is signed in or ready.
 | Grok Build | `grok agent stdio` | Agent Client Protocol |
 | Mistral Vibe | `vibe-acp` | Agent Client Protocol |
 | Google Antigravity | `agy acp --process-per-session` | Agent Client Protocol; needs Antigravity CLI 1.5.0 or later, and Station names an older install and says to run `agy update` |
+| Gemini CLI | `gemini --acp` | Agent Client Protocol. Since June 18, 2026 Google serves Gemini CLI only to paid Gemini API keys and Gemini Code Assist Standard or Enterprise. Sign in with Google (Station shows Gemini CLI's terms beside it) or save a `GEMINI_API_KEY`. Gemini CLI uses its saved sign-in first and the key only when none is saved |
 | Factory Droid | `droid exec --output-format acp-daemon` | Agent Client Protocol |
 | Hermes Agent | `hermes acp` | Agent Client Protocol |
 | pi | `pi-acp` | Agent Client Protocol through the community `pi-acp` bridge, which does not pass Station tool servers and has no model switching |
@@ -2509,7 +2521,11 @@ corrects two source-confirmed lifecycle errors in that exact upstream release:
 rejected goodbye could skip socket shutdown. The patch propagates probe and
 announcement failure (including empty or partially failed send sets) to the caller,
 closes sockets in shutdown's `finally`, and prevents pending binds from escaping
-shutdown. An owner withdraws its own service before releasing a shared responder.
+shutdown. It also removes the package's import-time `source-map-support/register`,
+which replaced the server's stack-trace formatter: the first stack read then
+parsed and cached the whole server bundle's source map, about 690 MB of heap
+held for the life of the process
+([test](../../src-server/services/connections/__tests__/ciao-stack-trace.test.ts)). An owner withdraws its own service before releasing a shared responder.
 The [installed-package UDP tests](../../src-server/services/connections/__tests__/ciao-lifecycle.test.ts)
 exercise those contracts through the real dependency. No runtime private fields
 or DNS record overrides are used. Interface changes are checked every five

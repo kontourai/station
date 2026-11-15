@@ -143,9 +143,9 @@ describe('agents view helpers', () => {
     );
 
     expect(onboarding).toContain('No agents of your own yet');
-    // renderToStaticMarkup escapes the apostrophe in "you've", so match the
+    // renderToStaticMarkup escapes the apostrophe in "Station's", so match the
     // distinctive prefix rather than the full sentence.
-    expect(onboarding).toContain('Pick the engine that runs it');
+    expect(onboarding).toContain('Create one to run on Station');
 
     const emptyState = renderToStaticMarkup(
       buildAgentsViewEmptyContent({

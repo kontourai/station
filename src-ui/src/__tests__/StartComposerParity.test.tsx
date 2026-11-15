@@ -2418,3 +2418,38 @@ test('start setup exposes an execution override independently of approval state'
     'changed for this conversation',
   );
 });
+
+test('start setup names the requested effort on the trigger and the Model row', () => {
+  render(
+    <StartComposer
+      prompt=""
+      onPromptChange={vi.fn()}
+      agent={{
+        status: 'ready',
+        needsSetup: false,
+        agent: {
+          slug: 'claude-code',
+          name: 'Claude Code',
+          engineId: 'claude',
+        } as AgentData,
+        modelLabel: 'Opus',
+        effortLabel: 'High',
+      }}
+      onOpenAgents={vi.fn()}
+      onOpenModel={vi.fn()}
+      project={{ status: 'ready', label: 'No project', isGlobal: true }}
+      onOpenProject={vi.fn()}
+      canStart={false}
+      pending={false}
+      onStart={vi.fn()}
+    />,
+  );
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(
+    trigger.querySelector('.composer-run-control__label')?.textContent,
+  ).toBe('Opus · High');
+  fireEvent.click(trigger);
+  expect(
+    screen.getByRole('button', { name: /^Model: Opus · High/ }),
+  ).toBeTruthy();
+});

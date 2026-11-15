@@ -78,7 +78,7 @@ only when this Station's build can run it; if none is, the section says
 | `task-tracker-follow-ups` | Task tracker follow-ups | Every five minutes, reads new comments, reviews and check results on the GitHub items of tracker-backed Tasks (the issue and pull requests a person kept on the Task) and shows them in the Task brief, labeled member, bot, other or CI. A member's comment or review, or a failing check, sends the Task's lead agent one message. | Uses the host's `gh` login and GitHub API requests. Off by default, personal Stations only. The message waits for the lead's running turn, or starts a turn when it is idle; bots and other authors never send one. Comments made with the same GitHub account Station's `gh` uses never send one either, because agents post with it: on a single-user Station your own GitHub comments are recorded but do not wake the lead, so steer it in Station instead. If that account cannot be determined, only failing checks send one. Turning it off stops polling and waking; recorded follow-ups stay in the brief. |
 | `github-automation-observations` | GitHub automation observations | Observes configured GitHub workflow runs without starting agents. | Uses GitHub API requests and bounded private delivery storage. Off by default; management configuration is separate. Turning it off stops new observation effects and discards in-flight results; existing history remains. |
 | `task-capabilities` | Task capabilities | Adds a capability and evidence path to Task Overview, with searchable Project tool setup. | Opening tool inspection reads configured catalogs and may contact their providers. It starts no Agent and changes no tools or permissions. |
-| `task-review` | Task review | Adds a Review tab and Overview Timeline to Tasks for Screens and anchored comments that can be sent to the lead agent. | Sending starts or queues a lead-agent turn; Screen capture needs a committed workspace. |
+| `task-review` | Task review | Adds Review, Timeline and committed-code review to eligible Tasks. | Sending comments starts or queues a lead-agent turn; code review may incur provider charges. Screen capture needs a committed workspace. |
 | `member-passkeys` | Member passkeys | Lets invited people with Station accounts create an account, sign in and recover with a passkey (see [member passkeys](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md#member-passkeys-feature-preview)). | Passkeys work only at the configured sign-in address, selected in Settings or supplied by `STATION_AUTHENTICATION_ORIGIN`; changing its hostname orphans them. Turning it off keeps stored passkeys, but they cannot sign in. |
 | `apps-library` | Apps library | Adds a searchable launcher for your personal Boards and plugin layouts, with name, icon and description editing. | Uses existing personal-layout permissions; does not install plugins or grant access. |
 | `task-collaboration` | Task collaboration | Shows member names and presence in shared Task rooms. | Project membership and an explicit Task share are still required. |
@@ -111,6 +111,21 @@ after the latest 12. A bound agent can also capture an
 authorized device Screen; see [device capture](https://github.com/kontourai/station/blob/main/docs/guides/mobile-device-workspace.md#capture-a-device-screen-to-a-task).
 Turning the preview off hides Review and Timeline; a
 `taskView=review` link then opens Overview.
+
+Overview also offers **Code review** on personal hosts. Its checkout label,
+branch and commit describe the Task's recorded working directory; they do not
+establish where every linked conversation runs or whether dependencies are
+prepared. Expand **Checkout and comparison** to inspect the path and base
+commit. Assign a lead Agent and configure a different Codex Agent in the Project
+to request a read-only review. Requesting review can spend provider credits.
+When no reviewer is available, **Open Agents** leads to the existing Agent setup.
+
+Reviews cover committed changes only. Reviewer failures and the comparison with
+the current checkout are separate observations. A recorded review is neither
+approval nor a passed gate. Refresh after changes to inspect freshness. If a
+reply is lost, **Retry request** uses the original Project, request and commit
+pair, including after reloading the same browser tab. Unavailable history is
+shown explicitly instead of an empty review list.
 
 With **Walkthroughs** also enabled, Browser clips made by the Task's bound
 agent appear under **Screens** with their commit and duration. With **Device
@@ -250,7 +265,7 @@ Browser's **⋯ › Browser settings…** opens it on that Browser's Project.
   Project's admins can open in the Browser. **Find local servers** suggests
   some, and nothing is shared until you choose it. Shared servers appear as
   buttons on an empty Browser.
-- **Open device setup** opens the device setup wizard: the device hub,
+- **Open device setup** opens the device setup wizard: the device helper,
   sharing devices with Projects, and agent device access.
 
 ## Device hosts

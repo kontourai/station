@@ -22,9 +22,12 @@ Start on the right. The reply's next-turn destination notice and conversation
 status/resync action stay above the box when present.
 
 Run setup is a quiet ghost pill with overlapping Agent and engine marks, a
-secondary-weight Agent · model label, and the shared caret. Safety warnings stay
-on the marks. The Agent name truncates first; in narrow composers the label
-hides, keeping marks and caret. On phones, More draft options groups Saved drafts
+secondary-weight model label, and the shared caret. The Agent mark names the
+Agent, so the label spends its text on the model; without an Agent mark it reads
+Agent · model and the Agent name truncates first. A requested reasoning effort
+follows the model ("Opus · High") and truncates before it; with no effort
+requested the engine default applies and no level is named. Safety warnings stay
+on the marks, and the open panel repeats the mark on the choice that raised it. In narrow composers the label hides, keeping marks and caret. On phones, More draft options groups Saved drafts
 and Clear message to preserve the toolbar targets. The full summary remains in the accessible name
 and hover title, and the touch target stays at least 44px. The existing setup
 owner opens above the toolbar on desktop and as a bottom sheet on phones.
@@ -857,19 +860,22 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 ### 3.1 Provider and model picker
 
 - Chat replies, Home and dock starts share one **Run setup** button, with the
-  Agent and engine marks and a compact Agent/model label. Identical marks appear
+  Agent and engine marks and a compact model label (Agent · model when no
+  Agent mark is shown). Identical marks appear
   once; different marks overlap with the smaller engine mark underneath. A missing
-  Agent mark uses the generic Agent glyph. Its accessible name starts with the visible Agent/model label and adds only
+  Agent mark uses the generic Agent glyph. Its accessible name starts with the full Agent · model label and adds only
   available approval and mode values. The trigger has no setup caption. Full access,
   pending or refused approval changes add a corner warning badge with matching
-  accessible text. Conversation overrides use a neutral dot, announced as
+  accessible text; inside the open panel the same mark follows that choice's
+  value, outside its visible label so Label in Name still holds. The trigger and Model row name a requested reasoning effort after the
+  model only when the model reports that level. Conversation overrides use a neutral dot, announced as
   "changed for this conversation". ACP uses the connection engine mark when its
   command resolves a known engine; unknown engines omit the engine mark. It opens a sheet on phones
   and a popover on desktop containing the existing Agent, Model, Approval and
   advertised Mode controls. Picker ownership, unavailable reasons, pending
   approval states and engine-owned approval disclosures are preserved.
-  The Agent name truncates first to keep the model visible inside the button;
-  the full values remain accessible.
+  When the Agent name is visible it truncates first to keep the model visible
+  inside the button; the full values remain accessible.
   Once a chat has a Session, the Engine & model
   caption names the engine that Session runs on (its own connection for a generic ACP
   engine), not the Agent's current connection: repointing an Agent does not move an
@@ -983,11 +989,12 @@ During a turn the mode picker is the trailing segment of Send, one split
 control that takes Send's accent while Send is ready. With no turn, Send alone
 sits at the row's trailing edge. On mobile, Send is an arrow and its mode
 picker a chevron. They appear once the
-composer holds text, an attachment or quoted context; their geometry stays
-reserved while hidden, so editing does not move Stop or the other toolbar
-controls. On mobile, Stop therefore follows them, at the row's trailing edge;
-before them it sat beside an empty reserved gap. At 390px a running turn's full
-row (Clear, Send, mode picker and Stop) still wraps to a second line. Names and the selected mode remain accessible, and the opened picker
+composer holds text, an attachment or quoted context. Until then they take no
+room, so Run setup keeps the width an empty draft has no use for. On mobile,
+Stop follows them at the row's trailing edge, so it does not move when they
+appear; Run setup narrows instead. At 390px a running turn's full row (Clear,
+Send, mode picker and Stop) still wraps to a second line once the draft holds
+text. Names and the selected mode remain accessible, and the opened picker
 uses explicit Queue and Steer labels. Stop stays visible throughout the turn. Its mode
 picker defaults to **Steer** where the selected engine can prove native mid-turn
 input, and to **Queue** (a new turn after the entire current turn finishes)

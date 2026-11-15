@@ -8,6 +8,7 @@ import {
   subscribeOfflineReading,
 } from '../lib/offlineReading';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
+import { ActionRow } from './ActionRow';
 import { Button } from './Button';
 import './OfflineReadingBoundary.css';
 
@@ -17,9 +18,12 @@ export function OfflineReadingBoundary({ children }: { children: ReactNode }) {
   const evidence = captureCredentialEvidence();
   const binding = offlineReadingBinding(evidence);
   const profile = usePlatformProfile();
-  const initiallyOffline = () =>
-    navigator.onLine === false ||
+  const isReloadShell = () =>
     document.querySelector('meta[name="station-offline-shell"]') !== null;
+  const initiallyOffline = () => navigator.onLine === false || isReloadShell();
+  // In the reload-time shell there is no live workspace behind the reader, so
+  // reloading is the way back; in an open workspace, returning to it is.
+  const [reloadShell] = useState(isReloadShell);
   const [offline, setOffline] = useState(initiallyOffline);
   const [readerOpen, setReaderOpen] = useState(initiallyOffline);
   const [copies, setCopies] = useState<{
@@ -86,6 +90,22 @@ export function OfflineReadingBoundary({ children }: { children: ReactNode }) {
   }, [offline, binding]);
   const values = copies?.binding === binding ? copies.values : [];
   const showReader = offline && readerOpen && !profile.isTauri;
+  const reconnectAction = (
+    <Button
+      variant={reloadShell ? 'primary' : 'secondary'}
+      onClick={() => window.location.reload()}
+    >
+      Reconnect
+    </Button>
+  );
+  const backAction = (
+    <Button
+      variant={reloadShell ? 'secondary' : 'primary'}
+      onClick={() => setReaderOpen(false)}
+    >
+      Back to workspace
+    </Button>
+  );
   return (
     <>
       <div
@@ -96,30 +116,46 @@ export function OfflineReadingBoundary({ children }: { children: ReactNode }) {
       </div>
       {offline && !readerOpen && !profile.isTauri && (
         <aside className="offline-reading-launcher">
-          <Button onClick={() => setReaderOpen(true)}>
-            Read offline copies
-          </Button>
+          <Button onClick={() => setReaderOpen(true)}>Read saved copies</Button>
         </aside>
       )}
       {showReader && (
         <main className="offline-reading">
           <h1>Station is offline</h1>
-          <Button onClick={() => setReaderOpen(false)}>
-            Back to workspace
-          </Button>
-          <p>
-            Saved reading copies from this device. These are not live
-            conversations. Reconnect to verify access and load current data.
-          </p>
+          <p>Saved copies from this device. Reconnect for live chats.</p>
+          <ActionRow
+            label="Offline reading actions"
+            overflowLabel="More offline reading actions"
+            primary={reloadShell ? reconnectAction : backAction}
+            secondary={reloadShell ? backAction : reconnectAction}
+          />
           {error && <p role="alert">{error}</p>}
           {!values.length && (
             <p>
-              No offline copies available. Enable offline reading in Settings →
-              Privacy & sharing while connected, then open conversations to save
-              their recent text.
+              No saved copies. Turn on offline reading in Settings › Privacy &
+              sharing while connected.
             </p>
           )}
+          {values.map((copy) => (
+            <details key={copy.conversationId}>
+              <summary>Chat {copy.conversationId}</summary>
+              <p role="status">
+                Read-only copy saved {new Date(copy.savedAt).toLocaleString()}.
+                Recent text only, without tools or attachments.
+                {copy.truncated
+                  ? ' Earlier text was left out to save space.'
+                  : ''}
+              </p>
+              {copy.turns.map((turn, index) => (
+                <div key={`${index}-${turn.role}`}>
+                  <strong>{turn.role === 'user' ? 'You' : 'Agent'}</strong>
+                  <p className="offline-reading__text">{turn.text}</p>
+                </div>
+              ))}
+            </details>
+          ))}
           <Button
+            variant="secondary"
             disabled={clearing}
             onClick={async () => {
               setClearing(true);
@@ -129,37 +165,15 @@ export function OfflineReadingBoundary({ children }: { children: ReactNode }) {
                 setCopies(undefined);
                 setCleared(true);
               } catch {
-                setError('Could not clear offline copies.');
+                setError('Couldn’t clear saved copies.');
               } finally {
                 setClearing(false);
               }
             }}
           >
-            Clear offline copies
+            Clear saved copies
           </Button>
-          {cleared && <p role="status">Offline copies cleared.</p>}
-          <Button onClick={() => window.location.reload()}>
-            Retry connection
-          </Button>
-          {values.map((copy) => (
-            <details key={copy.conversationId}>
-              <summary>Conversation {copy.conversationId}</summary>
-              <p role="status">
-                Read-only offline copy from{' '}
-                {new Date(copy.savedAt).toLocaleString()}. Recent text only;
-                tools, attachments and live actions are unavailable.
-                {copy.truncated
-                  ? ' Earlier text was omitted to fit the storage limit.'
-                  : ''}
-              </p>
-              {copy.turns.map((turn, index) => (
-                <div key={`${index}-${turn.role}`}>
-                  <strong>{turn.role === 'user' ? 'You' : 'Assistant'}</strong>
-                  <p className="offline-reading__text">{turn.text}</p>
-                </div>
-              ))}
-            </details>
-          ))}
+          {cleared && <p role="status">Saved copies cleared.</p>}
         </main>
       )}
     </>

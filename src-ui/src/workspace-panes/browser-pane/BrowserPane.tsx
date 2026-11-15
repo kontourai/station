@@ -1933,7 +1933,6 @@ function BrowserSessionPane({
           <IconButton
             className="browser-pane__omni-reveal browser-pane__nav-action"
             aria-label="Back"
-            title="Back"
             disabled={
               !canDriveLive ||
               busy ||
@@ -1947,7 +1946,6 @@ function BrowserSessionPane({
           <IconButton
             className="browser-pane__omni-reveal browser-pane__nav-action"
             aria-label="Forward"
-            title="Forward"
             disabled={
               !canDriveLive ||
               busy ||
@@ -1961,7 +1959,6 @@ function BrowserSessionPane({
           <IconButton
             className="browser-pane__nav-action"
             aria-label="Reload"
-            title="Reload"
             disabled={!canDriveLive || busy}
             onClick={() => history.mutate('reload')}
           >

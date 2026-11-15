@@ -1,6 +1,6 @@
 import { describeStationFailure } from '../../utils/stationFailure';
 /**
- * first-run-engines — every decision the "Which agents do you use?" chapter
+ * first-run-engines — every decision the "Which engines do you use?" chapter
  * makes, as pure functions (archive#3027).
  *
  * WHAT THE LISTING IS DERIVED FROM. `GET /api/system/status`'s
@@ -472,7 +472,7 @@ export function firstRunEnableOutcomeMessage(
     case 'warned':
       return `${outcome.name}: ${outcome.warnings.join(' ')}`;
     case 'starting':
-      return `${outcome.name}: still starting for the first time. If it connects while Station is running, its Agent is added then; otherwise set it up again later.`;
+      return `${outcome.name}: still starting for the first time. Its agent appears if it connects while Station is running; otherwise set it up again later.`;
     default:
       return `${outcome.name}: could not be set up. ${outcome.message}`;
   }

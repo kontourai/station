@@ -2396,7 +2396,8 @@ test.each([undefined, 'claude'])(
       ),
     );
     expect(trigger.textContent).not.toContain('EN');
-    expect(trigger.textContent).toContain('Writer');
+    // The Agent mark names the Agent; the visible text is the Model's.
+    expect(trigger.textContent).not.toContain('Writer');
     expect(trigger.getAttribute('aria-label')).toMatch(/^Writer ·/);
   },
 );
@@ -2447,4 +2448,46 @@ test('ACP reply setup uses the connection engine mark', async () => {
         .querySelector('[data-brand-key="opencode"]'),
     ).not.toBeNull(),
   );
+});
+
+test('reply setup names a requested effort after the model, never a guessed one', () => {
+  const models = [
+    {
+      id: 'claude-opus',
+      name: 'Opus',
+      capabilities: {
+        supportsEffort: true,
+        supportedEffortLevels: ['low', 'medium', 'high'],
+      },
+    },
+  ];
+  renderChatInputArea({
+    agentLabel: 'Claude Code',
+    agentIcon: <span>Agent mark</span>,
+    agentDefaultModel: 'claude-opus',
+    availableModels: models,
+    modelRuntimeOptions: { effort: 'high' },
+  });
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(
+    trigger.querySelector('.composer-run-control__label')?.textContent,
+  ).toBe('Opus · High');
+  expect(trigger.getAttribute('aria-label')).toMatch(
+    /^Claude Code · Opus · High/,
+  );
+  cleanup();
+
+  // Nothing requested: the engine default applies, so no level is named.
+  renderChatInputArea({
+    agentLabel: 'Claude Code',
+    agentIcon: <span>Agent mark</span>,
+    agentDefaultModel: 'claude-opus',
+    availableModels: models,
+    modelRuntimeOptions: {},
+  });
+  expect(
+    screen
+      .getByTestId('run-setup-trigger')
+      .querySelector('.composer-run-control__label')?.textContent,
+  ).toBe('Opus');
 });
