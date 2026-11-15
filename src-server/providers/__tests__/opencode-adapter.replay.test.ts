@@ -4178,6 +4178,73 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     expect(interrupts(h)).toHaveLength(2);
   });
 
+  test('a next turn OpenCode took, then stopped and taken back out before it ran, leaves the earlier unwithdrawn prompt still to be stopped', async () => {
+    const fail = repliesFail(Number.POSITIVE_INFINITY);
+    let secondPosted = false;
+    let ended = false;
+    let deletes = 0;
+    const h = await setup(
+      {
+        scenario: 'interrupt-pending',
+        omit: isFrame('session.execution.started'),
+        rewrite: (record) => {
+          // After the first turn's stop, OpenCode asks again, in the second
+          // turn; then the late start of the first turn's prompt.
+          if (isFrame('session.usage.updated')(record))
+            return pendingAsk('per_second', 'bash')(record);
+          if (isFrame('session.execution.interrupted')(record))
+            return {
+              ...record,
+              event: { ...record.event!, type: 'session.execution.started' },
+            };
+          return record;
+        },
+        holdFrame: (record) =>
+          isFrame('permission.asked')(record) &&
+          record.event?.data?.id === 'per_second'
+            ? () => secondPosted
+            : isFrame('session.execution.started')(record)
+              ? () => ended
+              : undefined,
+        respond: (request) => {
+          if (request.method === 'DELETE')
+            // The first turn's prompt cannot be taken back; the second's can.
+            return ++deletes === 1
+              ? { status: 500, body: { error: 'inbox broke' } }
+              : { status: 204 };
+          return fail(request);
+        },
+      },
+      { newMessageId: morePromptIds('interrupt-pending') },
+    );
+    await h.start({ approvalMode: 'ask' }, { metadata: DENY_APPROVALS });
+    const first = await h.turn('DO_BASH wait');
+    await h.waitFor(
+      (event) =>
+        event.method === 'runtime.error' && event.turnId === first.turnId,
+    );
+    const second = await h.turn('DO_BASH next');
+    secondPosted = true;
+    const failure = await h.waitFor(
+      (event) =>
+        event.method === 'runtime.error' && event.turnId === second.turnId,
+    );
+    expect(String(failure.message)).toContain(
+      "took its prompt back out of OpenCode's queue before OpenCode ran it",
+    );
+    expect(interrupts(h)).toHaveLength(2);
+    ended = true;
+    const warning = await h.waitFor(
+      (event) =>
+        event.method === 'runtime.warning' &&
+        String(event.message).includes(
+          `started the prompt of turn ${first.turnId}`,
+        ),
+    );
+    expect(String(warning.message)).toContain('so Station interrupted it.');
+    expect(interrupts(h)).toHaveLength(3);
+  });
+
   test('an ask whose automatic rejection is still in flight when the session stops is rejected again by the stop', async () => {
     let replied = 0;
     const h = await setup({

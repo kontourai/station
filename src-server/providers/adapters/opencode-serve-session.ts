@@ -355,6 +355,12 @@ interface NativeTurn {
   failClose?: FailClose;
   /** Its prompt's POST has settled (a turn `sendTurn` began). */
   posted?: Promise<void>;
+  /**
+   * An earlier turn's prompt still to be stopped if it starts, set aside
+   * when OpenCode took this turn's: if this turn's own prompt is then taken
+   * back, that earlier prompt is again the one a start would be.
+   */
+  displacedUnwithdrawn?: { readonly turnId: string };
   outputText: string;
   readonly openTools: Map<string, string>;
   readonly done: Promise<void>;
@@ -729,6 +735,7 @@ export class OpenCodeNativeSession {
     // OpenCode took a next prompt: an execution starting now is taken to be
     // this turn's (`onExecutionStarted`). A refused one leaves the earlier
     // turn's prompt still to be stopped if it starts.
+    if (this.unwithdrawn) turn.displacedUnwithdrawn = this.unwithdrawn;
     this.unwithdrawn = undefined;
     if (turn.messageId) this.recordRewindPoint(turn);
     this.publishStart(turn, {
@@ -2798,6 +2805,8 @@ export class OpenCodeNativeSession {
     }
     if (!failClose.withdrawal || failClose.withdrawal.failed)
       this.unwithdrawn = { turnId: turn.turnId };
+    // Taken back: an earlier prompt it set aside is again the one to stop.
+    else this.unwithdrawn ??= turn.displacedUnwithdrawn;
     this.closeOpenTools(turn);
     this.settle(turn, { method: 'turn.aborted', reason: 'interrupted' });
   }

@@ -294,8 +294,9 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   its prompt taken back out of the inbox once its POST lands, and the error
   says whether that worked. If Station could not take it back (a command
   has no inbox item, or the withdrawal failed), an execution OpenCode
-  starts while no turn is live, before it accepts Station's next prompt or
-  compaction, is taken to be that prompt and interrupted with a warning (a
+  starts while no turn is live, before it accepts Station's next prompt,
+  command or compaction (and keeps it: one taken back out again does not
+  count), is taken to be that prompt and interrupted with a warning (a
   command has no id to match the start against). Some asks are not the live turn's: one from a descendant that
   an earlier turn started and that still runs in the background, or the
   session's own ask from a turn that has already ended. Station interrupts
