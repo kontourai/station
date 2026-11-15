@@ -1072,7 +1072,7 @@ test.each([
   },
 );
 
-test('receiver artifact provenance retains a legacy preview origin instead of remapping it to Stable', async () => {
+test('receiver artifact provenance rejects retired preview instead of remapping it to Stable', async () => {
   const dir = receiverTempDir('station-receiver-legacy-');
   writeFileSync(
     resolve(dir, '.station-release.json'),
@@ -1086,10 +1086,9 @@ test('receiver artifact provenance retains a legacy preview origin instead of re
       prerelease: true,
     }),
   );
-  await expect(receiverBuildProvenance(dir)).resolves.toMatchObject({
-    ref: 'v1.2.3-preview.1',
-    head: sha,
-  });
+  await expect(receiverBuildProvenance(dir)).rejects.toThrow(
+    'Invalid receiver source provenance',
+  );
 });
 
 test('receiver artifact provenance rejects extra origin fields in version-bound provenance', async () => {

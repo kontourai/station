@@ -505,10 +505,10 @@ describe('install.ps1 installer core: stage-only (#2675 W1)', () => {
         'public ecosystem manifest publishes no server archive for this host (linux-x64)',
     },
     {
-      name: 'a nightly manifest for a beta install',
+      name: 'a Nightly manifest for a Stable install',
       run: (f) =>
         stage(f, signed(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12')), {
-          STATION_CHANNEL: 'beta',
+          STATION_CHANNEL: 'stable',
         }),
       message: 'requested channel does not match public ecosystem manifest',
     },

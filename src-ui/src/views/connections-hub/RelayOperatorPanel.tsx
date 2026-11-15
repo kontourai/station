@@ -28,12 +28,11 @@ import { RelaySetupHelp } from './RelaySetupHelp';
 import './ComputersSection.css';
 
 type Scope = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
-type AppChannel = 'stable' | 'beta' | 'nightly';
+type AppChannel = 'stable' | 'nightly';
 type PendingDevice = RelayManagementView['pendingDevices'][number];
 
 const APP_LABEL: Record<AppChannel, string> = {
   stable: 'Station',
-  beta: 'Beta',
   nightly: 'Nightly',
 };
 const LIFETIMES: readonly [RelayInvitationLifetime, string][] = [
@@ -287,7 +286,6 @@ function OperatorPanel({ scope }: { scope: Scope }) {
             <li className="relay-operator__item" key={entry.approvalId}>
               <span className="relay-operator__name">
                 {entry.surface.channel === 'stable' ||
-                entry.surface.channel === 'beta' ||
                 entry.surface.channel === 'nightly'
                   ? `${APP_LABEL[entry.surface.channel]} app`
                   : 'Station app'}
@@ -381,9 +379,7 @@ function InviteDeviceDialog({
 }) {
   const platformChannel = usePlatformProfile().channel;
   const [channel, setChannel] = useState<AppChannel>(
-    platformChannel === 'stable' || platformChannel === 'beta'
-      ? platformChannel
-      : 'nightly',
+    platformChannel === 'stable' ? platformChannel : 'nightly',
   );
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [setupText, setSetupText] = useState('');
@@ -516,7 +512,7 @@ function InviteDeviceDialog({
           <>
             <fieldset className="relay-invite__apps">
               <legend>Their app</legend>
-              {(['stable', 'beta', 'nightly'] as const).map((value) => (
+              {(['stable', 'nightly'] as const).map((value) => (
                 <Button
                   key={value}
                   size="sm"

@@ -170,10 +170,22 @@ fn compile_target_platform() -> &'static str {
 }
 
 fn native_app_channel(identifier: &str, dev_build: bool) -> &'static str {
-    if dev_build {
+    if identifier == "io.kontourai.station.beta" {
+        "unsupported"
+    } else if dev_build || identifier.starts_with("io.kontourai.station.dev.") {
         "dev"
     } else {
-        channel_ports_generated::desktop_channel_from_identifier(identifier).unwrap_or("stable")
+        channel_ports_generated::desktop_channel_from_identifier(identifier).unwrap_or("unsupported")
+    }
+}
+
+#[cfg(not(mobile))]
+fn admit_native_startup_channel(identifier: &str, dev_build: bool) -> Result<Option<&'static str>, String> {
+    match native_app_channel(identifier, dev_build) {
+        "dev" => Ok(None),
+        "stable" => Ok(Some("stable")),
+        "nightly" => Ok(Some("nightly")),
+        _ => Err("unsupported native application identity; install Stable or Nightly, or use a distinct Dev build".to_string()),
     }
 }
 
@@ -6709,7 +6721,7 @@ fn lock_station_profiles_with_record_within(
     // Windows hardens and verifies each newly-created lock through the ACL
     // authority, and a competing CLI or bundled channel may be fsyncing its
     // publication. Wait boundedly for that live holder rather than turning
-    // ordinary Stable/Beta/Nightly/CLI contention into a false "busy" failure.
+    // ordinary Stable/Nightly/CLI contention into a false "busy" failure.
     let started = std::time::Instant::now();
     let mut next_probe_at: Option<std::time::Instant> = None;
     loop {
@@ -7927,7 +7939,7 @@ fn reconcile_bundled_local_profile_with_retry(
     read: &mut dyn FnMut() -> Result<CredentialProfileStore, String>,
     write: &mut dyn FnMut(String, u64) -> Result<(), String>,
 ) -> Result<String, String> {
-    // Stable, Beta, and Nightly can all reach this point during their first
+    // Stable and Nightly can both reach this point during their first
     // shared-root boot. Re-read after a lost CAS instead of retaining the
     // empty/revision-N snapshot that made the loser overwrite or abandon the
     // other channel's owner record.
@@ -11204,15 +11216,13 @@ fn native_cover_is_dark(view: &objc2_app_kit::NSView) -> bool {
 fn cover_water(channel: Option<&str>) -> CoverRgba {
     match channel {
         Some("stable") => CoverRgba::hex(0x2d7ca7, 1.0),
-        Some("beta") => CoverRgba::hex(0x40945a, 1.0),
         Some("nightly") => CoverRgba::hex(0x9c3860, 1.0),
         _ => CoverRgba::hex(0xa7622d, 1.0),
     }
 }
 
 /// Title ink for a button filled with `fill`: white while it keeps WCAG AA
-/// contrast (4.5:1) for 14 pt text, else the dark surface ink. Beta's green
-/// river is too light for white.
+/// contrast (4.5:1) for 14 pt text, else the dark surface ink.
 #[cfg(target_os = "macos")]
 fn cover_button_ink(fill: CoverRgba) -> CoverRgba {
     let channel = |value: f64| {
@@ -11249,7 +11259,6 @@ fn cover_restart_title_ink(water: CoverRgba, palette: CoverPalette, window_key: 
 fn cover_mark_png(channel: Option<&str>) -> &'static [u8] {
     match channel {
         Some("stable") => include_bytes!("../../src-ui/public/favicon.png"),
-        Some("beta") => include_bytes!("../../src-ui/public/favicon-beta.png"),
         Some("nightly") => include_bytes!("../../src-ui/public/favicon-nightly.png"),
         _ => include_bytes!("../../src-ui/public/favicon-dev.png"),
     }
@@ -13204,6 +13213,8 @@ fn offer_slow_start_dialog_after_cover_failure(app: &AppHandle, epoch: u64) {
 
 #[cfg(not(mobile))]
 fn prepare_desktop_station_storage<S, P>(
+    identifier: &str,
+    dev_build: bool,
     home: PathBuf,
     root: &Path,
     ensure_schema: S,
@@ -13213,6 +13224,7 @@ where
     S: FnOnce(&Path) -> Result<(), String>,
     P: FnOnce(bool) -> Result<(), String>,
 {
+    admit_native_startup_channel(identifier, dev_build)?;
     if home == root {
         // A standalone home also holds root metadata. Schema must be born
         // first, otherwise genesis makes our own empty home look unversioned.
@@ -15007,6 +15019,12 @@ pub fn run() {
         resolve_desktop_log_level(std::env::var("STATION_DESKTOP_LOG_LEVEL").ok());
     let context = tauri::generate_context!();
 
+    #[cfg(not(mobile))]
+    if let Err(error) = admit_native_startup_channel(&context.config().identifier, cfg!(debug_assertions)) {
+        eprintln!("Station startup refused: {error}");
+        std::process::exit(1);
+    }
+
     // Dev-build narration, BEFORE any plugin exists. A `tauri dev` build
     // shares its single-instance scope with the installed stable app (both
     // use the base `tauri.conf.json` identifier; only nightly's differs), so
@@ -15547,11 +15565,10 @@ If a stable instance is running, this launch will focus its window and exit.",
                     }
                 }
                 let resource_dir = simplified_sidecar_resource_dir(&app.path().resource_dir()?);
-                let packaged_channel = if cfg!(debug_assertions) {
-                    None
-                } else {
-                    channel_ports_generated::desktop_channel_from_identifier(&app.config().identifier)
-                };
+                let packaged_channel = admit_native_startup_channel(
+                    &app.config().identifier,
+                    cfg!(debug_assertions),
+                ).map_err(|error| std::io::Error::new(std::io::ErrorKind::PermissionDenied, error))?;
                 let station_home = service_state::resolve_station_home_for_channel(
                     packaged_channel.map(std::ffi::OsStr::new),
                 );
@@ -15567,6 +15584,8 @@ If a stable instance is running, this launch will focus its window and exit.",
                 let mut supervisor_birth = None;
                 let mut supervisor_identity_failed = false;
                 let prepared_home = prepare_desktop_station_storage(
+                    &app.config().identifier,
+                    cfg!(debug_assertions),
                     station_home.clone(),
                     &station_root,
                     |home| {
@@ -17438,20 +17457,15 @@ mod tests {
         );
         assert_ne!(cover_palette(true).muted, cover_palette(false).muted);
         // Each channel's river colour is its own; a development build is Dev.
-        let waters = ["stable", "beta", "nightly"].map(|channel| cover_water(Some(channel)));
+        let waters = ["stable", "nightly"].map(|channel| cover_water(Some(channel)));
         assert!(waters.iter().all(|water| *water != cover_water(None)));
         assert_ne!(waters[0], waters[1]);
-        assert_ne!(waters[1], waters[2]);
         // Restart's title keeps AA contrast on every river colour: white on
-        // the darker rivers, dark ink on Beta's lighter green.
+        // every retained river shade.
         let white = CoverRgba::hex(0xffffff, 1.0);
         assert_eq!(cover_button_ink(cover_water(Some("stable"))), white);
         assert_eq!(cover_button_ink(cover_water(Some("nightly"))), white);
         assert_eq!(cover_button_ink(cover_water(None)), white);
-        assert_eq!(
-            cover_button_ink(cover_water(Some("beta"))),
-            CoverRgba::hex(0x0a0e13, 1.0)
-        );
         assert_eq!(
             cover_mark_png(Some("nightly")),
             include_bytes!("../../src-ui/public/favicon-nightly.png")
@@ -17491,7 +17505,7 @@ mod tests {
         };
         for dark in [false, true] {
             let palette = cover_palette(dark);
-            for channel in [Some("stable"), Some("beta"), Some("nightly"), None] {
+            for channel in [Some("stable"), Some("nightly"), None] {
                 let water = cover_water(channel);
                 let key = cover_restart_title_ink(water, palette, true);
                 let inactive = cover_restart_title_ink(water, palette, false);
@@ -18860,9 +18874,9 @@ mod tests {
     fn startup_local_proof_admits_a_migrated_owner_without_reading_a_credential() {
         let temp = tempfile::tempdir().unwrap();
         let station_root = temp.path().join(".station");
-        let beta_home = station_root.join("instances").join("beta");
+        let nightly_home = station_root.join("instances").join("nightly");
         let stable_home = station_root.join("instances").join("stable");
-        std::fs::create_dir_all(&beta_home).unwrap();
+        std::fs::create_dir_all(&nightly_home).unwrap();
         std::fs::create_dir_all(&stable_home).unwrap();
         let store = parse_station_profile_store(
             &serde_json::json!({
@@ -18890,14 +18904,14 @@ mod tests {
                     },
                     {
                         "schemaVersion": 1,
-                        "name": "beta-local",
-                        "endpoint": "http://127.0.0.1:28141",
-                        "environmentId": "beta-environment",
+                        "name": "nightly-local",
+                        "endpoint": "http://127.0.0.1:38141",
+                        "environmentId": "nightly-environment",
                         "localService": {
-                            "instanceId": "desktop-sidecar-beta",
-                            "baseDir": beta_home,
-                            "serverPort": 28141,
-                            "uiPort": 28000
+                            "instanceId": "desktop-sidecar-nightly",
+                            "baseDir": nightly_home,
+                            "serverPort": 38141,
+                            "uiPort": 38000
                         },
                         "setupSource": "paired",
                         "configurationState": "configured",
@@ -18906,14 +18920,14 @@ mod tests {
                     },
                     {
                         "schemaVersion": 1,
-                        "name": "beta-placeholder",
-                        "endpoint": "http://127.0.0.1:28141",
+                        "name": "nightly-placeholder",
+                        "endpoint": "http://127.0.0.1:38141",
                         "environmentId": null,
                         "localService": {
                             "instanceId": "placeholder-sidecar",
                             "baseDir": stable_home,
-                            "serverPort": 28141,
-                            "uiPort": 28000
+                            "serverPort": 38141,
+                            "uiPort": 38000
                         },
                         "setupSource": "local",
                         "configurationState": "configured",
@@ -18928,27 +18942,27 @@ mod tests {
         let launch = SidecarLaunchContext {
             resource_dir: temp.path().join("resources"),
             station_root: station_root.clone(),
-            station_home: beta_home.clone(),
+            station_home: nightly_home.clone(),
             home: temp.path().to_string_lossy().into_owned(),
             shell_path: "/usr/bin:/bin".into(),
-            channel: Some("beta".into()),
-            pinned_port: Some(28141),
+            channel: Some("nightly".into()),
+            pinned_port: Some(38141),
             supervisor_birth: "birth".into(),
-            instance_id: "desktop-sidecar-beta".into(),
+            instance_id: "desktop-sidecar-nightly".into(),
         };
         let ticket = startup_readiness::StartupTicket {
             generation: 3,
-            instance_id: "desktop-sidecar-beta".into(),
-            boot_id: "boot-beta".into(),
-            api_base: "http://127.0.0.1:28141".into(),
+            instance_id: "desktop-sidecar-nightly".into(),
+            boot_id: "boot-nightly".into(),
+            api_base: "http://127.0.0.1:38141".into(),
         };
 
         let receipt = bundled_startup_local_proof_receipt(&store, &launch, &ticket).unwrap();
-        assert_eq!(receipt.profile_name, "beta-local");
-        assert_eq!(receipt.station_home, beta_home);
-        assert_eq!(receipt.exact_origin, "http://127.0.0.1:28141");
-        assert_eq!(receipt.environment_id, "beta-environment");
-        assert_eq!(receipt.local_service.instance_id, "desktop-sidecar-beta");
+        assert_eq!(receipt.profile_name, "nightly-local");
+        assert_eq!(receipt.station_home, nightly_home);
+        assert_eq!(receipt.exact_origin, "http://127.0.0.1:38141");
+        assert_eq!(receipt.environment_id, "nightly-environment");
+        assert_eq!(receipt.local_service.instance_id, "desktop-sidecar-nightly");
     }
 
     #[test]
@@ -18956,9 +18970,9 @@ mod tests {
     fn startup_local_proof_refuses_foreign_home_missing_environment_and_non_origin_ticket() {
         let temp = tempfile::tempdir().unwrap();
         let station_root = temp.path().join(".station");
-        let beta_home = station_root.join("instances").join("beta");
+        let nightly_home = station_root.join("instances").join("nightly");
         let foreign_home = station_root.join("instances").join("stable");
-        std::fs::create_dir_all(&beta_home).unwrap();
+        std::fs::create_dir_all(&nightly_home).unwrap();
         std::fs::create_dir_all(&foreign_home).unwrap();
         let store = parse_station_profile_store(
             &serde_json::json!({
@@ -18969,14 +18983,14 @@ mod tests {
                 "profiles": [{
                     "schemaVersion": 1,
                     "name": "foreign",
-                    "endpoint": "http://127.0.0.1:28141",
+                    "endpoint": "http://127.0.0.1:38141",
                     "credentialRef": { "kind": "station-bearer", "id": "foreign-token" },
                     "environmentId": "foreign-environment",
                     "localService": {
-                        "instanceId": "desktop-sidecar-beta",
+                        "instanceId": "desktop-sidecar-nightly",
                         "baseDir": foreign_home,
-                        "serverPort": 28141,
-                        "uiPort": 28000
+                        "serverPort": 38141,
+                        "uiPort": 38000
                     },
                     "setupSource": "local",
                     "configurationState": "configured",
@@ -18990,22 +19004,22 @@ mod tests {
         let launch = SidecarLaunchContext {
             resource_dir: temp.path().join("resources"),
             station_root,
-            station_home: beta_home,
+            station_home: nightly_home,
             home: temp.path().to_string_lossy().into_owned(),
             shell_path: "/usr/bin:/bin".into(),
-            channel: Some("beta".into()),
-            pinned_port: Some(28141),
+            channel: Some("nightly".into()),
+            pinned_port: Some(38141),
             supervisor_birth: "birth".into(),
-            instance_id: "desktop-sidecar-beta".into(),
+            instance_id: "desktop-sidecar-nightly".into(),
         };
         let mut ticket = startup_readiness::StartupTicket {
             generation: 1,
-            instance_id: "desktop-sidecar-beta".into(),
-            boot_id: "boot-beta".into(),
-            api_base: "http://127.0.0.1:28141".into(),
+            instance_id: "desktop-sidecar-nightly".into(),
+            boot_id: "boot-nightly".into(),
+            api_base: "http://127.0.0.1:38141".into(),
         };
         assert!(bundled_startup_local_proof_receipt(&store, &launch, &ticket).is_err());
-        ticket.api_base = "http://127.0.0.1:28141/foreign".into();
+        ticket.api_base = "http://127.0.0.1:38141/foreign".into();
         assert!(bundled_startup_local_proof_receipt(&store, &launch, &ticket).is_err());
     }
 
@@ -20073,10 +20087,6 @@ mod tests {
             "desktop-sidecar-stable"
         );
         assert_eq!(
-            desktop_sidecar_instance_id(Some("beta"), "ignored"),
-            "desktop-sidecar-beta"
-        );
-        assert_eq!(
             desktop_sidecar_instance_id(Some("nightly"), "ignored"),
             "desktop-sidecar-nightly"
         );
@@ -20221,10 +20231,6 @@ mod tests {
             resolve_pinned_desktop_port(None, Some("stable")),
             Ok(Some(18141))
         );
-        assert_eq!(
-            resolve_pinned_desktop_port(None, Some("beta")),
-            Ok(Some(28141))
-        );
         assert_eq!(resolve_pinned_desktop_port(None, None), Ok(None));
         assert!(resolve_pinned_desktop_port(Some("65534"), Some("stable")).is_err());
     }
@@ -20237,10 +20243,6 @@ mod tests {
             Some(18141)
         );
         assert_eq!(
-            channel_ports_generated::default_desktop_port(Some("beta")),
-            Some(28141)
-        );
-        assert_eq!(
             channel_ports_generated::default_desktop_port(Some("nightly")),
             Some(38141)
         );
@@ -20248,10 +20250,6 @@ mod tests {
         assert_eq!(
             channel_ports_generated::station_instance_directory(Some("stable")),
             "stable"
-        );
-        assert_eq!(
-            channel_ports_generated::station_instance_directory(Some("beta")),
-            "beta"
         );
         assert_eq!(
             channel_ports_generated::station_instance_directory(Some("nightly")),
@@ -23519,7 +23517,7 @@ mod tests {
 
     /// Each child test process invokes the same native reconcile/CAS loop used
     /// by `station_ensure_bundled_local_profile`; the parent below supplies one
-    /// Stable/Beta/Nightly shared root and verifies their durable convergence.
+    /// Stable/Nightly shared root and verifies their durable convergence.
     #[cfg(not(mobile))]
     #[test]
     fn native_bundled_profile_process_worker() {
@@ -23530,7 +23528,6 @@ mod tests {
             std::env::var("STATION_NATIVE_BOOTSTRAP_RACE_CHANNEL").expect("worker channel");
         let (server_port, ui_port) = match channel.as_str() {
             "stable" => (18141, 18000),
-            "beta" => (28141, 28000),
             "nightly" => (38141, 38000),
             _ => panic!("unexpected test channel"),
         };
@@ -23562,7 +23559,7 @@ mod tests {
 
     #[cfg(not(mobile))]
     #[test]
-    fn native_bundled_profile_bootstraps_three_channels_in_independent_processes() {
+    fn native_bundled_profile_bootstraps_retained_channels_in_independent_processes() {
         use std::process::Command;
 
         let temp = tempfile::tempdir().unwrap();
@@ -23605,10 +23602,10 @@ mod tests {
             .unwrap();
 
         let executable = std::env::current_exe().unwrap();
-        // One process per packaged channel is the production contract: the
-        // bounded retry budget must reconcile Stable, Beta, and Nightly, not
-        // an unbounded synthetic writer fleet.
-        let children = ["stable", "beta", "nightly"]
+        // Keep three independent processes for the contention workload. The
+        // retained channels stay isolated; repeated Stable writers must converge
+        // without adding a duplicate profile or revision.
+        let children = ["stable", "nightly", "stable"]
             .into_iter()
             .map(|channel| {
                 let mut command = Command::new(&executable);
@@ -23637,7 +23634,7 @@ mod tests {
             );
         }
         let store = parse_station_profile_store(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(store.revision, 25);
+        assert_eq!(store.revision, 24);
         assert_eq!(store.default_profile.as_deref(), Some("stable-paired"));
         for (name, reference, environment) in [
             ("stable-paired", "stable-ref", "stable-environment"),
@@ -23658,7 +23655,7 @@ mod tests {
             );
             assert_eq!(profile._environment_id.as_deref(), Some(environment));
         }
-        for (channel, port) in [("stable", 18141), ("beta", 28141), ("nightly", 38141)] {
+        for (channel, port) in [("stable", 18141), ("nightly", 38141)] {
             assert!(store.profiles.iter().any(|profile| {
                 profile.setup_source == "local"
                     && profile.credential_ref.is_none()
@@ -23678,24 +23675,24 @@ mod tests {
         let (next, profile_name) = reconciled_bundled_local_profile_store(
             &empty,
             std::path::Path::new("/home/test/.station-root"),
-            "http://127.0.0.1:28141".to_string(),
+            "http://127.0.0.1:38141".to_string(),
             "desktop-sidecar-42".to_string(),
-            "/home/test/.station-beta".to_string(),
-            28141,
-            28000,
+            "/home/test/.station-nightly".to_string(),
+            38141,
+            38000,
             123.0,
         );
         assert_eq!(profile_name, "local");
         assert_eq!(next.revision, 1);
         assert_eq!(next.default_profile, None);
-        assert_eq!(next.profiles[0].endpoint, "http://127.0.0.1:28141");
+        assert_eq!(next.profiles[0].endpoint, "http://127.0.0.1:38141");
         let service = next.profiles[0]
             .local_service
             .as_ref()
             .expect("local binding");
         assert_eq!(service.instance_id, "desktop-sidecar-42");
-        assert_eq!(service.server_port, 28141);
-        assert_eq!(service.ui_port, 28000);
+        assert_eq!(service.server_port, 38141);
+        assert_eq!(service.ui_port, 38000);
         let wire = serde_json::to_string(&next).unwrap();
         assert!(!wire.contains("credentialRef"));
         assert!(!wire.contains("environmentId"));
@@ -23705,11 +23702,11 @@ mod tests {
         let (reconciled, owner_name) = reconciled_bundled_local_profile_store(
             &existing,
             std::path::Path::new("/home/test/.station-root"),
-            "http://127.0.0.1:28141".to_string(),
+            "http://127.0.0.1:38141".to_string(),
             "desktop-sidecar-42".to_string(),
-            "/home/test/.station-beta".to_string(),
-            28141,
-            28000,
+            "/home/test/.station-nightly".to_string(),
+            38141,
+            38000,
             123.0,
         );
         assert_eq!(owner_name, "local-2");
@@ -23725,7 +23722,7 @@ mod tests {
             .iter()
             .find(|profile| profile.name == "local-2")
             .expect("new bundled profile");
-        assert_eq!(bundled.endpoint, "http://127.0.0.1:28141");
+        assert_eq!(bundled.endpoint, "http://127.0.0.1:38141");
         assert!(bundled.credential_ref.is_none());
     }
 
@@ -24659,8 +24656,8 @@ mod tests {
             Some(18000)
         );
         assert_eq!(
-            resolve_bundled_profile_ui_port(Some("invalid"), Some("beta")),
-            Some(28000)
+            resolve_bundled_profile_ui_port(Some("invalid"), Some("nightly")),
+            Some(38000)
         );
     }
 
@@ -25403,13 +25400,17 @@ mod tests {
         assert_eq!(native_app_channel("io.kontourai.station", false), "stable");
         assert_eq!(
             native_app_channel("io.kontourai.station.beta", false),
-            "beta"
+            "unsupported"
         );
         assert_eq!(
             native_app_channel("io.kontourai.station.nightly", false),
             "nightly"
         );
-        assert_eq!(native_app_channel("io.kontourai.station.beta", true), "dev");
+        assert_eq!(native_app_channel("io.kontourai.station.beta", true), "unsupported");
+        assert_eq!(native_app_channel("io.kontourai.station.dev.instance", false), "dev");
+        #[cfg(not(mobile))]
+        assert_eq!(admit_native_startup_channel("io.kontourai.station.dev.instance", false), Ok(None));
+        assert_eq!(channel_ports_generated::desktop_channel_from_identifier("io.kontourai.station.beta"), None);
         assert_eq!(
             pairing_deep_link_channels_generated::native_pairing_deep_link_scheme(
                 "io.kontourai.station.dev.dev.release.7",
@@ -26462,6 +26463,27 @@ mod tests {
 mod standalone_storage_order_tests {
     use super::*;
     #[test]
+    fn unsupported_identity_cannot_prepare_storage_or_run_private_callbacks() {
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path().join("must-remain-absent");
+        for (identifier, debug) in [
+            ("io.kontourai.station.beta", false),
+            ("io.kontourai.station.beta", true),
+            ("io.example.unrecognized", false),
+        ] {
+            let calls = std::cell::Cell::new(0);
+            let result = prepare_desktop_station_storage(
+                identifier, debug, home.clone(), &home,
+                |_| { calls.set(calls.get() + 1); Ok(()) },
+                |_| { calls.set(calls.get() + 1); Ok(()) },
+            );
+            assert!(result.unwrap_err().contains("unsupported native application identity"));
+            assert_eq!(calls.get(), 0);
+            assert!(!home.exists());
+        }
+    }
+
+    #[test]
     fn standalone_schema_is_prepared_before_profile_genesis() {
         let root = tempfile::tempdir().unwrap();
         let home = root.path().join("home");
@@ -26469,6 +26491,8 @@ mod standalone_storage_order_tests {
         // This helper receives an external path relative to the ambient test
         // root; admission is independent from the callback-order assertion.
         prepare_desktop_station_storage(
+            "io.kontourai.station.dev.instance",
+            true,
             home.clone(),
             &home,
             |_| {

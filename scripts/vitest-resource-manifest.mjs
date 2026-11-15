@@ -1136,6 +1136,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // context and generation CLIs, for a release-candidate producer set.
   // Single-shot spawns under owned temp dirs, no wall-clock assertion.
   'scripts/__tests__/release-candidate-staging.test.ts',
+  // Release lifecycle commands own bounded CLI/Git children and private fixture receipts.
+  'scripts/__tests__/release-promotion.test.ts',
+  'scripts/__tests__/promote-store-release.test.ts',
+  'scripts/__tests__/release-cut.test.ts',
+  'scripts/__tests__/nightly-release-base.test.ts',
   // #4929: runs the shared release-tag parser's CLI, which the portable
   // packager calls from bash, as a real child to prove its exit statuses.
   'scripts/__tests__/release-tag.test.ts',

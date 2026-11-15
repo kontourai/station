@@ -54,7 +54,7 @@ export interface PlatformProfile {
   isDevBuild: boolean;
   /** Configured local Tauri package identity, never remote Station branding. */
   productName?: string;
-  channel?: 'stable' | 'dev' | 'beta' | 'nightly';
+  channel?: 'stable' | 'dev' | 'nightly';
   /** Native scheme selected by this installed client, never a backend URL. */
   pairingDeepLinkScheme?: string;
   /** Build evidence for this native app, never the connected Station host. */

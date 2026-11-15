@@ -21,7 +21,7 @@ const surface = z
   .object({
     kind: z.literal('station-native'),
     appIdentifier: z.string().min(1).max(255),
-    channel: z.enum(['dev', 'stable', 'beta', 'nightly']),
+    channel: z.enum(['dev', 'stable', 'nightly']),
     clientInstanceId: uuid,
     keyThumbprint: opaque,
   })
@@ -76,10 +76,11 @@ const view: z.ZodType<RelayManagementView> = z
     setupLinks: z
       .object({
         stable: z.string().max(24_000),
-        beta: z.string().max(24_000),
         nightly: z.string().max(24_000),
+        beta: z.string().max(24_000).optional(),
       })
-      .strict(),
+      .strict()
+      .transform(({ stable, nightly }) => ({ stable, nightly })),
     approvals: z.array(approval).max(1024),
     pendingDevices: z
       .array(
@@ -126,8 +127,12 @@ export async function getRelayManagement(
   const result = z
     .object({ data: view })
     .strict()
-    .parse(await relayResponse(await getJson(url(base), options(input)))).data;
-  for (const channel of ['stable', 'beta', 'nightly'] as const) {
+    .parse(
+      await relayResponse(
+        await getJson(`${url(base)}?viewVersion=2`, options(input)),
+      ),
+    ).data;
+  for (const channel of ['stable', 'nightly'] as const) {
     const parsed = parseNativeRelayLink(result.setupLinks[channel], {
       channel,
       appIdentifier: 'io.kontourai.station',
@@ -183,7 +188,7 @@ export async function createRelayInvitation(
       stationId: uuid,
       enrollmentId: uuid,
       appIdentifier: z.string().min(1).max(255),
-      channel: z.enum(['stable', 'beta', 'nightly']),
+      channel: z.enum(['stable', 'nightly']),
       clientInstanceId: uuid,
       keyThumbprint: opaque,
     })

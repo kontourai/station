@@ -14,6 +14,7 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { validatePackagedReleaseManifest } from '../../packages/cli/src/commands/lifecycle-code-root.js';
 
 const SCRIPT = resolve('scripts/package-portable-release.sh');
 // The packager classifies release tags through the shared parser (#4929), so
@@ -201,12 +202,14 @@ describe('portable release packager', { timeout: 30_000 }, () => {
       ),
     );
     expect(embedded).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       channel: 'stable',
       releaseChannel: 'stable',
       prerelease: false,
-      ref: 'v0.2.0-rc.3',
+      version: '0.2.0',
     });
+    expect(embedded).not.toHaveProperty('ref');
+    expect(validatePackagedReleaseManifest(embedded)).toEqual(embedded);
   });
 
   it('creates deterministic tracked-only bytes with exact provenance and checksum', () => {
@@ -235,9 +238,9 @@ describe('portable release packager', { timeout: 30_000 }, () => {
       ),
     );
     expect(manifest).toEqual({
-      schemaVersion: 2,
+      schemaVersion: 3,
       sha: run('git', ['rev-parse', 'HEAD'], root),
-      ref: 'v0.1.0',
+      version: '0.1.0',
       createdAt: CREATED_AT,
       channel: 'stable',
       releaseChannel: 'stable',
@@ -246,7 +249,7 @@ describe('portable release packager', { timeout: 30_000 }, () => {
     expect(Object.keys(manifest)).toEqual([
       'schemaVersion',
       'sha',
-      'ref',
+      'version',
       'createdAt',
       'channel',
       'releaseChannel',

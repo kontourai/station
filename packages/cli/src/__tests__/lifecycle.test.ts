@@ -8486,72 +8486,75 @@ describe('lifecycle build + restart ergonomics', () => {
     ).toBe('active-ui');
   });
 
-  it('uses exact packaged release provenance when Git metadata is absent', async () => {
-    ensureDir(TEST_CWD);
-    // Byte-for-byte what package-portable-release.sh writes: same key order,
-    // 2-space indent, trailing newline.
-    writeFileSync(
-      join(TEST_CWD, '.station-release.json'),
-      `${JSON.stringify(
-        {
-          schemaVersion: 2,
-          sha: 'fedcba9876543210fedcba9876543210fedcba98',
-          ref: 'v0.1.0',
-          createdAt: '2026-07-22T12:34:56.000Z',
-          channel: 'stable',
-          releaseChannel: 'stable',
-          prerelease: false,
+  it.each([2, 3] as const)(
+    'uses exact packaged v%s release provenance when Git metadata is absent',
+    async (schemaVersion) => {
+      ensureDir(TEST_CWD);
+      // Byte-for-byte what package-portable-release.sh writes: same key order,
+      // 2-space indent, trailing newline.
+      writeFileSync(
+        join(TEST_CWD, '.station-release.json'),
+        `${JSON.stringify(
+          {
+            schemaVersion,
+            sha: 'fedcba9876543210fedcba9876543210fedcba98',
+            ...(schemaVersion === 2 ? { ref: 'v0.1.0' } : { version: '0.1.0' }),
+            createdAt: '2026-07-22T12:34:56.000Z',
+            channel: 'stable',
+            releaseChannel: 'stable',
+            prerelease: false,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      const execSync = vi.fn(
+        (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
+          if (command === 'npm run build:server') {
+            const serverDir = join(
+              TEST_CWD,
+              String(options?.env?.STATION_BUILD_SERVER_DIR),
+            );
+            ensureDir(serverDir);
+            writeFileSync(
+              join(serverDir, 'command-station.js'),
+              'candidate-server',
+            );
+          }
+          if (command === 'npm run build:ui') {
+            const uiDir = join(
+              TEST_CWD,
+              String(options?.env?.STATION_BUILD_UI_DIR),
+            );
+            ensureDir(uiDir);
+            writeFileSync(join(uiDir, 'index.html'), 'candidate-ui');
+          }
+          return '';
         },
-        null,
-        2,
-      )}\n`,
-    );
-    const execSync = vi.fn(
-      (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
-        if (command === 'npm run build:server') {
-          const serverDir = join(
-            TEST_CWD,
-            String(options?.env?.STATION_BUILD_SERVER_DIR),
-          );
-          ensureDir(serverDir);
-          writeFileSync(
-            join(serverDir, 'command-station.js'),
-            'candidate-server',
-          );
-        }
-        if (command === 'npm run build:ui') {
-          const uiDir = join(
-            TEST_CWD,
-            String(options?.env?.STATION_BUILD_UI_DIR),
-          );
-          ensureDir(uiDir);
-          writeFileSync(join(uiDir, 'index.html'), 'candidate-ui');
-        }
-        return '';
-      },
-    );
-    const { lifecycle } = await loadLifecycleModule({
-      childProcessMock: { execSync },
-    });
+      );
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync },
+      });
 
-    const manifest = await lifecycle.buildApplication({
-      instanceName: 'portable',
-      baseDir: TEST_ALT_HOME,
-      serverPort: 3242,
-      uiPort: 5274,
-    });
+      const manifest = await lifecycle.buildApplication({
+        instanceName: 'portable',
+        baseDir: TEST_ALT_HOME,
+        serverPort: 3242,
+        uiPort: 5274,
+      });
 
-    expect(manifest).toEqual({
-      sha: 'fedcba9876543210fedcba9876543210fedcba98',
-      branch: 'v0.1.0',
-      builtAt: expect.any(String),
-    });
-    expect(Number.isFinite(Date.parse(manifest.builtAt))).toBe(true);
-    expect(execSync).not.toHaveBeenCalledWith(
-      'git rev-parse HEAD',
-      expect.anything(),
-    );
-  });
+      expect(manifest).toEqual({
+        sha: 'fedcba9876543210fedcba9876543210fedcba98',
+        branch: 'v0.1.0',
+        builtAt: expect.any(String),
+      });
+      expect(Number.isFinite(Date.parse(manifest.builtAt))).toBe(true);
+      expect(execSync).not.toHaveBeenCalledWith(
+        'git rev-parse HEAD',
+        expect.anything(),
+      );
+    },
+  );
 
   it('reports the exact missing packaged provenance path', async () => {
     ensureDir(TEST_CWD);

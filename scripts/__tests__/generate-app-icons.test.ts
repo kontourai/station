@@ -57,12 +57,7 @@ describe('iOS channel icon set generation', () => {
   }, 60_000);
 
   it('emits a set for each release channel and the development simulator', () => {
-    expect([...IOS_ICON_SET_CHANNELS]).toEqual([
-      'stable',
-      'beta',
-      'nightly',
-      'dev',
-    ]);
+    expect([...IOS_ICON_SET_CHANNELS]).toEqual(['stable', 'nightly', 'dev']);
     expect(iosIconSetDir('nightly')).toBe(
       resolve(root, 'src-desktop/icons/nightly/ios'),
     );
@@ -146,7 +141,7 @@ describe('desktop .icns determinism (#1797)', () => {
     expect(trackedIcns.length).toBeGreaterThanOrEqual(4);
   });
 
-  // The dev/beta/nightly masters are rendered in-memory from the artwork and
+  // The dev/nightly masters are rendered in-memory from the artwork and
   // never committed, so the pin for their icns is that they already hold the
   // canonical order the generator now writes: a regeneration that produces
   // the same members produces the same bytes.
@@ -180,7 +175,7 @@ describe('desktop .icns determinism (#1797)', () => {
 
   it('carries every member body through unchanged', () => {
     const committed = readFileSync(
-      resolve(root, 'src-desktop/icons/beta/icon.icns'),
+      resolve(root, 'src-desktop/icons/nightly/icon.icns'),
     );
     const shuffled = writeIcns([...parseIcnsMembers(committed)].reverse());
     expect(memberDigest(canonicalizeIcns(shuffled))).toEqual(

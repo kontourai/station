@@ -766,9 +766,9 @@ export function readChannel(env: InstallerEnv): {
   ring: string;
 } {
   const requested = env.STATION_CHANNEL || 'stable';
-  if (requested === 'preview')
+  if (requested === 'preview' || requested === 'beta')
     fail(
-      'STATION_CHANNEL=preview is a legacy unqualified channel; rerun with STATION_CHANNEL=beta (or install stable with STATION_CHANNEL=stable)',
+      'Beta/preview is retired; choose STATION_CHANNEL=stable or STATION_CHANNEL=nightly',
     );
   const ring = ringOfRuntime(requested);
   if (!ring)

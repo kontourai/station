@@ -20,7 +20,7 @@
  *
  * `accents` are the family's named accents, per flavor. One accent supplies
  * brand, action and focus (`brand`), with `contrast` as the text on its fill.
- * `channels` are the Dev, Beta and Nightly brand colours for this flavor's
+ * `channels` are the Dev and Nightly brand colours for this flavor's
  * surfaces: a channel build keeps its identity on `--k-brand` while the
  * theme owns action and focus (see the decision record).
  *
@@ -112,7 +112,7 @@ export const COLOR_THEME_VARIABLE_PROPERTIES = [
 export type ColorThemeVariableProperty =
   (typeof COLOR_THEME_VARIABLE_PROPERTIES)[number];
 
-export const COLOR_THEME_CHANNELS = ['dev', 'beta', 'nightly'] as const;
+export const COLOR_THEME_CHANNELS = ['dev', 'nightly'] as const;
 export type ColorThemeChannel = (typeof COLOR_THEME_CHANNELS)[number];
 
 interface CatalogPair {
@@ -244,7 +244,6 @@ const CATALOG: readonly CatalogFamily[] = [
       },
       channels: {
         dev: { brand: ['#955306', '#98560c'], contrast: '#ffffff' }, // L 0.519→0.510
-        beta: { brand: ['#4b55cf', '#4f5bd5'], contrast: '#ffffff' }, // L 0.532→0.513
         nightly: { brand: ['#7936e9', '#7c3aed'], contrast: '#ffffff' }, // L 0.541→0.531
       },
     },
@@ -328,7 +327,6 @@ const CATALOG: readonly CatalogFamily[] = [
         },
         channels: {
           dev: { brand: ['#f6a048', '#e08b2f'], contrast: '#1b1205' }, // L 0.711→0.777
-          beta: { brand: ['#a2aeff', '#7983f4'], contrast: '#06080b' }, // L 0.655→0.773
           nightly: { brand: ['#bba7ff', '#9d7bf8'], contrast: '#06080b' }, // L 0.672→0.779
         },
       },
@@ -411,7 +409,6 @@ const CATALOG: readonly CatalogFamily[] = [
         },
         channels: {
           dev: { brand: ['#e79137', '#e08b2f'], contrast: '#1b1205' }, // L 0.711→0.731
-          beta: { brand: ['#919dff', '#7983f4'], contrast: '#06080b' }, // L 0.655→0.728
           nightly: { brand: ['#ae94ff', '#9d7bf8'], contrast: '#06080b' }, // L 0.672→0.733
         },
       },
@@ -494,7 +491,6 @@ const CATALOG: readonly CatalogFamily[] = [
         },
         channels: {
           dev: { brand: '#e08b2f', contrast: '#1b1205' },
-          beta: { brand: ['#8792ff', '#7983f4'], contrast: '#06080b' }, // L 0.655→0.700
           nightly: { brand: ['#a687ff', '#9d7bf8'], contrast: '#06080b' }, // L 0.672→0.704
         },
       },
@@ -586,7 +582,6 @@ const CATALOG: readonly CatalogFamily[] = [
       },
       channels: {
         dev: { brand: '#98560c', contrast: '#ffffff' },
-        beta: { brand: '#4f5bd5', contrast: '#ffffff' },
         nightly: { brand: '#7c3aed', contrast: '#ffffff' },
       },
     },
@@ -662,7 +657,6 @@ const CATALOG: readonly CatalogFamily[] = [
         },
         channels: {
           dev: { brand: '#e08b2f', contrast: '#1b1205' },
-          beta: { brand: '#7983f4', contrast: '#06080b' },
           nightly: { brand: '#9d7bf8', contrast: '#06080b' },
         },
       },
@@ -737,7 +731,6 @@ const CATALOG: readonly CatalogFamily[] = [
         },
         channels: {
           dev: { brand: ['#e38e33', '#e08b2f'], contrast: '#1b1205' }, // L 0.711→0.720
-          beta: { brand: ['#8d99ff', '#7983f4'], contrast: '#06080b' }, // L 0.655→0.717
           nightly: { brand: ['#ac90ff', '#9d7bf8'], contrast: '#06080b' }, // L 0.672→0.725
         },
       },
@@ -830,7 +823,6 @@ const CATALOG: readonly CatalogFamily[] = [
       },
       channels: {
         dev: { brand: ['#925101', '#98560c'], contrast: '#ffffff' }, // L 0.519→0.501
-        beta: { brand: ['#4953cc', '#4f5bd5'], contrast: '#ffffff' }, // L 0.532→0.506
         nightly: { brand: ['#7732e6', '#7c3aed'], contrast: '#ffffff' }, // L 0.541→0.522
       },
     },
@@ -907,7 +899,6 @@ const CATALOG: readonly CatalogFamily[] = [
         },
         channels: {
           dev: { brand: ['#e38e33', '#e08b2f'], contrast: '#1b1205' }, // L 0.711→0.720
-          beta: { brand: ['#8e9aff', '#7983f4'], contrast: '#06080b' }, // L 0.655→0.720
           nightly: { brand: ['#ac90ff', '#9d7bf8'], contrast: '#06080b' }, // L 0.672→0.725
         },
       },
@@ -1005,7 +996,6 @@ const CATALOG: readonly CatalogFamily[] = [
       },
       channels: {
         dev: { brand: ['#935203', '#98560c'], contrast: '#ffffff' }, // L 0.519→0.505
-        beta: { brand: ['#4954cd', '#4f5bd5'], contrast: '#ffffff' }, // L 0.532→0.509
         nightly: { brand: ['#7733e7', '#7c3aed'], contrast: '#ffffff' }, // L 0.541→0.524
       },
     },
@@ -1084,7 +1074,6 @@ const CATALOG: readonly CatalogFamily[] = [
         },
         channels: {
           dev: { brand: ['#ffa850', '#e08b2f'], contrast: '#1b1205' }, // L 0.711→0.802
-          beta: { brand: ['#acb7ff', '#7983f4'], contrast: '#06080b' }, // L 0.655→0.797
           nightly: { brand: ['#c1b1ff', '#9d7bf8'], contrast: '#06080b' }, // L 0.672→0.802
         },
       },
@@ -1182,7 +1171,6 @@ const CATALOG: readonly CatalogFamily[] = [
       },
       channels: {
         dev: { brand: ['#804600', '#98560c'], contrast: '#ffffff' }, // L 0.519→0.455
-        beta: { brand: ['#3e45bd', '#4f5bd5'], contrast: '#ffffff' }, // L 0.532→0.462
         nightly: { brand: ['#6b1dd7', '#7c3aed'], contrast: '#ffffff' }, // L 0.541→0.478
       },
     },
@@ -1261,7 +1249,6 @@ const CATALOG: readonly CatalogFamily[] = [
         },
         channels: {
           dev: { brand: '#e08b2f', contrast: '#1b1205' },
-          beta: { brand: ['#818cfe', '#7983f4'], contrast: '#06080b' }, // L 0.655→0.684
           nightly: { brand: ['#a280fd', '#9d7bf8'], contrast: '#06080b' }, // L 0.672→0.687
         },
       },
@@ -1339,7 +1326,6 @@ const CATALOG: readonly CatalogFamily[] = [
         },
         channels: {
           dev: { brand: '#e08b2f', contrast: '#1b1205' },
-          beta: { brand: ['#818cfe', '#7983f4'], contrast: '#06080b' }, // L 0.655→0.684
           nightly: { brand: ['#a280fd', '#9d7bf8'], contrast: '#06080b' }, // L 0.672→0.687
         },
       },

@@ -1742,35 +1742,6 @@ describe('native release workflow topology', () => {
     });
   });
 
-  // Publishing moves the Stable desktop feed, host pointer and container tags;
-  // until rc publication exists (#4929) a candidate must be refused before any
-  // of that, while a final tag still resolves.
-  it.each([
-    ['v0.2.0-rc.3', 1, 'rc publication lands in S3 of #4929'],
-    ['v0.2.0-preview.1', 1, 'is not a vX.Y.Z release tag'],
-    ['v0.2.0', 0, ''],
-  ])(
-    'Release: Publish tag recognition (executed) for %s',
-    (tag, status, message) => {
-      const run =
-        namedStep(
-          workflowJob(publish, 'resolve'),
-          'Resolve tag to one immutable commit',
-        ).run ?? '';
-      const stop = run.indexOf('# No checkout persists');
-      expect(stop).toBeGreaterThan(0);
-      const result = spawnSync('bash', ['-e', '-c', run.slice(0, stop)], {
-        encoding: 'utf8',
-        env: { ...process.env, RELEASE_TAG: tag },
-        windowsHide: true,
-      });
-      expect(result.status).toBe(status);
-      expect(result.stderr).toContain(message);
-      const channel = run.match(/echo "channel=.*"/g);
-      expect(channel).toEqual(['echo "channel=stable"']);
-    },
-  );
-
   it.each([
     ['refs/tags/v0.2.0-rc.3', 0],
     ['refs/tags/v0.2.0', 0],

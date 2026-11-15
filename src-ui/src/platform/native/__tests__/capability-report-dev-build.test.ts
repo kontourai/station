@@ -53,17 +53,28 @@ describe('capability report carries the dev-build flag across the adapter', () =
   it('preserves the native channel identity', async () => {
     const result = await adapterReporting({
       platform: 'android',
-      channel: 'beta',
+      channel: 'nightly',
       capabilities: CAPABILITIES,
       devBuild: false,
     }).getCapabilityReport();
 
-    expect(result.status === 'ok' && result.value.channel).toBe('beta');
+    expect(result.status === 'ok' && result.value.channel).toBe('nightly');
+  });
+  it('does not remap a retired Beta report to a supported channel', async () => {
+    const result = await adapterReporting({
+      platform: 'android',
+      channel: 'beta',
+      capabilities: CAPABILITIES,
+      devBuild: false,
+    }).getCapabilityReport();
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') throw new Error('Expected report metadata');
+    expect(result.value.channel).toBeUndefined();
   });
   it('drops legacy build-default connection metadata from the native host', async () => {
     const result = await adapterReporting({
       platform: 'android',
-      channel: 'beta',
+      channel: 'nightly',
       capabilities: CAPABILITIES,
       devBuild: false,
       mobileDefaultEndpoint: 'https://station.example.test:8442',

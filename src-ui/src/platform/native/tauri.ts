@@ -412,7 +412,7 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
   const pairingDeepLinkScheme =
     typeof candidate.pairingDeepLinkScheme === 'string' &&
     candidate.pairingDeepLinkScheme.length <= 128 &&
-    /^station-(?:stable|beta|nightly|dev-[a-z0-9]+(?:-[a-z0-9]+)*)$/.test(
+    /^station-(?:stable|nightly|dev-[a-z0-9]+(?:-[a-z0-9]+)*)$/.test(
       candidate.pairingDeepLinkScheme,
     )
       ? candidate.pairingDeepLinkScheme
@@ -421,7 +421,7 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
     platform: candidate.platform as NativeCapabilityReport['platform'],
     channel:
       typeof candidate.channel === 'string' &&
-      ['stable', 'dev', 'beta', 'nightly'].includes(candidate.channel)
+      ['stable', 'dev', 'nightly'].includes(candidate.channel)
         ? (candidate.channel as NativeCapabilityReport['channel'])
         : undefined,
     capabilities,

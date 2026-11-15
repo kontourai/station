@@ -229,7 +229,7 @@ test.each(['malformed', 'wrong-station'] as const)(
   'setup discovery refuses a %s successful link',
   async (mode) => {
     const setupLinks = Object.fromEntries(
-      (['stable', 'beta', 'nightly'] as const).map((channel) => [
+      (['stable', 'nightly'] as const).map((channel) => [
         channel,
         encodeNativeRelayLink(
           {
@@ -268,5 +268,51 @@ test.each(['malformed', 'wrong-station'] as const)(
     await expect(
       getRelayManagement('https://station.example'),
     ).rejects.toThrow();
+  },
+);
+
+test.each([false, true])(
+  'management v2 decodes retained-channel links from a host with legacy wire field: %s',
+  async (legacy) => {
+    const route = invitationRoute;
+    const link = (channel: 'stable' | 'nightly') =>
+      encodeNativeRelayLink(
+        {
+          version: 'station-native-relay-link/v1',
+          kind: 'route-intent',
+          ...route,
+        },
+        { channel },
+      );
+    const stable = link('stable');
+    http.get.mockResolvedValueOnce(
+      Response.json({
+        data: {
+          route,
+          confirmationCode: '0123456789ABCDEF',
+          keyId: 'K'.repeat(43),
+          setupLinks: {
+            stable,
+            nightly: link('nightly'),
+            ...(legacy
+              ? {
+                  beta: stable.replace(
+                    /^station-relay-stable:/,
+                    'station-relay-beta:',
+                  ),
+                }
+              : {}),
+          },
+          approvals: [],
+          pendingDevices: [],
+        },
+      }),
+    );
+    const view = await getRelayManagement('https://station.example');
+    expect(view.setupLinks).toEqual({ stable, nightly: link('nightly') });
+    expect(view.setupLinks).not.toHaveProperty('beta');
+    expect(http.get.mock.calls[0]?.[0]).toBe(
+      'https://station.example/api/relay-management?viewVersion=2',
+    );
   },
 );

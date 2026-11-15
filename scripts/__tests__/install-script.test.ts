@@ -26,6 +26,7 @@ import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { canonicalJson } from '../lib/canonical-json.mjs';
 import {
   buildPrebuiltArchive,
   hostTarget,
@@ -71,7 +72,7 @@ function makeFixtureArchive(
   failStart = false,
   failStop = false,
   releaseChannel: 'stable' | 'preview' = 'stable',
-  provenanceSchema: 2 = 2,
+  provenanceSchema: 2 | 3 = 2,
   releaseTag = releaseChannel === 'preview' ? 'v0.1.0-preview.1' : 'v0.1.0',
 ): {
   archive: string;
@@ -103,13 +104,15 @@ function makeFixtureArchive(
     `${JSON.stringify({
       schemaVersion: provenanceSchema,
       sha: id.repeat(40),
-      ref: releaseTag,
+      ...(provenanceSchema === 3
+        ? { version: releaseTag.slice(1).replace(/-rc\.[1-9][0-9]*$/, '') }
+        : { ref: releaseTag }),
       createdAt: '2026-07-22T00:00:00.000Z',
       channel:
         provenanceSchema === 2 && releaseChannel === 'preview'
           ? 'beta'
           : releaseChannel,
-      ...(provenanceSchema === 2 ? { releaseChannel } : {}),
+      releaseChannel,
       prerelease: releaseChannel === 'preview',
     })}\n`,
   );
@@ -209,11 +212,15 @@ fi
 if [ "$1" = attestation ]; then
   [ "$3" = --help ] && exit 0
   [ "\${STATION_TEST_GH_FAIL_ATTEST:-0}" = 1 ] && exit 88
+  case "$3" in *station-release-promotion.json) [ "\${STATION_TEST_GH_FAIL_PROMOTION_ATTEST:-0}" != 1 ] || exit 88 ;; esac
   exit 0
 fi
 if [ "$1" = api ]; then
   endpoint="$2"
+  for argument do endpoint="$argument"; done
   case "$endpoint" in
+    *releases/assets/999001) cat "$STATION_TEST_PROMOTION_RECEIPT_FILE" ;;
+    *compare/*...main) revision="\${endpoint##*/compare/}"; revision="\${revision%%...main}"; printf '{"status":"ahead","base_commit":{"sha":"%s"}}' "$revision" ;;
     *releases\\?*) printf '[%s]' "$STATION_TEST_RELEASE_METADATA" ;;
     *releases/tags/*) printf '%s' "$STATION_TEST_RELEASE_METADATA" ;;
     *git/ref/tags/*) printf '{"object":{"type":"commit","sha":"%s"}}' "$STATION_TEST_RELEASE_SHA" ;;
@@ -670,6 +677,161 @@ describe('one-line Station installer', {
     markersRemainAbsent();
   }, 60_000);
 
+  function promotedSourceFixture(root: string, schema: 2 | 3 = 3) {
+    const fixture = makeFixtureArchive(
+      root,
+      'a',
+      false,
+      false,
+      'stable',
+      schema,
+      'v0.1.0-rc.1',
+    );
+    const subjects = [fixture.archive, fixture.checksum, fixture.manifest]
+      .map((path) => ({
+        name:
+          path === fixture.manifest
+            ? 'station-release-ring-stable.json'
+            : path.endsWith('.sha256')
+              ? 'station-portable.tar.gz.sha256'
+              : 'station-portable.tar.gz',
+        sha256: createHash('sha256').update(readFileSync(path)).digest('hex'),
+        size: statSync(path).size,
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+    subjects.push({
+      name: 'station-release-store-authority.json',
+      sha256: 'd'.repeat(64),
+      size: 1,
+    });
+    const transfer = {
+      producerTag: 'v0.1.0-rc.1',
+      publicationTag: 'v0.1.0',
+      sourceSha: 'a'.repeat(40),
+      version: '0.1.0',
+      assets: subjects,
+    };
+    const receipt = {
+      kind: 'station.release-promotion/v1',
+      state: 'assets-verified',
+      ...transfer,
+      policySha: 'b'.repeat(40),
+      workflowSha: 'c'.repeat(40),
+      transferDigest: createHash('sha256')
+        .update(canonicalJson(transfer))
+        .digest('hex'),
+      storeAuthoritySha256: 'd'.repeat(64),
+    };
+    const receiptPath = join(root, 'promotion.json');
+    writeFileSync(receiptPath, JSON.stringify(receipt));
+    const env = {
+      STATION_TEST_PROMOTION_RECEIPT_FILE: receiptPath,
+      STATION_VERSION: 'v0.1.0',
+      STATION_TEST_RELEASE_METADATA: JSON.stringify({
+        tag_name: 'v0.1.0',
+        target_commitish: 'main',
+        draft: false,
+        prerelease: false,
+        assets: [
+          {
+            name: 'station-release-promotion.json',
+            url: 'https://api.github.com/repos/kontourai/station/releases/assets/999001',
+          },
+        ],
+      }),
+    };
+    return { fixture, receipt, receiptPath, env };
+  }
+
+  it('installs a promoted source using authenticated main lineage and original RC attestations', () => {
+    const root = tempDir('station-installer-promoted-');
+    const f = promotedSourceFixture(root);
+    const result = runInstaller(root, f.fixture, [], f.env);
+    expect(result.result.status, result.result.stderr).toBe(0);
+    const calls = readFileSync(f.fixture.ghLog, 'utf8');
+    expect(calls).toContain(
+      '--signer-workflow kontourai/station/.github/workflows/publish-release.yml --source-ref refs/heads/main --source-digest ' +
+        'c'.repeat(40),
+    );
+    expect(calls).toContain(
+      '--source-ref refs/tags/v0.1.0-rc.1 --source-digest ' + 'a'.repeat(40),
+    );
+    const installed = JSON.parse(
+      readFileSync(
+        join(
+          realpathSync(join(result.installRoot, 'current')),
+          '.station-release.json',
+        ),
+        'utf8',
+      ),
+    );
+    expect(installed).toMatchObject({
+      schemaVersion: 3,
+      version: '0.1.0',
+      sha: 'a'.repeat(40),
+    });
+    expect(installed).not.toHaveProperty('ref');
+  });
+
+  it.each([
+    'another-source',
+    'another-final',
+    'bad-transfer',
+    'unattested',
+    'wrong-asset',
+  ])('refuses promoted source with %s before installation', (fault) => {
+    const root = tempDir('station-installer-bad-promotion-');
+    const f = promotedSourceFixture(root);
+    if (fault === 'another-source') f.receipt.sourceSha = 'e'.repeat(40);
+    if (fault === 'another-final') f.receipt.publicationTag = 'v0.1.1';
+    if (fault === 'bad-transfer') f.receipt.transferDigest = 'e'.repeat(64);
+    if (fault === 'wrong-asset') {
+      const subject = f.receipt.assets.find(
+        (asset) => asset.name === 'station-portable.tar.gz',
+      );
+      if (!subject) throw new Error('missing archive fixture subject');
+      subject.sha256 = 'e'.repeat(64);
+      const { producerTag, publicationTag, sourceSha, version, assets } =
+        f.receipt;
+      f.receipt.transferDigest = createHash('sha256')
+        .update(
+          canonicalJson({
+            producerTag,
+            publicationTag,
+            sourceSha,
+            version,
+            assets,
+          }),
+        )
+        .digest('hex');
+    }
+    writeFileSync(f.receiptPath, JSON.stringify(f.receipt));
+    const result = runInstaller(root, f.fixture, [], {
+      ...f.env,
+      ...(fault === 'unattested'
+        ? { STATION_TEST_GH_FAIL_PROMOTION_ATTEST: '1' }
+        : {}),
+    });
+    expect(result.result.status).not.toBe(0);
+    expect(result.result.stderr).toContain(
+      fault === 'unattested'
+        ? 'promotion receipt attestation verification failed'
+        : fault === 'wrong-asset'
+          ? 'promoted asset bytes differ'
+          : 'promotion receipt does not bind',
+    );
+    expect(existsSync(join(result.installRoot, 'current'))).toBe(false);
+  });
+
+  it('does not borrow legacy tag-bound source provenance into a final promotion', () => {
+    const root = tempDir('station-installer-legacy-promotion-');
+    const f = promotedSourceFixture(root, 2);
+    const result = runInstaller(root, f.fixture, [], f.env);
+    expect(result.result.status).not.toBe(0);
+    expect(result.result.stderr).toContain('release provenance is invalid');
+    expect(existsSync(join(result.installRoot, 'current'))).toBe(false);
+  });
+
   it('installs an exact RC pin as Stable and verifies its producer tag and digest', () => {
     const root = tempDir('station-installer-rc-');
     const fixture = makeFixtureArchive(
@@ -706,62 +868,20 @@ describe('one-line Station installer', {
     },
   );
 
-  it('maps a verified preview release to an isolated beta runtime wrapper', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-installer-'));
-    roots.push(root);
-    const fixture = makeFixtureArchive(root, 'b', false, false, 'preview', 2);
-    const beta = runInstaller(root, fixture, [], { STATION_CHANNEL: 'beta' });
-
-    expect(beta.result.status, beta.result.stderr).toBe(0);
-    expect(beta.installRoot).toMatch(/\.station\/installs\/beta$/);
-    expect(beta.stationHome).toMatch(/\.station\/instances\/beta$/);
-    const launcher = join(beta.binDir, 'station-beta');
-    expect(readFileSync(launcher, 'utf8')).toContain(
-      `export STATION_CHANNEL=${posixShellLiteral('beta')}`,
-    );
-    expect(
-      JSON.parse(
-        readFileSync(
-          join(beta.installRoot, '.station-release-state.json'),
-          'utf8',
-        ),
-      ),
-    ).toMatchObject({
-      schemaVersion: 3,
-      channel: 'beta',
-      releaseChannel: 'preview',
-    });
-
-    const throughWrapper = spawnSync(launcher, ['doctor'], {
-      encoding: 'utf8',
-      env: { ...process.env, STATION_TEST_LOG: fixture.log },
-    });
-    expect(throughWrapper.status).toBe(0);
-    expect(readFileSync(fixture.log, 'utf8')).toContain('doctor');
-  });
-
-  it('accepts packaged v2 provenance and preserves the beta-to-preview mapping', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-installer-'));
-    roots.push(root);
-    const fixture = makeFixtureArchive(root, 'd', false, false, 'preview', 2);
-    const installed = runInstaller(root, fixture, [], {
-      STATION_CHANNEL: 'beta',
-    });
-
-    expect(installed.result.status, installed.result.stderr).toBe(0);
-    expect(
-      JSON.parse(
-        readFileSync(
-          join(installed.installRoot, '.station-release-state.json'),
-          'utf8',
-        ),
-      ),
-    ).toMatchObject({
-      schemaVersion: 3,
-      channel: 'beta',
-      releaseChannel: 'preview',
-    });
-  });
+  it.each(['beta', 'preview'])(
+    'refuses the retired %s channel without installing its old signed source',
+    (channel) => {
+      const root = tempDir('station-installer-retired-');
+      const fixture = makeFixtureArchive(root, 'b', false, false, 'preview', 2);
+      const result = runInstaller(root, fixture, [], {
+        STATION_CHANNEL: channel,
+      });
+      expect(result.result.status).not.toBe(0);
+      expect(result.result.stderr).toContain('Beta/preview is retired');
+      expect(existsSync(result.installRoot)).toBe(false);
+      expect(existsSync(join(result.binDir, 'station-beta'))).toBe(false);
+    },
+  );
 
   it('leaves an obsolete unqualified install and its data untouched', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-installer-'));
@@ -843,7 +963,7 @@ describe('one-line Station installer', {
       STATION_CHANNEL: 'preview',
     });
     expect(rejected.result.status).not.toBe(0);
-    expect(rejected.result.stderr).toContain('STATION_CHANNEL=beta');
+    expect(rejected.result.stderr).toContain('STATION_CHANNEL=stable');
   });
 
   it('does not inspect or mutate a legacy preview state outside the Station root', () => {
@@ -866,18 +986,18 @@ describe('one-line Station installer', {
   it('prints the channel launcher, rather than a stale generic command, when start is deferred', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-installer-'));
     roots.push(root);
-    const fixture = makeFixtureArchive(root, 'c', false, false, 'preview', 2);
+    const fixture = makeFixtureArchive(root, 'c');
     const deferred = runInstaller(root, fixture, [], {
-      STATION_CHANNEL: 'beta',
+      STATION_CHANNEL: 'stable',
       STATION_INSTALL_NO_START: '1',
     });
     expect(deferred.result.status, deferred.result.stderr).toBe(0);
     expect(deferred.result.stdout).toContain(
-      `Start it with: ${realpathSync(join(deferred.binDir, 'station-beta'))} start`,
+      `Start it with: ${realpathSync(join(deferred.binDir, 'station'))} start`,
     );
     expect(existsSync(`${fixture.log}.running`)).toBe(false);
-    expect(readFileSync(fixture.log, 'utf8')).toContain('--port=28141');
-    expect(readFileSync(fixture.log, 'utf8')).toContain('--ui-port=28000');
+    expect(readFileSync(fixture.log, 'utf8')).toContain('--port=18141');
+    expect(readFileSync(fixture.log, 'utf8')).toContain('--ui-port=18000');
   });
 
   it('builds the release under the lifecycle identity its start uses (#2703)', () => {
