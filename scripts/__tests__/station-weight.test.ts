@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   contextSwitchDelta,
+  formatAttribution,
   hostFingerprint,
   hostFingerprintInputs,
   IDLE_CPU_GAP,
@@ -13,9 +14,11 @@ import {
   killEligibility,
   LEFTOVER_GAP,
   linuxProcessTable,
+  memoryByRole,
   ownedTree,
   parseFootprint,
   parseProcStat,
+  processRole,
   processTable,
   recordedRoots,
   restMetric,
@@ -23,6 +26,7 @@ import {
   runTagging,
   runTagKind,
   sampleTreeCpu,
+  serverHeapReport,
   signalIfSame,
   spawnControlChild,
   taggedRows,
@@ -1398,6 +1402,129 @@ Auxiliary data:
 Summary Footprint: 1059556832 B
 ======================================================================
 `;
+
+describe('station-weight memory attribution', () => {
+  const row = (pid: number, memoryBytes: number, command = 'node') => ({
+    pid,
+    ppid: 1,
+    rssBytes: memoryBytes,
+    cpuSeconds: 0,
+    started: 'x',
+    command,
+    memoryBytes,
+  });
+
+  test('names the fixed entries, then the script, then the executable', () => {
+    expect(
+      processRole(
+        '/usr/bin/node /b/dist-server-x/station-supervisor.js --entry /b/dist-server-x/command-station.js',
+      ),
+    ).toBe('supervisor');
+    expect(
+      processRole('/usr/bin/node /b/dist-server-x/command-station.js'),
+    ).toBe('server');
+    expect(
+      processRole('node /b/dist-server/attached-session-path-child.js'),
+    ).toBe('attached-session-path-child.js');
+    expect(processRole('/opt/claude --print')).toBe('claude');
+  });
+
+  test('sums memory per role from the described command lines, largest first', () => {
+    const rows = [row(1, 10), row(2, 500), row(3, 30), row(4, 20, 'claude')];
+    expect(
+      memoryByRole(rows, [
+        { pid: 1, command: 'node /b/station-supervisor.js' },
+        { pid: 2, command: 'node /b/command-station.js' },
+        { pid: 3, command: 'node /b/command-station.js' },
+      ]),
+    ).toEqual([
+      { role: 'server', processCount: 2, memoryBytes: 530 },
+      { role: 'claude', processCount: 1, memoryBytes: 20 },
+      { role: 'supervisor', processCount: 1, memoryBytes: 10 },
+    ]);
+  });
+
+  test("reads the server's heap beside the memory measured for its pid", async () => {
+    const rows = [row(7, 400_000_000), row(8, 20_000_000)];
+    const posture = (process: object) => async () => ({
+      status: 200,
+      json: { success: true, data: { resources: { process } } },
+      text: '',
+    });
+    await expect(
+      serverHeapReport(
+        posture({
+          pid: 7,
+          heapUsedBytes: 150_000_000,
+          heapTotalBytes: 300_000_000,
+        }),
+        rows,
+      ),
+    ).resolves.toMatchObject({
+      status: 'measured',
+      value: 400_000_000,
+      pid: 7,
+      heapUsedBytes: 150_000_000,
+      heapTotalBytes: 300_000_000,
+      outsideHeapBytes: 100_000_000,
+    });
+    // A pid outside the measured tree, a refused read and a throw are gaps.
+    await expect(
+      serverHeapReport(
+        posture({ pid: 9, heapUsedBytes: 1, heapTotalBytes: 1 }),
+        rows,
+      ),
+    ).resolves.toMatchObject({
+      status: 'not_measured',
+      reason: expect.stringContaining('9'),
+    });
+    await expect(
+      serverHeapReport(
+        async () => ({ status: 503, json: null, text: 'unavailable' }),
+        rows,
+      ),
+    ).resolves.toMatchObject({
+      status: 'not_measured',
+      reason: expect.stringContaining('503'),
+    });
+    await expect(
+      serverHeapReport(async () => {
+        throw new Error('refused');
+      }, rows),
+    ).resolves.toMatchObject({
+      status: 'not_measured',
+      reason: expect.stringContaining('refused'),
+    });
+  });
+
+  test('prints the attribution as REPORT lines', () => {
+    expect(
+      formatAttribution({
+        metrics: {
+          restMemoryBytes: {
+            byRole: [{ role: 'server', processCount: 1, memoryBytes: 400 }],
+          },
+        },
+        attribution: {
+          serverHeapAtRest: {
+            status: 'measured',
+            value: 400,
+            basis: 'rss',
+            pid: 7,
+            heapUsedBytes: 150,
+            heapTotalBytes: 300,
+            outsideHeapBytes: 100,
+          },
+          serverHeapWithSessions: { status: 'not_measured', reason: 'gone' },
+        },
+      }),
+    ).toEqual([
+      'REPORT restMemoryBytes role=server processes=1 bytes=400',
+      'REPORT serverHeapAtRest pid=7 rss=400 heapTotal=300 heapUsed=150 outsideHeap=100 bytes',
+      'REPORT serverHeapWithSessions not measured: gone',
+    ]);
+  });
+});
 
 describe('station-weight memory reading', () => {
   test('reads phys_footprint per pid, not the peak or the summary', () => {

@@ -123,6 +123,24 @@ describe.skipIf(!posix)('station-weight end to end', () => {
           status: 'measured',
         });
       expect(result.metrics.restMemoryBytes.processCount).toBeGreaterThan(0);
+      // Report-only attribution: the server is a role of its own, and its
+      // heap is read beside the memory measured for its pid.
+      expect(
+        result.metrics.restMemoryBytes.byRole.map(
+          (entry: { role: string }) => entry.role,
+        ),
+      ).toEqual(expect.arrayContaining(['supervisor', 'server']));
+      const serverRole = result.metrics.restMemoryBytes.byRole.find(
+        (entry: { role: string }) => entry.role === 'server',
+      );
+      expect(result.attribution.serverHeapAtRest).toMatchObject({
+        status: 'measured',
+        heapUsedBytes: expect.any(Number),
+        heapTotalBytes: expect.any(Number),
+      });
+      expect(result.attribution.serverHeapAtRest.value).toBeLessThanOrEqual(
+        serverRole.memoryBytes,
+      );
       expect(result.metrics.idleCpuPercent.samples).toBeGreaterThan(2);
       // Linux: switches counted across the window, not the end read twice.
       if (process.platform === 'linux')
