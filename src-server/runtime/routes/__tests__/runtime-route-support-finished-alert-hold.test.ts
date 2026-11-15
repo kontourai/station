@@ -10,6 +10,8 @@
  * REAL composition: the real EventBus, NotificationService and
  * turn-completion listener, with the inbox answering per thread.
  */
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
@@ -205,4 +207,100 @@ test('a queued inbox follow-up holds the finished alert and the card Done until 
   ]);
   expect(cardDeps.finishedAlertHeld?.('thread-held')).toBe(false);
   expect(cardDeps.finishedAlertRelease?.('thread-held')).toBeDefined();
+});
+
+test('a restart that finds a finish already written hands its record to the coordinator wake the runtime passes in', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const home = makeTempDir('runtime-support-replay-');
+  const owner = orchestrationStreamPresenceSubjectForSession('owner-1');
+  /** One Station process over `home`, composed as the runtime does. */
+  const compose = async (
+    coordinatorWakes?: () => { observeNotification: (n: unknown) => unknown },
+  ) => {
+    const eventBus = new EventBus();
+    const context = new Proxy(
+      {
+        eventBus,
+        logger: {
+          warn: vi.fn(),
+          info: vi.fn(),
+          debug: vi.fn(),
+          error: vi.fn(),
+        },
+        configLoader: { getProjectHomeDir: () => home },
+        orchestrationService: withStubFallback({
+          isReadOnlyAttachedSession: () => false,
+          isEphemeralSession: () => false,
+          resolveSessionPresenceSubject: () => owner,
+          consumeInternalStopSuppression: () => false,
+          isDelegatedChildSession: () => false,
+          readFinishedAlertHold: (): string[] => [],
+        }),
+      } as Record<PropertyKey, unknown>,
+      { get: (target, key) => (key in target ? target[key] : stub()) },
+    );
+    const services = configureRuntimeSupportServices(context as never, stub(), {
+      webPushEnabled: false,
+      threadInbox: () =>
+        ({
+          submit: vi.fn(),
+          entry: vi.fn(),
+          hasWaitingFollowUp: () => false,
+        }) as never,
+      ...(coordinatorWakes
+        ? { coordinatorWakes: coordinatorWakes as never }
+        : {}),
+    });
+    await services.notificationService.start();
+    const settle = async (ms: number) => {
+      await services.notificationService.drainAsyncDispatch();
+      await vi.advanceTimersByTimeAsync(ms);
+      await services.notificationService.drainAsyncDispatch();
+    };
+    return { eventBus, notifications: services.notificationService, settle };
+  };
+
+  const first = await compose();
+  const turn = {
+    createdAt: new Date().toISOString(),
+    provider: 'claude',
+    threadId: 'thread-1',
+    turnId: 'turn-1',
+  };
+  first.eventBus.emit('orchestration:event', {
+    event: { ...turn, method: 'turn.started', prompt: 'go' },
+  });
+  first.eventBus.emit('orchestration:event', {
+    event: { ...turn, method: 'turn.completed', finishReason: 'stop' },
+  });
+  await first.settle(FINISHED_ALERT_CONFIRM_MS + 1);
+  const [record] = (await first.notifications.list()).filter(
+    (n) => n.source === 'turn-completion',
+  );
+  expect(record).toBeDefined();
+  await first.notifications.shutdown();
+  // Station stopped after the write, before the release was saved: the
+  // row the producer saves before writing (finished-alert-episodes.ts).
+  writeFileSync(
+    join(home, 'finished-alert-episodes.json'),
+    JSON.stringify([
+      {
+        state: 'writing',
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        outcome: 'done',
+        onActivityCard: true,
+        attempts: 0,
+      },
+    ]),
+  );
+
+  const observeNotification = vi.fn();
+  const second = await compose(() => ({ observeNotification }));
+  shutdowns.push(() => second.notifications.shutdown());
+  await second.settle(0);
+  expect(observeNotification).toHaveBeenCalledTimes(1);
+  expect(observeNotification).toHaveBeenCalledWith(
+    expect.objectContaining({ id: record!.id, category: 'turn-completed' }),
+  );
 });

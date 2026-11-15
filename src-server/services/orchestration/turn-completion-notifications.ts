@@ -61,7 +61,10 @@ import { turnCompletionNotificationOps } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { FINISH_ALERT_WINDOW_MS } from '../notifications/agent-activity-card.js';
 import { ON_ACTIVITY_CARD_METADATA_KEY } from '../notifications/delivery/card-alerted-categories.js';
-import type { NotificationService } from '../notifications/notification-service.js';
+import {
+  NotificationDedupeSourceConflictError,
+  type NotificationService,
+} from '../notifications/notification-service.js';
 import type { EventBus } from './event-bus.js';
 import {
   FINISHED_ALERT_EPISODES_MAX,
@@ -712,9 +715,14 @@ export function wireTurnCompletionNotifications(
 
   const dropHeldFinish = (threadId: string): void => {
     const pending = heldFinishes.get(threadId);
-    if (!pending) return;
-    pending.cancelConfirm?.();
+    const writing = writingFinishes.get(threadId);
+    if (!pending && !writing) return;
+    pending?.cancelConfirm?.();
     heldFinishes.delete(threadId);
+    // A finish still waiting on a write retry ends with the episode too: a
+    // later failure, stop or child result must not be followed by it.
+    writing?.cancelRetry?.();
+    writingFinishes.delete(threadId);
     episodes.setHeld(threadId, false);
     persistEpisodes();
   };
@@ -775,35 +783,61 @@ export function wireTurnCompletionNotifications(
       });
     } catch (error) {
       if (writingFinishes.get(threadId) !== writing) return;
-      // No release: the card keeps the finish pending, and the row stays
-      // `writing` until a retry writes it.
-      writing.attempts += 1;
-      const delayMs = Math.min(
-        FINISHED_ALERT_RETRY_BASE_MS * 2 ** (writing.attempts - 1),
-        FINISHED_ALERT_RETRY_MAX_MS,
-      );
-      writing.nextAttemptAt = nowMs() + delayMs;
-      persistEpisodes();
-      turnCompletionNotificationOps.add(1, {
-        outcome: writing.outcome,
-        result: 'error',
-      });
-      logger.warn('turn-completion: a finished alert was not written', {
-        threadId,
-        attempts: writing.attempts,
-        retryInMs: delayMs,
-        error: errorMessage(error),
-      });
-      writing.cancelRetry = setTimer(() => {
-        notificationService.dispatch(TURN_COMPLETION_SOURCE, () =>
-          attemptWrite(threadId, writing),
+      if (error instanceof NotificationDedupeSourceConflictError) {
+        // Another producer owns this tag: no retry can write it. The episode
+        // ends without a record rather than holding the card in Running.
+        logger.warn(
+          'turn-completion: a finished alert cannot be written; its tag belongs to another producer',
+          { threadId, turnId: writing.turnId },
         );
-      }, delayMs);
+        turnCompletionNotificationOps.add(1, {
+          outcome: writing.outcome,
+          result: 'skipped_tag_conflict',
+        });
+        releaseWritten(threadId, writing);
+        return;
+      }
+      retryLater(threadId, writing, error, attemptWrite);
       return;
     }
     turnCompletionNotificationOps.add(1, { outcome: writing.outcome, result });
     releaseWritten(threadId, writing);
   };
+
+  /**
+   * A write (or a restart's record lookup) failed: no release, so the card
+   * keeps the finish pending, and the row stays `writing` until `run` is
+   * tried again, after 10 s doubling to at most 10 min.
+   */
+  function retryLater(
+    threadId: string,
+    writing: WritingFinish,
+    error: unknown,
+    run: (threadId: string, writing: WritingFinish) => Promise<void>,
+  ): void {
+    writing.attempts += 1;
+    const delayMs = Math.min(
+      FINISHED_ALERT_RETRY_BASE_MS * 2 ** (writing.attempts - 1),
+      FINISHED_ALERT_RETRY_MAX_MS,
+    );
+    writing.nextAttemptAt = nowMs() + delayMs;
+    persistEpisodes();
+    turnCompletionNotificationOps.add(1, {
+      outcome: writing.outcome,
+      result: 'error',
+    });
+    logger.warn('turn-completion: a finished alert was not written', {
+      threadId,
+      attempts: writing.attempts,
+      retryInMs: delayMs,
+      error: errorMessage(error),
+    });
+    writing.cancelRetry = setTimer(() => {
+      notificationService.dispatch(TURN_COMPLETION_SOURCE, () =>
+        run(threadId, writing),
+      );
+    }, delayMs);
+  }
 
   /**
    * A restart found this finish saved as `writing`: the process may have
@@ -822,9 +856,23 @@ export function wireTurnCompletionNotifications(
     writing: WritingFinish,
   ): Promise<void> => {
     if (writingFinishes.get(threadId) !== writing) return;
-    const found = await notificationService.findByDedupeTag(
-      `turn-completion:${threadId}:${writing.turnId}`,
-    );
+    writing.cancelRetry = undefined;
+    let found: Awaited<ReturnType<NotificationService['findByDedupeTag']>>;
+    let hasReader: boolean;
+    try {
+      found = await notificationService.findByDedupeTag(
+        `turn-completion:${threadId}:${writing.turnId}`,
+      );
+      hasReader =
+        !orchestrationService.isReadOnlyAttachedSession(threadId) &&
+        orchestrationService.resolveSessionPresenceSubject(threadId) !==
+          undefined;
+    } catch (error) {
+      if (writingFinishes.get(threadId) !== writing) return;
+      retryLater(threadId, writing, error, replayWriting);
+      return;
+    }
+    if (writingFinishes.get(threadId) !== writing) return;
     if (!found) {
       await attemptWrite(threadId, writing);
       return;
@@ -836,10 +884,6 @@ export function wireTurnCompletionNotifications(
         'turn-completion: a saved finish names a record this producer did not write; not replayed',
         { threadId, turnId: writing.turnId },
       );
-    const hasReader =
-      !orchestrationService.isReadOnlyAttachedSession(threadId) &&
-      orchestrationService.resolveSessionPresenceSubject(threadId) !==
-        undefined;
     let result = 'replay_skipped';
     if (own && notification.status === 'delivered' && !leased && hasReader) {
       result = 'replayed';
@@ -1054,6 +1098,24 @@ export function wireTurnCompletionNotifications(
           // A new turn on a held episode's thread cancels its confirmation
           // window; the turn's own end decides what comes next.
           if (event.method === 'turn.started') {
+            // A finish whose write failed and waits on a retry rejoins the
+            // episode as held with this turn open: its alert must not go
+            // out while the new turn runs; the turn's end decides.
+            const waiting = writingFinishes.get(event.threadId);
+            if (waiting && !heldFinishes.has(event.threadId)) {
+              waiting.cancelRetry?.();
+              writingFinishes.delete(event.threadId);
+              heldFinishes.set(event.threadId, {
+                turnId: waiting.turnId,
+                outcome: waiting.outcome,
+                onActivityCard: waiting.onActivityCard,
+                ...(waiting.terminalEventId
+                  ? { terminalEventId: waiting.terminalEventId }
+                  : {}),
+                turnOpen: true,
+              });
+              persistEpisodes();
+            }
             const episode = heldFinishes.get(event.threadId);
             if (episode) {
               episode.turnOpen = true;
@@ -1140,7 +1202,14 @@ export function wireTurnCompletionNotifications(
             // from the adapter's own marker, not `finishReason`: a reply that
             // ended on a deferred tool is `'other'` too, and is a reply.
             if (event.metadata?.closedWithoutResult !== undefined) {
-              // An episode it interrupted resumes waiting.
+              // An episode it interrupted resumes waiting. This terminal is
+              // now the one the card's Done derives from, so the release
+              // names it: a key from before this turn would never match.
+              const interrupted = heldFinishes.get(event.threadId);
+              if (interrupted && event.eventId) {
+                interrupted.terminalEventId = event.eventId;
+                persistEpisodes();
+              }
               evaluateHeldFinish(event.threadId);
               turnCompletionNotificationOps.add(1, {
                 outcome,

@@ -2070,6 +2070,90 @@ describe('wireTurnCompletionNotifications: durable finish lifecycle', () => {
     );
   });
 
+  test('a finish waiting on a write retry never follows a later failure, and a new turn takes it back as held', async () => {
+    const station = await boot();
+    vi.spyOn(station.notifications, 'scheduleEnveloped').mockRejectedValueOnce(
+      new Error('ENOSPC'),
+    );
+    station.emit({ method: 'turn.started' });
+    station.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await station.elapse();
+    expect(rows()).toEqual([expect.objectContaining({ state: 'writing' })]);
+    // A new turn starts while the retry waits: the finish is held again
+    // with that turn open, so its alert cannot go out while it runs.
+    station.emit({ method: 'turn.started', turnId: 'turn-2' });
+    await station.notifications.drainAsyncDispatch();
+    expect(rows()).toEqual([
+      expect.objectContaining({ state: 'held', turnId: 'turn-1' }),
+    ]);
+    await station.elapse();
+    expect(await station.finished()).toEqual([]);
+    // The turn fails: the failure is reported and the episode ends.
+    station.emit({
+      method: 'runtime.error',
+      turnId: 'turn-2',
+      message: 'boom',
+    });
+    await station.elapse();
+    await station.elapse();
+    expect(
+      (await station.notifications.list()).map((record) => record.title),
+    ).toEqual(['Your agent needs attention']);
+    expect(station.episodes.isPending('thread-1')).toBe(false);
+    expect(rows()).toEqual([]);
+  });
+
+  test('a restart whose record lookup fails retries it with backoff instead of leaving the card in Running', async () => {
+    const first = await boot({
+      coordinator: false,
+      crashBeforeSave: (next) => next.some((row) => row.state === 'released'),
+    });
+    first.emit({ method: 'turn.started' });
+    first.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await first.elapse();
+    await stop();
+
+    const lookup = vi
+      .spyOn(NotificationService.prototype, 'findByDedupeTag')
+      .mockRejectedValueOnce(new Error('store locked'));
+    const second = await boot();
+    await second.notifications.drainAsyncDispatch();
+    expect(second.episodes.isPending('thread-1')).toBe(true);
+    expect(coordinatorItems()).toEqual([]);
+    expect(rows()).toEqual([
+      expect.objectContaining({ state: 'writing', attempts: 1 }),
+    ]);
+    expect(second.timers.pending()).toEqual([FINISHED_ALERT_RETRY_BASE_MS]);
+    await second.elapse();
+    expect(lookup).toHaveBeenCalledTimes(2);
+    expect(coordinatorItems()).toEqual([`finished:${tag}`]);
+    expect(second.episodes.isPending('thread-1')).toBe(false);
+    expect(await second.finished()).toHaveLength(1);
+    lookup.mockRestore();
+  });
+
+  test('a finish whose tag another producer owns ends without a record instead of retrying forever', async () => {
+    const station = await boot();
+    await station.notifications.schedule('scheduler', {
+      category: 'turn-completed',
+      title: 'Not this producer',
+      body: 'A colliding record',
+      dedupeTag: tag,
+    } as never);
+    station.emit({ method: 'turn.started' });
+    station.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await station.elapse();
+    expect(station.warn).toHaveBeenCalledWith(
+      'turn-completion: a finished alert cannot be written; its tag belongs to another producer',
+      expect.anything(),
+    );
+    expect(station.timers.pending()).toEqual([]);
+    expect(station.episodes.isPending('thread-1')).toBe(false);
+    expect(rows()).toEqual([
+      expect.objectContaining({ state: 'released', turnId: 'turn-1' }),
+    ]);
+  });
+
   test('a release is restored by a restart inside the card window and forgotten after it', async () => {
     const first = await boot();
     first.emit({ method: 'turn.started' });

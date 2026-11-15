@@ -2057,6 +2057,37 @@ describe('one "Agent finished" per completion episode', () => {
     await w.dispose();
   });
 
+  test('a provider turn that closes without a result after a held finish still lets that finish alert once', async () => {
+    const w = await episodeWorld();
+    w.h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    w.holds.add('s1');
+    await w.push('s1', { method: 'turn.completed', turnId: 'turn-2' });
+    await w.runFor(10_000);
+    // Claude opens its own turn, which then closes with no result of its
+    // own: the card's Done now derives from that later terminal.
+    const provider = { trigger: 'provider' };
+    await w.push('s1', {
+      method: 'turn.started',
+      turnId: 'turn-3',
+      metadata: provider,
+    });
+    await w.push('s1', {
+      method: 'turn.completed',
+      turnId: 'turn-3',
+      finishReason: 'other',
+      metadata: { ...provider, closedWithoutResult: 'session-ended' },
+    });
+    w.holds.delete('s1');
+    await w.push('s1', { method: 'child-work.updated' });
+    await w.runFor(
+      FINISHED_ALERT_CONFIRM_MS + NATIVE_PUSH_MIN_SEND_INTERVAL_MS * 2,
+    );
+    expect(await w.records()).toHaveLength(1);
+    expect(w.lastPhase()).toBe('completed');
+    expect(w.alerts()).toEqual(['Agent finished']);
+    await w.dispose();
+  });
+
   test('a delegated child reads Done but raises no "Agent finished"; its failure still alerts', async () => {
     const w = await episodeWorld();
     w.delegated.add('s1');
