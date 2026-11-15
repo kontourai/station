@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -39,5 +39,26 @@ describe('assertAsciiServerBundles', () => {
   it('ignores files that are not loaded as scripts', () => {
     const dir = bundleDir({ 'command-station.js.map': '{"names":["’"]}' });
     expect(() => assertAsciiServerBundles(dir)).not.toThrow();
+  });
+
+  it('skips bundles older than this build but still checks new ones', () => {
+    const dir = bundleDir({
+      'removed-worker.js': '// stale — from an earlier build',
+      'command-station.js': 'const quote = /[’]/u;',
+    });
+    const earlier = new Date(Date.now() - 60_000);
+    utimesSync(join(dir, 'removed-worker.js'), earlier, earlier);
+    const sinceMs = Date.now() - 30_000;
+    expect(() => assertAsciiServerBundles(dir, { sinceMs })).toThrow(
+      /command-station\.js @/,
+    );
+    expect(() => assertAsciiServerBundles(dir, { sinceMs })).not.toThrow(
+      /removed-worker/,
+    );
+    writeFileSync(
+      join(dir, 'command-station.js'),
+      'const quote = /[\\u2019]/u;',
+    );
+    expect(() => assertAsciiServerBundles(dir, { sinceMs })).not.toThrow();
   });
 });

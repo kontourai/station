@@ -74,6 +74,8 @@ cpSync(
   `${serverDir}/third-party/media-tools/NOTICE`,
 );
 
+// Bundles this build writes are checked; older files in serverDir are not.
+const buildStartedMs = Date.now();
 await Promise.all([
   esbuild.build({
     ...shared,
@@ -217,4 +219,4 @@ await Promise.all([
   }),
 ]);
 
-assertAsciiServerBundles(serverDir);
+assertAsciiServerBundles(serverDir, { sinceMs: buildStartedMs });

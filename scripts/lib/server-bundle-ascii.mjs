@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Node keeps every loaded script's source for lazy compilation. A file that is
@@ -32,12 +32,18 @@ export function findNonAsciiRuns(bytes, limit = 10) {
   return runs;
 }
 
-/** Throws when any .js or .mjs file directly in `dir` holds a non-ASCII byte. */
-export function assertAsciiServerBundles(dir) {
+/**
+ * Throws when any .js or .mjs file directly in `dir`, written at or after
+ * `sinceMs`, holds a non-ASCII byte. Older files are left over from earlier
+ * builds into the same directory; this build did not produce them.
+ */
+export function assertAsciiServerBundles(dir, { sinceMs = 0 } = {}) {
   const failures = [];
   for (const name of readdirSync(dir).sort()) {
     if (!/\.m?js$/.test(name)) continue;
-    const runs = findNonAsciiRuns(readFileSync(join(dir, name)));
+    const path = join(dir, name);
+    if (statSync(path).mtimeMs < sinceMs) continue;
+    const runs = findNonAsciiRuns(readFileSync(path));
     if (runs.length > 0) failures.push({ name, runs });
   }
   if (failures.length === 0) return;
