@@ -2407,7 +2407,8 @@ test.each([undefined, 'claude'])(
       ),
     );
     expect(trigger.textContent).not.toContain('EN');
-    expect(trigger.textContent).toContain('Writer');
+    // The Agent mark names the Agent; the visible text is the Model's.
+    expect(trigger.textContent).not.toContain('Writer');
     expect(trigger.getAttribute('aria-label')).toMatch(/^Writer ·/);
   },
 );

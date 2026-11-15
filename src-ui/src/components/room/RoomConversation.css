@@ -43,6 +43,14 @@
   margin-block-end: var(--k-space-2);
 }
 
+.room-conversation__older-note {
+  align-self: center;
+  margin: 0 0 var(--k-space-2);
+  color: var(--k-text-muted);
+  font: var(--k-text-sm) / var(--room-line) var(--k-font-ui);
+  text-align: center;
+}
+
 .room-conversation__list {
   min-width: 0;
 }
@@ -159,6 +167,117 @@
   overflow-x: auto;
 }
 
+/* A message's files (RoomAttachmentList), the same in Task and Project rooms. */
+.room-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin: var(--k-space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.room-attachments li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  max-width: 100%;
+  color: var(--k-text-faint);
+  font-size: var(--k-text-sm);
+}
+
+.room-attachments img {
+  display: block;
+  max-width: min(100%, calc(var(--k-space-6) * 9));
+  max-height: calc(var(--k-space-6) * 8);
+  object-fit: contain;
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+}
+
+.room-attachments a {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+}
+
+/* A file is a named chip; it downloads once its bytes have loaded. */
+.room-attachments__file {
+  gap: var(--k-space-2);
+  min-height: calc(var(--k-space-6) + var(--k-space-1));
+  padding: var(--k-space-1) var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  text-decoration: none;
+}
+
+.room-attachments__file > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-attachments__file > svg {
+  flex: 0 0 auto;
+  color: var(--k-text-muted);
+}
+
+a.room-attachments__file:hover {
+  border-color: var(--k-line-strong);
+  background: var(--k-panel-raised);
+}
+
+a.room-attachments__file:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Touch: a file link and an image are each a full target. */
+.room-conversation--more .room-attachments a,
+.room-conversation--more .room-attachments__file {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* An edited body ends with its marker: beside a short last line, under a
+   long one (flex wraps it), aligned to the text's last baseline. */
+.room-row__body--edited {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: last baseline;
+  column-gap: var(--k-space-2);
+}
+
+.room-row__body--edited > :not(.room-row__edited) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.room-row__edited {
+  color: var(--k-text-faint);
+  font-size: var(--k-text-sm);
+  white-space: nowrap;
+}
+
+/* A tombstone keeps the row's place in the conversation, quietly. */
+.room-row__deleted {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  margin: 0;
+  color: var(--k-text-muted);
+  font-style: italic;
+}
+
+.room-row__deleted > svg {
+  flex: 0 0 auto;
+  color: var(--k-text-faint);
+}
+
 /* A recorded @mention leads the first line instead of sitting above it. */
 .room-message-text > .task-room-mention {
   float: left;
@@ -226,6 +345,21 @@
 .room-conversation--hover .room-row--message:hover .room-row__actions {
   opacity: 1;
   pointer-events: auto;
+}
+
+.room-row--highlighted {
+  background: color-mix(in oklab, var(--k-active) 9%, transparent);
+  box-shadow: inset 2px 0 0 var(--k-active);
+}
+
+/* Faint text on a row's wash (actions open, being edited, hovered) misses
+   4.5:1 in the light theme; muted keeps the hierarchy and passes. */
+:is(.room-row--highlighted, .room-row--actions-open)
+  :is(.room-row__time, .room-row__gutter-time, .room-row__edited),
+.room-conversation--hover
+  .room-row--message:hover
+  :is(.room-row__time, .room-row__gutter-time, .room-row__edited) {
+  color: var(--k-text-muted);
 }
 
 .room-row--actions-open {
@@ -384,7 +518,7 @@
   grid-template-columns: var(--room-avatar-size) minmax(0, 1fr) 44px;
 }
 
-.room-conversation--more .button.room-row__more {
+.room-conversation--more .room-row__more {
   --icon-button-size: 44px;
   grid-column: 3;
   grid-row: 1;
@@ -394,6 +528,7 @@
 }
 
 .room-conversation--more .room-row--message:focus-within .room-row__more,
+.room-conversation--more .room-row__more.is-active,
 .room-conversation--more .room-row--actions-open .room-row__more {
   color: var(--k-text);
 }
@@ -417,4 +552,17 @@
 
 .room-conversation--more .room-row__actions .button {
   min-height: 44px;
+}
+
+/* Touch and phone: icon actions are full 44px targets. */
+.room-conversation--more .room-row__actions {
+  --icon-button-size: 44px;
+}
+
+/* The ⋯ that opens a row's labelled menu (ActionOverflowMenu): a quiet 44px
+   control in the same grid cell as the icon-bar ⋯. */
+.room-conversation--more .action-overflow__trigger.room-row__more {
+  width: 44px;
+  height: 44px;
+  border-color: transparent;
 }

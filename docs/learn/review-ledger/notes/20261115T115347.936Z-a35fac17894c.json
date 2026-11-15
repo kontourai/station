@@ -1,0 +1,9 @@
+{
+  "revision": "c3711082ab7c5239442b81a02e9e4cac848a5d2c",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"#4852 fix round 8: task-room-attachments.ts changed only RoomStorageFailure from exported to module-internal; behavior is unchanged. The Task asset store claims here are unaffected; prose unchanged.","inputs":["docs/design/task-room-agent-requests.md","src-server/services/projects/task-room-attachments.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#4852 fix round 8: task-room-attachments.ts changed only RoomStorageFailure from exported to module-internal; behavior is unchanged. The Project channel store sentence (failed writes refused as unavailable, leftover repair/ blocks) still matches the code; prose unchanged.","inputs":["docs/reference/config.md","src-server/services/projects/task-room-attachments.ts"]}
+  ]
+}
