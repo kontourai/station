@@ -42,14 +42,14 @@ const STATION_INSTRUCTION_FILES = 'claude-md-and-agents-md';
 /** A user settings file past this size is not parsed, so Station sets nothing. */
 export const CLAUDE_USER_SETTINGS_MAX_BYTES = 1024 * 1024;
 
-export type ClaudeInstructionFilesSettings = {
+type ClaudeInstructionFilesSettings = {
   pluginConfigs: Record<
     string,
     { options: { instructionFiles: typeof STATION_INSTRUCTION_FILES } }
   >;
 };
 
-export type ClaudeInstructionFilesDecision =
+type ClaudeInstructionFilesDecision =
   | { settings: ClaudeInstructionFilesSettings }
   | { settings: undefined; reason: string };
 

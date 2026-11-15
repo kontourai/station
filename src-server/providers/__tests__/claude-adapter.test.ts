@@ -9516,6 +9516,7 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('#895 wave B: agent-authored system prompt', () => {
+    const makeTempDir = trackTempDirs();
     test("startSession passes systemPrompt { type: 'preset', preset: 'claude_code', append } to query() when input.agent.systemPrompt is set, and merges a systemPrompt delivery report into session.configured", async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
@@ -9571,14 +9572,11 @@ describe('ClaudeAdapter', () => {
     test('startSession keeps the promptless SDK options shape apart from the required engine-spawn TMPDIR', async () => {
       // A Claude config home with no settings.json, so the developer's own
       // settings cannot change the AGENTS.md setting below.
-      const configHome = mkdtempSync(
-        join(tmpdir(), 'station-claude-options-shape-'),
+      vi.stubEnv(
+        'CLAUDE_CONFIG_DIR',
+        makeTempDir('station-claude-options-shape-'),
       );
-      vi.stubEnv('CLAUDE_CONFIG_DIR', configHome);
-      onTestFinished(() => {
-        vi.unstubAllEnvs();
-        rmSync(configHome, { recursive: true, force: true });
-      });
+      onTestFinished(() => vi.unstubAllEnvs());
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
 

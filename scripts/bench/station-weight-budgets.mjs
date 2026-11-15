@@ -138,13 +138,13 @@ export function evaluateBudgets(result, baseline, { reportOnly = false } = {}) {
  * Station's first request. Each is checked by name, so a result that omits
  * one fails rather than passing on the others.
  */
-export const REQUIRED_REPO_RULES = Object.freeze(['claudeMd', 'agentsMd']);
+const REQUIRED_REPO_RULES = Object.freeze(['claudeMd', 'agentsMd']);
 
 /**
  * Why the repository's instruction files did not all reach the first
  * request, or `undefined` when they did. Unmeasured is a failure, not a pass.
  */
-export function repoRulesGap(repoRules) {
+function repoRulesGap(repoRules) {
   if (repoRules?.status === 'not_measured')
     return `repoRules not measured: ${repoRules.reason ?? 'no reason recorded'}`;
   const missing = REQUIRED_REPO_RULES.filter(
