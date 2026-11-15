@@ -862,7 +862,9 @@ composer.
 The embeddable `ProjectRoom` UI retains an immutable message intent in browser
 session storage before sending, per channel. Until it is confirmed, the message waits in the
 conversation; a lost acknowledgement or reload offers an explicit retry of that
-exact payload and UUID and never resends automatically. The retained intent
+exact payload and UUID and never resends automatically. A retry of a message
+since edited or deleted is acknowledged with its current revision (its
+tombstone once deleted), which the client accepts. The retained intent
 settles once room history shows a message with its intent ID. The unsent draft
 (text, reply target and Agent recipient) is kept per channel, and an open
 thread keeps its own, in the same tab's

@@ -115,6 +115,8 @@ interface RuntimeInitializationContext {
   /** The `chat-host-images` Feature Preview selector (station-runtime binds it). */
   hostImagesPreview?: FeaturePreviewSelector;
   coordinatorSessionPreview?: FeaturePreviewSelector;
+  /** The `opencode-native-engine` Feature Preview selector. */
+  openCodeNativeEnginePreview?: FeaturePreviewSelector;
   durableAgentPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
@@ -213,6 +215,7 @@ export function createRuntimeInitializationDeps(
     orchestrationEventStore: context.orchestrationEventStore,
     hostImagesPreview: context.hostImagesPreview,
     coordinatorSessionPreview: context.coordinatorSessionPreview,
+    openCodeNativeEnginePreview: context.openCodeNativeEnginePreview,
     durableAgentPreview: context.durableAgentPreview,
     credentialProfileRecoveryAdapter: context.credentialProfileRecoveryAdapter,
     getReviewedTariffConfiguration: context.getReviewedTariffConfiguration,

@@ -81,3 +81,17 @@ The vault, the issuer and its hourly cap, the Kiro sign-in flows and the
 audit belong to the engine host-auth service. The managed-policy switch is
 the `engineHostAuth` control (`EngineHostAuthPolicy`). Neither is in this
 record's evidence.
+
+## OpenCode's native server: lift deferred
+
+OpenCode 2's own server (`opencode serve`, which the `opencode` engine drives
+natively) manages the person's provider credentials and integrations, and
+`GET /api/credential` returns stored keys in plain text. Station does not
+answer any credential request on that path, and lifting the credential
+responder out of the ACP registry so a second transport could use it is
+deferred. There is no second implementer yet. Instead, the native client
+([`opencode-serve-client.ts`](../../src-server/providers/adapters/opencode-serve-client.ts))
+sends only the routes in its allowlist. A never-allow list is checked first
+(credentials, provider sign-in, pairing, server sign-in, client MCP and
+terminal tokens, and config writes), and configuration answers are redacted.
+See [OpenCode native transport](opencode-native-transport.md).

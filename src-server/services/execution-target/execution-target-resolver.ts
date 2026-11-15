@@ -22,6 +22,7 @@ import {
 } from '@kontourai/station-contracts/execution-target';
 import {
   type EngineId,
+  isAcpFamilyEngine,
   type ModelLaunchCapabilities,
   type ModelLaunchPlan,
   resolveModelLaunchPlan,
@@ -213,7 +214,15 @@ export function assertConnectionReady(connection: ConnectionConfig): void {
 
 function connectionProvider(connection: ConnectionConfig): EngineId {
   if (connection.type === 'acp' || connection.capabilities.includes('acp')) {
-    return 'acp';
+    // A saved ACP connection runs on ACP, or on the ACP-backed engine the
+    // connection projection names (OpenCode, behind its Feature Preview:
+    // `connection-inspector.ts`). Descriptor data, never a provider literal
+    // here; a chat that already has a provider keeps it
+    // (`keepConversationProvider`).
+    const provider = connection.config.provider;
+    return typeof provider === 'string' && isAcpFamilyEngine(provider)
+      ? provider
+      : 'acp';
   }
   const provider = connection.config.provider;
   if (typeof provider !== 'string' || !provider.trim()) {
