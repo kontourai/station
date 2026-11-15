@@ -10,7 +10,7 @@ import {
   isRelativeStationPath,
   readNotificationEnvelope,
 } from '@kontourai/station-shared/notification-envelope';
-import { notificationMetadataSessionId } from './notification-session.js';
+import { notificationOpenSession } from './notification-session.js';
 
 const LINK_BASE = 'https://station.invalid';
 /** Where an alert opens when its own link cannot be kept on Station. */
@@ -80,42 +80,19 @@ export function notificationOpenLink(
 
 /**
  * Where opening a record goes, the same for every channel: the envelope's
- * path target; else its session target (or, with no target, the agent that
- * wrote it — design §2); else the session its metadata names
- * ({@link resolveNotificationOpenHref}); else the inbox.
+ * path target; else the session `notificationOpenSession` names (the one
+ * the phones' sealed references name too); else the record's own validated
+ * `metadata.link`; else the inbox.
  */
 export function resolveNotificationTarget(
   notification: Pick<Notification, 'metadata'>,
   envelope: NotificationEnvelopeV1 | undefined,
 ): string {
-  const metadata = notification.metadata ?? {};
   const target = envelope?.target;
   if (target?.kind === 'path') return target.path;
-  const envelopeSession =
-    target?.kind === 'session'
-      ? target.sessionId
-      : !target && envelope?.source.kind === 'agent'
-        ? envelope.source.sessionId
-        : undefined;
-  const metadataSession = notificationMetadataSessionId(notification);
-  if (envelopeSession) {
-    // The metadata's Project belongs to the metadata's session only.
-    const projectSlug =
-      metadataSession === envelopeSession
-        ? stringValue(metadata.projectSlug)
-        : undefined;
-    return notificationSessionHref({
-      sessionId: envelopeSession,
-      ...(projectSlug ? { projectSlug } : {}),
-    });
-  }
-  return (
-    resolveNotificationOpenHref(
-      metadata,
-      metadataSession,
-      stringValue(metadata.sessionKind),
-    ) ?? SAFE_OPEN_PATH
-  );
+  const session = notificationOpenSession(notification, envelope);
+  if (session) return notificationSessionHref(session);
+  return resolveRelativePathLink(notification.metadata?.link) ?? SAFE_OPEN_PATH;
 }
 
 function onStationOrigin(href: string): URL | undefined {

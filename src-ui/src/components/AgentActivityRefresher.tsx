@@ -49,7 +49,8 @@ export function AgentActivityRefresher() {
 
 /**
  * Opens the session an agent-activity card or alert tap names (#2515). The
- * Android plugin holds the tap's route until asked: on start (a tap that
+ * Android plugin (card and alert taps) and the iOS plugin (alert taps) hold
+ * the tap's route until asked: on start (a tap that
  * launched the app) and on its `launchRoute` nudge (a tap while the app
  * runs). A well-formed route (`agentActivitySessionTarget`) goes to the
  * notification opener with its Station id, which switches to that saved
@@ -60,7 +61,7 @@ export function AgentActivityLaunchRoutes() {
   const { target } = usePlatformProfile();
 
   useEffect(() => {
-    if (target !== 'android') return;
+    if (target !== 'android' && target !== 'ios') return;
     let disposed = false;
     let subscription: NativeEventSubscription | undefined;
     const adapter = import('../platform/native').then(

@@ -53,11 +53,11 @@ vi.mock('../../platform/native', () => ({
 
 import { AgentActivityLaunchRoutes } from '../AgentActivityRefresher';
 
-async function phoneAdapter() {
+async function phoneAdapter(platform: 'android' | 'ios' = 'android') {
   const adapter = new TauriNativePlatformAdapter({
     async invoke<T>(command: string) {
       if (command === 'native_capability_report') {
-        return completeNativeCapabilityReport('android', {
+        return completeNativeCapabilityReport(platform, {
           'remote-push': { state: 'enabled' },
         }) as T;
       }
@@ -203,7 +203,25 @@ describe('AgentActivityLaunchRoutes', () => {
     expect(nudge).toBeDefined();
   });
 
-  it('does nothing outside the Android app', async () => {
+  it('an iOS alert tap opens through the same path', async () => {
+    target = 'ios';
+    adapterPromise = phoneAdapter('ios');
+    pending = {
+      stationId: 'env-b',
+      sessionId: 'thread-ios',
+      projectSlug: 'web',
+    };
+    render(<AgentActivityLaunchRoutes />);
+    await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
+    expect(switched).toEqual(['conn-b']);
+    expect(navigate).toHaveBeenCalledWith(
+      '/projects/web',
+      { chat: 'thread-ios', dock: 'open' },
+      'conn-b',
+    );
+  });
+
+  it('does nothing outside the phone apps', async () => {
     target = 'macos';
     pending = { stationId: 'env-a', sessionId: 'thread-1' };
     render(<AgentActivityLaunchRoutes />);

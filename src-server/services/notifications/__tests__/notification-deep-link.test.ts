@@ -6,6 +6,7 @@ import {
   resolveNotificationTarget,
   withOpenedNotification,
 } from '../notification-deep-link.js';
+import { nativeSessionReference } from '../notification-session.js';
 
 describe('resolveNotificationOpenHref', () => {
   test('prefers a project-scoped chat link when projectSlug + sessionId resolve', () => {
@@ -221,19 +222,30 @@ describe('resolveNotificationTarget: one target for every channel', () => {
     ).toBe('/automations?job=a');
   });
 
-  test("a session target opens that session, in its Project only when it is the metadata's session", () => {
+  test('a session target opens that session, in the Project the metadata names', () => {
     expect(
       resolveNotificationTarget(
-        { metadata: { sessionId: 's-1', projectSlug: 'alpha' } },
+        { metadata: { projectSlug: 'alpha' } },
         envelope({ target: { kind: 'session', sessionId: 's-1' } }),
       ),
     ).toBe('/projects/alpha?chat=s-1&dock=open');
+  });
+
+  test('the metadata session wins, as it does for the read gate and the phones', () => {
+    // `notificationSessionIdentity`: the session the audience was checked
+    // against is the one a tap opens, on every channel.
     expect(
       resolveNotificationTarget(
         { metadata: { sessionId: 's-other', projectSlug: 'alpha' } },
         envelope({ target: { kind: 'session', sessionId: 's-1' } }),
       ),
-    ).toBe('/?chat=s-1&dock=open');
+    ).toBe('/projects/alpha?chat=s-other&dock=open');
+    expect(
+      nativeSessionReference(
+        { metadata: { sessionId: 's-other', projectSlug: 'alpha' } },
+        envelope({ target: { kind: 'session', sessionId: 's-1' } }),
+      ),
+    ).toEqual({ session_id: 's-other', project_slug: 'alpha' });
   });
 
   test("an agent's record with no target opens the agent's session (design §2)", () => {
