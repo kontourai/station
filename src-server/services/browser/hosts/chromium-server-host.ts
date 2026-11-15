@@ -1194,7 +1194,29 @@ export class ChromiumServerHost implements BrowserHost {
         ],
       });
     } catch (error) {
-      await proxy.close();
+      this.reportDiagnostic({
+        type: 'step',
+        step: 'proxyClose',
+        origin: 'launch-failure',
+        state: 'STARTED',
+      });
+      try {
+        await proxy.close();
+        this.reportDiagnostic({
+          type: 'step',
+          step: 'proxyClose',
+          origin: 'launch-failure',
+          state: 'RESOLVED',
+        });
+      } catch (closeError) {
+        this.reportDiagnostic({
+          type: 'step',
+          step: 'proxyClose',
+          origin: 'launch-failure',
+          state: 'REJECTED',
+        });
+        throw closeError;
+      }
       throw error;
     }
     const running: Running = {

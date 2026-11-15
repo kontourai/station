@@ -14,6 +14,8 @@ const probe = vi.hoisted(() => ({
   cleanupFailure: false,
   flood: false,
   exitDuringRender: false,
+  launchFailure: undefined as Error | undefined,
+  observe: undefined as ChromiumServerHostOptions['onEvent'],
   late: undefined as (() => void) | undefined,
   cleanup: undefined as (() => Promise<void>) | undefined,
   removeProfile: undefined as (() => Promise<void>) | undefined,
@@ -25,6 +27,8 @@ beforeEach(() => {
   probe.cleanupFailure = false;
   probe.flood = false;
   probe.exitDuringRender = false;
+  probe.launchFailure = undefined;
+  probe.observe = undefined;
   probe.late = undefined;
 });
 vi.mock('../browser/chromium-acquisition.js', () => ({
@@ -149,6 +153,10 @@ vi.mock('../browser/hosts/chromium-server-host.js', async (importOriginal) => {
         };
         super({
           ...options,
+          onEvent: (event) => {
+            probe.observe?.(event);
+            options.onEvent?.(event);
+          },
           launcher: (request) => {
             const directory = request.args
               .find((arg) => arg.startsWith('--user-data-dir='))
@@ -156,6 +164,7 @@ vi.mock('../browser/hosts/chromium-server-host.js', async (importOriginal) => {
             probe.removeProfile = directory
               ? () => rm(directory, { recursive: true, force: true })
               : undefined;
+            if (probe.launchFailure) throw probe.launchFailure;
             probe.late = () =>
               request.onDiagnostic?.({
                 type: 'child-exit',
@@ -331,6 +340,126 @@ test.each([true, false])(
         await probe.removeProfile?.();
         installLoggerLineSink(undefined);
       }
+    }
+  },
+);
+
+test.each([false, true])(
+  'render records proxy cleanup after synchronous launcher rejection (closeRejects=%s)',
+  async (closeRejects) => {
+    const lines: string[] = [];
+    installLoggerLineSink({ writeLine: (line) => lines.push(line) });
+    const steps: unknown[] = [];
+    probe.observe = (event) => {
+      if (
+        event.kind === 'preview-diagnostic' &&
+        event.diagnostic.type === 'step'
+      )
+        steps.push(event.diagnostic);
+    };
+    const launchFailure = new Error('secret synchronous launcher failure');
+    const closeFailure = new Error('secret proxy cleanup failure');
+    probe.launchFailure = launchFailure;
+    const originalClose = BrowserEgressProxy.prototype.close;
+    const originalServerClose = Server.prototype.close;
+    let releaseClose!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseClose = resolve;
+    });
+    let closeEntered!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      closeEntered = resolve;
+    });
+    let closing: Promise<void> | undefined;
+    const close = vi
+      .spyOn(BrowserEgressProxy.prototype, 'close')
+      .mockImplementation(function (this: BrowserEgressProxy) {
+        const pending = originalClose.call(this).then(() => {
+          if (closeRejects) throw closeFailure;
+        });
+        closing = pending;
+        return pending;
+      });
+    const serverClose = vi
+      .spyOn(Server.prototype, 'close')
+      .mockImplementation(function (
+        this: Server,
+        callback?: (error?: Error) => void,
+      ) {
+        return originalServerClose.call(this, (error) => {
+          closeEntered();
+          void gate.then(() => callback?.(error));
+        });
+      });
+    const receipts = () =>
+      lines
+        .map((line) => JSON.parse(line))
+        .filter((line) => line.previewTerminalReceipt)
+        .map((line) => line.previewTerminalReceipt);
+    const service = new HtmlReplyPreview(makeTempDir('html-preview-launch-'));
+    const outcome = service
+      .render({ html: 'secret-authored-canary', height: 400 }, 800, 'dark')
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    let settled = false;
+    void outcome.then(() => {
+      settled = true;
+    });
+    try {
+      await entered;
+      const heldSteps = steps.slice();
+      expect(settled).toBe(false);
+      expect(receipts()).toHaveLength(0);
+      releaseClose();
+      expect(await outcome).toBe(closeRejects ? closeFailure : launchFailure);
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(serverClose).toHaveBeenCalledTimes(1);
+      expect(receipts()).toHaveLength(1);
+      expect(receipts()[0].terminal.phases).toMatchObject({
+        proxyClose: closeRejects ? 'REJECTED' : 'RESOLVED',
+        primary: 'REJECTED',
+        surfaced: 'REJECTED',
+        shutdown: 'RESOLVED',
+        browserClose: 'NOT_REACHED',
+        terminate: 'NOT_REACHED',
+        profileRemoval: 'RESOLVED',
+        slotRelease: 'RESOLVED',
+      });
+      expect(heldSteps).toEqual([
+        {
+          type: 'step',
+          step: 'proxyClose',
+          origin: 'launch-failure',
+          state: 'STARTED',
+        },
+      ]);
+      expect(steps).toEqual([
+        ...heldSteps,
+        {
+          type: 'step',
+          step: 'proxyClose',
+          origin: 'launch-failure',
+          state: closeRejects ? 'REJECTED' : 'RESOLVED',
+        },
+      ]);
+      expect(probe.policyRead).toBe(false);
+      expect(probe.authored).toBe(false);
+      expect(JSON.stringify(receipts())).not.toMatch(
+        /secret synchronous|secret proxy|secret-authored/,
+      );
+    } finally {
+      releaseClose();
+      await outcome;
+      await closing?.catch(() => {});
+      serverClose.mockRestore();
+      close.mockRestore();
+      probe.launchFailure = undefined;
+      probe.observe = undefined;
+      await probe.cleanup?.();
+      await probe.removeProfile?.();
+      installLoggerLineSink(undefined);
     }
   },
 );
