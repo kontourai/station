@@ -47,8 +47,11 @@ Rendered headings have section IDs from their visible text, using the same
 heading rules as the learning reader. Repeated headings receive unique numeric
 suffixes within each document. Links such as the getting-started guide's
 `#install-nightly` resolve to those sections in the generated page. The Pages
-link checker validates target files; the renderer tests cover these heading
-targets. Neither check proves the hosted site has deployed the current source.
+link checker validates target files, and a fragment on a link to another page
+must name an element in that page (the docs header links to the home page's
+`#how`); the renderer tests cover these heading targets. Fragments within the
+same page are not checked. Neither check proves the hosted site has deployed
+the current source.
 
 An admitted document may link relatively only to another admitted document;
 link anything else by its absolute
