@@ -281,6 +281,7 @@ describe.skipIf(process.platform === 'win32')(
         expect(result.gates).toEqual([
           'lint:check',
           'proof:repo-governance',
+          'docs:freshness:check',
           ...RECORDED_GATES,
           'scripts/commit-message-gate.mjs',
         ]);

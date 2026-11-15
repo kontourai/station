@@ -107,7 +107,7 @@ if printf '%s\n' "${push_ref_lines[@]}" | node scripts/prepush-pure-merge.mjs "$
 fi
 
 if [[ "$pure_merge_of_main" -eq 1 ]]; then
-  echo "[station pre-push] skipped for a pure merge of main: push-range whitespace and test temp dirs, transfer budgets, static gates, SDK barrel, code health"
+  echo "[station pre-push] skipped for a pure merge of main: push-range whitespace and test temp dirs, documentation review freshness, transfer budgets, static gates, SDK barrel, code health"
 else
 # ~1s. The merge queue's `git diff --check` and the raw-mkdtemp test ratchet
 # (#2421), judged on the pushed commit itself rather than the working tree.
@@ -115,6 +115,16 @@ else
 # (2026-11-13 to 15), each a whole CI round trip for a one-second check.
 echo "[station pre-push] push range: whitespace, test temp dirs"
 printf '%s\n' "${push_ref_lines[@]}" | node scripts/check-prepush-push-range.mjs
+
+# ~6-8s. Recorded documentation reviews whose cited sources this branch changed
+# without a new review note, including a note recorded and then outdated by a
+# later edit of a cited source. CI's docs:truth:gate refuses the same thing
+# (its docs:foundations:test lane, "recorded document reviews bound to their
+# actual document and source bytes"). Scoped against the merge base with
+# origin/main; it reads the working tree, like the static gates below, and its
+# refusal prints the docs:review:record command that fixes it.
+echo "[station pre-push] documentation review freshness"
+npm run --silent docs:freshness:check
 
 echo "[station pre-push] orchestration transfer budgets"
 # The three gates below each run Vitest or source scans, so each queues for a

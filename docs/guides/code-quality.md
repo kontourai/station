@@ -43,6 +43,7 @@ historical measurements, not deadlines or guarantees on the current host. The ho
 | `npm run lint:check` | ~4s | a lint, formatting, or organize-imports error |
 | `npm run proof:repo-governance` | ~4s | a governance-proof violation. Until 2026-09-14 this proof was composed only by `full:regression:raw`, which no pull-request, push or merge-queue trigger reaches, so two violations landed on `main` while the Nightly that owned them was itself red |
 | `node scripts/check-prepush-push-range.mjs` | ~1s | trailing whitespace or a conflict marker in the lines the pushed commit adds since its merge base with `origin/main` (the merge queue's `git diff --check`), or a raw `mkdtemp` in a test file above its baseline (#2421). Both read the pushed commit, never the working tree |
+| `npm run docs:freshness:check` | ~7s | a recorded documentation review whose cited source or document this branch changed without a new review note, including a note recorded before a later edit of a cited source. CI's `docs:truth:gate` refuses the same case in `docs:foundations:test`. It reads the working tree, scoped against the merge base with `origin/main`, and its refusal prints the `docs:review:record` command |
 | `node scripts/check-prepush-orchestration-transfer.mjs` | scoped; requires a verified baseline at the merge base when orchestration transport inputs change | missing, stale, incomplete, or over-budget two-baseline-plus-candidate transfer evidence |
 | `node scripts/check-prepush-static-gates.mjs` | ~7s before the windowsHide ratchet (~4s) joined, and only when the push changes something these gates read | a UI-contract ratchet or content-gate violation (#3208), or a new child-process launch without `windowsHide` |
 | `node scripts/check-prepush-sdk-barrel.mjs` | ~6s, and only when the push changes the SDK's own sources | an SDK export missing from the public barrel (#3629) |
@@ -54,13 +55,15 @@ Repository-wide Veritas readiness and all typecheck lanes belong to hosted
 `scripts/run-ci-fast.mjs`. The `fast-checks` aggregate rejects any
 non-success statics result, and the required `Source verification policy`
 context reconciles that aggregate. Local pushes retain cheap lint/governance,
-whitespace, test temp-dir and commit checks plus scoped transfer, static, SDK
+whitespace, test temp-dir, documentation-freshness and commit checks plus scoped transfer, static, SDK
 and code-health checks.
 
 **Why the push-range and code-health checks moved here.** Of 87 failed
 pull-request CI runs between 2026-11-13 and 2026-11-15 (732 runs in all), 16
 were the code-health gate's unused-export blocker, up to 16 the raw-`mkdtemp`
-ratchet and 3 the whitespace check. Each cost a push and a CI round trip,
+ratchet and 3 the whitespace check, and at least 4 of the 10
+`docs:truth:gate` failures were review notes outdated by a later edit of a
+cited source, which `docs:freshness:check` reports. Each cost a push and a CI round trip,
 for checks that take one second (whitespace, temp dirs) or under a minute
 (code health) here. Code health is scoped the way the gate attributes
 findings: `fallow audit --changed-since` reports dead code only in changed
@@ -90,8 +93,8 @@ scale once and exports it to every step (see the
 a budget or assertion.
 
 A push that only adds clean merges of `origin/main` onto the tip the remote
-already holds skips the push-range, transfer, static-gate, SDK-barrel and
-code-health rows; the other four still run, and every row runs for a conflict
+already holds skips the push-range, documentation-freshness, transfer,
+static-gate, SDK-barrel and code-health rows; the other four still run, and every row runs for a conflict
 resolution, an edited merge or any new commit of the author's
 ([testing guide](testing.md#pre-push-orchestration-transfer-gate)).
 

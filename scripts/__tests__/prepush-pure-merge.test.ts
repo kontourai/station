@@ -406,6 +406,7 @@ if (/^scripts\\/commit-message-gate/.test(args[0] ?? '')) {
       f.commit('feat.txt', 'changed feature\n', 'fix: update feature');
       const { gates } = f.push([':feat', 'feat:updated']);
       for (const gate of EXPENSIVE) expect(gates).toContain(gate);
+      expect(gates).toContain('docs:freshness:check');
       expect(gates).toContain('lint:check');
       expect(gates).toContain('proof:repo-governance');
       expect(gates).toContain('scripts/commit-message-gate.mjs');
