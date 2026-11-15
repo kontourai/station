@@ -269,6 +269,10 @@ describe.skipIf(!real.binary)(
       expect(
         await waitFor((event) => event.method === 'session.started'),
       ).toMatchObject({ metadata: { openCodeTransport: 'native' } });
+      // Configured straight after, with the same transport facts.
+      expect(
+        await waitFor((event) => event.method === 'session.configured'),
+      ).toMatchObject({ metadata: { openCodeTransport: 'native' } });
       expect(events.some((event) => event.method === 'runtime.warning')).toBe(
         false,
       );

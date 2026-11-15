@@ -1305,8 +1305,13 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
       agent: 'plan',
     });
     await h.waitFor(completedFor(plan.turnId));
+    // The start's own configured event comes first; this is the engine's.
     expect(
-      await h.waitFor((event) => event.method === 'session.configured'),
+      await h.waitFor(
+        (event) =>
+          event.method === 'session.configured' &&
+          (event.metadata as { mode?: unknown } | undefined)?.mode === 'plan',
+      ),
     ).toBeDefined();
     expect(
       h.events.filter((event) => event.method === 'session.configured').at(-1),

@@ -1200,7 +1200,13 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       sessionId: input.threadId,
       ...(input.modelId ? { model: input.modelId } : {}),
       cwd: resumeCursor.cwd,
-      ...(input.metadata ? { metadata: input.metadata } : {}),
+      // The same transport facts as the start: the latest configured event
+      // is what a later read of the session's metadata finds first.
+      metadata: {
+        ...input.metadata,
+        openCodeTransport: 'native',
+        openCodeVersion: plan.version,
+      },
     });
     return session;
   }
