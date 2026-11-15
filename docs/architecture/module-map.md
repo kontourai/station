@@ -3806,18 +3806,18 @@ incarnation, room and uploader. Deleting a message releases its files, and an
 upload first releases its uploader's day-old unsent files. Uploads, releases
 and messages naming files hold one store-wide cross-process file lock (the
 yielding form, taken before the request's authority check so access revoked
-while waiting refuses). Records are written whole (staging, then rename). A
-release reads every record first (including any in `repair/`), never deletes
+while waiting refuses). Records are written whole (staging, then rename), and
+a failed write removes only the staging file it created. A
+release reads every record first, never deletes
 bytes another record names, and keeps a record, its quota charge and its
 retry until its bytes' deletion is confirmed (an unlink, or `ENOENT`). A
 damaged record counts only with one whole `blobRef` hash; any record whose
 reference cannot be known fails the release closed. Every upload re-derives
 the store's health under the lock with the same scan (no cached state), and
-any unknown record, pending repair or unreadable repair entry refuses it
-with `project_room_files_unavailable`; the marker is a diagnostic only.
-Repairs go through `repair/`, are published from the bytes Station validated
-(staged, then renamed) under the store lock, and direct `bindings/` edits
-other than removal or permission fixes need Station stopped. The store never
+any unknown record or unreadable or linked `bindings/` level refuses it with
+`project_room_files_unavailable`; the marker is a diagnostic only. Repair is
+offline only: with every Station process stopped, fix or remove the damaged
+record under `bindings/`. An old `repair/` directory is ignored. The store never
 evicts by age or size. Task rooms keep age and size retention (#4947) and
 share only the whole-record write. Persisted records are validated
 against their row identities before use. History reads use a deferred transaction;

@@ -2214,135 +2214,6 @@ test('message files: EIO reading a record blocks reclamation without deleting an
   }
 });
 
-/** Where a corrected record goes: `repair/` at its `bindings/` path. */
-function repairPath(root: string, recordPath: string) {
-  return recordPath.replace(join(root, 'bindings'), join(root, 'repair'));
-}
-
-/**
- * What a repair name holds for the operator: its own bytes and those of every
- * claim Station made of it (a pass claims an entry by renaming it beside
- * itself, so bytes an operator wrote survive under a claimed name).
- */
-const repairBytes = async (path: string) => {
-  const fs = await import('node:fs');
-  const { basename, dirname } = await import('node:path');
-  const names = fs.existsSync(dirname(path))
-    ? fs
-        .readdirSync(dirname(path))
-        .filter(
-          (name) =>
-            name === basename(path) ||
-            name.startsWith(`${basename(path)}.claimed-`),
-        )
-    : [];
-  return names.map((name) =>
-    fs.readFileSync(join(dirname(path), name), 'utf8'),
-  );
-};
-const claimedNames = async (directory: string) => {
-  const fs = await import('node:fs');
-  return fs.existsSync(directory)
-    ? fs.readdirSync(directory).filter((name) => name.includes('.claimed-'))
-    : [];
-};
-
-test('message files: a repair waits for the store lock, then replaces the damaged record and clears the block (#4852 review)', async () => {
-  const { existsSync, mkdirSync, readFileSync, writeFileSync } = await import(
-    'node:fs'
-  );
-  const { dirname } = await import('node:path');
-  const h = await harness();
-  const f = await aliceFiles(h);
-  const damaged = await bobsRecord(h, f);
-  const intact = readFileSync(damaged.path, 'utf8');
-  const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
-    id: string;
-  }[];
-  const sent = await f.send([gone]);
-  // Uploads re-check the store, so the damage happens after this upload.
-  writeFileSync(damaged.path, '{');
-  // Blocked: a release finds the damaged record.
-  expect(await f.remove(sent.messageId)).toBe(200);
-  await unavailable(
-    await h.request('alice', '/attachments', 'POST', {
-      ...guard(f.a),
-      attachments: [pngVariant('refused.png', 'refused')],
-    }),
-  );
-  // The operator writes the corrected record into repair/ while another
-  // holder (as another process would) has the store lock.
-  const unlock = await acquireFileMutationLockAsync(join(f.root, 'store.lock'));
-  const repaired = repairPath(f.root, damaged.path);
-  mkdirSync(dirname(repaired), { recursive: true });
-  writeFileSync(repaired, intact);
-  let settled = false;
-  const upload = Promise.resolve(
-    h.request('alice', '/attachments', 'POST', {
-      ...guard(f.a),
-      attachments: [pngVariant('after.png', 'after')],
-    }),
-  ).finally(() => {
-    settled = true;
-  });
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  // Nothing applied it without the lock.
-  expect(settled).toBe(false);
-  expect(existsSync(repaired)).toBe(true);
-  expect(readFileSync(damaged.path, 'utf8')).toBe('{');
-  await unlock();
-  expect((await upload).status).toBe(200);
-  expect(existsSync(repaired)).toBe(false);
-  expect(readFileSync(damaged.path, 'utf8')).toBe(intact);
-  expect(existsSync(join(f.root, 'reclamation-blocked.json'))).toBe(false);
-});
-
-test('message files: a repair written while a release scans cannot cost its bytes, because the damaged record still blocks (#4852 review)', async () => {
-  const fs = await import('node:fs');
-  const { dirname } = await import('node:path');
-  const h = await harness();
-  const f = await aliceFiles(h);
-  const damaged = await bobsRecord(h, f);
-  const intact = fs.readFileSync(damaged.path, 'utf8');
-  // Alice sends and deletes the same bytes Bob's record names.
-  const [same] = (await f.upload(png('interrupted.png'))) as { id: string }[];
-  const blob = await aliceBlob(f, same!.id);
-  const sent = await f.send([same]);
-  // Uploads re-check the store, so the damage happens after this upload.
-  fs.writeFileSync(damaged.path, '{');
-  const repaired = repairPath(f.root, damaged.path);
-  const list = fs.readdirSync;
-  let written = false;
-  const spy = vi
-    .spyOn(fs.default, 'readdirSync')
-    .mockImplementation((...args: Parameters<typeof fs.readdirSync>) => {
-      const entries = Reflect.apply(list, fs, args);
-      if (args[0] === dirname(damaged.path) && !written) {
-        // The operator writes the corrected record after this listing.
-        fs.mkdirSync(dirname(repaired), { recursive: true });
-        fs.writeFileSync(repaired, intact);
-        written = true;
-      }
-      return entries;
-    });
-  const { syncBuiltinESMExports } = await import('node:module');
-  syncBuiltinESMExports();
-  try {
-    expect(await f.remove(sent.messageId)).toBe(200);
-  } finally {
-    spy.mockRestore();
-    syncBuiltinESMExports();
-  }
-  expect(written).toBe(true);
-  expect(fs.existsSync(blob)).toBe(true);
-  // The next upload applies the repair under the lock and resumes.
-  expect(Array.isArray(await f.upload(pngVariant('after.png', 'after')))).toBe(
-    true,
-  );
-  expect(fs.readFileSync(damaged.path, 'utf8')).toBe(intact);
-  expect(fs.existsSync(blob)).toBe(true);
-});
-
 test('message files: actual membership revocation while waiting denies the upload and releases its lock', async () => {
   const { mkdirSync, readdirSync, existsSync } = await import('node:fs');
   const h = await harness();
@@ -2446,154 +2317,6 @@ test.skipIf(process.getuid?.() === 0)(
   },
 );
 
-for (const [label, raw] of [
-  ['partial', '{'],
-  ['garbage', 'garbage'],
-  ['oversize', '{' + 'x'.repeat(8 * 1024 * 1024)],
-] as const)
-  test(`message files: a warmed store refuses an upload while the repair inbox holds ${label} content (#4852 review)`, async () => {
-    const fs = await import('node:fs');
-    const h = await harness();
-    const f = await aliceFiles(h);
-    await f.upload(pngVariant('warm.png', 'warm'));
-    const repair = join(f.root, 'repair', 'operator');
-    fs.mkdirSync(repair, { recursive: true });
-    fs.writeFileSync(join(repair, 'pending.json'), raw);
-    const response = await h.request('alice', '/attachments', 'POST', {
-      ...guard(f.a),
-      attachments: [pngVariant('next.png', 'next')],
-    });
-    const body = (await response.clone().json()) as {
-      error?: { code?: string };
-    };
-    console.log(
-      'R5_REPAIR_ADMISSION',
-      JSON.stringify({
-        label,
-        status: response.status,
-        code: body.error?.code,
-        marker: fs.existsSync(join(f.root, 'reclamation-blocked.json')),
-      }),
-    );
-    await unavailable(response);
-  });
-
-test('message files: a stray entry directly under repair/ is storage unavailable, not invalid input (#4852 review)', async () => {
-  const fs = await import('node:fs');
-  const h = await harness();
-  const f = await aliceFiles(h);
-  await f.upload(png('warm.png'));
-  fs.mkdirSync(join(f.root, 'repair'), { recursive: true });
-  fs.writeFileSync(join(f.root, 'repair', 'partial.tmp'), '{');
-  const response = await h.request('alice', '/attachments', 'POST', {
-    ...guard(f.a),
-    attachments: [png('next.png')],
-  });
-  console.log(
-    'R5_REPAIR_TOPLEVEL',
-    response.status,
-    JSON.stringify(await response.clone().json()),
-  );
-  await unavailable(response);
-});
-
-test('message files: a repair whose bytes are gone stays pending and blocks, then a corrected repair resumes uploads (#4852 review)', async () => {
-  const fs = await import('node:fs');
-  const { dirname } = await import('node:path');
-  const h = await harness();
-  const f = await aliceFiles(h);
-  const damaged = await bobsRecord(h, f);
-  const intact = fs.readFileSync(damaged.path, 'utf8');
-  const parsed = JSON.parse(intact);
-  const path = repairPath(f.root, damaged.path);
-  const attempt = () =>
-    h.request('alice', '/attachments', 'POST', {
-      ...guard(f.a),
-      attachments: [png('next.png')],
-    });
-  // A release finds the damage (uploads re-check the store, so the damage
-  // and the pending repair happen after this upload).
-  const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
-    id: string;
-  }[];
-  const sent = await f.send([gone]);
-  fs.writeFileSync(damaged.path, '{');
-  fs.mkdirSync(dirname(path), { recursive: true });
-  fs.writeFileSync(
-    path,
-    JSON.stringify({ ...parsed, blobRef: 'sha256-' + 'f'.repeat(64) }),
-  );
-  await f.remove(sent.messageId);
-  await unavailable(await attempt());
-  expect(fs.readFileSync(damaged.path, 'utf8')).toBe('{');
-  const [claimed] = await claimedNames(dirname(path));
-  expect(claimed).toBeDefined();
-  const marker = JSON.parse(
-    fs.readFileSync(join(f.root, 'reclamation-blocked.json'), 'utf8'),
-  );
-  expect(marker.records).toContainEqual({
-    path: join(dirname(path), claimed!),
-    reason: 'its bytes are no longer stored',
-  });
-  // Writing the correction under the same name supersedes the stuck claim.
-  fs.writeFileSync(path, intact);
-  expect((await attempt()).status).toBe(200);
-  expect(fs.readFileSync(damaged.path, 'utf8')).toBe(intact);
-  console.log('R5_MISSING_BLOB_REPAIR blocked, diagnosed, corrected, resumed');
-});
-
-test('message files: a repair is published from the bytes Station validated, even if the operator rewrites it meanwhile (#4852 review)', async () => {
-  const fs = await import('node:fs');
-  const { dirname } = await import('node:path');
-  const { syncBuiltinESMExports } = await import('node:module');
-  const h = await harness();
-  const f = await aliceFiles(h);
-  const damaged = await bobsRecord(h, f);
-  const intact = fs.readFileSync(damaged.path, 'utf8');
-  fs.writeFileSync(damaged.path, '{');
-  const path = repairPath(f.root, damaged.path);
-  fs.mkdirSync(dirname(path), { recursive: true });
-  fs.writeFileSync(path, intact);
-  const rename = fs.renameSync;
-  let raced = false;
-  const spy = vi
-    .spyOn(fs.default, 'renameSync')
-    .mockImplementation((from, to) => {
-      // The operator rewrites the repair entry after Station read and
-      // validated it, just before Station publishes into bindings/.
-      if (to === damaged.path && !raced) {
-        raced = true;
-        fs.writeFileSync(path, '{');
-      }
-      return rename(from, to);
-    });
-  syncBuiltinESMExports();
-  let response: Response;
-  try {
-    response = await h.request('alice', '/attachments', 'POST', {
-      ...guard(f.a),
-      attachments: [png('next.png')],
-    });
-  } finally {
-    spy.mockRestore();
-    syncBuiltinESMExports();
-  }
-  console.log(
-    'R5_REPAIR_TOCTOU',
-    JSON.stringify({
-      raced,
-      status: response!.status,
-      inbox: fs.existsSync(path),
-      binding: fs.readFileSync(damaged.path, 'utf8'),
-    }),
-  );
-  expect(raced).toBe(true);
-  expect(fs.readFileSync(damaged.path, 'utf8')).toBe(intact);
-  // The newer, incomplete entry is kept (claimed by the next pass, which
-  // reports it).
-  expect(await repairBytes(path)).toEqual(['{']);
-});
-
 test.skipIf(process.getuid?.() === 0)(
   'message files: the same process keeps refusing after marker writes work again, until the record is repaired (#4852 review)',
   async () => {
@@ -2625,169 +2348,6 @@ test.skipIf(process.getuid?.() === 0)(
       JSON.stringify(await response.clone().json()),
     );
     await unavailable(response);
-  },
-);
-
-// Round-7 review probes (#4852): repair custody, cleanup and tree lookups.
-test('message files: an operator write to a repair name after Station claims it stays as a new entry (#4852 review)', async () => {
-  const fs = await import('node:fs');
-  const { dirname } = await import('node:path');
-  const { syncBuiltinESMExports } = await import('node:module');
-  const h = await harness();
-  const f = await aliceFiles(h);
-  const damaged = await bobsRecord(h, f);
-  const intact = fs.readFileSync(damaged.path, 'utf8');
-  fs.writeFileSync(damaged.path, '{');
-  const path = repairPath(f.root, damaged.path);
-  fs.mkdirSync(dirname(path), { recursive: true });
-  fs.writeFileSync(path, intact);
-  const read = fs.readFileSync;
-  let reads = 0;
-  let raced = false;
-  // The operator rewrites the original name while Station holds what it
-  // read: on the second read of that name (the old unchanged-check), or on
-  // the read of the claimed file that replaced it.
-  const spy = vi
-    .spyOn(fs.default, 'readFileSync')
-    .mockImplementation((...args: Parameters<typeof fs.readFileSync>) => {
-      const bytes = Reflect.apply(read, fs, args);
-      const target = String(args[0]);
-      if (
-        !raced &&
-        ((target === path && ++reads === 2) ||
-          target.startsWith(`${path}.claimed-`))
-      ) {
-        fs.writeFileSync(path, '{');
-        raced = true;
-      }
-      return bytes;
-    });
-  syncBuiltinESMExports();
-  let response: Response;
-  try {
-    response = await h.request('alice', '/attachments', 'POST', {
-      ...guard(f.a),
-      attachments: [png('next.png')],
-    });
-  } finally {
-    spy.mockRestore();
-    syncBuiltinESMExports();
-  }
-  expect(raced).toBe(true);
-  expect(fs.readFileSync(damaged.path, 'utf8')).toBe(intact);
-  // The rewrite survives, at its name or claimed by the admission pass.
-  expect(await repairBytes(path)).toEqual(['{']);
-  await unavailable(response!);
-});
-
-test('message files: a repair arriving as Station tidies an emptied repair directory is kept (#4852 review)', async () => {
-  const fs = await import('node:fs');
-  const { dirname } = await import('node:path');
-  const { syncBuiltinESMExports } = await import('node:module');
-  const h = await harness();
-  const f = await aliceFiles(h);
-  const damaged = await bobsRecord(h, f);
-  const intact = fs.readFileSync(damaged.path, 'utf8');
-  fs.writeFileSync(damaged.path, '{');
-  const path = repairPath(f.root, damaged.path);
-  const directory = dirname(path);
-  fs.mkdirSync(directory, { recursive: true });
-  fs.writeFileSync(path, intact);
-  const next = join(directory, `${randomUUID()}.json`);
-  let raced = false;
-  // The repair arrives just as Station removes the directory it emptied,
-  // whichever removal call it uses. (The probe's original hook, an empty
-  // readdir, has no counterpart once removal itself refuses a non-empty
-  // directory.)
-  const arrive = (target: unknown) => {
-    if (target === directory && !raced) {
-      fs.writeFileSync(next, '{');
-      raced = true;
-    }
-  };
-  const rm = fs.rmSync;
-  const rmdir = fs.rmdirSync;
-  const spies = [
-    vi
-      .spyOn(fs.default, 'rmSync')
-      .mockImplementation((...args: Parameters<typeof fs.rmSync>) => {
-        arrive(args[0]);
-        return Reflect.apply(rm, fs, args);
-      }),
-    vi
-      .spyOn(fs.default, 'rmdirSync')
-      .mockImplementation((...args: Parameters<typeof fs.rmdirSync>) => {
-        arrive(args[0]);
-        return Reflect.apply(rmdir, fs, args);
-      }),
-  ];
-  syncBuiltinESMExports();
-  let response: Response;
-  try {
-    response = await h.request('alice', '/attachments', 'POST', {
-      ...guard(f.a),
-      attachments: [png('next.png')],
-    });
-  } finally {
-    for (const spy of spies) spy.mockRestore();
-    syncBuiltinESMExports();
-  }
-  expect(raced).toBe(true);
-  expect(fs.readFileSync(damaged.path, 'utf8')).toBe(intact);
-  // The arrival survives, at its name or claimed by the admission pass.
-  expect(await repairBytes(next)).toEqual(['{']);
-  await unavailable(response!);
-});
-
-test.skipIf(process.getuid?.() === 0)(
-  'message files: a repair that cannot be published leaves no staging copies and is retried until it lands (#4852 review)',
-  async () => {
-    const fs = await import('node:fs');
-    const { dirname } = await import('node:path');
-    const h = await harness();
-    const f = await aliceFiles(h);
-    const damaged = await bobsRecord(h, f);
-    const intact = fs.readFileSync(damaged.path, 'utf8');
-    fs.writeFileSync(damaged.path, '{');
-    const path = repairPath(f.root, damaged.path);
-    fs.mkdirSync(dirname(path), { recursive: true });
-    fs.writeFileSync(path, intact);
-    const staging = join(f.root, 'staging');
-    const copies = () =>
-      fs.readdirSync(staging).filter((name) => name.startsWith('repair.'));
-    const attempt = () =>
-      h.request('alice', '/attachments', 'POST', {
-        ...guard(f.a),
-        attachments: [png('next.png')],
-      });
-    const statuses: number[] = [];
-    let afterFailures: string[];
-    let reasons: { path: string; reason: string }[];
-    let pending: string[];
-    fs.chmodSync(dirname(damaged.path), 0o500);
-    try {
-      for (let i = 0; i < 3; i++) statuses.push((await attempt()).status);
-      afterFailures = copies();
-      pending = await claimedNames(dirname(path));
-      reasons = JSON.parse(
-        fs.readFileSync(join(f.root, 'reclamation-blocked.json'), 'utf8'),
-      ).records;
-    } finally {
-      fs.chmodSync(dirname(damaged.path), 0o700);
-    }
-    expect(statuses).toEqual([503, 503, 503]);
-    expect(afterFailures!).toEqual([]);
-    expect(pending!).toHaveLength(1);
-    expect(reasons!).toContainEqual({
-      path: join(dirname(path), pending![0]!),
-      reason: 'EACCES',
-    });
-    const recovered = await attempt();
-    expect(recovered.status).toBe(200);
-    expect(fs.readFileSync(damaged.path, 'utf8')).toBe(intact);
-    expect(fs.existsSync(path)).toBe(false);
-    expect(fs.existsSync(dirname(path))).toBe(false);
-    expect(copies()).toEqual([]);
   },
 );
 
@@ -2829,9 +2389,9 @@ test.skipIf(process.getuid?.() === 0)(
     const h = await harness();
     const f = await aliceFiles(h);
     await f.upload(png('warm.png'));
-    const repair = join(f.root, 'repair', 'operator');
-    fs.mkdirSync(repair, { recursive: true });
-    fs.writeFileSync(join(repair, 'pending.json'), '{');
+    const damaged = await bobsRecord(h, f);
+    const intact = fs.readFileSync(damaged.path, 'utf8');
+    fs.writeFileSync(damaged.path, '{');
     const staging = join(f.root, 'staging');
     fs.chmodSync(staging, 0o500);
     try {
@@ -2846,7 +2406,7 @@ test.skipIf(process.getuid?.() === 0)(
     } finally {
       fs.chmodSync(staging, 0o700);
     }
-    fs.rmSync(repair, { recursive: true });
+    fs.writeFileSync(damaged.path, intact);
     expect(Array.isArray(await f.upload(png('recovered.png')))).toBe(true);
   },
 );
@@ -2918,73 +2478,6 @@ test('message files: every upload scans every record of a larger store and notic
   );
 });
 
-test('message files: a repair naming known bytes but no file descriptor still blocks admission (#4852 review)', async () => {
-  const fs = await import('node:fs');
-  const { dirname } = await import('node:path');
-  const h = await harness();
-  const f = await aliceFiles(h);
-  const original = await bobsRecord(h, f);
-  const { blobRef } = JSON.parse(fs.readFileSync(original.path, 'utf8'));
-  const path = repairPath(f.root, original.path);
-  fs.mkdirSync(dirname(path), { recursive: true });
-  fs.writeFileSync(path, JSON.stringify({ blobRef }));
-  await unavailable(
-    await h.request('alice', '/attachments', 'POST', {
-      ...guard(f.a),
-      attachments: [png('next.png')],
-    }),
-  );
-  const [claimed] = await claimedNames(dirname(path));
-  const marker = JSON.parse(
-    fs.readFileSync(join(f.root, 'reclamation-blocked.json'), 'utf8'),
-  );
-  expect(marker.records).toContainEqual({
-    path: join(dirname(path), claimed!),
-    reason: 'not a complete file record',
-  });
-  fs.rmSync(join(dirname(path), claimed!));
-  expect(Array.isArray(await f.upload(png('resumed.png')))).toBe(true);
-});
-
-test.skipIf(process.getuid?.() === 0)(
-  'message files: a repair root that cannot be looked up is unavailable, not absent (#4852 review)',
-  async () => {
-    const fs = await import('node:fs');
-    const h = await harness();
-    const f = await aliceFiles(h);
-    await f.upload(png('warm.png'));
-    const parent = join(h.home, 'operator-repair-parent');
-    const target = join(parent, 'inbox');
-    fs.mkdirSync(join(target, 'operator'), { recursive: true });
-    fs.writeFileSync(join(target, 'operator', 'pending.json'), '{');
-    fs.symlinkSync(target, join(f.root, 'repair'), 'dir');
-    fs.chmodSync(parent, 0o000);
-    let response: Response;
-    let lookupCode: string | undefined;
-    try {
-      try {
-        fs.statSync(join(f.root, 'repair'));
-      } catch (error) {
-        lookupCode = (error as NodeJS.ErrnoException).code;
-      }
-      response = await h.request('alice', '/attachments', 'POST', {
-        ...guard(f.a),
-        attachments: [png('next.png')],
-      });
-    } finally {
-      fs.chmodSync(parent, 0o700);
-    }
-    expect(lookupCode).toBe('EACCES');
-    await unavailable(response!);
-    await unavailable(
-      await h.request('alice', '/attachments', 'POST', {
-        ...guard(f.a),
-        attachments: [png('after.png')],
-      }),
-    );
-  },
-);
-
 test.skipIf(process.getuid?.() === 0)(
   'message files: a store directory that cannot be looked up is unavailable, not absent (#4852 review)',
   async () => {
@@ -3019,7 +2512,7 @@ test.skipIf(process.getuid?.() === 0)(
   },
 );
 
-test('message files: a linked bindings or repair root pauses uploads until it is a plain directory again (#4852 review)', async () => {
+test('message files: a linked bindings root pauses uploads until it is a plain directory again (#4852 review)', async () => {
   const fs = await import('node:fs');
   const h = await harness();
   const f = await aliceFiles(h);
@@ -3044,129 +2537,154 @@ test('message files: a linked bindings or repair root pauses uploads until it is
   fs.unlinkSync(bindings);
   fs.renameSync(moved, bindings);
   expect(Array.isArray(await f.upload(png('plain.png')))).toBe(true);
-  const inbox = join(h.home, 'linked-inbox');
-  fs.mkdirSync(inbox);
-  fs.symlinkSync(inbox, join(f.root, 'repair'), 'dir');
-  await unavailable(
-    await h.request('alice', '/attachments', 'POST', {
-      ...guard(f.a),
-      attachments: [png('linked-repair.png')],
-    }),
-  );
-  fs.unlinkSync(join(f.root, 'repair'));
-  expect(Array.isArray(await f.upload(png('resumed.png')))).toBe(true);
 });
 
-test('message files: claimed repair files left by an earlier process are pending, and the newest claim of a record wins (#4852 review)', async () => {
+test('message files: a repair/ directory left by an earlier build is ignored by admission and release (#4852 review)', async () => {
   const fs = await import('node:fs');
-  const { dirname } = await import('node:path');
   const h = await harness();
   const f = await aliceFiles(h);
-  const damaged = await bobsRecord(h, f);
-  const intact = fs.readFileSync(damaged.path, 'utf8');
-  fs.writeFileSync(damaged.path, '{');
-  const directory = dirname(repairPath(f.root, damaged.path));
-  fs.mkdirSync(directory, { recursive: true });
-  const name = damaged.path.slice(dirname(damaged.path).length + 1);
-  const claim = (ms: number, bytes: string) => {
-    const path = join(
-      directory,
-      `${name}.claimed-${String(ms).padStart(15, '0')}-${randomUUID()}`,
-    );
-    fs.writeFileSync(path, bytes);
-    return path;
-  };
-  const attempt = () =>
-    h.request('alice', '/attachments', 'POST', {
-      ...guard(f.a),
-      attachments: [png('next.png')],
-    });
-  const blocked = async () =>
-    JSON.parse(
-      fs.readFileSync(join(f.root, 'reclamation-blocked.json'), 'utf8'),
-    ).records;
-  // A crash left a complete claim, then a newer incomplete one: the newest
-  // write is the operator's intent, so nothing is published and both block.
-  const olderComplete = claim(Date.now() - 3000, intact);
-  const newerIncomplete = claim(Date.now() - 2000, '{');
-  await unavailable(await attempt());
-  expect(fs.readFileSync(damaged.path, 'utf8')).toBe('{');
-  expect(fs.readFileSync(olderComplete, 'utf8')).toBe(intact);
-  expect(await blocked()).toEqual(
-    expect.arrayContaining([
-      { path: newerIncomplete, reason: 'not a complete file record' },
-      {
-        path: olderComplete,
-        reason: 'superseded by a later repair that is not yet applied',
-      },
-    ]),
-  );
-  // A still newer complete claim publishes and retires both older claims.
-  const newest = claim(Date.now() - 1000, intact);
-  expect((await attempt()).status).toBe(200);
-  expect(fs.readFileSync(damaged.path, 'utf8')).toBe(intact);
-  for (const path of [olderComplete, newerIncomplete, newest])
-    expect(fs.existsSync(path)).toBe(false);
-  expect(fs.existsSync(directory)).toBe(false);
-});
-
-test('message files: a lone incomplete claimed repair blocks uploads until it is removed (#4852 review)', async () => {
-  const fs = await import('node:fs');
-  const { dirname } = await import('node:path');
-  const h = await harness();
-  const f = await aliceFiles(h);
-  const damaged = await bobsRecord(h, f);
-  const directory = dirname(repairPath(f.root, damaged.path));
-  fs.mkdirSync(directory, { recursive: true });
-  const name = damaged.path.slice(dirname(damaged.path).length + 1);
-  const claimed = join(
-    directory,
-    `${name}.claimed-${String(Date.now()).padStart(15, '0')}-${randomUUID()}`,
-  );
-  fs.writeFileSync(claimed, '{');
-  for (let i = 0; i < 2; i++)
-    await unavailable(
-      await h.request('alice', '/attachments', 'POST', {
-        ...guard(f.a),
-        attachments: [png('blocked.png')],
-      }),
-    );
+  const [file] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
+    id: string;
+  }[];
+  const sent = await f.send([file]);
+  const blob = await aliceBlob(f, file!.id);
+  // Whatever an earlier build's inbox held, including entries it would have
+  // refused, is not read: only bindings/ holds records.
+  const repair = join(f.root, 'repair');
+  fs.mkdirSync(join(repair, 'operator'), { recursive: true });
+  fs.writeFileSync(join(repair, 'operator', 'pending.json'), '{');
+  fs.writeFileSync(join(repair, 'stray'), 'garbage');
+  fs.symlinkSync(h.home, join(repair, 'linked'), 'dir');
+  expect(Array.isArray(await f.upload(png('admitted.png')))).toBe(true);
+  expect(fs.existsSync(join(f.root, 'reclamation-blocked.json'))).toBe(false);
+  expect(await f.remove(sent.messageId)).toBe(200);
+  expect(fs.existsSync(blob)).toBe(false);
   expect(
-    JSON.parse(
-      fs.readFileSync(join(f.root, 'reclamation-blocked.json'), 'utf8'),
-    ).records,
-  ).toContainEqual({ path: claimed, reason: 'not a complete file record' });
-  expect(fs.readFileSync(claimed, 'utf8')).toBe('{');
-  fs.rmSync(claimed);
-  expect(Array.isArray(await f.upload(png('resumed.png')))).toBe(true);
+    fs.readFileSync(join(repair, 'operator', 'pending.json'), 'utf8'),
+  ).toBe('{');
 });
 
-for (const [label, raw] of [
-  ['partial', '{'],
-  ['garbage', 'garbage'],
-  ['oversize', `{${'x'.repeat(8 * 1024 * 1024)}`],
+for (const [writer, damaged] of [
+  ['binding record', false],
+  ['blob bytes', false],
+  ['diagnostic marker', true],
 ] as const)
-  test(`message files: a ${label} repair at a valid path reaches content validation and is refused (#4852 review)`, async () => {
+  test(`message files: a ${writer} staging write that creates bytes then fails leaves no copy on retry (#4852 review)`, async () => {
     const fs = await import('node:fs');
-    const { dirname } = await import('node:path');
+    const { basename, dirname } = await import('node:path');
+    const { syncBuiltinESMExports } = await import('node:module');
     const h = await harness();
     const f = await aliceFiles(h);
-    const original = await bobsRecord(h, f);
-    const path = repairPath(f.root, original.path);
-    fs.mkdirSync(dirname(path), { recursive: true });
-    fs.writeFileSync(path, raw);
-    const response = await h.request('alice', '/attachments', 'POST', {
-      ...guard(f.a),
-      attachments: [png('next.png')],
-    });
-    const [claimed] = await claimedNames(dirname(path));
-    const records = JSON.parse(
-      fs.readFileSync(join(f.root, 'reclamation-blocked.json'), 'utf8'),
-    ).records;
-    expect(records).toContainEqual({
-      path: join(dirname(path), claimed!),
-      reason: 'not a complete file record',
-    });
-    expect(fs.readFileSync(join(dirname(path), claimed!), 'utf8')).toBe(raw);
-    await unavailable(response);
+    const bob = await bobsRecord(h, f);
+    const intact = fs.readFileSync(bob.path, 'utf8');
+    if (damaged) fs.writeFileSync(bob.path, '{');
+    const staging = join(f.root, 'staging');
+    const blobs = join(f.root, 'blobs');
+    const targeted = (path: string) =>
+      writer === 'blob bytes'
+        ? path.startsWith(blobs) && path.endsWith('.part')
+        : dirname(path) === staging &&
+          (writer === 'diagnostic marker'
+            ? basename(path).startsWith('reclamation-blocked.')
+            : /^[0-9a-f-]{36}\.json$/.test(basename(path)));
+    const leftovers = () => [
+      ...(fs.existsSync(staging) ? fs.readdirSync(staging) : []),
+      ...(fs.existsSync(blobs)
+        ? fs
+            .readdirSync(blobs, { recursive: true, encoding: 'utf8' })
+            .filter((name) => name.endsWith('.part'))
+        : []),
+    ];
+    // Real exclusive creation and real partial bytes precede the error,
+    // whether the writer stages with writeFileSync or with open and write.
+    const open = fs.openSync;
+    const write = fs.writeSync;
+    const close = fs.closeSync;
+    const writeFile = fs.writeFileSync;
+    const owned = new Set<number>();
+    let reached = 0;
+    const bytesOf = (data: unknown) =>
+      typeof data === 'string'
+        ? Buffer.from(data)
+        : Buffer.from(data as Uint8Array);
+    const fail = (fd: number, data: unknown): never => {
+      const bytes = bytesOf(data);
+      Reflect.apply(write, fs, [fd, bytes, 0, Math.min(1, bytes.length)]);
+      reached++;
+      throw Object.assign(new Error('injected partial staging write'), {
+        code: 'ENOSPC',
+      });
+    };
+    const spies = [
+      vi
+        .spyOn(fs.default, 'openSync')
+        .mockImplementation((...args: Parameters<typeof fs.openSync>) => {
+          const fd: number = Reflect.apply(open, fs, args);
+          if (targeted(String(args[0]))) owned.add(fd);
+          return fd;
+        }),
+      vi.spyOn(fs.default, 'writeSync').mockImplementation(((
+        ...args: [number, unknown, ...unknown[]]
+      ) => {
+        if (owned.delete(args[0])) fail(args[0], args[1]);
+        return Reflect.apply(write, fs, args);
+      }) as typeof fs.writeSync),
+      vi
+        .spyOn(fs.default, 'writeFileSync')
+        .mockImplementation((...args: Parameters<typeof fs.writeFileSync>) => {
+          if (typeof args[0] === 'string' && targeted(args[0])) {
+            const fd: number = Reflect.apply(open, fs, [args[0], 'w', 0o600]);
+            try {
+              fail(fd, args[1]);
+            } finally {
+              Reflect.apply(close, fs, [fd]);
+            }
+          }
+          return Reflect.apply(writeFile, fs, args);
+        }),
+    ];
+    syncBuiltinESMExports();
+    // Bytes no file has stored yet, so the blob writer runs every attempt.
+    const attempt = () =>
+      h.request('alice', '/attachments', 'POST', {
+        ...guard(f.a),
+        attachments: [pngVariant('next.png', `staging-${writer}`)],
+      });
+    const statuses: number[] = [];
+    let afterFailures: string[];
+    try {
+      for (let i = 0; i < 3; i++) statuses.push((await attempt()).status);
+      afterFailures = leftovers();
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+      syncBuiltinESMExports();
+    }
+    expect(reached).toBeGreaterThanOrEqual(3);
+    expect(statuses.every((status) => status !== 200)).toBe(true);
+    expect(afterFailures!).toEqual([]);
+    if (damaged) fs.writeFileSync(bob.path, intact);
+    expect((await attempt()).status).toBe(200);
+    expect(leftovers()).toEqual([]);
   });
+
+test('message files: a Station home reached through a linked ancestor directory still works (#4852 review)', async () => {
+  const fs = await import('node:fs');
+  // macOS temporary paths sit under /var, itself a link; only the store's
+  // own levels are checked.
+  const home = makeTempDir('r7-alias-home-');
+  const real = join(home, 'real');
+  const alias = join(home, 'alias');
+  fs.mkdirSync(real);
+  fs.symlinkSync(real, alias, 'dir');
+  const files = new ProjectRoomAttachments(
+    join(alias, 'project-room-attachments'),
+  );
+  const [file] = await files.locked(() =>
+    files.store(['owner'], [asInput(png('alias.png'))]),
+  );
+  expect(files.read(['owner'], file!.id)?.bytes).toEqual(PNG);
+  expect(await files.locked(() => files.release(['owner'], [file!.id]))).toBe(
+    'reclaimed',
+  );
+  expect(files.read(['owner'], file!.id)).toBeUndefined();
+});

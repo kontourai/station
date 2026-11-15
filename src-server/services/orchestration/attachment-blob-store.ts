@@ -10,7 +10,6 @@ import {
   statSync,
   unlinkSync,
   utimesSync,
-  writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -19,6 +18,7 @@ import {
   attachmentBlobOperations,
 } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { publishThroughOwnedFile } from './owned-staging-file.js';
 
 interface BlobStoreLogger {
   debug: (message: string, meta?: Record<string, unknown>) => void;
@@ -186,10 +186,14 @@ export class AttachmentBlobStore {
       }
       mkdirSync(join(this.rootDir, digest.slice(0, 2)), { recursive: true });
       // Same-directory rename so a reader never observes a partially written
-      // blob under a name that promises a complete one.
-      const staging = `${path}.${randomBytes(8).toString('hex')}.part`;
-      writeFileSync(staging, bytes);
-      renameSync(staging, path);
+      // blob under a name that promises a complete one; a failed attempt
+      // removes its own staging file.
+      publishThroughOwnedFile(
+        `${path}.${randomBytes(8).toString('hex')}.part`,
+        bytes,
+        (staging) => renameSync(staging, path),
+        0o666,
+      );
       count(() => attachmentBlobOperations, 1, {
         operation: 'write',
         outcome: 'stored',

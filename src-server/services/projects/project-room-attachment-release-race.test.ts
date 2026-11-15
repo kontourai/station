@@ -782,3 +782,92 @@ it('a crash before a record is renamed into place leaves no torn record, and a r
     'R5_CRASH_PUBLICATION exit=74, zero bindings, one staging record/orphan, fresh-process upload recovered',
   );
 }, 30000);
+
+it('offline repair: with Station stopped, fixing the damaged record lets a fresh process admit uploads and recover the quota (#4852 review)', async () => {
+  const { createHash } = await import('node:crypto');
+  const root = makeTempDir('room-offline-repair-');
+  // Bytes of their own, so releasing the kept file frees them.
+  const bytes = Buffer.concat([PNG, Buffer.from('offline-repair')]);
+  const kept = {
+    ...png('kept.png'),
+    size: bytes.length,
+    dataUrl: `data:image/png;base64,${bytes.toString('base64')}`,
+  };
+  const live = new ProjectRoomAttachments(root);
+  const [file] = await live.locked(() => live.store(['owner'], [kept]));
+  const [other] = await live.locked(() =>
+    live.store(['other'], [png('other.png')]),
+  );
+  const directory = (binding: string[]) =>
+    join(
+      root,
+      'bindings',
+      createHash('sha256').update(JSON.stringify(binding)).digest('hex'),
+    );
+  const record = join(directory(['owner']), `${file!.id}.json`);
+  const damaged = join(directory(['other']), `${other!.id}.json`);
+  const blobRef = JSON.parse(readFileSync(record, 'utf8')).blobRef as string;
+  const blob = join(root, 'blobs', blobRef.slice(7, 9), blobRef.slice(7));
+  const intact = readFileSync(damaged, 'utf8');
+  writeFileSync(damaged, '{');
+  // While damaged: the release keeps the record (its quota charge) and its
+  // bytes, and uploads are refused.
+  expect(await live.locked(() => live.release(['owner'], [file!.id]))).toBe(
+    'blocked',
+  );
+  await expect(
+    live.locked(() => live.store(['owner'], [png('refused.png')])),
+  ).rejects.toThrow('unavailable until the file store is repaired');
+  expect(existsSync(record)).toBe(true);
+  expect(existsSync(blob)).toBe(true);
+  // Station stops (no process holds the store), the operator restores the
+  // record on disk, and Station starts again as a fresh process.
+  writeFileSync(damaged, intact);
+  const config = join(makeTempDir('room-offline-repair-input-'), 'input.json');
+  writeFileSync(
+    config,
+    JSON.stringify({ root, input: png('after.png'), id: file!.id }),
+  );
+  const script = `
+    import {readFileSync} from 'node:fs';
+    import {ProjectRoomAttachments} from './src-server/services/projects/task-room-attachments.ts';
+    const {root,input,id}=JSON.parse(readFileSync(process.env.RACE_INPUT,'utf8'));
+    const files=new ProjectRoomAttachments(root);
+    const stored=(await files.locked(()=>files.store(['owner'],[input]))).length;
+    const released=await files.locked(()=>files.release(['owner'],[id]));
+    process.stdout.write(JSON.stringify({stored,released}));
+  `;
+  const result = await new Promise<{ stored: number; released: string }>(
+    (resolve, reject) => {
+      const child = spawn(
+        process.execPath,
+        ['--import', 'tsx', '--input-type=module', '-e', script],
+        {
+          cwd: process.cwd(),
+          env: { ...process.env, RACE_INPUT: config },
+          windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
+      let out = '';
+      let err = '';
+      child.stdout.on('data', (b) => {
+        out += b;
+      });
+      child.stderr.on('data', (b) => {
+        err += b;
+      });
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code !== 0) reject(new Error(err));
+        else resolve(JSON.parse(out));
+      });
+    },
+  );
+  expect(result).toEqual({ stored: 1, released: 'reclaimed' });
+  // The quota charge and the bytes are gone; the restored record stays.
+  expect(existsSync(record)).toBe(false);
+  expect(existsSync(blob)).toBe(false);
+  expect(readFileSync(damaged, 'utf8')).toBe(intact);
+  expect(existsSync(join(root, 'reclamation-blocked.json'))).toBe(false);
+}, 30000);
