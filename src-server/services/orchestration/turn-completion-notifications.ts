@@ -47,6 +47,7 @@
  */
 
 import {
+  type Notification,
   type NotificationEnvelopeV1,
   TURN_COMPLETION_NOTIFICATION_SOURCE,
 } from '@kontourai/station-contracts/notification';
@@ -55,12 +56,15 @@ import {
   isProviderTriggeredTurn,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
+import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { turnCompletionNotificationOps } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { FINISH_ALERT_WINDOW_MS } from '../notifications/agent-activity-card.js';
 import { ON_ACTIVITY_CARD_METADATA_KEY } from '../notifications/delivery/card-alerted-categories.js';
 import type { NotificationService } from '../notifications/notification-service.js';
 import type { EventBus } from './event-bus.js';
 import {
+  FINISHED_ALERT_EPISODES_MAX,
   type FinishedAlertEpisodeStore,
   FinishedAlertEpisodes,
   type PersistedFinishedAlertEpisode,
@@ -149,6 +153,15 @@ export interface TurnCompletionNotificationOptions {
   episodeStore?: FinishedAlertEpisodeStore;
   /** The release time the card dates a finish from. Defaults to `Date.now`. */
   now?: () => number;
+  /**
+   * A restart found the finish's record already written and delivered (the
+   * process stopped after the write, before it was acknowledged): the
+   * record's first NOTIFICATION_DELIVERED may never have reached its
+   * readers. Called with that record instead of writing or re-emitting it,
+   * which would push the phones again. The runtime hands it to the
+   * coordinator wake, whose durable item dedupe drops a repeat.
+   */
+  onReplayedDelivery?: (notification: Notification) => void;
 }
 
 /**
@@ -164,6 +177,37 @@ export const FINISHED_ALERT_CONFIRM_MS = 5_000;
  * nothing on the bus (an adapter's open-work flag, an owned session's row).
  */
 export const FINISHED_ALERT_RECHECK_MS = 10_000;
+/** A failed record write is retried after this, doubling per failure. */
+export const FINISHED_ALERT_RETRY_BASE_MS = 10_000;
+/** The longest wait between retries of a failed record write. */
+export const FINISHED_ALERT_RETRY_MAX_MS = 10 * 60_000;
+
+/** Whether `record` is this producer's own finish for exactly this turn. */
+function isOwnFinishRecord(
+  record: Notification,
+  threadId: string,
+  turnId: string,
+): boolean {
+  if (record.source !== TURN_COMPLETION_SOURCE) return false;
+  if (record.category !== 'turn-completed') return false;
+  const metadata = record.metadata as Record<string, unknown> | undefined;
+  if (
+    metadata?.sessionId !== threadId ||
+    metadata.threadId !== threadId ||
+    metadata.turnId !== turnId ||
+    metadata.dedupeTag !== `turn-completion:${threadId}:${turnId}`
+  )
+    return false;
+  const envelope = readNotificationEnvelope(record);
+  return (
+    envelope?.source.kind === 'system' &&
+    envelope.source.subsystem === TURN_COMPLETION_SOURCE &&
+    envelope.audience.kind === 'session-readers' &&
+    envelope.audience.sessionId === threadId &&
+    envelope.target?.kind === 'session' &&
+    envelope.target.sessionId === threadId
+  );
+}
 
 function defaultSetTimer(callback: () => void, delayMs: number): Cancel {
   const timer = setTimeout(callback, delayMs);
@@ -515,8 +559,10 @@ export function wireTurnCompletionNotifications(
   // as before. The record is written only at delivery: writing it early
   // would put "finished" in the in-app list while work still runs. The
   // coordinator wake reads the same delivery, so it wakes on the settled
-  // finish. Pending episodes persist (`episodeStore`): a restart replays
-  // them, reads their holds again and sends each once nothing holds it. The
+  // finish. Each finish persists (`episodeStore`) as it moves held ->
+  // writing -> released (finished-alert-episodes.ts): a restart replays the
+  // rows by state, reads holds again, looks a `writing` finish's record up
+  // before writing it, and sends each once nothing holds it. The
   // phone card reads the same episodes (`episodes`), so it shows Running
   // until the release and raises its one "Agent finished" from it.
   interface HeldFinish {
@@ -530,39 +576,105 @@ export function wireTurnCompletionNotifications(
     cancelConfirm?: Cancel;
   }
   const heldFinishes = new Map<string, HeldFinish>();
-  /** Released, its record not yet written: still persisted until it is. */
-  const delivering = new Map<HeldFinish, string>();
+  /**
+   * Released and saved as `writing`; its record is not written yet (a write
+   * failed and waits for its retry, or a restart is looking it up).
+   */
+  interface WritingFinish {
+    turnId: string;
+    outcome: 'done' | 'replied';
+    onActivityCard: boolean;
+    terminalEventId?: string;
+    attempts: number;
+    nextAttemptAt?: number;
+    cancelRetry?: Cancel;
+  }
+  const writingFinishes = new Map<string, WritingFinish>();
+  /** Written, kept for the card's alert window (oldest first). */
+  const releasedFinishes = new Map<
+    string,
+    { turnId: string; releaseKey: string; releasedAt: number }
+  >();
   let cancelRecheck: Cancel | undefined;
   const episodes = options.episodes ?? new FinishedAlertEpisodes();
   const nowMs = options.now ?? Date.now;
 
-  const persistEpisodes = (): void => {
-    if (!options.episodeStore) return;
+  const pruneReleased = (): void => {
+    const now = nowMs();
+    for (const [threadId, row] of releasedFinishes)
+      if (now - row.releasedAt > FINISH_ALERT_WINDOW_MS)
+        releasedFinishes.delete(threadId);
+  };
+
+  /** Saves every row; false when the store refused the write. */
+  const persistEpisodes = (): boolean => {
+    if (!options.episodeStore) return true;
+    pruneReleased();
     const rows: PersistedFinishedAlertEpisode[] = [];
-    const add = (threadId: string, episode: HeldFinish) =>
+    const finishOf = (
+      threadId: string,
+      episode: HeldFinish | WritingFinish,
+    ) => ({
+      threadId,
+      turnId: episode.turnId,
+      outcome: episode.outcome,
+      onActivityCard: episode.onActivityCard,
+      ...(episode.terminalEventId
+        ? { terminalEventId: episode.terminalEventId }
+        : {}),
+    });
+    for (const [threadId, row] of releasedFinishes)
+      rows.push({ state: 'released', threadId, ...row });
+    for (const [threadId, episode] of writingFinishes)
       rows.push({
-        threadId,
-        turnId: episode.turnId,
-        outcome: episode.outcome,
-        onActivityCard: episode.onActivityCard,
-        ...(episode.terminalEventId
-          ? { terminalEventId: episode.terminalEventId }
+        state: 'writing',
+        ...finishOf(threadId, episode),
+        attempts: episode.attempts,
+        ...(episode.nextAttemptAt !== undefined
+          ? { nextAttemptAt: episode.nextAttemptAt }
           : {}),
       });
-    for (const [episode, threadId] of delivering) add(threadId, episode);
-    for (const [threadId, episode] of heldFinishes) add(threadId, episode);
+    for (const [threadId, episode] of heldFinishes)
+      rows.push({ state: 'held', ...finishOf(threadId, episode) });
     try {
       options.episodeStore.save(rows);
+      return true;
     } catch (error) {
-      // The alert still goes out from memory; only restart safety is lost.
       logger.warn('turn-completion: pending finished alerts were not saved', {
         error: errorMessage(error),
       });
+      return false;
     }
+  };
+
+  const episodeRows = (): number =>
+    heldFinishes.size + writingFinishes.size + releasedFinishes.size;
+
+  /**
+   * Whether a new held finish fits under FINISHED_ALERT_EPISODES_MAX, in
+   * memory and on disk alike. Released rows give way first (only a card
+   * re-date is lost, never a record); held and writing ones never do, so a
+   * full store refuses the newcomer instead.
+   */
+  const admitHeld = (threadId: string): boolean => {
+    if (heldFinishes.has(threadId) || writingFinishes.has(threadId))
+      return true;
+    if (episodeRows() < FINISHED_ALERT_EPISODES_MAX) return true;
+    pruneReleased();
+    for (const releasedThread of releasedFinishes.keys()) {
+      if (episodeRows() < FINISHED_ALERT_EPISODES_MAX) break;
+      releasedFinishes.delete(releasedThread);
+    }
+    return episodeRows() < FINISHED_ALERT_EPISODES_MAX;
   };
 
   const setHeldFinish = (threadId: string, episode: HeldFinish): void => {
     heldFinishes.get(threadId)?.cancelConfirm?.();
+    // An older finish on this thread whose write failed is replaced: the
+    // newer one covers the episode, as one alert, and an older turn never
+    // shadows it.
+    writingFinishes.get(threadId)?.cancelRetry?.();
+    writingFinishes.delete(threadId);
     heldFinishes.set(threadId, episode);
     episodes.setHeld(threadId, true);
     persistEpisodes();
@@ -618,6 +730,132 @@ export function wireTurnCompletionNotifications(
     }, recheckMs);
   };
 
+  /**
+   * The record is written (or was decided not to need one): the row becomes
+   * `released` and is saved before the card hears of it. A failed save is
+   * logged and the card is still told, since the record exists; a restart
+   * then reads the row as `writing`, finds the record and does not write it
+   * again.
+   */
+  const releaseWritten = (threadId: string, writing: WritingFinish): void => {
+    if (writingFinishes.get(threadId) !== writing) return;
+    writingFinishes.delete(threadId);
+    const release = {
+      key: writing.terminalEventId
+        ? `event:${writing.terminalEventId}`
+        : `finish:${writing.turnId}`,
+      at: nowMs(),
+    };
+    releasedFinishes.delete(threadId);
+    releasedFinishes.set(threadId, {
+      turnId: writing.turnId,
+      releaseKey: release.key,
+      releasedAt: release.at,
+    });
+    persistEpisodes();
+    // A newer finish already held on this thread owns the card's entry.
+    if (!heldFinishes.has(threadId)) episodes.recordRelease(threadId, release);
+  };
+
+  const attemptWrite = async (
+    threadId: string,
+    writing: WritingFinish,
+  ): Promise<void> => {
+    if (writingFinishes.get(threadId) !== writing) return;
+    writing.cancelRetry = undefined;
+    let result: Awaited<ReturnType<typeof deliverTurnCompletionPush>>;
+    try {
+      result = await deliverTurnCompletionPush({
+        orchestrationService,
+        notificationService,
+        threadId,
+        turnId: writing.turnId,
+        outcome: writing.outcome,
+        onActivityCard: writing.onActivityCard,
+      });
+    } catch (error) {
+      if (writingFinishes.get(threadId) !== writing) return;
+      // No release: the card keeps the finish pending, and the row stays
+      // `writing` until a retry writes it.
+      writing.attempts += 1;
+      const delayMs = Math.min(
+        FINISHED_ALERT_RETRY_BASE_MS * 2 ** (writing.attempts - 1),
+        FINISHED_ALERT_RETRY_MAX_MS,
+      );
+      writing.nextAttemptAt = nowMs() + delayMs;
+      persistEpisodes();
+      turnCompletionNotificationOps.add(1, {
+        outcome: writing.outcome,
+        result: 'error',
+      });
+      logger.warn('turn-completion: a finished alert was not written', {
+        threadId,
+        attempts: writing.attempts,
+        retryInMs: delayMs,
+        error: errorMessage(error),
+      });
+      writing.cancelRetry = setTimer(() => {
+        notificationService.dispatch(TURN_COMPLETION_SOURCE, () =>
+          attemptWrite(threadId, writing),
+        );
+      }, delayMs);
+      return;
+    }
+    turnCompletionNotificationOps.add(1, { outcome: writing.outcome, result });
+    releaseWritten(threadId, writing);
+  };
+
+  /**
+   * A restart found this finish saved as `writing`: the process may have
+   * stopped after its record was written. The record decides:
+   *
+   * - none: it was never written, so it is written now;
+   * - this producer's own record for this turn, still `delivered` and not
+   *   held by an action: handed to `onReplayedDelivery` if the thread still
+   *   has a reader. It is never rewritten (a rewrite resets its read state)
+   *   and NOTIFICATION_DELIVERED is not emitted again (that pushes phones);
+   * - dismissed, actioned, expired, leased, or not this producer's: the
+   *   person's decision or the other owner stands, and nothing is replayed.
+   */
+  const replayWriting = async (
+    threadId: string,
+    writing: WritingFinish,
+  ): Promise<void> => {
+    if (writingFinishes.get(threadId) !== writing) return;
+    const found = await notificationService.findByDedupeTag(
+      `turn-completion:${threadId}:${writing.turnId}`,
+    );
+    if (!found) {
+      await attemptWrite(threadId, writing);
+      return;
+    }
+    const { notification, leased } = found;
+    const own = isOwnFinishRecord(notification, threadId, writing.turnId);
+    if (!own)
+      logger.warn(
+        'turn-completion: a saved finish names a record this producer did not write; not replayed',
+        { threadId, turnId: writing.turnId },
+      );
+    const hasReader =
+      !orchestrationService.isReadOnlyAttachedSession(threadId) &&
+      orchestrationService.resolveSessionPresenceSubject(threadId) !==
+        undefined;
+    let result = 'replay_skipped';
+    if (own && notification.status === 'delivered' && !leased && hasReader) {
+      result = 'replayed';
+      try {
+        options.onReplayedDelivery?.(notification);
+      } catch (error) {
+        logger.warn('turn-completion: a replayed finish was not handed on', {
+          threadId,
+          error: errorMessage(error),
+        });
+      }
+    }
+    turnCompletionNotificationOps.add(1, { outcome: writing.outcome, result });
+    releaseWritten(threadId, writing);
+  };
+
   const confirmHeldFinish = async (
     threadId: string,
     expected: HeldFinish,
@@ -630,35 +868,29 @@ export function wireTurnCompletionNotifications(
       armRecheck();
       return;
     }
+    // held -> writing, saved before the record is written: nothing is
+    // announced on a state a restart could not resume.
+    const superseded = writingFinishes.get(threadId);
+    const writing: WritingFinish = {
+      turnId: pending.turnId,
+      outcome: pending.outcome,
+      onActivityCard: pending.onActivityCard,
+      ...(pending.terminalEventId
+        ? { terminalEventId: pending.terminalEventId }
+        : {}),
+      attempts: 0,
+    };
     heldFinishes.delete(threadId);
-    delivering.set(pending, threadId);
-    // The card's Done and its one alert date from now, under the key of the
-    // episode's last terminal (the key the card derives from the event log).
-    episodes.recordRelease(threadId, {
-      key: pending.terminalEventId
-        ? `event:${pending.terminalEventId}`
-        : `finish:${pending.turnId}`,
-      at: nowMs(),
-    });
-    try {
-      const result = await deliverTurnCompletionPush({
-        orchestrationService,
-        notificationService,
-        threadId,
-        turnId: pending.turnId,
-        outcome: pending.outcome,
-        onActivityCard: pending.onActivityCard,
-      });
-      turnCompletionNotificationOps.add(1, {
-        outcome: pending.outcome,
-        result,
-      });
-      delivering.delete(pending);
-    } finally {
-      // A failed write stays persisted and is retried at the next start;
-      // the record's dedupe tag makes a repeat a no-op.
-      if (!delivering.has(pending)) persistEpisodes();
+    writingFinishes.set(threadId, writing);
+    if (!persistEpisodes()) {
+      writingFinishes.delete(threadId);
+      if (superseded) writingFinishes.set(threadId, superseded);
+      heldFinishes.set(threadId, pending);
+      armRecheck();
+      return;
     }
+    superseded?.cancelRetry?.();
+    await attemptWrite(threadId, writing);
   };
 
   /** Starts, keeps, or cancels the episode's confirmation window. */
@@ -961,7 +1193,22 @@ export function wireTurnCompletionNotifications(
               });
               return;
             }
-            const previous = heldFinishes.get(event.threadId);
+            if (!admitHeld(event.threadId)) {
+              // Every row is a held or unwritten finish: those are kept, and
+              // this one is not announced. Recovery is the store draining.
+              logger.warn(
+                `finished-alert episodes full (${FINISHED_ALERT_EPISODES_MAX}); finish for ${event.threadId} not held`,
+                { threadId: event.threadId },
+              );
+              turnCompletionNotificationOps.add(1, {
+                outcome,
+                result: 'overflow',
+              });
+              return;
+            }
+            const previous =
+              heldFinishes.get(event.threadId) ??
+              writingFinishes.get(event.threadId);
             setHeldFinish(event.threadId, {
               turnId: event.turnId,
               ...(event.eventId ? { terminalEventId: event.eventId } : {}),
@@ -1012,9 +1259,11 @@ export function wireTurnCompletionNotifications(
     },
   );
 
-  // Restart: pending episodes come back as they were saved, with no turn
-  // open (the engine did not survive the restart). Each is read again and
-  // sent once nothing holds it, through the same confirmation window.
+  // Restart: rows come back by state, never by position. A release still in
+  // the card's window re-dates the card; a `writing` row is looked up before
+  // anything is written; a held one is read again (no turn is open: the
+  // engine did not survive the restart) and sent once nothing holds it,
+  // through the same confirmation window.
   if (options.episodeStore) {
     let replayed: PersistedFinishedAlertEpisode[] = [];
     try {
@@ -1025,21 +1274,55 @@ export function wireTurnCompletionNotifications(
         { error: errorMessage(error) },
       );
     }
+    const now = nowMs();
     for (const row of replayed) {
-      if (heldFinishes.has(row.threadId)) continue;
-      heldFinishes.set(row.threadId, {
+      if (row.state !== 'released') continue;
+      if (now - row.releasedAt > FINISH_ALERT_WINDOW_MS) continue;
+      releasedFinishes.delete(row.threadId);
+      releasedFinishes.set(row.threadId, {
+        turnId: row.turnId,
+        releaseKey: row.releaseKey,
+        releasedAt: row.releasedAt,
+      });
+      episodes.recordRelease(row.threadId, {
+        key: row.releaseKey,
+        at: row.releasedAt,
+      });
+    }
+    for (const row of replayed) {
+      if (row.state === 'released') continue;
+      const finish = {
         turnId: row.turnId,
         outcome: row.outcome,
         onActivityCard: row.onActivityCard,
         ...(row.terminalEventId
           ? { terminalEventId: row.terminalEventId }
           : {}),
-        turnOpen: false,
-      });
+      };
+      if (row.state === 'writing')
+        writingFinishes.set(row.threadId, {
+          ...finish,
+          attempts: row.attempts,
+          ...(row.nextAttemptAt !== undefined
+            ? { nextAttemptAt: row.nextAttemptAt }
+            : {}),
+        });
+      else heldFinishes.set(row.threadId, { ...finish, turnOpen: false });
       episodes.setHeld(row.threadId, true);
     }
-    if (heldFinishes.size > 0)
+    if (heldFinishes.size > 0 || writingFinishes.size > 0)
       notificationService.dispatch(TURN_COMPLETION_SOURCE, async () => {
+        for (const [threadId, writing] of [...writingFinishes]) {
+          try {
+            await replayWriting(threadId, writing);
+          } catch (error) {
+            // The row stays `writing`: the next start looks it up again.
+            logger.warn('turn-completion: a saved finish could not be read', {
+              threadId,
+              error: errorMessage(error),
+            });
+          }
+        }
         for (const threadId of [...heldFinishes.keys()])
           evaluateHeldFinish(threadId);
       });
@@ -1062,9 +1345,11 @@ export function wireTurnCompletionNotifications(
     for (const timer of settledStopTimers.values()) clearTimeout(timer);
     settledStopTimers.clear();
     for (const episode of heldFinishes.values()) episode.cancelConfirm?.();
+    for (const writing of writingFinishes.values()) writing.cancelRetry?.();
     // Unwiring is not settling: the saved episodes stay for the next start.
     heldFinishes.clear();
-    delivering.clear();
+    writingFinishes.clear();
+    releasedFinishes.clear();
     if (!options.episodes) episodes.clear();
     cancelRecheck?.();
     cancelRecheck = undefined;

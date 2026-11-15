@@ -209,6 +209,13 @@ export interface AgentActivitySessionRow extends AgentActivitySessionFacts {
    * entry with this key dates from the release, not the turn's end.
    */
   finishRelease?: { key: string; at: number };
+  /**
+   * The finish producer releases this session's finishes (`release` is
+   * wired): a Done entry alerts only under its released key. A Done the
+   * producer never released (a later successful `session.exited`, a refused
+   * or dropped finish) shows without an alert.
+   */
+  finishReleased?: true;
 }
 
 /**
@@ -275,7 +282,7 @@ function finishFactsFor(
   finish: AgentActivityFinishFacts | undefined,
 ): Pick<
   AgentActivitySessionRow,
-  'finishHeld' | 'finishQuiet' | 'finishRelease'
+  'finishHeld' | 'finishQuiet' | 'finishRelease' | 'finishReleased'
 > {
   if (!finish) return {};
   if (
@@ -301,6 +308,7 @@ function finishFactsFor(
     ...(held ? { finishHeld: true as const } : {}),
     ...(quiet ? { finishQuiet: true as const } : {}),
     ...(release ? { finishRelease: release } : {}),
+    ...(finish.release ? { finishReleased: true as const } : {}),
   };
 }
 
@@ -391,6 +399,29 @@ function phaseEntryFromEvents(
 }
 
 /**
+ * The released terminal as this run's Done entry, when a later completed
+ * terminal (a successful `session.exited` after the turn) would otherwise
+ * name a second entry for the same finish.
+ */
+function releasedEntry(
+  release: { key: string; at: number },
+  events: readonly CanonicalRuntimeEvent[],
+): { key: string; at: number } | undefined {
+  if (!release.key.startsWith('event:')) return undefined;
+  const eventId = release.key.slice('event:'.length);
+  const turnStarted = latestOf(events, ['turn.started']);
+  const since = turnStarted ? Date.parse(turnStarted.createdAt) : -Infinity;
+  const terminal = events.find(
+    (event) =>
+      event.eventId === eventId &&
+      endsCompleted(event) &&
+      Date.parse(event.createdAt) >= since,
+  );
+  const at = terminal ? Date.parse(terminal.createdAt) : Number.NaN;
+  return Number.isFinite(at) ? { key: release.key, at } : undefined;
+}
+
+/**
  * Read-model rows plus each carded session's entry identity. Only sessions
  * that will be on the card have their (bounded, lifecycle-only) projection
  * events read.
@@ -416,6 +447,8 @@ export function agentActivityRowsWithEntries(
     // dates from the release, on every rebuild, so a finish held past the
     // alert window still alerts once (and its id stays the terminal's).
     const release = row.finishRelease;
+    if (phase === 'completed' && entry && release && release.key !== entry.key)
+      entry = releasedEntry(release, events.get(row.sessionId) ?? []) ?? entry;
     if (phase === 'completed' && entry && release?.key === entry.key)
       entry = { key: entry.key, at: Math.max(entry.at, release.at) };
     return entry ? { ...row, entry } : row;
@@ -731,7 +764,9 @@ export function wireAgentActivityPublisher(
         enteredAt,
         entryKey,
         ...(phase === 'completed' &&
-        (row.finishHeld === true || row.finishQuiet === true)
+        (row.finishHeld === true ||
+          row.finishQuiet === true ||
+          (row.finishReleased === true && row.finishRelease?.key !== entryKey))
           ? { quietFinish: true as const }
           : {}),
       });

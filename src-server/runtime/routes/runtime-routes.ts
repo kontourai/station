@@ -12458,6 +12458,7 @@ export function configureRuntimeRoutes(
     taskFollowUpWake,
   } = configureRuntimeSupportServices(context, flowRunService, {
     threadInbox: () => threadInbox,
+    coordinatorWakes: () => coordinatorPlacement,
     focus: focusPresence,
     inAppLiveness: clientStreamPresence.inAppLiveness,
     ...(scheduledConversationRuns

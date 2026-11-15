@@ -53,7 +53,7 @@ const ALERT_LIST_MAX = 5;
 /** Finished sessions stay on the card this long. */
 const FINISHED_WINDOW_MS = 15 * 60 * 1000;
 /** A finish alerts only this soon after it happened. */
-const FINISH_ALERT_WINDOW_MS = 2 * 60 * 1000;
+export const FINISH_ALERT_WINDOW_MS = 2 * 60 * 1000;
 const RUNNING_EXPIRY_MS = 2 * 60 * 60 * 1000;
 /**
  * The card travels sealed: base64url(nonce || ciphertext || tag) inside

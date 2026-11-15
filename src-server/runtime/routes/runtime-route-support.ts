@@ -50,6 +50,7 @@ import {
   FileConversationAcknowledgementStore,
   ownerDevicePredicate,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import type { CoordinatorWakeDelivery } from '../../services/orchestration/coordinator-session.js';
 import {
   createFileFinishedAlertEpisodeStore,
   FinishedAlertEpisodes,
@@ -427,6 +428,15 @@ export function configureRuntimeSupportServices(
       | Pick<ThreadInboxDelivery, 'submit' | 'entry' | 'hasWaitingFollowUp'>
       | undefined;
     /**
+     * The coordinator wake, once composed (absent on a hosted Station). A
+     * restart that finds a finish already written hands its record here
+     * instead of re-emitting NOTIFICATION_DELIVERED (see
+     * `onReplayedDelivery` in turn-completion-notifications.ts).
+     */
+    coordinatorWakes?: () =>
+      | Pick<CoordinatorWakeDelivery, 'observeNotification'>
+      | undefined;
+    /**
      * #2064 (D4): paused Survey/Flow gate review sessions for the attention
      * projection. Injected rather than constructed here because the
      * aggregate needs the live project inventory, which the caller already
@@ -524,6 +534,8 @@ export function configureRuntimeSupportServices(
     context.logger,
     {
       readFinishedAlertHold,
+      onReplayedDelivery: (notification) =>
+        options.coordinatorWakes?.()?.observeNotification(notification),
       episodes: finishedAlertEpisodes,
       episodeStore: createFileFinishedAlertEpisodeStore(
         context.configLoader.getProjectHomeDir(),

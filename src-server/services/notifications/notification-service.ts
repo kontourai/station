@@ -1173,6 +1173,25 @@ export class NotificationService {
     return notification ? toPublicNotification(notification) : undefined;
   }
 
+  /**
+   * Server-internal: the stored record holding `dedupeTag`, by the same
+   * unscoped lookup a dedupe schedule makes. No route exposes it; the caller
+   * checks the record's identity itself. `leased` says an action holds it.
+   */
+  async findByDedupeTag(
+    dedupeTag: string,
+  ): Promise<{ notification: Notification; leased: boolean } | undefined> {
+    const stored = (await this.read()).find(
+      (n) => (n.metadata as any)?.dedupeTag === dedupeTag,
+    );
+    return stored
+      ? {
+          notification: toPublicNotification(stored),
+          leased: stored.actionLease !== undefined,
+        }
+      : undefined;
+  }
+
   async list(opts?: {
     status?: string[];
     category?: string[];

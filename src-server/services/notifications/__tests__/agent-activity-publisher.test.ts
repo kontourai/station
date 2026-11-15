@@ -2034,6 +2034,29 @@ describe('one "Agent finished" per completion episode', () => {
     await w.dispose();
   });
 
+  test('only the released finish alerts: a later successful exit adds no second alert, and a Done the producer never released adds none', async () => {
+    const w = await episodeWorld();
+    w.h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    await w.push('s1', { method: 'turn.completed', turnId: 'turn-2' });
+    await w.runFor(
+      FINISHED_ALERT_CONFIRM_MS + NATIVE_PUSH_MIN_SEND_INTERVAL_MS,
+    );
+    expect(w.alerts()).toEqual(['Agent finished']);
+    // The session then exits cleanly: still the same one finish.
+    await w.push('s1', { method: 'session.exited', exitCode: 0 });
+    await w.runFor(NATIVE_PUSH_MIN_SEND_INTERVAL_MS * 2);
+    expect(w.lastPhase()).toBe('completed');
+    expect(w.alerts()).toEqual(['Agent finished']);
+
+    // A second session ends with no turn terminal the producer released.
+    w.h.sessions.set('s2', sessionEvents('s2', 'running', START));
+    await w.push('s2', { method: 'session.exited', exitCode: 0 });
+    await w.runFor(NATIVE_PUSH_MIN_SEND_INTERVAL_MS * 2);
+    expect(w.alerts()).toEqual(['Agent finished']);
+    expect(await w.records()).toHaveLength(1);
+    await w.dispose();
+  });
+
   test('a delegated child reads Done but raises no "Agent finished"; its failure still alerts', async () => {
     const w = await episodeWorld();
     w.delegated.add('s1');

@@ -16,11 +16,9 @@ import { JsonFileStore } from '../infra/json-store.js';
  *   dates that entry from the release, on every rebuild, so a long hold
  *   still falls inside the alert window.
  *
- * In memory: after a restart the producer replays its persisted pending
- * episodes (see {@link FinishedAlertEpisodeStore}) and marks them pending
- * again. A release from before the restart is forgotten, and the card falls
- * back to the terminal event's time and the same key, which the phone's
- * remembered alert ids already cover.
+ * In memory: after a restart the producer replays its persisted episodes
+ * (see {@link FinishedAlertEpisodeStore}): held and writing ones are pending
+ * again, and a release still inside the card's alert window is restored.
  */
 export interface FinishedAlertRelease {
   key: string;
@@ -110,8 +108,33 @@ export class FinishedAlertEpisodes {
   }
 }
 
-/** A pending episode as persisted, so a restart does not lose its alert. */
-export interface PersistedFinishedAlertEpisode {
+/**
+ * One persisted step of a thread's finish, keyed by thread and state: at
+ * most one `held`, one `writing` and one `released` row per thread.
+ *
+ * - `held`: pending; a hold or the confirmation window still applies.
+ * - `writing`: the release was decided and saved before the record write
+ *   was attempted, so a restart neither loses it nor writes it twice (the
+ *   producer looks the record up first). `attempts` counts failed writes.
+ * - `released`: the record exists. Kept for the card's alert window so a
+ *   restart re-dates the card's one "Agent finished" from the release.
+ */
+export type PersistedFinishedAlertEpisode =
+  | ({ state: 'held' } & PersistedFinishedAlertFinish)
+  | ({
+      state: 'writing';
+      attempts: number;
+      nextAttemptAt?: number;
+    } & PersistedFinishedAlertFinish)
+  | {
+      state: 'released';
+      threadId: string;
+      turnId: string;
+      releaseKey: string;
+      releasedAt: number;
+    };
+
+export interface PersistedFinishedAlertFinish {
   threadId: string;
   turnId: string;
   outcome: 'done' | 'replied';
@@ -121,17 +144,29 @@ export interface PersistedFinishedAlertEpisode {
 }
 
 /**
- * Where the producer keeps its pending episodes. Every successful finish
- * waits at least `FINISHED_ALERT_CONFIRM_MS` before its record exists; a
- * restart in that window, or while work holds it, must not lose the record
- * or the coordinator wake that reads it.
+ * Where the producer keeps its episodes. Every successful finish waits at
+ * least `FINISHED_ALERT_CONFIRM_MS` before its record exists; a restart in
+ * that window, while work holds it, or between the record write and its
+ * acknowledgement must not lose the record or the coordinator wake that
+ * reads it.
+ *
+ * One writer per Station home. `station start` refuses a second instance on
+ * the same home (packages/cli/src/commands/lifecycle.ts), and the
+ * unsupported `--allow-shared-home` override already warns that writes from
+ * two processes can be lost; this file shares that limit. The server itself
+ * holds no home lock, so entry paths that bypass the CLI are not shown to be
+ * exclusive.
  */
 export interface FinishedAlertEpisodeStore {
   load(): PersistedFinishedAlertEpisode[];
   save(episodes: readonly PersistedFinishedAlertEpisode[]): void;
 }
 
-/** One episode per thread; a store this size is refused rather than cut. */
+/**
+ * At most this many rows, of every state. The producer admits a new held
+ * finish only below it (reclaiming released rows first) and refuses one
+ * above it; a store this size is refused rather than cut.
+ */
 export const FINISHED_ALERT_EPISODES_MAX = 2_000;
 const STORE_MAX_BYTES = 2 * 1024 * 1024;
 const ID_MAX = 512;
@@ -142,6 +177,10 @@ function isId(value: unknown): value is string {
   );
 }
 
+function isTime(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
 /** Parses one persisted row; anything malformed is dropped. */
 export function parsePersistedFinishedAlertEpisode(
   value: unknown,
@@ -150,11 +189,22 @@ export function parsePersistedFinishedAlertEpisode(
     return undefined;
   const row = value as Record<string, unknown>;
   if (!isId(row.threadId) || !isId(row.turnId)) return undefined;
+  if (row.state === 'released') {
+    if (!isId(row.releaseKey) || !isTime(row.releasedAt)) return undefined;
+    return {
+      state: 'released',
+      threadId: row.threadId,
+      turnId: row.turnId,
+      releaseKey: row.releaseKey,
+      releasedAt: row.releasedAt,
+    };
+  }
+  if (row.state !== 'held' && row.state !== 'writing') return undefined;
   if (row.outcome !== 'done' && row.outcome !== 'replied') return undefined;
   if (typeof row.onActivityCard !== 'boolean') return undefined;
   if (row.terminalEventId !== undefined && !isId(row.terminalEventId))
     return undefined;
-  return {
+  const finish: PersistedFinishedAlertFinish = {
     threadId: row.threadId,
     turnId: row.turnId,
     outcome: row.outcome,
@@ -163,11 +213,27 @@ export function parsePersistedFinishedAlertEpisode(
       ? { terminalEventId: row.terminalEventId }
       : {}),
   };
+  if (row.state === 'held') return { state: 'held', ...finish };
+  if (
+    typeof row.attempts !== 'number' ||
+    !Number.isInteger(row.attempts) ||
+    row.attempts < 0 ||
+    (row.nextAttemptAt !== undefined && !isTime(row.nextAttemptAt))
+  )
+    return undefined;
+  return {
+    state: 'writing',
+    ...finish,
+    attempts: row.attempts,
+    ...(row.nextAttemptAt !== undefined
+      ? { nextAttemptAt: row.nextAttemptAt }
+      : {}),
+  };
 }
 
 /**
  * `finished-alert-episodes.json` in the Station home. Written whole on every
- * change: it holds at most one small row per thread with a pending finish.
+ * change: it holds at most three small rows per thread (one per state).
  * A store with more than {@link FINISHED_ALERT_EPISODES_MAX} rows is read as
  * corrupt (throws), so the producer starts empty and says so.
  */

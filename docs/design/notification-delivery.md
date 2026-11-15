@@ -126,13 +126,54 @@ upgraded, so the in-app list never shows "finished" while work runs. The
 coordinator wake reads the same `NOTIFICATION_DELIVERED` frame, so it wakes on
 the settled finish.
 
-Pending episodes persist in `finished-alert-episodes.json` in the Station
-home (one row per thread, rewritten on each change). A restart replays them
-with no turn open, reads each hold again and sends each finish once nothing
-holds it, through the same confirmation window. A row is removed only after
-its record is written. A write that fails stays saved and is retried at the
-next start, where the record's dedupe tag makes the repeat a no-op. An
-unreadable or oversized file replays nothing and is logged.
+Each finish persists in `finished-alert-episodes.json` in the Station home as
+it moves through three states, at most one row of each per thread:
+
+- `held`: a hold or the confirmation window still applies.
+- `writing`: the release was decided. This row is saved before the record
+  is written, and nothing is announced if that save fails (the next recheck
+  tries again). A failed write keeps the row, gives the card no release, and
+  is retried after 10 s, doubling to at most 10 min, with each failure
+  logged.
+- `released`: the record exists. The row is saved before the card hears of
+  the release and is kept for the card's two-minute alert window.
+
+A restart replays the rows by state. A `released` row inside the window
+restores the card's release. A `held` row is read again with no turn open and
+sent once nothing holds it. A `writing` row is looked up by its dedupe tag
+before anything is written:
+
+- No record: it was never written, so it is written now. A record the
+  person cleared between the write and the stop looks the same and is
+  written again (an accepted residual).
+- This producer's own record for that turn, still delivered and not leased,
+  with a reader for the thread: it is handed to the coordinator wake, whose
+  durable item dedupe drops a repeat. It is not rewritten, which would reset
+  its read state, and `NOTIFICATION_DELIVERED` is not emitted again, which
+  would push the phones again. A read record is still handed on: the person
+  reading it is not the coordinator seeing it.
+- Dismissed, actioned, expired, leased, or another producer's record: nothing
+  is replayed.
+
+A newer finish on a thread replaces an older one whose write failed, so an
+old turn never shadows the new one. A terminal for a turn the thread has moved
+past is already rejected by the turn anchor. The file holds at most 2,000
+rows. A new held finish is admitted only below that, after released rows give
+way (past the window first, then oldest first). When every row is held or
+writing, the new finish is refused: no row and no "finished", a warning
+(`finished-alert episodes full (2000); finish for <thread> not held`) and the
+`overflow` result on the turn-completion counter. Accepted finishes are kept,
+and the thread's next completion is admitted once the store drains. Failures,
+stops, approvals and questions never enter the store. An unreadable or
+oversized file replays nothing and is logged.
+
+One Station process writes a home. `station start` refuses a second instance
+on the same home
+([lifecycle.ts](../../packages/cli/src/commands/lifecycle.ts)), and the
+unsupported `--allow-shared-home` override already warns that two processes
+can lose each other's writes; this file shares that limit. The server holds no
+home lock of its own, so entry paths that bypass the CLI are not shown to be
+exclusive. A race reproduced on a supported path is a bug to fix.
 
 The agent-activity card reads the same episodes
 ([finished-alert-episodes.ts](../../src-server/services/orchestration/finished-alert-episodes.ts)),
@@ -147,9 +188,11 @@ every rebuild. A finish held past the two-minute alert window therefore still
 alerts once, even when the send waits out the per-phone floor. The Station
 notification is left to the card, so this is the phone's only alert. A
 change to the episodes flushes the card, so a hold that releases with no bus
-event updates it by the next recheck. A release is kept in memory. After a
-restart the card falls back to the terminal event's time under the same key,
-and the phone's remembered alert ids already cover it. A Station-delegated
+event updates it by the next recheck. A Done alerts only under its released
+key: a successful `session.exited` after the turn keeps the released entry
+rather than naming a second one, and a Done the producer never released (no
+turn terminal, a refused or dropped finish) shows without an alert. A
+Station-delegated
 child's Done raises no "Agent finished" on the card either. Its Failed and
 attention phases still alert.
 
