@@ -116,15 +116,16 @@ else
 echo "[station pre-push] push range: whitespace, test temp dirs"
 printf '%s\n' "${push_ref_lines[@]}" | node scripts/check-prepush-push-range.mjs
 
-# ~6-8s. Recorded documentation reviews whose cited sources this branch changed
-# without a new review note, including a note recorded and then outdated by a
-# later edit of a cited source. CI's docs:truth:gate refuses the same thing
-# (its docs:foundations:test lane, "recorded document reviews bound to their
-# actual document and source bytes"). Scoped against the merge base with
-# origin/main; it reads the working tree, like the static gates below, and its
-# refusal prints the docs:review:record command that fixes it.
+# ~6-8s. Recorded documentation reviews whose cited sources this branch
+# changed without a new note (docs:freshness:check, scoped against the merge
+# base with origin/main; it reads the working tree, like the static gates).
+# It refuses only once the branch has started recording reviews: then a stale
+# entry is a note outdated by a later edit or a missed page, which CI's
+# docs:truth:gate refused at least 4 times in 3 days. Before that it warns,
+# so notes are not forced before the change is final. A check that cannot run
+# refuses. scripts/check-prepush-docs-freshness.mjs owns the rule.
 echo "[station pre-push] documentation review freshness"
-npm run --silent docs:freshness:check
+printf '%s\n' "${push_ref_lines[@]}" | node scripts/check-prepush-docs-freshness.mjs
 
 echo "[station pre-push] orchestration transfer budgets"
 # The three gates below each run Vitest or source scans, so each queues for a

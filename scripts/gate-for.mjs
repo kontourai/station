@@ -68,8 +68,8 @@ export const EVERY_PUSH_CHECKS = Object.freeze([
     note: 'git diff --check and the raw-mkdtemp test ratchet on the pushed commit (~1s)',
   }),
   Object.freeze({
-    command: 'npm run docs:freshness:check',
-    note: 'recorded doc reviews whose cited sources this branch changed (~7s)',
+    command: 'node scripts/check-prepush-docs-freshness.mjs',
+    note: 'docs:freshness:check; refuses once the branch records reviews, warns before (~7s)',
   }),
   Object.freeze({
     command: 'node scripts/commit-message-gate.mjs --prepush-stdin',

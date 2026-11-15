@@ -21,6 +21,7 @@ const SCRIPT = realpathSync('scripts/prepush-pure-merge.mjs');
 const ZERO = '0'.repeat(40);
 const EXPENSIVE = [
   'scripts/check-prepush-push-range.mjs',
+  'scripts/check-prepush-docs-freshness.mjs',
   'scripts/check-prepush-orchestration-transfer.mjs',
   'scripts/check-prepush-static-gates.mjs',
   'scripts/check-prepush-sdk-barrel.mjs',
@@ -322,11 +323,12 @@ describe.skipIf(process.platform === 'win32')(
         writeFileSync(join(f.repo, shared), readFileSync(shared));
       }
       // Stand-ins that record their name; the push-range step reads git's
-      // ref lines on stdin, so its stand-in drains them as the real one does.
+      // ref lines on stdin, as does the docs-freshness step, so their
+      // stand-ins drain them as the real ones do.
       for (const gate of EXPENSIVE)
         writeFileSync(
           join(f.repo, gate),
-          `import { appendFileSync, readFileSync } from 'node:fs';\n${gate.endsWith('push-range.mjs') ? 'readFileSync(0);\n' : ''}appendFileSync(${JSON.stringify(report)}, ${JSON.stringify(`${gate}\n`)});\n`,
+          `import { appendFileSync, readFileSync } from 'node:fs';\n${/push-range|docs-freshness/.test(gate) ? 'readFileSync(0);\n' : ''}appendFileSync(${JSON.stringify(report)}, ${JSON.stringify(`${gate}\n`)});\n`,
         );
       const slotDir = join(f.root, 'heavy-check-slots');
       // Hook files are untracked in the fixture so they never affect the merge.
@@ -406,7 +408,6 @@ if (/^scripts\\/commit-message-gate/.test(args[0] ?? '')) {
       f.commit('feat.txt', 'changed feature\n', 'fix: update feature');
       const { gates } = f.push([':feat', 'feat:updated']);
       for (const gate of EXPENSIVE) expect(gates).toContain(gate);
-      expect(gates).toContain('docs:freshness:check');
       expect(gates).toContain('lint:check');
       expect(gates).toContain('proof:repo-governance');
       expect(gates).toContain('scripts/commit-message-gate.mjs');
@@ -466,11 +467,12 @@ if (/^scripts\\/commit-message-gate/.test(args[0] ?? '')) {
         ),
       );
       // The first heavy lane refused, so the hook stopped before any ran;
-      // only the push-range step, which takes no slot, ran before it.
-      expect(gates).toContain('scripts/check-prepush-push-range.mjs');
-      for (const gate of EXPENSIVE.filter(
-        (gate) => !gate.endsWith('push-range.mjs'),
-      ))
+      // only the push-range and docs-freshness steps, which take no slot,
+      // ran before it.
+      const unslotted = /push-range|docs-freshness/;
+      for (const gate of EXPENSIVE.filter((gate) => unslotted.test(gate)))
+        expect(gates).toContain(gate);
+      for (const gate of EXPENSIVE.filter((gate) => !unslotted.test(gate)))
         expect(gates).not.toContain(gate);
     });
 

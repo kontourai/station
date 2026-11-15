@@ -18,7 +18,8 @@ import { SCOPE_SENTINELS } from '../test-temp-dir-ratchet.mjs';
  * The push-range checks (whitespace, test temp dirs), the main-conflict
  * warning and the code-health step are the real scripts, including one real
  * fallow audit per push. Only the unrelated gates (lint, governance proof,
- * transfer, static gates, SDK barrel, commit subjects) are recorders. Each
+ * docs freshness, transfer, static gates, SDK barrel, commit subjects) are
+ * recorders. Each
  * refusal is asserted on the push's exit status AND on the remote ref never
  * moving.
  */
@@ -44,6 +45,7 @@ const HARNESS_SCRIPTS = [
   'fallow-review-status.mjs',
 ];
 const RECORDED_GATES = [
+  'scripts/check-prepush-docs-freshness.mjs',
   'scripts/check-prepush-orchestration-transfer.mjs',
   'scripts/check-prepush-static-gates.mjs',
   'scripts/check-prepush-sdk-barrel.mjs',
@@ -123,7 +125,7 @@ function fixture() {
   for (const gate of RECORDED_GATES)
     writeFileSync(
       join(repo, gate),
-      `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(report)}, ${JSON.stringify(`${gate}\n`)});\n`,
+      `import { appendFileSync, readFileSync } from 'node:fs';\n${gate.includes('docs-freshness') ? 'readFileSync(0);\n' : ''}appendFileSync(${JSON.stringify(report)}, ${JSON.stringify(`${gate}\n`)});\n`,
     );
   writeFileSync(
     join(repo, '.git', 'info', 'exclude'),
@@ -281,7 +283,6 @@ describe.skipIf(process.platform === 'win32')(
         expect(result.gates).toEqual([
           'lint:check',
           'proof:repo-governance',
-          'docs:freshness:check',
           ...RECORDED_GATES,
           'scripts/commit-message-gate.mjs',
         ]);

@@ -168,7 +168,7 @@ module.exports = (gate) => {
         `#!${process.execPath}
 const args = process.argv.slice(2);
 const gate = args.at(-1);
-if (args[0] !== 'run' || !['lint:check', 'proof:repo-governance', 'docs:freshness:check', 'veritas:readiness'].includes(gate)) {
+if (args[0] !== 'run' || !['lint:check', 'proof:repo-governance', 'veritas:readiness'].includes(gate)) {
   throw new Error('Unexpected npm gate: ' + args.join(' '));
 }
 require(${JSON.stringify(probe)})(gate);
@@ -183,7 +183,7 @@ const { spawnSync } = require('node:child_process');
 // covered in prepush-pure-merge.test.ts, so this probe records the gate.
 const raw = process.argv.slice(2);
 const args = raw[0] === 'scripts/heavy-check-slot.mjs' ? raw.slice(2) : raw;
-const gates = ['prepush-main-conflict.mjs', 'check-prepush-push-range.mjs', 'check-prepush-orchestration-transfer.mjs', 'check-prepush-static-gates.mjs', 'check-prepush-sdk-barrel.mjs', 'check-prepush-code-health.mjs', 'commit-message-gate.mjs'];
+const gates = ['prepush-main-conflict.mjs', 'check-prepush-push-range.mjs', 'check-prepush-docs-freshness.mjs', 'check-prepush-orchestration-transfer.mjs', 'check-prepush-static-gates.mjs', 'check-prepush-sdk-barrel.mjs', 'check-prepush-code-health.mjs', 'commit-message-gate.mjs'];
 if (gates.some(gate => args[0] === 'scripts/' + gate)) {
   require(${JSON.stringify(probe)})(args[0]);
 } else {
@@ -270,7 +270,7 @@ if (gates.some(gate => args[0] === 'scripts/' + gate)) {
         'lint:check',
         'proof:repo-governance',
         'scripts/check-prepush-push-range.mjs',
-        'docs:freshness:check',
+        'scripts/check-prepush-docs-freshness.mjs',
         'scripts/check-prepush-orchestration-transfer.mjs',
         'scripts/check-prepush-static-gates.mjs',
         'scripts/check-prepush-sdk-barrel.mjs',
@@ -279,7 +279,11 @@ if (gates.some(gate => args[0] === 'scripts/' + gate)) {
       ]);
     });
 
-    it.each(['lint:check', 'proof:repo-governance', 'docs:freshness:check'])(
+    it.each([
+      'lint:check',
+      'proof:repo-governance',
+      'scripts/check-prepush-docs-freshness.mjs',
+    ])(
       'refuses the actual push when %s fails and publishes no remote ref',
       (gate) => {
         const f = fixture();
