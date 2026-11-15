@@ -30,6 +30,7 @@ import {
   GROUP_MANIFEST_DIR_ENV,
   groupExplained,
   MANIFEST_BOUNDS,
+  replaceManifestFile,
   takeManifestDirectory,
   withoutManifestLocations,
 } from './lib/qualification-failure-manifest.mjs';
@@ -862,7 +863,7 @@ export async function runVitestGroup(group, files, options = {}) {
         setupError,
       });
       mkdirSync(manifestDirectory, { recursive: true });
-      writeFileSync(
+      replaceManifestFile(
         resolve(manifestDirectory, `${basename(entry.group)}.json`),
         `${JSON.stringify(entry, null, 2)}\n`,
       );

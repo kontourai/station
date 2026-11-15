@@ -6,6 +6,10 @@
 // once. The consumer re-derives `explained` from the data rather than trusting
 // the producer's flag.
 
+import { randomBytes } from 'node:crypto';
+import { renameSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
+
 const MANIFEST_SCHEMA_VERSION = 1;
 const JOB_MANIFEST_KIND = 'station.qualification-job-manifest';
 /** The file name a job writes into its manifest directory. */
@@ -48,6 +52,22 @@ export function takeManifestDirectory(env, name = MANIFEST_DIR_ENV) {
   const value = directoryFromEnv(env, name);
   for (const key of MANIFEST_LOCATION_ENVS) delete env[key];
   return value;
+}
+
+/**
+ * Write a manifest file by renaming a fresh temporary file over it, so a file
+ * already at that path (even a read-only one a test left there) is replaced
+ * rather than surviving a failed write. If the rename fails, the temporary
+ * file is deliberately left beside the target: in a group directory it is an
+ * unexpected entry, so the phase reads as unexplained.
+ */
+export function replaceManifestFile(path, contents) {
+  const temporary = join(
+    dirname(path),
+    `.${basename(path)}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`,
+  );
+  writeFileSync(temporary, contents, { flag: 'wx' });
+  renameSync(temporary, path);
 }
 
 /** A copy of `env` without any manifest location variable. */

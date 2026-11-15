@@ -62,6 +62,7 @@ import {
   clipText,
   JOB_LABEL_ENV,
   JOB_MANIFEST_FILE,
+  replaceManifestFile,
   takeManifestDirectory,
 } from './lib/qualification-failure-manifest.mjs';
 
@@ -489,7 +490,7 @@ function writeE2EManifest(directory, thrown) {
       },
     });
     mkdirSync(directory, { recursive: true });
-    writeFileSync(
+    replaceManifestFile(
       join(directory, JOB_MANIFEST_FILE),
       `${JSON.stringify(manifest, null, 2)}\n`,
     );

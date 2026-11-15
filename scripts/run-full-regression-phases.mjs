@@ -8,13 +8,7 @@
  * qualification never does. The local full:regression coordinator is unchanged.
  */
 import { execFileSync, spawn } from 'node:child_process';
-import {
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -33,6 +27,7 @@ import {
   JOB_LABEL_ENV,
   JOB_MANIFEST_FILE,
   parseGroupManifest,
+  replaceManifestFile,
   takeManifestDirectory,
   withoutManifestLocations,
 } from './lib/qualification-failure-manifest.mjs';
@@ -553,17 +548,29 @@ export async function runFullRegressionPhases(
 
 /**
  * The manifest written when the real one cannot be built: every planned
- * phase it can still name, each with the builder's error. It never explains.
+ * phase it can still name, with its exit status when that is known and the
+ * builder's error, so an alert still says which phase failed. Every phase
+ * carries an error, so it never explains.
  */
-function unbuildableJobManifest(plan, identity, error) {
+function unbuildableJobManifest(plan, results, identity, error) {
   const reason = clipText(
     `the job manifest could not be built: ${error instanceof Error ? error.message : String(error)}`,
   );
+  const exitStatus = (id) => {
+    try {
+      const status = Array.from(results).find(
+        (entry) => entry?.id === id,
+      )?.status;
+      return Number.isSafeInteger(status) ? status : null;
+    } catch {
+      return null;
+    }
+  };
   let phases = [];
   try {
     phases = Array.from(plan, (step) => ({
       phase: clipText(step?.id ?? ''),
-      exitStatus: null,
+      exitStatus: exitStatus(step?.id),
       error: reason,
       corpus: false,
       groups: [],
@@ -614,10 +621,10 @@ export function writeJobManifest(
   try {
     manifest = phaseJobManifest(plan, results, phaseGroups, identity);
   } catch (error) {
-    manifest = unbuildableJobManifest(plan, identity, error);
+    manifest = unbuildableJobManifest(plan, results, identity, error);
   }
   mkdirSync(directory, { recursive: true });
-  writeFileSync(
+  replaceManifestFile(
     resolve(directory, JOB_MANIFEST_FILE),
     `${JSON.stringify(manifest, null, 2)}\n`,
   );
