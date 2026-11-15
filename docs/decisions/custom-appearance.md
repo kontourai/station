@@ -119,12 +119,20 @@ plugin install and update confirmation, extension access consent, integration
 trust review, device pairing review, relay device enrollment, relay route key
 and browser Station trust approval, the share-answer pairing prompt, Task and
 account sharing controls, the usage-sharing prompt, job, automation and
-check-back proposals, proposed file changes and gate exceptions. Each owner
+check-back proposals, proposed file changes and gate exceptions, and the
+standing grants a person sets: the approval mode sheet with its full-access
+confirm, allowing agents to control devices, people's roles, and the
+integration trust and editor panels. Each owner
 calls `useDecisionSurface(id)` (a layout effect, so the sheet is off before
 the browser paints the decision), and ids come from one typed list.
 Over-suspending is harmless, so owners that are always mounted on a settings
 page (the sharing controls, relay operator panel, integration trust review)
 register whenever they are mounted.
+
+The palette stays during a decision. It cannot move or relabel a control, but
+it can recolour one: a palette that swaps the positive and negative tones makes
+Deny read green. The controls carry their labels, and the palette's changed
+text pairs must pass contrast before it can be kept (below).
 
 ## The preview bar
 
@@ -135,7 +143,11 @@ The bar must not be hideable or spoofable by the CSS it previews:
   visibility, opacity and transforms are inline `!important`, which beats any
   author `!important`; `all: initial` stops inherited colour and font, and the
   bar's own styles use literal values (custom properties inherit through
-  `all`).
+  `all`). The host's own `::before` and `::after` are outside the shadow tree
+  and would paint inside the bar's top layer, so a shadow `:host` rule turns
+  them off with `!important` (which beats the document's), and Keep is
+  disabled if either paints anyway (found in review: a pointer-transparent
+  `::after` reading "Discard" over Keep).
 - It is a manual popover, so it is in the top layer above anything the page
   can stack, and the page's own opacity does not reach it (measured: with
   `html { opacity: 0 }` the bar still paints).
@@ -145,7 +157,10 @@ The bar must not be hideable or spoofable by the CSS it previews:
   mount. While `<html>` is made invisible or moved (opacity, visibility,
   display, filter, transform, translate, scale, rotate, clip-path, mask,
   mix-blend-mode, content-visibility, zoom), the bar is moved off screen, or
-  anything covers Keep, Keep is disabled and says why.
+  anything covers Keep, Keep is disabled and says why. Keep is also off while
+  an approval holds the preview's CSS back (the person would keep CSS they did
+  not see), in a safe-mode tab, and when a text pair the preview changed fails
+  contrast on the palette over the theme.
 - Escape reverts. Whatever else fails, the countdown reverts.
 
 `* { display: none !important }` includes `<html>`, which removes every box
@@ -156,9 +171,14 @@ Escape or the countdown.
 
 When the person previews a proposal, the browser posts a render report for
 that proposal id: how many elements each hook selector matched, the contrast
-of the computed roles in the mode on screen (only pairs the preview changed,
-since a theme's own pairs are not the proposal's doing), and what the guard
-removed. `get_appearance` returns it.
+of the roles in the mode on screen (only pairs the preview changed, since a
+theme's own pairs are not the proposal's doing), and what the guard removed.
+`get_appearance` returns it. The roles are read with the custom CSS out of the
+cascade, so they are the palette over the theme: rating what the CSS computes
+would let CSS that sets a role only when the page holds some text
+(`:root:has([data-x^="k"])`) read that text back through the ratios (found in
+review). The hook counts use fixed selectors, so they disclose only how many
+of those elements the page has.
 
 ## Stable selectors
 
@@ -182,6 +202,12 @@ the cache; a network failure keeps it.
 
 ## Accepted gaps
 
+- CSS can tell it is being previewed (the bar is an extra child of `<html>`,
+  in the top layer) and can change over time (an animation delayed past the
+  countdown), so a kept appearance can look different from its preview. The
+  guarantees that do not depend on the preview hold regardless: approval
+  surfaces suspend the CSS, nothing fetches, and the person can turn it off or
+  open a safe-mode tab.
 - Custom CSS can make any non-decision surface unreadable or hide it,
   including by setting `--k-*` variables, which the palette's contrast gate
   does not see. The render report rates the computed roles, and the person
