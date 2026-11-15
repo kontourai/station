@@ -817,6 +817,13 @@ type ClaudeSessionRecord = {
   onTaskSettled?: (taskId: string) => void;
   /** Mirrors `ClaudeMessageState.childWork` (#2457). */
   childWork?: ClaudeChildWorkState;
+  /**
+   * How many session-scoped wakeups (CronCreate, ScheduleWakeup, a loop) the
+   * engine reported scheduled when it last stopped (its Stop hook's
+   * `session_crons`). They live in this process, so a park would drop them.
+   * Absent until a Stop hook reports the field.
+   */
+  scheduledWakeups?: number;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
   /** The engine's live permission mode, as Station last sent it or the
@@ -3953,12 +3960,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * A task the engine started and has not reported an end for. Read from
-   * the engine's own task frames, not the child-work registry, so a gap in
-   * that record can never let an idle park stop a working engine.
+   * A task the engine started and has not reported an end for, or a wakeup
+   * it scheduled for itself. Read from the engine's own task frames and Stop
+   * hook, not the child-work registry, so a gap in that record can never let
+   * an idle park stop a working engine.
    */
   hasOpenEngineWork(threadId: string): boolean {
-    const tasks = this.sessions.get(threadId)?.activeTasks;
+    const record = this.sessions.get(threadId);
+    if ((record?.scheduledWakeups ?? 0) > 0) return true;
+    const tasks = record?.activeTasks;
     if (!tasks) return false;
     for (const task of tasks.values()) {
       if (!task.unresolvedPublished) return true;
@@ -4989,6 +4999,26 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         });
       },
       hooks: {
+        // #2540: the wakeups the engine has scheduled for itself, which an
+        // idle park must not stop (`hasOpenEngineWork`). Reported on each
+        // stop; an older engine that omits the field leaves it unknown.
+        Stop: [
+          {
+            hooks: [
+              async (hookInput) => {
+                if (
+                  hookInput.hook_event_name === 'Stop' &&
+                  Array.isArray(hookInput.session_crons)
+                ) {
+                  const record = this.sessions.get(input.threadId);
+                  if (record)
+                    record.scheduledWakeups = hookInput.session_crons.length;
+                }
+                return { continue: true };
+              },
+            ],
+          },
+        ],
         // #4828: a completed WebFetch or WebSearch (in a subagent too) marks
         // this conversation as having read content written by others, before
         // the engine's next PreToolUse. The SDK awaits a synchronous hook's

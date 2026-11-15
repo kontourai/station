@@ -1635,7 +1635,7 @@ async function claudeReadiness(api) {
 }
 
 /** One stub-answered turn; resolves when the turn completed with the stub reply. */
-async function sendHi(api, cwd) {
+async function sendHi(api, cwd, conversationId) {
   const { json } = await poll(
     'the chat dispatch to be accepted',
     90_000,
@@ -1648,6 +1648,7 @@ async function sendHi(api, cwd) {
         },
         message: PROMPT,
         clientTurnId: randomUUID(),
+        ...(conversationId ? { conversationId } : {}),
       });
       // Declared-transient refusal while the agent catalog settles.
       if (
@@ -1676,6 +1677,148 @@ async function sendHi(api, cwd) {
     );
   });
   return sessionId;
+}
+
+// ---------------------------------------------------------------------------
+// The optional delegated run (`--delegated-run`, report-only).
+
+/** A Claude engine process in the instance's tree, by its executable name. */
+const ENGINE_COMMAND = /(^|\/)claude(\s|$)/;
+const engineProcessCount = (rows) =>
+  rows.filter((row) => ENGINE_COMMAND.test(row.command)).length;
+
+/** The ids of every turn the session's detail lists, oldest first. */
+async function sessionTurns(api, sessionId) {
+  const detail = await api.call(
+    'GET',
+    `/api/orchestration/sessions/${encodeURIComponent(sessionId)}`,
+  );
+  const events = detail.json?.data?.events ?? [];
+  return {
+    events,
+    turnIds: events
+      .filter((event) => event?.method === 'turn.started' && event.turnId)
+      .map((event) => event.turnId),
+  };
+}
+
+/** Waits for a turn not in `known` to complete with the stub's reply. */
+async function awaitNewTurnReply(api, sessionId, known, label) {
+  await poll(label, 120_000, async () => {
+    const { events, turnIds } = await sessionTurns(api, sessionId);
+    const turnId = turnIds.find((id) => !known.includes(id));
+    return turnId ? acceptedTurnReply(events, turnId, STUB_REPLY_TEXT) : false;
+  });
+}
+
+/** One task delegated as the operator; resolves once its turn completed. */
+async function delegateHi(api, cwd) {
+  const { json } = await poll(
+    'the delegation to be accepted',
+    90_000,
+    async () => {
+      const response = await api.call(
+        'POST',
+        '/api/orchestration/delegations',
+        {
+          target: {
+            environment: { kind: 'current' },
+            agent: 'claude',
+            workspace: { kind: 'directory', cwd },
+          },
+          prompt: PROMPT,
+          clientTurnId: randomUUID(),
+        },
+      );
+      if (
+        response.status === 400 &&
+        /Agent catalog is refreshing/.test(response.json?.error ?? '')
+      )
+        return false;
+      assert(
+        response.status < 400 && response.json?.success !== false,
+        `delegation: HTTP ${response.status} ${response.text.slice(0, 400)}`,
+      );
+      return response;
+    },
+  );
+  const { sessionId, taskId } = json.data ?? {};
+  assert(sessionId && taskId, 'delegation named no session/task');
+  await awaitNewTurnReply(
+    api,
+    sessionId,
+    [],
+    'the delegated stub-answered turn to complete',
+  );
+  return { sessionId, taskId };
+}
+
+async function continueDelegatedHi(api, taskId, sessionId) {
+  const { turnIds } = await sessionTurns(api, sessionId);
+  const response = await api.call(
+    'POST',
+    `/api/orchestration/delegations/${encodeURIComponent(taskId)}/continue`,
+    { message: PROMPT, clientTurnId: randomUUID() },
+  );
+  assert(
+    response.status < 400 && response.json?.success !== false,
+    `delegation follow-up: HTTP ${response.status} ${response.text.slice(0, 400)}`,
+  );
+  await awaitNewTurnReply(
+    api,
+    sessionId,
+    turnIds,
+    'the delegated follow-up to complete',
+  );
+}
+
+/**
+ * Delegates one stub-answered task, then reports whether and when its
+ * engine process left the tree, the tree's memory once settled after that,
+ * and how long a follow-up takes into the released run (its engine restarts
+ * in place) next to one into a session whose engine is still running.
+ * Report-only: nothing here is a budget.
+ */
+async function measureDelegatedRun(api, cwd, context) {
+  const { treeNow, memorySnapshot, settings, warmSessionId } = context;
+  const enginesBefore = engineProcessCount(treeNow());
+  const delegated = await delegateHi(api, cwd);
+  const finishedAt = performance.now();
+  const enginesAtFinish = engineProcessCount(treeNow());
+  let releasedAfterMs = null;
+  while (performance.now() - finishedAt < settings.delegatedReleaseMaxMs) {
+    if (engineProcessCount(treeNow()) <= enginesBefore) {
+      releasedAfterMs = performance.now() - finishedAt;
+      break;
+    }
+    await wait(500);
+  }
+  const finishedMemory = restMetric(
+    await settleTree(memorySnapshot, settings),
+    {
+      note: 'after one delegated, stub-answered task finished, beside the idle sessions',
+    },
+  );
+  const timed = async (run) => {
+    const start = performance.now();
+    await run();
+    return performance.now() - start;
+  };
+  const warmFollowUpMs = await timed(() => sendHi(api, cwd, warmSessionId));
+  const releasedFollowUpMs = await timed(() =>
+    continueDelegatedHi(api, delegated.taskId, delegated.sessionId),
+  );
+  return {
+    status: 'measured',
+    reportOnly: true,
+    engineProcessesBefore: enginesBefore,
+    engineProcessesAtFinish: enginesAtFinish,
+    engineReleasedAfterMs: releasedAfterMs,
+    finishedMemoryBytes: finishedMemory,
+    warmFollowUpMs,
+    releasedFollowUpMs,
+    note: 'engine processes are counted by executable name (claude); a follow-up is one stub-answered turn, measured from the request to its reply',
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -2141,6 +2284,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   cpuWindowMs: 30_000,
   cpuSampleIntervalMs: 250,
   idleSessions: 3,
+  // 1 adds the report-only delegated-run measurement (`--delegated-run`).
+  delegatedRun: 0,
+  delegatedReleaseMaxMs: 90_000,
   stopGraceMs: 5_000,
   sideCallWindowMs: 5_000,
   readyLaunches: 1,
@@ -2453,6 +2599,24 @@ export async function runStationWeight({
         },
       );
 
+      if (settings.delegatedRun) {
+        progress('idle-session sample taken; delegating one run');
+        try {
+          result.delegatedRun = await measureDelegatedRun(api, repo, {
+            treeNow,
+            memorySnapshot,
+            settings,
+            warmSessionId: sessionIds[0],
+          });
+        } catch (error) {
+          result.delegatedRun = {
+            status: 'not_measured',
+            reportOnly: true,
+            reason: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+
       mkdirSync(controlConfigDir, { recursive: true });
       progress('idle-session sample taken; running the control request');
       const controlCalls = await controlRequest({
@@ -2755,6 +2919,14 @@ function printSummary(result) {
         : `NOT_MEASURED ${id}: ${metric.reason}`,
     );
   if (result.repoRules) line(`repoRules ${JSON.stringify(result.repoRules)}`);
+  if (result.delegatedRun) {
+    const run = result.delegatedRun;
+    line(
+      run.status === 'measured'
+        ? `REPORTED delegatedRun engines before=${run.engineProcessesBefore} atFinish=${run.engineProcessesAtFinish} releasedAfterMs=${formatValue(run.engineReleasedAfterMs)} finishedMemoryBytes=${formatValue(run.finishedMemoryBytes.value)} warmFollowUpMs=${formatValue(run.warmFollowUpMs)} releasedFollowUpMs=${formatValue(run.releasedFollowUpMs)}`
+        : `NOT_MEASURED delegatedRun: ${run.reason}`,
+    );
+  }
   for (const text of formatVerdicts(result.budgets ?? [])) console.log(text);
   // What the run counted as its own but may not signal: left running.
   for (const row of result.leftRunning ?? [])
@@ -2793,6 +2965,8 @@ if (invokedDirectly(import.meta.url)) {
       settleMaxMs: number('settle-max-ms'),
       cpuWindowMs: number('cpu-window-ms'),
       idleSessions: number('sessions'),
+      delegatedRun: args['delegated-run'] === true ? 1 : undefined,
+      delegatedReleaseMaxMs: number('delegated-release-max-ms'),
       stopGraceMs: number('stop-grace-ms'),
       readyLaunches: number('ready-launches'),
     }).filter(([, value]) => value !== undefined),

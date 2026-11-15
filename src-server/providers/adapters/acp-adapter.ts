@@ -828,6 +828,12 @@ export interface AcpSessionRecord {
   promptEpoch: number;
   /** Invalidation generation captured when this session start was accepted. */
   generation: number;
+  /**
+   * Whether a terminal command the engine opened (ACP `terminal/create`) is
+   * still running. Its result reaches only this engine, so an idle park
+   * must not stop it (`hasOpenEngineWork`).
+   */
+  hasRunningTerminal?: () => boolean;
   /** A `session.started` receipt was published and needs a terminal peer. */
   startedPublished?: boolean;
   /**
@@ -1952,6 +1958,9 @@ export class AcpAdapter implements ProviderAdapterShape {
       cwd,
       confinement: () => record.executionConfinement,
     });
+    record.hasRunningTerminal = () =>
+      sessionTerminals?.hasRunning() === true ||
+      [...terminals.values()].some((terminal) => !terminal.exited);
     let terminalCounter = 0;
     const logger = this.options.logger ?? console;
 
@@ -3696,6 +3705,14 @@ export class AcpAdapter implements ProviderAdapterShape {
 
   async hasSession(threadId: string): Promise<boolean> {
     return this.sessions.has(threadId);
+  }
+
+  /**
+   * #2540: the engine still runs a terminal command it opened. The idle park
+   * would stop the engine that waits for that command's result.
+   */
+  hasOpenEngineWork(threadId: string): boolean {
+    return this.sessions.get(threadId)?.hasRunningTerminal?.() ?? false;
   }
 
   async stopAll(): Promise<void> {

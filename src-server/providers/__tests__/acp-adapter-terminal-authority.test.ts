@@ -47,6 +47,29 @@ function exitingProcess(): IPtyProcess {
   };
 }
 
+/** A command that runs until its `exit` is called; no native process. */
+function heldProcess(): { process: IPtyProcess; exit: () => void } {
+  const exits = new Set<
+    (event: { exitCode: number; signal: number | null }) => void
+  >();
+  return {
+    process: {
+      pid: 4343,
+      write() {},
+      resize() {},
+      kill() {},
+      onData: () => () => {},
+      onExit(cb) {
+        exits.add(cb);
+        return () => exits.delete(cb);
+      },
+    },
+    exit: () => {
+      for (const exit of exits) exit({ exitCode: 0, signal: null });
+    },
+  };
+}
+
 const stops: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const stop of stops.splice(0)) await stop();
@@ -55,13 +78,14 @@ afterEach(async () => {
 async function startSession(input: {
   confinement: StationConfinement | undefined;
   terminalSessions: boolean;
+  spawnProcess?: () => IPtyProcess;
 }) {
   const cwd = await realpath(temp('acp-terminal-authority-cwd-'));
   const spawns: string[] = [];
   const host: ShellHost = {
     spawn: async (spawn) => {
       spawns.push(spawn.launch?.file ?? 'shell');
-      return exitingProcess();
+      return (input.spawnProcess ?? exitingProcess)();
     },
   };
   const authorizeAgentCommand = vi.fn(async () => {});
@@ -108,11 +132,11 @@ async function startSession(input: {
   });
   if (!proc) throw new Error('adapter did not start the engine');
   const engine = proc;
-  const create = () =>
+  const create = (args: string[] = ['-e', '']) =>
     engine.client.createTerminal({
       sessionId: 'native',
       command: process.execPath,
-      args: ['-e', ''],
+      args,
     });
   return {
     adapter,
@@ -196,5 +220,45 @@ describe('ACP terminal/create without terminal sessions', () => {
     await expect(
       engine.client.waitForTerminalExit({ sessionId: 'native', terminalId }),
     ).resolves.toEqual({ exitCode: 0, signal: null });
+  });
+});
+
+/**
+ * #2540: a terminal command the engine opened reports its result only to
+ * that engine, so while one runs the session has open engine work and an
+ * idle or finished-session park must leave the engine alone.
+ */
+describe('a running terminal command keeps the engine', () => {
+  test('on terminal sessions, until the command exits', async () => {
+    const held = heldProcess();
+    const { adapter, engine, threadId, create } = await startSession({
+      confinement: 'host',
+      terminalSessions: true,
+      spawnProcess: () => held.process,
+    });
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(false);
+    const { terminalId } = await create();
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(true);
+    held.exit();
+    await engine.client.waitForTerminalExit({
+      sessionId: 'native',
+      terminalId,
+    });
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(false);
+  });
+
+  test('as a plain child process, until the command exits', async () => {
+    const { adapter, engine, threadId, create } = await startSession({
+      confinement: 'host',
+      terminalSessions: false,
+    });
+    const { terminalId } = await create(['-e', 'setTimeout(() => {}, 60_000)']);
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(true);
+    await engine.client.killTerminal({ sessionId: 'native', terminalId });
+    await engine.client.waitForTerminalExit({
+      sessionId: 'native',
+      terminalId,
+    });
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(false);
   });
 });

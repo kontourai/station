@@ -9398,6 +9398,23 @@ export class EventStore {
   }
 
   /**
+   * Whether a person has sent into `threadId`: any of its turn starts,
+   * steers included, that Station placed as a person's (`interactive`,
+   * #4512) or marked person-typed (`authoredBy`, #4827).
+   */
+  hasPersonTurn(threadId: string): boolean {
+    return (
+      this.readStatement(
+        `SELECT 1 FROM orchestration_events
+         WHERE thread_id = ? AND method = 'turn.started' AND json_valid(payload)
+           AND (json_extract(payload, '$.dispatchOrigin') = 'interactive'
+             OR json_extract(payload, '$.authoredBy') = 'person')
+         LIMIT 1`,
+      ).get(threadId) !== undefined
+    );
+  }
+
+  /**
    * #2436: the latest recorded approval-posture decision across `threadIds`
    * (a conversation's sessions), ordered by the server's global sequence —
    * the one order every client and the turn-start resolution agree on. One

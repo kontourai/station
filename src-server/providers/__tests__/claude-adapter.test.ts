@@ -9613,7 +9613,10 @@ describe('ClaudeAdapter', () => {
         settings: undefined,
         // #4828: every session marks the conversation on a native web read;
         // with no Agent there is no PreToolUse policy.
-        hooks: { PostToolUse: [{ hooks: [expect.any(Function)] }] },
+        hooks: {
+          Stop: [{ hooks: [expect.any(Function)] }],
+          PostToolUse: [{ hooks: [expect.any(Function)] }],
+        },
       });
     });
 

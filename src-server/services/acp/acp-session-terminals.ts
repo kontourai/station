@@ -122,6 +122,14 @@ export class AcpSessionTerminals {
     return this.terminals.has(id);
   }
 
+  /** Whether a command this session started has not exited yet. */
+  hasRunning(): boolean {
+    for (const terminal of this.terminals.values())
+      if (terminal.sessionId !== undefined && terminal.exit === null)
+        return true;
+    return false;
+  }
+
   async create(
     id: string,
     input: {

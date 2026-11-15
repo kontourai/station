@@ -440,6 +440,10 @@ import {
   type ExecutionWorkspaceBinding,
   readExecutionWorkspaceBinding,
 } from './execution-workspace-binding.js';
+import {
+  FINISHED_SESSION_PARK_AFTER_MS,
+  FinishedSessionParking,
+} from './finished-session-parking.js';
 import { FlowPolicySidecar } from './flow-policy-sidecar.js';
 import {
   type ForegroundInvocationAdmission,
@@ -1083,6 +1087,14 @@ interface OrchestrationServiceOptions {
    * {@link IDLE_SESSION_PARK_AFTER_MS}.
    */
   idleSessionParkAfterMs?: number;
+  /**
+   * How soon after an unattended turn (a delegated child's, an Automation
+   * run's, a Task wake's) settles its at-rest engine is parked, when nothing
+   * has happened on the Session since. `0` leaves such Sessions to the idle
+   * park; `idleSessionParkAfterMs: 0` turns both off. Default
+   * {@link FINISHED_SESSION_PARK_AFTER_MS}.
+   */
+  finishedSessionParkAfterMs?: number;
   /**
    * The `chat-host-images` Feature Preview: host images a settled reply
    * names are copied into the attachment store, and agents are told how to
@@ -2740,6 +2752,8 @@ export class OrchestrationService {
    */
   private readonly lastEngineActivityAt = new Map<string, number>();
   private idleSweepTimer: ReturnType<typeof setInterval> | undefined;
+  /** Parks a finished-by-design Session soon after its unattended turn. */
+  private readonly finishedSessionParking: FinishedSessionParking;
   /**
    * archive#1745: whether this process's startup attachment pass has FINISHED
    * — not whether it succeeded.
@@ -2838,6 +2852,19 @@ export class OrchestrationService {
 
   constructor(private readonly options: OrchestrationServiceOptions) {
     this.nativeForkStoredReadVerifier = options.nativeForkStoredReadVerifier;
+    this.finishedSessionParking = new FinishedSessionParking({
+      afterMs:
+        (options.idleSessionParkAfterMs ?? IDLE_SESSION_PARK_AFTER_MS) > 0
+          ? (options.finishedSessionParkAfterMs ??
+            FINISHED_SESSION_PARK_AFTER_MS)
+          : 0,
+      latestTurnDispatchOrigin: (threadId) =>
+        options.eventStore?.latestTurnDispatchOrigin(threadId),
+      hasPersonTurn: (threadId) =>
+        options.eventStore?.hasPersonTurn(threadId) ?? true,
+      park: (threadId, afterMs) => this.parkFinishedSession(threadId, afterMs),
+      logger: options.logger,
+    });
     // All delete paths converge here, including Draft discard and attached alias cleanup.
     this.stopSessionDeletionNotifications = options.eventStore?.observeCommits({
       threadDeleting: (threadId) => {
@@ -4636,6 +4663,7 @@ export class OrchestrationService {
     this.eventConsumptionStopped = true;
     if (this.idleSweepTimer) clearInterval(this.idleSweepTimer);
     this.idleSweepTimer = undefined;
+    this.finishedSessionParking.dispose();
     this.adapterRegistryUnsubscribe?.();
     this.adapterRegistryUnsubscribe = undefined;
     this.storeClosingUnsubscribe?.();
@@ -4774,6 +4802,7 @@ export class OrchestrationService {
     this.hostImages.close();
     if (this.idleSweepTimer) clearInterval(this.idleSweepTimer);
     this.idleSweepTimer = undefined;
+    this.finishedSessionParking.dispose();
     this.transcriptSearchStopped = true;
     this.sessionAuthz.stopTranscriptReads();
     const transcriptRetirement = this.isolatedTranscriptSearch?.close();
@@ -16262,6 +16291,7 @@ export class OrchestrationService {
         event.turnId,
         event.invocationId,
       );
+      this.finishedSessionParking.observeTurnSettled(event.threadId);
     }
     // Adapter-agnostic activity telemetry: adapters stay metric-free (the
     // sessionStateDuration precedent), so provider activity notifications
@@ -16406,6 +16436,27 @@ export class OrchestrationService {
     if (!adapter || this.sessionReadModel.get(threadId)?.status !== 'error')
       return;
     await this.parkIdleSession(threadId, adapter, Date.now(), 0);
+  }
+
+  /**
+   * A finished-by-design Session's early park (`FinishedSessionParking`):
+   * the idle park with `afterMs` as its threshold, so every refusal the
+   * sweep honours (open request, running or engine-reported work, an active
+   * turn, no resume cursor, activity inside the grace) still holds. A turn
+   * or transition that holds the Session's lock wins; the sweep retries.
+   */
+  private async parkFinishedSession(
+    threadId: string,
+    afterMs: number,
+  ): Promise<boolean> {
+    const adapter = this.sessionAdapters.get(threadId);
+    if (!adapter || this.eventConsumptionStopped) return false;
+    try {
+      return await this.parkIdleSession(threadId, adapter, Date.now(), afterMs);
+    } catch (error) {
+      if (error instanceof SessionLifecycleClaimRefusedError) return false;
+      throw error;
+    }
   }
 
   private parkIdleSession(
