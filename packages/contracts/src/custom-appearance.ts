@@ -164,17 +164,49 @@ const FETCHING_FUNCTIONS: readonly [RegExp, CustomCssViolationKind][] = [
  * else a fragment-only URL resolves against the page and fetches the page
  * itself (`background-image: url(#x)`), so it counts as remote.
  */
+export const LOCAL_REFERENCE_PROPERTIES: readonly string[] = [
+  'filter',
+  'clip-path',
+  '-webkit-clip-path',
+  'mask',
+  '-webkit-mask',
+  'mask-image',
+  '-webkit-mask-image',
+  'marker',
+  'marker-start',
+  'marker-mid',
+  'marker-end',
+  'offset-path',
+];
+
+/**
+ * An exact list, no prefixes: `mask-box-image`, `mask-border` and their
+ * `-webkit-` forms take images, so `url(#x)` there loads the page (found in
+ * review). A Chromium test confirms each listed property makes no request.
+ */
 export function isLocalReferenceProperty(property: string): boolean {
-  const name = property
-    .trim()
-    .toLowerCase()
-    .replace(/^-webkit-/, '');
-  return (
-    name === 'filter' ||
-    name === 'clip-path' ||
-    name.startsWith('mask') ||
-    name.startsWith('marker')
-  );
+  return LOCAL_REFERENCE_PROPERTIES.includes(property.trim().toLowerCase());
+}
+/** Functions whose argument is a URL or image the browser resolves. */
+export const URL_TAKING_FUNCTION =
+  /(?:^|[^a-z0-9_-])(?:url|src|(?:-webkit-)?image-set|image|(?:-webkit-)?cross-fade)\(/;
+
+/**
+ * Whether the browser will add a backslash when it serializes this value's
+ * strings: a `"` inside a single-quoted string, or a control character in any
+ * string. The browser guard refuses a backslash next to a URL-taking
+ * function, so the server refuses what would produce one.
+ */
+function serializesWithEscape(value: string): boolean {
+  let quote: string | null = null;
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0;
+    if (quote) {
+      if (char === quote) quote = null;
+      else if (char === '"' || code < 0x20 || code === 0x7f) return true;
+    } else if (char === '"' || char === "'") quote = char;
+  }
+  return false;
 }
 
 /**
@@ -326,6 +358,16 @@ export function customCssTextViolations(
       kind: 'font-face',
       message: '@font-face is not allowed: custom CSS cannot load fonts.',
     });
+  for (const { value } of splitCssDeclarations(text)) {
+    if (URL_TAKING_FUNCTION.test(value) && serializesWithEscape(value)) {
+      violations.push({
+        kind: 'escape',
+        message:
+          'A double quote inside a single-quoted string next to url() is refused: inside url(), use single quotes in a data: SVG, or percent-encode the double quotes (%22).',
+      });
+      break;
+    }
+  }
   for (const { property, value } of splitCssDeclarations(text)) {
     const url = remoteUrl(value, property);
     if (url !== null) {
@@ -664,7 +706,7 @@ export const CUSTOM_APPEARANCE_GUIDE = {
     `${CUSTOM_APPEARANCE_PREVIEW_SECONDS} seconds. After they preview, get_appearance returns a render report: which hooks matched, contrast on the computed colours, and any CSS the browser removed.`,
   palette:
     'palette.dark and palette.light each take roles (a map of the roles below to #rgb or #rrggbb) and accent (one hex for brand, action and focus; its text colour is derived). Unset roles keep the current theme. Text roles must reach 4.5:1 on bg, panel and panel-raised.',
-  css: `At most ${CUSTOM_APPEARANCE_CSS_MAX_LENGTH} characters, applied after Station's styles. No @import, @font-face, backslash escapes, image-set(), cross-fade(), image(), src(), attr(), or url() other than data: (and #fragment in filter, mask, clip-path and marker). Allowed at-rules: ${CUSTOM_CSS_ALLOWED_AT_RULES.map((r) => `@${r}`).join(', ')}. Use the hook selectors; class names change without notice. When you set a background, set its text colour too: contrast is rated on the palette, not on your CSS. In the render report, a stripped entry for (sheet) means the browser refused the whole CSS. Custom CSS is switched off while any approval or consent prompt is on screen.`,
+  css: `At most ${CUSTOM_APPEARANCE_CSS_MAX_LENGTH} characters, applied after Station's styles. No @import, @font-face, backslash escapes, image-set(), cross-fade(), image(), src(), attr(), or url() other than data: (and #fragment in filter, mask, clip-path and marker). Allowed at-rules: ${CUSTOM_CSS_ALLOWED_AT_RULES.map((r) => `@${r}`).join(', ')}. Use the hook selectors; class names change without notice. In a data: SVG inside url(), use single quotes or percent-encode double quotes (%22): a double quote inside a single-quoted string is refused. When you set a background, set its text colour too: contrast is rated on the palette, not on your CSS. In the render report, a stripped entry for (sheet) means the browser refused the whole CSS. Custom CSS is switched off while any approval or consent prompt is on screen.`,
   roles: APPEARANCE_ROLE_PROPERTIES,
   hooks: APPEARANCE_HOOKS,
   openPath: '/appearance',

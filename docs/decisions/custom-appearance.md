@@ -89,9 +89,17 @@ the reason in the tool result:
 - shape, name length, hex values and known roles;
 - CSS over 50,000 characters, any backslash, `@import`, `@font-face`,
   `image-set()`, `cross-fade()`, `image()`, `src()`, `attr()`, and `url()`
-  other than `data:`, or `#id` in `filter`, `mask*`, `clip-path` and
-  `marker*` (elsewhere `url(#x)` resolves against the page and fetches the
-  page itself). The text is lowercased, comments are removed outside strings,
+  other than `data:`, or `#id` in exactly `filter`, `clip-path`, `mask`,
+  `mask-image`, `marker`, `marker-start`, `marker-mid`, `marker-end` and
+  `offset-path` (with `-webkit-` forms of clip-path, mask and mask-image).
+  Elsewhere `url(#x)` resolves against the page and fetches the page itself;
+  prefixes are not trusted, because `mask-box-image` takes an image (found in
+  review), and a Chromium test confirms each listed property makes no
+  request. A double quote inside a single-quoted string, or a control
+  character in a string, in a declaration with a URL-taking function is
+  refused too: the browser re-serializes it with a backslash, which its
+  guard refuses next to `url()`, so the server says so first ("use single
+  quotes in a data: SVG, or percent-encode the double quotes"). The text is lowercased, comments are removed outside strings,
   and it is checked declaration by declaration, split outside strings and
   parentheses; deliberately conservative;
 - contrast, at 4.5:1, of each pair whose two values the proposal sets itself:
@@ -244,6 +252,11 @@ the cache; a network failure keeps it.
 
 ## Accepted gaps
 
+- The server's text check splits on strings and parentheses, so a stray `(`
+  or quote inside an unquoted `url()` (`filter:url(data:a(b);
+  background-image:url(#x)`) desyncs it and can attribute a declaration to
+  the wrong property. The browser guard reads the parsed declarations and
+  contains it.
 - Person-only routes rely on `requestMayBeAnAgent` (see Propose, preview,
   keep): an agent with the person's CLI credential, a personal access token
   or a signed-in browser pane can save or keep directly.

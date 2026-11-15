@@ -255,6 +255,12 @@ describe('/api/me/appearance', () => {
         '#a{content:";"; background-image: url(http://evil.test/s)}',
         'remote-url',
       ],
+      // The browser would escape this quote and its guard would refuse the
+      // backslash next to url(), so the server refuses it first.
+      [
+        `#a{background-image:url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>')}`,
+        'escape',
+      ],
       // A comment opener inside a string must not hide what follows it.
       [
         '#a{content:"/*"; background-image:url(http://evil.test/x); content:"*/"}',

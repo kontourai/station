@@ -32,7 +32,8 @@ same way; **Save** uses it at once.
 
 Station refuses CSS that loads anything from elsewhere: `@import`, fonts,
 remote images and `url()` other than `data:` (and `#id` links in filters,
-masks, clip paths and markers). It also refuses
+masks, clip paths and markers). In a `data:` SVG inside `url()`, use single quotes,
+or write double quotes as `%22`. It also refuses
 text colors that are hard to read on their backgrounds. Use the hook
 selectors, such as `[data-surface="sidebar"]` or `[data-slot="button"]`;
 other class names change without notice. When your CSS sets a background, set its text color too: Station checks the palette's colors, not your CSS.

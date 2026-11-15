@@ -22,6 +22,7 @@ import {
   type CustomCssViolationKind,
   fetchingValueKind,
   splitCssDeclarations,
+  URL_TAKING_FUNCTION,
 } from '@kontourai/station-contracts/custom-appearance';
 
 export interface SanitizedCss {
@@ -66,10 +67,6 @@ const GROUPING = [
   'CSSLayerBlockRule',
 ];
 
-/** Functions whose argument is a URL or image the browser resolves. */
-const URL_TAKING =
-  /(?:^|[^a-z0-9_-])(?:url|src|(?:-webkit-)?image-set|image|(?:-webkit-)?cross-fade)\(/;
-
 /**
  * Whether one declaration fetches. A backslash is refused where the text is
  * tokenized again later (a custom property's raw value, any value holding
@@ -83,7 +80,11 @@ const URL_TAKING =
 function declarationFetchKind(property: string, value: string) {
   const lower = value.toLowerCase();
   const name = property.trim().toLowerCase();
-  if (name.startsWith('--') || lower.includes('var(') || URL_TAKING.test(lower))
+  if (
+    name.startsWith('--') ||
+    lower.includes('var(') ||
+    URL_TAKING_FUNCTION.test(lower)
+  )
     return fetchingValueKind(lower, name);
   return fetchingValueKind(lower.replace(/\\/g, ''), name);
 }

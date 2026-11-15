@@ -1,5 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import {
+  customCssTextViolations,
+  LOCAL_REFERENCE_PROPERTIES,
+} from '@kontourai/station-contracts/custom-appearance';
 import type { Browser, Page } from '@playwright/test';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { chromiumIsInstalled } from '../../../tests/helpers/css-cascade-fixture';
@@ -38,6 +42,8 @@ function App() {
   showApproval = (value) => flushSync(() => setOpen(value));
   return React.createElement(React.Fragment, null,
     React.createElement('div', { id: 'probe', 'data-surface': 'sidebar' }, 'Probe'),
+    React.createElement('svg', { width: 20, height: 20 },
+      React.createElement('path', { id: 'probe-path', d: 'M0 0 L10 10' })),
     open && React.createElement(PermissionRequestModal, {
       request: { pluginName: 'demo', permissions: [] },
       onApprove: () => events.push('approve'),
@@ -520,6 +526,69 @@ describe('custom appearance in Chromium', () => {
     await harness('dropSanitized');
     expect(subresources).toEqual([]);
     expect(fetched.slice(before)).toEqual([]);
+  });
+
+  test.each([
+    ['-webkit-mask-box-image-source', 'url(#nope)'],
+    ['-webkit-mask-box-image', 'url(#f) 10 stretch'],
+    ['border-image', 'url(#nope) 30'],
+  ])(
+    'the guard alone: %s with a fragment URL is a page load and is removed',
+    async (property, value) => {
+      subresources.length = 0;
+      const stripped = await harness<{ what: string }[]>(
+        'adoptSanitized',
+        `#probe { border: 3px solid; ${property}: ${value}; }`,
+      );
+      await page.waitForTimeout(400);
+      await harness('dropSanitized');
+      expect(stripped.length).toBeGreaterThan(0);
+      expect(subresources).toEqual([]);
+    },
+  );
+
+  test.each([...LOCAL_REFERENCE_PROPERTIES])(
+    'the guard alone: %s keeps url(#nope) and Chromium makes no request for it',
+    async (property) => {
+      subresources.length = 0;
+      const stripped = await harness<{ what: string }[]>(
+        'adoptSanitized',
+        `#probe, #probe-path { ${property}: url(#nope); }`,
+      );
+      await page.waitForTimeout(400);
+      await page.evaluate(
+        (name) =>
+          getComputedStyle(
+            document.getElementById('probe-path')!,
+          ).getPropertyValue(name),
+        property,
+      );
+      await harness('dropSanitized');
+      expect(stripped).toEqual([]);
+      expect(subresources).toEqual([]);
+    },
+  );
+
+  test.each([
+    [
+      `#probe { background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>'); }`,
+      false,
+    ],
+    [`#probe::before { content: '"' url(data:,x); }`, false],
+    [
+      `#probe { background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'/>"); }`,
+      true,
+    ],
+    [`[title='"'] { color: red; } div { color: blue; }`, true],
+    [`#probe::before { content: '"'; }`, true],
+  ])('server and browser agree on %s', async (css, accepted) => {
+    const server = customCssTextViolations(css);
+    const { stripped } = await harness<{ stripped: unknown[] }>(
+      'sanitize',
+      css,
+    );
+    expect(server.length === 0, 'server accepts').toBe(accepted);
+    expect(stripped.length === 0, 'browser keeps everything').toBe(accepted);
   });
 
   test('url(#id) in a filter stays a local reference', async () => {
