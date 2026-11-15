@@ -4126,6 +4126,16 @@ last watcher cancels sampling. Idle external edits can therefore take up to two
 seconds plus scheduling delays to notify readers; this polling runs in the
 worker, separately from the server event loop.
 
+**Worker lifecycle.** The [working-state](../../src-server/services/orchestration/project-task-room-working-state.ts)
+and [history](../../src-server/services/orchestration/project-task-room-history.ts)
+workers are each a V8 isolate and start on their first request, not at
+composition. Each is retired after 60 seconds with no request in flight (and,
+for working state, no watcher), and the next request starts a fresh one over
+the same database. Every reply follows its commit and the workers keep no
+durable state in memory, so retirement is not a failure: it neither makes
+working state terminal nor starts the history worker's failure cooldown. A
+worker that fails is handled as before.
+
 ## SharedWorkingStateEditingCapability
 
 **Purpose and interface.** [The editing capability](../../src-server/domain/shared-working-state-editing.ts)

@@ -214,9 +214,19 @@ interface ProjectTaskRoomWorkingStateTestOptions {
   maxRetainedOperations?: number;
   /** Test/reference-only working snapshot allowance; publication stays 512 KiB. */
   maxWorkingSnapshotBytes?: number;
+  /** Test-only idle span before the worker is retired; production uses a minute. */
+  idleRetireMs?: number;
 }
 
 const WORKER_RESPONSE_TIMEOUT_MS = 5_000;
+/**
+ * The worker is a whole V8 isolate (about 18 MB on macOS) and an idle Station
+ * has no room open, so it starts on the first request and is retired once it
+ * has had no request in flight and no watcher for this long. Every durable fact
+ * is in SQLite and each reply follows its commit, so a retired worker holds
+ * nothing the next one would miss.
+ */
+const WORKER_IDLE_RETIRE_MS = 60_000;
 
 export function createProjectTaskRoomWorkingState(
   databasePath: string,
@@ -244,16 +254,11 @@ export function createProjectTaskRoomWorkingState(
     maxWorkingSnapshotBytes > 16 * 1024 * 1024
   )
     throw new Error('room working-state snapshot limit is malformed');
-  const worker = new Worker(source, {
-    workerData: {
-      databasePath,
-      maxRetainedOperations,
-      maxWorkingSnapshotBytes,
-    },
-    ...(source.pathname.endsWith('.ts')
-      ? { execArgv: ['--import', 'tsx'] }
-      : {}),
-  });
+  const idleRetireMs = options.idleRetireMs ?? WORKER_IDLE_RETIRE_MS;
+  let worker: Worker | undefined;
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Retired workers still terminating; close() waits for them. */
+  const retiring = new Set<Promise<unknown>>();
   let closed = false;
   let terminal = false;
   let terminalReason: UnavailableReason = 'closed';
@@ -279,7 +284,52 @@ export function createProjectTaskRoomWorkingState(
     }
     pending.clear();
   };
-  worker.on('message', (value: any) => {
+  const retireIfIdle = () => {
+    clearTimeout(idleTimer);
+    idleTimer = undefined;
+    if (!worker || closed || terminal || pending.size || watchers.size) return;
+    // acquire() and close() clear this timer, so it fires only while idle.
+    idleTimer = setTimeout(() => {
+      idleTimer = undefined;
+      const idle = worker;
+      if (!idle) return;
+      // Detached first, so its exit is a retirement rather than a failure.
+      worker = undefined;
+      const termination = idle.terminate().catch(() => undefined);
+      retiring.add(termination);
+      void termination.then(() => retiring.delete(termination));
+    }, idleRetireMs);
+    idleTimer.unref?.();
+  };
+  const acquire = (): Worker => {
+    clearTimeout(idleTimer);
+    idleTimer = undefined;
+    if (worker) return worker;
+    const started = new Worker(source, {
+      workerData: {
+        databasePath,
+        maxRetainedOperations,
+        maxWorkingSnapshotBytes,
+      },
+      ...(source.pathname.endsWith('.ts')
+        ? { execArgv: ['--import', 'tsx'] }
+        : {}),
+    });
+    worker = started;
+    // Only the current worker's events count; a retired one has been detached.
+    const current = () => worker === started;
+    started.on('message', (value: any) => {
+      if (current()) onMessage(started, value);
+    });
+    started.on('error', () => {
+      if (current()) fail('worker-error');
+    });
+    started.on('exit', () => {
+      if (current()) fail('worker-exit');
+    });
+    return started;
+  };
+  const onMessage = (from: Worker, value: any) => {
     if (value?.type === 'changed') {
       for (const watcher of watchers) {
         try {
@@ -293,7 +343,7 @@ export function createProjectTaskRoomWorkingState(
       void Promise.resolve(entry?.beforeCommit?.() ?? true)
         .then((allowed) => {
           if (!closed && !terminal)
-            worker.postMessage({
+            from.postMessage({
               type: 'before-commit-result',
               id: value.id,
               allowed: allowed === true,
@@ -301,7 +351,7 @@ export function createProjectTaskRoomWorkingState(
         })
         .catch(() => {
           if (!closed && !terminal)
-            worker.postMessage({
+            from.postMessage({
               type: 'before-commit-result',
               id: value.id,
               allowed: false,
@@ -318,10 +368,9 @@ export function createProjectTaskRoomWorkingState(
       if (value.result?.kind === 'unavailable')
         reportUnavailable(entry.operation, 'worker-unavailable-reply');
       entry.resolve(value.result);
+      retireIfIdle();
     }
-  });
-  worker.on('error', () => fail('worker-error'));
-  worker.on('exit', () => fail('worker-exit'));
+  };
   const request = <T>(
     value: { type: string },
     beforeCommit?: () => Promise<boolean>,
@@ -332,13 +381,22 @@ export function createProjectTaskRoomWorkingState(
         return resolve({ kind: 'unavailable' } as T);
       }
       const id = ++sequence;
+      let target: Worker;
+      try {
+        target = acquire();
+      } catch {
+        fail('worker-error');
+        reportUnavailable(value.type, 'worker-error');
+        resolve({ kind: 'unavailable' } as T);
+        return;
+      }
       const timer = setTimeout(() => {
         fail('response-deadline');
-        void worker.terminate().catch(() => {});
+        void target.terminate().catch(() => {});
       }, responseTimeoutMs);
       pending.set(id, { resolve, timer, beforeCommit, operation: value.type });
       try {
-        worker.postMessage({ id, value });
+        target.postMessage({ id, value });
       } catch {
         fail('post-message-failed');
       }
@@ -481,21 +539,27 @@ export function createProjectTaskRoomWorkingState(
       try {
         listener();
       } catch {}
-      if (watchers.size === 1) worker.postMessage({ value: { type: 'watch' } });
+      if (watchers.size === 1 && !closed && !terminal)
+        acquire().postMessage({ value: { type: 'watch' } });
       return () => {
         watchers.delete(listener);
-        if (!watchers.size && !closed)
+        if (!watchers.size && !closed && worker) {
           worker.postMessage({ value: { type: 'unwatch' } });
+          retireIfIdle();
+        }
       };
     },
     close: async () => {
       if (closeSettlement) return closeSettlement;
       closed = true;
       fail('closed');
-      closeSettlement = worker
-        .terminate()
-        .catch(() => undefined)
-        .then(() => undefined);
+      clearTimeout(idleTimer);
+      const owned = worker;
+      worker = undefined;
+      closeSettlement = Promise.all([
+        owned?.terminate().catch(() => undefined),
+        ...retiring,
+      ]).then(() => undefined);
       return closeSettlement;
     },
   });
