@@ -52,6 +52,8 @@ import { createProjectRoomRoutes } from './project-room-routes.js';
 
 const owner = humanPrincipal('deployment', 'alice', 'Alice');
 const member = humanPrincipal('deployment', 'bob', 'Bob');
+/** A real, authenticated person who was never invited to the Project. */
+const outsider = humanPrincipal('deployment', 'carol', 'Carol');
 const makeTempDir = trackTempDirs();
 const cleanup: (() => void)[] = [];
 afterEach(() => {
@@ -103,6 +105,7 @@ async function harness(
   });
   const alice = authority(owner, () => aliceLive);
   const bob = authority(member, () => bobLive);
+  const carol = authority(outsider, () => true);
   const enabled = await membership.enable('example', project.id, alice);
   const offer = await membership.invite(
     enabled.scope,
@@ -120,6 +123,8 @@ async function harness(
       return { auth: alice, live: () => aliceLive };
     if (credential === 'Bearer bob-session')
       return { auth: bob, live: () => bobLive };
+    if (credential === 'Bearer carol-session')
+      return { auth: carol, live: () => true };
     throw new ProjectMembershipRefusal('forbidden');
   };
   let beforeCommit: (() => void) | undefined;
@@ -164,11 +169,13 @@ async function harness(
       );
     },
     // The runtime's directory (#4799): the Project's viewing members.
+    // An over-sharing port on purpose: the service must strip `email`.
     members: (scope) =>
       membership.viewingMembers(scope).map((principal) => ({
         id: principal.id,
         displayName: principal.display,
         kind: 'person' as const,
+        email: `${principal.id}@example.invalid`,
       })),
     async current(request, scope, actorId, action) {
       const { auth, live } = resolve(request);
@@ -3583,19 +3590,31 @@ for (const [label, raw] of [
 
 test('members (#4799): only a current room reader may list, and the list is active people with id, name and kind only', async () => {
   const h = await harness('viewer');
-  // A viewer may list: it already reads this Project's rooms.
-  const listed = (await data(await h.request('bob', '/members'))) as {
+  const general = await h.discover('alice');
+  // A viewer already reads this Project's rooms, so it may list. Exactly
+  // three public fields leave the service, even when the port offers more.
+  const response = await h.request('bob', '/members');
+  const text = await response.text();
+  expect(response.status).toBe(200);
+  expect(text).not.toContain('example.invalid');
+  const listed = JSON.parse(text).data as {
     members: Record<string, unknown>[];
   };
   expect(listed.members).toHaveLength(2);
   for (const entry of listed.members)
     expect(Object.keys(entry).sort()).toEqual(['displayName', 'id', 'kind']);
-  // Someone with no membership is refused, never shown the roster.
-  const stranger = await h.app.request('/api/projects/example/room/members', {
-    headers: { authorization: 'Bearer mallory-session' },
-  });
-  expect(stranger.status).toBe(403);
-  expect(await stranger.text()).not.toContain('Alice');
+  // A signed-in person who is not a member is refused and sees no roster,
+  // on the default room and on a channel address alike.
+  for (const path of [
+    '/api/projects/example/room/members',
+    `/api/projects/example/channels/${general.roomId}/members`,
+  ]) {
+    const refused = await h.app.request(path, {
+      headers: { authorization: 'Bearer carol-session' },
+    });
+    expect(refused.status, path).toBe(403);
+    expect(await refused.text()).not.toContain('Alice');
+  }
   // A revoked member is refused too, and no longer listed for anyone.
   h.revokeMember();
   const revoked = await h.request('bob', '/members');
@@ -3605,9 +3624,50 @@ test('members (#4799): only a current room reader may list, and the list is acti
     members: { id: string }[];
   };
   expect(after.members.map((m) => m.id)).toEqual([owner.id]);
-  // The same holds on a named channel's address.
-  const general = await h.discover('alice');
-  expect(
-    (await api(h, 'bob', `/channels/${general.roomId}/members`)).status,
-  ).toBe(403);
+});
+
+test('live (#4798): a member revoked mid-stream gets revoked and nothing after it: no typing, presence or messages', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const stream = liveReader(await live(h, 'bob', [a.roomId]));
+  await stream.until('subscribed');
+  const seen: ProjectRoomLiveFrame['kind'][] = [];
+  const reading = (async () => {
+    try {
+      for (;;) {
+        const frame = await stream.next();
+        seen.push(frame.kind);
+        if (frame.kind === 'revoked') return;
+      }
+    } catch {
+      /* The stream ended. */
+    }
+  })();
+  // Let the baseline frames arrive, then revoke and make the room busy.
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const before = seen.length;
+  h.revokeMember();
+  const aliceClient = randomUUID();
+  await h.request('alice', '/presence', 'POST', {
+    ...guard(a),
+    clientId: aliceClient,
+    state: 'join',
+  });
+  await h.request('alice', '/typing', 'POST', {
+    ...guard(a),
+    clientId: aliceClient,
+    typing: true,
+  });
+  await h.request('alice', '/messages', 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+    text: 'after the revocation',
+  });
+  await Promise.race([
+    reading,
+    new Promise((resolve) => setTimeout(resolve, 5000)),
+  ]);
+  // The per-frame re-check answers with `revoked`, and nothing else gets out.
+  expect(seen.slice(before)).toEqual(['revoked']);
+  await stream.cancel().catch(() => {});
 });

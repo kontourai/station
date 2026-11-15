@@ -562,7 +562,15 @@ export class ProjectRoomService {
       (scope, actor, _caps, assertCurrent) => {
         if (!this.store.lookupRoom(scope, channelId))
           throw new ProjectRoomRefusal('not_found');
-        const members = this.access.members?.(scope, actor) ?? [{ ...actor }];
+        // Public fields only, whatever the port returns: id, current name
+        // and kind. People only; nothing else about a member leaves here.
+        const members = (this.access.members?.(scope, actor) ?? [actor])
+          .filter((member) => member.kind === 'person')
+          .map((member) => ({
+            id: member.id,
+            displayName: member.displayName,
+            kind: 'person' as const,
+          }));
         assertCurrent();
         return { members };
       },

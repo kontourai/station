@@ -361,5 +361,41 @@ export async function projectRoomLiveResponse(
       if (timer) clearTimeout(timer);
     }
   });
-  return guardProjectResponse(response, () => service.current(request, first));
+  const guarded = await guardProjectResponse(response, () =>
+    service.current(request, first),
+  );
+  if (guarded.status !== 200 || !guarded.body) return guarded;
+  // A guard refusal ends protected delivery: queued room content is
+  // discarded, and only fixed `revoked` frames for the rooms this stream
+  // admitted are released, so the client can tell lost access from a drop.
+  const terminal = admitted
+    .filter((item) => item.admission)
+    .map(
+      (item) =>
+        `event: revoked\ndata: ${JSON.stringify({ key: item.key })}\n\n`,
+    )
+    .join('');
+  const reader = guarded.body.getReader();
+  return new Response(
+    new ReadableStream<Uint8Array>(
+      {
+        async pull(controller) {
+          try {
+            const next = await reader.read();
+            if (next.done) controller.close();
+            else controller.enqueue(next.value);
+          } catch {
+            controller.enqueue(new TextEncoder().encode(terminal));
+            controller.close();
+            void reader.cancel().catch(() => {});
+          }
+        },
+        cancel(reason) {
+          return reader.cancel(reason);
+        },
+      },
+      { highWaterMark: 0 },
+    ),
+    { headers: guarded.headers },
+  );
 }
