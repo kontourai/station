@@ -131,6 +131,8 @@ export type StartAgentChip =
        * gap, not a Model: the chip then names the Agent alone.
        */
       modelLabel?: string;
+      /** The reasoning effort this start requests; absent for the engine default. */
+      effortLabel?: string;
       executionAgentId?: string;
       /** Catalog entry for the selected execution engine, including overrides. */
       executionAgent?: AgentData;
@@ -558,6 +560,9 @@ export function StartComposer({
                 ]
                   .filter(Boolean)
                   .join(' · ')}
+                effort={
+                  agent.status === 'ready' ? agent.effortLabel : undefined
+                }
                 icon={
                   agent.status === 'ready' && agent.agent ? (
                     <AgentIcon agent={agent.agent} size="small" />
@@ -606,7 +611,7 @@ export function StartComposer({
                   <ComposerChoice
                     className="start-composer__chip start-composer__chip--model"
                     aria-haspopup="dialog"
-                    aria-label={`Model: ${agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED ? agent.modelLabel : 'Model'}${agent.modelNote ? `. ${agent.modelNote}` : ''}`}
+                    aria-label={`Model: ${agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED ? `${agent.modelLabel}${agent.effortLabel ? ` · ${agent.effortLabel}` : ''}` : 'Model'}${agent.modelNote ? `. ${agent.modelNote}` : ''}`}
                     title={agent.modelNote}
                     disabled={!agent.agent}
                     onClick={(event) => onOpenModel(event.currentTarget)}
@@ -615,7 +620,9 @@ export function StartComposer({
                     value={
                       agent.modelLabel &&
                       agent.modelLabel !== MODEL_NOT_REPORTED
-                        ? agent.modelLabel
+                        ? [agent.modelLabel, agent.effortLabel]
+                            .filter(Boolean)
+                            .join(' · ')
                         : 'Model'
                     }
                   />

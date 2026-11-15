@@ -54,6 +54,13 @@ export function ComposerChoice({
       <span className="chat-input__chip-stack" aria-hidden="true">
         {caption && <span className="chat-input__chip-caption">{caption}</span>}{' '}
         <span className={`composer-choice__value ${valueClassName ?? ''}`}>
+          {/* The same mark the closed Run setup trigger carries, so the
+              open panel shows which choice raised it. */}
+          {safetyLabel && (
+            <span className="composer-choice__safety" title={safetyLabel}>
+              ⚠{' '}
+            </span>
+          )}
           {value}
         </span>
       </span>

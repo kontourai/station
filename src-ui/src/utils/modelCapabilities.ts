@@ -1,5 +1,8 @@
 import type { AgentProfileCapability } from '@kontourai/station-contracts/enriched-agent';
-import type { ModelOption } from '@kontourai/station-contracts/tool';
+import type {
+  ModelOption,
+  ModelOptionCapabilities,
+} from '@kontourai/station-contracts/tool';
 
 export type SelectableModel = Pick<
   ModelOption,
@@ -276,6 +279,26 @@ export function effortLabel(value: string): string {
 }
 
 /**
+ * The reasoning effort a run requests, as the Run setup trigger names it.
+ * Undefined when nothing was requested or the model does not report that
+ * level: the engine's own default then applies, and a chip never names a
+ * level it cannot know.
+ */
+export function requestedEffortLabel(
+  capabilities: ModelOptionCapabilities | undefined,
+  runtimeOptions: Record<string, unknown> | undefined,
+): string | undefined {
+  const requested = runtimeOptions?.effort ?? runtimeOptions?.reasoningEffort;
+  if (
+    typeof requested !== 'string' ||
+    capabilities?.supportsEffort !== true ||
+    !capabilities.supportedEffortLevels?.includes(requested)
+  )
+    return undefined;
+  return effortLabel(requested);
+}
+
+/**
  * Keep approval and other non-model state, but remove model controls the newly
  * selected descriptor does not report. This prevents an effort from a prior
  * model silently leaking into the next turn.
@@ -439,6 +462,17 @@ export function resolveModelChoice(
         : effective.source,
     engineName: selected?.engineName,
     executionAgentId: choice?.executionAgentId,
+    effortLabel: requestedEffortLabel(
+      (
+        selected ??
+        models.find(
+          (model) =>
+            model.id === (sourceModel ?? effective.id) &&
+            model.executionAgentId === choice?.executionAgentId,
+        )
+      )?.capabilities,
+      choice?.providerOptions,
+    ),
   };
 }
 

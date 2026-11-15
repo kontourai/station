@@ -81,3 +81,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Matches the Run setup trigger's corner badge (ComposerRunControl.css). */
+.composer-choice__safety {
+  color: var(--k-caution);
+}
