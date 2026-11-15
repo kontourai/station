@@ -46,7 +46,7 @@ import { createLogger, type Logger } from '../../utils/logger.js';
 
 const MIB = 1024 * 1024;
 
-export const DEFAULT_STDOUT_LOG_FILE_LIMITS = {
+const DEFAULT_STDOUT_LOG_FILE_LIMITS = {
   maxBytes: 64 * MIB,
   generations: 3,
   intervalMs: 30_000,

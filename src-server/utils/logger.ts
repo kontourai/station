@@ -101,11 +101,6 @@ export function configureLogRepeatLimit(
   );
 }
 
-/** Writes every pending "suppressed K repeats" summary now. */
-export function flushLogRepeatSummaries(): void {
-  repeatLimiter.flush();
-}
-
 // Lazy for the same reason as `services/infra/server-log-store.ts`: a static
 // import of the OTel instruments from the logger seam would load them ahead
 // of vi.mock hoisting in nearly every suite. The import happens only once a
