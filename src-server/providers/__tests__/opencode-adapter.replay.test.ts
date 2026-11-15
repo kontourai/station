@@ -4027,7 +4027,7 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     expect(await steer).toBeInstanceOf(ProviderTurnEndedError);
   });
 
-  test("this session's ask refused after its turn ended, while a later turn runs, interrupts with a warning and does not end the later turn", async () => {
+  test("this session's ask refused after its turn's execution ended, while a later turn runs, interrupts nothing and says so", async () => {
     let next = false;
     const h = await setup(
       {
@@ -4056,10 +4056,12 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
         String(event.message).includes('The turn that asked had ended'),
     );
     expect(String(warning.message)).toContain(
-      'so Station interrupted OpenCode.',
+      'no longer holds the request, so Station interrupted nothing',
     );
-    expect(interrupts(h)).toHaveLength(1);
+    // OpenCode dropped the ask with its execution: an interrupt now would
+    // stop only the later turn.
     await pause(150);
+    expect(interrupts(h)).toEqual([]);
     expect(
       h.events.filter(
         (event) =>
@@ -4081,20 +4083,31 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
   test('a turn stopped on a refused rejection before anything ran it takes its prompt back out of the inbox, once its POST lands, and says so', async () => {
     const fail = repliesFail(Number.POSITIVE_INFINITY);
     const [promptId] = recordedPromptIds('interrupt-pending');
+    // The prompt's answer is held past Station's interrupt, until the test
+    // lets it go: a withdrawal sent before it would reach an inbox the
+    // prompt is not in yet.
+    let answered = false;
+    let deletedBeforeAnswer = false;
     const h = await setup({
       scenario: 'interrupt-pending',
-      // The execution's start is never seen, and the prompt's answer comes
-      // only once OpenCode has asked.
+      // The execution's start is never seen.
       omit: isFrame('session.execution.started'),
       holdUntil: (request) =>
         request.method === 'POST' && request.path.endsWith('/prompt')
-          ? isFrame('permission.asked')
+          ? () => answered
           : undefined,
-      respond: (request) =>
-        request.method === 'DELETE' ? { status: 204 } : fail(request),
+      respond: (request) => {
+        if (request.method !== 'DELETE') return fail(request);
+        if (!answered) deletedBeforeAnswer = true;
+        return { status: 204 };
+      },
     });
     await h.start({ approvalMode: 'ask' }, { metadata: DENY_APPROVALS });
-    const { turnId } = await h.turn('DO_BASH wait');
+    const sent = h.turn('DO_BASH wait');
+    await h.waitFor(() => interrupts(h).length > 0);
+    await pause(150);
+    answered = true;
+    const { turnId } = await sent;
     const failure = await h.waitFor(
       (event) => event.method === 'runtime.error' && event.turnId === turnId,
     );
@@ -4107,6 +4120,72 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     expect(
       h.replay.made('DELETE', '/api/session/:id/inbox/:id').map((r) => r.path),
     ).toEqual([`/api/session/${PENDING_ROOT}/inbox/${promptId}`]);
+    expect(deletedBeforeAnswer).toBe(false);
+  });
+
+  test('a stopped turn whose prompt Station could not take back, started by OpenCode after all, is interrupted with a warning', async () => {
+    const fail = repliesFail(Number.POSITIVE_INFINITY);
+    let ended = false;
+    const h = await setup({
+      scenario: 'interrupt-pending',
+      // The execution is seen to start only after Station ended the turn:
+      // the capture's end frame stands in for that late start.
+      omit: isFrame('session.execution.started'),
+      rewrite: (record) =>
+        isFrame('session.execution.interrupted')(record)
+          ? {
+              ...record,
+              event: { ...record.event!, type: 'session.execution.started' },
+            }
+          : record,
+      holdFrame: (record) =>
+        isFrame('session.execution.started')(record) ? () => ended : undefined,
+      respond: (request) =>
+        request.method === 'DELETE'
+          ? { status: 500, body: { error: 'inbox broke' } }
+          : fail(request),
+    });
+    await h.start({ approvalMode: 'ask' }, { metadata: DENY_APPROVALS });
+    const { turnId } = await h.turn('DO_BASH wait');
+    const failure = await h.waitFor(
+      (event) => event.method === 'runtime.error' && event.turnId === turnId,
+    );
+    expect(String(failure.message)).toContain('may still run it');
+    expect(interrupts(h)).toHaveLength(1);
+    ended = true;
+    const warning = await h.waitFor(
+      (event) =>
+        event.method === 'runtime.warning' &&
+        String(event.message).includes(`started the prompt of turn ${turnId}`),
+    );
+    expect(String(warning.message)).toContain('so Station interrupted it.');
+    expect(interrupts(h)).toHaveLength(2);
+  });
+
+  test('an ask whose automatic rejection is still in flight when the session stops is rejected again by the stop', async () => {
+    let replied = 0;
+    const h = await setup({
+      scenario: 'interrupt-pending',
+      // The first rejection never answers.
+      holdUntil: (request) =>
+        request.method === 'POST' &&
+        request.path.endsWith('/reply') &&
+        ++replied === 1
+          ? () => false
+          : undefined,
+      respond: (request) =>
+        isInterrupt(request) || request.path.endsWith('/reply')
+          ? { status: 204 }
+          : undefined,
+    });
+    await h.start({ approvalMode: 'ask' }, { metadata: DENY_APPROVALS });
+    await h.turn('DO_BASH wait');
+    await h.waitFor(() => replyPaths(h).length === 1);
+    await h.adapter.stopSession('thread-1');
+    expect(replyPaths(h)).toEqual([
+      replyPath(PENDING_ROOT, PENDING_ASK),
+      replyPath(PENDING_ROOT, PENDING_ASK),
+    ]);
   });
 
   test("a subagent's refused ask whose interrupt fails, still running when this session's execution ends, ends the turn saying OpenCode may still run it", async () => {

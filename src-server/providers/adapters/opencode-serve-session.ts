@@ -529,7 +529,15 @@ export class OpenCodeNativeSession {
    */
   private readonly grants: SessionGrant[] = [];
   /** Asks Station is answering itself (or deciding), by native id. */
-  private readonly autoAnswering = new Set<string>();
+  /**
+   * A turn stopped before anything ran it whose prompt Station could not
+   * take back (a command has no inbox item; or the withdrawal failed): if
+   * OpenCode starts it after all, before a next turn is sent, that
+   * execution is interrupted.
+   */
+  private unwithdrawn: { readonly turnId: string } | undefined;
+  /** Asks Station is deciding or answering itself, by the session that asked. */
+  private readonly autoAnswering = new Map<string, string>();
   /** Child agents' rules, by agent name (`agentRulesFor`). */
   private readonly childRules = new Map<
     string,
@@ -1079,7 +1087,9 @@ export class OpenCodeNativeSession {
    * proceeds, or waits for a later execution). An ask Station refused that
    * OpenCode would not take, and may still hold, counts as running work:
    * the session asking it is interrupted with this one, and the rejection
-   * is sent again with the others. Each request is bounded on its own, so
+   * is sent again with the others; so is an ask Station was still deciding
+   * or answering itself, whose answer stopping drops. Each request is
+   * bounded on its own, so
    * one the engine never answers cannot hold back the interrupt; best
    * effort, the session is released whatever the engine answers. A steer
    * whose prompt is still in flight is withdrawn when it lands (`steer`).
@@ -1090,10 +1100,17 @@ export class OpenCodeNativeSession {
     const held = [...this.refusedAsks.entries()].filter(
       ([, refused]) => refused.held,
     );
+    // Asks Station was still deciding or answering itself: stopping drops
+    // that answer, so each is rejected here instead (one already answered
+    // is gone, and its rejection is refused).
+    const answering = [...this.autoAnswering.entries()].filter(
+      ([nativeId]) => !this.refusedAsks.has(nativeId),
+    );
     const running =
       (live !== undefined && !live.settled) ||
       this.hasOpenWork() ||
-      held.length > 0;
+      held.length > 0 ||
+      answering.length > 0;
     const send = (method: 'POST' | 'DELETE', path: string, body?: unknown) =>
       client
         .request(method, path, body, { timeoutMs: STOP_REQUEST_MS })
@@ -1101,9 +1118,10 @@ export class OpenCodeNativeSession {
     // A descendant runs as a background job of its own (2.3.0), which the
     // root's interrupt does not stop.
     const askers = new Set(
-      held
-        .map(([, refused]) => refused.sessionId)
-        .filter((sessionId) => sessionId !== this.sessionId),
+      [
+        ...held.map(([, refused]) => refused.sessionId),
+        ...answering.map(([, sessionId]) => sessionId),
+      ].filter((sessionId) => sessionId !== this.sessionId),
     );
     if (running)
       await Promise.all(
@@ -1118,6 +1136,11 @@ export class OpenCodeNativeSession {
           `/api/session/${refused.sessionId}/permission/${nativeId}/reply`,
           { decision: 'reject' },
         ),
+      ),
+      ...answering.map(([nativeId, sessionId]) =>
+        send('POST', `/api/session/${sessionId}/permission/${nativeId}/reply`, {
+          decision: 'reject',
+        }),
       ),
       ...[...this.requests.values()]
         .filter((pending) => !pending.decided)
@@ -1950,6 +1973,20 @@ export class OpenCodeNativeSession {
       start(this.turn);
       return;
     }
+    const unwithdrawn = this.unwithdrawn;
+    if (unwithdrawn) {
+      // The prompt of a turn Station already ended, started after all.
+      this.unwithdrawn = undefined;
+      void this.interruptFor(this.sessionId).then((failure) =>
+        this.emit({
+          method: 'runtime.warning',
+          severity: 'warning',
+          message: failure
+            ? `${this.deps.engineName} started the prompt of turn ${unwithdrawn.turnId} after Station had ended that turn, and Station could not interrupt it (${failure}); ${this.deps.engineName} may still be running it.`
+            : `${this.deps.engineName} started the prompt of turn ${unwithdrawn.turnId} after Station had ended that turn, so Station interrupted it.`,
+        }),
+      );
+    }
     // The engine's own execution: published when it shows something.
     const turn = this.createTurn(crypto.randomUUID(), 'provider');
     start(turn);
@@ -2251,7 +2288,7 @@ export class OpenCodeNativeSession {
       this.deps.untrustedRead
     ) {
       const untrustedRead = this.deps.untrustedRead;
-      this.autoAnswering.add(nativeId);
+      this.autoAnswering.set(nativeId, sessionId);
       void untrustedRead()
         .catch(() => true)
         .then((read) => {
@@ -2298,7 +2335,7 @@ export class OpenCodeNativeSession {
       agent && this.deps.agentRulesFor
         ? this.childAgentRules(agent)
         : Promise.resolve(undefined);
-    this.autoAnswering.add(nativeId);
+    this.autoAnswering.set(nativeId, sessionId);
     void lookup.then((rules) => {
       this.autoAnswering.delete(nativeId);
       if (this.stopped || this.requests.has(nativeId)) return;
@@ -2390,7 +2427,7 @@ export class OpenCodeNativeSession {
     }
     const toolName = tool.name;
     const toolCallId = ask.toolCallId;
-    this.autoAnswering.add(ask.nativeId);
+    this.autoAnswering.set(ask.nativeId, ask.sessionId);
     // An evaluator that throws, at once or later, denies.
     void Promise.resolve()
       .then(() =>
@@ -2510,7 +2547,7 @@ export class OpenCodeNativeSession {
       why?: string;
     } = {},
   ): void {
-    this.autoAnswering.add(ask.nativeId);
+    this.autoAnswering.set(ask.nativeId, ask.sessionId);
     const send = () =>
       this.deps.client.request(
         'POST',
@@ -2597,6 +2634,17 @@ export class OpenCodeNativeSession {
         ? ask.turnId === turn.turnId
         : this.children.get(ask.sessionId)?.item?.parent?.turnId ===
           turn.turnId);
+    if (own && !held && turn && !ofTurn) {
+      // From a turn that has ended, whose execution ended with it: OpenCode
+      // dropped the ask then, so nothing holds it, and interrupting this
+      // session would stop only the turn now running.
+      this.emit({
+        method: 'runtime.warning',
+        severity: 'warning',
+        message: `${reason}. The turn that asked had ended and ${engine} no longer holds the request, so Station interrupted nothing; the turn now running goes on.`,
+      });
+      return;
+    }
     if (!ofTurn && (turn || !own)) {
       // Not the live turn's work: the session that asked stops, the live
       // turn (if any) is not ended for it.
@@ -2742,6 +2790,8 @@ export class OpenCodeNativeSession {
       if (turn.settled) return;
       if (turn.executing) return started();
     }
+    if (!failClose.withdrawal || failClose.withdrawal.failed)
+      this.unwithdrawn = { turnId: turn.turnId };
     this.closeOpenTools(turn);
     this.settle(turn, { method: 'turn.aborted', reason: 'interrupted' });
   }
@@ -3010,6 +3060,9 @@ export class OpenCodeNativeSession {
     kind: NativeTurn['kind'],
     invocationId?: string,
   ): NativeTurn {
+    // A next turn of Station's: an execution starting now is taken to be
+    // its own (`onExecutionStarted`).
+    if (kind === 'station') this.unwithdrawn = undefined;
     let resolveDone!: () => void;
     const done = new Promise<void>((resolve) => {
       resolveDone = resolve;

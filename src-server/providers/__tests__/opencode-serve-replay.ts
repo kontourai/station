@@ -289,9 +289,10 @@ export class OpenCodeServeReplay {
     for (const wake of this.waiters.splice(0)) wake();
     // Counted first, so the frames it gates can flow while its answer waits.
     const hold = this.holdUntil?.({ method, path, body });
+    // Re-checked on each new request or frame, and every 10ms, so a hold
+    // can also wait on a condition the test sets.
     if (hold)
-      while (!this.closed && !this.written.some(hold))
-        await new Promise<void>((resolve) => this.waiters.push(resolve));
+      while (!this.closed && !this.written.some(hold)) await this.poll();
     const own = this.respond?.({ method, path, body });
     if (own) {
       if (own.body === undefined) res.writeHead(own.status).end();
