@@ -1,0 +1,7 @@
+{
+  "revision": "5c0de17f4226807f2e643f330e6d63b9bb4da6b2",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Rewrote the PR Gallery paragraph against gallery-pr-check.yml at this commit: capture of the pinned head merged into github.sha (not base.sha or refs/pull/N/merge), conflict fails, staleness measured from 7 days of run data (94 of 127 landed captured PRs had gallery-relevant main movement after their last capture), base re-capture attribution with the 40-screen bound and every unattributed path red, the residual gaps (masked later assertion, no pixel report when excused), and the unchanged merge-queue skip. Workflow table row updated. The vitest manifest and contract-test edits only add classification and pins; no other testing.md claim changes. Not run: the hosted capture itself.","inputs":["docs/guides/testing.md",".github/workflows/gallery-pr-check.yml","scripts/__tests__/ci-workflow-contract.test.ts","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

@@ -1746,7 +1746,41 @@ describe('CI verification workflow contracts', () => {
     );
     expect(nightlySetup.length).toBeGreaterThanOrEqual(4);
     const captureIndex = job.steps.findIndex((step) => step.id === 'capture');
-    expect(setupRuns(job.steps.slice(1, captureIndex))).toEqual(nightlySetup);
+    // The composition is the one setup step the nightly lacks: main has
+    // nothing to merge. It runs after safe.directory (git in the container)
+    // and before the install, so dependencies come from the composed tree.
+    const composeIndex = job.steps.findIndex((step) => step.id === 'compose');
+    expect(job.steps[composeIndex - 1]?.name).toBe(
+      'Trust the workspace checkout inside the container',
+    );
+    expect(job.steps[composeIndex + 1]?.name).toBe('Install dependencies');
+    expect(
+      setupRuns(
+        job.steps
+          .slice(1, captureIndex)
+          .filter((step) => step.id !== 'compose'),
+      ),
+    ).toEqual(nightlySetup);
+    // #4898/#4931: the capture photographs the pinned head merged into the
+    // base tip the event fired against. `github.sha` is that tip under
+    // pull_request_target; the event's base.sha is the head's merge base
+    // (stale), and refs/pull/N/merge moves after the event.
+    const compose = job.steps[composeIndex];
+    expect(compose.env).toEqual({
+      HEAD_SHA: `\${{ github.event.pull_request.head.sha }}`,
+      BASE_SHA: `\${{ github.sha }}`,
+      UPSTREAM_URL: `https://github.com/\${{ github.repository }}.git`,
+    });
+    expect(compose.run).toContain(
+      'merge --no-ff --no-edit --no-verify "$BASE_SHA"',
+    );
+    for (const moving of ['refs/pull', 'base.sha', 'origin/', 'FETCH_HEAD'])
+      expect(compose.run, moving).not.toContain(moving);
+    const checkout = job.steps.find((step) =>
+      step.uses?.startsWith('actions/checkout@'),
+    );
+    expect(checkout?.with?.['persist-credentials']).toBe(false);
+    expect(checkout?.with?.['fetch-depth']).toBe(0);
     const nightlyUses = nightlyJob.steps
       .slice(0, nightlyCaptureIndex)
       .map((step) => step.uses)
@@ -1762,6 +1796,7 @@ describe('CI verification workflow contracts', () => {
     // half; nothing up to the upload may swallow a failure.
     const diffIndex = job.steps.findIndex((step) => step.id === 'diff');
     expect(job.steps[captureIndex]?.run).toBe('npm run test:e2e:screenshot');
+    expect(job.steps[diffIndex]?.if).toBe("steps.capture.outcome == 'success'");
     expect(job.steps[diffIndex]?.run).toBe(
       'npm run screenshot:diff -- --report-only --summary="$GITHUB_STEP_SUMMARY"',
     );
@@ -1801,9 +1836,42 @@ describe('CI verification workflow contracts', () => {
       step.uses?.startsWith('actions/upload-artifact@'),
     );
     expect(uploadIndex).toBeGreaterThan(assertionsIndex);
+    // Only the capture and the assertions record an outcome instead of
+    // ending the job, so a failure can be attributed to main first. The last
+    // step is the verdict, and it reads exactly those outcomes.
     for (const step of job.steps.slice(0, uploadIndex)) {
-      expect(step['continue-on-error'], step.name).toBeUndefined();
+      expect(step['continue-on-error'], step.name).toBe(
+        step.id === 'capture' || step.id === 'assertions' ? true : undefined,
+      );
     }
+    const verdict = job.steps.at(-1);
+    expect(verdict?.name).toBe('Gallery verdict');
+    expect(verdict?.if).toBe('always()');
+    expect(verdict?.env).toEqual({
+      COMPOSE: `\${{ steps.compose.outcome }}`,
+      CAPTURE: `\${{ steps.capture.outcome }}`,
+      DIFF: `\${{ steps.diff.outcome }}`,
+      ASSERTIONS: `\${{ steps.assertions.outcome }}`,
+      ATTRIBUTION: `\${{ steps.attribution.outputs.verdict }}`,
+      BASE_SHA: `\${{ steps.compose.outputs.base }}`,
+    });
+    const attribution = job.steps.find((step) => step.id === 'attribution');
+    expect(job.steps.indexOf(attribution as Step)).toBe(assertionsIndex + 1);
+    expect(attribution?.if).toBe(
+      "!cancelled() && steps.compose.outcome == 'success' && steps.diff.outcome != 'failure' && (steps.capture.outcome == 'failure' || steps.assertions.outcome == 'failure')",
+    );
+    expect(attribution?.env).toEqual({
+      BASE_SHA: `\${{ steps.compose.outputs.base }}`,
+      CAPTURE: `\${{ steps.capture.outcome }}`,
+      NODE_BIN: `\${{ steps.compose.outputs.node }}`,
+    });
+    expect(attribution?.run).toContain('export GIT_NO_REPLACE_OBJECTS=1');
+    // gallery-pr-composition.test.ts proves the replace-ref, base-checkout
+    // and absolute-node guards behaviourally.
+    // The rule that excuses a failure comes from the base worktree.
+    expect(attribution?.run).toContain(
+      'attribution="$base_root/scripts/gallery-main-attribution.mjs"',
+    );
 
     // The artifact is the ONLY sanctioned baseline source, so it must exist
     // on failure and carry the gallery directory at its root (capture.json
@@ -1838,7 +1906,7 @@ describe('CI verification workflow contracts', () => {
       (step) => step.name === 'Explain a capture that did not complete',
     );
     expect(captureFailed?.if).toBe(
-      "failure() && steps.capture.outcome == 'failure'",
+      "always() && steps.capture.outcome == 'failure' && steps.attribution.outputs.verdict != 'main'",
     );
     expect(captureFailed?.run).toContain('do NOT re-baseline');
   });
