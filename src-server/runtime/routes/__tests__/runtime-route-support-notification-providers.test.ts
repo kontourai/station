@@ -161,7 +161,11 @@ test('a turn completion is recorded while its owner holds a live /events stream'
         (notification) => notification.source === 'turn-completion',
       );
     expect(await turnRecords()).toEqual([]);
-    await vi.advanceTimersByTimeAsync(FINISHED_ALERT_CONFIRM_MS);
+    // Still inside the window: nothing yet.
+    await vi.advanceTimersByTimeAsync(FINISHED_ALERT_CONFIRM_MS - 1);
+    await services.notificationService.drainAsyncDispatch();
+    expect(await turnRecords()).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
     await services.notificationService.drainAsyncDispatch();
 
     const recorded = await turnRecords();
