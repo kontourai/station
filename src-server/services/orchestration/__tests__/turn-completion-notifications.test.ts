@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { agentActivityPhaseFor } from '../../notifications/agent-activity-card.js';
 import { isCardAlerted } from '../../notifications/delivery/card-alerted-categories.js';
 import { NotificationService } from '../../notifications/notification-service.js';
@@ -1350,6 +1351,8 @@ describe('wireTurnCompletionNotifications turn-identity-anchor eviction timer (s
   });
 });
 
+const makeTempDir = trackTempDirs();
+
 describe('wireTurnCompletionNotifications: one finished alert per completion episode', () => {
   let timers: ReturnType<typeof manualTimers>;
   let bus: EventBus;
@@ -1380,7 +1383,7 @@ describe('wireTurnCompletionNotifications: one finished alert per completion epi
     );
 
   beforeEach(async () => {
-    dir = mkdtempSync(join(tmpdir(), 'turn-completion-held-'));
+    dir = makeTempDir('turn-completion-held-');
     timers = manualTimers();
     bus = new EventBus();
     notificationService = new NotificationService(bus, dir, 999_999);
@@ -1412,7 +1415,6 @@ describe('wireTurnCompletionNotifications: one finished alert per completion epi
 
   afterEach(async () => {
     await notificationService.shutdown();
-    rmSync(dir, { force: true, recursive: true });
   });
 
   test('a finish waits out its confirmation window before it is pushed', async () => {
