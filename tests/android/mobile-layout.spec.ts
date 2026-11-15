@@ -324,20 +324,32 @@ test.describe('Android — Mobile Layout', () => {
       name: 'Mobile navigation',
     });
     await expect(navigation).toBeVisible();
-    await expect(navigation.locator('.sidebar__nav-btn').first()).toBeVisible();
+    await expect(
+      navigation.getByRole('button', { name: 'Home', exact: true }),
+    ).toBeVisible();
     expect(await navigation.ariaSnapshot()).toContain(
       '- navigation "Mobile navigation"',
     );
     await expect(navigation.getByTitle('Close navigation')).toBeFocused();
 
+    // Shift+Tab from Close reaches the drawer's first control, the brand
+    // home button. Another must wrap to its last control rather than leave
+    // the drawer, and Tab from there must come back to the first.
+    const firstControl = navigation.locator('.sidebar__home-button');
+    await page.keyboard.press('Shift+Tab');
+    await expect(firstControl).toBeFocused();
     await page.keyboard.press('Shift+Tab');
     await expect
       .poll(() =>
-        navigation.evaluate((element) =>
-          element.contains(document.activeElement),
+        navigation.evaluate(
+          (element) =>
+            element.contains(document.activeElement) &&
+            !document.activeElement?.matches('.sidebar__home-button'),
         ),
       )
       .toBe(true);
+    await page.keyboard.press('Tab');
+    await expect(firstControl).toBeFocused();
 
     await page.keyboard.press('Escape');
     await expect(navigation).not.toBeVisible();
