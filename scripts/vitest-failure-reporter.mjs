@@ -1,14 +1,17 @@
 // A Vitest reporter that records, for the qualification failure manifest,
 // exactly which tests failed (file and full title path), which test modules
 // failed outside any test (a load or suite error), and how many unhandled
-// errors the run saw. It writes one JSON file at the path named by
-// STATION_VITEST_FAILURE_REPORT and nothing to the terminal, so it changes
-// neither which tests run nor the run's output. The corpus runner reconciles
-// these identities against Vitest's own JSON reporter counts.
+// errors the run saw. It writes one JSON file at the path the corpus runner
+// passes as `--outputFile.stationFailures=<path>` and nothing to the terminal,
+// so it changes neither which tests run nor the run's output. The path is a
+// Vitest option rather than an environment variable so that test workers,
+// which inherit Vitest's environment, never learn it. The corpus runner
+// reconciles these identities against Vitest's own JSON reporter counts.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, relative, sep } from 'node:path';
 
-export const FAILURE_REPORT_ENV = 'STATION_VITEST_FAILURE_REPORT';
+/** The `outputFile` key that names this reporter's target. */
+export const FAILURE_REPORT_OUTPUT_KEY = 'stationFailures';
 
 function repoPath(moduleId) {
   return relative(process.cwd(), moduleId).split(sep).join('/');
@@ -34,11 +37,24 @@ function* suitesOf(collection) {
 }
 
 export default class VitestFailureReporter {
+  /** @type {string | undefined} */
+  target;
+
+  onInit(vitest) {
+    try {
+      const value = vitest?.config?.outputFile?.[FAILURE_REPORT_OUTPUT_KEY];
+      this.target =
+        typeof value === 'string' && value !== '' ? value : undefined;
+    } catch {
+      this.target = undefined;
+    }
+  }
+
   // A throw from a reporter changes Vitest's exit status, so nothing here
   // may escape: on any failure it records only that it failed, which the
   // corpus runner turns into an unexplained manifest entry.
   onTestRunEnd(testModules, unhandledErrors, reason) {
-    const target = process.env[FAILURE_REPORT_ENV];
+    const target = this.target;
     if (!target) return;
     try {
       writeReport(target, testModules, unhandledErrors, reason);
