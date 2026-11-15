@@ -195,8 +195,9 @@ replay work, so this is not an exactly-once display guarantee.
 Linux can close a notification already posted by this process. The current
 macOS and Windows backends cannot retract an already displayed alert; they can
 only suppress one not yet posted. Clicking an alert focuses Station and passes
-a validated in-app path to the main WebView. It does not open an arbitrary
-external URL. Source and test fixtures establish these owners and limits;
+a validated in-app path to the main WebView, with the Station origin the alert
+came from; the WebView switches to that saved Station first when another one is
+active. It does not open an arbitrary external URL. Source and test fixtures establish these owners and limits;
 OS permission, visible delivery, click behavior, and background operation still
 need evidence from the packaged app on each platform.
 
