@@ -1111,49 +1111,6 @@ describe('lifecycle instance state', () => {
     }
   });
 
-  it("gives the server spawn this home's compile cache, replacing an ambient one, and the UI none of it", async () => {
-    ensureDir(TEST_CWD);
-    ensureDir(TEST_ALT_HOME);
-    ensureBuildOutputs('compile-cache-env');
-    const spawn = vi
-      .fn()
-      .mockReturnValueOnce({ pid: 43015, unref: vi.fn() })
-      .mockReturnValueOnce({ pid: 43016, unref: vi.fn() });
-    // Same fabricated-pid liveness harness as the plain-env-scrub test above.
-    vi.spyOn(process, 'kill').mockImplementation(((
-      pid: number,
-      signal?: NodeJS.Signals | number,
-    ) => {
-      if (signal === 0 && (pid === 43015 || pid === 43016)) {
-        return true;
-      }
-      throw new Error(`unexpected process.kill(${pid}, ${String(signal)})`);
-    }) as typeof process.kill);
-    vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
-    vi.stubEnv('NODE_COMPILE_CACHE', '/someone-else/node-cache');
-    try {
-      const { lifecycle } = await loadLifecycleModule({
-        childProcessMock: { execSync: vi.fn(), spawn },
-        platformOverrides: { sleepSync: vi.fn() },
-      });
-      await lifecycle.start({
-        baseDir: TEST_ALT_HOME,
-        instanceName: 'compile-cache-env',
-        serverPort: 3253,
-        uiPort: 5283,
-      });
-
-      expect(spawn.mock.calls[0][2].env.NODE_COMPILE_CACHE).toBe(
-        join(TEST_ALT_HOME, 'cache', 'node-compile'),
-      );
-      expect(spawn.mock.calls[1][2].env.NODE_COMPILE_CACHE).not.toBe(
-        join(TEST_ALT_HOME, 'cache', 'node-compile'),
-      );
-    } finally {
-      vi.unstubAllEnvs();
-    }
-  });
-
   it('scopes the supervisor marker to the supervised server spawn only', async () => {
     ensureDir(TEST_CWD);
     ensureDir(TEST_ALT_HOME);

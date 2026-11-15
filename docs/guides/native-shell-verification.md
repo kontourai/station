@@ -571,13 +571,12 @@ the key-approval and grant-lifecycle lanes are explicit opt-ins. Harness
 availability is source evidence, not an executed platform result. Record the
 exact binary, revision, host and completed lane result when running it.
 
-The desktop sidecar, and `station start` for its supervisor or direct server,
-starts Node with a home-scoped compile cache
+The desktop sidecar starts Node with a home-scoped compile cache
 ([desktop build](desktop-build.md#startup-cost-and-linux-graphics)). The first
 [server bootstrap import](../../src-server/runtime/bootstrap/server-compile-cache.ts)
 loads `.env`, then removes `NODE_COMPILE_CACHE` from the server environment
 after Node has consumed its startup setting, so dotenv cannot restore it for
-generic child launchers. The server hands the directory Node is using only to
+generic child launchers. The server gives the home's cache directory only to
 the built-in station-control and station-knowledge children.
 Targeted child environment scrubs remain in place. The process supervisor keeps
 the setting when launching replacement Station server generations; each enters
@@ -585,7 +584,7 @@ through the same server bootstrap. The
 [process regression](../../src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts)
 checks Node's active cache across two starts and executes real stdio MCP,
 Strands, Flow Agents, Veritas and login-shell child paths. Through the real
-stdio transport, the built-in station-control environment carries the server's
+stdio transport, the built-in station-control environment carries the home's
 cache and a third-party server's does not. Its first-import
 ordering assertion is a source-only wiring guard, separate from packaged-shell
 startup evidence. A second regression builds the real server entry and runs it

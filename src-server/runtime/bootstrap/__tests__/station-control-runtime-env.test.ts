@@ -1,4 +1,6 @@
-import { describe, expect, test } from 'vitest';
+import { resolve } from 'node:path';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { STATION_CONTROL_CALLER_TOKEN_ENV } from '../../../tools/station-control-shared.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../../utils/internal-api-token.js';
 import {
@@ -14,17 +16,28 @@ const builtinDefinition = {
   args: [builtinStationControlServerPath()],
 };
 
+const tempDir = trackTempDirs();
+
 describe('withStationControlRuntimeEnv', () => {
   test('injects the process-local credential into the built-in child only', () => {
-    const stationControl = withStationControlRuntimeEnv(
-      'station-control',
-      builtinDefinition,
-      { STATION_PORT: '4111' },
-    );
+    const home = tempDir('station-control-runtime-env-');
+    vi.stubEnv('STATION_HOME', home);
+    vi.stubEnv('NODE_DISABLE_COMPILE_CACHE', '');
+    let stationControl: Record<string, string> | undefined;
+    try {
+      stationControl = withStationControlRuntimeEnv(
+        'station-control',
+        builtinDefinition,
+        { STATION_PORT: '4111' },
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
 
     expect(stationControl).toEqual({
       STATION_PORT: '4111',
       [INTERNAL_API_TOKEN_ENV]: expect.any(String),
+      NODE_COMPILE_CACHE: resolve(home, 'cache', 'node-compile'),
     });
     expect(
       withStationControlRuntimeEnv(

@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, utimesSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { join, resolve } from 'node:path';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
-  consumeStationCompileCacheEnv,
+  adoptStationCompileCache,
   scheduleStationCompileCachePrune,
   withStationCompileCache,
 } from '../station-compile-cache.js';
@@ -17,40 +17,42 @@ const tempDir = trackTempDirs();
 const NODE_VERSION_DIR = 'v24.0.0-arm64-00000000-501';
 
 afterEach(() => {
-  // Back to "no active cache" for the next test.
-  consumeStationCompileCacheEnv({}, undefined);
+  vi.unstubAllEnvs();
 });
 
-describe('consumeStationCompileCacheEnv', () => {
-  test('removes the setting and forwards only the cache Node is using', () => {
-    const env: NodeJS.ProcessEnv = { NODE_COMPILE_CACHE: '/home/cache/nc' };
-    consumeStationCompileCacheEnv(env, `/home/cache/nc/${NODE_VERSION_DIR}`);
-    expect(env).not.toHaveProperty('NODE_COMPILE_CACHE');
-    expect(withStationCompileCache({ A: '1' })).toEqual({
+describe('withStationCompileCache', () => {
+  test("adds the home's cache directory", () => {
+    expect(
+      withStationCompileCache({ A: '1' }, () => '/station/home', {}),
+    ).toEqual({
       A: '1',
-      NODE_COMPILE_CACHE: '/home/cache/nc',
+      NODE_COMPILE_CACHE: resolve('/station/home/cache/node-compile'),
     });
   });
 
-  test('does not forward a setting Node is not using', () => {
-    // Disabled (NODE_DISABLE_COMPILE_CACHE=1) or unset at startup.
-    const env: NodeJS.ProcessEnv = { NODE_COMPILE_CACHE: '/home/cache/nc' };
-    consumeStationCompileCacheEnv(env, undefined);
-    expect(env).not.toHaveProperty('NODE_COMPILE_CACHE');
-    expect(withStationCompileCache({ A: '1' })).toEqual({ A: '1' });
-    // A value that differs from the active cache, as a .env file supplies
-    // after startup.
-    consumeStationCompileCacheEnv(
-      { NODE_COMPILE_CACHE: '/dotenv/cache' },
-      `/home/cache/nc/${NODE_VERSION_DIR}`,
-    );
-    expect(withStationCompileCache({})).toEqual({});
-    // A sibling whose name only starts with the requested root.
-    consumeStationCompileCacheEnv(
-      { NODE_COMPILE_CACHE: '/home/cache/nc' },
-      `/home/cache/nc-other/${NODE_VERSION_DIR}`,
-    );
-    expect(withStationCompileCache({})).toEqual({});
+  test('adds nothing when the operator disabled the cache or the home is unavailable', () => {
+    expect(
+      withStationCompileCache({ A: '1' }, () => '/station/home', {
+        NODE_DISABLE_COMPILE_CACHE: '1',
+      }),
+    ).toEqual({ A: '1' });
+    expect(
+      withStationCompileCache(
+        { A: '1' },
+        () => {
+          throw new Error('home refused');
+        },
+        {},
+      ),
+    ).toEqual({ A: '1' });
+  });
+});
+
+describe('adoptStationCompileCache', () => {
+  test("removes the setting from the child's own environment", () => {
+    const env: NodeJS.ProcessEnv = { NODE_COMPILE_CACHE: '/x', KEEP: '1' };
+    adoptStationCompileCache(env);
+    expect(env).toEqual({ KEEP: '1' });
   });
 });
 
@@ -62,25 +64,25 @@ describe('built-in child environment', () => {
     args: [path],
   });
 
-  test('station-control and station-knowledge get the cache; third-party and spoofed children do not', () => {
-    consumeStationCompileCacheEnv(
-      { NODE_COMPILE_CACHE: '/home/cache/nc' },
-      `/home/cache/nc/${NODE_VERSION_DIR}`,
-    );
+  test('station-control and station-knowledge get the home cache; third-party and spoofed children do not', () => {
+    const home = tempDir('station-compile-cache-home-');
+    vi.stubEnv('STATION_HOME', home);
+    vi.stubEnv('NODE_DISABLE_COMPILE_CACHE', '');
+    const cache = resolve(home, 'cache', 'node-compile');
     expect(
       withStationControlRuntimeEnv(
         'station-control',
         definition(builtinStationControlServerPath()),
         {},
       ),
-    ).toMatchObject({ NODE_COMPILE_CACHE: '/home/cache/nc' });
+    ).toMatchObject({ NODE_COMPILE_CACHE: cache });
     expect(
       withStationControlRuntimeEnv(
         'station-knowledge',
         definition(builtinStationKnowledgeServerPath()),
         {},
       ),
-    ).toMatchObject({ NODE_COMPILE_CACHE: '/home/cache/nc' });
+    ).toMatchObject({ NODE_COMPILE_CACHE: cache });
     expect(
       withStationControlRuntimeEnv(
         'third-party',
@@ -116,11 +118,10 @@ describe('scheduleStationCompileCachePrune', () => {
     utimesSync(stale, at(31), at(31));
     utimesSync(recent, at(29), at(29));
     utimesSync(active, at(400), at(400));
-    consumeStationCompileCacheEnv({ NODE_COMPILE_CACHE: root }, active);
     return { root, active, stale, recent };
   }
 
-  test("removes another version's cache only once nothing has written it for 30 days", async () => {
+  test("removes a version's cache only once nothing has written it for 30 days, keeping this process's own", async () => {
     const home = tempDir('station-compile-cache-');
     const { active, stale, recent } = seedCache(home);
     const result = await scheduleStationCompileCachePrune(home, {
@@ -134,8 +135,24 @@ describe('scheduleStationCompileCachePrune', () => {
     });
     expect(existsSync(stale)).toBe(false);
     expect(existsSync(recent)).toBe(true);
-    // The active version is kept however old: reads do not touch it.
+    // Reads never touch it, so age alone must not remove the active one.
     expect(existsSync(join(active, 'entry'))).toBe(true);
+  });
+
+  test('without a cache of its own, ages every version alike', async () => {
+    const home = tempDir('station-compile-cache-');
+    const { active, recent } = seedCache(home);
+    const result = await scheduleStationCompileCachePrune(home, {
+      activeDir: join(home, 'elsewhere', NODE_VERSION_DIR),
+      delayMs: 0,
+      now: NOW,
+    });
+    expect(result?.removedVersionDirs.sort()).toEqual([
+      'v22.0.0-arm64-11111111-501',
+      NODE_VERSION_DIR,
+    ]);
+    expect(existsSync(active)).toBe(false);
+    expect(existsSync(recent)).toBe(true);
   });
 
   test('clears the whole cache once it is over the size bound', async () => {
@@ -154,22 +171,10 @@ describe('scheduleStationCompileCachePrune', () => {
     expect(existsSync(recent)).toBe(false);
   });
 
-  test("never prunes a cache that is not this home's own", async () => {
+  test('resolves without pruning when the home has no cache', async () => {
     const home = tempDir('station-compile-cache-');
-    const { stale, active } = seedCache(home);
-    const otherHome = tempDir('station-compile-cache-other-');
-    expect(
-      scheduleStationCompileCachePrune(otherHome, {
-        activeDir: active,
-        delayMs: 0,
-        now: NOW,
-      }),
-    ).toBeUndefined();
-    // No active cache at all.
-    consumeStationCompileCacheEnv({}, undefined);
-    expect(
+    await expect(
       scheduleStationCompileCachePrune(home, { delayMs: 0, now: NOW }),
-    ).toBeUndefined();
-    expect(existsSync(stale)).toBe(true);
+    ).resolves.toBeUndefined();
   });
 });

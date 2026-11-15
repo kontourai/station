@@ -6,6 +6,7 @@ import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_ENV,
 } from '../../utils/internal-api-token.js';
+import { resolveHomeDir } from '../../utils/paths.js';
 import { withStationCompileCache } from './station-compile-cache.js';
 
 export function builtinStationControlServerPath(): string {
@@ -149,7 +150,7 @@ export function isBuiltinStationControl(
  * along with the internal token and tenant.
  *
  * The same exact-binary gate hands the built-in station-control and
- * station-knowledge bundles this server's Node compile cache
+ * station-knowledge bundles the home's Node compile cache
  * (`withStationCompileCache`).
  */
 export function withStationControlRuntimeEnv(
@@ -168,15 +169,18 @@ export function withStationControlRuntimeEnv(
     delete runtimeEnv.STATION_INTERNAL_TENANT;
   }
   if (!builtinStationApiServerId(toolId, toolDef)) return runtimeEnv;
-  // The built-in bundle shares this server's compile cache and removes the
-  // setting at its own start; a third-party server never receives it.
-  return withStationCompileCache({
-    ...runtimeEnv,
-    [INTERNAL_API_TOKEN_ENV]: getInternalApiToken(),
-    ...(tenantExecutionContext
-      ? { STATION_INTERNAL_TENANT: tenantExecutionContext.tenantId }
-      : {}),
-  });
+  // The built-in bundle gets the home's compile cache and removes the setting
+  // at its own start; a third-party server never receives it.
+  return withStationCompileCache(
+    {
+      ...runtimeEnv,
+      [INTERNAL_API_TOKEN_ENV]: getInternalApiToken(),
+      ...(tenantExecutionContext
+        ? { STATION_INTERNAL_TENANT: tenantExecutionContext.tenantId }
+        : {}),
+    },
+    resolveHomeDir,
+  );
 }
 
 /**

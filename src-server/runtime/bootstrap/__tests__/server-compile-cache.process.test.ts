@@ -32,7 +32,7 @@ test('source-only wiring: compile-cache isolation is the first server import', (
 describe.skipIf(process.platform === 'win32')(
   'server compile cache process boundary',
   () => {
-    test('the built server entry removes dotenv cache settings before child inheritance; its station-control child keeps the cache to itself', async () => {
+    test('the built server entry removes dotenv cache settings before child inheritance; the built station-control child keeps its cache to itself', async () => {
       const directory = tempDir('station-dotenv-cache-');
       const build = buildTempDir('dist-server-cache-entry-');
       const env: NodeJS.ProcessEnv = {};
@@ -149,7 +149,7 @@ describe.skipIf(process.platform === 'win32')(
         expect(observed.dependencyLaunches).toEqual([]);
       }
 
-      // The built station-control child the server hands the cache to.
+      // The built station-control child the server hands the home's cache to.
       const stationControl = join(build, 'station-control.js');
       const initialize = `${JSON.stringify({
         jsonrpc: '2.0',
@@ -172,6 +172,7 @@ describe.skipIf(process.platform === 'win32')(
       const signalled = spawn(process.execPath, [stationControl], {
         env: childEnv(signalCache),
         stdio: ['pipe', 'pipe', 'inherit'],
+        windowsHide: true,
       });
       try {
         signalled.stdin.write(initialize);
@@ -279,13 +280,13 @@ describe.skipIf(process.platform === 'win32')(
           assert.equal((await client.listTools()).tools[0].name, 'cache_absent');
         } finally { await client.close(); }
       }
-      // Only the exact built-in bundle is handed this server's cache, through
-      // the real stdio transport; a third-party server with the same command
-      // and environment is not.
+      // Only the exact built-in bundle is handed the home's cache, through the
+      // real stdio transport; a third-party server with the same command and
+      // environment is not.
       const { builtinStationControlServerPath, withStationControlRuntimeEnv } = await import(${JSON.stringify(moduleUrl('src-server/runtime/bootstrap/station-control-runtime-env.ts'))});
       const builtin = { command: process.execPath, args: [builtinStationControlServerPath()] };
       for (const [toolId, name, description] of [
-        ['station-control', 'cache_present', ${JSON.stringify(cache)}],
+        ['station-control', 'cache_present', ${JSON.stringify(join(home, 'cache', 'node-compile'))}],
         ['third-party', 'cache_absent', 'Observed child environment'],
       ]) {
         const env = withStationControlRuntimeEnv(toolId, builtin, { STATION_PORT: '43127' });
