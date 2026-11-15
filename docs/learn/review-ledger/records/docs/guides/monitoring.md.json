@@ -198,7 +198,11 @@
 
     "package.json#/dependencies/@opentelemetry~1instrumentation-http",
 
-    "package.json#/dependencies/@opentelemetry~1instrumentation-aws-sdk"
+    "package.json#/dependencies/@opentelemetry~1instrumentation-aws-sdk",
+
+    "src-server/telemetry-sdk.ts",
+
+    "src-server/server-main.ts"
   ],
 
   "checks": [

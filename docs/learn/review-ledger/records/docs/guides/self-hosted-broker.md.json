@@ -192,7 +192,9 @@
 
     "src-server/runtime/bootstrap/account-bound-device-gate.ts",
 
-    "src-server/security/pairing-route-scopes.ts"
+    "src-server/security/pairing-route-scopes.ts",
+
+    "src-server/server-main.ts"
   ],
 
   "checks": [

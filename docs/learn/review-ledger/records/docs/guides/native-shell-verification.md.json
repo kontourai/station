@@ -176,7 +176,9 @@
 
     "src-ui/src/__tests__/local-restart-notice.browser.test.tsx",
 
-    "src-ui/src/__tests__/local-restart-notice.browser.fixture.tsx"
+    "src-ui/src/__tests__/local-restart-notice.browser.fixture.tsx",
+
+    "src-server/server-main.ts"
   ],
 
   "checks": [
