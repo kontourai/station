@@ -178,6 +178,39 @@ writers always receive temporary provider directories; never seed test history
 into the host's authenticated CLI home or treat an empty auth directory as
 evidence that the host is logged out.
 
+#### OpenCode engine captures
+
+The `opencode` engine's native transport is tested against what a real
+OpenCode 2.3.0 server sent, not hand-written frames. The
+[capture script](../../src-server/providers/__tests__/fixtures/capture-opencode-serve-fixtures.mjs)
+is run by hand with `--opencode <2.x binary> --work <empty scratch dir>`. It
+runs OpenCode with `HOME`, `XDG_*` and `TMPDIR` inside the scratch directory,
+against an inline mock model on loopback ports from `--port-base` (default
+47300). No model account is used. It writes one scrubbed
+`opencode-serve-<version>-<scenario>.jsonl` per scenario, plus the served
+`openapi.json`, which must be formatted with Biome before committing. The
+replay harness
+([`opencode-serve-replay.ts`](../../src-server/providers/__tests__/opencode-serve-replay.ts))
+serves those exchanges over `node:http` to the adapter suites.
+[`opencode-serve-fixtures.test.ts`](../../src-server/providers/__tests__/opencode-serve-fixtures.test.ts)
+checks three things: that every replayed scenario was captured (the
+`subagent-gap` scenario raises `experimental.subagent_depth` in the capture's
+configuration so a child can start its own child), that no
+credential, machine path or private name remains, and the findings the
+design relies on. The fingerprint allowlist entry is recomputed from the
+captured document
+([`opencode-serve-fingerprint.test.ts`](../../src-server/providers/__tests__/opencode-serve-fingerprint.test.ts)).
+Re-capture when a new OpenCode version is to be allowlisted.
+
+Real-binary process tests ask for the OpenCode major version they cover
+([`opencode-real-binary.ts`](../../src-server/providers/__tests__/opencode-real-binary.ts)).
+The 1.x ACP probes (`opencode-client-write`, `opencode-project-config`) skip on
+a 2.x `opencode`. `opencode-native.process.test.ts` drives a real 2.x server
+through the real pool. It uses `STATION_TEST_OPENCODE_2_BINARY` when set,
+otherwise `opencode` on `PATH`, and only a version on the allowlist. Each
+skips loudly, with the reason in its title, when no matching binary resolves.
+CI has none, so a skip there is not native evidence.
+
 Use the shared typed factory and assert the rendered engine/model/approval state before exercising that path. A chat titled “Claude” is not evidence that it runs in the external-engine mode. For restored chats, supply the authoritative conversation-open response and the conversation-scoped transcript endpoint; sessionStorage is only a client seed. In a mock API router, declare optional reads with their actual envelopes or a deliberate unavailable response. End an unknown branch with `rejectUnexpectedFixtureRequest` and use the audited `test` fixture so those failures cannot disappear at teardown.
 
 User journeys use normal `click`, `fill`, keyboard, and pointer actions. Do not use forced clicks, `dispatchEvent('click')`, DOM `.click()`, or remove a disabled/inert guard to get past an obstruction. Establish the right surface first, then assert its prerequisite. A test may deliberately inject provider protocol events or a clipboard payload when that is its named seam; this is not a substitute for a user's click.
@@ -316,9 +349,23 @@ heads in CI, iOS, Windows, security, Gallery and Docs kit workflows. Each
 cancellation rechecks the PR head and run attempt. The PR-head path never cancels
 merge-group, main-push, manual diagnostic or publication runs.
 
-A new merge-group Source request also retires older Source candidates for the
+A new merge-group Source request also retires older candidates for the
 same leading PR, only when a live GitHub queue ref and GitHub's merge-queue entry
 bind the replacement commit and its base to the current same-repository PR head.
+Retirement covers the queued, pending or running merge-group run of any
+workflow (present or future) on an older candidate commit, not only Source.
+GitHub does not document it, but run history (2026-11-04 to 11-15) shows every
+group in flight at a direct push to main, such as a deploy-ledger commit,
+discarded and rebuilt on the new tip; before this, the dead group's other runs
+ran to completion for nothing. The repository-wide run listing must account
+for every run. GitHub's count can disagree with the returned page while a new
+group's runs are created, so a truncated, changing or duplicated listing is
+read up to three times in all, two seconds apart; if it stays inconsistent the
+pass warns, cancels nothing and succeeds, and the next queue event retries.
+The merged-PR path keeps an incomplete inventory fatal.
+A run is retired only if its candidate is older than the replacement and names
+the same PR; another PR's group built on the dead commit waits for that PR's
+own replacement request.
 The entry identity and source binding are re-read before each cancellation.
 This supports squash candidates: the raw PR head need not be an ancestor of the
 synthetic commit. A missing, mismatched, changed or unmergeable entry cannot
@@ -329,8 +376,18 @@ unknown runner metadata or API failure prevents it. This path can normally
 cancel an assigned runner doing obsolete work, but never force-cancels. A 202
 is a request, not terminal settlement. A 409 refusal, here and when retiring a
 merged PR's optional delivery runs, cancels nothing and is reported as a
-warning; the pass continues. It does not cancel unrelated workflow
-families or replace any regression result with success.
+warning; the pass continues. A retired run of a dead candidate reports
+`cancelled` only on that candidate's commit: `Main: Health` and the main-only
+trackers ignore queue branches, and the source status publisher reads only
+Source runs, which were already retired. It never cancels a live candidate's
+runs or replaces any regression result with success.
+
+After a change to this path, check the job's recent failure causes
+(`gh run list --repo kontourai/station --workflow pr-ci-supersession.yml
+--status failure`, then each run's log) and that no `cancelled` merge-group run
+sits on a commit that reached main (compare `head_sha` of
+`actions/runs?event=merge_group` runs concluded `cancelled` against
+`git rev-list origin/main`).
 
 For the one-candidate throughput trial and its before/after measurements, use
 [the throughput epic](https://github.com/kontourai/station/issues/3101). The live
@@ -423,7 +480,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`ecosystem-packaging.yml`](../../.github/workflows/ecosystem-packaging.yml) | Ecosystem packaging dry-run | **PR: Ecosystem packaging** | reused by `Delivery validation`; manual dispatch. |
 | [`fresh-home-walkthrough.yml`](../../.github/workflows/fresh-home-walkthrough.yml) | Fresh-home walkthrough | **Nightly: Fresh-home walkthrough** | UTC schedule: `0 10 * * *`; manual dispatch. |
 | [`full-regression.yml`](../../.github/workflows/full-regression.yml) | Hosted full regression | **Main: Full qualification** | reused by `Main: Publish packages`, `Main: Qualification`, `PR: CI`, `Release: Publish`, `Release: Stage`. |
-| [`gallery-pr-check.yml`](../../.github/workflows/gallery-pr-check.yml) | Gallery PR check | **PR: Gallery** | PR events (capture skipped for drafts and the release PR); merge queue (capture skipped). |
+| [`gallery-pr-check.yml`](../../.github/workflows/gallery-pr-check.yml) | Gallery PR check | **PR: Gallery** | PR events, capturing the head merged into the current base (capture skipped for drafts and the release PR); merge queue (capture skipped). |
 | [`install-smoke.yml`](../../.github/workflows/install-smoke.yml) | Portable Install Smoke | **PR: Install smoke** | reused by `Delivery validation`; manual dispatch. |
 | [`interactive-workspace-performance.yml`](../../.github/workflows/interactive-workspace-performance.yml) | Interactive Workspace Performance | **Tool: Interactive workspace performance** | manual dispatch. |
 | [`internal-testflight.yml`](../../.github/workflows/internal-testflight.yml) | Internal iOS TestFlight cohort | **Release: Internal TestFlight cohort** | manual dispatch. |
@@ -1510,13 +1567,63 @@ resolve at the caller's workflow commit, while `inputs.source_sha` continues to
 select only the application source being qualified.
 
 `.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
-on ready (non-draft) pull requests, in the same container (#2428, #3342). PRs
-compare their exact head. Merge-queue candidates still report the workflow's
-contexts, but the capture job skips there: Gallery is not a required context,
-so a candidate's capture could not stop a landing. Combined changes are
-captured after landing by `Nightly: Gallery` once a day, which checks capture
-integrity and reports pixel differences but does not run the product
-assertions below. Pixel differences are advisory in both workflows: `--report-only` retains the
+on ready (non-draft) pull requests, in the same container (#2428, #3342). It
+captures the pinned PR head merged into the base tip the event fired against
+(`github.sha` under `pull_request_target`; the event's `base.sha` is the head's
+stale merge base, and `refs/pull/N/merge` moves after the event), so a PR that
+breaks a screen only in combination with `main` learns it before landing; a
+merge conflict fails the job and asks for `main` to be merged. Composition
+reflects `main` as of the PR's last event only: in the week to 2026-11-14, 94 of
+127 landed, captured PRs had gallery-relevant commits land after their last
+capture (median 1.2 hours, p90 8.2 hours), and nothing re-captures them; a push
+or a merge of `main` does. Re-running a job does not: a re-run keeps the original
+event's `github.sha`, so it composes with `main` as it was then. When the
+composed capture fails, the job captures the failing screens again on the bare
+base, from a worktree of it, and judges both with the base's
+`scripts/gallery-main-attribution.mjs` and findings judge. The job passes with a
+warning naming that `main` commit only when the composed capture is complete
+(a full selection that recorded every expected screen), every failure also fails
+on `main` the same way, and the screens that rendered still pass the
+report-only comparison's integrity checks. "The same way" is the screen and
+finding identity and, for a screen that did not render or whose audit threw,
+its error text after removing only ANSI codes, the capture's appended last
+`Browser errors: [...]` line, a Playwright call log's lines after its first
+entry (the first entry names the target: `waiting for <locator>`,
+`navigating to "<url>"`, or `Expect "<matcher>" <locator>`), loopback ports
+and each checkout's own root at the start of a path, and masking a `Received`
+value only when it is a plain number. That last rule covers equality matchers
+too (`toBe`, `toHaveCount`, `Received length:`): `main` and the PR failing the
+same assertion with different actual numbers compare equal. The assertion
+message, matcher, every `Expected` value, locator, timeout bound, quoted or
+mixed `Received` values, repo-relative paths with their line numbers, and URL
+paths must match, and an error that is not text, or is empty once normalised,
+never matches. `telemetry-feedback-mobile` throws one line that embeds console
+output, so its failure is never excused; a message whose own last line is
+`Browser errors: [...]` could not be told from the appended one, and no
+current message ends that way.
+So a break already on `main` does not turn unrelated
+PRs red, while breaking the same screen another way stays red. A crash or
+test-level assertion with no failing screen, a failing screen `main` lacks,
+more than 40 failing screens, an incomplete capture, or an attribution that
+cannot run also stays red. A PR failure hidden behind an earlier failing
+assertion in the same test is not seen until `main` is fixed, a different
+console error on an otherwise identical failure is not distinguished, and the
+excused screens get no pixel report. The base judge is authoritative for honest
+PRs but is not a security boundary: the candidate's code has already run on the
+runner and could subvert it (a `node` or `npm` shim through `GITHUB_PATH`, the
+`npm` the step runs for the base capture and for `screenshot:diff` included,
+`NODE_OPTIONS`, a leftover process, or hooks and config in the shared `.git`),
+which gives a malicious PR nothing it could not already forge through its own
+spec. The job checks out the base without replace refs or hooks, refuses a
+base checkout that is not exactly the base commit and clean, and runs the
+attribution with the `node` resolved before candidate code; that keeps honest
+accidents out, nothing more. Nothing may trust the PR Gallery
+conclusion, which is one reason it is not a required check. Merge-queue candidates still report the
+workflow's contexts, but the capture job skips there: Gallery is not a required
+context, so a candidate's capture could not stop a landing. Combined changes
+are otherwise captured after landing by `Nightly: Gallery` once a day, which
+checks capture integrity and reports pixel differences but does not run the
+product assertions below. Pixel differences are advisory in both workflows: `--report-only` retains the
 exact changed rows and diff PNGs, but exits successfully for visual changes.
 The job summary includes the comparison table and the PR artifact link. An
 unchanged capture has no `REVIEW` advisory. Capture failures, missing screens,
@@ -1537,8 +1644,9 @@ The baseline writer refuses a capture whose screen name is
 not a slug or whose file resolves outside the gallery directory, because for a
 fork PR the artifact is produced by the fork's code. A capture that did not
 complete is reported separately and must not be re-baselined. The check compares
-each PR head against its own baseline; combinations are first captured by the
-next day's `Nightly: Gallery` on `main`. Exact pixels are advisory visual evidence, not a required exact-pixel merge gate;
+each composed PR against the composed baseline; landings that compose after a
+PR's last event are first captured by the next day's `Nightly: Gallery` on
+`main`. Exact pixels are advisory visual evidence, not a required exact-pixel merge gate;
 the product assertions below fail the job. Read the live `main` ruleset: when Gallery is absent from required contexts,
 a red Gallery job does not hold a PR on its own.
 `Main: Health` tracks failed `Nightly: Gallery` capture/comparison integrity;
@@ -2473,6 +2581,36 @@ manifest ([schema and rule](../../scripts/lib/qualification-failure-manifest.mjs
 listing every failed test identity, every failure the runner itself saw,
 and whether the job's exit is fully explained by those tests. Failed jobs
 upload it as `qualification-manifest-*`.
+
+Only the job's top-level runner writes `job-manifest.json`. The phase
+driver and the e2e suite runner read the manifest location once and remove
+it from their own environment before spawning anything. The driver gives
+each corpus phase a fresh directory of its own through
+`STATION_QUALIFICATION_GROUP_MANIFEST_DIR`, and the corpus runner removes
+that variable before it starts Vitest. The failure-identity reporter gets
+its report path as a Vitest option (`--outputFile.stationFailures`), not
+through the environment, and `vitest.setup.ts` deletes both variables in
+every test worker, which also covers a direct Vitest run with them
+exported. So the location is never handed to a test process, and a test
+cannot write there by accident through an inherited variable (the case that
+once cost a job its manifest).
+
+That is a guard against honest mistakes, not a secret. The directory is
+predictable from `RUNNER_TEMP`, and an ancestor process's starting
+environment can be read, so a test that sets out to forge an entry can find
+it. Such a test is out of scope: it could just as easily make itself pass.
+The collector is what rejects a stray or mismatched entry. A phase accepts
+only the groups its command runs, each once, each exactly the group schema
+and naming itself. Anything else in its directory (an unreadable or
+malformed file, another group, a missing group, any other file) becomes a
+phase error, which leaves the phase unexplained. Each runner writes its
+entry, and each top-level runner its job manifest, by renaming a new file
+over the target, so a file left at that path, even a read-only one, is
+replaced. The one forgery that still survives needs the test to make the
+directory itself unwritable before the runner writes: the runner then
+cannot replace the file, and a well-formed forged entry is accepted. A
+manifest that cannot be built is still written, marked unexplained, with
+each phase's exit status where it is known.
 
 [`config/qualification-known-failures.json`](../../config/qualification-known-failures.json)
 lists standing failures that already have an owner issue. The rules, plainly:

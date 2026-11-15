@@ -27,12 +27,15 @@ import {
 } from './lib/owned-process.mjs';
 import {
   clipText,
+  GROUP_MANIFEST_DIR_ENV,
   groupExplained,
   MANIFEST_BOUNDS,
-  manifestDirectoryFromEnv,
+  replaceManifestFile,
+  takeManifestDirectory,
+  withoutManifestLocations,
 } from './lib/qualification-failure-manifest.mjs';
 import { FULL_REGRESSION_PHASES } from './verification-lanes.mjs';
-import { FAILURE_REPORT_ENV } from './vitest-failure-reporter.mjs';
+import { FAILURE_REPORT_OUTPUT_KEY } from './vitest-failure-reporter.mjs';
 import {
   discoverVitestResourceGroups,
   ORDINARY_MAX_WORKERS,
@@ -322,7 +325,7 @@ export function coverageSliceArguments(reportsDirectory) {
 /**
  * @param {{ name: string; maxWorkers: number; noFileParallelism?: boolean; shard?: string }} group
  * @param {readonly string[]} files
- * @param {{ root?: string; ordinaryExcludes?: readonly string[]; coverageDirectory?: string; failureReportJson?: string; env?: NodeJS.ProcessEnv }} [options]
+ * @param {{ root?: string; ordinaryExcludes?: readonly string[]; coverageDirectory?: string; failureReportJson?: string; failureReport?: string; env?: NodeJS.ProcessEnv }} [options]
  */
 export function buildVitestCommand(
   group,
@@ -334,7 +337,10 @@ export function buildVitestCommand(
     // Set only when a qualification failure manifest is requested: adds
     // Vitest's own JSON reporter (writing to this file, not the terminal)
     // and the failure-identity reporter beside the group's usual reporters.
+    // Both report paths travel as Vitest options, never as environment, so
+    // test workers and anything they spawn cannot see or overwrite them.
     failureReportJson,
+    failureReport,
     env = process.env,
   } = {},
 ) {
@@ -356,6 +362,9 @@ export function buildVitestCommand(
           '--reporter=json',
           `--outputFile.json=${failureReportJson}`,
           `--reporter=${resolve(root, 'scripts/vitest-failure-reporter.mjs')}`,
+          ...(failureReport === undefined
+            ? []
+            : [`--outputFile.${FAILURE_REPORT_OUTPUT_KEY}=${failureReport}`]),
         ];
   if (group.name === 'ordinary') {
     if (!ORDINARY_SHARD_DESCRIPTORS.some(({ shard }) => shard === group.shard))
@@ -521,6 +530,7 @@ async function runVitestGroupOnce(
     coverageDirectory,
     ordinaryExcludes,
     failureReportJson,
+    failureReport,
     extraEnv = {},
   } = {},
 ) {
@@ -535,6 +545,7 @@ async function runVitestGroupOnce(
     root,
     coverageDirectory,
     failureReportJson,
+    failureReport,
     ...(ordinaryExcludes ? { ordinaryExcludes } : {}),
   });
   const label = `Vitest corpus ${resultName}`;
@@ -542,11 +553,14 @@ async function runVitestGroupOnce(
   try {
     execution = execute(process.execPath, args, spawnProcess, label, {
       cwd: root,
-      env: {
+      // No test process has any reason to know where a qualification
+      // manifest goes: a runner a test spawns would otherwise write its
+      // fixture entries into the real job's directory.
+      env: withoutManifestLocations({
         ...process.env,
         ...extraEnv,
         STATION_VITEST_CORPUS_GROUP: group.name,
-      },
+      }),
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
@@ -835,7 +849,7 @@ export async function runVitestGroup(group, files, options = {}) {
       : await runVitestGroupOnce(group, files, {
           ...rest,
           failureReportJson: jsonReport,
-          extraEnv: { [FAILURE_REPORT_ENV]: failureReport },
+          failureReport,
         });
     return result;
   } catch (error) {
@@ -849,7 +863,7 @@ export async function runVitestGroup(group, files, options = {}) {
         setupError,
       });
       mkdirSync(manifestDirectory, { recursive: true });
-      writeFileSync(
+      replaceManifestFile(
         resolve(manifestDirectory, `${basename(entry.group)}.json`),
         `${JSON.stringify(entry, null, 2)}\n`,
       );
@@ -1204,7 +1218,24 @@ export function parseVitestCorpusArguments(args) {
   return withCoverageRoot({ groupName });
 }
 
+/**
+ * The group entries a corpus invocation with these arguments writes, one per
+ * descriptor it runs. The phase driver accepts exactly these from a phase.
+ */
+export function plannedCorpusGroupNames(args) {
+  const { groupName, shard } = parseVitestCorpusArguments(args);
+  return corpusDescriptors(groupName, shard).map(
+    (descriptor) => descriptor.resultName ?? descriptor.name,
+  );
+}
+
 async function main() {
+  // Handed over by the phase driver for this phase only, and removed from
+  // this process's environment before anything is spawned.
+  const manifestDirectory = takeManifestDirectory(
+    process.env,
+    GROUP_MANIFEST_DIR_ENV,
+  );
   const controller = new AbortController();
   const unregister = ['SIGINT', 'SIGTERM'].map((name) =>
     registerProcessSignal(name, () => controller.abort(name)),
@@ -1214,7 +1245,7 @@ async function main() {
     const result = await runVitestCorpus({
       ...options,
       signal: controller.signal,
-      manifestDirectory: manifestDirectoryFromEnv(),
+      manifestDirectory,
       onResult: (group) =>
         emitResult(group, {
           diagnosticDirectory: resolve(

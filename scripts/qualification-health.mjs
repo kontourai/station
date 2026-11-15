@@ -87,6 +87,20 @@ const NIGHTLY_TERMINAL_RESULTS = new Set([
   'stale',
 ]);
 
+/**
+ * Jobs whose failure is the CLI leg's: the npm publish itself, and the job
+ * that records its ledger row when the native cohort did not (a ledger
+ * failure in the publish job counted as the CLI leg before it moved out).
+ */
+const CLI_LEG_JOBS = Object.freeze([
+  '3 · Publish CLI to npm nightly',
+  '4 · Record the CLI ship the cohort did not',
+]);
+
+function cliLegJob(name) {
+  return CLI_LEG_JOBS.some((suffix) => name.endsWith(suffix));
+}
+
 function publishedLeg(jobs, leg) {
   return jobs.some(
     (job) =>
@@ -399,12 +413,8 @@ export async function checkQualificationHealth(
       const failed = item.jobs.filter((job) =>
         ['failure', 'timed_out', 'cancelled'].includes(job.conclusion),
       );
-      const cli = failed.some((job) =>
-        job.name.endsWith('3 · Publish CLI to npm nightly'),
-      );
-      const native = failed.some(
-        (job) => !job.name.endsWith('3 · Publish CLI to npm nightly'),
-      );
+      const cli = failed.some((job) => cliLegJob(job.name));
+      const native = failed.some((job) => !cliLegJob(job.name));
       return {
         id: item.run.id,
         at: item.run.updated_at,

@@ -2811,9 +2811,18 @@ the resulting projection rather than classify inspection facts themselves.
 Engine attribution does not depend on that publication: the inspection is total, so one
 failing Adapter or a timed-out read would erase every connection's engine.
 `listEngineConnectionIdentities` derives each registered connection's `engineId` from the
-Adapter (`engineIdForAdapter`, `'acp'` for ACP connections) through the same public-identity
+Adapter (`engineIdForAdapter`; for an ACP connection, `'acp'`, or the engine of an
+ACP-backed Adapter that claims it now) through the same public-identity
 resolver, per Adapter, with no probe; the Agent catalog and `/:slug/binding` read it, while
-readiness keeps the live read (#3355).
+readiness keeps the live read (#3355). An Adapter whose `metadata.connectionBacking` is
+`acp-registry` (`OpenCodeAdapter`) has no connection of its own: it is not inspected,
+listed or readiness-checked as one, and reserves no connection id. Its
+`claimsAcpConnection(config)`, asked at each projection
+(`acpConnectionRuntimeAdapter`, `adapter-identity.ts`), decides whether a saved ACP
+connection projects its `engineId` and `provider`, and so which provider a new chat on
+that connection starts with; the execution-target resolver reads that `provider`, and
+`keepConversationProvider` keeps an existing conversation on the provider it started with.
+See [the OpenCode native transport decision](../decisions/opencode-native-transport.md).
 The projected `AgentConnectionView` carries the Adapter's declared `modelLaunch`
 (#2266), so a consumer reads model selection from the declaration rather than
 from whether the catalog listed anything.
@@ -2842,9 +2851,11 @@ decides which hosts are used: a verified schema fingerprint, or an unknown one
 whose own `muse schema` export still declares the required surface Station
 uses.
 [`engine-command-dispatch.ts`](../../src-server/providers/adapters/engine-command-dispatch.ts)
-is the engine-neutral slash-command half shared with the ACP Adapter: parsing
-the invocation, finding an `adapter-action` route in the Adapter's own listing,
-and the outcome line; how a route reaches the engine stays with each Adapter.
+is the engine-neutral slash-command half shared with the ACP and OpenCode
+Adapters: parsing the invocation, finding an `adapter-action` route in the
+Adapter's own listing, and the outcome line; how a route reaches the engine
+stays with each Adapter. Its `dispatchEngineCommand` decides what each route
+kind does for an Adapter that hands it a port (ACP, OpenCode).
 [`muse-mcp-status.ts`](../../src-server/providers/adapters/muse-mcp-status.ts)
 reads `muse mcp list --json` once per Session into `engine-mcp.status`.
 [`muse-auth.ts`](../../src-server/providers/auth/muse-auth.ts) owns Muse's XDG
@@ -3018,8 +3029,18 @@ navigable `engineConnectionId`, and enabled state directly. The enriched-Agent A
 query, and UI share `EnrichedAgentProjection`, which likewise carries capability
 `engineId` separately from `execution.agentConnectionId`. Built-in Adapters use the
 contract factories, while the plugin loader validates untyped metadata at admission and
-ACP connection identities are validated before persistence and again on load. **Do not
-reintroduce:** a generated runtime suffix, a second Adapter engine selector,
+ACP connection identities are validated before persistence and again on load.
+Two engines run saved ACP connection records, `acp` and `opencode`
+(`isAcpFamilyEngine`, `@kontourai/station-contracts/provider`); shared code asks it
+where a behaviour belongs to the ACP connection a session runs on (its folder, its
+Agent scoping, its usage family), never to tell the engines apart. The Adapter shape's
+optional members `claimsAcpConnection` and `listedInProviderInventory` (an Adapter behind
+an off Feature Preview leaves the provider inventory) are documented on
+[`ProviderAdapterShape`](../../src-server/providers/adapter-shape.ts). `OpenCodeAdapter`
+answers the generic session actions (`rewindSession`, `sessionContinuity`,
+`reconnectMcpServer`) natively on OpenCode's own server and through its inner ACP
+adapter otherwise.
+**Do not reintroduce:** a generated runtime suffix, a second Adapter engine selector,
 provider-name reconciliation, or read-time identity aliases.
 
 ### Finish-reason clear authority

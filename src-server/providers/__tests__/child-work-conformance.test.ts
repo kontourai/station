@@ -36,6 +36,7 @@ import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
 import { GROK_LIVE_CAPTURE } from '../../../src-shared/extension-notification-bindings.js';
 import { STATION_UNMAPPED_SUBAGENT_ENGINES } from '../../services/orchestration/child-work-projection.js';
+import type { ProviderAdapterShape } from '../adapter-shape.js';
 import {
   type AcpMapperContext,
   mapAcpExtensionNotification,
@@ -45,6 +46,7 @@ import type { AcpSubagentWire } from '../adapters/acp-child-work.js';
 import { AcpToolUpdateSupervisor } from '../adapters/acp-tool-update-supervisor.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
+import { OpenCodeAdapter } from '../adapters/opencode-adapter.js';
 import {
   CLAUDE_TASK_CAPTURES,
   replayClaudeTaskCapture,
@@ -65,6 +67,11 @@ import {
   type MuseServeCaptureName,
   replayMuseServeCapture,
 } from './muse-serve-replay.js';
+import {
+  OpenCodeServeReplay,
+  recordedPromptIds,
+  replayLeaser,
+} from './opencode-serve-replay.js';
 
 type Driver = {
   /** Replays the engine's captured output; returns everything published. */
@@ -439,6 +446,84 @@ async function stationAdapterStructural(): Promise<CanonicalRuntimeEvent[]> {
   return [];
 }
 
+/**
+ * The `opencode` cell is declared for OpenCode 2's own server: the 2.3.0
+ * `subagent` capture replayed through `OpenCodeAdapter`'s native session (a
+ * session on the ACP fallback reports `not-reported`, like `acp`).
+ */
+async function replayOpenCodeServeSubagent(): Promise<CanonicalRuntimeEvent[]> {
+  const replay = await OpenCodeServeReplay.start({ scenario: 'subagent' });
+  const promptIds = recordedPromptIds('subagent');
+  const adapter = new OpenCodeAdapter({
+    getConnections: async () => [
+      {
+        id: 'opencode',
+        name: 'OpenCode',
+        command: '/opt/opencode/bin/opencode',
+        args: ['acp'],
+        enabled: true,
+      },
+    ],
+    // Never started: the replay's server verifies, so the session is native.
+    createAcpAdapter: () =>
+      ({
+        provider: 'opencode',
+        metadata: { displayName: 'inner', description: '', capabilities: [] },
+        streamEvents: () => ({
+          [Symbol.asyncIterator]: () => ({
+            next: async () => ({ done: true, value: undefined }),
+          }),
+        }),
+        stopAll: async () => undefined,
+      }) as unknown as ProviderAdapterShape,
+    nativeEnabled: () => true,
+    pool: replayLeaser(replay),
+    versionProbe: {
+      probe: async () => ({ major: 2, minor: 3, patch: 0, text: '2.3.0' }),
+    },
+    findBinary: async () => '/opt/opencode/bin/opencode',
+    binaryIdentity: async () => 'binary-identity',
+    findProjectCode: async () => [],
+    launchEnv: async () => ({ TMPDIR: '/replay/tmp' }),
+    newMessageId: () => {
+      const id = promptIds.shift();
+      if (!id) throw new Error('the replay has no more recorded prompt ids');
+      return id;
+    },
+  });
+  const events: CanonicalRuntimeEvent[] = [];
+  const draining = (async () => {
+    for await (const event of adapter.streamEvents()) events.push(event);
+  })();
+  try {
+    await adapter.startSession({
+      threadId: 'thread-opencode',
+      provider: 'opencode',
+      cwd: '/replay/proj',
+      metadata: { connectionId: 'opencode' },
+    });
+    const { turnId } = await adapter.sendTurn({
+      threadId: 'thread-opencode',
+      input: 'DO_TASK now',
+    });
+    const deadline = Date.now() + 5_000;
+    while (
+      !events.some(
+        (event) => event.method === 'turn.completed' && event.turnId === turnId,
+      )
+    ) {
+      if (Date.now() > deadline)
+        throw new Error('the OpenCode subagent replay did not complete');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  } finally {
+    await adapter.stopAll();
+    await draining;
+    await replay.close();
+  }
+  return events;
+}
+
 const DRIVERS: Record<string, Driver> = {
   station: { run: stationAdapterStructural },
   claude: {
@@ -461,6 +546,7 @@ const DRIVERS: Record<string, Driver> = {
     ],
     formats: ACP_FORMATS,
   },
+  opencode: { run: replayOpenCodeServeSubagent },
 };
 
 /**

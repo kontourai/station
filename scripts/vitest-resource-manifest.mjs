@@ -141,12 +141,19 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real launcher exit/stderr protocol with in-memory ChildProcess/streams
+  // and substituted spawnOwnedChild; no child launch or wall-clock assertion.
+  'src-server/services/browser/__tests__/chromium-server-host.test.ts',
   // Real Node sidecars verify native model relay framing, queued delivery and cancellation settlement.
   'src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts',
   // #4828: short-lived `git init`, `git config` and `git status` children
   // prove the persistence protection reads the effective core.hooksPath from
   // git and runs no repository-named program; no wall-clock assertion.
   'src-server/services/plugins/__tests__/untrusted-persistence-protection.test.ts',
+  // #4828 on the OpenCode native transport: short-lived `git init` and
+  // `git config` children build a repository whose core.hooksPath the
+  // fixture replay's persistence decline reads; no wall-clock assertion.
+  'src-server/providers/__tests__/opencode-adapter.replay.test.ts',
   'src-server/providers/__tests__/claude-adapter-native-web-read.test.ts',
   // #3075: one short-lived tsx child writes a person's first acknowledgement
   // as another process would, while this suite holds the event store open.
@@ -445,6 +452,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // see that seam; under the ordinary four-worker corpus two of its cases
   // timed out at canonical phase load.
   'packages/shared/src/__tests__/plugin-build.test.ts',
+  // #4831: builds the docs server bundle, which starts esbuild's service
+  // child; the file imports no child_process itself.
+  'src-server/tools/__tests__/station-docs-bundle.test.ts',
   // Epic #2323 S3: each draft build forks a disposable process that is
   // killed at its deadline; the test observes that process and a FIFO.
   'src-server/services/plugins/__tests__/plugin-draft-build-process.test.ts',
@@ -827,6 +837,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Runs the PR workflow's allowlist-ceiling step under bash against
   // disposable Git repositories (fetch, judge child).
   'scripts/__tests__/gallery-allowlist-ceiling.test.ts',
+  // Runs the PR workflow's composition, attribution and verdict steps under
+  // bash against disposable Git repositories (merge, worktree, judge child,
+  // a fake npm standing in for the capture).
+  'scripts/__tests__/gallery-pr-composition.test.ts',
   // Launches one headless Chromium for the gallery audit's fixture pages.
   'scripts/__tests__/gallery-ui-audit.browser.test.ts',
   'scripts/__tests__/code-hygiene.test.ts',
@@ -1197,6 +1211,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // exhaustion, and the duplicate re-record refusal all assert real git
   // state, so the child processes are the claim.
   'scripts/__tests__/deploy-ledger-commit.test.ts',
+  // Runs the Nightly's real ledger step scripts under bash against a local
+  // fixture origin, then every ledger reader as a child process on the
+  // resulting history: one commit per run is a claim about real git state.
+  'scripts/__tests__/deploy-ledger-nightly-batch.test.ts',
   // Proves the published-packages
   // JSON parse's success and refusal exit statuses as a real child process,
   // the same "gate as a real child" shape as the entry-point gates above.
@@ -1425,13 +1443,20 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // The fake ACP agent, driven by the recorded Antigravity profile, through
   // the real adapter and ACPProcess: what session and prompt answers carry.
   'src-server/providers/__tests__/acp-session-answers.process.test.ts',
-  // #3924: runs the real `opencode` (when this host has one) with fresh XDG
-  // directories against a planted project plugin; skips loudly where no
-  // opencode binary resolves.
+  // #3924: runs the real `opencode` (when this host has a 1.x one) with fresh
+  // XDG directories against a planted project plugin; skips loudly where no
+  // OpenCode 1.x binary resolves.
   'src-server/providers/__tests__/opencode-project-config.process.test.ts',
-  // #3957: runs the real `opencode` (when this host has one) against a local
-  // mock model; skips loudly where no opencode binary resolves.
+  // #3957: runs the real `opencode` (when this host has a 1.x one) against a
+  // local mock model; skips loudly where no OpenCode 1.x binary resolves.
   'src-server/providers/__tests__/opencode-client-write.process.test.ts',
+  // Runs a real OpenCode 2.x `opencode serve` (STATION_TEST_OPENCODE_2_BINARY
+  // or PATH, a verified version only) through the real server pool against a
+  // local mock model; skips loudly otherwise.
+  'src-server/providers/__tests__/opencode-native.process.test.ts',
+  // One case stops a real detached node child (the `opencode serve --stdio`
+  // stand-in) by process group, so the process boundary is the claim.
+  'src-server/providers/__tests__/opencode-serve-pool.test.ts',
   // Runs npm and the real lockfile gate against an isolated two-workspace
   // fixture. The children are network-free and short-lived, but the actual
   // process boundary is the claim, so it belongs in the bounded spawn pool.
@@ -1617,6 +1642,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/__tests__/strict-indexeddb.browser.test.ts',
   // Owns Chromium to decode, resize and encode a real photo into a thumbnail.
   'src-ui/src/__tests__/attachment-thumbnails.browser.test.ts',
+  // Owns Chromium (routed origins, no listener) to prove the visual
+  // reply viewer's script execution: proxy parity with preview, the srcdoc
+  // fallback's inherited-refusal under an app-shell CSP, and the staged
+  // scheme's escape from that inheritance.
+  'src-ui/src/__tests__/html-reply-viewer-scripts.browser.test.tsx',
   // station#4474: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved layout (sibling
   // toolbar control x-offsets across connection states).

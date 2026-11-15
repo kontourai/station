@@ -1,0 +1,7 @@
+{
+  "revision": "14e0b71b47ecc283fee0dd1a962a9f2c9a8417bb",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed against path-read-pin-boundary.test.ts: the only change adds the three OpenCode serve capture readers to UNREPORTED_PATH_READING_SUITES and the fixtures suite to DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS, each with its reason, as for the Grok and Antigravity capture readers. The boundary's rules, and everything this guide says about test selection and verification lanes, are unchanged.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

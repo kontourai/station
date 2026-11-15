@@ -219,9 +219,11 @@ Advertised session modes are honored on that one agent (station#1945). `Provider
 
 The current Agent catalog reports `engineId`, `engineDisplayName` and
 `engineConnectionType` for engine grouping and connection-method display. For an
-ACP-bound Agent `engineId` is always `acp` and `engineConnectionType` is `acp`,
-read from the connection record even when the live inspection fails, so its
-icon keeps its initials.
+ACP-bound Agent `engineConnectionType` is always `acp`, and `engineId` is `acp`
+unless an engine that runs saved ACP connections claims the connection (an
+OpenCode connection reads `opencode` while the OpenCode native engine Feature
+Preview is on). Both are read from the connection record even when the live
+inspection fails, so its icon keeps its initials.
 `execution.agentConnectionId` is the persisted binding. The Agent ID remains
 independent of how the connection is implemented; do not use a legacy
 `source: 'acp'` discriminator. Model choices and image support depend on the
@@ -251,7 +253,7 @@ provide no confirmed safe execution boundary, so the composer waits for the turn
 to finish. Attachments remain in the draft until then. See the
 [composer contract](../design/chat-composer.md#turn-activity-and-follow-up-delivery).
 
-An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro and Grok answer these methods without declaring them, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag). Antigravity (`agentInfo.name` `Antigravity ACP Server`) takes a second core `session/prompt` sent mid-turn as a steer: it answers the running prompt at once and carries the work on under the new one, so Station sends the steer as a prompt on the same turn and moves the turn's settlement to it (`prompt-handoff`), cancelling nothing. Goose (`agentInfo.name` `goose`) is steered with its undeclared `_goose/unstable/session/steer`, which joins a named run: each Goose prompt announces its run as `_meta.goose.activeRunId` on a `session_info_update`, and Station sends that id as `expectedRunId`. With no run announced, Goose would refuse the steer, so Station uses the fallback below. A run is forgotten when its prompt ends, and a steer Goose refuses with -32602 (its run ended or was replaced) also falls back. Known gap: Goose drops steers it accepted but had not yet read when the run ends (`discard_pending_steers`), without reporting the drop. A steer it did read reappears as a user message chunk whose `messageId` matches the steer's and whose `_meta.goose.steer` is `true`. Station has no consumer for steer delivery status yet (the `session.steer-status` binding consumer is a placeholder), so such a dropped steer is not reported. That row is read from Goose's source (v1.59.0), not a live run. Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
+An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro, Grok and OpenCode 2.x answer methods they do not declare as extension methods, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag; OpenCode 2.x's `_meta.steering.supported`, steered through `_session/steering`, where an answer of `promptRequired` means no turn was running and the steer fails as ended). Antigravity (`agentInfo.name` `Antigravity ACP Server`) takes a second core `session/prompt` sent mid-turn as a steer: it answers the running prompt at once and carries the work on under the new one, so Station sends the steer as a prompt on the same turn and moves the turn's settlement to it (`prompt-handoff`), cancelling nothing. Goose (`agentInfo.name` `goose`) is steered with its undeclared `_goose/unstable/session/steer`, which joins a named run: each Goose prompt announces its run as `_meta.goose.activeRunId` on a `session_info_update`, and Station sends that id as `expectedRunId`. With no run announced, Goose would refuse the steer, so Station uses the fallback below. A run is forgotten when its prompt ends, and a steer Goose refuses with -32602 (its run ended or was replaced) also falls back. Known gap: Goose drops steers it accepted but had not yet read when the run ends (`discard_pending_steers`), without reporting the drop. A steer it did read reappears as a user message chunk whose `messageId` matches the steer's and whose `_meta.goose.steer` is `true`. Station has no consumer for steer delivery status yet (the `session.steer-status` binding consumer is a placeholder), so such a dropped steer is not reported. That row is read from Goose's source (v1.59.0), not a live run. Every other ACP engine, including OpenCode 1.x, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
 
 ### Canonical Event Vocabulary
 
@@ -1168,6 +1170,44 @@ OpenCode runs some code without any permission request, so no approval mode reac
 - **Approved commands.** A shell command a person allows can change anything, OpenCode configuration included.
 
 The `build`/`plan` agents are overridden in place rather than given approval copies selected through `session/set_config_option`: OpenCode attaches plan behaviour to the agent named `plan` (its plan-mode reminder, and `plan_exit` switching to the agent named `build`), so a renamed copy would lose plan mode.
+
+#### OpenCode 2 and OpenCode 1
+
+Everything above about how OpenCode is governed over ACP was checked against
+OpenCode 1.18.18 (npm `opencode-ai`). OpenCode 2.x behaves differently, and
+Station reads the binary's `--version` to tell the two apart
+([version probe](../../src-server/providers/adapters/opencode-version-probe.ts)).
+
+- **Approval rules.** Station's check reads 1.x's `opencode debug agent <name>`.
+  2.x has no such subcommand: it exits 1 with "Unknown subcommand", which is the
+  failure reported in #4435. 2.x's `debug agents` (plural) lists each agent's
+  configured rules but not the approvals the person saved. Over ACP, Station
+  therefore does not govern 2.x (ruling R1). A start or takeover that asks for a
+  Station approval mode on 2.x is refused with `acp_approval_governance_refused`,
+  and the reason names the version. Without a Station mode, OpenCode's own
+  approvals apply as before. No launch overlay is built for 2.x.
+- **Steering.** 2.x's `initialize` declares `_meta.steering.supported`, and
+  Station steers it through `_session/steering`
+  ([steer channels](../../src-server/providers/adapters/acp-steer.ts)). 1.x
+  declares nothing and keeps cancel and re-prompt.
+- **Native engine.** With the `opencode-native-engine` Feature Preview on, new
+  chats on an OpenCode connection run on the `opencode` engine. It drives 2.x
+  over its own `opencode serve`, where Station verified the served API, and
+  governs it through the session's permission rules. An edit of OpenCode's
+  own configuration asks you there under Ask and Auto, even after an
+  "allow for this session". Under Ask and Auto, OpenCode's own tool for moving
+  the chat to another folder is turned off, because OpenCode loads the new
+  folder's plugins as it moves; a chat moved there anyway, into a folder whose
+  OpenCode configuration runs code, is stopped with a warning. A chat started
+  as an Agent runs there too: Station's tool policy for the Agent is checked
+  on each permission OpenCode asks for, as over ACP. That path does not
+  need `debug agent`, so it is where #4435 is resolved. 1.x, an unverified 2.x,
+  and every chat while the preview is off still run over ACP. A 2.x chat that
+  falls back to ACP gets the refusal above (ruling R1) for any Station approval
+  mode, Ask and Auto included; without one, OpenCode's own approvals apply. The design,
+  fallback rules and limits are in
+  [the OpenCode native transport decision](../decisions/opencode-native-transport.md).
+  #4435 stays open until this ships.
 
 **Every other ACP engine (`engine`).** Station has no channel into its permission rules. It answers the requests the engine chooses to send, but it cannot make the engine ask for others. Such a connection gets no approval mode: the server sends none, a `setApprovalMode` is refused with "This engine has no approval control.", a carried `approvalMode` is refused as an unsupported option, and the composer's approval control reads "Set by engine" and explains that the engine decides. An engine whose own modes are approval levels (claude-code-acp advertises `default`, `acceptEdits`, `plan`, `auto` and, when allowed, `bypassPermissions`) is changed through its Mode picker; Station does not map those modes onto its own, and a full-access mode is withheld outside a `host` session (#2569).
 

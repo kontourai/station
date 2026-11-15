@@ -6,6 +6,10 @@
 // once. The consumer re-derives `explained` from the data rather than trusting
 // the producer's flag.
 
+import { randomBytes } from 'node:crypto';
+import { renameSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
+
 const MANIFEST_SCHEMA_VERSION = 1;
 const JOB_MANIFEST_KIND = 'station.qualification-job-manifest';
 /** The file name a job writes into its manifest directory. */
@@ -13,13 +17,64 @@ export const JOB_MANIFEST_FILE = 'job-manifest.json';
 /** Environment variable naming the directory a job's manifest goes to. */
 export const MANIFEST_DIR_ENV = 'STATION_QUALIFICATION_MANIFEST_DIR';
 /**
+ * Environment variable through which the phase driver hands one corpus phase
+ * a fresh directory for its group entries. Only the Vitest corpus runner
+ * reads it, and only as the driver's direct child.
+ */
+export const GROUP_MANIFEST_DIR_ENV =
+  'STATION_QUALIFICATION_GROUP_MANIFEST_DIR';
+const MANIFEST_LOCATION_ENVS = Object.freeze([
+  MANIFEST_DIR_ENV,
+  GROUP_MANIFEST_DIR_ENV,
+]);
+
+function directoryFromEnv(env, name) {
+  const value = env[name];
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+/**
  * The manifest directory a producer writes to, or undefined. Unset or empty
  * means no manifest and no extra reporters: the runner behaves exactly as it
  * does without this feature.
  */
 export function manifestDirectoryFromEnv(env = process.env) {
-  const value = env[MANIFEST_DIR_ENV];
-  return typeof value === 'string' && value !== '' ? value : undefined;
+  return directoryFromEnv(env, MANIFEST_DIR_ENV);
+}
+
+/**
+ * Read one manifest location variable and remove every manifest location
+ * from `env`. Each producer calls this on its own `process.env` before it
+ * spawns anything, so no test process, and nothing a test spawns, can learn
+ * where the real job's manifest goes and write into it.
+ */
+export function takeManifestDirectory(env, name = MANIFEST_DIR_ENV) {
+  const value = directoryFromEnv(env, name);
+  for (const key of MANIFEST_LOCATION_ENVS) delete env[key];
+  return value;
+}
+
+/**
+ * Write a manifest file by renaming a fresh temporary file over it, so a file
+ * already at that path (even a read-only one a test left there) is replaced
+ * rather than surviving a failed write. If the rename fails, the temporary
+ * file is deliberately left beside the target: in a group directory it is an
+ * unexpected entry, so the phase reads as unexplained.
+ */
+export function replaceManifestFile(path, contents) {
+  const temporary = join(
+    dirname(path),
+    `.${basename(path)}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`,
+  );
+  writeFileSync(temporary, contents, { flag: 'wx' });
+  renameSync(temporary, path);
+}
+
+/** A copy of `env` without any manifest location variable. */
+export function withoutManifestLocations(env) {
+  const copy = { ...env };
+  for (const key of MANIFEST_LOCATION_ENVS) delete copy[key];
+  return copy;
 }
 /** Environment variable carrying the job's displayed name. */
 export const JOB_LABEL_ENV = 'STATION_QUALIFICATION_JOB_LABEL';
@@ -54,6 +109,12 @@ const isCount = (value) => Number.isSafeInteger(value) && value >= 0;
  * not account for leaves the group unexplained.
  */
 export function groupExplained(group) {
+  // Anything that is not exactly a group entry explains nothing.
+  try {
+    validateGroup(group, 'group');
+  } catch {
+    return false;
+  }
   const failedFiles = new Set(group.failedTests.map((test) => test.file));
   // The runners report a test once per identity. A repeated identity means
   // two tests share a file and title path, and a known entry could then
@@ -226,6 +287,18 @@ function validateGroup(group, label) {
       throw new Error(`${label}.counts.${key} must be a count or null`);
   if (typeof group.explained !== 'boolean')
     throw new Error(`${label}.explained must be a boolean`);
+}
+
+/**
+ * Parse and strictly validate one group entry, as the corpus runner writes
+ * it. Throws on anything that is not exactly the group schema.
+ */
+export function parseGroupManifest(source) {
+  if (Buffer.byteLength(source) > MANIFEST_BOUNDS.bytes)
+    throw new Error(`group manifest exceeds ${MANIFEST_BOUNDS.bytes} bytes`);
+  const group = JSON.parse(source);
+  validateGroup(group, 'group manifest');
+  return group;
 }
 
 /**

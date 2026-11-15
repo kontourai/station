@@ -114,6 +114,55 @@
     }
   },
   {
+    "id": "chart-with-artifact-offered",
+    "kind": "bad",
+    "source": "html-render-script-routing (agents reached for Artifact before html_render)",
+    "experience": "Asked for a chart in a Station chat while a hosted-page Artifact tool was also offered, agents published through Artifact instead of Station's visual reply.",
+    "assurance": "bound",
+    "prompt": "Chart this week's commits per author for me here: ana 14, bo 9, cy 22, dee 5.",
+    "expect": {
+      "firstCallAnyOf": ["html_preview", "html_render"],
+      "callsMustNot": ["Artifact"]
+    }
+  },
+  {
+    "id": "artifact-refused-falls-back-to-html-render",
+    "kind": "bad",
+    "source": "html-render-script-routing (Artifact refused under ANTHROPIC_AUTH_TOKEN; agent stopped at a local file)",
+    "experience": "When the Artifact tool refused with its auth-token message, agents left the dashboard as a local HTML file instead of publishing it with html_render.",
+    "assurance": "bound",
+    "prompt": "",
+    "priorTurns": [
+      {
+        "role": "user",
+        "text": "Show me a dashboard of this week's commit activity here: ana 14, bo 9, cy 22, dee 5."
+      },
+      {
+        "toolCall": {
+          "name": "Bash",
+          "input": {
+            "command": "mkdir -p /tmp/acme-dash && printf '%s' '<!doctype html><body><h1>Commit activity</h1><div id=tiles></div><script>tiles.textContent=\"ana 14, bo 9, cy 22, dee 5\"</script></body>' > /tmp/acme-dash/index.html"
+          }
+        },
+        "result": ""
+      },
+      {
+        "toolCall": {
+          "name": "Artifact",
+          "input": {
+            "file_path": "/tmp/acme-dash/index.html"
+          }
+        },
+        "result": "Artifact publishing is unavailable: ANTHROPIC_AUTH_TOKEN is set and overrides your claude.ai login, so pages cannot be published.",
+        "isError": true
+      }
+    ],
+    "expect": {
+      "firstCallAnyOf": ["html_preview", "html_render"],
+      "callsMustNot": ["Artifact"]
+    }
+  },
+  {
     "id": "declare-opened-pull-request",
     "kind": "bad",
     "source": "#3161 (#3271)",

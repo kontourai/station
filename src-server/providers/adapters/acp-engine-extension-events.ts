@@ -16,6 +16,7 @@
  * nothing rather than to a guessed fact.
  */
 import crypto from 'node:crypto';
+import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import {
   CHILD_WORK_SUMMARY_MAX_CHARS,
   type ChildWorkTerminalStatus,
@@ -73,7 +74,7 @@ export interface EngineTurnBoundary {
 
 /** What a reader needs from the mapper context; a subset of `AcpMapperContext`. */
 export interface EngineExtensionContext {
-  provider: 'acp';
+  provider: EngineId;
   session: ProviderSession;
   activeTurnId?: string;
   publish: (event: CanonicalRuntimeEvent) => void;

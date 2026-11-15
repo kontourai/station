@@ -1,0 +1,7 @@
+{
+  "revision": "eed803222d9aa398bbe40ce4ffc7c40bd6f3fd35",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Reviewed the recording paragraph against record-native-completion: the npm row joins the Android/desktop commit only when this run's CLI receipt verifies; marker and per-platform row rules are unchanged. Other cohort claims re-read; unaffected by the ledger batching.","inputs":["docs/guides/native-releases.md",".github/workflows/nightly-native-cohort.yml",".github/workflows/nightly.yml"]}
+  ]
+}

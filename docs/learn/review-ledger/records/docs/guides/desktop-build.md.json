@@ -230,7 +230,9 @@
 
     "pnpm-lock.yaml#/packages/node-pty@1.2.0-beta.18",
 
-    "pnpm-lock.yaml#/packages/koffi@3.3.7"
+    "pnpm-lock.yaml#/packages/koffi@3.3.7",
+
+    "src-desktop/src/html_reply_protocol.rs"
   ],
 
   "checks": [
