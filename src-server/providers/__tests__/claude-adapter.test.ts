@@ -9576,7 +9576,9 @@ describe('ClaudeAdapter', () => {
         'CLAUDE_CONFIG_DIR',
         makeTempDir('station-claude-options-shape-'),
       );
-      onTestFinished(() => vi.unstubAllEnvs());
+      onTestFinished(() => {
+        vi.unstubAllEnvs();
+      });
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
 
