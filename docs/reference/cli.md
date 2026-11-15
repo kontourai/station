@@ -4137,6 +4137,17 @@ provenance (`fullSha`, `shortSha`, `branch`, `builtAt`, `ageSeconds`,
 `instanceId`, `bootId`, `channel`, and `dirty`), redacted app configuration,
 and up to 256 KiB from the end of the current server log. Build provenance is
 additive within schema version 1 and omitted only when none is available.
+`sessionReadModel` (additive, #4992) carries per-purpose totals of session
+read model reads since the server process first read it: `since`,
+`observedAt`, and `byPurpose`, keyed by the caller's declared purpose (a
+closed vocabulary such as `session-list`, `sse-snapshot` or `attention`), with
+`reads`, `threadScopedReads`, `totalMs`/`maxTotalMs`, `buildMs`/`maxBuildMs`
+(the synchronous fold), `threadsConsidered`, and the event store cache's
+`projectionRefolded`/`projectionReused` and `countRefreshed`/`countReused`
+thread counts. It holds counts and durations only, never a session, user or
+thread identity. The same numbers are exported as the
+`station.orchestration.session_read_model.reads`, `.duration` and `.threads`
+OpenTelemetry metrics.
 When logging is not enabled,
 the payload explicitly contains:
 

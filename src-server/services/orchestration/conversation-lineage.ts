@@ -77,6 +77,7 @@ import type { ConversationForkProvenance, EventStore } from './event-store.js';
 // import cycle exists.
 import type { SessionReadScope } from './orchestration-service.js';
 import { conversationTitle } from './session-query-module.js';
+import type { SessionReadModelReadOptions } from './session-read-model-purpose.js';
 
 const CONVERSATION_HISTORY_MAX_ENTRIES = 100;
 const CONTINUATION_TRANSCRIPT_HEADING =
@@ -272,6 +273,7 @@ interface ConversationLineageDeps {
   ) => ConversationMessage[];
   listSessionReadModel: (
     authority: SessionReadScope,
+    options: SessionReadModelReadOptions,
   ) => Promise<OrchestrationSessionSummary[]>;
   canReadSession: (threadId: string, authority: SessionReadScope) => boolean;
 }
@@ -1977,7 +1979,9 @@ export class ConversationLineage {
     agentSlug: string,
     authority: SessionReadScope,
   ) {
-    const sessions = await this.deps.listSessionReadModel(authority);
+    const sessions = await this.deps.listSessionReadModel(authority, {
+      purpose: 'agent-conversations',
+    });
     const conversations = await Promise.all(
       sessions
         .filter(
@@ -2027,7 +2031,9 @@ export class ConversationLineage {
         limit: CONVERSATION_HISTORY_MAX_ENTRIES,
       }).items;
     }
-    const sessions = await this.deps.listSessionReadModel(authority);
+    const sessions = await this.deps.listSessionReadModel(authority, {
+      purpose: 'conversation-inventory',
+    });
     const capped = sessions
       .filter((session) => session.assignedAgentSlug !== undefined)
       .slice(-CONVERSATION_HISTORY_MAX_ENTRIES);
