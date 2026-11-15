@@ -3815,9 +3815,11 @@ damaged record counts only with one whole `blobRef` hash; any record whose
 reference cannot be known fails the release closed. Every upload re-derives
 the store's health under the lock with the same scan (no cached state), and
 any unknown record or unreadable or linked `bindings/` level refuses it with
-`project_room_files_unavailable`; the marker is a diagnostic only. Repair is
-offline only: with every Station process stopped, fix or remove the damaged
-record under `bindings/`. An old `repair/` directory is ignored. The store never
+`project_room_files_unavailable`, as does a failed write (typed as
+`RoomStorageFailure`); the marker is a diagnostic only. Repair is offline
+only: with every Station process stopped, fix or remove the damaged record
+under `bindings/`. A non-empty, linked or unreadable `repair/` (an earlier
+build's inbox) blocks uploads and releases and is never applied or deleted. The store never
 evicts by age or size. Task rooms keep age and size retention (#4947) and
 share only the whole-record write. Persisted records are validated
 against their row identities before use. History reads use a deferred transaction;

@@ -1162,7 +1162,11 @@ reacted. The stored message row is never rewritten.
   cannot be looked up for any reason other than not existing (such as
   `EACCES`) counts as a problem, not as empty: a linked `bindings/` is not
   supported and pauses uploads until it is a plain directory again. A Station
-  home reached through a linked ancestor (such as macOS `/var`) is fine.
+  home reached through a linked ancestor (such as macOS `/var`) is fine. A
+  write that fails while storing a file (its bytes, its record, or a
+  directory for them, for example on `ENOSPC` or `EACCES`) is refused with
+  the same `503 project_room_files_unavailable` and leaves no staging copy;
+  input Station refuses (limits, a wrong image type) stays `400`.
 - **Supported repair (offline only).** To repair the store:
   1. stop every Station process using that home;
   2. under `<STATION_HOME>/project-room-attachments/bindings/`, fix each
@@ -1175,8 +1179,15 @@ reacted. The stored message row is never rewritten.
   they held recovers. Changing `bindings/` while any Station process runs is
   not supported, and Station cannot detect it: a release scanning at that
   moment could miss a record and delete bytes it names, so the storage
-  guarantees above assume it is not done. A `repair/` directory left in the
-  store by an earlier development build is ignored and can be deleted.
+  guarantees above assume it is not done.
+
+  A `repair/` directory in the store was the live repair inbox of earlier
+  development builds. While it holds any entry (including `.claimed-*`
+  files), or is a link or cannot be read, uploads are refused with `503` and
+  releases delete nothing, and the marker names it. Station never applies or
+  deletes anything in it. To clear it, stop Station, apply any repair it was
+  meant to carry to `bindings/` by hand, remove `repair/`, and start Station.
+  An absent or empty `repair/` is fine.
 - **Bound.** Live data is bounded per binding, not across the store: one
   uploader in one room holds at most 1280 files of up to 5 MiB (6.25 GiB),
   unsent uploads included until that uploader's next upload after a day.

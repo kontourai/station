@@ -140,14 +140,18 @@ export class ProjectRoomService {
   private underFileLock<T>(operation: () => Promise<T>): Promise<T> {
     return this.attachments ? this.attachments.locked(operation) : operation();
   }
-  /** Byte-store failures (a validation, the per-room cap) refuse as invalid. */
+  /**
+   * Refused input (a validation, the per-room cap) is invalid; a store that
+   * cannot prove its references or could not write is unavailable.
+   */
   private files<T>(run: (port: ProjectRoomAttachmentPort) => T): T {
     if (!this.attachments) throw new ProjectRoomRefusal('not_found');
     try {
       return run(this.attachments);
     } catch (error) {
-      // A store that cannot prove its references takes no new files; any
-      // other byte-store failure is the caller's input.
+      // A store that cannot prove its references, or whose write failed,
+      // takes no new files; any other byte-store failure is the caller's
+      // input.
       if (error instanceof ProjectRoomFilesUnavailable)
         throw new ProjectRoomRefusal('files_unavailable');
       throw new ProjectRoomRefusal('invalid');

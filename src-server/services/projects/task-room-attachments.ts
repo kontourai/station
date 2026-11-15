@@ -80,19 +80,40 @@ function storeDirectory(path: string): 'absent' | 'directory' | string {
 }
 
 /**
+ * A filesystem failure while storing files (a directory that cannot be made
+ * or listed, bytes that could not be saved, a record that could not be
+ * published), as distinct from input the store refuses (#4852 review).
+ */
+export class RoomStorageFailure extends Error {}
+/** Runs one storage step, typing any failure as `RoomStorageFailure`. */
+function storage<T>(step: () => T): T {
+  try {
+    return step();
+  } catch (error) {
+    throw new RoomStorageFailure(describeError(error), { cause: error });
+  }
+}
+
+/**
  * Room attachment bytes. Bindings (which room may read which file) are kept
  * apart from the deduplicated byte store. A binding is an identity tuple, so
  * a recreated Task or Project never reads its predecessor's files.
  */
 export class RoomAttachments {
   private readonly blobs: AttachmentBlobStore;
+  private readonly leftovers: readonly string[];
   constructor(
     private readonly root: string,
     /** Names the owner in the limit refusal ("This Task has…"). */
     private readonly owner: string,
-    /** `retention: false` turns off the byte store's age and size eviction. */
-    options: { retention?: false } = {},
+    /**
+     * `retention: false` turns off the byte store's age and size eviction.
+     * `leftovers` names trees an earlier build may have left in the root:
+     * absent or empty is fine, anything else is unknown (see `scanReferences`).
+     */
+    options: { retention?: false; leftovers?: readonly string[] } = {},
   ) {
+    this.leftovers = options.leftovers ?? [];
     this.blobs = new AttachmentBlobStore({
       rootDir: join(root, 'blobs'),
       ...(options.retention === false ? { retention: false } : {}),
@@ -124,26 +145,32 @@ export class RoomAttachments {
       )
         throw new Error(`${input.name} is not a ${input.mimeType} image.`);
     const directory = this.directory(binding);
-    mkdirSync(directory, { recursive: true });
-    if (readdirSync(directory).length + inputs.length > FILES_PER_BINDING)
+    const stored = storage(() => {
+      mkdirSync(directory, { recursive: true });
+      return readdirSync(directory).length;
+    });
+    if (stored + inputs.length > FILES_PER_BINDING)
       throw new Error(`This ${this.owner} has reached its attachment limit.`);
     return inputs.map(({ dataUrl, ...metadata }) => {
       const blobRef = this.blobs.write(
         parseChatAttachmentDataUrl(dataUrl)!.base64,
       );
-      if (!blobRef) throw new Error('Attachment bytes could not be saved.');
+      if (!blobRef)
+        throw new RoomStorageFailure('Attachment bytes could not be saved.');
       const attachment = { ...metadata, id: randomUUID() };
       // Written whole, then renamed into place: a crash leaves a staging
       // file outside the bindings, never a torn record in them.
       // A failed attempt removes its own staging file (#4852 review).
       const staging = join(this.root, 'staging');
-      mkdirSync(staging, { recursive: true });
-      publishThroughOwnedFile(
-        join(staging, `${attachment.id}.json`),
-        JSON.stringify({ attachment, blobRef }),
-        (pending) =>
-          renameSync(pending, join(directory, `${attachment.id}.json`)),
-      );
+      storage(() => {
+        mkdirSync(staging, { recursive: true });
+        publishThroughOwnedFile(
+          join(staging, `${attachment.id}.json`),
+          JSON.stringify({ attachment, blobRef }),
+          (pending) =>
+            renameSync(pending, join(directory, `${attachment.id}.json`)),
+        );
+      });
       return attachment;
     });
   }
@@ -183,7 +210,10 @@ export class RoomAttachments {
    * at all (unparseable with none recoverable, or unreadable: EIO, EACCES)
    * is listed in `unknown`. So is every directory level that is not a
    * plain directory or cannot be looked up (`storeDirectory`); only a tree
-   * root or level that does not exist counts as empty.
+   * root or level that does not exist counts as empty. A `leftovers` tree
+   * that exists and is not empty, or is a link or unreadable, is unknown
+   * too: it may hold records an operator meant to restore, so nothing is
+   * deleted and nothing in it is read or applied.
    */
   scanReferences(): {
     byRecord: Map<string, string[]>;
@@ -205,8 +235,16 @@ export class RoomAttachments {
       unknown.push({ path, reason: kind });
       return undefined;
     };
-    // Only `bindings/` holds records. A `repair/` directory left by an earlier
-    // build is ignored: repair is done with Station stopped (#4852 review).
+    for (const tree of this.leftovers) {
+      const path = join(this.root, tree);
+      if (directory(path) === 'directory' && list(path).length)
+        unknown.push({
+          path,
+          reason:
+            'left by an earlier build and not empty: stop Station, apply any intended repair to bindings/ by hand, then remove it',
+        });
+    }
+    // Only `bindings/` holds records (#4852 review).
     const top = join(this.root, 'bindings');
     if (directory(top) === 'directory')
       for (const key of list(top)) {
@@ -394,13 +432,21 @@ export class TaskRoomAttachments {
  * start Station again. Changing `bindings/` while any Station process runs
  * is not supported, and Station cannot detect it: a release scanning at that
  * moment could miss a record and delete its bytes. A `repair/` directory
- * left by an earlier build is ignored.
+ * left by an earlier build blocks uploads and releases while it holds
+ * anything (or is a link, or unreadable) and is never applied or deleted:
+ * the operator applies any intended repair to `bindings/` by hand, with
+ * Station stopped, and removes it. A storage failure while writing is
+ * refused as unavailable too, not as invalid input.
  */
 export class ProjectRoomAttachments {
   private readonly files: RoomAttachments;
   private holding = 0;
   constructor(private readonly root: string) {
-    this.files = new RoomAttachments(root, 'room', { retention: false });
+    // `repair/` was the live repair inbox of earlier development builds.
+    this.files = new RoomAttachments(root, 'room', {
+      retention: false,
+      leftovers: ['repair'],
+    });
   }
   /** Runs `operation` while holding the store's cross-process lock. */
   async locked<T>(operation: () => Promise<T> | T): Promise<T> {
@@ -429,7 +475,16 @@ export class ProjectRoomAttachments {
       throw new ProjectRoomFilesUnavailable(problems);
     }
     this.unblock();
-    return this.files.store(binding, inputs);
+    try {
+      return this.files.store(binding, inputs);
+    } catch (error) {
+      // A write that failed is the store's condition, not the caller's input.
+      if (error instanceof RoomStorageFailure)
+        throw new ProjectRoomFilesUnavailable([
+          { path: this.root, reason: error.message },
+        ]);
+      throw error;
+    }
   }
   read(binding: readonly string[], id: string) {
     return this.files.read(binding, id);
