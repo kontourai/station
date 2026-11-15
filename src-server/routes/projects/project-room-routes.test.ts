@@ -3003,9 +3003,10 @@ test.skipIf(process.getuid?.() === 0)(
         ...guard(f.a),
         attachments: [png('blocked.png')],
       });
-      records = JSON.parse(
-        fs.readFileSync(join(f.root, 'reclamation-blocked.json'), 'utf8'),
-      ).records;
+      const marker = join(f.root, 'reclamation-blocked.json');
+      records = fs.existsSync(marker)
+        ? JSON.parse(fs.readFileSync(marker, 'utf8')).records
+        : [];
     } finally {
       fs.chmodSync(bindings, 0o700);
     }
