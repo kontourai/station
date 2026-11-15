@@ -112,11 +112,7 @@ async function completeListing(path, key) {
       total = data.total_count;
     }
     result.push(...items);
-    const ids = result.map((item) => (key ? item.id : item.number));
-    if (ids.some((id) => !Number.isSafeInteger(id) || id <= 0))
-      throw new Error('Ambiguous retirement inventory');
-    if (new Set(ids).size !== ids.length)
-      throw new InconsistentInventory('Duplicate retirement inventory');
+    checkInventoryIds(result.map((item) => (key ? item.id : item.number)));
     if (items.length < 100) {
       if (total !== undefined && total !== result.length)
         throw new InconsistentInventory('Truncated retirement inventory');
@@ -124,6 +120,13 @@ async function completeListing(path, key) {
     }
   }
   throw new Error('Retirement inventory pagination exceeded bound');
+}
+
+function checkInventoryIds(ids) {
+  if (ids.some((id) => !Number.isSafeInteger(id) || id <= 0))
+    throw new Error('Ambiguous retirement inventory');
+  if (new Set(ids).size !== ids.length)
+    throw new InconsistentInventory('Duplicate retirement inventory');
 }
 
 const GROUP_LISTING_ATTEMPTS = 3;
