@@ -1189,6 +1189,19 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         openCodeVersion: plan.version,
       },
     });
+    // The canonical start is started, then configured, as over ACP; the
+    // engine's own model and agent follow on its first step (`onConfigured`).
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: input.threadId,
+      createdAt: now,
+      method: 'session.configured',
+      sessionId: input.threadId,
+      ...(input.modelId ? { model: input.modelId } : {}),
+      cwd: resumeCursor.cwd,
+      ...(input.metadata ? { metadata: input.metadata } : {}),
+    });
     return session;
   }
 

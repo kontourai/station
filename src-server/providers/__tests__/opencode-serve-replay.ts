@@ -136,6 +136,11 @@ export interface OpenCodeServeReplayOptions {
   password?: string;
 }
 
+type OpenCodePushedEvent = {
+  type: string;
+  data?: Record<string, unknown>;
+} & Record<string, unknown>;
+
 export interface OpenCodeReplayRequest {
   method: string;
   path: string;
@@ -159,6 +164,9 @@ export class OpenCodeServeReplay {
   private readonly polls = new Set<ReturnType<typeof setTimeout>>();
   private readonly taps: string[] = [];
   private readonly written: OpenCodeReplayRecord[] = [];
+  /** Feeds whose recorded tap has ended without closing: {@link push} writes to them. */
+  private readonly live = new Set<http.ServerResponse>();
+  private readonly pushed: OpenCodePushedEvent[] = [];
   private connections = 0;
   private closed = false;
   private readonly holdUntil: OpenCodeServeReplayOptions['holdUntil'];
@@ -238,8 +246,24 @@ export class OpenCodeServeReplay {
     );
   }
 
+  /**
+   * Scripted mode: write `event` to every feed whose recorded tap has ended
+   * (it stays open unless the tap recorded `sse-close`). Pushed before such
+   * a feed exists, it waits for one.
+   */
+  push(event: OpenCodePushedEvent): void {
+    if (this.closed) return;
+    if (this.live.size === 0) {
+      this.pushed.push(event);
+      return;
+    }
+    for (const res of this.live)
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+  }
+
   async close(): Promise<void> {
     this.closed = true;
+    this.live.clear();
     for (const poll of this.polls) clearTimeout(poll);
     this.polls.clear();
     for (const wake of this.waiters.splice(0)) wake();
@@ -385,6 +409,10 @@ export class OpenCodeServeReplay {
       // Let the client read each frame before the next.
       await new Promise((resolve) => setImmediate(resolve));
     }
+    if (this.closed || res.destroyed) return;
+    this.live.add(res);
+    res.on('close', () => this.live.delete(res));
+    for (const event of this.pushed.splice(0)) this.push(event);
   }
 }
 
