@@ -293,9 +293,10 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   keeps the first one's reason and wait. A turn that nothing runs yet has
   its prompt taken back out of the inbox once its POST lands, and the error
   says whether that worked. If Station could not take it back (a command
-  has no inbox item, or the withdrawal failed) and OpenCode starts it after
-  all, before the next turn is sent, Station interrupts that execution with
-  a warning. Some asks are not the live turn's: one from a descendant that
+  has no inbox item, or the withdrawal failed), an execution OpenCode
+  starts while no turn is live, before it accepts Station's next prompt or
+  compaction, is taken to be that prompt and interrupted with a warning (a
+  command has no id to match the start against). Some asks are not the live turn's: one from a descendant that
   an earlier turn started and that still runs in the background, or the
   session's own ask from a turn that has already ended. Station interrupts
   the session that asked, with a `runtime.warning`, and the live turn goes

@@ -532,8 +532,9 @@ export class OpenCodeNativeSession {
   /**
    * A turn stopped before anything ran it whose prompt Station could not
    * take back (a command has no inbox item; or the withdrawal failed): if
-   * OpenCode starts it after all, before a next turn is sent, that
-   * execution is interrupted.
+   * OpenCode starts an execution while no turn is live, before it takes a
+   * next prompt or compaction of Station's, that execution is interrupted.
+   * The start is not matched to the prompt: a command has no id to match.
    */
   private unwithdrawn: { readonly turnId: string } | undefined;
   /** Asks Station is deciding or answering itself, by the session that asked. */
@@ -725,6 +726,10 @@ export class OpenCodeNativeSession {
     // A turn stopped while this was in flight takes its item back out now
     // ({@link withdrawUnstarted}).
     posted();
+    // OpenCode took a next prompt: an execution starting now is taken to be
+    // this turn's (`onExecutionStarted`). A refused one leaves the earlier
+    // turn's prompt still to be stopped if it starts.
+    this.unwithdrawn = undefined;
     if (turn.messageId) this.recordRewindPoint(turn);
     this.publishStart(turn, {
       prompt: input.displayText,
@@ -860,6 +865,7 @@ export class OpenCodeNativeSession {
       this.turn = turn;
       return { kind: 'failed', message: errorMessage(error) };
     }
+    this.unwithdrawn = undefined;
     return { kind: 'answered', text: '' };
   }
 
@@ -3060,9 +3066,6 @@ export class OpenCodeNativeSession {
     kind: NativeTurn['kind'],
     invocationId?: string,
   ): NativeTurn {
-    // A next turn of Station's: an execution starting now is taken to be
-    // its own (`onExecutionStarted`).
-    if (kind === 'station') this.unwithdrawn = undefined;
     let resolveDone!: () => void;
     const done = new Promise<void>((resolve) => {
       resolveDone = resolve;

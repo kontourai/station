@@ -4123,28 +4123,43 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     expect(deletedBeforeAnswer).toBe(false);
   });
 
-  test('a stopped turn whose prompt Station could not take back, started by OpenCode after all, is interrupted with a warning', async () => {
+  test('a stopped turn whose prompt Station could not take back, started by OpenCode after all, is interrupted with a warning, even after a next prompt OpenCode refused', async () => {
     const fail = repliesFail(Number.POSITIVE_INFINITY);
     let ended = false;
-    const h = await setup({
-      scenario: 'interrupt-pending',
-      // The execution is seen to start only after Station ended the turn:
-      // the capture's end frame stands in for that late start.
-      omit: isFrame('session.execution.started'),
-      rewrite: (record) =>
-        isFrame('session.execution.interrupted')(record)
-          ? {
-              ...record,
-              event: { ...record.event!, type: 'session.execution.started' },
-            }
-          : record,
-      holdFrame: (record) =>
-        isFrame('session.execution.started')(record) ? () => ended : undefined,
-      respond: (request) =>
-        request.method === 'DELETE'
-          ? { status: 500, body: { error: 'inbox broke' } }
-          : fail(request),
-    });
+    let prompts = 0;
+    const h = await setup(
+      {
+        scenario: 'interrupt-pending',
+        // The execution is seen to start only after Station ended the turn:
+        // the capture's end frame stands in for that late start.
+        omit: isFrame('session.execution.started'),
+        rewrite: (record) =>
+          isFrame('session.execution.interrupted')(record)
+            ? {
+                ...record,
+                event: { ...record.event!, type: 'session.execution.started' },
+              }
+            : record,
+        holdFrame: (record) =>
+          isFrame('session.execution.started')(record)
+            ? () => ended
+            : undefined,
+        respond: (request) => {
+          if (request.method === 'DELETE')
+            return { status: 500, body: { error: 'inbox broke' } };
+          // The next prompt is refused: OpenCode took nothing that could be
+          // the execution starting later.
+          if (
+            request.method === 'POST' &&
+            request.path.endsWith('/prompt') &&
+            ++prompts === 2
+          )
+            return { status: 400, body: { error: 'no' } };
+          return fail(request);
+        },
+      },
+      { newMessageId: morePromptIds('interrupt-pending') },
+    );
     await h.start({ approvalMode: 'ask' }, { metadata: DENY_APPROVALS });
     const { turnId } = await h.turn('DO_BASH wait');
     const failure = await h.waitFor(
@@ -4152,6 +4167,7 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     );
     expect(String(failure.message)).toContain('may still run it');
     expect(interrupts(h)).toHaveLength(1);
+    await expect(h.turn('next')).rejects.toThrow('OpenCode refused the prompt');
     ended = true;
     const warning = await h.waitFor(
       (event) =>
