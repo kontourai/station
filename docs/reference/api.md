@@ -940,7 +940,8 @@ Personal Task rooms expose these authenticated routes:
 - `POST /api/tasks/:taskId/room/attachments` takes `{taskCreatedAt, attachments}`,
   where each input has `kind`, `name`, `mimeType`, `size` and an inline `dataUrl`.
   It returns `{success: true, data: TaskRoomAttachment[]}`. Limits are five files,
-  5 MiB each and 15 MiB decoded total. This exact POST has a 22 MiB JSON body
+  5 MiB each and 15 MiB decoded total. An image's bytes must start with the
+  declared image type's signature (a prefix check, not a full decode). This exact POST has a 22 MiB JSON body
   ceiling; it retains the standard mutation rate budget.
 - `GET /api/tasks/:taskId/room/attachments/:attachmentId?taskCreatedAt=...`
   returns authenticated bytes as `application/octet-stream`, with `nosniff`,
@@ -1053,7 +1054,7 @@ intent and grant no permission.
 | `GET` base | none | Room identity, current actor/capabilities, note, checkpoint and presence |
 | `POST /init` | `{ expectedProjectId }` | `{ scope, roomId }`; requires discussion permission and is idempotent |
 | `GET /messages` | `after` sequence, `limit` 1–100 | ordered history, checkpoint, `nextAfter`; byte limits may split a page |
-| `POST /messages` | guards plus `{ intentId, text, replyTo? }` | committed message; exact actor/Room/intent retry returns the same message, changed payload conflicts |
+| `POST /messages` | guards plus `{ intentId, text, replyTo?, attachments? }` | committed message; an exact actor/Room/intent/payload retry returns that message as it now stands (its tombstone once deleted, its latest text once edited) and never needs its files again; a changed payload conflicts |
 | `PUT /note` | guards plus `{ expectedRevision, markdown, sourceMessageIds }` | revision-checked shared note |
 | `POST /presence` | guards plus `{ clientId, state: 'join' | 'leave' }` | current leased participants |
 | `GET /events` | none | SSE `changed`, `presence`, terminal `revoked`, and heartbeat comments |
@@ -1097,6 +1098,121 @@ after the upgrade are adopted the next time the store opens. A room whose stored
 record does not match its row is never adopted; that Project's room and channels
 stay refused, as before the upgrade. A database from a newer Station is refused
 before any schema change or migration.
+
+### Reactions, edits, deletes and files
+
+These routes exist under `/room` and under `/channels/:channelId`. A host
+advertises them with the handshake flag `projectRoomMessageActions`; an older
+host answers 404. Each takes the room guards and needs `discuss`, except a file
+read, which needs `view`.
+
+| Method and suffix | Input | Result |
+| --- | --- | --- |
+| `POST /messages/:messageId/reactions` | guards plus `{ emoji, reacted }` | the message. Sets the caller's own reaction; repeating either state changes nothing |
+| `POST /messages/:messageId/edit` | guards plus `{ intentId, text }` | the message with the new text and `editedAt`; an exact intent retry replays |
+| `POST /messages/:messageId/delete` | guards plus `{ intentId }` | the tombstone; deleting again returns it |
+| `POST /attachments` | guards plus `{ attachments: [{ kind, name, mimeType, size, dataUrl }] }` | stored descriptors `{ id, kind, name, mimeType, size }` for the next message |
+| `GET /attachments/:attachmentId` | none | the file's bytes as `application/octet-stream`, sandboxed |
+
+History projects each message from separate records: `text` is the latest
+edit's, with `editedAt`; a deleted message has `deletedAt`, empty `text`, and
+no files or reactions, and keeps its author, time and place, so replies to it
+still read. `reactions` lists `{ emoji, actors }` in the order people first
+reacted. The stored message row is never rewritten.
+
+- **Who may change a message.** Only the person who wrote it may edit or
+  delete it, and nobody edits or deletes an Agent's message (`409
+  project_room_forbidden`; not 403, which clients read as lost access). An
+  edit or reaction on a deleted message is `409 project_room_conflict`.
+- **Limits.** A reaction is one emoji of at most 32 bytes. A message holds at
+  most 20 distinct emoji and 100 reactions, and at most 50 edits and deletes.
+  Past a limit the server refuses with `429 project_room_capacity`. Files use
+  the Task room's limits: at most 5 per message, 5 MiB each and 15 MiB in all,
+  as images, PDF, text, Markdown, CSV or JSON (`400 project_room_invalid`). An
+  uploaded file can be sent only by the person who uploaded it, in one
+  message, in the room it was uploaded to. Its bytes can be read only while
+  that message stands. An image's bytes must start with the declared image
+  type's signature (a prefix check, not a full image decode). Each uploader
+  may hold 1280 files in a room. Deleting a message releases its files, and
+  an uploader's next upload in a room first releases their unsent files there
+  older than a day (no timer runs). Uploads, releases and messages naming
+  files hold one store-wide lock across processes, with access re-checked
+  once it is held, and the store never evicts by age or size.
+- **What a release deletes.** Before changing anything a release reads every
+  file record in the room's store. It never deletes bytes that another record
+  still names. For the bytes it must delete, it keeps the record, the
+  uploader's quota charge and the retry until their deletion is confirmed: an
+  unlink that succeeds, or a path that is already absent (`ENOENT`). Any other
+  failure, such as `EACCES`, `EIO` or a directory that cannot be traversed,
+  keeps the record, and a later upload's sweep retries it. A damaged record
+  names a reference only when its text holds exactly one `sha256-` token and
+  that token is a whole `"blobRef":"sha256-<64 hex>"`. If any record's
+  reference cannot be known (unreadable, or damaged in any other way, such as
+  a truncated, over-long or second hash), the release fails closed: it
+  removes and deletes nothing and keeps the released records and their bytes.
+- **When uploads are refused.** Every upload re-derives the store's health
+  under the store's cross-process lock, by the same scan of `bindings/` that a
+  release uses. While any record is unknown, new attachments are refused with
+  `503 project_room_files_unavailable`. Sending text, reading and downloading
+  existing files keep working. Nothing is cached between uploads, so every
+  Station process sharing the home refuses alike, and no file write is needed
+  for the refusal. `reclamation-blocked.json` in the store names each problem
+  when it can be written; it is a diagnostic only. When it cannot be written,
+  the server log names each record and its reason (operator logs only; room
+  members see just the code). The `bindings/` root, or
+  any directory under it, that is a symbolic link, is not a directory, or
+  cannot be looked up for any reason other than not existing (such as
+  `EACCES`) counts as a problem, not as empty: a linked `bindings/` is not
+  supported and pauses uploads until it is a plain directory again. A Station
+  home reached through a linked ancestor (such as macOS `/var`) is fine. A
+  write that fails while storing a file (its bytes, its record, a directory
+  for them, or the store root or its lock file, for example on `ENOSPC` or
+  `EACCES`) is refused with
+  the same `503 project_room_files_unavailable` and leaves no staging copy;
+  input Station refuses (limits, a wrong image type) stays `400`.
+- **Supported repair (offline only).** To repair the store:
+  1. stop every Station process using that home;
+  2. under `<STATION_HOME>/project-room-attachments/bindings/`, fix each
+     record the marker names: restore its content, fix its permissions, or
+     remove it once you have decided its file is not needed;
+  3. start Station again.
+
+  Uploads stay refused until a scan finds no unknown record, then resume on
+  their own. The kept releases are reclaimed by later sweeps, so the quota
+  they held recovers. Changing `bindings/` while any Station process runs is
+  not supported, and Station cannot detect it: a release scanning at that
+  moment could miss a record and delete bytes it names, so the storage
+  guarantees above assume it is not done.
+
+  A `repair/` directory in the store was the live repair inbox of earlier
+  development builds. While it holds any entry (including `.claimed-*`
+  files), or is a link or cannot be read, uploads are refused with `503` and
+  releases delete nothing, and the marker names it. Station never applies or
+  deletes anything in it. To clear it, stop Station, apply any repair it was
+  meant to carry to `bindings/` by hand, remove `repair/`, and start Station.
+  An absent or empty `repair/` is fine.
+- **Bound.** Live data is bounded per binding, not across the store: one
+  uploader in one room holds at most 1280 files of up to 5 MiB (6.25 GiB),
+  unsent uploads included until that uploader's next upload after a day.
+  While a block lasts, released bytes stay counted against their uploader
+  because their records are kept. Reported limits, not separately proven:
+  - a crash, or a failed write, between writing bytes and their record can
+    leave up to 15 MiB unreferenced per upload, which nothing reclaims yet
+    (records are written whole, and a failed write removes its own staging
+    file, so neither leaves a torn record);
+  - each release, and each upload's admission check, reads every record in
+    the store, so their cost grows with the store (#4942).
+  Account-bound devices may read room files, and send messages, reactions,
+  edits and files once the operator grants the device operate scope (account
+  binding starts read-only); unlike Task-room files, these never reach an
+  Agent request.
+- **Read state.** Reactions, edits and deletes do not move the room's
+  `checkpoint.lastSeq`, which read markers count, so they never mark a channel
+  unread. They do wake `/events`, which sends `changed` with the same `lastSeq`
+  so open clients re-read history.
+
+Schema version 2 adds these records' tables to an existing version-1 file
+without changing any stored row.
 
 Reads, discussion, note editing and execution require their distinct current
 Project actions plus transport permission. Agent requests also require current
@@ -6580,7 +6696,9 @@ exception, or gate completion. A cleanup result can retain the workspace when
 shutdown was not confirmed.
 
 The [SDK helper](../../packages/sdk/src/client/reviews.ts) defaults each HTTP
-request to 30 seconds. After submission failure it reads status; if that read
+request to 30 seconds. An explicit `409 review_request_conflict` is returned
+immediately, without status recovery or retry; it is distinct from a recorded
+indeterminate outcome. After other submission failures it reads status; if that read
 also fails, it retries the same request ID once. It polls a running status every
 500 ms and honors the caller's AbortSignal. This is a per-request timeout, not a
 30-second deadline for the whole review. Terminal rejected/indeterminate status
@@ -7393,6 +7511,59 @@ reads need view. [The guide](../guides/walkthroughs.md#rest-and-sdk) owns bounds
 authorization, failure, privacy and preview lifecycle limits.
 
 ## Task review threads
+
+### Independent code review
+
+Personal hosts expose `GET /api/tasks/:taskId/review/code?taskCreatedAt=...&projectId=...`
+with the existing Task review preview enabled. It returns
+`station.task-code-review/v1`: the Project ID and creation time, Task checkout
+observation, configured distinct Codex reviewer choices, and the newest 20
+Task-associated review requests. A supplied `projectId` is compared with the
+authorized current Project. `omittedRequests`, `requestsUnavailable`, and
+per-request `omittedFindings` disclose bounds and partial reads. Each request
+includes at most eight findings. Checkout availability, uncommitted changes,
+revision freshness and reviewer outcomes are separate; none is a gate verdict.
+
+`POST /api/tasks/:taskId/review/code` accepts `requestId`, `projectId`,
+`projectCreatedAt`, `taskCreatedAt`, `baseSha`, `headSha` and
+`reviewerAgentSlug`. Project identity fields are equality preconditions from the
+observed view, not authority. A changed Project returns 409 `project-changed`
+before admission; this refusal does not settle an earlier uncertain request.
+Both commits must be full 40-character lowercase Git object IDs. New requests
+require an observable Task checkout at the submitted head, a non-terminal Task,
+a lead Agent and a distinct configured Codex reviewer. The server rechecks Task
+execution authority and implementer identity before provider effects. Stable-key
+retries join retained requests even after the checkout advances. Reusing an ID
+for different work is 409 `review_request_conflict`; uncertain outcomes are not
+authorization for a new request ID.
+
+The read uses current Task person-review authority; submission also needs Task
+execution authority and the transport's POST permission. `canRequest` reflects
+both. Deployment-account principals cannot use either leaf, even alongside a
+valid operator or unbound Device credential; shared member code review is not
+enabled. Responses are `Cache-Control: no-store`. Hosted runtimes
+do not mount these routes. Older hosts return 404; clients must show unsupported
+host guidance. On personal hosts, disabling Task review refuses these code-review
+leaves with typed 404 `feature_preview_disabled`, `previewId: "task-review"`
+and the Feature previews `settingsPath`, before parsing a submission body.
+A bound Agent's existing Project independent-review request also derives its
+Task association from the server-owned execution binding and requires a recorded
+non-account Session owner. Missing owners refuse. Callers cannot supply a Task
+association in the generic review body.
+
+Task/Project incarnation is retained in the review submission record before
+reviewer invocation. Task-associated submission rows use private schema version
+2; older binaries refuse those rows rather than execute them without their
+binding. Immutable review receipt format remains unchanged.
+Project lists, direct receipt/status reads and the aggregate also exclude these
+Task-associated results for deployment-account readers. An unavailable admission
+association refuses rather than treating the result as ordinary Project evidence.
+Delta ancestry cannot transfer Task findings into an unbound Project review.
+Task review publication retains the admitted filesystem identity and rechecks
+current authority before receipt/index and submission commits; a Project change
+or revocation during execution cannot redirect publication to its replacement.
+
+### Anchored feedback
 
 Personal runtimes mount review routes under `/api/tasks/:taskId/review`, using
 Task room request authority. Reads require `orchestration:read`; comment

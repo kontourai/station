@@ -422,6 +422,78 @@
     "room-agent-abandon-light-mobile": [
       "src-ui/src/views/project-page/ProjectRoom.tsx"
     ],
+    "room-reactions-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomReactions.tsx"
+    ],
+    "room-reactions-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomReactions.tsx"
+    ],
+    "room-reactions-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomReactions.tsx"
+    ],
+    "room-reactions-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomReactions.tsx"
+    ],
+    "room-reaction-picker-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomReactions.tsx"
+    ],
+    "room-reaction-picker-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomReactions.tsx"
+    ],
+    "room-reaction-picker-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomReactions.tsx"
+    ],
+    "room-reaction-picker-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomReactions.tsx"
+    ],
+    "room-edited-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-edited-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-edited-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-edited-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-deleted-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-deleted-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-deleted-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-deleted-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-attachment-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAttachmentList.tsx"
+    ],
+    "room-attachment-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAttachmentList.tsx"
+    ],
+    "room-attachment-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAttachmentList.tsx"
+    ],
+    "room-attachment-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAttachmentList.tsx"
+    ],
     "room-keyboard-dark-desktop": [
       "src-ui/src/views/project-page/ProjectRoom.tsx"
     ],

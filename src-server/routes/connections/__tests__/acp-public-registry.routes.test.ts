@@ -352,14 +352,15 @@ describe('public agent registry in the engine catalogue', () => {
 
   test('a package-runner or natively connected listing cannot be added', async () => {
     const { app, saveACPConfig } = await fixture();
-    for (const id of ['gemini', 'claude-acp']) {
+    // Gemini CLI, the earlier package-runner example, is now a built-in.
+    for (const id of ['dirac', 'claude-acp']) {
       const response = await install(app, id, { command: 'npx', args: [] });
       expect(response.status).toBe(400);
     }
-    const gemini = await json(
-      await install(app, 'gemini', { command: '', args: [] }),
+    const dirac = await json(
+      await install(app, 'dirac', { command: '', args: [] }),
     );
-    expect(gemini.error).toContain('Station does not do that');
+    expect(dirac.error).toContain('Station does not do that');
     expect(saveACPConfig).not.toHaveBeenCalled();
   });
 

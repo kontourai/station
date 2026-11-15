@@ -804,15 +804,46 @@ opens the room using the expected local Project ID. Access denial remains a
 separate state. Message and note writes pin the discovered room, Project, and
 actor with server guards. History is ordered by sequence in 25-message windows.
 The hook follows forward continuations when the server's byte limit splits a
-window, then loads older windows; it retains up to 20 windows. Named `changed` events
+window, then loads older windows; it retains up to 20 windows.
+`useProjectRoomRetainedHistory` re-reads the rows a caller still shows from
+windows the room has moved past, each time the room is invalidated, so an edit,
+delete or reaction reaches them too. It reads at most
+`PROJECT_ROOM_RETAINED_REREAD_MESSAGES` (500) below the live windows; a caller
+retires kept rows older than that instead of showing them stale.
+`useProjectRoomHistorySpan` reads one span right away: give it the rows that
+just left the live windows, so a history read cancelled as the tail moved
+does not leave them stale until the next event. Every history result (each
+live window page, the retained re-read and the span read) carries `readSeq`,
+one order taken when its read started across all three; keep, per message,
+the `readSeq` that last set it, and never let a lower one replace it, so a
+slow earlier response cannot bring back text a later read replaced. Named `changed` events
 invalidate queries, `presence` updates participants, and `revoked` or terminal
 401/403 stops the stream and clears retained query content. Cache identities
 include the API authority, local Project ID, and room ID for history.
 
+`room.react`, `room.edit` and `room.remove` set the caller's reaction and edit
+or delete the caller's own message (`reactToProjectRoomMessage`,
+`editProjectRoomMessage`, `deleteProjectRoomMessage`). Each takes a `target` of
+the room guards plus `messageId` and re-reads the room when it settles, since
+none of them moves `lastSeq`. `uploadProjectRoomAttachments` stores files for the
+next message and `fetchProjectRoomAttachment` reads one back.
+`readProjectRoomMessageActionsCapability(apiBase)` reports the
+`projectRoomMessageActions` handshake flag; offer these actions only when it is
+true, because an older host answers 404.
+
+On a host with that flag, the embeddable `ProjectRoom` UI shows reaction pills
+under each message (a tap toggles yours; who reacted is a tooltip, or a long
+press or **Who reacted** on touch), a quick picker of recent emoji with search,
+**Edit** and **Delete** on your own messages (↑ in an empty composer edits your
+last one; Delete asks first), and files dropped, pasted or attached in the
+composer.
+
 The embeddable `ProjectRoom` UI retains an immutable message intent in browser
 session storage before sending, per channel. Until it is confirmed, the message waits in the
 conversation; a lost acknowledgement or reload offers an explicit retry of that
-exact payload and UUID and never resends automatically. The retained intent
+exact payload and UUID and never resends automatically. A retry of a message
+since edited or deleted is acknowledged with its current revision (its
+tombstone once deleted), which the client accepts. The retained intent
 settles once room history shows a message with its intent ID. The unsent draft
 (text, reply target and Agent recipient) is kept per channel, and an open
 thread keeps its own, in the same tab's
@@ -6753,6 +6784,23 @@ unavailability, never empty transcript success. The CLI and Station-control MCP
 use these same fetchers.
 
 ### Task review threads
+
+`taskCodeReviewQueryKey(scope, projectId, taskId, taskCreatedAt)`,
+`useTaskCodeReviewQuery(scope, projectId, taskId, taskCreatedAt, enabled)` and
+`useRequestTaskCodeReviewMutation(scope, projectId, taskId, taskCreatedAt)`
+are exported from the SDK root and query barrel. They call the
+[Task code-review API](api.md#independent-code-review) using the supplied
+authority scope. Keys include the API base, authority, Project ID and Task
+incarnation. A failed read hides cached protected data; 404 explains that the
+host or preview does not support this surface. The query refreshes every four
+seconds only while returned requests are running, and stops after a read error.
+Disable it when its view is hidden.
+
+The mutation submits `TaskCodeReviewRequest` with retries disabled and
+invalidates that exact query after settlement. The caller retains the original
+Project ID/creation time, request ID and commit pair across uncertain transport
+outcomes; explicit retry reuses those values. A replacement Project cannot
+inherit that saved intent. A completed request is not a passed gate.
 
 The SDK root and query barrel export `fetchTaskReview(taskId)`,
 `taskReviewQueryKey(taskId)` and `useTaskReviewQuery(taskId, {poll})` for the

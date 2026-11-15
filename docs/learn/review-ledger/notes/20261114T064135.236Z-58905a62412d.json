@@ -1,0 +1,13 @@
+{
+  "revision": "ea50aca6b4d623a6fbab91ac8e560c3165d8de54",
+
+  "notes": [
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"#4852 fix round 3: runtime-routes.ts changed only which class backs Project-room attachments (ProjectRoomAttachments, same store root). These operator sign-in and step-up captures show the operator session pages, which do not render or call the room attachment store; the captured screens are unaffected.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"#4852 fix round 3: runtime-routes.ts changed only which class backs Project-room attachments (ProjectRoomAttachments, same store root). These operator sign-in and step-up captures show the operator session pages, which do not render or call the room attachment store; the captured screens are unaffected.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"#4852 fix round 3: runtime-routes.ts changed only which class backs Project-room attachments (ProjectRoomAttachments, same store root). These operator sign-in and step-up captures show the operator session pages, which do not render or call the room attachment store; the captured screens are unaffected.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"#4852 fix round 3: runtime-routes.ts changed only which class backs Project-room attachments (ProjectRoomAttachments, same store root). These operator sign-in and step-up captures show the operator session pages, which do not render or call the room attachment store; the captured screens are unaffected.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
