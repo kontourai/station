@@ -127,21 +127,24 @@ function ColorField({
   return (
     <div className="appearance-custom__color">
       <label htmlFor={id}>{label}</label>
-      <span
-        className="appearance-custom__swatch"
-        aria-hidden="true"
-        style={{ background: valid && value ? value : 'transparent' }}
-      />
-      <input
-        id={id}
-        type="text"
-        inputMode="text"
-        spellCheck={false}
-        placeholder="Theme"
-        value={value ?? ''}
-        aria-invalid={!valid || undefined}
-        onChange={(event) => onChange(event.target.value)}
-      />
+      <div className="appearance-custom__color-input">
+        <span
+          className="appearance-custom__swatch"
+          aria-hidden="true"
+          style={{ background: valid && value ? value : 'transparent' }}
+        />
+        <input
+          id={id}
+          className="control control--input"
+          type="text"
+          inputMode="text"
+          spellCheck={false}
+          placeholder="Theme"
+          value={value ?? ''}
+          aria-invalid={!valid || undefined}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </div>
     </div>
   );
 }
@@ -190,6 +193,7 @@ function Editor({
       <Field label="Name" htmlFor={nameId}>
         <input
           id={nameId}
+          className="control control--input"
           type="text"
           maxLength={80}
           value={draft.name}
@@ -240,7 +244,7 @@ function Editor({
       >
         <textarea
           id={cssId}
-          className="appearance-custom__css"
+          className="control control--textarea appearance-custom__css"
           rows={10}
           spellCheck={false}
           maxLength={50_000}

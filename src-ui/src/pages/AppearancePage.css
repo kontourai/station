@@ -363,20 +363,25 @@
 
 .appearance-custom__colors {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
-  gap: var(--k-space-2, 8px) var(--k-space-4, 16px);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 168px), 1fr));
+  gap: var(--k-space-3, 12px) var(--k-space-4, 16px);
 }
 
 .appearance-custom__color {
   display: grid;
-  grid-template-columns: 1fr auto 7.5em;
+  gap: var(--k-space-1, 4px);
+  min-width: 0;
+  font-size: var(--k-text-sm);
+}
+
+.appearance-custom__color-input {
+  display: flex;
   align-items: center;
   gap: var(--k-space-2, 8px);
-  min-width: 0;
 }
 
 .appearance-custom__color input {
-  min-height: 36px;
+  flex: 1;
   min-width: 0;
   font-family: var(--k-font-mono, monospace);
 }
