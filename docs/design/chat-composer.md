@@ -786,7 +786,7 @@ without the directory retain the explicitly labelled loaded-window map.
   bottom-right corner only while the reader has scrolled away from the latest
   message (when **Scroll to bottom** appears), and a step with no turn to go
   to is not drawn.
-  **Browse turns** remains in the conversation overflow and is available on the rail. The browser pages indexed turn summaries independently
+  **Browse turns** remains in the conversation overflow. The browser pages indexed turn summaries independently
   of transcript bodies; selecting a turn loads older bounded history pages until
   its complete prompt/body window is available, then reveals it. Each request
   is bounded to 64 pages; a retry continues from the retained cursor. Switching

@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ArrowDownGlyph, ArrowUpGlyph, MenuGlyph } from '../icons/Glyph';
+import { ArrowDownGlyph, ArrowUpGlyph } from '../icons/Glyph';
 import {
   type TranscriptTurnLandmark,
   type TranscriptTurnMarker,
@@ -254,7 +254,6 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
   activeTurn,
   onJump,
   olderHistory,
-  onBrowse,
   indexed,
   previousTurn,
   nextTurn,
@@ -430,17 +429,6 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
       >
         <ArrowUpGlyph />
       </button>
-      {onBrowse && (
-        <button
-          type="button"
-          className="transcript-turn-rail__browse"
-          aria-label="Browse all turns"
-          title="Browse all turns"
-          onClick={onBrowse}
-        >
-          <MenuGlyph />
-        </button>
-      )}
       <nav
         className="transcript-turn-rail"
         aria-label="Conversation turns"

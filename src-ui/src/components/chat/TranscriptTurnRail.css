@@ -303,34 +303,3 @@
 .transcript-turn-rail::before {
   background: transparent;
 }
-
-.transcript-turn-rail__browse {
-  position: absolute;
-  bottom: calc(
-    100% +
-    var(--transcript-turn-rail-height, 0px) -
-    var(--k-space-6)
-  );
-  right: var(--transcript-turn-rail-scrollbar, 0px);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--k-space-6);
-  height: var(--k-space-6);
-  padding: var(--k-space-2);
-  border: 0;
-  border-radius: var(--k-radius-control);
-  background: var(--k-panel);
-  color: var(--k-text-muted);
-  cursor: pointer;
-}
-
-.transcript-turn-rail-host[data-unavailable] .transcript-turn-rail__browse {
-  display: none;
-}
-
-.transcript-turn-rail__browse:hover,
-.transcript-turn-rail__browse:focus-visible {
-  color: var(--k-text);
-  outline: var(--k-border-thin) solid var(--k-focus);
-}
