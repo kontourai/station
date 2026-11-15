@@ -306,9 +306,8 @@ interface ChatInputAreaProps {
   /** Why nothing can be attached; tapping the paperclip reports it. */
   attachUnavailableReason?: string;
   /**
-   * Shows why nothing was attached: the paperclip's reason and Paste image's
-   * failures (no image on the clipboard, a refused read). Required so a
-   * composer cannot render Paste image with nowhere to report.
+   * Shows why nothing was attached when the paperclip is tapped without an
+   * attachment path.
    */
   onAttachUnavailable: (reason: string) => void;
   attachmentStages?: ComposerAttachmentStageSnapshot[];
