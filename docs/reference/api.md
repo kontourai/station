@@ -268,8 +268,11 @@ including when another person owns it. The server records the verified
 device-credential identity as the surface, including the headless identity of
 a personal access token, or requires a valid `X-Station-Client-Session` for a
 caller without one. Responses carry `Cache-Control: no-store`. The feed is
-durable on this Station and keeps the latest 100 entries per person; push
-delivery and person-notification producers are separate work.
+durable on this Station and keeps the latest 100 entries per person. Its first
+producer is the Project room mention (#4799): category `room-mention`, a `path`
+target that opens the exact message, written only for the person named and
+checked against their membership at delivery. Push delivery of these entries
+is separate work.
 
 ## Endpoint Legend
 
