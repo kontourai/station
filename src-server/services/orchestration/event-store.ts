@@ -8171,7 +8171,7 @@ export class EventStore {
     return rows.map((row) => row.thread_id);
   }
 
-  /** Navigation reads two indexed statements per page, without tools, files or transcript bodies. */
+  /** Navigation reads indexed metadata without tools or files; later pages can omit the initial count. */
   readTurnDirectoryFacts(
     threadIds: readonly string[],
     options: {

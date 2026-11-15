@@ -342,7 +342,10 @@ function ChatMessageListComponent({
     turnNavigationRequest.current = null;
     setPendingTurnJump(null);
   }, []);
-  useEffect(() => () => turnNavigationRequest.current?.abort(), []);
+  useEffect(() => {
+    void activeSession.id;
+    return () => turnNavigationRequest.current?.abort();
+  }, [activeSession.id]);
   const openTurnBrowser = useCallback(() => setTurnBrowserOpen(true), []);
   const loadTurnAndReveal = useCallback(
     async (turnId: string, signal: AbortSignal) => {
@@ -1668,15 +1671,26 @@ function ChatMessageListComponent({
   // later, so stepping to the same turn twice is announced twice.
   const [turnAnnouncement, setTurnAnnouncement] = useState('');
   const announceFrameRef = useRef<number | undefined>(undefined);
-  const announceTurnStep = useCallback((text: string) => {
-    if (announceFrameRef.current !== undefined)
-      cancelAnimationFrame(announceFrameRef.current);
-    setTurnAnnouncement('');
-    announceFrameRef.current = requestAnimationFrame(() => {
-      announceFrameRef.current = undefined;
-      setTurnAnnouncement(text);
-    });
-  }, []);
+  const announcementOwner = useRef<
+    { chatId: string; indexed: boolean } | undefined
+  >(undefined);
+  const announceTurnStep = useCallback(
+    (text: string, indexed = false) => {
+      announcementOwner.current = { chatId: activeSession.id, indexed };
+      if (announceFrameRef.current !== undefined)
+        cancelAnimationFrame(announceFrameRef.current);
+      setTurnAnnouncement('');
+      announceFrameRef.current = requestAnimationFrame(() => {
+        announceFrameRef.current = undefined;
+        setTurnAnnouncement(text);
+      });
+    },
+    [activeSession.id],
+  );
+  const announceIndexedTurnStep = useCallback(
+    (text: string) => announceTurnStep(text, true),
+    [announceTurnStep],
+  );
   const stepToTurn = useCallback(
     (turnIndex: number) => {
       const landmarks = turnLandmarksRef.current;
@@ -1694,15 +1708,19 @@ function ChatMessageListComponent({
     },
     [jumpToTurn, hasOlderMessages, announceTurnStep],
   );
-  // What was said names a position in one chat's loaded window ("Loaded
-  // turn 5 of 10"): a chat switch, older history finishing loading, or a
-  // change in how many turns are loaded (another page of older history, or
-  // a new turn) makes it stale, so it goes.
+  // Loaded-window positions become stale as rows arrive. An indexed position
+  // survives that load; its destination must still be announced after reveal.
   const loadedTurnCount = turnLandmarks.length;
   useEffect(() => {
     void activeSession.id;
     void hasOlderMessages;
     void loadedTurnCount;
+    if (
+      announcementOwner.current?.chatId === activeSession.id &&
+      announcementOwner.current.indexed
+    )
+      return;
+    announcementOwner.current = undefined;
     if (announceFrameRef.current !== undefined)
       cancelAnimationFrame(announceFrameRef.current);
     announceFrameRef.current = undefined;
@@ -2364,7 +2382,7 @@ function ChatMessageListComponent({
               touchStepsShown={isUserScrolledUp}
               conversationId={activeSession.conversationId!}
               activeStartVisible={turnViewport.activeStartVisible}
-              onAnnounceStep={announceTurnStep}
+              onAnnounceStep={announceIndexedTurnStep}
               onLoadTurn={loadTurnAndReveal}
             />
           )}

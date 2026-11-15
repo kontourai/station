@@ -770,3 +770,48 @@ test('Scroll to bottom retires an unloaded indexed jump before a late history re
     ),
   ).toBe(false);
 });
+
+test('an indexed step announces its destination after loading an older history window', async () => {
+  const first = { ...session(1), conversationId: 'conversation' };
+  directory.mockResolvedValue({
+    session: { conversationId: 'conversation', turnCount: 2 },
+    turns: [
+      { turnId: 't-0', request: 'Question 0', outcome: 'completed' },
+      {
+        turnId: 'older-t-0',
+        request: 'Original request',
+        outcome: 'completed',
+      },
+    ],
+    nextCursor: null,
+  });
+  let finish!: (found: boolean) => void;
+  const load = vi.fn(
+    () =>
+      new Promise<boolean>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const { rerender } = renderList(first, {
+    hasOlderMessages: true,
+    onLoadTurn: load,
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(100);
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Previous turn' }));
+  expect(load).toHaveBeenCalledOnce();
+  await act(async () => {
+    finish(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    rerender(withOlderTurns(first, 1), {
+      hasOlderMessages: false,
+      onLoadTurn: load,
+    });
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(100);
+  });
+  expect(announcement()).toBe('Turn 1 of 2: Original request');
+});
