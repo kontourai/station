@@ -85,7 +85,7 @@ export interface RoomConversationRow {
 }
 
 /** Who mentions name (#4799): current names by id, and the reader. */
-export interface RoomConversationPeople {
+interface RoomConversationPeople {
   nameOf(actorId: string): string | undefined;
   selfId?: string;
 }

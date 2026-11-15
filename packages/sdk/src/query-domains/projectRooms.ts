@@ -51,16 +51,12 @@ import {
 } from '../client/project-rooms';
 
 export type { ApiRequestScope } from '../client/http';
-export {
-  fetchProjectRoomMembers,
-  readProjectRoomLiveCapability,
-} from '../client/project-room-live';
 export * from '../client/project-rooms';
 /**
  * Whether this Station serves one live stream for a Project's rooms, typing
  * and person mentions (#4798, #4799). Read once per Station.
  */
-export function useProjectRoomLiveCapability(apiBase: string) {
+function useProjectRoomLiveCapability(apiBase: string) {
   return useQuery({
     queryKey: ['project-room-live-capability', apiBase],
     queryFn: () => readProjectRoomLiveCapability(apiBase),

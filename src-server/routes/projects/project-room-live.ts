@@ -16,7 +16,7 @@ import { ProjectRoomRefusal } from '../../services/projects/project-room-store.j
 import { streamSSE } from '../sse-response.js';
 
 /** Unsettled failure codes by request id, from the Agent request owner. */
-export type ProjectRoomAgentFailures = (
+type ProjectRoomAgentFailures = (
   requestIds: readonly string[],
 ) => ReadonlyMap<string, NonNullable<ProjectRoomAgentActivity['failure']>>;
 
