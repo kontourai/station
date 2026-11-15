@@ -35,8 +35,8 @@ import {
   GALLERY_DESIGN_ROOM_ID,
   installProjectConversationsFixture,
   installProjectRoomFixture,
-  LIVE_ROOM_SCENES,
   installTaskRoomFixture,
+  LIVE_ROOM_SCENES,
   NAVIGATION_THREAD_ROOT,
   type ProjectRoomScene,
   type TaskRoomScene,
@@ -3727,7 +3727,9 @@ function roomConversationScreens(): Screen[] {
               ).toBeVisible();
             }
             if (scene === 'agent-outcome') {
-              await expect(conversation.getByText('Couldn’t finish')).toBeVisible();
+              await expect(
+                conversation.getByText('Couldn’t finish'),
+              ).toBeVisible();
               await expect(conversation.getByText('Stopped')).toBeVisible();
             }
             if (scene === 'keyboard') {

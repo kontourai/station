@@ -144,7 +144,10 @@ export class ProjectRoomAgentModule {
         'INSERT INTO project_room_agent_failures VALUES (?, ?) ON CONFLICT(request_id) DO UPDATE SET code=excluded.code',
       )
       .run(id, code);
+    // A failure is lifecycle the room shows (#4800): wake its readers.
+    this.store.announceRequest(id);
   }
+
   private capture(
     authority: ProjectRoomAgentAuthority,
     id: string,

@@ -58,7 +58,12 @@ interface ProjectLine {
   /** A tombstone: the history withholds its text (#4797). */
   deletedAt?: string;
   /** Structured person mentions, as history serves them (#4799). */
-  mentions?: { kind: 'person'; actorId: string; display: string; offset: number }[];
+  mentions?: {
+    kind: 'person';
+    actorId: string;
+    display: string;
+    offset: number;
+  }[];
   /** Files on the message (#4812). */
   attachments?: {
     id: string;
@@ -300,15 +305,29 @@ function projectLines(scene: ProjectRoomScene): ProjectLine[] {
         at: at(1, 14, 14),
         text: '@Maya Chen can you sign off on the copy today? @Jonas Berg has the numbers.',
         mentions: [
-          { kind: 'person', actorId: VIEWER.id, display: 'Maya Chen', offset: 0 },
-          { kind: 'person', actorId: JONAS.id, display: 'Jonas Berg', offset: 47 },
+          {
+            kind: 'person',
+            actorId: VIEWER.id,
+            display: 'Maya Chen',
+            offset: 0,
+          },
+          {
+            kind: 'person',
+            actorId: JONAS.id,
+            display: 'Jonas Berg',
+            offset: 47,
+          },
         ],
       },
     ];
   if (scene === 'agent-working')
     return [
       ...SHORT,
-      { actor: PRIYA, at: at(1, 14, 12), text: 'Can someone check the FAQ links?' },
+      {
+        actor: PRIYA,
+        at: at(1, 14, 12),
+        text: 'Can someone check the FAQ links?',
+      },
       {
         actor: JONAS,
         at: at(1, 14, 13),
@@ -485,8 +504,7 @@ function liveFrames(scene: ProjectRoomScene, lastSeq: number) {
   const frames: [string, Record<string, unknown>][] = [
     ['subscribed', { roomId: ROOM_ID, lastSeq, activity: 0 }],
   ];
-  if (scene === 'live-mention')
-    frames.push(['typing', { actors: [JONAS] }]);
+  if (scene === 'live-mention') frames.push(['typing', { actors: [JONAS] }]);
   if (scene === 'agent-working')
     frames.push([
       'agents',
@@ -699,7 +717,9 @@ export async function installProjectRoomFixture(
             if (route.request().method() !== 'GET')
               return rejectUnexpectedFixtureRequest(route);
             const query = new URL(route.request().url()).search;
-            return route.continue({ url: `${eventsUrl.replace(/\/events$/, '/live')}${query}` });
+            return route.continue({
+              url: `${eventsUrl.replace(/\/events$/, '/live')}${query}`,
+            });
           },
         ],
         [

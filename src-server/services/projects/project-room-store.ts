@@ -1174,6 +1174,17 @@ export class ProjectRoomStore {
       : { roomId, author: { ...message.actor } };
   }
   /**
+   * Wakes the readers of the room holding this request: something about it
+   * that lives outside this store changed (a recorded failure, #4800).
+   */
+  announceRequest(requestId: string) {
+    const roomId = this.db
+      .prepare('SELECT room_id FROM project_room_requests WHERE request_id=?')
+      .get(requestId)?.room_id;
+    if (typeof roomId !== 'string') return;
+    for (const callback of this.listeners.get(roomId) ?? []) callback([]);
+  }
+  /**
    * Messages of `roomId` as history serves them, for live deltas (#4798).
    * The caller has admitted the reader to this room; an id that is not one of
    * its messages is skipped.
