@@ -248,7 +248,8 @@ describe('Cursor binding', () => {
       if (
         failResume &&
         /\/runs$/.test(url.pathname) &&
-        url.searchParams.get('cursor') !== null
+        // Past the ten pages one call reads: the resumed page.
+        url.searchParams.get('cursor') === '1000'
       ) {
         failResume = false;
         return Promise.resolve(
@@ -273,6 +274,13 @@ describe('Cursor binding', () => {
     await expect(
       h.service.syncTask(connectionId, cursor.agentId),
     ).rejects.toMatchObject({ code: 'remote-task-vendor-unavailable' });
+    expect(failResume).toBe(false);
+    // The first ten pages are stored; the backlog's cursor is kept.
+    expect(
+      agentMessages(
+        h.service.readEvents(connectionId, cursor.agentId, 0).events,
+      ),
+    ).toHaveLength(1000);
     // A new run finishes while the backlog's cursor is stored.
     cursor.startRun(
       'run-00000000-0000-0000-0000-000000000099',
