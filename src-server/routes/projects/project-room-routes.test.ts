@@ -1991,7 +1991,7 @@ test('message files: a 24h unsent sweep preserves all records and bytes on unkno
 });
 
 test.each(['ambiguous', 'short', 'overlong'])(
-  'message files: a %s damaged reference is unknown, so nothing is deleted and uploads pause (#4852 review)',
+  'message files: a damaged reference (%s) is unknown, so nothing is deleted and uploads pause (#4852 review)',
   async (kind) => {
     const { readFileSync, writeFileSync, existsSync } = await import('node:fs');
     const h = await harness();
