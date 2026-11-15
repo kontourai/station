@@ -1,3 +1,4 @@
+import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
   parseEngineConnectionId,
@@ -6,6 +7,10 @@ import {
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
 import type { ConnectionRecoveryCapability } from '@kontourai/station-contracts/connection-recovery';
+import type {
+  EngineCommandOutcome,
+  EngineCommandRoute,
+} from '@kontourai/station-contracts/engine-commands';
 import type {
   InputRequestContent,
   SessionGrantScope,
@@ -23,6 +28,8 @@ import type {
   ProviderSessionSourceAffinity,
   ProviderSessionStartInput,
   ProviderTurnStartResult,
+  SessionLiveContinuity,
+  SessionRewindOutcome,
 } from '@kontourai/station-contracts/provider';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
@@ -181,6 +188,25 @@ export class ProviderTurnInProgressError extends SendTurnRefusedError {
 }
 
 /**
+ * A send refused because the session's engine is rewinding its context in
+ * place and has not answered yet. It shares the provider-turn code: the
+ * engine is busy with work that is not this send's turn, the send never
+ * reached it, and the same send succeeds once that work ends, so the inbox
+ * holds it and clients send it then.
+ */
+export class SessionRewindingError extends SendTurnRefusedError {
+  readonly code = PROVIDER_TURN_IN_PROGRESS_CODE;
+
+  constructor() {
+    super(
+      'Station is rewinding this conversation; send again when it finishes.',
+      'busy',
+    );
+    this.name = 'SessionRewindingError';
+  }
+}
+
+/**
  * A send that waited for its session's engine start and gave up before the
  * start finished. Nothing reached the engine. Retryable: orchestration
  * forwards the code and clients keep the message queued.
@@ -274,6 +300,14 @@ export interface ProviderAdapterMetadata {
    * `engineIdForAdapter` (adapter-identity.ts).
    */
   engineId?: EngineId;
+  /**
+   * `acp-registry`: the adapter has no connection of its own. It runs saved
+   * ACP connection records (those {@link ProviderAdapterShape.claimsAcpConnection}
+   * accepts), so its engine id never reserves a connection id (#3355) and it
+   * is not listed as an engine connection of its own; its sessions run on
+   * the ACP connection they name.
+   */
+  connectionBacking?: 'acp-registry';
   /** Evidence-scoping identity for models launched through this adapter. */
   modelExecution?: ModelInventoryExecutionIdentity;
   /** Abort does not settle discovery until adapter-owned resources are closed. */
@@ -502,6 +536,14 @@ export interface ProviderAdapterShape {
   ): Promise<ProviderInterruptTurnResult>;
   /** Present only when the adapter has a real additive-input channel for a running turn. */
   steerTurn?(threadId: string, input: string, turnId: string): Promise<void>;
+  /**
+   * Whether this session can take a steer, for an adapter whose sessions
+   * differ (Muse: a `muse serve` session can, one on the `muse exec`
+   * fallback cannot). `false` refuses the steer as `unsupported-engine`
+   * before the adapter is called. Absent: every session of an adapter that
+   * declares steering can.
+   */
+  canSteerTurn?(threadId: string): boolean;
   /** Targets an observed child turn owned by this session, never the parent. */
   steerChildWork?(
     threadId: string,
@@ -509,6 +551,15 @@ export interface ProviderAdapterShape {
     turnId: string,
     input: string,
   ): Promise<ProviderChildSteerResult>;
+  /**
+   * A child this adapter reports running still takes a steer after the turn
+   * that launched it ended (Muse: a workflow's turn ends at launch while its
+   * children run). Orchestration then admits a child steer with no active
+   * parent turn, but only for a child the child-work projection holds
+   * running with that steer token (`controls.steer.turnId`). Absent: a child
+   * steer needs a running parent turn.
+   */
+  readonly childSteerOutlivesParentTurn?: true;
   /**
    * Stop ONE provider-reported subagent, targeted rather than a blanket
    * turn interrupt.
@@ -531,6 +582,51 @@ export interface ProviderAdapterShape {
     threadId: string,
     taskId: string,
   ): Promise<ProviderTaskStopResult>;
+  /**
+   * Ask the session's engine to restart one MCP server it runs itself (one
+   * an `engine-mcp.status` event named), optionally starting that server's
+   * OAuth sign-in; the consent link then arrives as a URL input request.
+   * Present only where some engine the adapter runs has such a call; an
+   * engine of the adapter's without one answers `not-declared`.
+   */
+  reconnectMcpServer?(
+    threadId: string,
+    serverName: string,
+    options: { startOAuth: boolean },
+  ): Promise<EngineCommandOutcome>;
+  /**
+   * This live session's continuity as its own engine declared it. `live:
+   * false` when no engine process holds the session. Present only on an
+   * adapter some of whose engines can declare a native mechanism; absent
+   * reads as `none` for both.
+   */
+  sessionContinuity?(threadId: string): SessionLiveContinuity;
+  /**
+   * Rewind the engine's context in place to before `turnId`: that turn and
+   * every later one are hidden from the engine. The transcript keeps every
+   * turn. Refused with a typed reason before anything reaches the engine
+   * when the session declares no in-place rewind, is not live, is running a
+   * turn, or never reported an id for the turn.
+   */
+  rewindSession?(
+    threadId: string,
+    turnId: string,
+  ): Promise<SessionRewindOutcome>;
+  /**
+   * For an adapter whose `metadata.connectionBacking` is `acp-registry`:
+   * whether a new session on this saved ACP connection runs on this adapter
+   * now. Read when a connection is projected (its engine id and the provider
+   * a new chat starts with); a chat keeps the provider it started with.
+   * False hands the connection to the ACP adapter.
+   */
+  claimsAcpConnection?(config: ACPConnectionConfig): boolean;
+  /**
+   * Whether the provider inventory (`GET /api/orchestration/providers`)
+   * lists this adapter now. Absent: always. An adapter behind a Feature
+   * Preview answers false while it is off, so turning the preview on is the
+   * only thing that adds its row.
+   */
+  listedInProviderInventory?(): boolean;
   respondToRequest(
     threadId: string,
     requestId: string,
@@ -622,6 +718,11 @@ export interface ProviderAdapterShape {
       description: string;
       argumentHint?: string;
       passthrough: boolean;
+      /**
+       * How the command runs on the engine: prompt text, or the engine's own
+       * request where the live session declared one. Absent: prompt text.
+       */
+      route?: EngineCommandRoute;
     }>
   >;
   listModels?(options?: { signal?: AbortSignal; maxEntries?: number }): Promise<

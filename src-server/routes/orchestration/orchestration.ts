@@ -73,6 +73,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import { isRuntimeEventContentDigest } from '@kontourai/station-contracts/runtime-event-content';
 import {
+  ENGINE_MCP_SERVER_NAME_MAX_CHARS,
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
@@ -2238,6 +2239,7 @@ export function createOrchestrationRoutes(
       | 'deliveryOutcome'
       | 'heldByOther'
       | 'inFlight'
+      | 'nudge'
     >;
     /**
      * Continuing a conversation whose engine was killed for memory
@@ -5566,6 +5568,126 @@ export function createOrchestrationRoutes(
       return c.json({ success: true, data });
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  });
+
+  /**
+   * Restart one MCP server the session's ENGINE runs (one an
+   * `engine-mcp.status` event named), or with `startOAuth` begin its sign-in;
+   * the consent link then arrives as a URL input request. The person's own
+   * act on their own Session, as for the usage-limit actions: the request
+   * principal must be current and own the Session. Answers the engine's
+   * outcome as it gave it (`EngineCommandOutcome`): an engine with no such
+   * call answers `not-declared`, an adapter without one `unsupported`.
+   */
+  const reconnectMcpServerSchema = z
+    .object({ startOAuth: z.boolean().optional() })
+    .strict();
+  app.post(
+    '/sessions/:threadId/mcp-servers/:serverName/reconnect',
+    async (c) => {
+      const threadId = param(c, 'threadId');
+      if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const identity = mutationIdentity(c);
+      if (
+        !orchestrationService.canUserMutateSession(
+          threadId,
+          identity.userId,
+          identity.tenant,
+        )
+      )
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const serverName = param(c, 'serverName');
+      if (
+        serverName.length === 0 ||
+        serverName.length > ENGINE_MCP_SERVER_NAME_MAX_CHARS
+      )
+        return c.json(
+          { success: false, error: 'Invalid MCP server name' },
+          400,
+        );
+      const parsed = reconnectMcpServerSchema.safeParse(
+        await c.req.json().catch(() => ({})),
+      );
+      if (!parsed.success)
+        return c.json(
+          { success: false, error: 'Invalid reconnect request' },
+          400,
+        );
+      try {
+        return c.json({
+          success: true,
+          data: await orchestrationService.reconnectEngineMcpServer(
+            threadId,
+            serverName,
+            { startOAuth: parsed.data.startOAuth === true },
+          ),
+        });
+      } catch (error) {
+        return c.json({ success: false, error: errorMessage(error) }, 409);
+      }
+    },
+  );
+
+  /**
+   * This Session's continuity as its live engine declared it (`live: false`
+   * when no engine process holds it). Read under the same gate as the
+   * Session's other reads; a client offers an engine-native action, such as
+   * "Rewind conversation to here", only on what this answers.
+   */
+  app.get('/sessions/:threadId/continuity', async (c) => {
+    const threadId = param(c, 'threadId');
+    if (!orchestrationService.canUserReadSession(threadId, readAuthorityFor(c)))
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    return c.json({
+      success: true,
+      data: await orchestrationService.readSessionLiveContinuity(threadId),
+    });
+  });
+
+  /**
+   * Rewind the Session's ENGINE context in place to before one of its turns.
+   * The person's own act on their own Session, like the MCP reconnect above:
+   * the request principal must be current and own the Session. The
+   * transcript is never edited; the engine's marker event records the turns
+   * it hid. Answers `SessionRewindOutcome`, including a typed refusal.
+   */
+  const rewindSessionSchema = z
+    .object({ turnId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS) })
+    .strict();
+  app.post('/sessions/:threadId/rewind', async (c) => {
+    const threadId = param(c, 'threadId');
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    const identity = mutationIdentity(c);
+    if (
+      !orchestrationService.canUserMutateSession(
+        threadId,
+        identity.userId,
+        identity.tenant,
+      )
+    )
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    const parsed = rewindSessionSchema.safeParse(
+      await c.req.json().catch(() => undefined),
+    );
+    if (!parsed.success)
+      return c.json({ success: false, error: 'Invalid rewind request' }, 400);
+    try {
+      return c.json({
+        success: true,
+        data: await orchestrationService.rewindSessionToTurn(
+          threadId,
+          parsed.data.turnId,
+        ),
+      });
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 409);
+    } finally {
+      // Sends refused busy while the engine rewound may go now, whatever
+      // the rewind's outcome; no turn event says the Session is free.
+      deps.threadInbox?.nudge(threadId);
     }
   });
 

@@ -1,7 +1,0 @@
-{
-  "revision": "d5e3c3757b2dfb3fd2d38d801292f5c5a3bbfed6",
-
-  "notes": [
-    {"path":"docs/patterns/frontend.md","note":"Reviewed token and styling guidance against the new density blocks in tokens.css and the device-settings-store change; guidance remains accurate (style with tokens; no per-component density overrides).","inputs":["docs/patterns/frontend.md","src-ui/src/lib/device-settings-store.ts","src-ui/src/tokens.css"]}
-  ]
-}

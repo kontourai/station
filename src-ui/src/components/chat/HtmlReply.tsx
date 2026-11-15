@@ -6,6 +6,7 @@ import {
 import { buildHtmlReplyDocument } from '@kontourai/station-shared/html-reply-document';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { observeRootTheme } from '../../lib/root-theme';
+import { stageHtmlReplyDocument } from '../../platform/native/htmlReplyStagedDocument';
 import { openNativeExternalLink } from '../../platform/openExternalLink';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
@@ -62,9 +63,38 @@ function themeStyle(tokens: HtmlReplyTheme, theme: 'light' | 'dark'): string {
 }
 
 /**
+ * Shell-staged delivery for viewers that cannot reach the frame listener.
+ * A scheme-served document is a real document: it does not inherit the app
+ * CSP, so the page's inline scripts run where a srcdoc child of an
+ * app-shell page (whose own CSP refuses inline scripts) would stay inert.
+ * `null` while staging is pending or unavailable; the caller paints its
+ * srcdoc child immediately either way and swaps the source when staging
+ * resolves.
+ */
+function useStagedReplyDocument(document: string | null): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setUrl(null);
+    if (!document) return;
+    let cancelled = false;
+    stageHtmlReplyDocument(document)
+      .then((staged) => {
+        if (!cancelled && staged) setUrl(staged);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [document]);
+  return url;
+}
+
+/**
  * Viewer primitive. Conversation publication/placement is a separate slice.
  * With a reachable frame origin the page loads through its proxy; without one
- * (#4821) it renders in an opaque-origin sandbox.
+ * (#4821) it renders in an opaque-origin sandbox — staged on the shell's own
+ * scheme where that shell offers staging (so the page's scripts run), and as
+ * a srcdoc child of this document otherwise.
  */
 export function HtmlReply({
   page,
@@ -106,6 +136,11 @@ export function HtmlReply({
         : buildHtmlReplyDocument(themeStyle(opaqueTokens, theme) + page.html),
     [distinct, opaqueTokens, theme, page.html],
   );
+  const stagedUrl = useStagedReplyDocument(distinct ? null : opaqueDocument);
+  // Ready only for the URL that actually loaded: a re-stage (new theme or
+  // page) must not inherit the previous document's load.
+  const [loadedStagedUrl, setLoadedStagedUrl] = useState<string | null>(null);
+  const stagedReady = stagedUrl !== null && loadedStagedUrl === stagedUrl;
   useEffect(() => {
     const receive = (event: MessageEvent) => {
       if (
@@ -141,17 +176,21 @@ export function HtmlReply({
       );
   }, [ready, page.html, origin]);
   useEffect(() => {
-    if (ready !== origin) return;
+    if (ready !== origin && !stagedReady) return;
     const update = () => {
-      frame.current?.contentWindow?.postMessage(
+      const target = frame.current?.contentWindow;
+      if (!target) return;
+      // A sandboxed frame's opaque origin cannot be named, so the staged
+      // delivery targets '*'; the frame already authenticates this parent.
+      target.postMessage(
         { type: 'html-reply-theme', tokens: readThemeTokens(), theme },
-        origin,
+        distinct ? origin : '*',
       );
     };
     update();
     // Light/dark, palette (data-color-theme*), accent and branding changes.
     return observeRootTheme(update);
-  }, [ready, origin, theme]);
+  }, [ready, origin, theme, stagedReady, distinct]);
   const viewer = (
     <span className="html-reply">
       <span className="html-reply__controls">
@@ -222,7 +261,13 @@ export function HtmlReply({
             // No allow-same-origin: an opaque origin cannot reach Station's.
             sandbox="allow-scripts"
             referrerPolicy="no-referrer"
-            srcDoc={opaqueDocument}
+            // Staging upgrades this frame from a srcdoc child (whose inline
+            // scripts an app-shell CSP refuses) to a scheme-served document
+            // whose own policy governs. Until it resolves, or on a host
+            // without staging, the srcdoc child renders immediately.
+            src={stagedUrl ?? undefined}
+            srcDoc={stagedUrl ? undefined : opaqueDocument}
+            onLoad={stagedUrl ? () => setLoadedStagedUrl(stagedUrl) : undefined}
             style={{
               width: `${100 / zoom}%`,
               height: `${100 / zoom}%`,

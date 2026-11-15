@@ -1,0 +1,7 @@
+{
+  "revision": "f33805655a2c8a978b3b471435e79eddc6a732b5",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Re-reviewed the final summary projection delta: replace ES2023 findLast with ES2022 slice/reverse/find while preserving last matching request-event selection. The new openRequestKinds, input/permission priority and background status contract are unchanged. Final summary suite passes 115 tests; this note adds no runtime or release qualification.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/orchestration-session-state.ts"]}
+  ]
+}

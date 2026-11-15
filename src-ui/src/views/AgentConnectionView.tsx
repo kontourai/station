@@ -374,6 +374,11 @@ export function AgentConnectionView({
                 name={connection.name}
                 id={connection.id}
                 engineId={connectionEngineId(connection)}
+                icon={
+                  typeof connection.config.icon === 'string'
+                    ? connection.config.icon
+                    : undefined
+                }
                 size={22}
               />
             ),
@@ -642,7 +647,9 @@ export function AgentConnectionView({
               />
             )}
             {!form.config.proxyConnectionId &&
-              (form.type === 'claude' || form.type === 'codex') && (
+              (form.type === 'claude' ||
+                form.type === 'codex' ||
+                form.type === 'muse') && (
                 <EngineAccountOverview
                   connectionId={form.id}
                   engine={form.type}
@@ -854,7 +861,9 @@ export function AgentConnectionView({
                   />
                 )}
 
-                {(form.type === 'claude' || form.type === 'codex') && (
+                {(form.type === 'claude' ||
+                  form.type === 'codex' ||
+                  form.type === 'muse') && (
                   <CredentialProfileAccess
                     connectionId={form.id}
                     managementOnly

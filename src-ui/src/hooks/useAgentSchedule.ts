@@ -8,9 +8,9 @@ import { useEffect } from 'react';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 
 /**
- * What an agent scheduled in one conversation: its check-backs, the job
- * proposals waiting for the person, the jobs the person approved from it, and
- * a usage-limit stop waiting for its reset. One cache entry, read by the
+ * What an agent scheduled in one conversation: its check-backs, the job and
+ * Automation proposals waiting for the person, the jobs the person approved
+ * from it, and a usage-limit stop waiting for its reset. One cache entry, read by the
  * in-chat notes and by the "This chat" card's Scheduled section.
  *
  * No polling: the chat re-reads it when its schedule may have changed
@@ -163,6 +163,33 @@ export function useAgentSchedule(
       void client.invalidateQueries({ queryKey: ['scheduler'] });
     },
   });
+  /**
+   * #4830: a person answers an agent's Automation proposal. Confirm creates
+   * it disabled (a source) or observing (a rule) unless `enable` is set.
+   */
+  const confirmAutomationProposal = useMutation({
+    mutationFn: async (input: { id: string; enable: boolean }) =>
+      readData(
+        await mutateJson(
+          `${base}/automation-proposals/${encodeURIComponent(input.id)}/confirm`,
+          'POST',
+          options(),
+          { enable: input.enable },
+        ),
+      ),
+    onSettled: settle,
+  });
+  const declineAutomationProposal = useMutation({
+    mutationFn: async (proposalId: string) =>
+      readData(
+        await mutateJson(
+          `${base}/automation-proposals/${encodeURIComponent(proposalId)}/decline`,
+          'POST',
+          options(),
+        ),
+      ),
+    onSettled: settle,
+  });
   /** "Don't resume" on a usage-limit stop from the Scheduled list. */
   const holdResume = useMutation({
     mutationFn: async (threadId: string) =>
@@ -187,6 +214,8 @@ export function useAgentSchedule(
     declineWakeUp,
     declineProposal,
     approveProposal,
+    confirmAutomationProposal,
+    declineAutomationProposal,
     holdResume,
   };
 }

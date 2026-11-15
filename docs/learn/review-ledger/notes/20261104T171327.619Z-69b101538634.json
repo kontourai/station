@@ -1,7 +1,0 @@
-{
-  "revision": "22abfdbf8bfc985167d5b54c142b5b6db83fd887",
-
-  "notes": [
-    {"path":"deployment/telemetry/README.md","note":"compose.tunnel.yaml now defines product-ingress, which the extended receiver joins via compose.yaml; the tunnel recipe previously failed docker compose config with 'undefined network product-ingress'. Updated the connector-network paragraph to name that network and why the recipe defines it. Executed docker compose config on the original (fails) and fixed (renders) profile on a Linux Docker host.","inputs":["deployment/telemetry/README.md","deployment/telemetry/compose.tunnel.yaml"]}
-  ]
-}

@@ -244,6 +244,15 @@ runs as Auto inside Muse's sandbox. Under a ceiling of `ask`, a Muse chat
 that would run through `muse exec` (because `muse serve` is turned off or
 fails to start) does not start, and says why. Under `auto` it runs as usual.
 
+Separately from any ceiling, a `muse serve` host that reports it cannot
+enforce its sandbox (`sandboxAvailability: unavailable`) refuses Auto, which
+relies on that sandbox as its only containment: the start is refused
+(`sandbox_unavailable`) without falling back to `muse exec`, and so is a turn
+asking for Auto. Other approval modes still run on `muse serve`, with a
+`muse-sandbox-unavailable` warning, but never fall back to `muse exec`, which
+would run them unprompted without the sandbox: only Full access (`never`)
+does.
+
 A plugin Agent's tool approvals (`autoApprove`, `unattendedAutoApprove`) can
 be removed or narrowed under a ceiling, but not added to.
 
@@ -617,10 +626,19 @@ Station launches are started.
 | --- | --- |
 | `allowed` | The engines that may run: any of `claude`, `codex`, `muse`, `acp` (every ACP connection) and `station-agent` (Station's own agent). Leave it out to allow every engine. An engine a plugin adds is never on the list, so an allow list turns plugin engines off. |
 | `acpRegistryAgents` | `false` stops ACP connections added from the public ACP registry from running and from being added. A custom ACP connection is still allowed while `acp` is. `true` is refused. |
+| `engineHostAuth` | `"off"` stops Station giving any engine an access token from its own engine sign-in store (Kiro without kiro-cli asks for one). Engines that keep their own sign-in, such as kiro-cli, are unaffected. `"allowed"`, or leaving it out, lets it. Also off whenever `acp` is not allowed. |
 | `instances.<engine>` | How every connection of `claude`, `codex`, `muse` or `acp` is launched. `station-agent` runs inside Station and has no launch to pin. |
 
 Station refuses an unknown engine id, a repeated one, and an `instances`
 entry for an engine `allowed` leaves out.
+
+OpenCode has no id of its own here. The `acp` entry covers it in every form: an
+OpenCode ACP connection, and the `opencode` engine behind the OpenCode native
+engine Feature Preview, natively or over ACP, with the preview on or off.
+`instances.acp` pins it too. Natively, the pinned binary and environment apply
+to `opencode serve`, but pinned arguments do not, because they belong to the
+`acp` command line. Turning the preview on neither widens nor narrows a
+policy. See [the decision](../decisions/opencode-native-transport.md#managed-policy-r5).
 
 ### An engine that is not allowed
 
@@ -879,6 +897,7 @@ Every value is in `HKLM\SOFTWARE\Policies\Kontour\Station`.
 | Allow the nightly channel | `NightlyChannel` (`REG_DWORD`) | `limits.updates.allowNightly: false` when Disabled |
 | Allowed engines | `AllowedEngines` (`REG_DWORD` state), `EngineClaude`, `EngineCodex`, `EngineMuse`, `EngineAcp`, `EngineStationAgent` (`REG_DWORD` each, 1 checked) | `limits.engines.allowed`, the checked engine ids |
 | Allow ACP registry agents | `AcpRegistryAgents` (`REG_DWORD`) | `limits.engines.acpRegistryAgents: false` when Disabled |
+| Allow Station to sign engines in | `EngineHostAuth` (`REG_DWORD`) | `limits.engines.engineHostAuth: "off"` when Disabled |
 | Engine launch configuration (JSON) | `EngineInstances` (`REG_DWORD` state), `EngineInstancesJson` (`REG_MULTI_SZ`, lines joined) | `limits.engines.instances` |
 
 The template carries a setting for every limit this release enforces. Later

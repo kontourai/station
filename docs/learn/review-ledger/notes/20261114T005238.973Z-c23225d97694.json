@@ -1,0 +1,7 @@
+{
+  "revision": "aac3c60768bd001e27b57bf3d9b1e304ca2bb5b8",
+
+  "notes": [
+    {"path":"docs/guides/home-transfer-controller.md","note":"The only actionlint-gate.mjs change re-pins the source-verification publisher and supersession controller workflow digests; this document's claims do not depend on either digest or workflow trigger, so no prose change.","inputs":["docs/guides/home-transfer-controller.md","scripts/actionlint-gate.mjs"]}
+  ]
+}

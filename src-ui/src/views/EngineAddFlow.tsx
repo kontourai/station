@@ -22,7 +22,10 @@ import type {
   ACPConnectionRegistryEntry,
 } from '../hooks/useACPConnections';
 import { connectionEngineId } from '../utils/execution';
-import { describeStationFailure } from '../utils/stationFailure';
+import {
+  describeEngineProbeFailure,
+  describeStationFailure,
+} from '../utils/stationFailure';
 import { resolveProviderPresentation } from './provider-settings/providerCatalog';
 import './EngineAddFlow.css';
 
@@ -168,7 +171,10 @@ function EngineAddCatalog({
             tag="Not connected yet"
             detail={
               connection.lastError
-                ? describeStationFailure(connection.lastError).body
+                ? describeEngineProbeFailure(
+                    connection.lastError,
+                    connection.name,
+                  )
                 : "Station saved this engine but couldn't connect."
             }
             action={

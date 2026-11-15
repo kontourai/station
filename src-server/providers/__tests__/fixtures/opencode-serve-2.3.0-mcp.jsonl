@@ -1,0 +1,15 @@
+{"t":0,"kind":"meta","scenario":"mcp","opencodeVersion":"2.3.0"}
+{"t":1,"kind":"sse-open","tap":"A"}
+{"t":1,"kind":"sse","tap":"A","event":{"id":"evt_1d71b5155001mHYRq4qRlUXoS0","type":"server.connected","data":{}}}
+{"t":1,"kind":"sse-comment","tap":"A","text":"heartbeat"}
+{"t":2,"kind":"http","method":"GET","path":"/api/mcp","status":200,"response":{"location":{"directory":"{PROJ}"},"data":[{"name":"broken","status":{"status":"failed","error":"NotFound: ChildProcess.spawn ({WORK}/missing-mcp-binary )"}},{"name":"echo","status":{"status":"connected"}}]}}
+{"t":9,"kind":"http","method":"POST","path":"/api/experimental/mcp/echo/disconnect","status":204,"response":null}
+{"t":9,"kind":"sse","tap":"A","event":{"id":"evt_1d71b515d002f6riP87W3Q04R5","created":1794610254173,"type":"mcp.resources.changed","location":{"directory":"{PROJ}"},"data":{"server":"echo"}}}
+{"t":9,"kind":"sse","tap":"A","event":{"id":"evt_1d71b515e0010aDLD76wtGgyhL","created":1794610254174,"type":"mcp.status.changed","location":{"directory":"{PROJ}"},"data":{"server":"echo"}}}
+{"t":10,"kind":"http","method":"GET","path":"/api/mcp","status":200,"response":{"location":{"directory":"{PROJ}"},"data":[{"name":"broken","status":{"status":"failed","error":"NotFound: ChildProcess.spawn ({WORK}/missing-mcp-binary )"}},{"name":"echo","status":{"status":"disabled"}}]}}
+{"t":11,"kind":"sse","tap":"A","event":{"id":"evt_1d71b5160001YtEEmt0V5EhUd3","created":1794610254176,"type":"mcp.status.changed","location":{"directory":"{PROJ}"},"data":{"server":"echo"}}}
+{"t":51,"kind":"http","method":"POST","path":"/api/experimental/mcp/echo/connect","status":204,"response":null}
+{"t":51,"kind":"sse","tap":"A","event":{"id":"evt_1d71b5187001IjgYIbLJm8UO3i","created":1794610254215,"type":"mcp.resources.changed","location":{"directory":"{PROJ}"},"data":{"server":"echo"}}}
+{"t":51,"kind":"sse","tap":"A","event":{"id":"evt_1d71b5187003onXGzG3PWh2kk5","created":1794610254215,"type":"mcp.status.changed","location":{"directory":"{PROJ}"},"data":{"server":"echo"}}}
+{"t":1554,"kind":"http","method":"GET","path":"/api/mcp","status":200,"response":{"location":{"directory":"{PROJ}"},"data":[{"name":"broken","status":{"status":"failed","error":"NotFound: ChildProcess.spawn ({WORK}/missing-mcp-binary )"}},{"name":"echo","status":{"status":"connected"}}]}}
+{"t":1554,"kind":"sse-close","tap":"A"}

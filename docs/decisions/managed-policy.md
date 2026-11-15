@@ -844,6 +844,14 @@ the engine `station`; the server maps the second to the first. A plugin
 engine's id is never on the list, so an allow list turns plugin engines off:
 an administrator who lists engines has said which ones run.
 
+OpenCode is governed by the `acp` entry, natively or over ACP, with the OpenCode
+native engine preview on or off. The server maps the `opencode` engine to `acp`
+(`managedPolicyEngineId`) for the allow list, `acpRegistryAgents` and the pin. A
+policy cannot name `opencode`: whether a connection runs OpenCode is read from
+its user-controlled id and command, so such an entry could be bypassed and
+could not pin a binary. Naming it is deferred until OpenCode has a verified
+identity ([OpenCode native transport](opencode-native-transport.md#managed-policy-r5)).
+
 **Disallowed engines.** One predicate, read at four seams:
 
 - `assertAdapterReady`, which every engine start (new, recovered, child work)
@@ -873,7 +881,7 @@ skip it:
 | --- | --- | --- |
 | Codex | `spawnCodexProcess` | replaced before `cliInvocation` |
 | Muse | `createMuseProcess` (`muse exec`) and `createMuseServeHost` (`muse serve`) | replaced |
-| ACP | `ACPProcess.start` (sessions, availability probes, sign-in) and the OpenCode model listing | a locked pin replaces the connection's command |
+| ACP | `ACPProcess.start` (sessions, availability probes, sign-in) and the OpenCode model listing; for OpenCode's native transport, `OpenCodeAdapter` applies the `acp` pin before the server pool spawns `opencode serve` | a locked pin replaces the connection's command (natively, binary and environment only) |
 | Claude | `createClaudeEngineProcess` (sessions, adoption, model discovery) | handed to the Agent SDK as `pathToClaudeCodeExecutable` |
 
 Claude is different because the Agent SDK chooses the command: a native

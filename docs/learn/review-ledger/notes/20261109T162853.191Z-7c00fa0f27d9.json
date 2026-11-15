@@ -1,7 +1,0 @@
-{
-  "revision": "3e27d8747d29d6cf1e58680de392a36e831f6604",
-
-  "notes": [
-    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"changed-verification.test.ts only raised its SPAWNED_SCRIPT_EDGES count pin from 12 to 13 for the windows-hide-ratchet edge. The narrow-diff fixture, the demo's disposable checkout and the CLI test's 120-second liveness limit described here are unchanged.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/__tests__/changed-verification.test.ts"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "c3d5d242c7a742e1133a336e347ec863ef990e83",
-
-  "notes": [
-    {"path":"docs/user/concepts.md","note":"Doctor change only: External-agent readiness now reads agentConnections with the installed managed policy applied (CLI offline overlay), and an unusable policy adds a fail-level Managed policy check. Re-read the doctor passages; the terminal-capability degradation sentence is unaffected; no connection-readiness claim here.","inputs":["docs/user/concepts.md","packages/cli/src/commands/lifecycle-doctor.ts"]}
-  ]
-}

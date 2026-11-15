@@ -162,6 +162,7 @@ export function conversationMessageToChatMessage(
     stationCheckBack: metadata?.stationCheckBack,
     stationMemoryContinuation: metadata?.stationMemoryContinuation,
     stationRestartContinuation: metadata?.stationRestartContinuation,
+    rewound: metadata?.rewound,
     interruptedTurnBoundaryId: metadata?.interruptedTurnBoundaryId,
     sender: metadata?.sender,
     answerEligible: metadata?.answerEligible,

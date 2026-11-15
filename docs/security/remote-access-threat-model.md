@@ -1369,7 +1369,7 @@ needs explicit `engine:login`. Account metadata projects references, labels,
 authentication state and observed login support; it excludes paths, commands,
 environment, policy and diagnostics. Current authority is checked before private
 work and publication. No new login route admits a default/global account target.
-Codex device codes and Claude browser codes stay within the engine-owned login;
+Codex and Muse device codes and Claude browser codes stay within the engine-owned login;
 raw CLI output is private. Saved Claude profiles override both the config root
 and secure-store root so an ambient Keychain namespace cannot select another
 profile's account.
@@ -1397,8 +1397,12 @@ none. The attempt read is `engine:login` because it carries those links. A
 stored key lives in `security/engine-credentials.json` (0600, its own document,
 not the tool-server store), is accepted only for a variable the built-in
 descriptor lists, is never returned or logged, and is added only to that
-connection's engine processes and status command. Station still answers no
-engine's credential callback (ADR 0013).
+connection's engine processes and status command. Station answers an
+engine's credential callback only through a reviewed engine-credential
+binding, from its engine host-auth vault, for a process it launched from a
+built-in descriptor with that binding's delegation arguments; every other
+credential callback is still refused (ADR 0013, narrowed by the
+[engine credential provider decision](../decisions/engine-credential-provider.md)).
 
 Quota reads remain `access:manage`: they borrow a selected account's stored token
 for an outbound provider request. An engine-login grant alone admits neither

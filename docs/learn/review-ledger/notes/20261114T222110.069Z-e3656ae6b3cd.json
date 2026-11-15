@@ -1,0 +1,7 @@
+{
+  "revision": "3c64fd984ea7c948d0393ffe8188b7cc131bf938",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-reviewed the PR Gallery excuse text against gallery-main-attribution.mjs and gallery-pr-check.yml at this commit: the exact normalisation (ANSI, appended last console line only, call log after a message, loopback ports, checkout root at a path start, whole-number Received values only), what must match (quoted Received values, repo-relative paths with line numbers, URL paths), non-text errors never matching, telemetry-feedback-mobile never excused, the base-checkout guards, and the node/npm shim limit. Contract-test edit only moves pins to behavioural tests. Not run: the hosted capture.","inputs":["docs/guides/testing.md",".github/workflows/gallery-pr-check.yml","scripts/__tests__/ci-workflow-contract.test.ts"]}
+  ]
+}

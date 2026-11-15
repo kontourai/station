@@ -1,0 +1,7 @@
+{
+  "revision": "721967842889157759abbe7211a5ba0fc1db963b",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Re-checked after docs/reference/connect.md gained completedProbes and onHealthyProbe. The glossary defines Station, Device, connection and Model connection terms; none concerns health-probe counting or the hook's callback, and no term was added. No prose change. Limits: source inspection.","inputs":["docs/glossary.md","docs/reference/connect.md"]}
+  ]
+}

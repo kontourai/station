@@ -36,8 +36,8 @@ const VALID: RegionArrangement = {
   right: {
     visible: true,
     size: 517,
-    panes: ['activity'],
-    occupant: 'activity',
+    panes: ['workspace-agents'],
+    occupant: 'workspace-agents',
     maximized: false,
   },
   bottom: {
@@ -113,7 +113,7 @@ describe('region arrangement record (#928 D)', () => {
   test('an occupant is written as { kind: "surface", id } — the pane-host extension point', () => {
     expect(toRegionArrangementRecord(VALID).regions.right.occupant).toEqual({
       kind: 'surface',
-      id: 'activity',
+      id: 'workspace-agents',
     });
     expect(toRegionArrangementRecord(VALID).regions.left.occupant).toBeNull();
   });
@@ -257,12 +257,12 @@ describe('region arrangement record (#928 D)', () => {
       ).toMatchObject({ panes: [], occupant: null });
       expect(
         parseRegionArrangementRecord(
-          recordWith('right', { occupant: 'activity' }),
+          recordWith('right', { occupant: 'workspace-agents' }),
         )!.right.occupant,
       ).toBeNull();
       expect(
         parseRegionArrangementRecord(
-          recordWith('right', { occupant: ['activity'] }),
+          recordWith('right', { occupant: ['workspace-agents'] }),
         )!.right.occupant,
       ).toBeNull();
     });
@@ -300,19 +300,19 @@ describe('region arrangement record (#928 D)', () => {
           main: {
             visible: true,
             size: 0,
-            occupant: { kind: 'surface', id: 'activity' },
+            occupant: { kind: 'surface', id: 'workspace-agents' },
             maximized: false,
           },
           left: {
             visible: true,
             size: 400,
-            occupant: { kind: 'surface', id: 'activity' },
+            occupant: { kind: 'surface', id: 'workspace-agents' },
             maximized: false,
           },
           right: {
             visible: true,
             size: 400,
-            occupant: { kind: 'surface', id: 'activity' },
+            occupant: { kind: 'surface', id: 'workspace-agents' },
             maximized: false,
           },
           bottom: {
@@ -323,7 +323,7 @@ describe('region arrangement record (#928 D)', () => {
           },
         },
       });
-      expect(parsed!.main.occupant).toBe('activity');
+      expect(parsed!.main.occupant).toBeNull();
       // Both were stored VISIBLE, and both come back visible and empty
       // (#2153): a region the record says is open is not closed on the
       // strength of a pane it does not get to keep. Restoring
@@ -332,8 +332,8 @@ describe('region arrangement record (#928 D)', () => {
       expect(parsed!.left).toEqual({
         visible: true,
         size: 400,
-        panes: [],
-        occupant: null,
+        panes: ['workspace-agents'],
+        occupant: 'workspace-agents',
         maximized: false,
       });
       expect(parsed!.right).toEqual({
@@ -531,7 +531,7 @@ describe('region arrangement record (#928 D)', () => {
       right: {
         visible: true,
         size: 517,
-        panes: ['activity', 'chat'],
+        panes: ['workspace-agents', 'chat'],
         occupant: 'chat',
         maximized: false,
       },
@@ -557,7 +557,7 @@ describe('region arrangement record (#928 D)', () => {
         // No document id (2b): the host derives the region's document from
         // the region, so the record names none.
         panes: [
-          { kind: 'surface', id: 'activity' },
+          { kind: 'surface', id: 'workspace-agents' },
           { kind: 'surface', id: 'chat' },
         ],
         selected: 'chat',
@@ -598,11 +598,13 @@ describe('region arrangement record (#928 D)', () => {
           },
         })!.right;
       expect(withSelected('home')).toMatchObject({
-        panes: ['activity', 'chat'],
-        occupant: 'activity',
+        panes: ['workspace-agents', 'chat'],
+        occupant: 'workspace-agents',
       });
-      expect(withSelected(7)).toMatchObject({ occupant: 'activity' });
-      expect(withSelected(undefined)).toMatchObject({ occupant: 'activity' });
+      expect(withSelected(7)).toMatchObject({ occupant: 'workspace-agents' });
+      expect(withSelected(undefined)).toMatchObject({
+        occupant: 'workspace-agents',
+      });
       expect(withSelected('chat')).toMatchObject({ occupant: 'chat' });
     });
 
@@ -615,7 +617,7 @@ describe('region arrangement record (#928 D)', () => {
               { kind: 'surface', id: 'retired-surface' },
               { kind: 'surface', id: 'home' }, // declares only `main`
               { kind: 'surface', id: 'chat' },
-              'activity', // not an entry shape
+              'workspace-agents', // not an entry shape
               { kind: 'surface', id: 'chat' }, // a duplicate within the set
             ],
             selected: 'retired-surface',
@@ -695,7 +697,7 @@ describe('region arrangement record (#928 D)', () => {
         right: {
           visible: true,
           size: 517,
-          panes: ['activity', 'device'],
+          panes: ['workspace-agents', 'device'],
           occupant: 'device',
           maximized: false,
         },
@@ -704,7 +706,7 @@ describe('region arrangement record (#928 D)', () => {
       expect(record.regions.right.occupant).toEqual({
         kind: 'pane-host',
         panes: [
-          { kind: 'surface', id: 'activity' },
+          { kind: 'surface', id: 'workspace-agents' },
           { kind: 'surface', id: 'device' },
         ],
         selected: 'device',
@@ -719,8 +721,8 @@ describe('region arrangement record (#928 D)', () => {
       expect(older.has('device')).toBe(false);
       expect(parseRegionArrangementRecord(record, older)?.right).toMatchObject({
         visible: true,
-        panes: ['activity'],
-        occupant: 'activity',
+        panes: ['workspace-agents'],
+        occupant: 'workspace-agents',
       });
     });
 
@@ -866,7 +868,7 @@ describe('region arrangement record (#928 D)', () => {
         right: {
           visible: true,
           size: 517,
-          panes: ['activity', boardId, projectLayoutId],
+          panes: ['workspace-agents', boardId, projectLayoutId],
           occupant: projectLayoutId,
           maximized: false,
         },
@@ -923,7 +925,7 @@ describe('region arrangement record (#928 D)', () => {
             size: 517,
             // Beside a shell surface, which still de-dups: `activity` is
             // `right`'s alone here, and the instance id is not.
-            panes: ['activity', id],
+            panes: ['workspace-agents', id],
             occupant: id,
             maximized: false,
           },
@@ -942,7 +944,7 @@ describe('region arrangement record (#928 D)', () => {
         // failure this guards against is `bottom` coming back visible and
         // empty, which is a layout change the user did not make.
         expect(parsed?.right, id).toMatchObject({
-          panes: ['activity', id],
+          panes: ['workspace-agents', id],
           occupant: id,
         });
         expect(parsed?.bottom, id).toMatchObject({
@@ -962,8 +964,8 @@ describe('region arrangement record (#928 D)', () => {
           bottom: {
             visible: true,
             size: 320,
-            panes: ['activity', id],
-            occupant: 'activity',
+            panes: ['workspace-agents', id],
+            occupant: 'workspace-agents',
             maximized: false,
           },
         };
@@ -971,7 +973,7 @@ describe('region arrangement record (#928 D)', () => {
           toRegionArrangementRecord(shellDuplicateBeside),
         );
         expect(reparsed?.right, id).toMatchObject({
-          panes: ['activity', id],
+          panes: ['workspace-agents', id],
           occupant: id,
         });
         expect(reparsed?.bottom, id).toMatchObject({
@@ -1027,14 +1029,14 @@ describe('region arrangement record (#928 D)', () => {
               kind: 'pane-host',
               panes: [
                 { kind: 'surface', id },
-                { kind: 'surface', id: 'activity' },
+                { kind: 'surface', id: 'workspace-agents' },
                 { kind: 'surface', id },
               ],
               selected: id,
             },
           }),
         )?.right,
-      ).toMatchObject({ panes: [id, 'activity'], occupant: id });
+      ).toMatchObject({ panes: [id, 'workspace-agents'], occupant: id });
     });
 
     test('a pane-host without an array of panes reads as empty; a documentId a 2a build wrote is ignored', () => {
@@ -1059,13 +1061,16 @@ describe('region arrangement record (#928 D)', () => {
               documentId: 7,
               panes: [
                 { kind: 'surface', id: 'chat' },
-                { kind: 'surface', id: 'activity' },
+                { kind: 'surface', id: 'workspace-agents' },
               ],
-              selected: 'activity',
+              selected: 'workspace-agents',
             },
           }),
         )!.right,
-      ).toMatchObject({ panes: ['chat', 'activity'], occupant: 'activity' });
+      ).toMatchObject({
+        panes: ['chat', 'workspace-agents'],
+        occupant: 'workspace-agents',
+      });
     });
 
     test('a surface in two regions is dropped from the later region’s panes, keeping the rest', () => {
@@ -1080,7 +1085,7 @@ describe('region arrangement record (#928 D)', () => {
           left: {
             visible: true,
             size: 400,
-            occupant: { kind: 'surface', id: 'activity' },
+            occupant: { kind: 'surface', id: 'workspace-agents' },
           },
           right: {
             visible: true,
@@ -1088,10 +1093,10 @@ describe('region arrangement record (#928 D)', () => {
             occupant: {
               kind: 'pane-host',
               panes: [
-                { kind: 'surface', id: 'activity' },
+                { kind: 'surface', id: 'workspace-agents' },
                 { kind: 'surface', id: 'chat' },
               ],
-              selected: 'activity',
+              selected: 'workspace-agents',
             },
           },
           bottom: {
@@ -1102,8 +1107,8 @@ describe('region arrangement record (#928 D)', () => {
         },
       })!;
       expect(parsed.left).toMatchObject({
-        panes: ['activity'],
-        occupant: 'activity',
+        panes: ['workspace-agents'],
+        occupant: 'workspace-agents',
       });
       // Activity was `left`'s first; `right` keeps Chat and, its selected
       // pane gone, selects what remains.
@@ -1140,17 +1145,17 @@ describe('region arrangement record (#928 D)', () => {
           left: {
             visible: true,
             size: 400,
-            occupant: { kind: 'surface', id: 'activity' },
+            occupant: { kind: 'surface', id: 'workspace-agents' },
           },
           right: { visible: true, size: 400, occupant: null },
           bottom: {
             visible: false,
             size: 320,
-            occupant: { kind: 'surface', id: 'activity' },
+            occupant: { kind: 'surface', id: 'workspace-agents' },
           },
         },
       })!;
-      expect(parsed.left).toMatchObject({ panes: ['activity'] });
+      expect(parsed.left).toMatchObject({ panes: ['workspace-agents'] });
       expect(parsed.bottom).toMatchObject({
         panes: [],
         occupant: null,
@@ -1166,13 +1171,13 @@ describe('region arrangement record (#928 D)', () => {
               kind: 'pane-host',
               panes: [
                 { kind: 'surface', id: 'home' },
-                { kind: 'surface', id: 'activity' },
+                { kind: 'surface', id: 'workspace-agents' },
               ],
-              selected: 'activity',
+              selected: 'workspace-agents',
             },
           }),
         )!.main,
-      ).toMatchObject({ panes: ['activity'], occupant: 'activity' });
+      ).toMatchObject({ panes: ['home'], occupant: 'home' });
     });
 
     test('records differing only in pane order or selection are not equal', () => {
@@ -1197,7 +1202,7 @@ describe('region arrangement record (#928 D)', () => {
         regionArrangementRecordsEqual(
           record,
           recordWith('right', {
-            occupant: { ...occupant, selected: 'activity' },
+            occupant: { ...occupant, selected: 'workspace-agents' },
           }),
         ),
       ).toBe(false);

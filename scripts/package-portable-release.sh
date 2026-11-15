@@ -49,19 +49,18 @@ if [[ ! "$SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
   echo "error: STATION_RELEASE_SHA must be a full 40-character Git SHA" >&2
   exit 1
 fi
-if [[ "$REF" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-  CHANNEL=stable
-  PRERELEASE=false
-elif [[ "$REF" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-preview\.([1-9][0-9]*)$ ]]; then
-  CHANNEL=preview
-  PRERELEASE=true
-elif [[ "$REF" =~ ^nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}-[1-9][0-9]*$ ]]; then
+if [[ "$REF" =~ ^nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}-[1-9][0-9]*$ ]]; then
   # Fleet staging has an exact-SHA build identity but is deliberately not a
-  # release ring.  In particular it must not create Stable/Preview manifests.
+  # release ring.  In particular it must not create Stable manifests.
   CHANNEL=nightly-staging
   PRERELEASE=true
+elif node "$ROOT/scripts/lib/release-tag.mjs" "$REF" >/dev/null; then
+  # A final vX.Y.Z or a candidate vX.Y.Z-rc.N (#4929): both are the Stable
+  # ring, which is not a prerelease ring. The tag stays the archive's ref.
+  CHANNEL=stable
+  PRERELEASE=false
 else
-  echo "error: release ref must be a Stable/Preview tag or nightly-YYYY-MM-DD-N staging identity" >&2
+  echo "error: release ref must be a vX.Y.Z or vX.Y.Z-rc.N tag or nightly-YYYY-MM-DD-N staging identity" >&2
   exit 1
 fi
 if [[ "$CHANNEL" = nightly-staging ]]; then
@@ -104,7 +103,7 @@ node -e '
   const fs = require("node:fs");
   const [path, sha, ref, createdAt, releaseChannel, prerelease] = process.argv.slice(1);
   // A staging bundle is verification-only and never an installable release.
-  const channel = releaseChannel === "preview" ? "beta" : releaseChannel === "nightly-staging" ? "nightly-staging" : "stable";
+  const channel = releaseChannel === "nightly-staging" ? "nightly-staging" : "stable";
   fs.writeFileSync(path, `${JSON.stringify({ schemaVersion: 2, sha, ref, createdAt, channel, releaseChannel, prerelease: prerelease === "true" }, null, 2)}\n`);
 ' "$TEMP_DIR/station/.station-release.json" "$SHA" "$REF" "$CREATED_AT" "$CHANNEL" "$PRERELEASE"
 MANIFEST_TOUCH_TIME=$(node -e '

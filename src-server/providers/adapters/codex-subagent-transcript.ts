@@ -302,12 +302,24 @@ function codexRolloutEntries(
       const input =
         payload.type === 'function_call' ? payload.arguments : payload.input;
       if (typeof input !== 'string' || input.length === 0)
-        return [{ message, kind: 'tool-call', name }];
+        return [
+          {
+            message,
+            kind: 'tool-call',
+            ...(typeof payload.call_id === 'string'
+              ? { toolCallId: payload.call_id }
+              : {}),
+            name,
+          },
+        ];
       const cut = bounded(input);
       return [
         {
           message,
           kind: 'tool-call',
+          ...(typeof payload.call_id === 'string'
+            ? { toolCallId: payload.call_id }
+            : {}),
           name,
           input: cut.text,
           ...(cut.truncated ? { truncated: true as const } : {}),
@@ -325,6 +337,9 @@ function codexRolloutEntries(
         {
           message,
           kind: 'tool-result',
+          ...(typeof payload.call_id === 'string'
+            ? { toolCallId: payload.call_id }
+            : {}),
           ...(cut ? { text: cut.text } : {}),
           ...(cut?.truncated ? { truncated: true as const } : {}),
           ...(failed ? { isError: true as const } : {}),

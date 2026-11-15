@@ -29,7 +29,13 @@
 The Station control owns connection repair and pairing state. **Station details**
 keeps these facts and local-service recovery readable when the Station is offline;
 work-blocking restrictions also appear in the workspace. Routine reconnects use
-the connection indicator. Setup-return guidance is inline on the current page,
+the connection indicator. After three failed checks, a toast names the previously
+connected Station and its loss reason, without showing its address. It remains
+until recovery or dismissal. Recovery replaces that notice after any active event
+stream catches up. If health recovers with a terminally closed stream, the loss
+notice clears without claiming event delivery recovered. A paused reconnect
+updates the notice to request attention. Decisions shown in Station details take
+over an existing loss notice and do not also raise a toast. Setup-return guidance is inline on the current page,
 and short action outcomes use toasts. No global banner stack is mounted.
 
 A fresh phone without a real saved Station instead shows the QR-first welcome
@@ -54,7 +60,7 @@ work after that choice; it does not proceed into engine or personalization
 questions or mark the optional setup run complete. **Open setup** on the
 **Finish setup** card opens that run explicitly after the work entry.
 
-New chat opens the start composer (Agent and project chips, Start) as a draft
+New chat opens the start composer (Run setup, Project and Start) as a draft
 in the chat dock. A setup helper appears when the
 selected Agent cannot respond. It shows server-supplied prerequisites and links
 to engine installation instructions, existing account sign-in, or **Add a
@@ -138,6 +144,7 @@ and CLI behavior below retains the probe's original version scope.
 |---|---|---|---|---|
 | Claude Code | SDK `query()` in `claude-adapter.ts` (`startTrackedSession` → `buildOptions`) — **verified-in-code** | Inherited full server env until this wave; now optionally layered with the app-home profile — **verified-in-code**. SDK contract: `Options.env` REPLACES the subprocess environment entirely (never merges with `process.env`) | `CLAUDE_CONFIG_DIR` (plain env var; default `~/.claude`) — **verified-in-code** | `claude-auth.ts` (injectable `env` param); `claude-transcript-session-source.ts`; in-process SDK helpers `listSessions`/`forkSession`/`deleteSession` resolve the config root from the *server's* `process.env` and have no per-call config-dir override — **verified-in-code** |
 | Codex | `spawnCodexProcess()` in `codex-adapter-transport.ts` (via `CodexAdapter.startReservedSession` → `resolveAppHomeEnv`) — **verified-in-code** | Full inherit by default; layered with the app-home profile (`{ CODEX_HOME: dir }`) when the `codex` connection's `config.useAppHome` is `true` — **verified-in-code** (archive#896 wave 2). Model discovery (`listModelCatalog`) deliberately keeps the byte-identical global env — the profile is scoped to the session's own process only | `CODEX_HOME` (plain env var; default `~/.codex`) — **verified-in-code**, now wired end-to-end (spawn seam, import allowlist, auth detection) | `filesystem-skill-registry.ts`'s `defaultSkillRoots()` now also lists both engines' app-home profile `skills/` dirs (`<STATION_HOME>/app-homes/{codex,claude}/skills`), alongside the pre-existing `~/.codex/skills`/`~/.claude/.agents/skills` — **verified-in-code** (archive#896 wave 2, closing §1.1's previously-named gap) |
+| Muse Code | `muse serve` host per session (`createMuseServeHost`) or a `muse exec` process per turn, both in `muse-adapter.ts` — **verified-in-code** (#1942) | Full inherit, layered with the selected credential profile's `{ XDG_CONFIG_HOME: dir }` through the shared `createCredentialProfileAppHomeEnvResolver`; a named profile that cannot be prepared refuses the start. A profile run drops an inherited `META_API_KEY`, which would otherwise sign every profile in as the key's account. Muse has no per-connection env layer. `XDG_DATA_HOME` (sessions) is not moved, and every tool the session runs inherits the overridden `XDG_CONFIG_HOME` — **verified-in-code** | `XDG_CONFIG_HOME` is a ROOT; the binary reads `<root>/muse` (default `~/.config/muse`). `MUSE_AUTH_PATH` is launcher-only — **verified-in-code**, live-observed on 1.4.18 | `muse-auth.ts` (credential presence only, never opened); import allowlist `settings.json` and `skills/`, `auth.json` opt-in, `trust.json` refused (`app-home-profiles.ts`) — **verified-in-code** |
 | opencode / ACP CLIs | `ACPProcess.start()` in `acp-process.ts` — `spawn(bin, args, {stdio, cwd, windowsHide, detached})`, no `env` key ⇒ full inherit — **verified-in-code** | Full inherit — **verified-in-code**. #3290: once Station applies an approval mode to the chat, an `opencode` command additionally gets `OPENCODE_CONFIG_CONTENT`, the inherited value merged under Station's approval rules (until then, and for other commands, the environment is unchanged) ([`opencode-approval-launch.ts`](../../src-server/services/acp/opencode-approval-launch.ts)) | XDG (`XDG_CONFIG_HOME`/`XDG_DATA_HOME`) + `OPENCODE_CONFIG` — **to-probe**: spawn the CLI with overridden `XDG_CONFIG_HOME`/`XDG_DATA_HOME` in a temp home and observe where config/auth are actually read/written; Windows XDG honoring is unknown and also **to-probe** | none |
 
 **The profile-dir contract:** `<STATION_HOME>/app-homes/<engineId>/`, keyed by the stable

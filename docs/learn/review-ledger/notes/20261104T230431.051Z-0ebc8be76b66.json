@@ -1,7 +1,0 @@
-{
-  "revision": "dd8749e35770e24b91154a872abd8a975fd77b40",
-
-  "notes": [
-    {"path":"docs/reference/contracts.md","note":"Merge of #4563 into #4570: checked the managed-policy module row against packages/contracts/src/managed-policy.ts (managedSettingsProblems, managedSettingsSchemaError, MANAGED_POLICY_UNMANAGEABLE_SETTINGS, withoutLockedProjectFields, MANAGED_SETTING_PROJECT_FIELDS, the ceiling cross-check, comparison, clamp, mode names, denial and statement helpers and MANAGED_POLICY_APPROVAL_CEILING_CODE all exported); checked the managed-policy-approval-ceiling and managed_setting_locked failure rows against provider-failure.ts (both permission_denied, not retryable) and the pinned provider-failure test.","inputs":["docs/reference/contracts.md"]}
-  ]
-}

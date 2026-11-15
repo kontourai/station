@@ -264,12 +264,17 @@ export class AutomationStore {
     );
   }
 
-  /** Creates a disabled source with a server-issued id. */
+  /**
+   * Creates a disabled source with a server-issued id. `options.id` is a
+   * server-derived id (an agent proposal's, #4830) so a retried creation can
+   * find the earlier one; a duplicate id is refused by validation.
+   */
   async createSource(
     input: CreateAutomationSourceInput,
     assertCurrent?: () => Promise<void>,
+    options?: Readonly<{ id?: string }>,
   ): Promise<CreateAutomationSourceResult> {
-    const id = this.newId();
+    const id = options?.id ?? this.newId();
     let source: AutomationSource;
     let secret: string | undefined;
     if (input.kind === 'github-webhook') {
@@ -320,9 +325,10 @@ export class AutomationStore {
   async createRule(
     input: CreateAutomationRuleInput,
     assertCurrent?: () => Promise<void>,
+    options?: Readonly<{ id?: string }>,
   ): Promise<AutomationRule> {
     const rule: AutomationRule = {
-      id: this.newId(),
+      id: options?.id ?? this.newId(),
       name: input.name,
       mode: 'observe',
       sourceId: input.sourceId,

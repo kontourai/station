@@ -257,3 +257,42 @@ origins still refuse `null`); and the page inherits the app's CSP rather than
 
 Evidence: `runtime-routes-html-replies.test.ts` and `HtmlReply.test.tsx`; fault
 injection of either rule fails its test.
+
+### Staged shell delivery (2026-11-14, the #4821 residual)
+
+The srcdoc fallback inherited the embedding shell's CSP. In the Tauri shells
+that policy refuses inline scripts (`script-src` without `unsafe-inline`), so
+script-driven pages rendered blank on the phone: static markup, styles and SVG
+only, while headless preview — which inherits no shell policy — rendered the
+same HTML fully. The viewer/preview difference was delivery, not timing, and
+it reproduces under the shell's exact policy in Chromium
+(`html-reply-viewer-scripts.browser.test.tsx`: parity through the proxy,
+the inherited refusal, and the escape).
+
+The fallback now upgrades the frame to a document staged on the shell's own
+`station-html-reply:` scheme:
+
+- The shell's webview stages the composed bytes over the command bridge; the
+  scheme handler serves only staged bytes — no network fetch, no credential
+  read, no general authenticated proxy (the plugin asset protocol's rule
+  stands).
+- Admission mirrors the plugin asset protocol: a per-launch HMAC capability
+  in the URL, shell webview labels only (main and workspace pop-outs), a
+  fixed URL shape, bounded staged bytes (8 MiB + headroom across 16 slots)
+  and bounded in-flight requests.
+- The frame stays `sandbox="allow-scripts"` — an opaque origin that cannot
+  reach Station. The delivered document keeps its own meta CSP ahead of the
+  authored bytes, so the page-level network denial is unchanged, and a
+  success response carries no header CSP: a header policy there would
+  re-create exactly the inherited refusal this scheme exists to remove.
+- The app CSP gains only a `frame-src` source for the scheme; its script and
+  style policy are untouched.
+
+Scheme documents are real documents on every Wry platform — WKURLSchemeHandler
+on iOS, registered schemes on Linux, and `http(s)://<scheme>.localhost`
+interception on Windows and Android — so no shell policy is inherited; the
+plugin protocol's alias handling already depends on that materialization.
+Until the phone shell verifies the delivered page on device, this lane's
+claims rest on the Rust unit tests, the staged-upgrade component test, and
+the browser evidence above; native/device proof is recorded separately per
+the native verification guide.

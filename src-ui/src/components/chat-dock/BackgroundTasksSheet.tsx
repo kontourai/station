@@ -55,7 +55,7 @@ export interface BackgroundTasksSheetProps {
   station?: StationConnection;
   anchorRef: RefObject<HTMLElement | null>;
   returnFocusTarget?: HTMLElement | null;
-  onOpenTranscript: (threadId: string) => void;
+  onOpenTranscript: (threadId: string, title?: string) => void;
   onClose: () => void;
 }
 

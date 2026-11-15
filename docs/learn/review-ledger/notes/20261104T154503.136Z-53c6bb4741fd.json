@@ -1,7 +1,0 @@
-{
-  "revision": "16dacc4c9755f1fdaf288fbdad2ea9a327b82e87",
-
-  "notes": [
-    {"path":"docs/user/settings.md","note":"Continue after restart paragraph now names what the fixed note asks: check git status/log, the Task's PR and issue, background processes, and not repeat a push, PR, comment or outside action until confirmed; matches TURN_INTERRUPTED_CONTINUE_PROMPT in runtime-event-projection.ts and the ChatDockBody send. Rest of the row unchanged.","inputs":["docs/user/settings.md"]}
-  ]
-}

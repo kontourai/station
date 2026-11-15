@@ -759,6 +759,36 @@ describe('qualification health through the GitHub API', () => {
     );
   });
 
+  it('counts a failed CLI ledger fallback against the CLI leg, not the native one', async () => {
+    const { result } = await observe({
+      manualRuns: [
+        run(2, 1, {
+          path: '.github/workflows/nightly.yml',
+          event: 'schedule',
+          conclusion: 'failure',
+        }),
+      ],
+      jobs: {
+        1: [gate()],
+        2: [
+          gate({ name: '1 · Source gate (lint, typecheck, browser smoke)' }),
+          gate({ name: '3 · Publish CLI to npm nightly' }),
+          gate({
+            name: '4 · Record the CLI ship the cohort did not',
+            conclusion: 'failure',
+          }),
+        ],
+      },
+    });
+    expect(result.healthy).toBe(false);
+    expect(result.summary).toContain(
+      'cli https://github.com/owner/repo/actions/runs/2',
+    );
+    expect(result.summary).not.toContain(
+      'native https://github.com/owner/repo/actions/runs/2',
+    );
+  });
+
   it('does not require the retired qualification-driven delivery setting', async () => {
     const { result } = await observe({ enabled: false });
     expect(result.reasons).toEqual([]);
@@ -1021,6 +1051,10 @@ describe('qualification watchdog workflow authority', () => {
       workflow.jobs.health.steps
         .filter((step) => step.run)
         .map((step) => step.run),
-    ).toEqual(['node scripts/qualification-health.mjs']);
+    ).toEqual([
+      // Selecting the run to classify is read-only; it launches nothing.
+      'node scripts/qualification-health.mjs select-run',
+      'node scripts/qualification-health.mjs',
+    ]);
   });
 });

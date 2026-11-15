@@ -1,7 +1,0 @@
-{
-  "revision": "443525c6391299e53e8c8c63d12af330b36d51b9",
-
-  "notes": [
-    {"path":"docs/design/automations.md","note":"#4688 notification-delivery.md only gained a sentence on toast dismissal callbacks and named action failures; the automation repair/notification routing this document cites from it is unchanged.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]}
-  ]
-}

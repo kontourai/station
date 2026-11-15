@@ -383,33 +383,47 @@ function markBox() {
 // Android exposes the central 72 of a 108dp adaptive layer. Fill that
 // viewport with the map face; the launcher supplies the outer silhouette.
 const ANDROID_SCALE = (S * 72) / 108 / (2 * TILE.half * V.s);
-// The desktop master enlarges the artwork so the tile spans about two thirds
+// The framed master enlarges the artwork so the tile spans about two thirds
 // of the icon (it is 57% in the square master); its farthest corner, 424 x
 // 1.15 = 488 units out, stays inside the rounded body (629 units at 45deg).
-const DESKTOP_SCALE = 1.15;
+const FRAMED_SCALE = 1.15;
+// The rounded body's corner in a 1024 square (the macOS grid's 185.4 of 824).
+const BODY_CORNER = 230.4;
+// The side of the square map face in 1024-body units.
+const faceSide = () => 2 * TILE.half * V.s;
+// The artwork scaled about the face centre so the face spans the whole 1024
+// square. The tile's own rounded corners (12% of its side) lie inside the
+// 22.5% body corner that clips this, so only the face shows.
+const faceFill = (art) =>
+  `<g transform="translate(${S / 2} ${S / 2}) scale(${fmt(S / faceSide(), 5)}) translate(${-V.cx} ${-V.cy})">${art}</g>`;
 
 const svg = (viewBox, inner) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="1024" height="1024">${inner}</svg>\n`;
 
 /**
  * One channel's icon as SVG text.
- *   macos  - the artwork on the macOS icon grid: an 824 body inset 100 in the
- *            1024 canvas, continuous corner 185.4, a soft drop shadow; alpha
- *            outside the body. The desktop sets come from this.
- *   square - the uncropped opaque composition for Windows tiles and the PWA.
- *   ios    - an opaque crop to the map face, filling the iOS launcher mask.
+ *   macos  - the macOS icon grid: an 824 body inset 100 in the 1024 canvas,
+ *            continuous corner 185.4, a soft drop shadow, alpha outside it.
+ *            Inside the body the map face fills edge to edge, with no
+ *            backdrop, base layer or slab showing. Every .icns comes from it.
+ *   desktop - the same full-bleed map face in a rounded body with no grid
+ *            inset or shadow: the .ico and the Linux/Windows PNGs, drawn at
+ *            16-32px where the grid's padding would shrink the face.
+ *   framed - the tile and base layer on the channel backdrop in a rounded
+ *            body, enlarged about its centre: the tray (icon.png, embedded
+ *            by tray.rs) and the web install icon keep this composition.
+ *   square - the uncropped opaque composition for the web maskable icon.
+ *   ios    - an opaque crop to the map face, filling a platform mask: the
+ *            iOS sets, the Live Activity and the Windows Square/Store tiles.
  *   android - the map face fills the launcher's central 72 of 108dp. Masks
  *            crop the tile corners and base; the river and compass stay central.
- *   desktop - the square with rounded corners and no drop shadow or grid
- *            inset, the artwork enlarged about its centre: Windows and Linux
- *            draw this at 16-32px in taskbars, title bars and the tray, where
- *            the macOS grid's padding would leave the tile a few pixels wide.
  *   mark   - the tile and base layer cut out on transparency, cropped square:
  *            the in-app mark and the native launch-screen logo.
  */
 export const ICON_TARGETS = Object.freeze([
   'macos',
   'desktop',
+  'framed',
   'square',
   'ios',
   'android',
@@ -425,26 +439,33 @@ export function stationIconSvg(channel, target) {
   }
   if (target === 'ios') {
     const { defs, art } = body(pal, id);
-    const side = 2 * TILE.half * V.s;
+    const side = faceSide();
     return svg(
       `${V.cx - side / 2} ${V.cy - side / 2} ${side} ${side}`,
       `<defs>${defs}</defs>${art}`,
     );
   }
-  if (target === 'android' || target === 'desktop') {
+  if (target === 'android' || target === 'framed') {
     const { defs, art } = body(pal, id, { backdrop: false });
     const box = markBox();
     const [cx, cy] =
       target === 'android'
         ? [V.cx, V.cy]
         : [box.x + box.side / 2, box.y + box.side / 2];
-    const scale = target === 'android' ? ANDROID_SCALE : DESKTOP_SCALE;
+    const scale = target === 'android' ? ANDROID_SCALE : FRAMED_SCALE;
     const placed = `<rect width="${S}" height="${S}" fill="url(#bg-${id})"/><g transform="translate(${S / 2} ${S / 2}) scale(${scale}) translate(${fmt(-cx, 3)} ${fmt(-cy, 3)})">${art}</g>`;
     if (target === 'android')
       return svg(`0 0 ${S} ${S}`, `<defs>${defs}</defs>${placed}`);
     return svg(
       `0 0 ${S} ${S}`,
-      `<defs>${defs}<clipPath id="body-${id}"><rect width="${S}" height="${S}" rx="230.4"/></clipPath></defs><g clip-path="url(#body-${id})">${placed}</g>`,
+      `<defs>${defs}<clipPath id="body-${id}"><rect width="${S}" height="${S}" rx="${BODY_CORNER}"/></clipPath></defs><g clip-path="url(#body-${id})">${placed}</g>`,
+    );
+  }
+  if (target === 'desktop') {
+    const { defs, art } = body(pal, id);
+    return svg(
+      `0 0 ${S} ${S}`,
+      `<defs>${defs}<clipPath id="body-${id}"><rect width="${S}" height="${S}" rx="${BODY_CORNER}"/></clipPath></defs><g clip-path="url(#body-${id})">${faceFill(art)}</g>`,
     );
   }
   if (target === 'mark') {
@@ -461,9 +482,9 @@ export function stationIconSvg(channel, target) {
     return svg(
       `0 0 ${S} ${S}`,
       `<defs>${defs}
-<clipPath id="body-${id}"><rect width="${S}" height="${S}" rx="230.4"/></clipPath>
+<clipPath id="body-${id}"><rect width="${S}" height="${S}" rx="${BODY_CORNER}"/></clipPath>
 <filter id="drop-${id}" x="-10%" y="-10%" width="120%" height="125%"><feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000" flood-opacity=".3"/></filter></defs>
-<g filter="url(#drop-${id})"><g transform="translate(100 100) scale(${k})"><g clip-path="url(#body-${id})">${art}</g></g></g>`,
+<g filter="url(#drop-${id})"><g transform="translate(100 100) scale(${k})"><g clip-path="url(#body-${id})">${faceFill(art)}</g></g></g>`,
     );
   }
   throw new Error(`Unknown Station icon target ${target}`);

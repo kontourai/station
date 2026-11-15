@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { _setApiBase } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -157,6 +158,15 @@ function fixture() {
         }
         return response;
       }
+      // Read marks settle inside the test that made them (the SDK waits for
+      // an API base, so an unanswered one would land in a later test).
+      if (url.pathname === '/api/read-markers/mark')
+        return ok({
+          target: body.target,
+          latestVersion: body.version,
+          seenVersion: body.version,
+          unread: false,
+        });
       if (url.pathname === '/api/projects/team/channels')
         return ok({
           channels: provisioned
@@ -329,6 +339,7 @@ beforeEach(() => {
   conflict = false;
   note = null;
   selectedAuthority = 'one';
+  _setApiBase(requestScope.apiBase);
   setClientCredentialResolver(() => ({
     origin: requestScope.apiBase,
     requestAuthority: {
@@ -341,6 +352,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  _setApiBase('');
   setClientCredentialResolver(undefined);
   vi.unstubAllGlobals();
 });
@@ -1341,4 +1353,529 @@ test('a pushed completion waits for an in-flight inspect and then updates withou
   await screen.findByText('Agent answer shared in the Room.');
   expect(agentWrites).toHaveLength(1);
   expect(agentOperations).not.toContain('reconcile');
+});
+
+// #4855 review: read marking, thread sends and old thread links.
+function storedMessage(seq: number, text: string, replyTo?: string) {
+  return {
+    roomId,
+    messageId: `00000000-0000-4000-8000-${String(seq).padStart(12, '0')}`,
+    intentId: randomCorrelationId(),
+    seq,
+    actor,
+    text,
+    createdAt: at,
+    ...(replyTo ? { replyTo } : {}),
+  };
+}
+/** The room with a route-owned thread, as the room destination mounts it. */
+function mountThread(rootId: string) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <ProjectRoom
+        slug="team"
+        projectId="project"
+        requestScope={requestScope}
+        routeChannel={{ id: undefined }}
+        thread={{ rootId, open: () => {} }}
+      />
+    </QueryClientProvider>,
+  );
+}
+/** Records read-marker marks; `history` can hold or fail the history read. */
+function watchMarks(history?: (url: URL) => Promise<Response | undefined>) {
+  const original = vi.mocked(fetch).getMockImplementation()!;
+  const marks: Array<{ version: number }> = [];
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname === '/api/read-markers/mark') {
+      const body = JSON.parse(String(init?.body));
+      marks.push(body);
+      return Response.json({
+        success: true,
+        data: {
+          target: body.target,
+          latestVersion: body.version,
+          seenVersion: body.version,
+          unread: false,
+        },
+      });
+    }
+    if (
+      history &&
+      url.pathname.endsWith('/messages') &&
+      init?.method !== 'POST'
+    ) {
+      const answer = await history(url);
+      if (answer) return answer;
+    }
+    return original(input, init);
+  });
+  return marks;
+}
+
+test('a held history read marks nothing; the shown version is marked once it shows', async () => {
+  messages = [storedMessage(1, 'Unseen held history')];
+  let requested = false;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const marks = watchMarks(async () => {
+    requested = true;
+    await held;
+    return undefined;
+  });
+  try {
+    mount();
+    await waitFor(() => expect(requested).toBe(true));
+    // Discovery already reported version 1; nothing of it is on screen.
+    await screen.findByRole('textbox', { name: 'Message the project' });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByText('Unseen held history')).toBeNull();
+    expect(marks).toEqual([]);
+    release();
+    await screen.findByText('Unseen held history');
+    await waitFor(() => expect(marks.map((mark) => mark.version)).toEqual([1]));
+  } finally {
+    release();
+  }
+});
+
+test('a failed history read never moves the read marker', async () => {
+  messages = [storedMessage(1, 'Never shown')];
+  const marks = watchMarks(async () =>
+    Response.json({ success: false, error: 'Unavailable' }, { status: 503 }),
+  );
+  mount();
+  await screen.findByText('History could not be loaded.');
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(screen.queryByText('Never shown')).toBeNull();
+  expect(marks).toEqual([]);
+});
+
+test('every send from an open thread replies to its root, not only the first', async () => {
+  const root = storedMessage(1, 'Thread root');
+  messages = [root];
+  mountThread(root.messageId);
+  const input = await screen.findByRole('textbox', { name: 'Reply in thread' });
+  await screen.findByText('Thread root');
+  const sendReply = async (text: string) => {
+    fireEvent.change(input, { target: { value: text } });
+    await waitFor(() =>
+      expect(
+        screen.getByRole<HTMLButtonElement>('button', { name: 'Send message' })
+          .disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await screen.findByText(text);
+  };
+  await sendReply('First reply');
+  await sendReply('Second reply');
+  expect(writes.map((write) => write.replyTo)).toEqual([
+    root.messageId,
+    root.messageId,
+  ]);
+  // Both stay in the thread, under its count.
+  expect(screen.getByText('2 replies')).toBeTruthy();
+});
+
+test('a thread link to a root older than the newest window pages back to it', async () => {
+  messages = Array.from({ length: 30 }, (_, index) =>
+    storedMessage(
+      index + 1,
+      index === 0 ? 'Older thread root' : `Other ${index + 1}`,
+    ),
+  );
+  const root = messages[0]!;
+  messages.push(storedMessage(31, 'A later reply', String(root.messageId)));
+  mountThread(String(root.messageId));
+  await screen.findByText('Older thread root');
+  expect(screen.getByText('A later reply')).toBeTruthy();
+  expect(screen.getByText('1 reply')).toBeTruthy();
+  expect(screen.getByRole('textbox', { name: 'Reply in thread' })).toBeTruthy();
+});
+
+test('a thread link to a message the channel does not have says so, with no composer', async () => {
+  messages = Array.from({ length: 31 }, (_, index) =>
+    storedMessage(index + 1, `Message ${index + 1}`),
+  );
+  mountThread('00000000-0000-4000-8000-999999999999');
+  await screen.findByText('This message is not in #general.');
+  // The empty state's own way back, beside the thread bar's.
+  expect(
+    screen.getAllByRole('button', { name: 'Back to #general' }).length,
+  ).toBe(2);
+  expect(screen.queryByRole('textbox', { name: 'Reply in thread' })).toBeNull();
+});
+
+// #4855 delta review: several quick backward pages, and thread drafts.
+/** The room with a route-owned thread whose `open` re-renders the route. */
+function mountThreadRoute(rootId?: string) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  let ui: ReturnType<typeof render>;
+  const tree = (next?: string) => (
+    <QueryClientProvider client={client}>
+      <ProjectRoom
+        slug="team"
+        projectId="project"
+        requestScope={requestScope}
+        routeChannel={{ id: undefined }}
+        thread={{ rootId: next, open: (root) => ui.rerender(tree(root)) }}
+      />
+    </QueryClientProvider>
+  );
+  ui = render(tree(rootId));
+  return ui;
+}
+/** Records each history read's `after` cursor. */
+function watchHistoryReads() {
+  const reads: number[] = [];
+  watchMarks(async (url) => {
+    reads.push(Number(url.searchParams.get('after')));
+    return undefined;
+  });
+  return reads;
+}
+
+test('a thread link pages back through many quick windows to a root inside the bound', async () => {
+  // 501 short messages answer at once, so React batches the renders between
+  // pages; the root (seq 26) is in the 20th and last window kept loaded.
+  messages = Array.from({ length: 501 }, (_, index) =>
+    storedMessage(index + 1, `Deep update ${index + 1}`),
+  );
+  const reads = watchHistoryReads();
+  mountThreadRoute(String(messages[25]!.messageId));
+  await screen.findByText('Deep update 26', {}, { timeout: 10_000 });
+  expect(reads).toHaveLength(20);
+  expect(reads.at(-1)).toBe(1);
+  expect(screen.getByRole('textbox', { name: 'Reply in thread' })).toBeTruthy();
+});
+
+test('a thread link past the loaded-history bound stops at 20 windows and says so', async () => {
+  messages = Array.from({ length: 501 }, (_, index) =>
+    storedMessage(index + 1, `Bound update ${index + 1}`),
+  );
+  const reads = watchHistoryReads();
+  mountThreadRoute(String(messages[0]!.messageId));
+  await screen.findByText(
+    'This thread is too far back to open here.',
+    {},
+    { timeout: 10_000 },
+  );
+  expect(reads).toHaveLength(20);
+  expect(Math.min(...reads)).toBe(1);
+  expect(screen.queryByRole('textbox', { name: 'Reply in thread' })).toBeNull();
+});
+
+test('an unsent thread reply stays with its thread; the channel composer has its own draft', async () => {
+  const root = storedMessage(1, 'Draft target root');
+  messages = [root];
+  mountThreadRoute(root.messageId);
+  const threadInput = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Reply in thread',
+  });
+  fireEvent.change(threadInput, {
+    target: { value: 'Unsent answer for this thread' },
+  });
+  // Leaving the thread does not carry its text to the channel.
+  fireEvent.click(
+    screen.getAllByRole('button', { name: 'Back to #general' })[0]!,
+  );
+  const channelInput = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Message the project',
+  });
+  expect(channelInput.value).toBe('');
+  const send = () =>
+    screen.getByRole<HTMLButtonElement>('button', { name: 'Send message' });
+  fireEvent.change(channelInput, { target: { value: 'A channel message' } });
+  await waitFor(() => expect(send().disabled).toBe(false));
+  fireEvent.click(send());
+  await screen.findByText('A channel message');
+  // Back in the thread, its own draft is waiting and still answers the root.
+  // The root is the first message; its Reply opens its thread.
+  fireEvent.click(screen.getAllByRole('button', { name: 'Reply to Ada' })[0]!);
+  const restored = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Reply in thread',
+  });
+  expect(restored.value).toBe('Unsent answer for this thread');
+  await waitFor(() => expect(send().disabled).toBe(false));
+  fireEvent.click(send());
+  await waitFor(() => expect(writes).toHaveLength(2));
+  expect(writes.map((write) => [write.text, write.replyTo ?? null])).toEqual([
+    ['A channel message', null],
+    ['Unsent answer for this thread', root.messageId],
+  ]);
+});
+
+test('a Project this Station does not have reads as missing, not as an unavailable room to retry', async () => {
+  // The room routes answer 404 with the Project's own code (#4855).
+  const original = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = new URL(String(input));
+    if (
+      init?.method !== 'POST' &&
+      (url.pathname === '/api/projects/team/room' ||
+        url.pathname === '/api/projects/team/channels')
+    )
+      return Response.json(
+        { error: { code: 'project_room_project_not_found' } },
+        { status: 404 },
+      );
+    return original(input, init);
+  });
+  mount();
+  await screen.findByText("This Project isn't on this Station.");
+  expect(screen.queryByText(/Room unavailable/)).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Open room' })).toBeNull();
+});
+
+// #4855 round 3: a coarse clock, and a late Agent acknowledgement.
+test('a thread seek keeps paging when successive reads share a timestamp', async () => {
+  // A privacy-rounded clock gives quick reads the same `dataUpdatedAt`; the
+  // seek must still page from the history result itself.
+  messages = Array.from({ length: 501 }, (_, index) =>
+    storedMessage(index + 1, `Clock update ${index + 1}`),
+  );
+  const realNow = Date.now.bind(Date);
+  const clock = vi
+    .spyOn(Date, 'now')
+    .mockImplementation(() => Math.floor(realNow() / 100) * 100);
+  try {
+    const reads = watchHistoryReads();
+    mountThreadRoute(String(messages[25]!.messageId));
+    await screen.findByText('Clock update 26', {}, { timeout: 10_000 });
+    expect(reads).toHaveLength(20);
+  } finally {
+    clock.mockRestore();
+  }
+});
+
+test('an Agent acknowledgement after leaving the thread clears only the thread draft it was asked from', async () => {
+  const root = storedMessage(1, 'Agent draft root');
+  messages = [root];
+  mountThreadRoute();
+  const channel = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Message the project',
+  });
+  fireEvent.change(channel, { target: { value: 'Private channel draft' } });
+  // Open the root's thread and ask an Agent from it.
+  fireEvent.click(screen.getByRole('button', { name: 'Reply to Ada' }));
+  const input = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Reply in thread',
+  });
+  fireEvent.change(input, { target: { value: 'Thread agent request' } });
+  fireEvent.change(input, {
+    target: { value: 'Thread agent request @', selectionStart: 22 },
+  });
+  fireEvent.select(input, { target: { selectionStart: 22 } });
+  fireEvent.click(await screen.findByRole('option', { name: /Researcher/ }));
+  const release = holdAgentRequest();
+  try {
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Ask Researcher' }),
+    );
+    await waitFor(() => expect(agentWrites).toHaveLength(1));
+    // Leave the thread before the acknowledgement arrives.
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Back to #general' })[0]!,
+    );
+    const back = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Message the project',
+    });
+    expect(back.value).toBe('Private channel draft');
+    await act(async () => {
+      release();
+    });
+    await screen.findByText(
+      'Agent is working. Its answer will appear in the Room.',
+    );
+    // The channel keeps its own draft.
+    expect(
+      screen.getByRole<HTMLTextAreaElement>('textbox', {
+        name: 'Message the project',
+      }).value,
+    ).toBe('Private channel draft');
+    // The thread's asked draft was cleared, and nothing else moved into it.
+    fireEvent.click(screen.getByRole('button', { name: 'Reply to Ada' }));
+    const reopened = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Reply in thread',
+    });
+    expect(reopened.value).toBe('');
+    expect(agentWrites[0]!.replyTo).toBe(root.messageId);
+  } finally {
+    release();
+  }
+});
+
+test('an acknowledgement keeps a newer draft retyped to the asked text, with its recipient (#4855)', async () => {
+  mount();
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  await waitFor(() =>
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Recap Project' })
+        .disabled,
+    ).toBe(false),
+  );
+  await mentionAgent('Researcher');
+  fireEvent.change(composerField(), { target: { value: 'Continue' } });
+  const release = holdAgentRequest();
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+    await waitFor(() => expect(agentWrites).toHaveLength(1));
+    // A newer draft that happens to read the same as the one asked.
+    fireEvent.change(composerField(), { target: { value: 'Something else' } });
+    fireEvent.change(composerField(), { target: { value: 'Continue' } });
+    await act(async () => release());
+    await screen.findByText(
+      'Agent is working. Its answer will appear in the Room.',
+    );
+    expect(composerField().value).toBe('Continue');
+    expect(screen.getByText('@Researcher')).toBeTruthy();
+  } finally {
+    release();
+  }
+});
+
+test('a draft stored before revisions existed is still cleared by a late acknowledgement after leaving its thread (#4855)', async () => {
+  const root = storedMessage(1, 'Legacy draft root');
+  messages = [root];
+  // A thread draft written by the build before revisions: text and an Agent
+  // recipient, no `revision`. The key is the thread's own draft key.
+  sessionStorage.setItem(
+    `station-room-draft:${JSON.stringify([
+      requestScope.authorityKey,
+      requestScope.apiBase,
+      'project',
+      'team',
+      'project-room',
+      'thread',
+      root.messageId,
+    ])}`,
+    JSON.stringify({
+      text: 'Legacy thread ask',
+      recipient: { id: 'researcher', name: 'Researcher' },
+    }),
+  );
+  mountThreadRoute();
+  await screen.findByText('Legacy draft root');
+  fireEvent.click(screen.getByRole('button', { name: 'Reply to Ada' }));
+  const thread = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Reply in thread',
+  });
+  expect(thread.value).toBe('Legacy thread ask');
+  const release = holdAgentRequest();
+  try {
+    // Ask without editing, then leave before the acknowledgement arrives.
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Ask Researcher' }),
+    );
+    await waitFor(() => expect(agentWrites).toHaveLength(1));
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Back to #general' })[0]!,
+    );
+    await screen.findByRole('textbox', { name: 'Message the project' });
+    await act(async () => release());
+    await screen.findByText(
+      'Agent is working. Its answer will appear in the Room.',
+    );
+    // The asked draft was cleared, so its text does not come back.
+    fireEvent.click(screen.getByRole('button', { name: 'Reply to Ada' }));
+    const reopened = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Reply in thread',
+    });
+    expect(reopened.value).toBe('');
+    expect(screen.queryByText('@Researcher')).toBeNull();
+    expect(agentWrites[0]!.text).toBe('Legacy thread ask');
+  } finally {
+    release();
+  }
+});
+
+test('an immediate Enter on a legacy thread draft submits the migrated revision, so a late acknowledgement still clears it', async () => {
+  const { createRoot } = await import('react-dom/client');
+  const { flushSync } = await import('react-dom');
+  const rootMessage = storedMessage(1, 'Immediate legacy root');
+  messages = [rootMessage];
+  const draftKey = `station-room-draft:${JSON.stringify([
+    requestScope.authorityKey,
+    requestScope.apiBase,
+    'project',
+    'team',
+    'project-room',
+    'thread',
+    rootMessage.messageId,
+  ])}`;
+  sessionStorage.setItem(
+    draftKey,
+    JSON.stringify({
+      text: 'Immediate legacy ask',
+      recipient: { id: 'researcher', name: 'Researcher' },
+    }),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  const tree = (rootId?: string) => (
+    <QueryClientProvider client={client}>
+      <ProjectRoom
+        slug="team"
+        projectId="project"
+        requestScope={requestScope}
+        routeChannel={{ id: undefined }}
+        thread={{ rootId, open: () => {} }}
+      />
+    </QueryClientProvider>
+  );
+  const release = holdAgentRequest();
+  try {
+    await act(async () => root.render(tree()));
+    await screen.findByText('Immediate legacy root');
+    await waitFor(() =>
+      expect(
+        screen.getByRole<HTMLButtonElement>('button', { name: 'Recap Project' })
+          .disabled,
+      ).toBe(false),
+    );
+    // Commit the route without act's additional drain of passive updates.
+    flushSync(() => root.render(tree(rootMessage.messageId)));
+    const field = screen.getByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Reply in thread',
+    });
+    expect(field.value).toBe('Immediate legacy ask');
+    const ask = screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Ask Researcher',
+    });
+    if (ask.disabled) await waitFor(() => expect(ask.disabled).toBe(false));
+    field.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+    );
+    await waitFor(() => expect(agentWrites).toHaveLength(1));
+    await act(async () => root.render(tree()));
+    await act(async () => release());
+    await screen.findByText(
+      'Agent is working. Its answer will appear in the Room.',
+    );
+    await act(async () => root.render(tree(rootMessage.messageId)));
+    expect(
+      screen.getByRole<HTMLTextAreaElement>('textbox', {
+        name: 'Reply in thread',
+      }).value,
+    ).toBe('');
+  } finally {
+    release();
+    await act(async () => root.unmount());
+    container.remove();
+    client.clear();
+  }
 });

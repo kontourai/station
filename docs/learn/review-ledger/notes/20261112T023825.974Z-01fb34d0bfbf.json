@@ -1,9 +1,0 @@
-{
-  "revision": "9a89755f12e7ce710924c04185b8cdd7a8562fdb",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"Scoped review (#4810 keyboard delta): RoomComposer's keep-above-keyboard scroll moved into useKeepAboveKeyboard and now runs once per focus or keyboard opening, yielding to the reader's own scrolling. The Composer section (@ picker, Send, drafts) makes no claim about scrolling or keyboard placement.","inputs":["docs/design/task-room-agent-requests.md","src-ui/src/components/room/RoomComposer.tsx"]},
-
-    {"path":"docs/user/getting-started.md","note":"Scoped review (#4810 keyboard delta): RoomComposer's keep-above-keyboard scroll moved into useKeepAboveKeyboard and now runs once per focus or keyboard opening, yielding to the reader's own scrolling. No user guide step describes the room composer's keyboard placement.","inputs":["docs/user/getting-started.md","src-ui/src/components/room/RoomComposer.tsx"]}
-  ]
-}

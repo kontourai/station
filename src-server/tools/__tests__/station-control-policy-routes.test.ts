@@ -237,6 +237,27 @@ const ARGS: Record<string, Record<string, unknown>> = {
     schedule: { kind: 'every', everyMs: 3_600_000 },
     prompt: 'p',
   },
+  propose_automation_source: {
+    kind: 'github-poll',
+    name: 'ci',
+    repository: 'o/r',
+  },
+  propose_automation_rule: {
+    name: 'ci failures',
+    sourceId: 's',
+    match: {
+      type: 'github.workflow_run.completed',
+      where: { 'run.conclusion': 'failure' },
+    },
+    action: {
+      kind: 'dispatch-task',
+      projectId: 'p',
+      agentId: 'a',
+      instructions: 'i',
+      budget: { maxTurns: 1, maxTokens: 1, maxWallRuntimeMs: 1 },
+    },
+    rateLimit: { maxStartsPerHour: 1 },
+  },
   declare_pull_request: {
     provider: 'github',
     host: 'github.com',

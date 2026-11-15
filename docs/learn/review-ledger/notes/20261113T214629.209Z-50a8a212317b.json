@@ -1,0 +1,7 @@
+{
+  "revision": "d7c32634930b555d9703502e5cc66e1eb26ec1b3",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Fix round 2 (Muse): only the contracts.md Muse steer, sandbox and profile-key wording changed; the glossary defines no Muse, steer-reply or sandbox-availability term (grep), so no definition is affected.","inputs":["docs/glossary.md","docs/reference/contracts.md"]}
+  ]
+}

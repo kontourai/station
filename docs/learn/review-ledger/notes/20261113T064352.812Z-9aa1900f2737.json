@@ -1,0 +1,7 @@
+{
+  "revision": "c1858287d5987519289f896019d0ac4ede5c7ae1",
+
+  "notes": [
+    {"path":"docs/third-party/provider-icons.md","note":"Reviewed BrandIcon image and brand precedence and its opt-in fallback. Composer alone requests AgentGlyph via AgentIcon; all other fallback callers retain initials. Bundled asset bytes and source attribution are unchanged.","inputs":["docs/third-party/provider-icons.md","src-ui/src/components/icons/BrandIcon.tsx"]}
+  ]
+}
