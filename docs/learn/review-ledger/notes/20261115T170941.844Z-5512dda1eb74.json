@@ -1,0 +1,7 @@
+{
+  "revision": "75118037bf6de0a99606da1a97921802d58eb9c6",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"StartComposer/NewChatModal gained an effortLabel field on the Agent chip; module ownership and boundaries unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}
