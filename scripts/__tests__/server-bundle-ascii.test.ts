@@ -1,17 +1,12 @@
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { assertAsciiServerBundles } from '../lib/server-bundle-ascii.mjs';
 
-const dirs: string[] = [];
-afterEach(() => {
-  for (const dir of dirs.splice(0))
-    rmSync(dir, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 function bundleDir(files: Record<string, string>) {
-  const dir = mkdtempSync(join(tmpdir(), 'server-bundle-ascii-'));
-  dirs.push(dir);
+  const dir = makeTempDir('server-bundle-ascii-');
   for (const [name, text] of Object.entries(files))
     writeFileSync(join(dir, name), text);
   return dir;

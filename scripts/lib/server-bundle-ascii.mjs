@@ -12,7 +12,7 @@ import { join } from 'node:path';
 const CONTEXT_BYTES = 60;
 
 /** Offsets and context of the first `limit` non-ASCII runs in `bytes`. */
-export function findNonAsciiRuns(bytes, limit = 10) {
+function findNonAsciiRuns(bytes, limit = 10) {
   const runs = [];
   let index = 0;
   while (index < bytes.length && runs.length < limit) {
