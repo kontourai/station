@@ -5142,6 +5142,16 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   // desktop terminal must still log to its stdout log file (#2327).
   delete serverEnv.STATION_STDOUT_LOGS;
   delete serverEnv.STATION_STDOUT_HANDSHAKE;
+  // Node's compile cache for the supervisor, every core generation it forks
+  // and its workload host, as the desktop sets it for its sidecar. Node
+  // reads it before parsing the bundle; each Station process removes it from
+  // its own environment, so user and third-party children never write here.
+  // Replaced, never inherited: an ambient value names someone else's cache.
+  // A watched source server compiles through a loader, so it gets none.
+  delete serverEnv.NODE_COMPILE_CACHE;
+  if (!watch) {
+    serverEnv.NODE_COMPILE_CACHE = join(projectHome, 'cache', 'node-compile');
+  }
   const internalApiToken = randomBytes(32).toString('base64url');
   const uiBootstrapToken = randomBytes(32).toString('base64url');
   serverEnv.STATION_INTERNAL_API_TOKEN = internalApiToken;

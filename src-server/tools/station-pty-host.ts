@@ -9,10 +9,15 @@
  */
 import type { WorkloadRequest } from '@kontourai/station-supervisor/protocol';
 import { NodePtyAdapter } from '../adapters/node-pty-adapter.js';
+import { consumeStationCompileCacheEnv } from '../runtime/bootstrap/station-compile-cache.js';
 import {
   PtyWorkloadHost,
   WorkloadFailure,
 } from '../services/terminal/pty-workload-host.js';
+
+// The supervisor's compile cache: kept out of the shells this host starts
+// (each also gets only its request's environment).
+consumeStationCompileCacheEnv();
 
 if (typeof process.send !== 'function') {
   process.stderr.write('station-pty-host: must be started by the supervisor\n');

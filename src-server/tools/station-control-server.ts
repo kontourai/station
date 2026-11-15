@@ -6,13 +6,20 @@
  */
 
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
-
+import {
+  consumeStationCompileCacheEnv,
+  flushStationCompileCacheAfterStartup,
+} from '../runtime/bootstrap/station-compile-cache.js';
 import { createStationControlMcpServer } from './station-control-mcp-server.js';
 import { installStationControlStdioEntry } from './station-control-shared.js';
 
 // A stdio child is a pooled, caller-less station-control process: mark it so
 // nothing it sends carries the server-self attestation.
 installStationControlStdioEntry();
+// Keep the server's compile cache out of anything this child starts, and
+// write it now: an engine may end this child with a signal.
+consumeStationCompileCacheEnv();
+flushStationCompileCacheAfterStartup();
 
 const inputClosed = new Promise<void>((resolve) => {
   process.stdin.once('end', resolve);
