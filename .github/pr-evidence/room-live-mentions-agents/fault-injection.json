@@ -1,0 +1,340 @@
+{
+  "base": "clean committed tree before each injection; restored with git checkout of the named file",
+  "injections": [
+    {
+      "id": "sdk-gap-check",
+      "behavior": "an injected sequence gap triggers a backfill",
+      "file": "packages/sdk/src/query-domains/projectRooms.ts",
+      "test": "packages/sdk/src/__tests__/project-room-live.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× a sequence gap is backfilled from history before the frame after it, never skipped 10119ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 5 passed (6)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  6 passed (6)"
+      ]
+    },
+    {
+      "id": "sdk-one-connection",
+      "behavior": "ten subscribed rooms use one connection (client hub)",
+      "file": "packages/sdk/src/client/project-room-live.ts",
+      "test": "packages/sdk/src/__tests__/project-room-live.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× ten rooms and the open one share one live connection 255ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 5 passed (6)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  6 passed (6)"
+      ]
+    },
+    {
+      "id": "server-one-connection",
+      "behavior": "ten subscribed rooms use one connection (server stream admits each)",
+      "file": "src-server/routes/projects/project-room-live.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× live (#4798): ten rooms stream over one connection, each admitted on its own 30003ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 60 passed (61)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  61 passed (61)"
+      ]
+    },
+    {
+      "id": "server-gap-resync",
+      "behavior": "a burst the stream cannot describe is a resync, never a skip",
+      "file": "src-server/routes/projects/project-room-live.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× live (#4798): more appends than one pass may describe is a resync, never a silent skip 30007ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 60 passed (61)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  61 passed (61)"
+      ]
+    },
+    {
+      "id": "typing-clears-on-stop",
+      "behavior": "typing clears when the typist stops",
+      "file": "src-server/services/projects/project-room-service.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× live (#4798): typing shows, clears when the typist stops, and clears when their stream drops 8311ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 60 passed (61)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  61 passed (61)"
+      ],
+      "round1": {
+        "injected_exit": 0,
+        "injected_summary": [
+          "Tests  61 passed (61)"
+        ],
+        "note": "survived: the test did not reach the behavior; tightened in the next commit"
+      }
+    },
+    {
+      "id": "typing-clears-on-disconnect",
+      "behavior": "typing clears when the connection drops",
+      "file": "src-server/services/projects/project-room-service.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× live (#4798): typing shows, clears when the typist stops, and clears when their stream drops 6408ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 60 passed (61)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  61 passed (61)"
+      ],
+      "round1": {
+        "injected_exit": 0,
+        "injected_summary": [
+          "Tests  61 passed (61)"
+        ],
+        "note": "survived: the test did not reach the behavior; tightened in the next commit"
+      }
+    },
+    {
+      "id": "typing-expires",
+      "behavior": "typing expires on its own",
+      "file": "src-server/services/projects/project-room-service.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× live (#4798): typing expires on its own when it is not renewed 251ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 60 passed (61)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  61 passed (61)"
+      ]
+    },
+    {
+      "id": "mention-only-newly-named",
+      "behavior": "a person mention notifies only that person, once",
+      "file": "src-server/services/projects/project-room-service.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× mentions (#4799): a message names a member by id; only that person is told, once, and an edit tells only someone newly named 205ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 60 passed (61)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  61 passed (61)"
+      ]
+    },
+    {
+      "id": "mention-member-check",
+      "behavior": "mentioning someone who is not a member is refused",
+      "file": "src-server/services/projects/project-room-service.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× mentions (#4799): a message names a member by id; only that person is told, once, and an edit tells only someone newly named 289ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 60 passed (61)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  61 passed (61)"
+      ]
+    },
+    {
+      "id": "mention-principal-audience",
+      "behavior": "a mention reaches only that person's private feed",
+      "file": "src-server/services/projects/project-room-mention-notifications.ts",
+      "test": "src-server/services/projects/project-room-mention-notifications.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× a person mention reaches only that person, once, and opens the exact message 207ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 1 passed (2)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  2 passed (2)"
+      ]
+    },
+    {
+      "id": "mention-by-id-rename",
+      "behavior": "renaming a person updates how old mentions render",
+      "file": "src-ui/src/components/room/RoomMessageText.tsx",
+      "test": "src-ui/src/components/room/__tests__/RoomMessageText.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× a structured mention renders the current name by id, and the stored one when unknown 1756ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 1 passed (2)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  2 passed (2)"
+      ]
+    },
+    {
+      "id": "legacy-mention",
+      "behavior": "old **@name** messages still render",
+      "file": "src-ui/src/components/room/RoomMessageText.tsx",
+      "test": "src-ui/src/components/room/__tests__/RoomMessageText.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× an old **@Name** message in its stored shape still renders the chip 14ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 1 passed (2)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  2 passed (2)"
+      ]
+    },
+    {
+      "id": "picked-person-is-mention",
+      "behavior": "a person picked from @ is sent as a structured mention",
+      "file": "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "test": "src-ui/src/views/project-page/ProjectRoomLive.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× a person picked from @ is sent as a structured mention; a name typed by hand is not 175ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 5 passed (6)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  6 passed (6)"
+      ]
+    },
+    {
+      "id": "notification-opens-message",
+      "behavior": "opening the notification scrolls to the message",
+      "file": "src-ui/src/components/room/RoomConversation.tsx",
+      "test": "src-ui/src/views/project-page/ProjectRoomLive.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× a notification’s message is brought into view and marked 10148ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 5 passed (6)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  6 passed (6)"
+      ]
+    },
+    {
+      "id": "agent-working-hard-coded-on",
+      "behavior": "the working indicator follows the request lifecycle (fails if hard-coded on)",
+      "file": "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "test": "src-ui/src/views/project-page/ProjectRoomLive.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× the Agent working row appears and clears with the request record 10154ms",
+        "× the person who asked can Stop a working request, and Retry asks again with the same words 10173ms"
+      ],
+      "injected_summary": [
+        "Tests  2 failed | 4 passed (6)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  6 passed (6)"
+      ]
+    },
+    {
+      "id": "sidebar-working-hard-coded-on",
+      "behavior": "the sidebar working mark follows the request lifecycle",
+      "file": "packages/sdk/src/query-domains/projectRooms.ts",
+      "test": "src-ui/src/components/project-conversations/__tests__/ProjectConversationListLive.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× every channel rides one connection; a working Agent and a mention of the reader mark their rows 10206ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed (1)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  1 passed (1)"
+      ],
+      "round1": {
+        "injected_exit": 0,
+        "injected_summary": [
+          "Tests  1 passed (1)"
+        ],
+        "note": "survived: the test did not reach the behavior; tightened in the next commit"
+      }
+    },
+    {
+      "id": "sidebar-mention-dot",
+      "behavior": "a mention marks the channel with a mention dot",
+      "file": "src-ui/src/components/project-conversations/projectConversationIndex.ts",
+      "test": "src-ui/src/components/project-conversations/__tests__/ProjectConversationListLive.test.tsx",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× every channel rides one connection; a working Agent and a mention of the reader mark their rows 10991ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed (1)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  1 passed (1)"
+      ]
+    },
+    {
+      "id": "read-summary-mentioned",
+      "behavior": "the read summary derives mentions of the reader",
+      "file": "src-server/services/projects/project-room-store.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× mentions (#4799): the read summary marks a room whose unread messages name the reader 165ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 60 passed (61)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  61 passed (61)"
+      ],
+      "round1": {
+        "injected_exit": 0,
+        "injected_summary": [
+          "Tests  61 passed (61)"
+        ],
+        "note": "survived: the test did not reach the behavior; tightened in the next commit"
+      }
+    }
+  ]
+}
