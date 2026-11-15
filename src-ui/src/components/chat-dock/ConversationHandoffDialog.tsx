@@ -29,6 +29,7 @@ import { Button } from '../Button';
 import { engineChipLabel } from '../badges/EngineChip';
 import { normalizedDisplayLabel } from '../chat/message-bubble/MessageAttribution';
 import { StartModelPicker } from '../chat-start/StartMenus';
+import { DisclosureToggle } from '../DisclosureToggle';
 import { AgentIcon } from '../icons/AgentIcon';
 import { ArrowDownGlyph } from '../icons/Glyph';
 import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
@@ -49,6 +50,39 @@ export interface AcceptedConversationHandoff {
   message: string;
 }
 
+/**
+ * The handoff's first turn when the person continues without typing. The
+ * route starts the target Session with a real provider turn (its receipt is
+ * that turn's identity), so "Continue now" sends this visible, fixed request
+ * through the same idempotent path a typed message takes. It asks the new
+ * Agent to orient itself rather than to resume work nobody asked it to do.
+ */
+export const HANDOFF_CATCH_UP_MESSAGE =
+  'You are taking over this conversation. Briefly summarize where things stand and what you would do next, then wait for my reply.';
+
+/**
+ * A target chosen in the picker for the conversation's next composer send:
+ * nothing is sent when it is chosen, and the composer's next message becomes
+ * the handoff's first turn through this dialog's dispatch.
+ */
+export interface ArmedConversationHandoff {
+  conversationId: string;
+  targetId: string;
+  executionPreset?: { executionAgentId?: string; modelId?: string };
+  modelId?: string;
+  modelOptions?: Record<string, unknown>;
+  /** "Codex reviewer · GPT-5" — what the composer chip names. */
+  label: string;
+}
+
+/** A send from the composer while a target is armed. */
+export interface ConversationHandoffAutoSubmit {
+  message: string;
+  targetId: string;
+  modelId?: string;
+  modelOptions?: Record<string, unknown>;
+}
+
 interface ConversationHandoffDialogProps {
   apiBase: string;
   conversationId: string;
@@ -61,6 +95,13 @@ interface ConversationHandoffDialogProps {
   initialMessage: string;
   attachments: FileAttachment[];
   blockedReason?: string;
+  /**
+   * Dispatch at mount with this exact message and target, rendering nothing
+   * unless the dispatch needs the person (a refusal, or an outcome to check).
+   */
+  autoSubmit?: ConversationHandoffAutoSubmit;
+  /** Choose the target for the next composer message instead of sending now. */
+  onArm?: (armed: ArmedConversationHandoff) => void;
   onAccepted: (result: AcceptedConversationHandoff) => void;
   onDispatchStarted: (input: { message: string; clientTurnId: string }) => void;
   onDefiniteFailure: (clientTurnId: string) => void;
@@ -187,6 +228,8 @@ export function ConversationHandoffDialog({
   initialMessage,
   attachments,
   blockedReason,
+  autoSubmit,
+  onArm,
   onAccepted,
   onDispatchStarted,
   onDefiniteFailure,
@@ -223,7 +266,9 @@ export function ConversationHandoffDialog({
     ],
   );
   const [targetId, setTargetId] = useState<string | undefined>(
-    restoredIntent?.targetId ?? (executionPreset ? currentAgentId : undefined),
+    restoredIntent?.targetId ??
+      autoSubmit?.targetId ??
+      (executionPreset ? currentAgentId : undefined),
   );
   const target = agents.find((candidate) => candidate.slug === targetId);
   const executionAgentId = restoredIntent
@@ -251,16 +296,22 @@ export function ConversationHandoffDialog({
     ? selection.defaultEffectiveModelForAgent(executionTarget).id
     : undefined;
   const [modelId, setModelId] = useState<string | undefined>(
-    restoredIntent?.modelId ?? executionPreset?.modelId,
+    restoredIntent?.modelId ?? autoSubmit?.modelId ?? executionPreset?.modelId,
   );
   const [modelOptions, setModelOptions] = useState<Record<string, unknown>>(
-    restoredIntent?.modelOptions ?? {},
+    restoredIntent?.modelOptions ?? autoSubmit?.modelOptions ?? {},
   );
+  const [disclosureOpen, setDisclosureOpen] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const modelTriggerRef = useRef<HTMLButtonElement>(null);
-  const [message, setMessage] = useState(
-    restoredIntent?.message ?? initialMessage,
-  );
+  // No field edits this: the composer's draft (or the armed send's exact
+  // text) is the first turn, and an empty draft means the catch-up request.
+  const draft = (
+    restoredIntent?.message ??
+    autoSubmit?.message ??
+    initialMessage
+  ).trim();
+  const message = draft || HANDOFF_CATCH_UP_MESSAGE;
   const [state, setState] = useState<
     'idle' | 'pending' | 'indeterminate' | 'error'
   >(restoredIntent ? 'indeterminate' : 'idle');
@@ -304,8 +355,8 @@ export function ConversationHandoffDialog({
   const fieldId = useId();
   const modelFieldId = `${fieldId}-model`;
   const modelValueId = `${fieldId}-model-value`;
-  const messageFieldId = `${fieldId}-message`;
   const preconditionId = `${fieldId}-precondition`;
+  const disclosureId = `${fieldId}-carries`;
 
   const inheritsAgentDefaults = Boolean(
     executionPreset &&
@@ -335,7 +386,7 @@ export function ConversationHandoffDialog({
   ]);
 
   const runHandoff = async () => {
-    if (!targetId || !message.trim() || state === 'pending') return;
+    if (!targetId || state === 'pending') return;
     if (blockedReason) {
       setState('error');
       setFeedback(blockedReason);
@@ -349,7 +400,7 @@ export function ConversationHandoffDialog({
     const intent: PendingHandoffIntent = retainedIntent.current ?? {
       idempotencyKey: idempotencyKey.current,
       targetId,
-      message: message.trim(),
+      message,
       ...(executionAgentId
         ? {
             executionAgentId,
@@ -427,7 +478,7 @@ export function ConversationHandoffDialog({
             receipt: result.handoff,
             target,
             targetId,
-            message: message.trim(),
+            message,
           });
         },
       );
@@ -476,7 +527,7 @@ export function ConversationHandoffDialog({
         onAccepted({
           target,
           targetId: result.marker.targetAgentId,
-          message: message.trim(),
+          message,
           receipt: {
             predecessorSessionId: result.marker.predecessorSessionId,
             sessionId: result.marker.sessionId,
@@ -528,6 +579,31 @@ export function ConversationHandoffDialog({
     }
   };
 
+  // An armed send dispatches once, at mount. A retained uncertain request
+  // takes precedence: it opens as its recovery instead of sending again.
+  const autoSubmitted = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once at mount; runHandoff reads this render's choice, which is the armed one.
+  useEffect(() => {
+    if (!autoSubmit || restoredIntent || autoSubmitted.current) return;
+    autoSubmitted.current = true;
+    void runHandoff();
+  }, []);
+
+  const targetModel = targetModels.find((model) => model.id === modelId);
+  const choiceLabel = [
+    executionPreset ? (engineLabel ?? 'Default engine') : targetName,
+    targetModel?.name,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  // The armed send stays out of sight while it dispatches: the composer shows
+  // the message as sending. It surfaces only when the person must act.
+  if (autoSubmit && (state === 'idle' || state === 'pending') && !feedback)
+    return null;
+  const canArm = onArm && !autoSubmit && !restoredIntent && state !== 'pending';
+  const primaryDisabled =
+    state === 'pending' || !retryEligible || Boolean(preconditionReason);
+
   return (
     <ResponsiveDialogSurface
       layer="dialog"
@@ -539,12 +615,7 @@ export function ConversationHandoffDialog({
       onClose={closeLocked ? () => {} : onClose}
     >
       <div className="conversation-handoff-dialog__header">
-        <div>
-          <h3>
-            {executionPreset ? 'Change engine for this chat' : 'Continue with…'}
-          </h3>
-          <p>Keeps this chat and its workspace.</p>
-        </div>
+        <h3>{executionPreset ? 'Change engine' : 'Continue with…'}</h3>
         <ResponsiveDialogCloseButton
           label={
             executionPreset ? 'Cancel engine change' : 'Cancel agent handoff'
@@ -606,7 +677,7 @@ export function ConversationHandoffDialog({
       {targetId && (
         <div className="conversation-handoff-dialog__confirmation">
           {targetModels.length > 0 && (
-            <div className="editor-field">
+            <div className="conversation-handoff-dialog__model">
               <span className="editor-label" id={modelFieldId}>
                 Model
               </span>
@@ -620,8 +691,7 @@ export function ConversationHandoffDialog({
                 onClick={() => setModelPickerOpen(true)}
               >
                 <span id={modelValueId}>
-                  {targetModels.find((model) => model.id === modelId)?.name ??
-                    'Agent default'}
+                  {targetModel?.name ?? 'Agent default'}
                 </span>
                 <ArrowDownGlyph className="choice-caret" />
               </Button>
@@ -656,42 +726,39 @@ export function ConversationHandoffDialog({
               )}
             </div>
           )}
-          <div className="editor-field">
-            <label className="editor-label" htmlFor={messageFieldId}>
-              First message to {targetName}
-            </label>
-            <textarea
-              id={messageFieldId}
-              className="editor-textarea"
-              value={message}
-              disabled={mutationLocked}
-              onChange={(event) => setMessage(event.target.value)}
-              rows={4}
-              required
-            />
+          <div className="conversation-handoff-dialog__note">
+            <span>
+              {draft
+                ? 'Your draft is sent as the first message.'
+                : 'Starts with a short catch-up turn.'}
+            </span>
+            <DisclosureToggle
+              expanded={disclosureOpen}
+              onToggle={() => setDisclosureOpen((open) => !open)}
+              controls={disclosureId}
+            >
+              What carries over
+            </DisclosureToggle>
           </div>
-          <div className="conversation-handoff-dialog__disclosure">
-            <div>
-              <strong>Carried</strong>
-              <ul>
-                {CONVERSATION_HANDOFF_CARRIED_FIELDS.map((field) => (
-                  <li key={field}>
-                    {CONVERSATION_HANDOFF_DISCLOSURE_LABELS[field]}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <strong>Reset</strong>
-              <ul>
-                {CONVERSATION_HANDOFF_RESET_FIELDS.map((field) => (
-                  <li key={field}>
-                    {CONVERSATION_HANDOFF_DISCLOSURE_LABELS[field]}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
+          {disclosureOpen && (
+            <dl
+              id={disclosureId}
+              className="conversation-handoff-dialog__disclosure"
+            >
+              <dt>Carried</dt>
+              <dd>
+                {CONVERSATION_HANDOFF_CARRIED_FIELDS.map(
+                  (field) => CONVERSATION_HANDOFF_DISCLOSURE_LABELS[field],
+                ).join(' · ')}
+              </dd>
+              <dt>Reset</dt>
+              <dd>
+                {CONVERSATION_HANDOFF_RESET_FIELDS.map(
+                  (field) => CONVERSATION_HANDOFF_DISCLOSURE_LABELS[field],
+                ).join(' · ')}
+              </dd>
+            </dl>
+          )}
           {preconditionReason && (
             <p
               id={preconditionId}
@@ -709,20 +776,35 @@ export function ConversationHandoffDialog({
           {/* The shared action row owns phone wrapping, tap targets and the
               safe area; this class keeps only the desktop alignment. */}
           <ResponsiveSurfaceActions className="conversation-handoff-dialog__actions">
-            <Button onClick={onClose} disabled={closeLocked}>
-              Cancel
-            </Button>
+            {canArm && (
+              <Button
+                disabled={primaryDisabled}
+                aria-describedby={
+                  preconditionReason ? preconditionId : undefined
+                }
+                onClick={() => {
+                  if (!targetId) return;
+                  onArm({
+                    conversationId,
+                    targetId,
+                    ...(executionPreset ? { executionPreset } : {}),
+                    ...(modelId ? { modelId } : {}),
+                    ...(Object.keys(modelOptions).length > 0
+                      ? { modelOptions }
+                      : {}),
+                    label: choiceLabel,
+                  });
+                }}
+              >
+                Use for next message
+              </Button>
+            )}
             {state === 'indeterminate' && (
               <Button onClick={() => void observe()}>Check status</Button>
             )}
             <Button
               variant="primary"
-              disabled={
-                !message.trim() ||
-                state === 'pending' ||
-                !retryEligible ||
-                Boolean(preconditionReason)
-              }
+              disabled={primaryDisabled}
               aria-describedby={preconditionReason ? preconditionId : undefined}
               onClick={() => void runHandoff()}
             >

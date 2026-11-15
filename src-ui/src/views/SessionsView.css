@@ -334,29 +334,45 @@
   overflow-wrap: anywhere;
 }
 
-/* The No project alternative reads as an action, not a third footer
-   button competing with Continue. */
-.sessions-detail__confirm-alternative {
-  display: flex;
+/* The one way to continue an external conversation: a compact row pinned
+   above it, with the No project choice stated beside the action. */
+.sessions-detail__continue-bar {
+  flex: 0 0 auto;
+  display: grid;
+  gap: var(--k-space-1);
+  margin: var(--k-space-2) var(--chat-message-gutter) 0;
 }
 
-/* Link-styled, but a full touch target that starts on the text's edge, and
-   underlined so it does not read as a link by colour alone. */
-.sessions-detail__confirm-alternative .button {
-  min-height: 44px;
-  padding-inline: 0;
+.sessions-detail__continue-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-3);
+}
+
+.sessions-detail__continue-note {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* Link-styled, underlined so it does not read as a link by colour alone. */
+.sessions-detail__continue-note .button {
+  min-height: 0;
+  padding: 0;
+  font-size: inherit;
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
-/* Spacing for the continuation confirmation's paragraphs. */
-.sessions-detail__confirm {
-  display: grid;
-  gap: var(--k-space-3);
+.sessions-detail__continue-bar p {
+  margin: 0;
 }
 
-.sessions-detail__confirm p {
-  margin: 0;
+@media (pointer: coarse) {
+  .sessions-detail__continue-row .button {
+    min-height: 44px;
+  }
 }
 
 .sessions-detail__adoption-reason {

@@ -470,8 +470,8 @@ test.describe
 
       await page.setViewportSize({ width: 320, height: 720 });
       await expect(detail).toBeVisible();
-      // Read only: Continue in Station confirms
-      // a continuation first; nothing here acts on the source session.
+      // Read only: Continue in Station is the one action; nothing here
+      // acts on the source session.
       await expect(
         detail.getByRole('button', {
           name: /approve|decline|stop|resume|retry|delegate/i,

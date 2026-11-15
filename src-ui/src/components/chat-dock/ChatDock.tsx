@@ -4543,6 +4543,21 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                   )
                                 }
                                 agentHandoffTriggerRef={composerAgentTriggerRef}
+                                nextMessageHandoff={
+                                  conversationBoundaryDialogs.armedHandoff
+                                    ? {
+                                        label:
+                                          conversationBoundaryDialogs
+                                            .armedHandoff.label,
+                                        onSend:
+                                          conversationBoundaryDialogs.sendArmedHandoff,
+                                        onUndo: () =>
+                                          conversationBoundaryDialogs.setArmedHandoff(
+                                            null,
+                                          ),
+                                      }
+                                    : undefined
+                                }
                                 isHistoryOpen={isHistoryOpen}
                                 onCloseHistory={closeHistory}
                                 onToggleStatsPanel={setShowStatsPanel}

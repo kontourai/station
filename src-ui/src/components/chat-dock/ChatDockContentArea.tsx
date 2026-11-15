@@ -83,6 +83,9 @@ interface ChatDockContentAreaProps {
   onOpenAgentHandoff?: ComponentProps<
     typeof ChatDockBody
   >['onOpenAgentHandoff'];
+  nextMessageHandoff?: ComponentProps<
+    typeof ChatDockBody
+  >['nextMessageHandoff'];
   agentHandoffTriggerRef?: ComponentProps<
     typeof ChatDockBody
   >['agentHandoffTriggerRef'];
@@ -148,6 +151,7 @@ function ChatDockContentAreaImpl({
   secondaryActions,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
+  nextMessageHandoff,
   isHistoryOpen,
   onCloseHistory,
   onToggleStatsPanel,
@@ -284,6 +288,7 @@ function ChatDockContentAreaImpl({
               secondaryActions={secondaryActions}
               onOpenAgentHandoff={onOpenAgentHandoff}
               agentHandoffTriggerRef={agentHandoffTriggerRef}
+              nextMessageHandoff={nextMessageHandoff}
               setShowStatsPanel={onToggleStatsPanel}
               onOpenBackgroundTasks={onOpenBackgroundTasks}
               onNewChat={onNewChat}

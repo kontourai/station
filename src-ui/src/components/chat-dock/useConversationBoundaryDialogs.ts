@@ -9,6 +9,10 @@ import {
 } from '../../utils/execution';
 import type { SelectableModel } from '../../utils/modelCapabilities';
 import { agentRunnability } from '../agent-runnability';
+import type {
+  ArmedConversationHandoff,
+  ConversationHandoffAutoSubmit,
+} from './ConversationHandoffDialog';
 import {
   readConversationContextBoundaryUiState,
   writeConversationContextBoundaryUiState,
@@ -50,7 +54,13 @@ export function useConversationBoundaryDialogs({
     id: string;
     agentSlug: string;
     executionPreset?: { executionAgentId?: string; modelId?: string };
+    /** A composer send to dispatch as the handoff's first turn. */
+    autoSubmit?: ConversationHandoffAutoSubmit;
   } | null>(null);
+  // A target picked for the next composer send. Nothing is sent when it is
+  // picked, so it is in-memory only: a reload simply forgets the choice.
+  const [armedHandoff, setArmedHandoff] =
+    useState<ArmedConversationHandoff | null>(null);
   const [forkSource, setForkSource] = useState<{
     id: string;
     agentSlug: string;
@@ -224,6 +234,42 @@ export function useConversationBoundaryDialogs({
     [activeSession],
   );
 
+  const activeArmedHandoff =
+    armedHandoff &&
+    activeSession?.conversationId === armedHandoff.conversationId
+      ? armedHandoff
+      : null;
+
+  /**
+   * The composer's send while a target is armed: the message becomes the
+   * handoff's first turn through the handoff dialog's own dispatch, so the
+   * idempotency key, retained intent and recovery are the dialog's. The
+   * choice stays armed until a receipt arrives, so a refused send keeps it.
+   */
+  const sendArmedHandoff = useCallback(
+    (message: string) => {
+      if (!activeArmedHandoff || !activeSession || handoffSource) return;
+      setHandoffSource({
+        id: activeArmedHandoff.conversationId,
+        agentSlug: activeSession.agentSlug,
+        ...(activeArmedHandoff.executionPreset
+          ? { executionPreset: activeArmedHandoff.executionPreset }
+          : {}),
+        autoSubmit: {
+          message,
+          targetId: activeArmedHandoff.targetId,
+          ...(activeArmedHandoff.modelId
+            ? { modelId: activeArmedHandoff.modelId }
+            : {}),
+          ...(activeArmedHandoff.modelOptions
+            ? { modelOptions: activeArmedHandoff.modelOptions }
+            : {}),
+        },
+      });
+    },
+    [activeArmedHandoff, activeSession, handoffSource],
+  );
+
   const handoffSession = handoffSource
     ? allSessions.find(
         (session) =>
@@ -240,6 +286,9 @@ export function useConversationBoundaryDialogs({
     handoffDisabledReason,
     openConversationHandoff,
     openExecutionHandoff,
+    armedHandoff: activeArmedHandoff,
+    setArmedHandoff,
+    sendArmedHandoff,
     forkSource,
     setForkSource,
     forkOperation,

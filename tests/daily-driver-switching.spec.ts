@@ -629,14 +629,17 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     });
     await expect(dialog).toBeVisible({ timeout: 10_000 });
     await dialog.getByRole('radio', { name: /Codex Runtime/ }).check();
-    await expect(dialog).toContainText('Conversation transcript');
+    // What carries over is one disclosure away, not on the main path.
+    await expect(dialog).not.toContainText('Provider-native cursor');
+    await dialog.getByRole('button', { name: 'What carries over' }).click();
+    await expect(dialog).toContainText('Recent conversation messages');
     await expect(dialog).toContainText('Provider-native cursor');
     await expect(dialog).toContainText('Tool state');
     await expect(dialog).toContainText('Session approvals');
     await expect(dialog).toContainText('Queued requests');
-    await dialog
-      .getByLabel('First message to Codex Runtime')
-      .fill('Continue on Codex and retain the conversation context.');
+    // No message to write: with an empty composer the handoff opens with
+    // its catch-up turn.
+    await expect(dialog.getByRole('textbox')).toHaveCount(0);
     await dialog
       .getByRole('button', { name: /Continue with Codex Runtime/ })
       .click();
@@ -645,7 +648,9 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       .poll(() => handoffRequests.length, { timeout: 10_000 })
       .toBe(1);
     expect(handoffRequests[0]).toMatchObject({
-      message: 'Continue on Codex and retain the conversation context.',
+      // The dialog's catch-up turn (`HANDOFF_CATCH_UP_MESSAGE`), as sent.
+      message:
+        'You are taking over this conversation. Briefly summarize where things stand and what you would do next, then wait for my reply.',
       target: {
         environment: { kind: 'current' },
         agent: 'codex',

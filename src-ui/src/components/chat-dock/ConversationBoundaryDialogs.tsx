@@ -80,6 +80,7 @@ export function ConversationBoundaryDialogs({
     handoffSession,
     handoffDisabledReason,
     handoffReturnFocusRef,
+    setArmedHandoff,
     contextResetSource,
     setContextResetSource,
     contextBoundarySessionId,
@@ -95,6 +96,12 @@ export function ConversationBoundaryDialogs({
           sessionId={handoffSession.id}
           currentAgentId={handoffSession.agentSlug}
           executionPreset={handoffSource.executionPreset}
+          autoSubmit={handoffSource.autoSubmit}
+          onArm={(armed) => {
+            setArmedHandoff(armed);
+            setHandoffSource(null);
+            requestAnimationFrame(() => handoffReturnFocusRef.current?.focus());
+          }}
           projectSlug={handoffSession.projectSlug}
           agents={agents}
           projects={projects}
@@ -144,6 +151,7 @@ export function ConversationBoundaryDialogs({
                 ),
               ),
             );
+            setArmedHandoff(null);
             if (handoffSession.id === activeSession?.id) {
               chatInput.handleClearInput();
               chatInput.handleClearAttachments();

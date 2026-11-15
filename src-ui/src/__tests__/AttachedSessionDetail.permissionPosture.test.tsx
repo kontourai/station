@@ -190,12 +190,19 @@ async function renderAttached({
   return view;
 }
 
-/** Type a message and press Send; the one-time confirmation opens. */
+/** Type a message and press Send: that continues at once, with the draft. */
 function sendFromComposer(message = 'carry on') {
   fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
     target: { value: message },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Continue in Station' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Send and continue' }));
+}
+
+/** The one Continue action, pinned above the conversation; needs no message. */
+function continueButton() {
+  return screen.getByRole('button', {
+    name: 'Continue in Station',
+  }) as HTMLButtonElement;
 }
 
 test('a read-only attached composer continues in Station and cannot issue a direct reply', async () => {
@@ -210,9 +217,10 @@ test('a read-only attached composer continues in Station and cannot issue a dire
     expect(
       screen.getByPlaceholderText('Continue in Station from this history…'),
     ).toBeTruthy();
+    adoptOrchestrationSession.mockResolvedValueOnce({ threadId: 'continued' });
     sendFromComposer('A new owned continuation');
-    expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
+    await waitFor(() => expect(adoptOrchestrationSession).toHaveBeenCalled());
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(directReply).not.toHaveBeenCalled();
     expect(directSend).not.toHaveBeenCalled();
   } finally {
@@ -221,7 +229,7 @@ test('a read-only attached composer continues in Station and cannot issue a dire
   }
 });
 
-test('reply intent offers continuation in the normal composer without changing the conversation automatically', async () => {
+test('typing a draft changes nothing; Continue is one visible action that needs no message', async () => {
   adoptOrchestrationSession.mockClear();
   await renderAttached({ presentation: 'chat' });
   const composer = screen.getByRole('textbox', {
@@ -240,17 +248,44 @@ test('reply intent offers continuation in the normal composer without changing t
   expect(screen.queryByRole('dialog')).toBeNull();
   fireEvent.change(composer, { target: { value: 'Keep my draft' } });
   expect(screen.queryByRole('dialog')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Continue in Station' }));
-  expect(
-    screen.getByRole('button', { name: 'Continue and send' }),
-  ).toBeTruthy();
-  expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
-  expect(adoptOrchestrationSession).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(composer.value).toBe('Keep my draft');
-  expect(screen.queryByRole('button', { name: 'Continue here' })).toBeNull();
   expect(screen.getByText('Sure.')).toBeTruthy();
   expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+});
+
+test('Continue in Station adopts at once with no message and opens no confirmation', async () => {
+  adoptOrchestrationSession.mockClear();
+  const child = { threadId: 'continued' };
+  adoptOrchestrationSession.mockResolvedValue(child);
+  const onAdopted = vi.fn();
+  await renderAttached({ presentation: 'chat', onAdopted });
+  const action = continueButton();
+  expect(action.disabled).toBe(false);
+  fireEvent.click(action);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  await waitFor(() =>
+    expect(onAdopted).toHaveBeenCalledWith(child, expect.any(Number), ''),
+  );
+  expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
+});
+
+test('Continue in Station carries a typed draft to the continuation', async () => {
+  adoptOrchestrationSession.mockClear();
+  const child = { threadId: 'continued' };
+  adoptOrchestrationSession.mockResolvedValue(child);
+  const onAdopted = vi.fn();
+  await renderAttached({ presentation: 'chat', onAdopted });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+    target: { value: 'Typed first' },
+  });
+  fireEvent.click(continueButton());
+  await waitFor(() =>
+    expect(onAdopted).toHaveBeenCalledWith(
+      child,
+      expect.any(Number),
+      'Typed first',
+    ),
+  );
 });
 
 // On a plain http:// origin `navigator.clipboard` does not exist. The copy
@@ -277,7 +312,7 @@ test('copying a message where no clipboard exists says it was not copied', async
   }
 });
 
-test('Enter confirms the exact draft only after consent; Shift+Enter and IME do not', async () => {
+test('Enter continues with the exact draft; Shift+Enter and IME do not', async () => {
   adoptOrchestrationSession.mockClear();
   const child = { threadId: 'continued' };
   adoptOrchestrationSession.mockResolvedValue(child);
@@ -290,9 +325,8 @@ test('Enter confirms the exact draft only after consent; Shift+Enter and IME do 
   fireEvent.keyDown(composer, { key: 'Enter', shiftKey: true });
   fireEvent.keyDown(composer, { key: 'Enter', isComposing: true });
   expect(screen.queryByRole('dialog')).toBeNull();
-  fireEvent.keyDown(composer, { key: 'Enter' });
   expect(adoptOrchestrationSession).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+  fireEvent.keyDown(composer, { key: 'Enter' });
   await waitFor(() =>
     expect(onAdopted).toHaveBeenCalledWith(
       child,
@@ -314,7 +348,7 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
     expect(adoptOrchestrationSession).not.toHaveBeenCalled();
   });
 
-  test('the dock reader opens with the handed-over draft awaiting one confirmation', async () => {
+  test('the dock reader continues the handed-over draft at once', async () => {
     adoptOrchestrationSession.mockClear();
     adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
     const onAdopted = vi.fn();
@@ -327,9 +361,7 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
       (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
         .value,
     ).toBe('From Activity');
-    expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
-    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
     await waitFor(() =>
       expect(onAdopted).toHaveBeenCalledWith(
         { threadId: 'continued' },
@@ -340,6 +372,8 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
   });
 
   test('a dock reader already open on the conversation receives the hand-off', async () => {
+    adoptOrchestrationSession.mockClear();
+    adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
     await renderAttached({ presentation: 'chat' });
     expect(screen.queryByRole('dialog')).toBeNull();
     act(() =>
@@ -352,11 +386,15 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
       (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
         .value,
     ).toBe('While open');
-    expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
+    await waitFor(() =>
+      expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1),
+    );
   });
 
-  test('with Activity and the dock open together, Send lands in the dock reader, never Activity’s', async () => {
+  test('with Activity and the dock open together, Continue lands in the dock reader, never Activity’s', async () => {
     adoptOrchestrationSession.mockClear();
+    adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
+    const dockAdopted = vi.fn();
     const activity = await renderAttached({
       onContinueInChat: (draft) =>
         handOffAttachedContinuation({
@@ -364,7 +402,10 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
           draft,
         }),
     });
-    const dock = await renderAttached({ presentation: 'chat' });
+    const dock = await renderAttached({
+      presentation: 'chat',
+      onAdopted: dockAdopted,
+    });
     const activityView = within(activity.container);
     const dockView = within(dock.container);
     fireEvent.change(activityView.getByRole('textbox', { name: 'Message' }), {
@@ -373,8 +414,7 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
     fireEvent.click(
       activityView.getByRole('button', { name: 'Continue in Station' }),
     );
-    const dialogs = screen.getAllByRole('dialog', { name: 'Continue here?' });
-    expect(dialogs).toHaveLength(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(
       (
         dockView.getByRole('textbox', {
@@ -389,13 +429,22 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
         }) as HTMLTextAreaElement
       ).value,
     ).toBe('');
-    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+    // Only the dock's reader continues, once, with Activity's exact draft.
+    await waitFor(() =>
+      expect(dockAdopted).toHaveBeenCalledWith(
+        { threadId: 'continued' },
+        expect.any(Number),
+        'Typed in Activity',
+      ),
+    );
+    expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
     expect(
       takeAttachedContinuationHandoff('external:claude:raw-thread-id'),
     ).toBe(null);
   });
 
-  test('a dock reader that cannot continue keeps the draft but opens no dead confirmation', async () => {
+  test('a dock reader that cannot continue keeps the draft and continues nothing', async () => {
+    adoptOrchestrationSession.mockClear();
     handOffAttachedContinuation({
       threadId: 'external:claude:raw-thread-id',
       draft: 'Waiting',
@@ -408,7 +457,8 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
       (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
         .value,
     ).toBe('Waiting');
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(continueButton().disabled).toBe(true);
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
   });
 
   test('a hand-off for another conversation is left for its own reader', async () => {
@@ -735,8 +785,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     );
     await renderAttached();
 
-    sendFromComposer();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    fireEvent.click(continueButton());
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toBe(
         "Couldn't start the continuation. Technical detail is under Details.",
@@ -763,8 +812,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     );
     await renderAttached();
 
-    sendFromComposer();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    fireEvent.click(continueButton());
     await waitFor(() =>
       expect(
         screen.getByText(
@@ -777,11 +825,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     ).toBeTruthy();
     // Nothing was sent, so there is no outcome to be unsure about.
     expect(screen.queryByText(/continue it twice/)).toBeNull();
-    expect(
-      screen
-        .getByRole('button', { name: 'Continue and send' })
-        .getAttribute('disabled'),
-    ).toBeNull();
+    expect(continueButton().getAttribute('disabled')).toBeNull();
     vi.restoreAllMocks();
   });
 
@@ -796,17 +840,12 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     );
     await renderAttached();
 
-    sendFromComposer();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    fireEvent.click(continueButton());
     await screen.findByText(
       "Couldn't start the continuation. Station isn't responding.",
     );
     expect(screen.getByText("Retrying won't continue it twice.")).toBeTruthy();
-    expect(
-      screen
-        .getByRole('button', { name: 'Continue and send' })
-        .getAttribute('disabled'),
-    ).toBeNull();
+    expect(continueButton().getAttribute('disabled')).toBeNull();
     vi.restoreAllMocks();
   });
 
@@ -821,8 +860,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     );
     await renderAttached();
 
-    sendFromComposer();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    fireEvent.click(continueButton());
     await screen.findByText(
       "Couldn't start the continuation. Station isn't responding.",
     );
@@ -944,11 +982,8 @@ describe('a conversation no project claims (#3386)', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
       target: { value: 'carry on' },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
     expect(screen.queryByTestId('attached-continuation-no-project')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    fireEvent.click(continueButton());
     await waitFor(() =>
       expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1),
     );
@@ -962,30 +997,33 @@ describe('a conversation no project claims (#3386)', () => {
     await renderAttached({
       session: { projectSlug: undefined, cwd: '/work/scratch/app' },
     });
-    // Reading carries no prose about it; the choice is explained in the
-    // one-time confirmation, and nothing is requested before it.
-    expect(screen.queryByTestId('attached-continuation-no-project')).toBeNull();
-    sendFromComposer();
-    const dialog = screen.getByRole('dialog', { name: 'Continue here?' });
-    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+    // The choice is stated beside the one Continue action, before anything
+    // is requested; there is no confirmation to read it in.
+    const note = screen.getByTestId('attached-continuation-no-project');
     expect(
-      within(dialog).getByTestId('attached-continuation-no-project')
-        .textContent,
-    ).toBe('Not in a Project. The agent will work only in /work/scratch/app.');
+      within(screen.getByTestId('attached-continue-bar')).getByTestId(
+        'attached-continuation-no-project',
+      ),
+    ).toBe(note);
+    expect(note.textContent).toContain(
+      'No project: the agent works only in /work/scratch/app.',
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
   });
 
-  test('the No project confirmation offers a Project for that folder as an action', async () => {
+  test('the No project note offers a Project for that folder as an action', async () => {
     adoptOrchestrationSession.mockClear();
     window.history.replaceState(null, '', '/');
     await renderAttached({
       presentation: 'chat',
       session: { projectSlug: undefined, cwd: '/work/scratch/app' },
     });
-    sendFromComposer('keep me');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'keep me' },
+    });
     fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Add a project for this folder instead',
-      }),
+      screen.getByRole('button', { name: 'Add a project instead' }),
     );
     expect(window.location.pathname).toBe('/projects/new');
     expect(new URLSearchParams(window.location.search).get('directory')).toBe(
@@ -1001,7 +1039,7 @@ describe('a conversation no project claims (#3386)', () => {
     window.history.replaceState(null, '', '/');
   });
 
-  test('confirming continues it as a No project chat in its own folder, and nothing before that', async () => {
+  test('Continue continues it as a No project chat in its own folder, and nothing before that', async () => {
     adoptOrchestrationSession.mockClear();
     adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
     const onAdopted = vi.fn();
@@ -1013,15 +1051,11 @@ describe('a conversation no project claims (#3386)', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
       target: { value: 'carry on' },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
-    const dialog = screen.getByRole('dialog', { name: 'Continue here?' });
-    expect(dialog.textContent).toContain(
-      'The agent will work only in /work/scratch/app.',
+    expect(screen.getByTestId('attached-continue-bar').textContent).toContain(
+      'the agent works only in /work/scratch/app.',
     );
     expect(adoptOrchestrationSession).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    fireEvent.click(continueButton());
     await waitFor(() => expect(onAdopted).toHaveBeenCalled());
     expect(adoptOrchestrationSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1031,7 +1065,7 @@ describe('a conversation no project claims (#3386)', () => {
     );
   });
 
-  test('a confirmed continuation closes its dialog and cannot be requested twice', async () => {
+  test('a started continuation cannot be requested twice', async () => {
     adoptOrchestrationSession.mockClear();
     adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
     const onAdopted = vi.fn();
@@ -1042,10 +1076,6 @@ describe('a conversation no project claims (#3386)', () => {
       session: { projectSlug: undefined, cwd: '/work/scratch/app' },
     });
     sendFromComposer('carry on');
-    const dialog = screen.getByRole('dialog', { name: 'Continue here?' });
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Continue and send' }),
-    );
     await waitFor(() => expect(onAdopted).toHaveBeenCalledTimes(1));
     expect(onAdopted).toHaveBeenCalledWith(
       { threadId: 'continued' },
@@ -1055,16 +1085,16 @@ describe('a conversation no project claims (#3386)', () => {
     expect(adoptOrchestrationSession).toHaveBeenCalledWith(
       expect.objectContaining({ target: { kind: 'own-folder' } }),
     );
-    expect(screen.queryByRole('dialog')).toBeNull();
     const composer = screen.getByRole('textbox', {
       name: 'Message',
     }) as HTMLTextAreaElement;
     expect(composer.disabled).toBe(true);
     fireEvent.keyDown(composer, { key: 'Enter' });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
-    expect(screen.queryByRole('dialog')).toBeNull();
+    // Continued: the action is gone until the host swaps this reader out.
+    expect(
+      screen.queryByRole('button', { name: 'Continue in Station' }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Send and continue' }));
     expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
   });
 
@@ -1075,8 +1105,7 @@ describe('a conversation no project claims (#3386)', () => {
         projectAttribution: { state: 'ambiguous', candidates: ['a', 'b'] },
       },
     });
-    sendFromComposer();
-    expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
+    expect(continueButton().disabled).toBe(false);
     expect(screen.queryByTestId('attached-continuation-no-project')).toBeNull();
   });
 
@@ -1100,15 +1129,10 @@ describe('a conversation no project claims (#3386)', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
       target: { value: 'carry on' },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    fireEvent.click(continueButton());
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toBe(refusal);
-    const action = screen.getByRole('button', {
-      name: 'Continue and send',
-    }) as HTMLButtonElement;
+    const action = continueButton();
     expect(action.disabled).toBe(true);
     fireEvent.click(action);
     expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
@@ -1147,25 +1171,14 @@ describe('a continuation Station settled as not created', () => {
       fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
         target: { value: 'carry on' },
       });
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Continue in Station' }),
-      );
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Continue and send' }),
-      );
+      fireEvent.click(continueButton());
       const alert = await screen.findByRole('alert');
       expect(alert.textContent).toBe(
         `Couldn't start the continuation. ${reason}`,
       );
       expect(screen.queryByText(/isn't responding/)).toBeNull();
       expect(screen.queryByText(/continue it twice/)).toBeNull();
-      expect(
-        (
-          screen.getByRole('button', {
-            name: 'Continue and send',
-          }) as HTMLButtonElement
-        ).disabled,
-      ).toBe(false);
+      expect(continueButton().disabled).toBe(false);
       expect(starter.launch).toHaveBeenCalledOnce();
     } finally {
       starter.unbound = false;
@@ -1177,6 +1190,11 @@ describe('a continuation Station settled as not created', () => {
 test('attached continuation uses the shared newline preference and IME guard', async () => {
   const previous = deviceSettingsStore.get('chatReturnBehavior');
   deviceSettingsStore.set('chatReturnBehavior', 'newline');
+  adoptOrchestrationSession.mockClear();
+  adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
+  // The test above leaves its retry-safe reservation behind; this one starts
+  // from no saved continuation request.
+  window.localStorage.clear();
   try {
     await renderAttached();
     const editor = screen.getByRole('textbox', { name: 'Message' });
@@ -1187,9 +1205,11 @@ test('attached continuation uses the shared newline preference and IME guard', a
       ctrlKey: true,
       isComposing: true,
     });
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
     fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true });
-    expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
+    await waitFor(() =>
+      expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1),
+    );
   } finally {
     deviceSettingsStore.set('chatReturnBehavior', previous);
   }

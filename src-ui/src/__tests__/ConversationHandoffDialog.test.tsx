@@ -4,10 +4,19 @@ import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import type React from 'react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   ConversationHandoffDialog,
+  HANDOFF_CATCH_UP_MESSAGE,
   handoffStatusFeedback,
 } from '../components/chat-dock/ConversationHandoffDialog';
 import { acceptConversationHandoffUiState } from '../components/chat-dock/conversationHandoffUiState';
@@ -153,11 +162,13 @@ function renderDialog(
   apiBase = 'http://station.test',
   agents = [claude, codex, unavailable],
   conversationId = 'conversation-a',
+  extra: Partial<React.ComponentProps<typeof ConversationHandoffDialog>> = {},
 ) {
   const onAccepted = vi.fn();
   const onClose = vi.fn();
   const onDispatchStarted = vi.fn();
   const onDefiniteFailure = vi.fn();
+  const onArm = vi.fn();
   const view = render(
     <ConversationHandoffDialog
       apiBase={apiBase}
@@ -173,6 +184,8 @@ function renderDialog(
       onDispatchStarted={onDispatchStarted}
       onDefiniteFailure={onDefiniteFailure}
       onClose={onClose}
+      onArm={onArm}
+      {...extra}
     />,
   );
   return {
@@ -181,6 +194,7 @@ function renderDialog(
     onClose,
     onDispatchStarted,
     onDefiniteFailure,
+    onArm,
   };
 }
 
@@ -317,13 +331,11 @@ describe('ConversationHandoffDialog', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Choose Codex engine' }),
     );
+    // The composer's draft is the first turn; there is no field to retype it.
+    expect(screen.queryByRole('textbox')).toBeNull();
     expect(
-      (
-        screen.getByLabelText(
-          'First message to Security reviewer',
-        ) as HTMLTextAreaElement
-      ).value,
-    ).toBe('Review the actual draft');
+      screen.getByText('Your draft is sent as the first message.'),
+    ).toBeTruthy();
     // The primary action names the change, not the Agent being kept.
     fireEvent.click(screen.getByRole('button', { name: 'Switch to Codex' }));
     await waitFor(() => screen.getByRole('button', { name: 'Retry safely' }));
@@ -395,13 +407,11 @@ describe('ConversationHandoffDialog', () => {
     expect(
       screen.getByRole('button', { name: /^Model / }).textContent,
     ).toContain('Agent default');
+    // The composer's draft is the first turn; there is no field to retype it.
+    expect(screen.queryByRole('textbox')).toBeNull();
     expect(
-      (
-        screen.getByLabelText(
-          'First message to Security reviewer',
-        ) as HTMLTextAreaElement
-      ).value,
-    ).toBe('Review the actual draft');
+      screen.getByText('Your draft is sent as the first message.'),
+    ).toBeTruthy();
     fireEvent.click(
       screen.getByRole('button', { name: 'Switch to default engine' }),
     );
@@ -703,6 +713,195 @@ describe('ConversationHandoffDialog', () => {
     expect(handoffExecutionMessage.mock.calls[1][2]).toEqual(retainedRequest);
   });
 
+  test('with no draft, Continue sends the catch-up turn through the same handoff', async () => {
+    handoffExecutionMessage.mockResolvedValueOnce(receipt());
+    const { onAccepted, onDispatchStarted } = renderDialog(
+      'claude',
+      undefined,
+      undefined,
+      undefined,
+      { initialMessage: '   ' },
+    );
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    expect(screen.getByText('Starts with a short catch-up turn.')).toBeTruthy();
+    const submit = screen.getByRole('button', {
+      name: 'Continue with Codex reviewer',
+    }) as HTMLButtonElement;
+    // Nothing to type: the action is ready as soon as a target is chosen.
+    expect(submit.disabled).toBe(false);
+    fireEvent.click(submit);
+    await waitFor(() => expect(onAccepted).toHaveBeenCalledOnce());
+    const input = handoffExecutionMessage.mock.calls[0][2];
+    expect(input.message).toBe(HANDOFF_CATCH_UP_MESSAGE);
+    expect(input.idempotencyKey).toEqual(expect.any(String));
+    expect(onDispatchStarted).toHaveBeenCalledWith(
+      expect.objectContaining({ message: HANDOFF_CATCH_UP_MESSAGE }),
+    );
+    expect(onAccepted.mock.calls[0][0].message).toBe(HANDOFF_CATCH_UP_MESSAGE);
+  });
+
+  test('Use for next message arms the exact choice and sends nothing', () => {
+    const { onArm } = renderDialog();
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Use for next message' }),
+    );
+    expect(onArm).toHaveBeenCalledWith({
+      conversationId: 'conversation-a',
+      targetId: 'codex',
+      modelId: 'gpt-5',
+      label: 'Codex reviewer · GPT-5',
+    });
+    expect(handoffExecutionMessage).not.toHaveBeenCalled();
+    expect(fenceConversationHandoff).not.toHaveBeenCalled();
+    expect(sessionStorage.length).toBe(0);
+  });
+
+  test('an armed send dispatches once, out of sight, with its exact message and model', async () => {
+    handoffExecutionMessage.mockResolvedValueOnce(receipt());
+    const { onAccepted, container } = renderDialog(
+      'claude',
+      undefined,
+      undefined,
+      undefined,
+      {
+        initialMessage: 'stale composer text',
+        autoSubmit: {
+          message: 'The armed draft',
+          targetId: 'codex',
+          modelId: 'gpt-5',
+          modelOptions: { reasoningEffort: 'high' },
+        },
+      },
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(container.textContent).toBe('');
+    await waitFor(() => expect(onAccepted).toHaveBeenCalledOnce());
+    expect(handoffExecutionMessage).toHaveBeenCalledOnce();
+    const input = handoffExecutionMessage.mock.calls[0][2];
+    expect(input.message).toBe('The armed draft');
+    expect(input.target).toMatchObject({
+      agent: 'codex',
+      model: { override: 'gpt-5', options: { reasoningEffort: 'high' } },
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  test('an armed send that loses its response surfaces the safe retry', async () => {
+    handoffExecutionMessage
+      .mockRejectedValueOnce(new TypeError('response lost'))
+      .mockResolvedValueOnce(receipt());
+    const { onAccepted } = renderDialog(
+      'claude',
+      undefined,
+      undefined,
+      undefined,
+      { autoSubmit: { message: 'armed', targetId: 'codex', modelId: 'gpt-5' } },
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toContain(
+        "Station didn't confirm the switch",
+      ),
+    );
+    // Recovery is not an offer to re-arm.
+    expect(
+      screen.queryByRole('button', { name: 'Use for next message' }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry safely' }));
+    await waitFor(() => expect(onAccepted).toHaveBeenCalledOnce());
+    expect(handoffExecutionMessage.mock.calls[1][2].idempotencyKey).toBe(
+      handoffExecutionMessage.mock.calls[0][2].idempotencyKey,
+    );
+    expect(handoffExecutionMessage.mock.calls[1][2].message).toBe('armed');
+  });
+
+  test('an armed send behind an unconfirmed request opens its recovery and sends nothing new', async () => {
+    handoffExecutionMessage.mockRejectedValueOnce(
+      new TypeError('response lost'),
+    );
+    const first = renderDialog();
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+    );
+    await waitFor(() => screen.getByRole('button', { name: 'Check status' }));
+    first.unmount();
+    handoffExecutionMessage.mockClear();
+
+    renderDialog('claude', undefined, undefined, undefined, {
+      autoSubmit: { message: 'a new draft', targetId: 'claude' },
+    });
+    expect(screen.getByRole('button', { name: 'Check status' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry safely' })).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(handoffExecutionMessage).not.toHaveBeenCalled();
+  });
+
+  test('an armed send with pending attachments is refused before dispatch', async () => {
+    renderDialog('claude', undefined, undefined, undefined, {
+      attachments: [{ name: 'a.png' }] as never,
+      autoSubmit: { message: 'armed', targetId: 'codex', modelId: 'gpt-5' },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toBe(
+        'Send or remove attachments before continuing with another agent.',
+      ),
+    );
+    expect(handoffExecutionMessage).not.toHaveBeenCalled();
+    expect(fenceConversationHandoff).not.toHaveBeenCalled();
+  });
+
+  test('an armed target belongs to its conversation and turns the next send into the handoff', () => {
+    const chat = (conversationId: string, id: string) =>
+      ({
+        id,
+        agentSlug: 'claude',
+        conversationId,
+        status: 'idle',
+        messages: [],
+        queuedMessages: [],
+      }) as unknown as ChatSession;
+    const a = chat('conversation-a', 'chat-a');
+    const b = chat('conversation-b', 'chat-b');
+    const { result, rerender } = renderHook(
+      ({ active }: { active: ChatSession }) =>
+        useConversationBoundaryDialogs({
+          agents: [claude, codex] as never,
+          apiBase: 'http://station.test',
+          activeSession: active,
+          allSessions: [a, b],
+        }),
+      { initialProps: { active: a } },
+    );
+    act(() =>
+      result.current.setArmedHandoff({
+        conversationId: 'conversation-a',
+        targetId: 'codex',
+        modelId: 'gpt-5',
+        label: 'Codex reviewer · GPT-5',
+      }),
+    );
+    expect(result.current.armedHandoff?.label).toBe('Codex reviewer · GPT-5');
+    // Another conversation does not inherit the choice.
+    rerender({ active: b });
+    expect(result.current.armedHandoff).toBeNull();
+    act(() => result.current.sendArmedHandoff('not here'));
+    expect(result.current.handoffSource).toBeNull();
+    rerender({ active: a });
+    act(() => result.current.sendArmedHandoff('The exact draft'));
+    expect(result.current.handoffSource).toEqual({
+      id: 'conversation-a',
+      agentSlug: 'claude',
+      autoSubmit: {
+        message: 'The exact draft',
+        targetId: 'codex',
+        modelId: 'gpt-5',
+      },
+    });
+    // The choice stays armed until a receipt arrives.
+    expect(result.current.armedHandoff).not.toBeNull();
+  });
+
   test('cancel is read-only and unavailable Agents are absent', () => {
     const { onClose } = renderDialog();
     expect(screen.queryByText('Offline Agent')).toBeNull();
@@ -816,12 +1015,8 @@ describe('ConversationHandoffDialog', () => {
       ).disabled,
     ).toBe(true);
     expect(
-      (
-        screen.getByLabelText(
-          'First message to Codex reviewer',
-        ) as HTMLTextAreaElement
-      ).value,
-    ).toBe('follow up');
+      screen.getByText('Your draft is sent as the first message.'),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
     await waitFor(() => expect(restored.onAccepted).toHaveBeenCalledOnce());
     expect(getConversationHandoffStatus.mock.calls[0][2]).toBe(key);
@@ -936,9 +1131,9 @@ describe('ConversationHandoffDialog', () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false);
-    expect(
-      screen.getByLabelText(/First message to deleted Agent/),
-    ).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain(
+      'isn’t available here',
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
 
     await waitFor(() => expect(restored.onAccepted).toHaveBeenCalledOnce());

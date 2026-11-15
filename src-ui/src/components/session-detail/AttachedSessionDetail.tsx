@@ -43,7 +43,6 @@ import { sessionProjectKeys } from '../../views/sessions/sessions-lane-model';
 import { Button } from '../Button';
 import { ConversationBody } from '../conversation/ConversationBody';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
-import { Dialog } from '../Dialog';
 
 function hasCanonicalEventId(
   event: OrchestrationEvent,
@@ -170,7 +169,7 @@ export function AttachedSessionDetail({
     ? { kind: 'own-folder' }
     : undefined;
   const ownFolder = session.cwd ? session.cwd : 'its own folder';
-  const noProjectExplanation = `Not in a Project. The agent will work only in ${ownFolder}.`;
+  const noProjectExplanation = `No project: the agent works only in ${ownFolder}.`;
   const isMobile = useIsMobile();
   /**
    * #3552: the alternative to a No project chat is a Project for this
@@ -208,7 +207,6 @@ export function AttachedSessionDetail({
   }
   const inheritedConnection = useOptionalConversationConnection();
   const connection = inheritedConnection ?? { apiBase };
-  const [replyRequested, setReplyRequested] = useState(false);
   const [localDraft, setLocalDraft] = useState('');
   const savedDraft = useSyncExternalStore(chatDraftsStore.subscribe, () =>
     draftScope !== undefined
@@ -432,6 +430,8 @@ export function AttachedSessionDetail({
   // "Worker task · <id>" in the list it was opened from.
   const title = sessionTitle(session);
 
+  // Continuing needs no message: the continuation opens with this history,
+  // and a typed draft (none is fine) is sent there afterwards by the host.
   const startContinuation = () => {
     if (
       !continuationSupported ||
@@ -439,20 +439,9 @@ export function AttachedSessionDetail({
       serverRejectedRetryRef.current
     )
       return;
-    confirmedDraft.current = draft;
+    confirmedDraft.current = currentDraft.current;
     adoption.mutate(getSelectionIntent());
   };
-  const continuationAction = (
-    <Button
-      variant="primary"
-      disabled={adoptionDisabled}
-      onClick={startContinuation}
-    >
-      {adoption.isPending || openingContinuation
-        ? 'Continuing…'
-        : 'Continue and send'}
-    </Button>
-  );
   const continuationFeedback = (
     <>
       {adoption.error && (
@@ -491,8 +480,8 @@ export function AttachedSessionDetail({
     adoption.isPending ||
     continued ||
     handoffPending;
-  const requestSend = async () => {
-    if (!draft.trim() || composerDisabled) return;
+  const requestSend = async ({ allowEmpty = false } = {}) => {
+    if ((!allowEmpty && !draft.trim()) || composerDisabled) return;
     if (onContinueInChat) {
       const held = handoff;
       setHandoffPending(true);
@@ -517,10 +506,12 @@ export function AttachedSessionDetail({
       }
       return;
     }
-    setReplyRequested(true);
+    startContinuation();
   };
-  // A draft handed over from Activity arrives with its confirmation open:
-  // the person already pressed Send there.
+  const startContinuationRef = useRef(startContinuation);
+  startContinuationRef.current = startContinuation;
+  // A draft handed over from Activity continues at once: the person already
+  // chose Continue there, beside the same folder note this reader shows.
   const handsOff = Boolean(onContinueInChat);
   useEffect(() => {
     if (handsOff) return;
@@ -531,9 +522,8 @@ export function AttachedSessionDetail({
       );
       if (handedOver === null) return;
       setDraft(handedOver);
-      // If this reader cannot continue, its reason shows above the composer;
-      // a confirmation whose action is disabled would hide it.
-      if (continuationSupported) setReplyRequested(true);
+      // If this reader cannot continue, its reason shows above the composer.
+      if (continuationSupported) startContinuationRef.current();
     };
     receive();
     return subscribeAttachedContinuationHandoff(receive);
@@ -615,6 +605,47 @@ export function AttachedSessionDetail({
         ))
       )}
 
+      {!continued && (
+        <div
+          className="sessions-detail__continue-bar"
+          data-testid="attached-continue-bar"
+        >
+          <div className="sessions-detail__continue-row">
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={adoptionDisabled || composerDisabled}
+              onClick={() => void requestSend({ allowEmpty: true })}
+            >
+              {adoption.isPending || openingContinuation || handoffPending
+                ? 'Continuing…'
+                : 'Continue in Station'}
+            </Button>
+            {outsideProjects && (
+              <span
+                className="sessions-detail__continue-note"
+                data-testid="attached-continuation-no-project"
+              >
+                {noProjectExplanation}
+                {addProjectForFolder && (
+                  <>
+                    {' '}
+                    <Button
+                      variant="link"
+                      disabled={adoption.isPending}
+                      onClick={addProjectForFolder}
+                    >
+                      Add a project instead
+                    </Button>
+                  </>
+                )}
+              </span>
+            )}
+          </div>
+          {continuationFeedback}
+        </div>
+      )}
+
       <ConversationBody
         density="record"
         connection={connection}
@@ -636,7 +667,7 @@ export function AttachedSessionDetail({
         }}
         composer={{
           submitAction: {
-            label: 'Continue in Station',
+            label: 'Send and continue',
             placeholder: 'Continue in Station from this history…',
           },
           input: draft,
@@ -645,68 +676,10 @@ export function AttachedSessionDetail({
           reason: continuationSupported
             ? undefined
             : continuationSupport.reason,
-          onSubmit: requestSend,
+          onSubmit: () => requestSend(),
           textareaRef: composerRef,
         }}
       />
-      {replyRequested && !continued && (
-        <Dialog
-          title="Continue here?"
-          closeLabel="Cancel continuation"
-          size="sm"
-          dismissible={!adoption.isPending}
-          returnFocusTarget={composerRef.current}
-          onClose={() => {
-            if (!adoption.isPending) setReplyRequested(false);
-          }}
-          footer={
-            <>
-              <Button
-                disabled={adoption.isPending}
-                onClick={() => setReplyRequested(false)}
-              >
-                Cancel
-              </Button>
-              {continuationAction}
-            </>
-          }
-        >
-          <div className="sessions-detail__confirm">
-            <p>
-              {`This conversation started in ${displayProvider(session)}. Station will continue from this history and send your message. The original conversation stays available.`}
-            </p>
-            {outsideProjects && (
-              <p
-                className="sessions-detail__adoption-folder"
-                data-testid="attached-continuation-no-project"
-              >
-                {noProjectExplanation}
-              </p>
-            )}
-            {outsideProjects &&
-              (addProjectForFolder ? (
-                <div className="sessions-detail__confirm-alternative">
-                  <Button
-                    variant="link"
-                    disabled={adoption.isPending}
-                    onClick={() => {
-                      setReplyRequested(false);
-                      addProjectForFolder();
-                    }}
-                  >
-                    Add a project for this folder instead
-                  </Button>
-                </div>
-              ) : (
-                <p className="sessions-detail__adoption-folder">
-                  To continue it in a project instead, add a project for its
-                  folder or repository first.
-                </p>
-              ))}
-            {continuationFeedback}
-          </div>
-        </Dialog>
-      )}
     </section>
   );
 }
