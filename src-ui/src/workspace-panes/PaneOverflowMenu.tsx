@@ -262,7 +262,6 @@ export function PaneOverflowMenu({
       <IconButton
         ref={triggerRef}
         aria-label={label}
-        title={label}
         aria-haspopup="menu"
         aria-expanded={open}
         tabIndex={triggerProps?.tabIndex}

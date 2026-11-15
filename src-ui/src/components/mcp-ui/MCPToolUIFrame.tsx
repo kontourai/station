@@ -375,7 +375,7 @@ export function MCPToolUIFrame({
       <MCPToolUIStatus
         status="invalid_ref"
         ref={component.ref}
-        reason="Expected canonical <serverId>/<toolName> reference"
+        reason="Expected a <serverId>/<toolName> reference"
         fallbackComponent={fallbackComponent}
         fallbackComponentName={fallbackComponentName}
       />
