@@ -117,7 +117,11 @@ two contact the engine or spend allowance.
    connection's current configuration fingerprint. For an engine connection,
    that fingerprint covers the whole saved connection configuration, including
    its name, command, arguments, environment and enabled state. Any edit to
-   it, a rename included, drops the tier until the next smoke. The receipt
+   it, a rename included, drops the tier until the next smoke. For an
+   OpenCode connection it also covers which engine runs it: turning the
+   OpenCode native engine Feature Preview on adds that engine to the
+   fingerprint, so a receipt recorded with the preview off does not count
+   while it is on, and the reverse. The receipt
    does not record the engine's version. An engine upgraded in place
    at the same command therefore keeps its tier until the receipt expires.
 

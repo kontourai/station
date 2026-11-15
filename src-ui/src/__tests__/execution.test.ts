@@ -831,6 +831,20 @@ describe('execution utils', () => {
     // It still stays in the final "any selectable connection" fallback when
     // nothing connected or managed exists.
     expect(preferredChatRuntime([kiro] as any)?.id).toBe('kiro');
+    // An OpenCode connection under the native-engine preview projects the
+    // engine id `opencode`; it is still an ACP connection, not "connected".
+    const openCode = {
+      ...kiro,
+      id: 'opencode',
+      name: 'OpenCode',
+      config: { engineId: 'opencode', provider: 'opencode' },
+    };
+    expect(preferredChatRuntime([openCode, managed] as any)?.id).toBe(
+      'bedrock',
+    );
+    expect(
+      preferredChatRuntime([openCode, managed] as any, 'opencode')?.id,
+    ).toBe('bedrock');
   });
 
   test('resolves provider-managed execution for project-scoped chat', () => {

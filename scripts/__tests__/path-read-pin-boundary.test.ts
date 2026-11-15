@@ -282,6 +282,13 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // services/acp/__tests__/fixtures/ (test data, excluded from source pins).
   // Its direct acp-steer import selects it for changes.
   'src-server/providers/__tests__/acp-steer.test.ts',
+  // OpenCode native suites read only the scrubbed opencode serve 2.3.0
+  // captures (and its served openapi.json) under fixtures/ (test data,
+  // excluded from source pins). Their direct client, fingerprint and
+  // replay-harness imports select them for changes.
+  'src-server/providers/__tests__/opencode-serve-client.test.ts',
+  'src-server/providers/__tests__/opencode-serve-fingerprint.test.ts',
+  'src-server/providers/__tests__/opencode-serve-fixtures.test.ts',
 ]);
 
 /**
@@ -601,6 +608,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists src-ui/public/color-themes, its own generated output, to refuse a sheet the catalog no longer renders; the color-theme edges in scripts/test-impact-manifest.mjs select it',
   'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
     'walks its own fixture directory',
+  'src-server/providers/__tests__/opencode-serve-fixtures.test.ts':
+    'lists its own fixtures/ directory for the opencode serve 2.3.0 captures, to check each is scrubbed of host paths and secrets',
   // The heavy-check slot queue lives under a makeTempDir root reached through
   // the workspace or temp fixture object.
   'scripts/__tests__/heavy-check-slots.test.ts': TEMP_VIA_FIXTURE,

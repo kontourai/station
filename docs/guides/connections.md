@@ -883,6 +883,15 @@ recorded per engine in the
 [engine capability matrix](../../packages/contracts/src/engine-capability-matrix.ts);
 the [ACP guide](acp.md) covers protocol details.
 
+OpenCode is still added and saved as an Agent Client Protocol engine. With the
+**OpenCode native engine** Feature Preview on (Settings → Advanced → Feature
+previews), new chats on it run on Station's `opencode` engine instead. That
+engine drives OpenCode 2 through its own local server (`opencode serve`) when
+Station has verified that version's API, and over the Agent Client Protocol
+otherwise. A chat keeps the engine it started with. The connection's engine
+reads `opencode` only while the preview is on. See
+[the decision](../decisions/opencode-native-transport.md).
+
 An engine Station did not find reads **Not installed**. Its card shows the
 vendor's install command for the operating system Station runs on, with a copy
 button and a link to the install guide, and **Check again** repeats the lookup
