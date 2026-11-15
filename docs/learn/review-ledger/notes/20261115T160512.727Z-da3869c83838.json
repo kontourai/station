@@ -1,0 +1,11 @@
+{
+  "revision": "52ed0aa6aabf748c9ee05e71166d5643f077e086",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Checked the diff: the only snapshot change is the patch_hash suffix of @homebridge/ciao@1.3.12, because its pnpm patch gained a hunk removing the import-time source-map-support/register. No package, version or snapshot was added or removed, so the cited dependency inventory is unchanged.","inputs":["pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/privacy-policy.md","note":"Checked the diff: the only snapshot change is the patch_hash suffix of @homebridge/ciao@1.3.12, because its pnpm patch gained a hunk removing the import-time source-map-support/register. No package, version or snapshot was added or removed, so the cited dependency inventory is unchanged.","inputs":["pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Checked the diff: the only snapshot change is the patch_hash suffix of @homebridge/ciao@1.3.12, because its pnpm patch gained a hunk removing the import-time source-map-support/register. No package, version or snapshot was added or removed, so the cited dependency inventory is unchanged.","inputs":["pnpm-lock.yaml#/snapshots"]}
+  ]
+}
