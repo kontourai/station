@@ -20,12 +20,12 @@ const appearance = {
   css: '[data-surface="sidebar"] { border-right: 2px solid #334; }',
 };
 
-function fixture() {
+function fixture(maxBytes?: number) {
   const home = makeTempDir('station-custom-appearance-');
   const app = new Hono().route(
     '/api/me',
     createCustomAppearanceRoutes({
-      store: new CustomAppearanceStore(home),
+      store: new CustomAppearanceStore(home, undefined, maxBytes),
       resolvePrincipal: (c) => {
         const who = c.req.header('x-test-person') ?? 'alice';
         return who === 'device'
@@ -319,5 +319,37 @@ describe('/api/me/appearance', () => {
     });
     expect(device.status).toBe(403);
     expect(device.json.code).toBe('custom_appearance_identity_required');
+  });
+
+  test('a document over the store limit is a 413 with a code, not a 500, and changes nothing', async () => {
+    const f = fixture(1500);
+    const revision = (await f.read()).revision;
+    const full = await f.call(
+      'POST',
+      '/appearance/proposal',
+      {
+        revision,
+        appearance: { ...appearance, css: `/* ${'x'.repeat(2000)} */` },
+      },
+      { as: 'agent-tool' },
+    );
+    expect(full.status).toBe(413);
+    expect(full.json.code).toBe('custom_appearance_store_full');
+    expect((await f.read()).proposal).toBeNull();
+  });
+
+  test('a name with bidirectional or control characters is refused', async () => {
+    const f = fixture();
+    const revision = (await f.read()).revision;
+    for (const name of ['Calm\u202eesrever', 'a\u2066b', 'tab\there']) {
+      const refused = await f.call(
+        'POST',
+        '/appearance/proposal',
+        { revision, appearance: { ...appearance, name } },
+        { as: 'agent-tool' },
+      );
+      expect(refused.status, JSON.stringify(name)).toBe(400);
+      expect(refused.json.violations?.[0]?.kind).toBe('invalid-shape');
+    }
   });
 });

@@ -31,7 +31,6 @@ import { PageSection } from '../components/PageSection';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import {
-  customAppearanceOwner,
   getCustomAppearanceSnapshot,
   leaveCustomAppearanceSafeMode,
   setActiveCustomAppearance,
@@ -181,7 +180,7 @@ function Editor({
       { kind: 'save', revision: document.revision, appearance },
       {
         onSuccess: (data) => {
-          setActiveCustomAppearance(data.active, data.owner);
+          setActiveCustomAppearance(data.active);
           onSaved();
         },
         onError,
@@ -195,8 +194,7 @@ function Editor({
         // Shown at once so nothing flashes. The save is a plain client call,
         // not this component's mutation, so its outcome lands even if the
         // person has left the page; a refused save re-reads the server's copy.
-        const owner = customAppearanceOwner() ?? document.owner;
-        setActiveCustomAppearance(appearance, owner);
+        setActiveCustomAppearance(appearance);
         saveCustomAppearance(
           scope.apiBase,
           { revision: document.revision, appearance },
@@ -204,7 +202,7 @@ function Editor({
         ).then(
           (next) => {
             client.setQueryData(customAppearanceKey(scope), next);
-            setActiveCustomAppearance(next.active, next.owner);
+            setActiveCustomAppearance(next.active);
             onSaved();
           },
           (error) => {
@@ -212,9 +210,9 @@ function Editor({
             getCustomAppearance(scope.apiBase, { requestScope: scope }).then(
               (current) => {
                 client.setQueryData(customAppearanceKey(scope), current);
-                setActiveCustomAppearance(current.active, current.owner);
+                setActiveCustomAppearance(current.active);
               },
-              () => setActiveCustomAppearance(document.active, owner),
+              () => setActiveCustomAppearance(document.active),
             );
           },
         );
@@ -347,8 +345,7 @@ export function CustomAppearanceSection() {
       proposalId: proposal.id,
       onKeep: () => {
         const before = getCustomAppearanceSnapshot().active;
-        const owner = customAppearanceOwner() ?? doc.owner;
-        setActiveCustomAppearance(proposal.appearance, owner);
+        setActiveCustomAppearance(proposal.appearance);
         keepCustomAppearanceProposal(
           scope.apiBase,
           { revision: doc.revision, proposalId: proposal.id },
@@ -356,10 +353,10 @@ export function CustomAppearanceSection() {
         ).then(
           (next) => {
             client.setQueryData(customAppearanceKey(scope), next);
-            setActiveCustomAppearance(next.active, next.owner);
+            setActiveCustomAppearance(next.active);
           },
           (error) => {
-            setActiveCustomAppearance(before, owner);
+            setActiveCustomAppearance(before);
             setKeepError(errorText(error));
           },
         );
@@ -431,7 +428,7 @@ export function CustomAppearanceSection() {
                       },
                       {
                         onSuccess: (data) =>
-                          setActiveCustomAppearance(data.active, data.owner),
+                          setActiveCustomAppearance(data.active),
                       },
                     )
                   }

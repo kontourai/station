@@ -16,6 +16,7 @@ import { connectedAccountOwnerId } from '../../services/identity/connected-accou
 import {
   CustomAppearanceConflictError,
   type CustomAppearanceStore,
+  CustomAppearanceTooLargeError,
   InvalidCustomAppearanceError,
   StaleRenderReportError,
 } from '../../services/identity/custom-appearance.js';
@@ -184,6 +185,15 @@ export function createCustomAppearanceRoutes(deps: {
               code: 'custom_appearance_changed',
             },
             409,
+          );
+        if (error instanceof CustomAppearanceTooLargeError)
+          return c.json(
+            {
+              success: false,
+              error: errorMessage(error),
+              code: 'custom_appearance_store_full',
+            },
+            413,
           );
         if (error instanceof StaleRenderReportError)
           return c.json(

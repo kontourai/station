@@ -29,10 +29,10 @@ export function CustomAppearanceBridge(): null {
   const data = query.data;
   const error = query.error;
   useEffect(() => {
-    if (data) setActiveCustomAppearance(data.active, data.owner);
+    if (data) setActiveCustomAppearance(data.active);
   }, [data]);
   useEffect(() => {
-    if (definitelyNone(error)) setActiveCustomAppearance(null, null);
+    if (definitelyNone(error)) setActiveCustomAppearance(null);
   }, [error]);
   return null;
 }

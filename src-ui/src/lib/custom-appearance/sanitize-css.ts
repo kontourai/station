@@ -65,6 +65,35 @@ const GROUPING = [
   'CSSLayerBlockRule',
 ];
 
+/**
+ * A backslash only matters where the text is tokenized again later: a custom
+ * property's raw value, and a value holding `var()`, whose substitution
+ * re-tokenizes it (`\75 rl(` would become `url(`). Elsewhere the parser has
+ * already resolved escapes, and the CSSOM adds its own when it serializes a
+ * string or attribute selector (`[title='"']` reads back as `"\""`), which
+ * cannot fetch. So outside those two places backslashes are ignored and the
+ * value is checked for fetches without them.
+ */
+function fetchKind(text: string, retokenized: boolean) {
+  const lower = text.toLowerCase();
+  if (retokenized || lower.includes('var(')) return fetchingValueKind(lower);
+  return fetchingValueKind(lower.replace(/\\/g, ''));
+}
+
+/** Block or sheet text: a backslash counts only next to a `var(`. */
+function blockFetchKind(text: string) {
+  const lower = text.toLowerCase();
+  for (const block of lower.split(/[{}]/))
+    for (const declaration of block.split(';')) {
+      const kind = fetchKind(
+        declaration,
+        declaration.trimStart().startsWith('--'),
+      );
+      if (kind) return kind;
+    }
+  return null;
+}
+
 function sanitizeDeclarations(
   style: CSSStyleDeclaration,
   where: string,
@@ -73,14 +102,14 @@ function sanitizeDeclarations(
   const names: string[] = [];
   for (let i = 0; i < style.length; i += 1) names.push(style.item(i));
   for (const name of names) {
-    const kind = fetchingValueKind(style.getPropertyValue(name).toLowerCase());
+    const kind = fetchKind(style.getPropertyValue(name), name.startsWith('--'));
     if (!kind) continue;
     style.removeProperty(name);
     stripped.push({ where: cut(where), what: cut(name), reason: kind });
   }
   // A shorthand with var() is kept whole and its longhands read empty, so the
   // block's own text is the last word.
-  const rest = fetchingValueKind(style.cssText.toLowerCase());
+  const rest = blockFetchKind(style.cssText);
   if (rest) {
     style.cssText = '';
     stripped.push({ where: cut(where), what: '*', reason: rest });
@@ -195,7 +224,7 @@ export function sanitizeCustomCss(css: string): SanitizedCss {
     sanitizeRules(sheet.cssRules, () => undefined, again);
     if (again.length > 0) return refuse(again[0]!.reason);
     const final = Array.from(sheet.cssRules, (rule) => rule.cssText).join('\n');
-    const left = fetchingValueKind(final.toLowerCase());
+    const left = blockFetchKind(final);
     // Unreachable unless a rule type serializes a fetch it did not expose to
     // the walk; refuse the sheet rather than trust it.
     if (left) return refuse(left);

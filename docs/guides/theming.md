@@ -226,7 +226,10 @@ is mounted. `main.tsx` applies the last applied copy before the first render,
 after the color theme is bound. Custom CSS should select only the stable hooks
 in `APPEARANCE_HOOKS`; a component that owns one of them keeps its attribute,
 and its suite renders it. A component that shows a decision (a person granting
-authority) calls `useDecisionSurface` with an id added to `DECISION_SURFACES`.
+authority) calls `useDecisionSurface` with an id added to `DECISION_SURFACES`. Contrast is rated
+on the palette over the theme with the CSS out of the cascade, so CSS that
+sets a background without its text colour is not caught (a restyled button's
+disabled label can vanish); the agent guide asks for both.
 [custom-appearance.browser.test.ts](../../src-ui/src/__tests__/custom-appearance.browser.test.ts)
 measures the guard, the palette over a named theme, suspension, the keep bar
 against hostile CSS and the countdown in Chromium.

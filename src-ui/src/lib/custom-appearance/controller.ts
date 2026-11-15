@@ -8,9 +8,11 @@
  * with `?appearance=safe`.
  *
  * What is shown is the preview when one is running, otherwise the active
- * appearance. The last active appearance this browser applied is cached,
- * sanitized, in localStorage with the opaque owner tag the server returned,
- * and `applyCachedCustomAppearance` puts it back before the first render.
+ * appearance. The last active appearance this browser applied is cached in
+ * localStorage as the text the server accepted, and
+ * `applyCachedCustomAppearance` parses and sanitizes it again before the first
+ * render. (The sanitized serialization is not cached: the CSSOM expands
+ * shorthands, so it can exceed the 50,000-character limit the parse enforces.)
  */
 import {
   CUSTOM_APPEARANCE_SAFE_PARAM,
@@ -36,7 +38,6 @@ interface Applied {
 
 interface State {
   active: Applied | null;
-  owner: string | null;
   preview: Applied | null;
   safe: boolean;
   palette: CSSStyleSheet | null;
@@ -45,7 +46,6 @@ interface State {
 
 const state: State = {
   active: null,
-  owner: null,
   preview: null,
   safe: false,
   palette: null,
@@ -110,43 +110,36 @@ function bind(): void {
   subscribeDecisionSurfaces(suspendForDecisions);
 }
 
-function writeCache(owner: string | null, applied: Applied | null): void {
+function writeCache(applied: Applied | null): void {
   try {
-    if (!owner || !applied) {
+    if (!applied) {
       localStorage.removeItem(CUSTOM_APPEARANCE_CACHE_KEY);
       return;
     }
-    const sanitized = sanitizeCustomCss(applied.appearance.css).text;
     localStorage.setItem(
       CUSTOM_APPEARANCE_CACHE_KEY,
-      JSON.stringify({
-        version: 1,
-        owner,
-        appearance: { ...applied.appearance, css: sanitized },
-      }),
+      JSON.stringify({ version: 2, appearance: applied.appearance }),
     );
   } catch {
     // The cache is a pre-paint convenience; the live appearance still applies.
   }
 }
 
-/**
- * The person's active appearance, from the server (`owner` is its opaque
- * tag) or `null` to turn it off. Writes the pre-paint cache.
- */
+/** The person's active appearance from the server, or `null` to turn it off. Writes the pre-paint cache. */
 export function setActiveCustomAppearance(
   appearance: CustomAppearance | null,
-  owner: string | null,
 ): void {
   bind();
   const parsed = appearance ? parseCustomAppearance(appearance) : null;
   state.active = parsed?.ok ? prepare(parsed.value) : null;
-  state.owner = state.active ? owner : null;
-  writeCache(state.owner, state.active);
+  writeCache(state.active);
   render();
 }
 
-/** Apply the cached appearance before the first render. */
+/**
+ * Apply the cached appearance before the first render. The cache is device
+ * storage, so it is parsed (including the CSS text check) and sanitized again.
+ */
 export function applyCachedCustomAppearance(): void {
   bind();
   let cached: unknown;
@@ -157,18 +150,12 @@ export function applyCachedCustomAppearance(): void {
     cached = null;
   }
   if (!cached || typeof cached !== 'object') return;
-  const { version, owner, appearance } = cached as Record<string, unknown>;
-  if (version !== 1 || typeof owner !== 'string') return;
+  const { version, appearance } = cached as Record<string, unknown>;
+  if (version !== 2) return;
   const parsed = parseCustomAppearance(appearance);
   if (!parsed.ok) return;
   state.active = prepare(parsed.value);
-  state.owner = owner;
   render();
-}
-
-/** The owner tag of the appearance in force, so a different person's answer replaces it. */
-export function customAppearanceOwner(): string | null {
-  return state.owner;
 }
 
 export function startCustomAppearancePreview(

@@ -38,6 +38,11 @@ export class InvalidCustomAppearanceError extends Error {
     super(violations.map((v) => v.message).join(' '));
   }
 }
+export class CustomAppearanceTooLargeError extends Error {
+  constructor() {
+    super('This appearance document is too large to store.');
+  }
+}
 export class StaleRenderReportError extends Error {
   constructor() {
     super('That proposal is no longer pending.');
@@ -57,7 +62,7 @@ const EMPTY: StoredDocument = {
   renderReport: null,
 };
 /** 50,000 characters of CSS twice (active and proposal) plus a report. */
-const limits = { maxBytes: 512 * 1024, label: 'custom appearance' };
+const DEFAULT_MAX_BYTES = 512 * 1024;
 
 type Owner = { principalId: string; tenantId?: string };
 
@@ -99,13 +104,9 @@ function storedDocument(raw: unknown): StoredDocument {
   };
 }
 
-function view(
-  document: StoredDocument,
-  owner: string,
-): CustomAppearanceDocument {
+function view(document: StoredDocument): CustomAppearanceDocument {
   return {
     revision: digest([document.active, document.proposal]),
-    owner,
     active: document.active,
     proposal: document.proposal,
     renderReport: document.renderReport,
@@ -113,10 +114,16 @@ function view(
 }
 
 export class CustomAppearanceStore {
+  private readonly limits: { maxBytes: number; label: string };
+
   constructor(
     private readonly home: string,
     private readonly now: () => string = () => new Date().toISOString(),
-  ) {}
+    /** Overridable so a test can fill the document without 512 KiB of CSS. */
+    maxBytes = DEFAULT_MAX_BYTES,
+  ) {
+    this.limits = { maxBytes, label: 'custom appearance' };
+  }
 
   private key(owner: Owner): string {
     return digest([
@@ -135,15 +142,9 @@ export class CustomAppearanceStore {
     );
   }
 
-  /** Not the file key: a client never learns a path component. */
-  private ownerTag(owner: Owner): string {
-    return digest(['custom-appearance-owner', this.key(owner)]).slice(0, 32);
-  }
-
   read(owner: Owner): CustomAppearanceDocument {
     return view(
-      storedDocument(readJsonFile(this.path(owner), EMPTY, limits)),
-      this.ownerTag(owner),
+      storedDocument(readJsonFile(this.path(owner), EMPTY, this.limits)),
     );
   }
 
@@ -157,13 +158,22 @@ export class CustomAppearanceStore {
       EMPTY,
       (raw) => {
         const current = storedDocument(raw);
-        if (expected !== null && view(current, '').revision !== expected)
+        if (expected !== null && view(current).revision !== expected)
           throw new CustomAppearanceConflictError();
-        return update(current);
+        const next = update(current);
+        // The same serialization the publish uses (two-space indent, newline):
+        // refuse here with a typed error rather than let the write's own limit
+        // surface as an unexpected failure.
+        if (
+          Buffer.byteLength(`${JSON.stringify(next, null, 2)}\n`) >
+          this.limits.maxBytes
+        )
+          throw new CustomAppearanceTooLargeError();
+        return next;
       },
-      limits,
+      this.limits,
     );
-    return view(next as StoredDocument, this.ownerTag(owner));
+    return view(next as StoredDocument);
   }
 
   /** An agent's (or anyone's) proposal. Replaces a pending one; clears its report. */

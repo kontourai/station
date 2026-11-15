@@ -24,6 +24,7 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { sanitizeCustomCss } from '@/lib/custom-appearance/sanitize-css';
 import {
+  applyCachedCustomAppearance,
   setActiveCustomAppearance,
   getCustomAppearanceSnapshot,
 } from '@/lib/custom-appearance/controller';
@@ -44,6 +45,8 @@ function App() {
     }),
   );
 }
+// Like Station's own root, the app fills the viewport.
+document.getElementById('root').style.minHeight = '100vh';
 createRoot(document.getElementById('root')).render(React.createElement(App));
 const appearance = (css, palette = {}) => ({ version: 1, name: 'Fixture', palette, css });
 window.harness = {
@@ -52,8 +55,9 @@ window.harness = {
     const { text, stripped } = sanitizeCustomCss(css);
     return { text, stripped };
   },
-  setActive: (css, palette) => setActiveCustomAppearance(css === null ? null : appearance(css, palette), 'owner-a'),
+  setActive: (css, palette) => setActiveCustomAppearance(css === null ? null : appearance(css, palette)),
   snapshot: () => getCustomAppearanceSnapshot(),
+  applyCached: () => applyCachedCustomAppearance(),
   bar: () => {
     const bar = customAppearancePreviewBar();
     if (!bar) return null;
@@ -252,10 +256,10 @@ describe('custom appearance in Chromium', () => {
   const lastEvent = () =>
     page.evaluate(() => (window as any).harness.events.slice(-1)[0]);
 
-  test('a transparent overlay over the whole page cannot cover Keep; a real click keeps', async () => {
+  test('a transparent overlay from inside the app cannot cover Keep; a real click keeps', async () => {
     await harness(
       'preview',
-      'body::after { content: ""; position: fixed; inset: 0; z-index: 2147483647; background: transparent; }',
+      '#probe::after { content: ""; position: fixed; inset: 0; z-index: 2147483647; background: transparent; }',
     );
     const box = await keepBox();
     expect(box).not.toBeNull();
@@ -431,6 +435,38 @@ describe('custom appearance in Chromium', () => {
     ).toEqual([]);
   });
 
+  test('a page overlay drawn by html or body, or a hidden body, disables Keep', async () => {
+    for (const css of [
+      'html::after { content: ""; position: fixed; inset: 0; z-index: 2147483646; background: #123; }',
+      'body::before { content: ""; position: fixed; inset: 0; z-index: 2147483646; background: #123; }',
+      'body { opacity: 0 !important; }',
+      'body { transform: translateX(-100%); }',
+    ]) {
+      await harness('preview', css);
+      await expect
+        .poll(async () => (await bar())?.reason, { timeout: 3000 })
+        .toMatch(/covers the page|changes the whole page/);
+      await page.keyboard.press('Escape');
+    }
+  });
+
+  test('a sheet the CSSOM re-escapes is not refused, and a refused sheet is reported', async () => {
+    const kept = await harness<{ text: string; stripped: { what: string }[] }>(
+      'sanitize',
+      `[title='"'] { color: red; } #probe::before { content: '"'; } div { color: blue; }`,
+    );
+    expect(kept.stripped).toEqual([]);
+    expect(kept.text).toContain('div { color: blue; }');
+    // A backslash where var() re-tokenizes it is still refused.
+    const refused = await harness<{
+      stripped: { what: string; reason: string }[];
+    }>(
+      'sanitize',
+      '#probe { background: var(--n, \\75 rl(http://evil.test/v.png)); }',
+    );
+    expect(refused.stripped.map((s) => s.reason)).toContain('escape');
+  });
+
   test('the countdown reverts a preview nobody answers', async () => {
     await harness('preview', '#probe { color: rgb(3, 3, 3) !important; }', 2);
     expect(await probe('color')).toBe('rgb(3, 3, 3)');
@@ -438,5 +474,22 @@ describe('custom appearance in Chromium', () => {
     expect(await lastEvent()).toBe('revert');
     expect(await probe('color')).not.toBe('rgb(3, 3, 3)');
     expect(await host().count()).toBe(0);
+  });
+
+  // Last: it reloads the page.
+  test('a near-limit sheet whose sanitized form outgrows the limit still applies from the cache after a reload', async () => {
+    const filler = '.c{background:red}'.repeat(2700);
+    const css = `${filler}#probe{color:rgb(7, 7, 7)}`;
+    expect(css.length).toBeLessThan(50_000);
+    const { text } = await harness<{ text: string }>('sanitize', css);
+    // The case that broke the cache: the CSSOM's serialization is longer.
+    expect(text.length).toBeGreaterThan(50_000);
+    await harness('setActive', css);
+    expect(await probe('color')).toBe('rgb(7, 7, 7)');
+    await page.reload();
+    await page.waitForFunction(() => 'harness' in window);
+    expect(await probe('color')).not.toBe('rgb(7, 7, 7)');
+    await harness('applyCached');
+    expect(await probe('color')).toBe('rgb(7, 7, 7)');
   });
 });

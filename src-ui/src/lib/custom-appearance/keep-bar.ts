@@ -115,24 +115,58 @@ const BAR_CSS = [
 const NUMERIC_ONE = (value: string) => value === '' || Number(value) === 1;
 
 /** Why the page cannot be trusted to show what Keep would keep, or `null`. */
+/** Whether this element's own rendering hides or moves everything inside it. */
+function hidesItsContent(element: Element): boolean {
+  const style = getComputedStyle(element);
+  return (
+    !NUMERIC_ONE(style.opacity) ||
+    style.visibility !== 'visible' ||
+    style.display === 'none' ||
+    (style.filter !== 'none' && style.filter !== '') ||
+    (style.transform !== 'none' && style.transform !== '') ||
+    (style.translate !== 'none' && style.translate !== '') ||
+    (style.scale !== 'none' && style.scale !== '') ||
+    (style.rotate !== 'none' && style.rotate !== '') ||
+    (style.clipPath !== 'none' && style.clipPath !== '') ||
+    (style.maskImage !== 'none' && style.maskImage !== '') ||
+    (style.mixBlendMode !== 'normal' && style.mixBlendMode !== '') ||
+    (style.contentVisibility !== 'visible' && style.contentVisibility !== '') ||
+    !NUMERIC_ONE(style.getPropertyValue('zoom'))
+  );
+}
+
+/**
+ * Points across the page above the bar. The app fills the viewport, so a hit
+ * on `<html>` or `<body>` itself means something painted by them, such as a
+ * pseudo-element overlay (`html::after { position: fixed; inset: 0 }`),
+ * covers the page. An overlay with `pointer-events: none` is invisible to
+ * this hit test; that gap is recorded in the decision record.
+ */
+function pageCovered(host: HTMLElement): boolean {
+  const top = host.getBoundingClientRect().top;
+  const width = window.innerWidth;
+  if (top < 40 || width < 40) return false;
+  for (const [fx, fy] of [
+    [0.5, 0.5],
+    [0.25, 0.25],
+    [0.75, 0.25],
+    [0.25, 0.75],
+    [0.75, 0.75],
+  ] as const) {
+    const hit = document.elementFromPoint(width * fx, top * fy);
+    if (hit === document.documentElement || hit === document.body) return true;
+  }
+  return false;
+}
+
 function pageIntegrityProblem(host: HTMLElement): string | null {
-  const root = getComputedStyle(document.documentElement);
-  const changed =
-    !NUMERIC_ONE(root.opacity) ||
-    root.visibility !== 'visible' ||
-    root.display === 'none' ||
-    (root.filter !== 'none' && root.filter !== '') ||
-    (root.transform !== 'none' && root.transform !== '') ||
-    (root.translate !== 'none' && root.translate !== '') ||
-    (root.scale !== 'none' && root.scale !== '') ||
-    (root.rotate !== 'none' && root.rotate !== '') ||
-    (root.clipPath !== 'none' && root.clipPath !== '') ||
-    (root.maskImage !== 'none' && root.maskImage !== '') ||
-    (root.mixBlendMode !== 'normal' && root.mixBlendMode !== '') ||
-    (root.contentVisibility !== 'visible' && root.contentVisibility !== '') ||
-    !NUMERIC_ONE(root.getPropertyValue('zoom'));
-  if (changed)
+  if (
+    hidesItsContent(document.documentElement) ||
+    (document.body !== null && hidesItsContent(document.body))
+  )
     return 'This preview changes the whole page, so Keep is off. Discard it, or let it revert.';
+  if (pageCovered(host))
+    return 'Something covers the page in this preview, so Keep is off. Discard it, or let it revert.';
   for (const pseudo of ['::before', '::after']) {
     const content = getComputedStyle(host, pseudo).content;
     if (content !== 'none' && content !== 'normal' && content !== '')

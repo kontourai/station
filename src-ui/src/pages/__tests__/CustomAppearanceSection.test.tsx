@@ -51,7 +51,6 @@ const doc = (
   patch: Partial<CustomAppearanceDocument> = {},
 ): CustomAppearanceDocument => ({
   revision: 'r1',
-  owner: 'o',
   active: null,
   proposal: null,
   renderReport: null,

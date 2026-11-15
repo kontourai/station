@@ -41,10 +41,11 @@ preferences. The document holds:
 - `renderReport`: what the person's browser saw when it previewed that
   proposal;
 - `revision`: a digest of `active` and `proposal` (not the report, so the
-  browser that reported can still Keep with the revision it read);
-- `owner`: an opaque per-person tag the browser keys its cache with.
+  browser that reported can still Keep with the revision it read).
 
-An appearance is `{ version: 1, name, palette, css }`. The palette has an
+An appearance is `{ version: 1, name, palette, css }`. The name refuses
+control and bidirectional formatting characters, which could reorder the
+preview bar's "proposed by an agent" line. The palette has an
 optional entry per mode (`dark`, `light`) with `roles`, a map over
 `APPEARANCE_ROLE_PROPERTIES` (the same list the color-theme catalog reads),
 and `accent`, one hex that supplies brand, action and focus with a derived
@@ -55,7 +56,17 @@ black or white text partner. Values are `#rgb` or `#rrggbb`.
 Agents may read and propose. Keep, save, dismiss, turn off and the render
 report refuse any request that may be an agent's (`requestMayBeAnAgent`, 403
 `custom_appearance_person_only`), as the Personal Board routes do. Propose,
-save and keep compare the revision; a stale one is 409.
+save and keep compare the revision; a stale one is 409. A change that would
+take the stored document over its 512 KiB limit is 413
+`custom_appearance_store_full` and changes nothing.
+
+"Only the person" means only a request that is not recognizably an agent's:
+`requestMayBeAnAgent` sees station-control's internal credential and its
+agent-origin header. An agent that holds the person's own CLI credential, a
+personal access token, or a signed-in browser (a Browser pane on Station
+itself) is indistinguishable from the person and can save or keep directly.
+This is the Personal Board posture; the same agent could press an approval in
+that browser too.
 
 Station-control has `get_appearance` (the document plus a guide: roles, CSS
 rules, hook selectors, "propose small changes; the person previews at
@@ -122,7 +133,11 @@ account sharing controls, the usage-sharing prompt, job, automation and
 check-back proposals, proposed file changes and gate exceptions, and the
 standing grants a person sets: the approval mode sheet with its full-access
 confirm, allowing agents to control devices, people's roles, and the
-integration trust and editor panels. Each owner
+integration trust and editor panels, the ACP session mode sheet (it applies
+a mode at once), default approval modes for the account and for an Agent,
+memory review, device sharing and personal access tokens. Any notification
+that carries actions registers, not only tool-approval and pairing toasts.
+Each owner
 calls `useDecisionSurface(id)` (a layout effect, so the sheet is off before
 the browser paints the decision), and ids come from one typed list.
 Over-suspending costs only convenience, so owners that are always mounted on a
@@ -157,10 +172,13 @@ The bar must not be hideable or spoofable by the CSS it previews:
 - Keep accepts only a trusted activation: a pointer click where Keep is the
   topmost element at the pointer through both the document and the shadow
   root, or a keyboard activation while Keep has focus. Keep is not focused on
-  mount. While `<html>` is made invisible or moved (opacity, visibility,
-  display, filter, transform, translate, scale, rotate, clip-path, mask,
-  mix-blend-mode, content-visibility, zoom), the bar is moved off screen, or
-  anything covers Keep, Keep is disabled and says why. Keep is also off while
+  mount. While `<html>` or `<body>` is made invisible or moved (opacity,
+  visibility, display, filter, transform, translate, scale, rotate,
+  clip-path, mask, mix-blend-mode, content-visibility, zoom), the bar is
+  moved off screen, anything covers Keep, or a hit test at five points of the
+  page lands on `<html>` or `<body>` themselves (the app fills the viewport, so
+  that is a pseudo-element overlay such as `html::after { position: fixed;
+  inset: 0 }`), Keep is disabled and says why. Keep is also off while
   an approval holds the preview's CSS back (the person would keep CSS they did
   not see), in a safe-mode tab, and when a text pair the preview changed fails
   contrast on the palette over the theme, in either mode (the mode not on
@@ -200,14 +218,38 @@ the contract.
 session; the Appearance page says so and offers to turn it back on. The page
 also offers "Turn off custom appearance", which saves none.
 
-The last applied appearance, sanitized, is cached in `localStorage`
-(`station-custom-appearance-v1`) with the owner tag, and `main.tsx` applies it
-before the first render. `CustomAppearanceBridge` replaces it when the
+The last applied appearance is cached in `localStorage`
+(`station-custom-appearance-v1`) as the text the server accepted, and
+`main.tsx` parses, checks and sanitizes it again before the first render. The
+sanitized serialization is not cached: the CSSOM expands shorthands, so a
+49,002-character sheet serializes to 74,057 characters, over the limit the
+parse enforces, and every reload flashed (found in verification). The cache
+carries no owner; see the gaps. `CustomAppearanceBridge` replaces it when the
 person's document answers. A refusal (401, 403, 404) turns it off and clears
 the cache; a network failure keeps it.
 
 ## Accepted gaps
 
+- Person-only routes rely on `requestMayBeAnAgent` (see Propose, preview,
+  keep): an agent with the person's CLI credential, a personal access token
+  or a signed-in browser pane can save or keep directly.
+- The CSS guard is tested only in Chromium. The macOS desktop app renders in
+  WKWebView, where the CSSOM walk is NOT_VERIFIED; the final re-check of the
+  whole sanitized text, and the server's text check, are the backstop there.
+- An overlay with `pointer-events: none` is invisible to the page hit test, so
+  an opaque one (`html::after { pointer-events: none; ... }`) leaves Keep
+  enabled; the person sees a page that is covered. An overlay drawn by an
+  element inside the app is also not caught; Keep still works through the top
+  layer.
+- Theoretical: a top-layer element opened after the bar, with
+  `pointer-events: none`, could paint over it without failing the topmost
+  checks. Station opens no such element from CSS; CSS cannot create one.
+- The contrast gate and the render report rate the palette with the CSS out of
+  the cascade (so the report cannot leak page content). CSS that sets a
+  background without its text colour is not rated: in review, a proposal that
+  restyled `[data-slot="button"]` left a disabled button's label invisible
+  while the report showed no contrast failure. The agent guide says to set the
+  colour with the background.
 - CSS can tell it is being previewed (the bar is an extra child of `<html>`,
   in the top layer) and can change over time (an animation delayed past the
   countdown), so a kept appearance can look different from its preview. The
@@ -234,10 +276,14 @@ the cache; a network failure keeps it.
   screen, the previous person's custom appearance shows until the account
   boundary's read answers for someone else or refuses. It holds only that
   person's own palette and sanitized CSS.
-- The registry relies on each decision owner calling the hook. A test pins
-  the list; render tests prove registration for the owners listed as
-  rendered in `decision-surfaces.test.tsx` and their suites, and the rest are
-  one-line calls verified by review only. A new decision surface that forgets
-  the hook is not suspended.
+- The registry relies on each decision owner calling the hook. Render tests
+  prove registration for 18 of the 41 ids (named in
+  `decision-surfaces.test.tsx`: permission request, tool approval, URL input
+  request, proposed change, exact request, device pairing, needs-input reply,
+  terminal run, job, automation and check-back proposals, approval mode,
+  notifications with actions, account and Agent approval defaults, memory
+  review, people roles, access tokens). The rest are one-line calls verified
+  by review only. A new decision surface that forgets the hook is not
+  suspended.
 - No capability flag: the UI treats a 404 from an older Station as "not
   supported" and hides the Custom section; the agent tool reports the 404.

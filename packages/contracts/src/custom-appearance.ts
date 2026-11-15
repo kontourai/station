@@ -89,11 +89,6 @@ export interface CustomAppearanceRenderReport {
 export interface CustomAppearanceDocument {
   /** Opaque precondition over `active` and `proposal`. */
   revision: string;
-  /**
-   * Opaque, stable per person on this Station. The browser keys its pre-paint
-   * cache with it, so a different person's answer replaces the cache.
-   */
-  owner: string;
   active: CustomAppearance | null;
   proposal: CustomAppearanceProposal | null;
   /** The latest render report for the current proposal, if the person previewed it. */
@@ -251,6 +246,24 @@ export const CUSTOM_CSS_ALLOWED_AT_RULES = [
   'keyframes',
 ] as const;
 
+/** C0 and DEL controls, and the bidirectional marks, embeddings, overrides and isolates. */
+function hasControlCharacters(text: string): boolean {
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0;
+    if (
+      code < 0x20 ||
+      code === 0x7f ||
+      code === 0x61c ||
+      code === 0x200e ||
+      code === 0x200f ||
+      (code >= 0x202a && code <= 0x202e) ||
+      (code >= 0x2066 && code <= 0x2069)
+    )
+      return true;
+  }
+  return false;
+}
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' &&
   value !== null &&
@@ -286,6 +299,12 @@ export function parseCustomAppearance(
     name.length > CUSTOM_APPEARANCE_NAME_MAX_LENGTH
   )
     shape(`name must be 1 to ${CUSTOM_APPEARANCE_NAME_MAX_LENGTH} characters.`);
+  // Bidi controls could reorder the name in the preview bar ("proposed by an
+  // agent" read backwards); other control characters have no place in it.
+  if (typeof name === 'string' && hasControlCharacters(name))
+    shape(
+      'name must not contain control or bidirectional formatting characters.',
+    );
   const css = input.css ?? '';
   if (typeof css !== 'string') shape('css must be a string.');
   else violations.push(...customCssTextViolations(css));
@@ -532,7 +551,7 @@ export const CUSTOM_APPEARANCE_GUIDE = {
     `${CUSTOM_APPEARANCE_PREVIEW_SECONDS} seconds. After they preview, get_appearance returns a render report: which hooks matched, contrast on the computed colours, and any CSS the browser removed.`,
   palette:
     'palette.dark and palette.light each take roles (a map of the roles below to #rgb or #rrggbb) and accent (one hex for brand, action and focus; its text colour is derived). Unset roles keep the current theme. Text roles must reach 4.5:1 on bg, panel and panel-raised.',
-  css: `At most ${CUSTOM_APPEARANCE_CSS_MAX_LENGTH} characters, applied after Station's styles. No @import, @font-face, backslash escapes, image-set(), cross-fade(), image(), src(), attr(), or url() other than data: and #fragment. Allowed at-rules: ${CUSTOM_CSS_ALLOWED_AT_RULES.map((r) => `@${r}`).join(', ')}. Use the hook selectors; class names change without notice. Custom CSS is switched off while any approval or consent prompt is on screen.`,
+  css: `At most ${CUSTOM_APPEARANCE_CSS_MAX_LENGTH} characters, applied after Station's styles. No @import, @font-face, backslash escapes, image-set(), cross-fade(), image(), src(), attr(), or url() other than data: and #fragment. Allowed at-rules: ${CUSTOM_CSS_ALLOWED_AT_RULES.map((r) => `@${r}`).join(', ')}. Use the hook selectors; class names change without notice. When you set a background, set its text colour too: contrast is rated on the palette, not on your CSS. In the render report, a stripped entry for (sheet) means the browser refused the whole CSS. Custom CSS is switched off while any approval or consent prompt is on screen.`,
   roles: APPEARANCE_ROLE_PROPERTIES,
   hooks: APPEARANCE_HOOKS,
   openPath: '/appearance',

@@ -2328,7 +2328,7 @@ The owner is the request's principal; a device-only or non-person caller gets
 
 | Method | Path | Body / result |
 | --- | --- | --- |
-| GET | `/api/me/appearance` | `{revision, owner, active, proposal, renderReport}` |
+| GET | `/api/me/appearance` | `{revision, active, proposal, renderReport}` |
 | POST | `/api/me/appearance/proposal` | `{revision, appearance}`; replaces any pending proposal. Open to agents |
 | POST | `/api/me/appearance/proposal/keep` | `{revision, proposalId}`; makes the proposal active |
 | DELETE | `/api/me/appearance/proposal` | `{revision}`; dismisses the proposal |
@@ -2339,7 +2339,10 @@ Every route but GET and the proposal refuses a request that may be an agent's
 (403 `custom_appearance_person_only`). A stale revision, or a report or keep
 for a proposal that is no longer pending, is 409 `custom_appearance_changed`.
 An invalid appearance is 400 `invalid_custom_appearance` with `violations`
-(shape, colour, role, CSS and contrast); bodies over 160 KiB are 413.
+(shape, colour, role, CSS and contrast); bodies over 160 KiB are 413, and a
+change that would take the stored document over 512 KiB is 413
+`custom_appearance_store_full`. The render report's `stripped` list holds one
+`{where: "(sheet)", what: "*"}` entry when the browser refused the whole sheet.
 
 ### Personal Board authoring
 
