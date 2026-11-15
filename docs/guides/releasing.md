@@ -341,12 +341,15 @@ between them. The slot counts were sized from the wait for a slot alone: they
 do not model the pool, and a job that used to be superseded while waiting
 for a slot can now start. The third statics slot followed a 2026-11-15
 measurement in which a PR waited 70 minutes for one of two statics slots while
-seven of the twenty runners were idle; a statics job takes about 13 minutes, so three slots clear
-about fourteen PR pushes an hour. From 00:00Z to 03:00Z on 2026-11-14, before the
+seven of the twenty runners were idle. A statics job takes about 13 minutes, so one slot clears
+about four and a half an hour. The slots are separate queues, not a pool: with PR numbers spread
+evenly the busiest slot (four of the ten digits) fills at about eleven PR pushes an hour, against
+about nine with two slots, and a PR can still wait in its own slot while another is idle. From 00:00Z to 03:00Z on 2026-11-14, before the
 heavy platform lanes left pull-request events, all twenty hosted runners were
 busy a quarter of the time and merge-group jobs waited a median of three
 minutes (p90 about fifteen) for a runner. If that wait rises, first return statics to
-two slots (digits 7 and 9 back to `odd`, 8 back to `even`), then lower the
+two slots (digits 7 and 9 back to `odd`, 8 back to `even`, in `ci.yml`, its pin in
+`scripts/actionlint-gate.mjs` and the job-graph test's slot table), then lower the
 shard slot count. Background callers share the native FIFO
 group described above; integration uses source-specific groups and release
 qualification has its own group. The class input is validated before fanout.
