@@ -440,8 +440,9 @@ store.
   2.5 s deadline): a peer that is recovering, unreachable, or answers as a
   different Station is refused at once with that reason. A cached `online`
   answer (10 s) is reused; a refusal always comes from a fresh probe. The same
-  readiness rides on `GET /api/environments/peers` for pickers and
-  `list_delegation_environments`. Other server-side peer clients
+  store backs `GET /api/environments/peers` for pickers and
+  `list_delegation_environments`, which answer from it without waiting and
+  refresh stale entries in the background. Other server-side peer clients
   (session analytics, remote message search, home-authority room binding,
   the fleet probe) still read the peer store in-process for their own calls;
   they are not routed through this seam. `GET /api/environments/peers/:id/credential`, the
