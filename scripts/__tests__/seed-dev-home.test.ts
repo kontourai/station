@@ -8,7 +8,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { STATION_HOME_ROOTS } from '../../packages/shared/src/station-home-store-registry.js';
@@ -285,6 +285,14 @@ describe('seedDevHome', () => {
     expect(() =>
       seedDevHome({ source: home, target: join(alias, 'nested') }),
     ).toThrow(/outside the source/);
+    // And so is the same place spelled in another case, where the disk
+    // treats the two spellings as one (macOS and Windows by default).
+    const recased = join(dirname(home), basename(home).toUpperCase());
+    if (recased !== home && existsSync(recased)) {
+      expect(() =>
+        seedDevHome({ source: home, target: join(recased, 'nested') }),
+      ).toThrow(/outside the source/);
+    }
     const foreign = join(base, 'foreign');
     write(foreign, 'keep-me.txt', 'mine');
     expect(() => seedDevHome({ source: home, target: foreign })).toThrow(

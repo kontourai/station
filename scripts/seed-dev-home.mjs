@@ -272,7 +272,7 @@ function realpathThroughExisting(path) {
     missing.unshift(relative(parent, existing));
     existing = parent;
   }
-  return join(realpathSync(existing), ...missing);
+  return join(realpathSync.native(existing), ...missing);
 }
 
 function quoteIdentifier(name) {
@@ -404,7 +404,10 @@ export function seedDevHome({
   force = false,
   now = new Date(),
 }) {
-  const sourceHome = realpathSync(resolve(source));
+  // The native form also gives the name as the disk spells it, so on a
+  // case-insensitive volume a differently cased path to the source still
+  // compares as the source.
+  const sourceHome = realpathSync.native(resolve(source));
   // Resolved like the source, or a target reached through a symlinked
   // directory would look like it lies outside a source it is inside.
   const targetHome = realpathThroughExisting(target);
