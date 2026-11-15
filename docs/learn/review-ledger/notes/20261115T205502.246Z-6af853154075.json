@@ -1,0 +1,7 @@
+{
+  "revision": "56920ae9d20b419b879ed1828ae140fa97ac0832",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Metric reference regeneration adds two instruments only; no abstraction claim changes.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md","docs/reference/metrics.md"]}
+  ]
+}
