@@ -15,8 +15,10 @@ import {
   useCustomAppearanceQuery,
 } from '@kontourai/station-sdk';
 import {
+  getCustomAppearance,
   keepCustomAppearanceProposal,
   reportCustomAppearanceRender,
+  saveCustomAppearance,
 } from '@kontourai/station-sdk/client';
 import { Field } from '@kontourai/ui/react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -153,11 +155,14 @@ function ColorField({
 function Editor({
   document,
   onSaved,
+  onFailed,
 }: {
   document: CustomAppearanceDocument;
   onSaved(): void;
+  onFailed(message: string): void;
 }) {
   const scope = useHostRequestAuthorityScope();
+  const client = useQueryClient();
   const mutation = useCustomAppearanceMutation(scope ?? undefined);
   const [draft, setDraft] = useState(() => draftFrom(document.active));
   const [mode, setMode] = useState<AppearanceMode>('dark');
@@ -186,11 +191,33 @@ function Editor({
     previewCustomAppearance(appearance, {
       fromAgent: false,
       onKeep: () => {
-        // Shown at once so nothing flashes; a refused save puts back what the
-        // server still holds.
+        if (!scope) return;
+        // Shown at once so nothing flashes. The save is a plain client call,
+        // not this component's mutation, so its outcome lands even if the
+        // person has left the page; a refused save re-reads the server's copy.
         const owner = customAppearanceOwner() ?? document.owner;
         setActiveCustomAppearance(appearance, owner);
-        save(() => setActiveCustomAppearance(document.active, owner));
+        saveCustomAppearance(
+          scope.apiBase,
+          { revision: document.revision, appearance },
+          { requestScope: scope },
+        ).then(
+          (next) => {
+            client.setQueryData(customAppearanceKey(scope), next);
+            setActiveCustomAppearance(next.active, next.owner);
+            onSaved();
+          },
+          (error) => {
+            onFailed(errorText(error));
+            getCustomAppearance(scope.apiBase, { requestScope: scope }).then(
+              (current) => {
+                client.setQueryData(customAppearanceKey(scope), current);
+                setActiveCustomAppearance(current.active, current.owner);
+              },
+              () => setActiveCustomAppearance(document.active, owner),
+            );
+          },
+        );
       },
       onDiscard: () => undefined,
     });
@@ -470,7 +497,11 @@ export function CustomAppearanceSection() {
             />
           )}
           {editing ? (
-            <Editor document={document} onSaved={() => setEditing(false)} />
+            <Editor
+              document={document}
+              onSaved={() => setEditing(false)}
+              onFailed={setKeepError}
+            />
           ) : (
             <ActionRow
               overflowLabel="More custom appearance actions"

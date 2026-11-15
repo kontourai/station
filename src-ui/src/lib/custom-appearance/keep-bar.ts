@@ -91,6 +91,8 @@ const BAR_CSS = [
   // Keep. A shadow root's !important rule for its host beats the document's.
   ':host::before, :host::after { content: none !important; display: none !important; }',
   ':host::backdrop { display: none !important; }',
+  // `all: initial` leaves direction and unicode-bidi alone; they inherit.
+  ':host { direction: ltr !important; unicode-bidi: normal !important; }',
   '.bar { box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; }',
   '.bar { gap: 8px 16px; padding: 12px 16px; background: #10151c; color: #f4f6f8; }',
   '.bar { border-top: 2px solid #f0b429; }',

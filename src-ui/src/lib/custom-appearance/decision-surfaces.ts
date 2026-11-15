@@ -7,9 +7,10 @@
  * (docs/decisions/custom-appearance.md). The validated palette stays.
  *
  * Each owner calls {@link useDecisionSurface} with its id from
- * {@link DECISION_SURFACES}. Over-suspending is harmless; under-suspending is
- * the failure, so a surface that might show a decision registers whenever it
- * might.
+ * {@link DECISION_SURFACES}. Over-suspending costs convenience (custom CSS is
+ * paused and a preview cannot be kept while any owner is mounted);
+ * under-suspending is the failure, so a surface that might show a decision
+ * registers whenever it might.
  */
 import { useLayoutEffect } from 'react';
 

@@ -384,6 +384,36 @@ describe('custom appearance in Chromium', () => {
     await page.keyboard.press('Escape');
   });
 
+  test('a palette unreadable only in the mode not on screen cannot be kept', async () => {
+    await page.evaluate(() =>
+      document.documentElement.setAttribute('data-theme', 'dark'),
+    );
+    await harness('previewPalette', {
+      light: { roles: { '--k-bg': '#000000' } },
+    });
+    await expect
+      .poll(async () => (await bar())?.reason)
+      .toContain('hard to read');
+    // Rating the other mode leaves the mode on screen as it was.
+    expect(
+      await page.evaluate(() =>
+        document.documentElement.getAttribute('data-theme'),
+      ),
+    ).toBe('dark');
+    await page.keyboard.press('Escape');
+  });
+
+  test('the previewed CSS cannot flip the bar right to left', async () => {
+    await harness(
+      'preview',
+      'station-appearance-preview, :root { direction: rtl !important; }',
+    );
+    const keep = (await bar())!;
+    // Keep stays at the right end of the bar, beside Discard.
+    expect(keep.x).toBeGreaterThan(700);
+    await page.keyboard.press('Escape');
+  });
+
   test('the report rates the palette over the theme, not what the CSS computes from page content', async () => {
     await page.evaluate(() =>
       document.documentElement.setAttribute('data-theme', 'dark'),

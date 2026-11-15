@@ -125,14 +125,17 @@ confirm, allowing agents to control devices, people's roles, and the
 integration trust and editor panels. Each owner
 calls `useDecisionSurface(id)` (a layout effect, so the sheet is off before
 the browser paints the decision), and ids come from one typed list.
-Over-suspending is harmless, so owners that are always mounted on a settings
-page (the sharing controls, relay operator panel, integration trust review)
-register whenever they are mounted.
+Over-suspending costs only convenience, so owners that are always mounted on a
+settings page (the sharing controls, relay operator panel, integration trust
+and editor panels, people, device setup) register whenever they are mounted.
+The cost: while any registered owner is mounted (a pending approval in the
+chat dock, or one of those settings pages), custom CSS is paused and a preview
+cannot be kept (below).
 
 The palette stays during a decision. It cannot move or relabel a control, but
 it can recolour one: a palette that swaps the positive and negative tones makes
 Deny read green. The controls carry their labels, and the palette's changed
-text pairs must pass contrast before it can be kept (below).
+text pairs must pass contrast, in both modes, before it can be kept (below).
 
 ## The preview bar
 
@@ -160,7 +163,10 @@ The bar must not be hideable or spoofable by the CSS it previews:
   anything covers Keep, Keep is disabled and says why. Keep is also off while
   an approval holds the preview's CSS back (the person would keep CSS they did
   not see), in a safe-mode tab, and when a text pair the preview changed fails
-  contrast on the palette over the theme.
+  contrast on the palette over the theme, in either mode (the mode not on
+  screen is read by switching `data-theme` and back in one synchronous task;
+  a root-theme observer sees two attribute records). The bar's direction is
+  pinned left to right, which `all: initial` does not reset.
 - Escape reverts. Whatever else fails, the countdown reverts.
 
 `* { display: none !important }` includes `<html>`, which removes every box
@@ -210,10 +216,12 @@ the cache; a network failure keeps it.
   open a safe-mode tab.
 - Custom CSS can make any non-decision surface unreadable or hide it,
   including by setting `--k-*` variables, which the palette's contrast gate
-  does not see. The render report rates the computed roles, and the person
-  previews before keeping; there is no gate on CSS legibility.
+  does not see. The render report and the Keep gate rate the palette over
+  the theme with the CSS out of the cascade; there is no gate on CSS
+  legibility.
 - The server cannot rate a pair whose other side comes from the theme in
-  force; the browser rates it at preview, in the mode on screen only.
+  force; the browser rates it at preview, in both modes, against the theme in
+  force then. A later change of named theme is not re-rated.
 - The cache follows the spirit of the appearance-cache ownership rule, not
   its full machinery: it belongs to whoever's document last answered on this
   origin. On a browser shared by two people, or on the signed-out connect

@@ -53,16 +53,40 @@ function computedRoles(): RoleValues {
   });
 }
 
-/** The changed pairs that fail, rated on the palette over the theme. */
-function failingChanges(before: RoleValues) {
+/**
+ * The roles in both modes. The other mode is read by switching `data-theme`
+ * and back inside one synchronous task, so nothing paints in between (a
+ * root-theme observer sees two attribute records and re-reads an unchanged
+ * value). A palette must not be keepable for one mode and unreadable in the
+ * mode the person switches to later.
+ */
+function rolesByMode(): Record<AppearanceMode, RoleValues> {
   const root = document.documentElement;
-  const mode: AppearanceMode =
-    root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-  const values = computedRoles();
-  const changed = (key: string) => values[key] !== before[key];
-  return rateAppearancePalette(mode, values, contrastRatio).filter(
-    (r) => !r.pass && (changed(r.foreground) || changed(r.surface)),
-  );
+  const shown = root.getAttribute('data-theme');
+  const read = (mode: AppearanceMode) => {
+    if (root.getAttribute('data-theme') !== mode)
+      root.setAttribute('data-theme', mode);
+    return computedRoles();
+  };
+  try {
+    return { dark: read('dark'), light: read('light') };
+  } finally {
+    if (shown === null) root.removeAttribute('data-theme');
+    else if (root.getAttribute('data-theme') !== shown)
+      root.setAttribute('data-theme', shown);
+  }
+}
+
+/** The changed pairs that fail in either mode, rated on the palette over the theme. */
+function failingChanges(before: Record<AppearanceMode, RoleValues>) {
+  const after = rolesByMode();
+  return (['dark', 'light'] as const).flatMap((mode) => {
+    const values = after[mode];
+    const changed = (key: string) => values[key] !== before[mode][key];
+    return rateAppearancePalette(mode, values, contrastRatio).filter(
+      (r) => !r.pass && (changed(r.foreground) || changed(r.surface)),
+    );
+  });
 }
 
 /**
@@ -114,6 +138,7 @@ export function previewCustomAppearance(
 ): void {
   cancelCustomAppearancePreview();
   const before = computedRoles();
+  const beforeByMode = rolesByMode();
   const applied = startCustomAppearancePreview(appearance);
   const end = () => {
     current = null;
@@ -129,7 +154,7 @@ export function previewCustomAppearance(
       if (snapshot.suspendedForDecision)
         return 'An approval is open, so this preview’s CSS is paused and Keep is off.';
       if (contrastFails > 0)
-        return 'Some text in this preview is hard to read, so Keep is off.';
+        return 'Some text in this preview is hard to read in light or dark mode, so Keep is off.';
       return null;
     },
     seconds: options.seconds ?? CUSTOM_APPEARANCE_PREVIEW_SECONDS,
@@ -150,7 +175,7 @@ export function previewCustomAppearance(
     },
   });
   current = { bar, end };
-  contrastFails = failingChanges(before).length;
+  contrastFails = failingChanges(beforeByMode).length;
   const proposalId = options.proposalId;
   if (proposalId && options.onReport) {
     const report = options.onReport;
