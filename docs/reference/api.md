@@ -1054,7 +1054,7 @@ intent and grant no permission.
 | `GET` base | none | Room identity, current actor/capabilities, note, checkpoint and presence |
 | `POST /init` | `{ expectedProjectId }` | `{ scope, roomId }`; requires discussion permission and is idempotent |
 | `GET /messages` | `after` sequence, `limit` 1–100 | ordered history, checkpoint, `nextAfter`; byte limits may split a page |
-| `POST /messages` | guards plus `{ intentId, text, replyTo?, attachments? }` | committed message; exact actor/Room/intent retry returns the same message, changed payload conflicts |
+| `POST /messages` | guards plus `{ intentId, text, replyTo?, attachments?, mentions? }` | committed message; exact actor/Room/intent retry returns the same message, changed payload conflicts |
 | `PUT /note` | guards plus `{ expectedRevision, markdown, sourceMessageIds }` | revision-checked shared note |
 | `POST /presence` | guards plus `{ clientId, state: 'join' | 'leave' }` | current leased participants |
 | `GET /events` | none | SSE `changed`, `presence`, terminal `revoked`, and heartbeat comments |
@@ -1109,7 +1109,7 @@ read, which needs `view`.
 | Method and suffix | Input | Result |
 | --- | --- | --- |
 | `POST /messages/:messageId/reactions` | guards plus `{ emoji, reacted }` | the message. Sets the caller's own reaction; repeating either state changes nothing |
-| `POST /messages/:messageId/edit` | guards plus `{ intentId, text }` | the message with the new text and `editedAt`; an exact intent retry replays |
+| `POST /messages/:messageId/edit` | guards plus `{ intentId, text, mentions? }` | the message with the new text and `editedAt`; an exact intent retry replays |
 | `POST /messages/:messageId/delete` | guards plus `{ intentId }` | the tombstone; deleting again returns it |
 | `POST /attachments` | guards plus `{ attachments: [{ kind, name, mimeType, size, dataUrl }] }` | stored descriptors `{ id, kind, name, mimeType, size }` for the next message |
 | `GET /attachments/:attachmentId` | none | the file's bytes as `application/octet-stream`, sandboxed |
@@ -1221,6 +1221,59 @@ Project. Exact share and Task incarnations are checked before dispatch and
 publication. Short owner fences coordinate TaskGraph, sharing and Room writes;
 no such lock spans provider execution. Unsharing can withhold a pending answer,
 but does not retroactively redact text already published in the Room.
+
+### Live stream, typing, members and mentions
+
+A host advertises these with the handshake flag `projectRoomLive`; an older
+host answers 404, and clients keep the per-room `/events` stream.
+
+| Method and path | Input | Result |
+| --- | --- | --- |
+| `GET /api/projects/:slug/rooms/live` | `channel=<channelId>` once per room (1–50, the default room by its own id) and `client=<uuid>` | one SSE stream for all of them; frames below |
+| `POST …/typing` (`/room` or `/channels/:channelId`) | guards plus `{ clientId, typing }` | `{ typing }`. Needs `discuss` |
+| `GET …/members` | none | `{ members: [{ id, displayName, kind: 'person' }] }`: the Project's active viewing members with current names. Needs `view` |
+
+Each channel on the stream is admitted exactly as a history read of that
+channel, and that admission is checked again before every frame about it.
+Losing access to one channel ends only its subscription with `revoked`; a
+channel the caller cannot read, or that does not exist, answers `unavailable`
+(the same frame for both); losing the Project refuses the whole request (403)
+or ends the stream. Frames are named by kind and carry `key`, the channel id:
+
+- `subscribed { roomId, lastSeq, activity }`: the room's checkpoint at
+  subscription. Clients reconcile with history once on every (re)connection.
+- `append { message }`: the next message. Its `seq` is the room's next
+  sequence; a client that sees a larger one has missed frames and reads the
+  messages between from history before applying it.
+- `update { messages, fromActivity, activity }`: every message whose
+  reactions, edit or delete moved the room's activity counter from
+  `fromActivity` to `activity`, as history projects it. A client whose counter
+  is not `fromActivity` re-reads the room instead.
+- `resync { lastSeq, activity }`: the server cannot describe the change
+  exactly (more than 25 messages at once, or a writer in another process); the
+  client re-reads history.
+- `typing { actors }`, `presence { participants }`: who is typing and who is
+  here. A typing signal lapses after six seconds unless renewed, and both are
+  cleared the moment the `client` stream that registered them closes. Presence
+  no longer needs renewing while that stream is open.
+- `agents { requests }`: the room's newest Agent requests (at most 20) as
+  their records hold them: `requestId`, `agentId`, `actor`, `state`,
+  `replyTo?`, `publishedMessageId?`, times and an unsettled `failure?`. No
+  Session, correlation id, prompt text or Agent output crosses this frame.
+
+**Mentions.** A message or edit may carry up to 32 structured mentions
+`{ kind: 'person', actorId, display, offset }`. The text keeps `@display` at
+`offset` (UTF-16), so a reader without mention support still reads it;
+clients render the span by `actorId` with the person's current name. Spans are
+in text order and never overlap. Mentioning anyone who is not a viewing member
+of the Project is refused (`400 project_room_invalid`). An edit's mentions
+replace the original's; a deleted message keeps none. Each person a committed
+message newly names (never its author) gets one notification in their private
+feed (`GET /api/me/notifications`, category `room-mention`), addressed to that
+principal and checked against their current membership when it is delivered;
+it opens `/projects/:slug?section=room&channel=<id>&message=<messageId>`.
+Read-marker summaries report `mentioned: true` for a Project room whose unread
+messages (within the 99-message unread cap) name the caller.
 
 Messages and shared notes notify after commit. SSE coalesces wakes and does not
 repeat unchanged content while idle. Twenty-second heartbeat comments and a
