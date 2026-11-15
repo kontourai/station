@@ -4,9 +4,9 @@ import { useCommandProjectTaskRoomLiveMutation } from '@kontourai/station-sdk/pr
 import { type ReactNode, useMemo } from 'react';
 import { AgentIcon } from '../../components/icons/AgentIcon';
 import { useAgents } from '../../contexts/AgentsContext';
-import { useActiveStationName } from '../../hooks/useActiveStationName';
 import { openChatsStore } from '../../contexts/open-chats-store';
 import { useShowSurface } from '../../contexts/useShowSurface';
+import { useActiveStationName } from '../../hooks/useActiveStationName';
 import { relativeTime } from '../../utils/relativeTime';
 import {
   type SessionIconAgent,
