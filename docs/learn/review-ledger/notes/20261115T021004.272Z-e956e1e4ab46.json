@@ -1,0 +1,7 @@
+{
+  "revision": "fa58cba8752479e80804feb5f871d7d2f569a43a",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Refactor only: completeListing's id checks moved into checkInventoryIds with the same fatal-versus-inconsistent split; the supersession paragraph's claims are unchanged and still match the script.","inputs":["docs/guides/testing.md","scripts/pr-ci-supersession.mjs"]}
+  ]
+}

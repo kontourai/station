@@ -1192,16 +1192,23 @@ describe('repository-wide PR source runner ceilings', () => {
     shard = 1,
     event = 'pull_request_target',
     sha = 'a'.repeat(40),
+    identity: { ref?: string; repo?: string; login?: string } = {},
   ) => {
     if (!job.concurrency) throw new Error('Missing source concurrency');
     const github = {
       event_name: event,
       ref: `refs/heads/${event}`,
       sha,
+      repository: REPOSITORY,
       event: {
         pull_request: {
           number: pr,
-          head: { sha },
+          user: { login: identity.login ?? 'octocat' },
+          head: {
+            sha,
+            ref: identity.ref ?? 'feature/source',
+            repo: { full_name: identity.repo ?? REPOSITORY },
+          },
           base: { sha: 'b'.repeat(40) },
         },
       },
@@ -1225,8 +1232,16 @@ describe('repository-wide PR source runner ceilings', () => {
       },
     );
   };
-  // #4365 added a third shared shard slot for odd shards of PRs ending 0-2.
-  test('25 simultaneous PRs expose exactly two statics and three shard slots, with no cancellation or pending replacement', () => {
+  // Five shared shard groups since the 2026-11 slot measurement; #4365 had
+  // added the third. Pinned as literals, not derived from ci.yml.
+  const SHARD_GROUPS = [
+    'ci-pr-shards-even',
+    'ci-pr-shards-odd',
+    'ci-pr-shards-third',
+    'ci-pr-shards-fourth',
+    'ci-pr-shards-fifth',
+  ];
+  test('25 simultaneous PRs expose exactly two statics and five shard slots, with no cancellation or pending replacement', () => {
     const statics = new Set();
     const shards = new Set();
     for (let pr = 3700; pr < 3725; pr++) {
@@ -1235,34 +1250,137 @@ describe('repository-wide PR source runner ceilings', () => {
         shards.add(sourceGroups(jobs['fast-checks-shard'], pr, shard));
     }
     expect(statics.size).toBe(2);
-    expect(shards).toEqual(
-      new Set(['ci-pr-shards-odd', 'ci-pr-shards-even', 'ci-pr-shards-third']),
-    );
-    expect(new Set([...statics, ...shards]).size).toBe(5);
+    expect(shards).toEqual(new Set(SHARD_GROUPS));
+    expect(new Set([...statics, ...shards]).size).toBe(7);
     for (const id of ['fast-checks-statics', 'fast-checks-shard']) {
       expect(jobs[id].concurrency?.queue).toBe('max');
       expect(jobs[id].concurrency?.['cancel-in-progress']).toBe(false);
     }
   });
-  test('odd and even one-shard PRs use both slots; four-way plans keep every shard without cancelling siblings', () => {
-    // PRs ending 0-2 send shard 1 to the third slot; 3703/3704 keep odd/even.
-    expect(sourceGroups(jobs['fast-checks-shard'], 3703)).not.toBe(
-      sourceGroups(jobs['fast-checks-shard'], 3704),
+  test('every last digit and shard index lands in exactly one shared shard group, evenly', () => {
+    const job = jobs['fast-checks-shard'];
+    const perGroup = new Map<unknown, number>();
+    for (let digit = 0; digit <= 9; digit++) {
+      const ofPr = new Set();
+      for (let shard = 1; shard <= 4; shard++) {
+        // Two PR numbers and two heads per cell: the group must depend only
+        // on the last digit and the shard, never on the run's identity.
+        const cell = new Set([
+          sourceGroups(job, 4940 + digit, shard),
+          sourceGroups(job, 4940 + digit, shard, undefined, 'c'.repeat(40)),
+          sourceGroups(job, 120 + digit, shard),
+        ]);
+        expect(cell.size, `digit ${digit} shard ${shard}`).toBe(1);
+        const [group] = cell;
+        expect(SHARD_GROUPS, `digit ${digit} shard ${shard}`).toContain(group);
+        ofPr.add(group);
+        perGroup.set(group, (perGroup.get(group) ?? 0) + 1);
+      }
+      // One PR's four shards never wait on each other.
+      expect(ofPr.size, `digit ${digit}`).toBe(4);
+    }
+    expect(perGroup.size).toBe(5);
+    // 10 digits x 4 shards = 40 cells, 8 per group.
+    expect([...perGroup.values()]).toEqual([8, 8, 8, 8, 8]);
+    // Shard 1, which every plan has, spreads two digits to each group.
+    const firstShard = new Map<unknown, number>();
+    for (let digit = 0; digit <= 9; digit++) {
+      const group = sourceGroups(job, 4940 + digit, 1);
+      firstShard.set(group, (firstShard.get(group) ?? 0) + 1);
+    }
+    expect(firstShard.size).toBe(5);
+    expect([...firstShard.values()]).toEqual([2, 2, 2, 2, 2]);
+  });
+  test('one-shard PRs use every slot; four-way plans keep every shard without cancelling siblings', () => {
+    const firstShards = [3700, 3701, 3702, 3703, 3704].map((pr) =>
+      sourceGroups(jobs['fast-checks-shard'], pr),
     );
-    expect(sourceGroups(jobs['fast-checks-shard'], 3701)).toBe(
-      'ci-pr-shards-third',
-    );
+    expect(firstShards).toEqual(SHARD_GROUPS);
     const slots = [1, 2, 3, 4].map((shard) =>
       sourceGroups(jobs['fast-checks-shard'], 3701, shard),
     );
-    expect(slots.filter((slot) => slot === slots[0])).toHaveLength(2);
-    expect(new Set(slots).size).toBe(2);
+    expect(slots).toEqual([
+      'ci-pr-shards-odd',
+      'ci-pr-shards-third',
+      'ci-pr-shards-fourth',
+      'ci-pr-shards-fifth',
+    ]);
     const state = simulate(jobs, sameRepositoryPr, {
       outputs: { 'fast-checks-plan': { legacy: 'false' } },
     });
     expect(state.shards.get('fast-checks-shard')).toEqual([1, 2, 3, 4]);
     expect(state.results.get('fast-checks')).toBe('success');
   });
+  // The release-bot PR's three-part identity, as build-ios.yml's guard.
+  const RELEASE_BOT = {
+    ref: 'changeset-release/main',
+    repo: REPOSITORY,
+    login: 'station-automation[bot]',
+  };
+  test('the release-bot PR runs every shard and statics in its one dedicated slot', () => {
+    const groups = new Set();
+    for (const pr of [4097, 4100, 4101])
+      for (let shard = 1; shard <= 4; shard++)
+        groups.add(
+          sourceGroups(
+            jobs['fast-checks-shard'],
+            pr,
+            shard,
+            undefined,
+            undefined,
+            RELEASE_BOT,
+          ),
+        );
+    groups.add(
+      sourceGroups(
+        jobs['fast-checks-statics'],
+        4097,
+        1,
+        undefined,
+        undefined,
+        RELEASE_BOT,
+      ),
+    );
+    expect(groups).toEqual(new Set(['ci-pr-release-bot']));
+    // Its merge-group and dispatch runs keep their per-run identities.
+    for (const id of ['fast-checks-statics', 'fast-checks-shard'])
+      for (const event of ['merge_group', 'workflow_dispatch', 'push'])
+        expect(
+          sourceGroups(jobs[id], 4097, 1, event, undefined, RELEASE_BOT),
+        ).not.toBe('ci-pr-release-bot');
+  });
+  test.each([
+    ['a fork', { ...RELEASE_BOT, repo: 'someone/station' }],
+    ['another author', { ...RELEASE_BOT, login: 'octocat' }],
+    ['another branch', { ...RELEASE_BOT, ref: 'changeset-release/next' }],
+  ])(
+    'a changeset-release/main PR from %s stays in the shared slots',
+    (_label, identity) => {
+      for (let digit = 0; digit <= 9; digit++) {
+        for (let shard = 1; shard <= 4; shard++)
+          expect(SHARD_GROUPS).toContain(
+            sourceGroups(
+              jobs['fast-checks-shard'],
+              4090 + digit,
+              shard,
+              undefined,
+              undefined,
+              identity,
+            ),
+          );
+        expect(
+          sourceGroups(
+            jobs['fast-checks-statics'],
+            4090 + digit,
+            1,
+            undefined,
+            undefined,
+            identity,
+          ),
+        ).toBe(digit % 2 === 1 ? 'ci-pr-statics-odd' : 'ci-pr-statics-even');
+      }
+    },
+  );
   test('merge groups and diagnostics never join a PR slot or each other; source identities remain distinct', () => {
     for (const id of ['fast-checks-statics', 'fast-checks-shard']) {
       const prSlots = [

@@ -19,7 +19,8 @@ const adapters = [
   new ClaudeAdapter(),
   new CodexAdapter(),
   new AcpAdapter({ getConnections: async () => [] }),
-  new MuseAdapter(),
+  // As the Station runtime builds it: sessions run on `muse serve`.
+  new MuseAdapter({ serve: {} }),
   new BedrockAdapter(),
   new OllamaAdapter(),
   new StationAgentAdapter({
@@ -51,14 +52,18 @@ describe('built-in adapter durability conformance', () => {
     '$provider has an executable proof for every native durability claim',
     (adapter) => {
       // The native steer claims are exercised through the scripted SDK input
-      // and app-server RPC in claude-adapter.test and codex-adapter.test.
-      // Any additional native cell needs its own executable proof first.
+      // and app-server RPC in claude-adapter.test and codex-adapter.test,
+      // and through the replayed `muse serve` 1.4.18 capture in
+      // muse-serve-adapter.test. Any additional native cell needs its own
+      // executable proof first.
       const claims = Object.entries(adapter.metadata.durability ?? {})
         .filter(([, cell]) => cell.state === 'native')
         .map(([key]) => key)
         .sort();
       expect(claims).toEqual(
-        adapter.provider === 'claude' || adapter.provider === 'codex'
+        adapter.provider === 'claude' ||
+          adapter.provider === 'codex' ||
+          adapter.provider === 'muse'
           ? ['steerPlacement']
           : [],
       );
@@ -98,4 +103,10 @@ describe('built-in adapter durability conformance', () => {
       Object.keys(UNKNOWN_EXTERNAL_ENGINE_MATRIX.durability).sort(),
     ).toEqual(Object.keys(fields).sort());
   });
+});
+
+test('a Muse adapter without muse serve declares no steering', () => {
+  expect(new MuseAdapter().metadata.durability?.steerPlacement.state).toBe(
+    'none',
+  );
 });

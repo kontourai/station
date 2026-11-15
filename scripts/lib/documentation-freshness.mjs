@@ -10,6 +10,7 @@ import {
 } from './documentation-review.mjs';
 import { captureInputs, compileLearningMedia } from './learning-media.mjs';
 import { createLearningSourceReader } from './learning-source-reader.mjs';
+import { releaseVersioningOutputsBetween } from './release-versioning-review.mjs';
 import { bindingFile } from './review-binding.mjs';
 import {
   createReviewInputComparator,
@@ -450,6 +451,21 @@ export function resolveDocumentationFreshness({
       .filter(Boolean),
   );
   const head = git(root, ['rev-parse', 'HEAD']).trim();
+  // Committed release-versioning output (version bumps and generated changelog
+  // sections from consumed notes) needs no note. A dirty input is re-added below.
+  const release = releaseVersioningOutputsBetween(
+    root,
+    selection.mergeBase,
+    head,
+    nameStatus(root, selection.mergeBase, head),
+  );
+  const releaseOutput = (kind, entry, input) =>
+    input === bindingFile(input) &&
+    ((input !== entry.path && release.manifests.has(input)) ||
+      (kind === 'review' &&
+        input === entry.path &&
+        entry.kind === 'historical' &&
+        release.changelogs.has(input)));
   // One log of the range, not one per note and input: each spawn costs more
   // than the walk on a busy host. Unlike a path-limited log this keeps commits
   // on simplified-away side branches, which only adds candidates to recheck.
@@ -530,7 +546,7 @@ export function resolveDocumentationFreshness({
           changedPaths,
           selection.mergeBase,
           head,
-        );
+        ).filter((input) => !releaseOutput(kind, entry, input));
         // Working-tree edits are included even when HEAD still holds the old value.
         if (reviewDecisionChanged(old, entry) && !touched.includes(path))
           touched.push(path);
@@ -635,6 +651,25 @@ export function resolveDocumentationFreshness({
       ),
     ],
   };
+}
+
+/** `git diff --name-status` between two commits, renames split. */
+function nameStatus(root, from, to) {
+  const tokens = git(root, [
+    'diff',
+    '--no-renames',
+    '--name-status',
+    '-z',
+    from,
+    to,
+    '--',
+  ])
+    .split('\0')
+    .filter(Boolean);
+  const changes = [];
+  for (let index = 0; index + 1 < tokens.length; index += 2)
+    changes.push({ status: tokens[index], file: tokens[index + 1] });
+  return changes;
 }
 
 const inputsFor = (entry) =>
@@ -847,7 +882,7 @@ export function assertDocumentationFresh(result) {
         (entry) =>
           `  ${entry.kind} ${entry.path}; ${entry.problem ?? `changed: ${entry.changed.join(', ')}`}`,
       ),
-      'Review the changed claims, then record them with npm run docs:review:record -- <path> --note "<what you checked>".',
+      'Review the changed claims, then record them with npm run docs:review:record -- <path> --note "<what you checked>". After checking every page that cites one changed source, npm run docs:review:record -- --input <source> --note "<what you checked>" records that note for each of them; an edited document or record still needs its own note.',
     ].join('\n'),
   );
 }

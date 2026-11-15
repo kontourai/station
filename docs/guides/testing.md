@@ -316,9 +316,23 @@ heads in CI, iOS, Windows, security, Gallery and Docs kit workflows. Each
 cancellation rechecks the PR head and run attempt. The PR-head path never cancels
 merge-group, main-push, manual diagnostic or publication runs.
 
-A new merge-group Source request also retires older Source candidates for the
+A new merge-group Source request also retires older candidates for the
 same leading PR, only when a live GitHub queue ref and GitHub's merge-queue entry
 bind the replacement commit and its base to the current same-repository PR head.
+Retirement covers the queued, pending or running merge-group run of any
+workflow (present or future) on an older candidate commit, not only Source.
+GitHub does not document it, but run history (2026-11-04 to 11-15) shows every
+group in flight at a direct push to main, such as a deploy-ledger commit,
+discarded and rebuilt on the new tip; before this, the dead group's other runs
+ran to completion for nothing. The repository-wide run listing must account
+for every run. GitHub's count can disagree with the returned page while a new
+group's runs are created, so a truncated, changing or duplicated listing is
+read up to three times in all, two seconds apart; if it stays inconsistent the
+pass warns, cancels nothing and succeeds, and the next queue event retries.
+The merged-PR path keeps an incomplete inventory fatal.
+A run is retired only if its candidate is older than the replacement and names
+the same PR; another PR's group built on the dead commit waits for that PR's
+own replacement request.
 The entry identity and source binding are re-read before each cancellation.
 This supports squash candidates: the raw PR head need not be an ancestor of the
 synthetic commit. A missing, mismatched, changed or unmergeable entry cannot
@@ -327,8 +341,20 @@ The old queue ref must be absent or point elsewhere. Complete job inventories an
 fence each normal cancellation; an active old ref, changed owner or attempt,
 unknown runner metadata or API failure prevents it. This path can normally
 cancel an assigned runner doing obsolete work, but never force-cancels. A 202
-is a request, not terminal settlement. It does not cancel unrelated workflow
-families or replace any regression result with success.
+is a request, not terminal settlement. A 409 refusal, here and when retiring a
+merged PR's optional delivery runs, cancels nothing and is reported as a
+warning; the pass continues. A retired run of a dead candidate reports
+`cancelled` only on that candidate's commit: `Main: Health` and the main-only
+trackers ignore queue branches, and the source status publisher reads only
+Source runs, which were already retired. It never cancels a live candidate's
+runs or replaces any regression result with success.
+
+After a change to this path, check the job's recent failure causes
+(`gh run list --repo kontourai/station --workflow pr-ci-supersession.yml
+--status failure`, then each run's log) and that no `cancelled` merge-group run
+sits on a commit that reached main (compare `head_sha` of
+`actions/runs?event=merge_group` runs concluded `cancelled` against
+`git rev-list origin/main`).
 
 For the one-candidate throughput trial and its before/after measurements, use
 [the throughput epic](https://github.com/kontourai/station/issues/3101). The live
@@ -339,7 +365,17 @@ higher delivery throughput.
 every six hours while that outcome issue remains open. It installs no project
 dependencies and starts no tests, retries, cancellations or merges. Its six-hour
 observation windows end two hours behind the cadence boundary; unfinished or
-unattributed work remains explicitly incomplete and fails the report job.
+unattributed work remains explicitly incomplete. A window that is incomplete
+only because work was still running (unfinished jobs, which also lack runner
+attribution) is recorded with a warning annotation and does not fail the
+report job. Work unfinished more than six hours after it was created, or a
+run with no jobs that old, is reported as stuck in its own warning rather
+than as running; it does not fail the job either, because it is not a
+throughput measurement. A read GitHub answers with a 5xx is retried up to
+three attempts with a short backoff (the `--record` write is not); any
+collection failure that remains (an API error, a pagination cap, an
+unresolved PR or merge base, finished work without runner attribution, or an
+unavailable ledger) still fails it.
 Snapshots are retained for 30 days. This reporting does not establish a speedup,
 close the issue automatically or replace manual-intervention outcome review.
 
@@ -400,7 +436,6 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
 | [`ci-throughput-health.yml`](../../.github/workflows/ci-throughput-health.yml) | — | **Repo: CI throughput health** | UTC schedule: `41 */6 * * *`; manual dispatch; reports only while #3101 is open. |
 | [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes (heavy lane skipped when the merge queue already verified that exact SHA and base); manual dispatch. |
-| [`codex-pr-review.yml`](../../.github/workflows/codex-pr-review.yml) | Advisory PR review | **PR: Advisory review** | after `PR: Secret scan`. |
 | [`container-smoke.yml`](../../.github/workflows/container-smoke.yml) | Container smoke | **Main: Container smoke** | main pushes; manual dispatch. |
 | [`dated-todo-sweep.yml`](../../.github/workflows/dated-todo-sweep.yml) | Dated TODO sweep | **Repo: Dated TODO sweep** | UTC schedule: `41 4 * * 1`; manual dispatch. |
 | [`dependency-advisory.yml`](../../.github/workflows/dependency-advisory.yml) | Scheduled dependency advisory floor | **Repo: Dependency advisory** | UTC schedule: `23 2,8,14,20 * * *`; manual dispatch. |
@@ -412,14 +447,14 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`ecosystem-packaging.yml`](../../.github/workflows/ecosystem-packaging.yml) | Ecosystem packaging dry-run | **PR: Ecosystem packaging** | reused by `Delivery validation`; manual dispatch. |
 | [`fresh-home-walkthrough.yml`](../../.github/workflows/fresh-home-walkthrough.yml) | Fresh-home walkthrough | **Nightly: Fresh-home walkthrough** | UTC schedule: `0 10 * * *`; manual dispatch. |
 | [`full-regression.yml`](../../.github/workflows/full-regression.yml) | Hosted full regression | **Main: Full qualification** | reused by `Main: Publish packages`, `Main: Qualification`, `PR: CI`, `Release: Publish`, `Release: Stage`. |
-| [`gallery-pr-check.yml`](../../.github/workflows/gallery-pr-check.yml) | Gallery PR check | **PR: Gallery** | PR events (capture skipped for drafts and the release PR); merge queue (capture skipped). |
+| [`gallery-pr-check.yml`](../../.github/workflows/gallery-pr-check.yml) | Gallery PR check | **PR: Gallery** | PR events, capturing the head merged into the current base (capture skipped for drafts and the release PR); merge queue (capture skipped). |
 | [`install-smoke.yml`](../../.github/workflows/install-smoke.yml) | Portable Install Smoke | **PR: Install smoke** | reused by `Delivery validation`; manual dispatch. |
 | [`interactive-workspace-performance.yml`](../../.github/workflows/interactive-workspace-performance.yml) | Interactive Workspace Performance | **Tool: Interactive workspace performance** | manual dispatch. |
 | [`internal-testflight.yml`](../../.github/workflows/internal-testflight.yml) | Internal iOS TestFlight cohort | **Release: Internal TestFlight cohort** | manual dispatch. |
 | [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
-| [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new issue comments. |
+| [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new comments on issues (pull-request comments skip at job level). |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
-| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`. |
+| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`, `Repo: Docs freshness sweep`, `Repo: CI throughput health`, filtered to runs on `main`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | main pushes (source qualification only); UTC schedule: `17 */6 * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic (manual): Merge integration** | manual full-corpus diagnosis, never a required check; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
@@ -435,7 +470,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`pr-duplicate-sweep.yml`](../../.github/workflows/pr-duplicate-sweep.yml) | PR duplicate sweep | **Repo: Duplicate sweep** | UTC schedule: `27 */6 * * *`; manual dispatch. |
 | [`publish-packages.yml`](../../.github/workflows/publish-packages.yml) | Publish Packages | **Main: Publish packages** | main pushes; manual dispatch. |
 | [`publish-release.yml`](../../.github/workflows/publish-release.yml) | Publish Station release | **Release: Publish** | manual dispatch. |
-| [`qualification-after-repair.yml`](../../.github/workflows/qualification-after-repair.yml) | Qualify landed repair | **Main: Qualify landed repair** | after `PR: CI`. |
+| [`qualification-after-repair.yml`](../../.github/workflows/qualification-after-repair.yml) | Qualify landed repair | **Main: Qualify landed repair** | after `PR: CI` runs on `main`. |
 | [`qualification-repair.yml`](../../.github/workflows/qualification-repair.yml) | Qualification repair | **Main: Qualification repair** | after `Main: Qualification`; manual dispatch. |
 | [`recover-terminal-capacity-owner.yml`](../../.github/workflows/recover-terminal-capacity-owner.yml) | Recover terminal physical-host capacity owner | **Tool: Recover terminal capacity owner** | manual dispatch. |
 | [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Beta/Stable TestFlight. |
@@ -460,7 +495,6 @@ workflow is obsolete. Disabled state was checked through the Actions REST API.
 | Candidate | Reason / decision needed |
 | --- | --- |
 | `Tool: CI extended` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
-| `PR: Advisory review` | Disabled manually; review admission/cost before any re-enable (slice I). |
 | `Main: Full qualification` | Zero runs in the dated seven-day inventory; confirm continued need at its callers. |
 | `Tool: Interactive workspace performance` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
 | `Release: Internal TestFlight cohort` | Zero runs in the dated seven-day inventory; confirm continued need. Manual-only; confirm owner and ongoing diagnostic/delivery use. |
@@ -802,18 +836,32 @@ source proof remains pending; failed or cancelled source proof remains non-passi
 rollout is described in [releasing](releasing.md#qualification-cadence-and-evidence-reuse).
 
 PR source computation has repository-wide FIFO ceilings: at most two statics
-jobs and three affected-test shard jobs run across all PRs. Statics use two
-buckets. Shards use two shared buckets plus a third for odd-numbered shards of
-PRs whose numbers end in 0, 1 or 2; larger plans retain every shard. Waiting jobs consume no runner. Different-head
+jobs and five affected-test shard jobs run across all PRs. Statics use two
+buckets by PR number parity. Shards use five shared buckets: the PR number's
+last digit mod 5 plus the shard index, mod 5 (the table is in `ci.yml`), so one
+PR's shards never share a bucket and every plan's first shard spreads across all
+five; larger plans retain every shard. The release-bot PR (head
+`changeset-release/main` from this repository, opened by
+`station-automation[bot]`) is re-pushed on every main push, so its shard and
+statics jobs share one dedicated `ci-pr-release-bot` slot and never enter the
+shared buckets; supersession cancels its older heads as for any PR. A job holds
+its bucket while it waits for a runner. Waiting jobs consume no runner. `pull_request_target` reads these
+groups from the base branch, so a bucket change applies to PR runs created
+after it lands. Different-head
 supersession still cancels obsolete source runs, including native FIFO
 `pending` waiters, after rechecking the live PR head and run attempt. A normal
 cancellation request is followed to its observed state. If the same obsolete
 attempt still waits after a bounded settlement check, the controller may issue
 one force-cancel after revalidating the PR and run identities and confirming
-that no unfinished job has an assigned runner. Missing terminal confirmation
-fails the controller; cancellation never becomes source PASS. Same-head
+that no unfinished job has an assigned runner. A run that does not settle in
+the pass (an assigned runner has not yet acted on the cancellation, GitHub
+refuses it with HTTP 409, or a force-cancel is not yet terminal) is reported
+as a warning, and the pass continues to the branch's other obsolete runs; the
+next `PR: CI` event for the branch tries again. Ambiguous job metadata,
+changed identities and any other API failure still fail the controller;
+cancellation never becomes source PASS. Same-head
 duplicates wait rather than cancelling another run's proof. Merge-group, push and manual
-diagnostic jobs use separate source-specific groups. These five PR computation
+diagnostic jobs use separate source-specific groups. These eight PR computation
 slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 
@@ -1486,13 +1534,63 @@ resolve at the caller's workflow commit, while `inputs.source_sha` continues to
 select only the application source being qualified.
 
 `.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
-on ready (non-draft) pull requests, in the same container (#2428, #3342). PRs
-compare their exact head. Merge-queue candidates still report the workflow's
-contexts, but the capture job skips there: Gallery is not a required context,
-so a candidate's capture could not stop a landing. Combined changes are
-captured after landing by `Nightly: Gallery` once a day, which checks capture
-integrity and reports pixel differences but does not run the product
-assertions below. Pixel differences are advisory in both workflows: `--report-only` retains the
+on ready (non-draft) pull requests, in the same container (#2428, #3342). It
+captures the pinned PR head merged into the base tip the event fired against
+(`github.sha` under `pull_request_target`; the event's `base.sha` is the head's
+stale merge base, and `refs/pull/N/merge` moves after the event), so a PR that
+breaks a screen only in combination with `main` learns it before landing; a
+merge conflict fails the job and asks for `main` to be merged. Composition
+reflects `main` as of the PR's last event only: in the week to 2026-11-14, 94 of
+127 landed, captured PRs had gallery-relevant commits land after their last
+capture (median 1.2 hours, p90 8.2 hours), and nothing re-captures them; a push
+or a merge of `main` does. Re-running a job does not: a re-run keeps the original
+event's `github.sha`, so it composes with `main` as it was then. When the
+composed capture fails, the job captures the failing screens again on the bare
+base, from a worktree of it, and judges both with the base's
+`scripts/gallery-main-attribution.mjs` and findings judge. The job passes with a
+warning naming that `main` commit only when the composed capture is complete
+(a full selection that recorded every expected screen), every failure also fails
+on `main` the same way, and the screens that rendered still pass the
+report-only comparison's integrity checks. "The same way" is the screen and
+finding identity and, for a screen that did not render or whose audit threw,
+its error text after removing only ANSI codes, the capture's appended last
+`Browser errors: [...]` line, a Playwright call log's lines after its first
+entry (the first entry names the target: `waiting for <locator>`,
+`navigating to "<url>"`, or `Expect "<matcher>" <locator>`), loopback ports
+and each checkout's own root at the start of a path, and masking a `Received`
+value only when it is a plain number. That last rule covers equality matchers
+too (`toBe`, `toHaveCount`, `Received length:`): `main` and the PR failing the
+same assertion with different actual numbers compare equal. The assertion
+message, matcher, every `Expected` value, locator, timeout bound, quoted or
+mixed `Received` values, repo-relative paths with their line numbers, and URL
+paths must match, and an error that is not text, or is empty once normalised,
+never matches. `telemetry-feedback-mobile` throws one line that embeds console
+output, so its failure is never excused; a message whose own last line is
+`Browser errors: [...]` could not be told from the appended one, and no
+current message ends that way.
+So a break already on `main` does not turn unrelated
+PRs red, while breaking the same screen another way stays red. A crash or
+test-level assertion with no failing screen, a failing screen `main` lacks,
+more than 40 failing screens, an incomplete capture, or an attribution that
+cannot run also stays red. A PR failure hidden behind an earlier failing
+assertion in the same test is not seen until `main` is fixed, a different
+console error on an otherwise identical failure is not distinguished, and the
+excused screens get no pixel report. The base judge is authoritative for honest
+PRs but is not a security boundary: the candidate's code has already run on the
+runner and could subvert it (a `node` or `npm` shim through `GITHUB_PATH`, the
+`npm` the step runs for the base capture and for `screenshot:diff` included,
+`NODE_OPTIONS`, a leftover process, or hooks and config in the shared `.git`),
+which gives a malicious PR nothing it could not already forge through its own
+spec. The job checks out the base without replace refs or hooks, refuses a
+base checkout that is not exactly the base commit and clean, and runs the
+attribution with the `node` resolved before candidate code; that keeps honest
+accidents out, nothing more. Nothing may trust the PR Gallery
+conclusion, which is one reason it is not a required check. Merge-queue candidates still report the
+workflow's contexts, but the capture job skips there: Gallery is not a required
+context, so a candidate's capture could not stop a landing. Combined changes
+are otherwise captured after landing by `Nightly: Gallery` once a day, which
+checks capture integrity and reports pixel differences but does not run the
+product assertions below. Pixel differences are advisory in both workflows: `--report-only` retains the
 exact changed rows and diff PNGs, but exits successfully for visual changes.
 The job summary includes the comparison table and the PR artifact link. An
 unchanged capture has no `REVIEW` advisory. Capture failures, missing screens,
@@ -1513,8 +1611,9 @@ The baseline writer refuses a capture whose screen name is
 not a slug or whose file resolves outside the gallery directory, because for a
 fork PR the artifact is produced by the fork's code. A capture that did not
 complete is reported separately and must not be re-baselined. The check compares
-each PR head against its own baseline; combinations are first captured by the
-next day's `Nightly: Gallery` on `main`. Exact pixels are advisory visual evidence, not a required exact-pixel merge gate;
+each composed PR against the composed baseline; landings that compose after a
+PR's last event are first captured by the next day's `Nightly: Gallery` on
+`main`. Exact pixels are advisory visual evidence, not a required exact-pixel merge gate;
 the product assertions below fail the job. Read the live `main` ruleset: when Gallery is absent from required contexts,
 a red Gallery job does not hold a PR on its own.
 `Main: Health` tracks failed `Nightly: Gallery` capture/comparison integrity;
@@ -2125,7 +2224,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |
 | `verify-e2e-full` | `npm run verify:e2e:full` | diagnostic full E2E | product, first-run, starter-clean-install, smoke-live, extended, screenshot, Android buckets | full E2E | diagnostic | E2E spec→bucket assignment |
 
-`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
+`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. `conduit:conformance:check`, `examples:conformance`, `product-version:check`, two package import boundaries and `gate:test-import-existence` joined on 2026-11-13 for the same reason: each ran only in full qualification, and a stale generated conformance artifact kept main qualification red for about six days. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
 
 `full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:
 - `browser-prerequisite` — 20-unit host reservation; 1-minute execution deadline.
@@ -2438,6 +2537,95 @@ disagreed on it; and the list holds at most 5 entries.
 `verification:policy:gate`, and with it every pull request. Remove the entry
 when the fix lands, or renew it in a reviewed change with fresh same-commit
 evidence. Renewal is a deliberate decision, never an automatic extension.
+
+### Known qualification failures
+
+Main qualification classifies a red run from **failure manifests** the test
+runners write, never from job logs. In hosted qualification
+(`STATION_QUALIFICATION_MANIFEST_DIR` set) the Vitest corpus runner, the
+full-regression phase driver and the e2e suite runner each write a
+manifest ([schema and rule](../../scripts/lib/qualification-failure-manifest.mjs))
+listing every failed test identity, every failure the runner itself saw,
+and whether the job's exit is fully explained by those tests. Failed jobs
+upload it as `qualification-manifest-*`.
+
+Only the job's top-level runner writes `job-manifest.json`. The phase
+driver and the e2e suite runner read the manifest location once and remove
+it from their own environment before spawning anything. The driver gives
+each corpus phase a fresh directory of its own through
+`STATION_QUALIFICATION_GROUP_MANIFEST_DIR`, and the corpus runner removes
+that variable before it starts Vitest. The failure-identity reporter gets
+its report path as a Vitest option (`--outputFile.stationFailures`), not
+through the environment, and `vitest.setup.ts` deletes both variables in
+every test worker, which also covers a direct Vitest run with them
+exported. So the location is never handed to a test process, and a test
+cannot write there by accident through an inherited variable (the case that
+once cost a job its manifest).
+
+That is a guard against honest mistakes, not a secret. The directory is
+predictable from `RUNNER_TEMP`, and an ancestor process's starting
+environment can be read, so a test that sets out to forge an entry can find
+it. Such a test is out of scope: it could just as easily make itself pass.
+The collector is what rejects a stray or mismatched entry. A phase accepts
+only the groups its command runs, each once, each exactly the group schema
+and naming itself. Anything else in its directory (an unreadable or
+malformed file, another group, a missing group, any other file) becomes a
+phase error, which leaves the phase unexplained. Each runner writes its
+entry, and each top-level runner its job manifest, by renaming a new file
+over the target, so a file left at that path, even a read-only one, is
+replaced. The one forgery that still survives needs the test to make the
+directory itself unwritable before the runner writes: the runner then
+cannot replace the file, and a well-formed forged entry is accepted. A
+manifest that cannot be built is still written, marked unexplained, with
+each phase's exit status where it is known.
+
+[`config/qualification-known-failures.json`](../../config/qualification-known-failures.json)
+lists standing failures that already have an owner issue. The rules, plainly:
+
+- **Nothing is skipped.** Every listed test still runs and still fails its
+  run; the run stays red and release qualification stays blocked.
+- **Exact test identities only.** An entry is one `file`, its full
+  `titlePath`, an optional Playwright `project`, and the `issue`. Matching
+  is exact: no file, pattern, phase or job entries, no suffix stripping, no
+  case folding. The list holds at most 20 entries.
+- **An entry counts only while its issue is open.** A closed, unreadable
+  or pull-request number does not count, so a fixed test that regresses
+  alerts again.
+- **Anything not explicitly explained alerts.** A failed job needs a valid
+  manifest for that exact run, attempt and source that the runner marked
+  explained and that re-derives as explained: only named tests failed, the
+  runner's own failure counts reconcile, no file failed to load, no
+  unhandled or out-of-test error, no process left alive, no output limit,
+  deadline or cancellation, no unreadable report. A failed build or static
+  phase, a setup-step failure, a cancelled or timed-out job, a missing or
+  foreign manifest, and an unreadable list or issue all alert.
+
+Also unexplained: any file that failed other than through a named test (a
+load error or a failing or timed-out hook), the same test identity reported
+twice, and a failed job whose failed steps are anything but its one test
+phase step (a later setup, install or upload step that also failed).
+Flaky tests that pass on a retry are not failures, which matches the
+runners' own verdict.
+
+Two limits are inherent to identity matching. When two tests share a file
+and full title path and one fails, the list cannot tell which. And a listed
+test that starts failing for a new reason (its own `afterEach`, or under
+Playwright a new `beforeAll` in its describe, which is reported as that
+test failing) looks exactly like its known failure.
+
+With the manifest gate on, Vitest's JSON reporter prints one extra line per
+group, `JSON report written to <path>`; nothing that reads runner output
+matches it. With the gate unset, the runners' arguments, output and exit
+status are unchanged.
+
+[`scripts/qualification-failure-signal.mjs`](../../scripts/qualification-failure-signal.mjs)
+applies these rules for the repair tracker and the health watchdog.
+It runs in **report mode** unless the repository variable
+`STATION_QUALIFICATION_SIGNAL` is exactly `enforce` (no surrounding space,
+lower case): the classification is
+written into both trackers and the step summary, and no tracker decision
+changes. No historical run has a manifest, so enforcement waits until the
+classification has been compared with a human reading of real runs.
 
 ### Opt-in load reliability evidence
 

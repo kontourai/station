@@ -67,6 +67,12 @@ comes from the request.
 
 The first Codex implementation saves objectives paused and preserves native
 accounting when the engine does. It does not advertise activation/resume.
+A Muse Session on `muse serve` advertises `read`, `pause` and `clear` only:
+Muse's `goal/set` and `goal/resume` start a goal turn outside Station's turn
+admission. Its capability declares `tokenBudget: 'unsupported'`, and its Goal
+omits `tokenBudget`, `tokensUsed` and `timeUsedSeconds`; an absent figure is
+unreported, never zero. After a Station restart its Goal reads unavailable
+until Muse states it again.
 Results distinguish applied, refused, unsupported and indeterminate. A timeout
 after invocation is indeterminate; pending native acknowledgement blocks another
 mutation. Refresh is observation, not permission to retry an uncertain write.
@@ -6790,7 +6796,7 @@ for freshness, refusal and provider-observation limits.
 ## Engine accounts and usage
 
 `GET /api/connections/agent/:id/accounts` projects the default account plus saved
-profiles for Claude and Codex: opaque references, labels, CLI-verified auth state,
+profiles for Claude, Codex and Muse: opaque references, labels, CLI-verified auth state,
 observed login mechanism and the account in use. It requires `engine:login`,
 credential-management access or a verified operator. It returns no paths,
 commands, environment or CLI diagnostics.
@@ -6800,6 +6806,8 @@ selected profile's provider quota. Omit the reference to inspect the connection'
 default account. This token-backed read requires `access:manage`; an engine-login
 grant alone does not admit it. The result is either normalized quota windows,
 plan, fetched time and provider exhaustion verdict, or an explicit unknown reason.
+Muse profiles always answer unknown: no Muse allowance shape has been observed
+to map.
 Both variants can include optional `metadata`: Codex identity/credits/model and
 reset-credit facts, Claude extra usage/spending/weekly breakdown/limit annotations, and bounded response-shape `capture`
 (source, credential storage kind, unmapped/excluded field paths, truncation). Windows optionally carry

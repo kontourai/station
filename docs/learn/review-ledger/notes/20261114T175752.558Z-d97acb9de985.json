@@ -1,0 +1,7 @@
+{
+  "revision": "cd992c8a62bca428e7d40114f0651304f8ce079a",
+
+  "notes": [
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Searched for shard, slot, statics, concurrency-group, FIFO and release-PR claims after adding the release-bot source slot to ci.yml and actionlint-gate.mjs; the document states no PR fast-checks concurrency-group count, routing or release-bot handling, so it stays accurate.","inputs":["docs/reference/interactive-workspace-performance.md",".github/workflows/ci.yml"]}
+  ]
+}

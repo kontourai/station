@@ -47,6 +47,10 @@ import {
   stderrSaysSignedOut,
 } from './engine-auth-status.js';
 import { engineCredentialEnvFor } from './engine-credentials.js';
+import {
+  engineUpdateRequired,
+  engineUpdateRequiredMessage,
+} from './engine-version-floor.js';
 import { prepareManagedAcpWorkspace } from './managed-acp-workspace.js';
 import {
   createStderrTail,
@@ -432,7 +436,10 @@ export const MAX_CLEANUP_RETRY_ATTEMPTS = 5;
 export const MAX_PENDING_CLEANUP_SIZE = MAX_CLEANUP_RETRY_ATTEMPTS - 1;
 
 /** Probe failures a surface may name in its own words. */
-export type AcpProbeFailureCode = 'managed-runtime-not-installed';
+export type AcpProbeFailureCode =
+  | 'managed-runtime-not-installed'
+  /** The installed engine is older than its built-in entry's `minimumVersion`. */
+  | 'engine-update-required';
 
 /**
  * The typed code for a probe failure Station can name: a managed engine that
@@ -1123,22 +1130,40 @@ export class ACPProbe {
       const lastStderrLine = stderrTail.lastLine();
       // The engine's own "sign in first" answer is sign-in evidence, whether
       // an ACP `auth_required` or its vendor's signed-out text on stderr.
-      if (
+      const signInRefused =
         isAcpAuthRequired(err) ||
         (closedBeforeAnswering &&
-          stderrSaysSignedOut(this.config, lastStderrLine))
-      )
-        recordEngineSignInRefused(this.config);
+          stderrSaysSignedOut(this.config, lastStderrLine));
+      if (signInRefused) recordEngineSignInRefused(this.config);
       // An engine that stopped during startup may have been signed out since
       // the last status read; let the next sign-in read run its command again.
       else invalidateEngineStatus(this.config.id);
-      this.lastError = {
-        message: probeErrorMessage(err, this.config, lastStderrLine),
-        // `process.start()` both launches and initializes; a command that
-        // never launched failed at spawn, not while initializing.
-        phase: isLaunchFailure(err) ? 'spawn' : probePhase,
-        ...probeFailureCode(err),
-      };
+      // An install older than its built-in entry needs fails in no way of
+      // its own (an old Antigravity CLI has no `acp` command), so name it.
+      const updateRequired =
+        signInRefused || isLaunchFailure(err)
+          ? undefined
+          : await engineUpdateRequired(this.config);
+      if (this.disposed) {
+        this.lastSuccess = false;
+        return false;
+      }
+      this.lastError = updateRequired
+        ? {
+            message: engineUpdateRequiredMessage(
+              this.config.name,
+              updateRequired,
+            ),
+            phase: probePhase,
+            code: 'engine-update-required',
+          }
+        : {
+            message: probeErrorMessage(err, this.config, lastStderrLine),
+            // `process.start()` both launches and initializes; a command that
+            // never launched failed at spawn, not while initializing.
+            phase: isLaunchFailure(err) ? 'spawn' : probePhase,
+            ...probeFailureCode(err),
+          };
       this.lastFailureWasDeadline = err instanceof ACPProbeDeadlineError;
       // archive#3404: "has this connection ever handshaked" is
       // `lastHandshakeObservedAt > 0`, NOT `lastSuccess`. `lastSuccess` holds

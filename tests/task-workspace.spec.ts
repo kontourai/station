@@ -25,6 +25,7 @@ import {
   closeFixtureServer,
   startOllamaFixture,
 } from './helpers/ollama-fixture';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 import { pairBrowser } from './live/helpers/station-instance.mjs';
 
 test.describe
@@ -465,12 +466,17 @@ test.describe
           name: new RegExp(`^Project: ${projectSlug}`),
         }),
       ).toBeVisible();
-      await startForm.getByRole('button', { name: /^Agent:/ }).click();
+      await (
+        await runSetupControl(startForm, (panel) =>
+          panel.getByRole('button', { name: /^Agent:/ }),
+        )
+      ).click();
       const agentChooser = page.getByRole('dialog', { name: 'Choose agent' });
       await agentChooser
         .locator('.new-chat-modal__agent', { hasText: agentName })
         .click();
       await expect(agentChooser).toHaveCount(0);
+      await closeRunSetup(page);
       await startForm
         .getByRole('textbox', { name: 'What would you like done?' })
         .fill('Give me the public answer.');

@@ -541,8 +541,10 @@ export function deriveReadModelSession(options: {
 }
 
 export function buildOrchestrationSessionSummary(options: {
+  /** `threadId`: the session's own answer where it differs from its engine's. */
   readDurabilityProfile?: (
     provider: string | undefined,
+    threadId?: string,
   ) => ProviderDurabilityProfile | undefined;
   persisted?: ProviderSession;
   loaded?: ProviderSession;
@@ -721,7 +723,7 @@ export function buildOrchestrationSessionSummary(options: {
       latestRequests.set(event.requestId, event);
   }
   const summary: OrchestrationSessionSummary = {
-    durability: options.readDurabilityProfile?.(base.provider),
+    durability: options.readDurabilityProfile?.(base.provider, base.threadId),
     provider: base.provider,
     threadId: base.threadId,
     status: base.status,
@@ -1915,6 +1917,11 @@ export async function startRecoveredOrchestrationSession(options: {
     if (deps.applyCredentialProfile) {
       startInput = await deps.applyCredentialProfile(startInput);
     }
+    // #4435: the adapter's governance check runs before the start boundary,
+    // as it does for a fresh start. Inside the boundary, a definitive refusal
+    // (OpenCode's approval rules could not be read) was recorded as a start
+    // that may have happened, and every retry was refused behind it.
+    await adapter.preflightStart?.(startInput);
     const admissionLease = await deps.admitEngineStart?.(startInput.threadId);
     let recovered: ProviderSession;
     try {

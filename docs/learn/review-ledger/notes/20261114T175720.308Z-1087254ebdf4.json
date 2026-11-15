@@ -1,0 +1,7 @@
+{
+  "revision": "cd992c8a62bca428e7d40114f0651304f8ce079a",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Re-read the capacity paragraph after adding the release-bot slot: eight PR source slots (five shard, two statics, one release-bot) and the arithmetic 10 + 4 + 8 = 22 before unbounded per-PR lanes; the text still claims a queue-depth bound, not a reservation.","inputs":["docs/guides/releasing.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]}
+  ]
+}

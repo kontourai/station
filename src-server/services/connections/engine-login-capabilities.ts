@@ -29,6 +29,7 @@ import {
 import { managedEngineRefusalFor } from '../../security/managed-engine-limits.js';
 import {
   type EnrolmentEngine,
+  enrolmentLauncherEnv,
   enrolmentLoginArgs,
 } from './credential-enrolment.js';
 
@@ -105,6 +106,19 @@ const LOGIN_MATCHERS: readonly EngineLoginMatcher[] = [
   },
 ];
 
+/**
+ * #1942: `muse login` IS the device-code flow, so its help names no flag to
+ * capture; it says so in prose ("approve a code in your browser", Muse Code
+ * 1.1.1 through 1.4.18). The pattern has no capture group on purpose: the
+ * mechanism then carries no argument and Station runs the bare `muse login`.
+ * A Muse release that reworded or dropped that sentence would no longer be
+ * offered a device login, which is the direction to fail in.
+ */
+const MUSE_DEVICE_CODE_MATCHER: EngineLoginMatcher = {
+  mechanism: 'device-code',
+  pattern: /\bapprove a code in your browser\b/i,
+};
+
 function probeFor(engine: EnrolmentEngine): EngineLoginProbe {
   return {
     helpArgs: [...enrolmentLoginArgs(engine), '--help'],
@@ -114,7 +128,9 @@ function probeFor(engine: EnrolmentEngine): EngineLoginProbe {
             ...LOGIN_MATCHERS,
             { mechanism: 'browser-code', pattern: /(--claudeai\b)/ },
           ]
-        : LOGIN_MATCHERS,
+        : engine === 'muse'
+          ? [...LOGIN_MATCHERS, MUSE_DEVICE_CODE_MATCHER]
+          : LOGIN_MATCHERS,
   };
 }
 
@@ -122,6 +138,7 @@ export interface EngineLoginCapabilityDeps {
   runCommand: (
     command: string,
     args: string[],
+    env?: Record<string, string>,
   ) => Promise<CliCommandResult | null>;
   findBinary: (command: string) => Promise<string | null>;
   now: () => Date;
@@ -129,7 +146,8 @@ export interface EngineLoginCapabilityDeps {
 
 function defaultEngineLoginCapabilityDeps(): EngineLoginCapabilityDeps {
   return {
-    runCommand: (command, args) => runCliCommand(command, args),
+    runCommand: (command, args, env) =>
+      runCliCommand(command, args, undefined, env),
     findBinary: findCliBinaryAsync,
     now: () => new Date(),
   };
@@ -181,7 +199,12 @@ async function observeEngineLoginCapabilities(
       unavailableReason: `The ${engine} command was not found on this host.`,
     };
   }
-  const result = await deps.runCommand(binary, [...probe.helpArgs]);
+  const launcherEnv = enrolmentLauncherEnv(engine);
+  const result = await deps.runCommand(
+    binary,
+    [...probe.helpArgs],
+    ...(Object.keys(launcherEnv).length > 0 ? [launcherEnv] : []),
+  );
   if (!result) {
     return {
       engine,

@@ -1,0 +1,9 @@
+{
+  "revision": "87a7f3cbab026a18913c961c8ad3a518346810a6",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the sole input delta: android-pairing-scheme.test.ts now executes the real release identity step and Node helper CLIs on private fixtures, so it is explicitly classified processHeavy. Checked every citing document for resource-group, subprocess, worker, lane, platform and per-file membership claims. No citing document enumerates this keeper as ordinary; existing deterministic group ownership, bounded child-process guidance, limits and published behavior remain accurate. Only this source binding is covered; no native build, installed association or complete qualification is claimed.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the sole input delta: android-pairing-scheme.test.ts now executes the real release identity step and Node helper CLIs on private fixtures, so it is explicitly classified processHeavy. Checked every citing document for resource-group, subprocess, worker, lane, platform and per-file membership claims. No citing document enumerates this keeper as ordinary; existing deterministic group ownership, bounded child-process guidance, limits and published behavior remain accurate. Only this source binding is covered; no native build, installed association or complete qualification is claimed.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

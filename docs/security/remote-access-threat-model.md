@@ -1377,7 +1377,7 @@ needs explicit `engine:login`. Account metadata projects references, labels,
 authentication state and observed login support; it excludes paths, commands,
 environment, policy and diagnostics. Current authority is checked before private
 work and publication. No new login route admits a default/global account target.
-Codex device codes and Claude browser codes stay within the engine-owned login;
+Codex and Muse device codes and Claude browser codes stay within the engine-owned login;
 raw CLI output is private. Saved Claude profiles override both the config root
 and secure-store root so an ambient Keychain namespace cannot select another
 profile's account.
