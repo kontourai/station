@@ -2886,6 +2886,61 @@ test.each([false, true])(
   },
 );
 
+test('message files: an accepted send retried after the sender loses room access is refused (#4852 review)', async () => {
+  const refusalOf = async (response: Response) => ({
+    status: response.status,
+    code: ((await response.json()) as { error?: { code?: string } }).error
+      ?.code,
+  });
+  // What a send that is not a replay meets when its sender's membership is
+  // revoked at the synchronous admission.
+  const control = await harness();
+  const c = await control.discover('bob');
+  control.armCommit(control.revokeMember);
+  const fresh = await refusalOf(
+    await control.request('bob', '/messages', 'POST', {
+      ...guard(c),
+      intentId: randomUUID(),
+      text: 'never commit',
+    }),
+  );
+  expect(fresh.status).toBe(403);
+  const h = await harness();
+  const b = await h.discover('bob');
+  const uploaded = await h.request('bob', '/attachments', 'POST', {
+    ...guard(b),
+    attachments: [pngVariant('bob.png', 'revoked-replay')],
+  });
+  expect(uploaded.status).toBe(200);
+  const input = {
+    ...guard(b),
+    intentId: randomUUID(),
+    text: 'Sent before access was revoked',
+    attachments: (await data(uploaded)) as { id: string }[],
+  };
+  const accepted = await h.request('bob', '/messages', 'POST', input);
+  expect(accepted.status).toBe(200);
+  const sent = parseProjectRoomMessage(await data(accepted));
+  // Bob's membership is revoked as the exact retry reaches its synchronous
+  // admission, after the asynchronous check let it in: only the replay
+  // path's own fresh check stands between the retry and the stored message.
+  h.armCommit(h.revokeMember);
+  const replay = await refusalOf(
+    await h.request('bob', '/messages', 'POST', input),
+  );
+  expect(replay).toEqual(fresh);
+  // No new or changed message.
+  const messages = h.runtime.store.history(h.scope).messages;
+  expect(messages.map((message) => message.messageId)).toEqual([
+    sent.messageId,
+  ]);
+  expect(messages[0]).toMatchObject({
+    text: 'Sent before access was revoked',
+  });
+  expect(messages[0]!.editedAt).toBeUndefined();
+  expect(messages[0]!.deletedAt).toBeUndefined();
+});
+
 test('message files: a store root that cannot be created is files unavailable, not the room (#4852 review)', async () => {
   const fs = await import('node:fs');
   const { syncBuiltinESMExports } = await import('node:module');
