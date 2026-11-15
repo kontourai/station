@@ -5974,7 +5974,9 @@ const SCREENS: Screen[] = [
                 document.documentElement.setAttribute('data-theme', 'light'),
               );
             const trigger = draft.getByTestId('run-setup-trigger');
-            await expect(trigger).toContainText('Station · Mini');
+            await expect(trigger).toContainText('Mini');
+            await expect(trigger).not.toContainText('Station');
+            await expect(trigger).toHaveAccessibleName(/^Station · Mini/);
             const setupBox = (await trigger.boundingBox())!;
             const startBox = (await draft
               .getByRole('button', { name: 'Start', exact: true })
