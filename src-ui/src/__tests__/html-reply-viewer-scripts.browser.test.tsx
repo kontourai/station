@@ -225,7 +225,7 @@ test('the proxy viewer runs inline scripts like preview does, at phone width', a
           dashboard = minimal !== null ? built : null;
           return dashboard;
         },
-        { timeout: 15_000, intervals: [1_000] },
+        { timeout: 15_000, interval: 1_000 },
       )
       .not.toBeNull();
     // The minimal page shows its known string and the dashboard's tiles were
@@ -309,7 +309,7 @@ test('a scheme-delivered document runs scripts under the same shell CSP', async 
             .some((candidate) =>
               candidate.url().startsWith(`${STAGED_ORIGIN}/staged-document`),
             ),
-        { timeout: 15_000, intervals: [500] },
+        { timeout: 15_000, interval: 500 },
       )
       .toBe(true);
     const frame = fixture.page
@@ -328,7 +328,7 @@ test('a scheme-delivered document runs scripts under the same shell CSP', async 
             .catch(() => null),
         {
           timeout: 15_000,
-          intervals: [500],
+          interval: 500,
         },
       )
       .toBe('SCRIPT-RAN-42');
