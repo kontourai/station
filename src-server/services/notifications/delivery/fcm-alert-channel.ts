@@ -71,7 +71,6 @@
  *   and any other registry approval are unmarked and carried.
  */
 import {
-  isNativePushSessionReference,
   type NativePushNotificationData,
   type NativePushNotificationPlaintext,
 } from '@kontourai/station-contracts/native-push';
