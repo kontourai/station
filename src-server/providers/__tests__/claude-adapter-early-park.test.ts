@@ -213,6 +213,8 @@ describe('the finished-session park on a Claude engine', () => {
     ['older than the checked one', '2.1.200'],
     ['not reported', null],
     ['unreadable', 'next'],
+    ['a prerelease of the checked one', '2.1.322-beta.1'],
+    ['a prerelease of an older one', '2.1.300-rc.2'],
   ])(
     'an engine whose Claude Code version is %s is not parked early',
     async (_label, version) => {
@@ -224,13 +226,19 @@ describe('the finished-session park on a Claude engine', () => {
     },
   );
 
-  test('a newer Claude Code than the checked one may be parked early', async () => {
-    const { adapter, init, stop } = await start('newer');
-    await init(STATION_ONLY, '2.2.0');
-    await stop({ session_crons: [] });
-    expect(adapter.earlyParkRefusal('newer')).toBeUndefined();
-    await adapter.stopAll();
-  });
+  test.each([
+    ['a newer release', '2.2.0'],
+    ['a prerelease of a newer one', '2.2.0-beta.1'],
+  ])(
+    '%s than the checked Claude Code may be parked early',
+    async (_label, version) => {
+      const { adapter, init, stop } = await start('newer');
+      await init(STATION_ONLY, version);
+      await stop({ session_crons: [] });
+      expect(adapter.earlyParkRefusal('newer')).toBeUndefined();
+      await adapter.stopAll();
+    },
+  );
 
   test('a wakeup the engine reported at its last stop refuses it', async () => {
     const { adapter, init, stop } = await start('wakeup-thread');

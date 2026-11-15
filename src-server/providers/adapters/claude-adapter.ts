@@ -4032,13 +4032,19 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const record = this.sessions.get(threadId);
     if (!record) return 'no live engine';
     const version = parseClaudeCodeVersion(record.claudeCodeVersion);
-    if (
-      !version ||
-      compareClaudeCodeVersions(
-        version,
-        CLAUDE_HOOK_REPORTING_VERIFIED_VERSION,
-      ) < 0
-    )
+    // The shared parser drops a prerelease suffix, so `2.1.322-beta` would read
+    // as the verified release. A prerelease sorts before its release, so one
+    // at or below the verified version is treated as unverified.
+    const prerelease = /^\s*v?\d+\.\d+\.\d+-/.test(
+      record.claudeCodeVersion ?? '',
+    );
+    const order = version
+      ? compareClaudeCodeVersions(
+          version,
+          CLAUDE_HOOK_REPORTING_VERIFIED_VERSION,
+        )
+      : -1;
+    if (!version || order < 0 || (prerelease && order <= 0))
       return 'its hook reporting is unverified for this Claude Code version';
     if (record.foreignHookObserved)
       return 'a hook Station did not install has run';
