@@ -19,6 +19,7 @@ import {
   InvalidCustomAppearanceError,
   StaleRenderReportError,
 } from '../../services/identity/custom-appearance.js';
+import { errorMessage } from '../schemas/schemas.js';
 import type { PersonalLayoutPrincipalContext } from './personal-layouts.js';
 
 /** Two 50,000-character sheets fit; anything larger is refused before parsing. */
@@ -169,7 +170,7 @@ export function createCustomAppearanceRoutes(deps: {
           return c.json(
             {
               success: false,
-              error: error.message,
+              error: errorMessage(error),
               code: 'invalid_custom_appearance',
               violations: error.violations,
             },
@@ -179,7 +180,7 @@ export function createCustomAppearanceRoutes(deps: {
           return c.json(
             {
               success: false,
-              error: error.message,
+              error: errorMessage(error),
               code: 'custom_appearance_changed',
             },
             409,
@@ -188,7 +189,7 @@ export function createCustomAppearanceRoutes(deps: {
           return c.json(
             {
               success: false,
-              error: error.message,
+              error: errorMessage(error),
               code: 'custom_appearance_changed',
             },
             409,
