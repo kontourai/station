@@ -113,3 +113,12 @@
     var(--k-space-2)
   );
 }
+
+/* Effort qualifies the Model, so it gives way before the Model does. */
+.composer-run-control__effort {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}

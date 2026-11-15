@@ -37,6 +37,7 @@ import {
 import {
   type ModelProviderOption,
   modelIdentityLabel,
+  requestedEffortLabel,
   resolvedModelLabel,
   type SelectableModel,
 } from '../../utils/modelCapabilities';
@@ -306,9 +307,8 @@ interface ChatInputAreaProps {
   /** Why nothing can be attached; tapping the paperclip reports it. */
   attachUnavailableReason?: string;
   /**
-   * Shows why nothing was attached: the paperclip's reason and Paste image's
-   * failures (no image on the clipboard, a refused read). Required so a
-   * composer cannot render Paste image with nowhere to report.
+   * Shows why nothing was attached when the paperclip is tapped without an
+   * attachment path.
    */
   onAttachUnavailable: (reason: string) => void;
   attachmentStages?: ComposerAttachmentStageSnapshot[];
@@ -534,7 +534,7 @@ export function ChatInputArea({
   onSend,
   onCancel,
   onClearInput,
-  selectAttachmentFiles = async () => {},
+  selectAttachmentFiles,
   attachmentError = null,
   attachmentNotice,
   sendFailureNotice,
@@ -734,6 +734,15 @@ export function ChatInputArea({
   const modelLabel = effectiveModelId
     ? modelIdentityLabel(effectiveModelId, availableModels)
     : 'Model';
+  // Only an effort this chat requests is named; otherwise the engine's own
+  // default applies and the pill does not guess it.
+  const effortLabel =
+    modelLabel !== 'Model'
+      ? requestedEffortLabel(
+          effectiveModelInfo?.capabilities,
+          modelRuntimeOptions,
+        )
+      : undefined;
   const modelSource =
     currentModelSource ??
     defaultModelSource ??
@@ -768,6 +777,7 @@ export function ChatInputArea({
       ? `${modelProviderLabel} — ${fullModelIdentity}`
       : fullModelIdentity,
     modelSource !== 'unknown' ? `(${modelSourceLabel(modelSource)})` : '',
+    effortLabel ? `Effort: ${effortLabel}.` : '',
     !canModelSelect
       ? `Unavailable: ${modelSelectionReason ?? 'You can’t change the model for this chat'}`
       : '',
@@ -1314,6 +1324,15 @@ export function ChatInputArea({
           )}
           <textarea
             ref={textareaRef}
+            data-native-image-paste={
+              selectAttachmentFiles && modelSupportsAttachments
+                ? JSON.stringify([
+                    sessionId,
+                    activeConversationId,
+                    mentionAuthority,
+                  ])
+                : undefined
+            }
             // The placeholder changes with the turn and is empty while
             // sending is refused, so it cannot be the field's name (#4403).
             aria-label="Message"
@@ -1371,7 +1390,7 @@ export function ChatInputArea({
               const files = filesFromDataTransfer(event.clipboardData);
               if (files.length === 0) return;
               event.preventDefault();
-              void selectAttachmentFiles(files);
+              void selectAttachmentFiles?.(files);
             }}
             onDragOver={(event) => {
               if (
@@ -1586,7 +1605,7 @@ export function ChatInputArea({
           <React.Suspense fallback={null}>
             <FileAttachmentInput
               attachments={attachments}
-              onFilesSelected={selectAttachmentFiles}
+              onFilesSelected={selectAttachmentFiles ?? (async () => {})}
               onRemove={onRemoveAttachment}
               onClearAll={onClearAttachments}
               // A running turn does not disable the paperclip: files join the
@@ -1716,6 +1735,7 @@ export function ChatInputArea({
               ]
                 .filter(Boolean)
                 .join(' · ')}
+              effort={effortLabel}
               icon={agentIcon}
               engineId={parseEngineId(
                 acpApproval?.engineId ?? executionEngineId,
@@ -1793,7 +1813,9 @@ export function ChatInputArea({
                     ) : null}
                   </>
                 }
-                value={modelLabel}
+                value={
+                  effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel
+                }
                 valueClassName="chat-input__model-name"
               />
               {/* A reset the conversation cannot take at all is not offered. While
