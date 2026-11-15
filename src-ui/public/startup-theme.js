@@ -126,8 +126,7 @@
   // launch has none yet and shows the stable mark until the report arrives.
   try {
     const mark = localStorage.getItem('station-startup-mark');
-    if (mark === 'dev' || mark === 'nightly')
-      root.dataset.startupMark = mark;
+    if (mark === 'dev' || mark === 'nightly') root.dataset.startupMark = mark;
   } catch {
     // Without storage the stable mark is the honest default.
   }

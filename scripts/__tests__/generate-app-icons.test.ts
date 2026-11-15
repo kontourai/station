@@ -136,9 +136,15 @@ describe('desktop .icns determinism (#1797)', () => {
   it('covers every tracked .icns, not a list someone remembered to extend', () => {
     // Discovery, so a channel added later is pinned without editing this
     // file -- and an empty or failed `git ls-files` must not read as "all
-    // four are canonical".
+    // required channel sets are canonical".
     expect(trackedIcns).toContain('src-desktop/icons/icon.icns');
-    expect(trackedIcns.length).toBeGreaterThanOrEqual(4);
+    expect(trackedIcns).toEqual(
+      expect.arrayContaining([
+        'src-desktop/icons/icon.icns',
+        'src-desktop/icons/dev/icon.icns',
+        'src-desktop/icons/nightly/icon.icns',
+      ]),
+    );
   });
 
   // The dev/nightly masters are rendered in-memory from the artwork and

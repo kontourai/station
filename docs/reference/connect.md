@@ -704,7 +704,7 @@ installed Station channel, then redeem the invitation. Creating it approves
 the selected access; no second approval is needed. For Station’s in-app scanner, select **Scanner inside Station** under **More options**.
 **Paired devices → Approve another device** also opens the invitation panel.
 The selected client channel controls both the app-opening QR and any published
-mobile download links. Public store and beta invitation URLs are maintained in
+mobile download links. Public store and TestFlight invitation URLs are maintained in
 `packages/connect/src/core/mobileAppDownloads.ts`; absent destinations have no
 install link. Native clients default to their own release channel. Station
 creates a five-minute, single-use offer containing an environment ID, endpoint,

@@ -944,7 +944,7 @@ jobs:
             const fs = require("node:fs");
             const metadata = JSON.parse(process.env.METADATA);
             const labels = Object.entries(metadata.labels).map(([key, value]) => `${key}=${value}`).join("\n");
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `staging_tag=${metadata.image}:sha-${metadata.sha}\nlabels<<EOF\n${labels}\nEOF\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `staging_tag=${metadata.image}:staging-${metadata.tag}\nlabels<<EOF\n${labels}\nEOF\n`);
           '
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - name: Authenticate to GHCR with the ephemeral workflow token

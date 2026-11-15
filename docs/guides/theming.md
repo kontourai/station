@@ -36,7 +36,7 @@ installed package defines the roles (equal to the shipped brand), so the
 `--k-brand` fallback written beside them does not apply. The focus-visible
 outline reads `--k-focus` only where something chose a focus colour: a
 white-label theme that sets it for the current mode (the root then carries
-`data-brand-focus`) or a Dev, Beta or Nightly build. Everywhere else it reads
+`data-brand-focus`) or a Dev or Nightly build. Everywhere else it reads
 `--accent-primary`, so a device accent recolours buttons, links and the focus
 ring. The package always defines `--k-focus`, which is why the choice is keyed
 on that marker instead of on the property being defined.

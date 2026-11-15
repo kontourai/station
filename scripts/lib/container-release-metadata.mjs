@@ -102,8 +102,9 @@ export function createContainerReleaseMetadata({
     sha: manifest.sha,
     createdAt,
     channel: manifest.releaseChannel,
-    // A candidate is tagged only with its own tag and the source SHA: the
-    // bare version and `latest` move when it is promoted, never at staging.
+    // Publication alias policy, not staging names. Workflows stage at
+    // staging-<producerTag>; RC publication applies no aliases, and promotion
+    // derives final aliases while retaining the candidate's immutable digest.
     tags: kind === 'rc' ? [tag, shaTag] : [tag, baseVersion, shaTag, 'latest'],
     labels: {
       'org.opencontainers.image.created': createdAt,

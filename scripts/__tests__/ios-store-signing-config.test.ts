@@ -498,12 +498,12 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
     ).toThrow(/no StationAgentActivity app-extension target/);
     expect(() =>
       storeAgentActivitySigningSpec({
-        project: channelSpecWithExtensions(),
+        project: channelSpecWithExtensions(false, 'io.kontourai.station'),
         profile: extensionProfile('io.kontourai.station.nightly'),
         identity: IDENTITY,
         appBundleId: 'io.kontourai.station.nightly',
       }),
-    ).toThrow(/belongs to io.kontourai.station.nightly/);
+    ).toThrow(/belongs to io.kontourai.station/);
     expect(() =>
       storeAgentActivitySigningSpec({
         project: channelSpecWithExtensions(),
@@ -872,13 +872,16 @@ describe.each(['io.kontourai.station', 'io.kontourai.station.nightly'])(
     test('refuses an NSE target bound to another app', () => {
       const { options, dependencies } = fixture(true);
       const spec = YAML.parse(readFileSync(options.project, 'utf8'));
+      const foreignApp =
+        appBundleId === 'io.kontourai.station'
+          ? 'io.kontourai.station.nightly'
+          : 'io.kontourai.station';
       spec.targets[
         NOTIFICATION_SERVICE_TARGET
-      ].settings.base.STATION_APP_BUNDLE_IDENTIFIER =
-        'io.kontourai.station.nightly';
+      ].settings.base.STATION_APP_BUNDLE_IDENTIFIER = foreignApp;
       writeFileSync(options.project, YAML.stringify(spec));
       expect(() => writeIosAgentActivitySigning(options, dependencies)).toThrow(
-        /StationNotificationService belongs to io.kontourai.station.nightly/,
+        `StationNotificationService belongs to ${foreignApp}`,
       );
     });
 

@@ -120,7 +120,7 @@ describe('the vector icon source', () => {
   // regeneration.
   it('builds exactly the SVG the committed icons were rendered from', () => {
     const svgKeys = Object.keys(manifest.svg).sort();
-    expect(svgKeys).toHaveLength(4 * ICON_TARGETS.length);
+    expect(svgKeys).toHaveLength(3 * ICON_TARGETS.length);
     expect(iconSourceDigests()).toEqual(manifest.svg);
   });
 

@@ -265,6 +265,11 @@ management routes; Project membership and its `manage-members` action remain
 independent requirements. It grants no Agent, terminal, or Task publication
 (share/unshare) authority.
 
+The app choices are Stable and Nightly. Legacy Beta approvals and pending
+requests from an older host are retained there and excluded from actionable
+lists after Station-scope validation. The panel shows their excluded count;
+malformed or foreign-Station records still make the read fail.
+
 **Invite device** opens three steps:
 
 1. **Send the app link.** Choose the recipient app and copy its setup link. The

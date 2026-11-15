@@ -352,7 +352,12 @@ retains the canonical human actor, account state and Device binding;
 [management authority](../../src-server/security/relay-management-authority.ts)
 rechecks explicit Device scope and provider currentness after asynchronous work.
 Target approval/revision is rechecked before issuance or revocation. Public SDK
-projections expose route/trust facts, never issuer credentials.
+projections expose route/trust facts, never issuer credentials. The
+[SDK read owner](../../packages/sdk/src/relay-management.ts) validates every
+wire row's Station scope before excluding legacy Beta approvals and pending
+Devices from actionable arrays and reporting their counts. Active setup links
+use Stable/Nightly; the protocol-1 wire response retains the old public Beta
+route-intent link only for old readers, without enrollment authority.
 
 The [operator panel](../../src-ui/src/views/connections-hub/RelayOperatorPanel.tsx)
 serves desktop and selected native relay views. `relay:manage` (**Manage remote

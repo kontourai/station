@@ -64,6 +64,21 @@ See [native-releases.md](./native-releases.md) for the ledger and its
 [Manually dispatching Nightly](./native-releases.md#manually-dispatching-nightly)
 section for an exceptional same-day rebuild (`rebuild_index`).
 
+The root product base is the next development train (`0.2.0` initially).
+After an immutable RC/final cut, the
+[release-cut command](native-releases.md#product-version-and-release-cut)
+advances main to the next minor through normal review. Nightly admission reads
+public release history and refuses a base at or below the highest public
+RC/final base. Unavailable or malformed history does not count as first-run
+bootstrap. This check runs at top-level decision, portable publication and
+native cohort admission; it does not change CLI/library package versioning.
+
+Update summaries display recognized Nightly allocations as
+`Nightly · Nov 4 (build 249900)`, with the full exact version retained in the
+value's title. The displayed date/build is presentation only: comparisons,
+update authority and receipts continue to use the raw version. Unknown or
+non-allocation version shapes remain visible unchanged.
+
 A manual `source_sha` may only echo the current workflow event SHA. It cannot
 select an older Stable/TestFlight candidate. Native staging needs the successful exact-SHA source usability gate; promotion
 requires that gate and completed staging. Full regression runs independently.
@@ -163,7 +178,7 @@ newer than the rolling manifest, uploads the archives, the manifest,
 (never marked latest), re-downloads them and compares digests (the archives
 against the signed manifest, the installers against the checkout), replaces `station-portable-nightly-manifest.json` on the
 rolling `portable-nightly` release last, and re-fetches and re-verifies it.
-Unlike the stable and preview host pointers, Nightly checks "newer than the
+Unlike the Stable host pointer, Nightly checks "newer than the
 rolling manifest" against the cacheable download URL only and does not plan
 again against the release's own bytes before replacing, so a stale cached
 copy can let an older Nightly replace a newer one. Nightly also has no
@@ -395,11 +410,10 @@ portable `X.Y.Z-nightly.YYYYMMDDNN` that names the same nightly allocation.
 The comparison bridge also retains legacy day-counter identities; #2962
 tracks replacing the bridge with one identity. An iOS
 build's Apple marketing version is the bare `X.Y.Z`, so its web bundle is
-stamped with the cohort's full Nightly version, or a Beta's full release
-version, instead. A bare `X.Y.Z` client never counts as newer than a
-prerelease of the same `X.Y.Z`; that also keeps a stable `0.1.12` client quiet
-against a `0.1.12-preview.N` server, which tracks another ring and cannot
-update itself to the stable release. When the server is older, the Updates
+stamped with the cohort's full Nightly version instead. Stable RC/final
+clients use the bare product version; RC is an acceptance step within Stable.
+A bare `X.Y.Z` client never counts as newer than a prerelease of the same
+`X.Y.Z`, preserving the existing comparison rule for retained legacy inputs. When the server is older, the Updates
 panel says so in one line in its server section
 ([`ServerOlderLaunchCheck`](../../src-ui/src/components/ServerOlderLaunchCheck.tsx)),
 whose header already shows the server version; the notice has no action of
@@ -543,7 +557,7 @@ Local build/install success is not permission or evidence for hosted
 publication. A build-only archive can request notarization explicitly and its
 receipt distinguishes not-requested, notarized and failed outcomes. The hosted
 Nightly cohort already publishes notarized macOS downloads and a separate
-signed updater channel. Preserve the Stable/Beta trust contracts; do not mix
+signed updater channel. Preserve the Stable release trust contract; do not mix
 local archives into that feed or infer store/device delivery from signing.
 
 ## Windows desktop and the shared update feed

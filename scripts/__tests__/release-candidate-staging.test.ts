@@ -214,6 +214,100 @@ function portableProducer(artifacts: string) {
   return sha;
 }
 
+it('stages same-source RCs independently and refuses an existing candidate image', () => {
+  const cwd = workDir('station-rc-image-custody-');
+  const output = join(cwd, 'github-output');
+  const names = ['v0.1.11-rc.1', 'v0.1.11-rc.2'].map((tag) => {
+    const result = bash(
+      stepRun('container', (step) => step.id === 'metadata'),
+      cwd,
+      {
+        RELEASE_TAG: tag,
+        RELEASE_SHA: 'a'.repeat(40),
+        RELEASE_CREATED_AT: CREATED_AT,
+        GITHUB_REPOSITORY: REPOSITORY,
+        GITHUB_OUTPUT: output,
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const name = readFileSync(output, 'utf8').match(/^staging_tag=(.+)$/m)?.[1];
+    writeFileSync(output, '');
+    if (!name) throw new Error('metadata did not emit a staging image');
+    return name;
+  });
+  expect(names[0]).not.toBe(names[1]);
+  const bin = join(cwd, 'bin');
+  mkdirSync(bin);
+  writeFileSync(
+    join(bin, 'docker'),
+    '#!/bin/sh\n[ "$1 $2 $3" = "buildx imagetools inspect" ] || exit 2\n[ "$4" = "$EXISTING_IMAGE" ]\n',
+    { mode: 0o755 },
+  );
+  const guard = stepRun(
+    'container',
+    named('Refuse to overwrite immutable source image staging'),
+  );
+  for (const [index, name] of names.entries()) {
+    const result = bash(
+      resolveExpressions(guard, { 'steps.metadata.outputs.staging_tag': name }),
+      cwd,
+      {
+        PATH: `${bin}:${process.env.PATH}`,
+        EXISTING_IMAGE: names[0],
+      },
+    );
+    if (index === 0) {
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('Immutable image already exists');
+    } else expect(result.status, result.stderr).toBe(0);
+  }
+  // The publication consumer must find the exact candidate staging image too.
+  mkdirSync(join(cwd, 'release-assets'));
+  writeFileSync(
+    join(cwd, 'release-assets/station-container-release.json'),
+    JSON.stringify({
+      image: 'ghcr.io/kontourai/station',
+      digest: DIGEST,
+    }),
+  );
+  const published = load(
+    readFileSync(
+      join(repoRoot, '.github/workflows/publish-release.yml'),
+      'utf8',
+    ),
+  ) as { jobs: Record<string, Job> };
+  const promote = published.jobs.publish.steps?.find(
+    (step) => step.name === 'Promote only the recorded immutable GHCR digest',
+  )?.run;
+  if (!promote) throw new Error('publication consumer is missing');
+  writeFileSync(
+    join(bin, 'docker'),
+    `#!/bin/sh
+[ "$1 $2" = "buildx imagetools" ] || exit 2
+case "$3" in
+  inspect)
+    case "$4" in *:staging-*) [ "$4" = "$EXISTING_IMAGE" ] || exit 1;; *:sha-*) [ -e "$DOCKER_CREATED" ] || exit 1;; esac
+    printf '%s\n' "$IMAGE_DIGEST";;
+  create) touch "$DOCKER_CREATED"; exit 0;;
+  *) exit 2;;
+esac
+`,
+    { mode: 0o755 },
+  );
+  const result = bash(promote, cwd, {
+    PATH: `${bin}:${process.env.PATH}`,
+    EXISTING_IMAGE: names[1],
+    IMAGE_DIGEST: DIGEST,
+    DOCKER_CREATED: join(cwd, 'created'),
+    RELEASE_TAG: 'v0.1.11-rc.2',
+    RELEASE_SHA: 'a'.repeat(40),
+    RELEASE_MODE: 'promote',
+    PUBLICATION_TAG: 'v0.1.11',
+    RELEASE_VERSION: BASE_VERSION,
+  });
+  expect(result.status, result.stderr).toBe(0);
+});
+
 /** The release.yml container job's descriptor step. */
 function containerProducer(artifacts: string, sha: string) {
   const cwd = workDir('station-rc-container-');

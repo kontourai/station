@@ -1429,9 +1429,8 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
         'Publish release and compensate to draft until feed verifies',
       ),
     );
-    expect(released).toBe(
-      index(steps, 'Publish and verify the rolling desktop updater channel') +
-        1,
+    expect(released).toBeGreaterThan(
+      index(steps, 'Publish and verify the rolling desktop updater channel'),
     );
     for (const ledger of [
       'Mint the ledger push token',

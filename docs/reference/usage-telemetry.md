@@ -251,7 +251,7 @@ monthly and is never linked to an account by Station. The Full payload carries
 SHA-256 of a random UUID concatenated with the publisher ID and UTC `YYYY-MM`. Upgrading from the permanent `sha256(uuid)` scheme immediately changes existing receivers’ `distinct_id`; historical installation series do not continue under the new ID. Station does not send a migration link. The UUID is persisted at
 `STATION_HOME/config/usage-telemetry-id`; the raw UUID never leaves the process.
 
-Full `occurred_at` and `observed_at` are rounded down to the UTC minute to reduce cross-publisher correlation. Unknown Full channels are omitted; runtime `beta` maps to `preview`. The broker deduplicates by source and `event_id`, not timestamps; its reporting groups by day. Other shared facts can still correlate pseudonymous Full events.
+Full `occurred_at` and `observed_at` are rounded down to the UTC minute to reduce cross-publisher correlation. Unknown Full channels are omitted; retired runtime `beta` is no longer mapped. The historical `preview` wire dimension remains readable, while current RCs report `stable`. The broker deduplicates by source and `event_id`, not timestamps; its reporting groups by day. Other shared facts can still correlate pseudonymous Full events.
 
 ## Daily aggregates and observation limits
 
@@ -275,7 +275,7 @@ The contract validator checks every outgoing daily field. Current sources are:
 | Field | Server observation or conservative value |
 | --- | --- |
 | version | The running package version when it is valid SemVer within the 64-character bound; otherwise `custom`. Receivers default to a configured release list; an explicit SemVer policy can admit valid versions plus `custom` without expanding the public version domain. Version alone cannot establish an official build: source/fork builds can reuse a release version. |
-| channel/platform/arch | `captureBuildProvenance(env)?.channel` (baked `__STATION_SERVER_BUILD__.channel`, then existing runtime metadata), server OS and CPU. At daily serialization, the shared `mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to the Lite schema's `preview` and preserves permitted labels; missing or unrecognized provenance becomes `unknown`. |
+| channel/platform/arch | `captureBuildProvenance(env)?.channel` (baked `__STATION_SERVER_BUILD__.channel`, then existing runtime metadata), server OS and CPU. At daily serialization, the shared `mapRuntimeChannelToTelemetryChannel` preserves permitted telemetry labels; retired runtime `beta` is unmapped. Missing or unrecognized provenance becomes `unknown`. The historical `preview` schema value remains readable, and RCs use `stable`. |
 | surfaces_today | Reported web/desktop/CLI origin on an authenticated general-events connection, either `/events` or the shared orchestration stream. This is reported metadata, not device attestation. Missing/unknown/mobile origins are omitted because the current mobile header does not distinguish iOS and Android. |
 | first_active_this_week/month, install_age_bucket | Local observed activity dates. Age starts when this telemetry state is first created; an existing install without that state starts at `0d`. This is not historical OS/package installation age. |
 | engines_used_today | Existing engine-turn terminal observations. |

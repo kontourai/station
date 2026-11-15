@@ -1339,6 +1339,11 @@ exports `RelayInvitationLifetime`, `RelaySetupApproval`, `RelayPendingDevice`
 and `RelayManagementView`. The view contains public route/signing-confirmation
 facts, channel-specific setup links, exact approved surfaces and pending
 account-bound Device candidates; it contains no connector issuer credential.
+Active setup links and surfaces use Stable/Nightly (plus development surfaces).
+The optional `retiredRecords` counts are SDK-derived read metadata for excluded
+legacy Beta records, never actionable Device or approval authority.
+`RelayManagementWireView` retains the old public Beta route-intent link only for
+old SDK readers; it carries no enrollment grant.
 `approvedBy` preserves actual human actor attribution. `relay:manage`, declared
 in [environment security](../../packages/contracts/src/environment-security.ts),
 is an explicitly operator-promoted Device scope excluded from presets/defaults.

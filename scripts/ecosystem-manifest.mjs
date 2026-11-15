@@ -289,6 +289,8 @@ function assemblePayload({
   publishedAt,
   targets,
 }) {
+  if (!['stable', 'nightly'].includes(channel))
+    throw new Error(`invalid --channel ${channel}`);
   const releaseTag = `v${version}`;
   const assetTag = assetLocationTag({ version, channel, locationTag });
   if (!isHttpsArtifactUrl(baseUrl) || !baseUrl.endsWith('/'))

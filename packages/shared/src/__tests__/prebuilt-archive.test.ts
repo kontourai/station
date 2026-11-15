@@ -57,11 +57,11 @@ describe('readArchiveInstallState', () => {
     return root;
   }
   const base = {
-    channel: 'beta',
-    releaseChannel: 'preview',
+    channel: 'nightly',
+    releaseChannel: 'nightly',
     installRoot: '/i',
     stationRoot: '/r',
-    stationHome: '/r/instances/beta',
+    stationHome: '/r/instances/nightly',
   };
 
   test('reads the ring and, from schema 4, the public manifest URL', () => {
@@ -74,7 +74,7 @@ describe('readArchiveInstallState', () => {
         }),
       ),
     ).toEqual({
-      releaseChannel: 'preview',
+      releaseChannel: 'nightly',
       manifestUrl: 'https://m.test/p.json',
       stationRoot: '/r',
     });
@@ -83,14 +83,14 @@ describe('readArchiveInstallState', () => {
         state({ schemaVersion: 4, ...base, manifestUrl: null }),
       ),
     ).toEqual({
-      releaseChannel: 'preview',
+      releaseChannel: 'nightly',
       manifestUrl: null,
       stationRoot: '/r',
     });
     expect(
       readArchiveInstallState(state({ schemaVersion: 3, ...base })),
     ).toEqual({
-      releaseChannel: 'preview',
+      releaseChannel: 'nightly',
       manifestUrl: null,
       stationRoot: '/r',
     });
@@ -100,6 +100,16 @@ describe('readArchiveInstallState', () => {
     ['unparseable', '{'],
     ['another schema', { schemaVersion: 5, ...base, manifestUrl: null }],
     ['an unknown ring', { schemaVersion: 4, ...base, releaseChannel: 'beta' }],
+    [
+      'a retired Beta state',
+      {
+        schemaVersion: 4,
+        ...base,
+        channel: 'beta',
+        releaseChannel: 'preview',
+        stationHome: '/r/instances/beta',
+      },
+    ],
     [
       'a ring its runtime channel does not match',
       { schemaVersion: 4, ...base, channel: 'stable' },

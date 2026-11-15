@@ -318,6 +318,7 @@ export async function runReleaseAvailability(
   );
   let inventory, inventorySha;
   let producerTag = event.tag;
+  let promotion;
   try {
     await downloadAssets(api, release, directory);
     const inventoryPath = join(directory, 'station-release-inventory.json');
@@ -365,6 +366,13 @@ export async function runReleaseAvailability(
         assetsDir: directory,
       });
       producerTag = receipt.producerTag;
+      promotion = {
+        producerTag,
+        publicationTag: receipt.publicationTag,
+        sourceSha: receipt.sourceSha,
+        version: receipt.version,
+        inventorySha,
+      };
       if ((await api.tagSha(producerTag)) !== event.sourceSha)
         throw new Error('candidate source tag differs');
     }
@@ -430,6 +438,7 @@ export async function runReleaseAvailability(
     version: event.tag.slice(1),
     inventory,
     inventorySha,
+    ...(promotion ? { promotion } : {}),
     attestation: { sourceSha: event.sourceSha, inventorySha },
     release: {
       effect: 'published',

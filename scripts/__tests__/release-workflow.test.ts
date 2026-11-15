@@ -804,12 +804,11 @@ describe('native release workflow topology', () => {
       githubExpression('steps.source.outputs.pointer_repair_only'),
     );
     const pointerRepairGuard = githubExpression(
-      "needs.resolve.outputs.pointer_repair_only != 'true'",
+      "needs.resolve.outputs.mode != 'rc' && needs.resolve.outputs.pointer_repair_only != 'true' && steps.promotion.outputs.repair_only != 'true'",
     );
     for (const stepName of [
       'Authenticate to GHCR with the ephemeral workflow token',
       'Promote only the recorded immutable GHCR digest',
-      'Publish release and compensate to draft until feed verifies',
       'Mint the ledger push token',
       'Record the stable release in the deploy ledger',
     ])
@@ -817,9 +816,19 @@ describe('native release workflow topology', () => {
     expect(
       namedStep(
         promotion,
+        'Publish release and compensate to draft until feed verifies',
+      ).if,
+    ).toBe(
+      githubExpression(
+        "needs.resolve.outputs.pointer_repair_only != 'true' && steps.promotion.outputs.repair_only != 'true'",
+      ),
+    );
+    expect(
+      namedStep(
+        promotion,
         'Publish and verify the rolling desktop updater channel',
       ).if,
-    ).toBeUndefined();
+    ).toBe("needs.resolve.outputs.mode != 'rc'");
     expect(promotion.needs).toEqual(['resolve', 'qualification', 'advisory']);
     expect(parsed.concurrency).toEqual({
       group: 'station-release-publish',
@@ -856,7 +865,10 @@ describe('native release workflow topology', () => {
     // files a policy script itself chooses to load as code.
     const policyEntries = policyEntryScripts();
     expect(policyEntries).toEqual({
-      resolve: ['scripts/lib/native-release-config.mjs'],
+      resolve: [
+        'scripts/lib/native-release-config.mjs',
+        'scripts/release-promotion.mjs',
+      ],
       qualification: [],
       advisory: [],
       publish: [
@@ -866,8 +878,10 @@ describe('native release workflow topology', () => {
         'scripts/lib/deploy-ledger-commit.mjs',
         'scripts/lib/tauri-updater-manifest.mjs',
         'scripts/portable-release-publication.mjs',
+        'scripts/promote-store-release.mjs',
         'scripts/publish-mobile-feed-transaction.sh',
         'scripts/release-artifacts.mjs',
+        'scripts/release-promotion.mjs',
         'scripts/release-sbom-predicates.mjs',
         'scripts/verify-release-checksums.sh',
       ],
@@ -936,9 +950,18 @@ describe('native release workflow topology', () => {
   it('runs one policy revision across every job (#2676)', () => {
     // Only resolve reads the moving default branch; later jobs check out the
     // exact commit it recorded, so the jobs cannot straddle a main push.
-    expect(
-      publish.match(/github\.event\.repository\.default_branch/g),
-    ).toHaveLength(1);
+    const parsed = workflow(publish);
+    for (const [jobName, job] of Object.entries(parsed.jobs)) {
+      for (const step of job.steps ?? []) {
+        if (!String(step.uses ?? '').startsWith('actions/checkout@')) continue;
+        if (
+          String(step.with?.ref ?? '').includes(
+            'github.event.repository.default_branch',
+          )
+        )
+          expect(jobName).toBe('resolve');
+      }
+    }
     const resolveJob = workflowJob(publish, 'resolve');
     expect(resolveJob.outputs?.policy_sha).toBe(
       githubExpression('steps.source.outputs.policy_sha'),

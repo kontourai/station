@@ -3221,7 +3221,11 @@ pending Devices must name that Station. `createRelayInvitation` also takes the
 reviewed route, recipient setup and a `RelayInvitationLifetime`; it validates
 the returned installation binding and requested expiry before returning the
 link. Lifetimes are `5m`, `15m`, `1h`, `24h` and `never`; the UI chooses `24h`.
-Every invitation remains single-use.
+Every invitation remains single-use. Reads request `viewVersion=2` and expose only Stable/Nightly setup links.
+An older host may include legacy Beta rows. The SDK validates every row's Station
+scope first, excludes valid legacy Beta records from actionable arrays and
+reports their counts in `retiredRecords`. Malformed or foreign records still
+reject the response; mutation responses never admit Beta authority.
 
 This published SDK leaf consumes the canonical codec from
 `@kontourai/station-shared/native-relay-link`, not the private Connect package.

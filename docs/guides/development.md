@@ -602,11 +602,9 @@ homes under one `STATION_ROOT` (`~/.station` by default):
 +-- cache/
 +-- installs/
 |   +-- stable/
-|   +-- beta/
 |   +-- nightly/
 +-- instances/
     +-- stable/       # runtime home: config, projects, agents, plugins, logs...
-    +-- beta/
     +-- nightly/
     +-- dev/<worktree-id>/
 ```
@@ -1020,7 +1018,7 @@ source only; scheduled/manual success then runs all five packaging/platform
 validation families. Replaced pending revisions have no qualification claim. Optional
 PR delivery families run in sequence after core fast checks, selected by a
 trusted base-owned diff planner; required integration contexts stay unchanged.
-Scheduled main qualification and tagged Preview/Stable require full qualification with bounded exact-source reuse; a scheduled run does not repeat a corpus that already failed tests on the same source within 24 hours (see [releasing](releasing.md)).
+Scheduled main qualification and tagged Stable RC/final releases require full qualification with bounded exact-source reuse; a scheduled run does not repeat a corpus that already failed tests on the same source within 24 hours (see [releasing](releasing.md)).
 
 Nightly runs independently: an hourly eligibility decision enforces a six-hour
 default publication minimum before source tests or builds. Eligible sources
@@ -1057,7 +1055,7 @@ Every Playwright spec must be assigned to exactly one bucket in `tests/e2e-manif
 
 Dependency updates retain lock and compatibility checks. Feature PRs, merge
 queues and Nightly builds do not run advisory audits; the central scheduled
-scan tracks disclosures, and Preview/Stable publication enforces a fresh
+scan tracks disclosures, and RC/final publication enforces a fresh
 exact-source floor. See [Dependency security](dependency-security.md) for graph
 views, accountable ownership, trusted release policy and exception contracts.
 

@@ -223,6 +223,12 @@ function OperatorPanel({ scope }: { scope: Scope }) {
           ]}
         />
       </div>
+      {view.retiredRecords && (
+        <p className="settings__field-hint" role="status">
+          {view.retiredRecords.approvals + view.retiredRecords.pendingDevices}{' '}
+          retired Beta records excluded from device setup.
+        </p>
+      )}
       {view.pendingDevices.length > 0 && (
         <ul className="relay-operator__list" aria-label="Waiting for approval">
           {view.pendingDevices.map((device) => (

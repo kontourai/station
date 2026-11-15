@@ -583,7 +583,7 @@ describe('pinned manifest signing keys', () => {
       ]),
     ).toEqual([
       [NIGHTLY_KEY_ID, ['nightly']],
-      [RELEASE_KEY_ID, ['stable', 'preview']],
+      [RELEASE_KEY_ID, ['stable']],
     ]);
     for (const entry of config.keys)
       expect(createPublicKey(entry.publicKeySpkiPem).asymmetricKeyType).toBe(
@@ -608,7 +608,7 @@ describe('pinned manifest signing keys', () => {
             keyId: 'station-fixture-release',
             algorithm: 'ed25519',
             publicKeySpkiPem: readFileSync(fixture.testKeyPath, 'utf8'),
-            channels: ['stable', 'preview'],
+            channels: ['stable'],
           },
         ],
       }),
@@ -987,53 +987,31 @@ describe('install.sh public manifest verification', () => {
     ).toHaveLength(1);
   });
 
-  it('treats an unset STATION_CHANNEL as stable when the manifest says preview', {
+  it('refuses retired preview manifests and Beta aliases without installing', {
     timeout: 120_000,
   }, () => {
-    const fixture = makeInstallFixture('station-pinned-default-channel-');
+    const fixture = makeInstallFixture('station-pinned-retired-channel-');
     const manifestPath = signManifest(
       fixture,
       '1.3.0-preview.1',
       buildArchive(fixture, '1.3.0-preview.1'),
     );
     const refused = runInstaller(fixture, manifestPath);
-    expect(refused.stderr).toContain(
-      'requested channel does not match public ecosystem manifest',
-    );
     expect(refused.status).toBe(1);
-    expect(
-      existsSync(join(fixture.dir, 'home', '.local', 'bin', 'station-beta')),
-    ).toBe(false);
-    // Control: asking for beta installs the same manifest.
-    const beta = runInstaller(fixture, manifestPath, {
-      STATION_CHANNEL: 'beta',
-    });
-    expect(beta.status, beta.stderr).toBe(0);
-    expect(installedTag(fixture, 'beta')).toBe('v1.3.0-preview.1');
-  });
-
-  it('orders preview builds numerically, not as strings', {
-    timeout: 180_000,
-  }, () => {
-    const fixture = makeInstallFixture('station-pinned-preview-order-');
-    const beta = { STATION_CHANNEL: 'beta' };
-    const preview = (build: number) =>
-      signManifest(
-        fixture,
-        `1.3.0-preview.${build}`,
-        buildArchive(fixture, `1.3.0-preview.${build}`),
-      );
-    const tenth = runInstaller(fixture, preview(10), beta);
-    expect(tenth.status, tenth.stderr).toBe(0);
-    // preview.9 < preview.10 numerically; as strings "9" > "10".
-    const ninth = runInstaller(fixture, preview(9), beta);
-    expect(ninth.stderr).toContain(
-      'refusing to downgrade Station from v1.3.0-preview.10 to v1.3.0-preview.9',
+    expect(refused.stderr).toContain(
+      'signing key is not authorized for the manifest channel',
     );
-    expect(ninth.status).toBe(1);
-    const eleventh = runInstaller(fixture, preview(11), beta);
-    expect(eleventh.status, eleventh.stderr).toBe(0);
-    expect(installedTag(fixture, 'beta')).toBe('v1.3.0-preview.11');
+    for (const channel of ['beta', 'preview']) {
+      const result = runInstaller(fixture, manifestPath, {
+        STATION_CHANNEL: channel,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('Beta/preview is retired');
+    }
+    expect(existsSync(join(fixture.dir, 'home', '.station', 'installs'))).toBe(
+      false,
+    );
+    expect(cliCalls(fixture)).toEqual([]);
   });
 
   it('refuses a signed artifact URL that is not its own canonical form', {
@@ -1289,7 +1267,9 @@ describe('install.sh nightly channel (#2675)', () => {
         noStart,
       );
       expect(result.stderr).toContain(
-        'requested channel does not match public ecosystem manifest',
+        version.includes('-preview.')
+          ? 'signing key is not authorized for the manifest channel'
+          : 'requested channel does not match public ecosystem manifest',
       );
       expect(result.status).toBe(1);
       expect(existsSync(nightlyPaths(fixture).installRoot)).toBe(false);
@@ -1402,7 +1382,7 @@ exec '${realCurl}' "$@"
       STATION_VERSION: 'v1.3.0-preview.1',
     });
     expect(result.stderr).toContain(
-      'STATION_VERSION v1.3.0-preview.1 is a preview release; it cannot be installed as STATION_CHANNEL=nightly',
+      'invalid STATION_VERSION: v1.3.0-preview.1',
     );
     expect(result.status).toBe(1);
   });

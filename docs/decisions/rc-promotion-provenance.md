@@ -36,10 +36,12 @@ and SHA. Publishing the same bytes at a final release therefore needs a
 separate, verified producer-to-publication binding; changing a destination tag
 must never rewrite or pretend to reproduce an attestation.
 
-This archive contract does not itself publish a candidate or promote stores,
-feeds or pointers. Those operations remain the protected publication slice of
-#4929. The legacy preview ring is removed with the coordinated runtime and
-security cleanup, rather than partially removing its consumers in this slice.
+Protected publication separately authenticates the producer-to-publication
+receipt, unchanged asset inventory and original source attestations before
+promoting stores, feeds or pointers. RC publication skips Stable rolling
+authorities. Runtime, signing-key and setup admission reject retired Beta
+identities; read-only legacy metadata never grants an active surface. The
+current operator procedure and recovery limits live in the release guides.
 
 Executable fixture checks cover archive and installer identity/refusal paths.
 Real platform packaging, installations, provider processing and the complete
