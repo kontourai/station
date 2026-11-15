@@ -1214,3 +1214,80 @@ test('attached continuation uses the shared newline preference and IME guard', a
     deviceSettingsStore.set('chatReturnBehavior', previous);
   }
 });
+
+// A draft handed over from Activity starts the continuation without a click,
+// so it must meet the same guards the Continue action shows.
+describe('a handed-over draft obeys the Continue guards', () => {
+  test('after a continuation started, a hand-off starts no second one', async () => {
+    adoptOrchestrationSession.mockReset();
+    adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
+    window.localStorage.clear();
+    const onAdopted = vi.fn();
+    await renderAttached({ presentation: 'chat', onAdopted });
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(onAdopted).toHaveBeenCalledTimes(1));
+    act(() =>
+      handOffAttachedContinuation({
+        threadId: 'external:claude:raw-thread-id',
+        draft: 'again',
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
+  });
+
+  test('after a refusal Station will repeat, a hand-off asks again for nothing', async () => {
+    adoptOrchestrationSession.mockReset();
+    window.localStorage.clear();
+    adoptOrchestrationSession.mockRejectedValue(
+      new AdoptSessionError({
+        failureClass: 'certain-response',
+        message: 'refused',
+        retryable: false,
+        status: 400,
+        refusal: 'Station will not continue this here.',
+      }),
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      await renderAttached({
+        presentation: 'chat',
+        session: { projectSlug: undefined, cwd: '/work/app' },
+      });
+      fireEvent.click(continueButton());
+      await screen.findByRole('alert');
+      act(() =>
+        handOffAttachedContinuation({
+          threadId: 'external:claude:raw-thread-id',
+          draft: 'again',
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  test('a double hand-off in one tick starts one continuation', async () => {
+    adoptOrchestrationSession.mockReset();
+    window.localStorage.clear();
+    adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
+    await renderAttached({ presentation: 'chat' });
+    act(() => {
+      handOffAttachedContinuation({
+        threadId: 'external:claude:raw-thread-id',
+        draft: 'one',
+      });
+      handOffAttachedContinuation({
+        threadId: 'external:claude:raw-thread-id',
+        draft: 'two',
+      });
+    });
+    await waitFor(() =>
+      expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
+  });
+});

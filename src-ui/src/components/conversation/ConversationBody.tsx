@@ -63,7 +63,7 @@ import { requestTroubleshoot } from '../../lib/troubleshootEvents';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
 import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
-import type { SavedAnswerQuote } from '../../utils/answer-quotes';
+import type { DraftQuote, SavedAnswerQuote } from '../../utils/answer-quotes';
 import {
   acpApprovalFor,
   sessionApprovalOverride,
@@ -333,7 +333,17 @@ export interface ConversationBodyProps {
    */
   nextMessageHandoff?: {
     label: string;
-    onSend: (message: string) => void;
+    /** What the choice changes, for the chip's Undo wording. */
+    kind: 'agent' | 'engine';
+    /** The armed send is dispatching: nothing else may be sent meanwhile. */
+    pending: boolean;
+    /** Why the handoff cannot run now (a turn or queued message). */
+    blockedReason?: string;
+    onSend: (prepared: {
+      text: string;
+      draft: string;
+      quotes: readonly DraftQuote[];
+    }) => void;
     onUndo: () => void;
   };
   onOpenBackgroundTasks?: () => void;
@@ -1133,13 +1143,27 @@ function LiveConversationBody({
     ),
   });
 
+  // With a target armed, every send that leaves this composer (Send, Enter,
+  // a busy-turn Queue) is the handoff's first turn, so the chip and the
+  // routing never disagree. It takes the ordinary preparation (mentions,
+  // quotes, size and Station checks), and nothing goes while the handoff is
+  // dispatching or blocked. A slash command stays local. The handoff carries
+  // no ambient context, as before.
+  const armedHandoff =
+    nextMessageHandoff && !chatInput.input.trimStart().startsWith('/')
+      ? nextMessageHandoff
+      : undefined;
+  const sendArmedHandoff = useCallback(
+    async (armed: NonNullable<typeof nextMessageHandoff>) => {
+      if (armed.pending || armed.blockedReason) return;
+      const prepared = await chatInput.prepareOutgoingText();
+      if (!prepared?.text.trim()) return;
+      armed.onSend(prepared);
+    },
+    [chatInput],
+  );
   const handleSendWithContext = useCallback((): Promise<void> => {
-    // A slash command stays local; any other draft is the handoff's first
-    // turn. The handoff carries no ambient context, as before.
-    if (nextMessageHandoff && !chatInput.input.trimStart().startsWith('/')) {
-      nextMessageHandoff.onSend(chatInput.input);
-      return Promise.resolve();
-    }
+    if (armedHandoff) return sendArmedHandoff(armedHandoff);
     // Ambient context travels OUT-OF-BAND (#685): the server composes it into
     // the model-facing input only, so the transcript keeps the typed text.
     // `ambientContextForSend` keeps the `[`-prefix and slash-command
@@ -1150,8 +1174,9 @@ function LiveConversationBody({
       chatInput.input,
     );
     return chatInput.handleSend(undefined, undefined, { ambientContext });
-  }, [getComposedContext, chatInput, nextMessageHandoff]);
+  }, [getComposedContext, chatInput, armedHandoff, sendArmedHandoff]);
   const handleQueueFollowUp = useCallback((): Promise<void> => {
+    if (armedHandoff) return sendArmedHandoff(armedHandoff);
     const ambientContext = ambientContextForSend(
       getComposedContext(),
       chatInput.input,
@@ -1161,7 +1186,13 @@ function LiveConversationBody({
       queueOnBusy: true,
       ...(queueTakesFiles ? { queueFilesOnBusy: true } : {}),
     });
-  }, [getComposedContext, chatInput, queueTakesFiles]);
+  }, [
+    getComposedContext,
+    chatInput,
+    queueTakesFiles,
+    armedHandoff,
+    sendArmedHandoff,
+  ]);
   const nativeSteering =
     sessionSteeringPlacement(activeSession.orchestrationDurability).state ===
     'native';
@@ -3060,7 +3091,10 @@ function LiveConversationBody({
                         // quietly disabled. An `unverified` check (#2424) is the same:
                         // its notice says what failed and carries the Retry.
                         undefined
-                      : chatInput.sendBlockedReason
+                      : armedHandoff?.pending
+                        ? `Switching to ${armedHandoff.label}…`
+                        : (armedHandoff?.blockedReason ??
+                          chatInput.sendBlockedReason)
             }
             onRetryAttachmentStage={chatInput.retryAttachmentStage}
             onCancelAttachmentStage={chatInput.cancelAttachmentStage}

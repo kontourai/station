@@ -430,18 +430,6 @@ export function AttachedSessionDetail({
   // "Worker task · <id>" in the list it was opened from.
   const title = sessionTitle(session);
 
-  // Continuing needs no message: the continuation opens with this history,
-  // and a typed draft (none is fine) is sent there afterwards by the host.
-  const startContinuation = () => {
-    if (
-      !continuationSupported ||
-      adoption.isPending ||
-      serverRejectedRetryRef.current
-    )
-      return;
-    confirmedDraft.current = currentDraft.current;
-    adoption.mutate(getSelectionIntent());
-  };
   const continuationFeedback = (
     <>
       {adoption.error && (
@@ -480,6 +468,27 @@ export function AttachedSessionDetail({
     adoption.isPending ||
     continued ||
     handoffPending;
+  // Continuing needs no message: the continuation opens with this history,
+  // and a typed draft (none is fine) is sent there afterwards by the host.
+  // Every entry (the action, Send, a draft handed over from Activity) comes
+  // through here, so each one gets the same guards the action shows.
+  const adoptionInFlight = useRef(false);
+  const startContinuation = () => {
+    if (
+      adoptionDisabled ||
+      composerDisabled ||
+      adoptionInFlight.current ||
+      serverRejectedRetryRef.current
+    )
+      return;
+    adoptionInFlight.current = true;
+    confirmedDraft.current = currentDraft.current;
+    adoption.mutate(getSelectionIntent(), {
+      onSettled: () => {
+        adoptionInFlight.current = false;
+      },
+    });
+  };
   const requestSend = async ({ allowEmpty = false } = {}) => {
     if ((!allowEmpty && !draft.trim()) || composerDisabled) return;
     if (onContinueInChat) {

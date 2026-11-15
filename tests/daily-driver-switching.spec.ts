@@ -629,9 +629,9 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     });
     await expect(dialog).toBeVisible({ timeout: 10_000 });
     await dialog.getByRole('radio', { name: /Codex Runtime/ }).check();
-    // What carries over is one disclosure away, not on the main path.
+    // What carries over is under Details, not on the main path.
     await expect(dialog).not.toContainText('Provider-native cursor');
-    await dialog.getByRole('button', { name: 'What carries over' }).click();
+    await dialog.getByRole('button', { name: 'Details' }).click();
     await expect(dialog).toContainText('Recent conversation messages');
     await expect(dialog).toContainText('Provider-native cursor');
     await expect(dialog).toContainText('Tool state');

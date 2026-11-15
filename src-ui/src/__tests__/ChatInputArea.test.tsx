@@ -2452,14 +2452,18 @@ test('ACP reply setup uses the connection engine mark', async () => {
 test('an armed handoff names its destination above the composer and undoes in place', () => {
   const onUndo = vi.fn();
   renderChatInputArea({
-    nextMessageHandoff: { label: 'Codex reviewer · GPT-5', onUndo },
+    nextMessageHandoff: {
+      label: 'Codex reviewer · GPT-5',
+      kind: 'agent',
+      onUndo,
+    },
   });
   const chip = document.querySelector('.chat-input__handoff-chip');
   expect(chip?.textContent).toContain('Next message →');
   expect(chip?.textContent).toContain('Codex reviewer · GPT-5');
   fireEvent.click(
     screen.getByRole('button', {
-      name: 'Undo: keep sending to the current agent instead of Codex reviewer · GPT-5',
+      name: 'Undo: keep the current agent instead of Codex reviewer · GPT-5',
     }),
   );
   expect(onUndo).toHaveBeenCalledOnce();
@@ -2468,4 +2472,15 @@ test('an armed handoff names its destination above the composer and undoes in pl
 test('no handoff chip shows when nothing is armed', () => {
   renderChatInputArea();
   expect(document.querySelector('.chat-input__handoff-chip')).toBeNull();
+});
+
+test('an engine-only choice says Undo keeps the current engine', () => {
+  renderChatInputArea({
+    nextMessageHandoff: { label: 'Codex', kind: 'engine', onUndo: vi.fn() },
+  });
+  expect(
+    screen.getByRole('button', {
+      name: 'Undo: keep the current engine instead of Codex',
+    }),
+  ).toBeTruthy();
 });

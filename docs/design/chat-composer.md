@@ -211,8 +211,13 @@ action switches now, sending the composer's draft as the first turn, or, with
 no draft, a fixed catch-up turn (the route starts the target Session with a
 real turn, so nothing is switched without one); **Use for next message**
 instead arms the choice, shown above the composer as "Next message → …" with
-Undo, and the next ordinary Send becomes the handoff through the same
-idempotent request. What carries over and what resets is one disclosure away. There the picker lists
+Undo. While armed, every send from that composer (Send, Return, or Queue
+during a turn) is the handoff, prepared like any send (mentions, quotes and
+the size limit), through the same idempotent request. It waits, with the
+reason, while a turn or queued message blocks the switch, and nothing else can
+be sent while it dispatches. A retried earlier request leaves a newer draft in
+the composer. The first message (including the exact catch-up text) and what
+carries over and resets are under **Details**. There the picker lists
 only the other engines this client can start (an unready or incompatible one is
 left out rather than shown with a refusal), lists none when the conversation's
 open resolution does not allow changes (read-only, unverified, busy on the

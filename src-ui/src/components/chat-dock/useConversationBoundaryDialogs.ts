@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useOutboundQueueSnapshot } from '../../hooks/useOutboundQueueSnapshot';
 import type { ChatSession, FileAttachment } from '../../types';
+import type { DraftQuote } from '../../utils/answer-quotes';
 import {
   type EffectiveModelSource,
   isSessionExecutionActive,
@@ -56,6 +57,15 @@ export function useConversationBoundaryDialogs({
     executionPreset?: { executionAgentId?: string; modelId?: string };
     /** A composer send to dispatch as the handoff's first turn. */
     autoSubmit?: ConversationHandoffAutoSubmit;
+    /**
+     * The composer state that send came from: the chat it was typed in, its
+     * raw draft and its quotes, cleared from that chat once accepted.
+     */
+    armedDraft?: {
+      sessionId: string;
+      draft: string;
+      quotes: readonly DraftQuote[];
+    };
   } | null>(null);
   // A target picked for the next composer send. Nothing is sent when it is
   // picked, so it is in-memory only: a reload simply forgets the choice.
@@ -222,6 +232,9 @@ export function useConversationBoundaryDialogs({
   const openExecutionHandoff = useCallback(
     (model?: SelectableModel) => {
       if (!activeSession?.conversationId) return;
+      // The engine picker owns no button to return to; arming focuses the
+      // composer instead, and a cancel leaves focus where the picker put it.
+      handoffReturnFocusRef.current = null;
       setHandoffSource({
         id: activeSession.conversationId,
         agentSlug: activeSession.agentSlug,
@@ -247,8 +260,13 @@ export function useConversationBoundaryDialogs({
    * choice stays armed until a receipt arrives, so a refused send keeps it.
    */
   const sendArmedHandoff = useCallback(
-    (message: string) => {
+    (prepared: {
+      text: string;
+      draft: string;
+      quotes: readonly DraftQuote[];
+    }) => {
       if (!activeArmedHandoff || !activeSession || handoffSource) return;
+      const message = prepared.text;
       setHandoffSource({
         id: activeArmedHandoff.conversationId,
         agentSlug: activeSession.agentSlug,
@@ -264,6 +282,11 @@ export function useConversationBoundaryDialogs({
           ...(activeArmedHandoff.modelOptions
             ? { modelOptions: activeArmedHandoff.modelOptions }
             : {}),
+        },
+        armedDraft: {
+          sessionId: activeSession.id,
+          draft: prepared.draft,
+          quotes: prepared.quotes,
         },
       });
     },
@@ -287,6 +310,11 @@ export function useConversationBoundaryDialogs({
     openConversationHandoff,
     openExecutionHandoff,
     armedHandoff: activeArmedHandoff,
+    /** The active chat's armed send is dispatching (its dialog is hidden). */
+    armedHandoffPending: Boolean(
+      handoffSource?.autoSubmit &&
+        activeSession?.conversationId === handoffSource.id,
+    ),
     setArmedHandoff,
     sendArmedHandoff,
     forkSource,

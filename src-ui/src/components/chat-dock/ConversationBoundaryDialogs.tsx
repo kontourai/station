@@ -6,9 +6,12 @@ import {
   useOrchestrationSessionsQuery,
 } from '@kontourai/station-sdk';
 import type { RefObject } from 'react';
-import type { useActiveChatActions } from '../../contexts/ActiveChatsContext';
-import { activeChatsStore } from '../../contexts/ActiveChatsContext';
+import {
+  activeChatsStore,
+  useActiveChatActions,
+} from '../../contexts/ActiveChatsContext';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import type { useToast } from '../../contexts/ToastContext';
 import type { useChatInput } from '../../hooks/useChatInput';
@@ -63,7 +66,13 @@ export function ConversationBoundaryDialogs({
   activeOrchestrationSessionRead: 'pending' | 'error' | 'present' | 'absent';
   chatInput: Pick<
     ReturnType<typeof useChatInput>,
-    'input' | 'attachments' | 'handleClearInput' | 'handleClearAttachments'
+    | 'input'
+    | 'attachments'
+    | 'quotes'
+    | 'textareaRef'
+    | 'prepareOutgoingText'
+    | 'handleClearInput'
+    | 'handleClearAttachments'
   >;
   composerMenuTriggerRef: RefObject<HTMLButtonElement | null>;
   updateChat: ReturnType<typeof useActiveChatActions>['updateChat'];
@@ -87,6 +96,8 @@ export function ConversationBoundaryDialogs({
     setContextBoundaryStored,
     hasLocalDeferredMessages,
   } = dialogs;
+  const { clearInput, clearDraft } = useActiveChatActions();
+  const handoffIsActive = handoffSession?.id === activeSession?.id;
   return (
     <>
       {handoffSource && handoffSession?.conversationId && (
@@ -97,10 +108,18 @@ export function ConversationBoundaryDialogs({
           currentAgentId={handoffSession.agentSlug}
           executionPreset={handoffSource.executionPreset}
           autoSubmit={handoffSource.autoSubmit}
+          // An armed send keeps running when the person opens another chat;
+          // anything it needs them for waits until they return to its own.
+          suspended={Boolean(handoffSource.autoSubmit) && !handoffIsActive}
+          prepareDraft={
+            handoffIsActive ? chatInput.prepareOutgoingText : undefined
+          }
+          draftHasQuotes={handoffIsActive && chatInput.quotes.length > 0}
           onArm={(armed) => {
             setArmedHandoff(armed);
             setHandoffSource(null);
-            requestAnimationFrame(() => handoffReturnFocusRef.current?.focus());
+            // The next step is typing the message the choice applies to.
+            requestAnimationFrame(() => chatInput.textareaRef.current?.focus());
           }}
           projectSlug={handoffSession.projectSlug}
           agents={agents}
@@ -138,7 +157,13 @@ export function ConversationBoundaryDialogs({
             setHandoffSource(null);
             requestAnimationFrame(() => handoffReturnFocusRef.current?.focus());
           }}
-          onAccepted={({ receipt, target, targetId }) => {
+          onAccepted={({
+            receipt,
+            target,
+            targetId,
+            clearsComposer,
+            sentQuotes,
+          }) => {
             const state = activeChatsStore.getSnapshot()[handoffSession.id];
             updateChat(
               handoffSession.id,
@@ -152,16 +177,39 @@ export function ConversationBoundaryDialogs({
               ),
             );
             setArmedHandoff(null);
-            if (handoffSession.id === activeSession?.id) {
-              chatInput.handleClearInput();
-              chatInput.handleClearAttachments();
+            const armedDraft = handoffSource.armedDraft;
+            if (armedDraft) {
+              // The armed send came from its own chat's composer: clear that
+              // chat's draft (it was sent), wherever the person is now, and
+              // leave the screen where they put it.
+              if (clearsComposer) {
+                const now =
+                  activeChatsStore.getSnapshot()[armedDraft.sessionId];
+                if ((now?.input ?? '') === armedDraft.draft) {
+                  clearInput(armedDraft.sessionId);
+                  clearDraft(armedDraft.sessionId);
+                }
+                chatDraftsStore.consumeQuotes(
+                  armedDraft.sessionId,
+                  armedDraft.quotes,
+                );
+              }
+            } else if (handoffIsActive) {
+              if (clearsComposer) {
+                chatInput.handleClearInput();
+                chatInput.handleClearAttachments();
+                chatDraftsStore.consumeQuotes(handoffSession.id, sentQuotes);
+              }
             } else {
               focusSessionInPane(handoffSession.id);
             }
             invalidate(orchestrationQueries.sessions().queryKey);
             invalidate(conversationQueries.inventory().queryKey);
             setHandoffSource(null);
-            requestAnimationFrame(() => handoffReturnFocusRef.current?.focus());
+            if (!armedDraft)
+              requestAnimationFrame(() =>
+                handoffReturnFocusRef.current?.focus(),
+              );
             showToast(
               `Continuing with ${target?.name ?? `deleted Agent “${targetId}”`}`,
               'success',

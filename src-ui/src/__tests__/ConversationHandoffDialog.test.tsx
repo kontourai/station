@@ -885,10 +885,23 @@ describe('ConversationHandoffDialog', () => {
     // Another conversation does not inherit the choice.
     rerender({ active: b });
     expect(result.current.armedHandoff).toBeNull();
-    act(() => result.current.sendArmedHandoff('not here'));
+    act(() =>
+      result.current.sendArmedHandoff({
+        text: 'not here',
+        draft: 'not here',
+        quotes: [],
+      }),
+    );
     expect(result.current.handoffSource).toBeNull();
     rerender({ active: a });
-    act(() => result.current.sendArmedHandoff('The exact draft'));
+    act(() =>
+      result.current.sendArmedHandoff({
+        text: 'The exact draft',
+        draft: 'The exact draft',
+        quotes: [],
+      }),
+    );
+    expect(result.current.armedHandoffPending).toBe(true);
     expect(result.current.handoffSource).toEqual({
       id: 'conversation-a',
       agentSlug: 'claude',
@@ -896,6 +909,11 @@ describe('ConversationHandoffDialog', () => {
         message: 'The exact draft',
         targetId: 'codex',
         modelId: 'gpt-5',
+      },
+      armedDraft: {
+        sessionId: 'chat-a',
+        draft: 'The exact draft',
+        quotes: [],
       },
     });
     // The choice stays armed until a receipt arrives.
@@ -1014,9 +1032,8 @@ describe('ConversationHandoffDialog', () => {
         }) as HTMLInputElement
       ).disabled,
     ).toBe(true);
-    expect(
-      screen.getByText('Your draft is sent as the first message.'),
-    ).toBeTruthy();
+    // The same draft is still in the composer: it is the retried request.
+    expect(screen.getByText('Retries the earlier request.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
     await waitFor(() => expect(restored.onAccepted).toHaveBeenCalledOnce());
     expect(getConversationHandoffStatus.mock.calls[0][2]).toBe(key);
@@ -1317,3 +1334,155 @@ async function realValidationRefusal(
     globalThis.fetch = previous;
   }
 }
+
+describe('handoff review fixes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    handoffExecutionMessage.mockReset();
+    getConversationHandoffStatus.mockReset();
+    sessionStorage.clear();
+    useNewChatSelectionModel.mockReturnValue({
+      agentConnections: connections,
+      selectedProjectConfig: { agents: ['claude', 'codex', 'offline'] },
+      modelsForAgent: () => [{ id: 'gpt-5', name: 'GPT-5' }],
+      executionModelsForAgent: () => [{ id: 'gpt-5', name: 'GPT-5' }],
+      defaultEffectiveModelForAgent: () => ({
+        id: 'gpt-5',
+        source: 'agent default',
+      }),
+    });
+  });
+
+  test('Continue sends the prepared draft (quotes composed), and its quotes are reported as sent', async () => {
+    handoffExecutionMessage.mockResolvedValueOnce(receipt());
+    const quotes = [{ excerpt: 'q' }] as never[];
+    const prepareDraft = vi.fn(async () => ({
+      text: '> q\n\nfollow up',
+      draft: 'follow up',
+      quotes,
+    }));
+    const { onAccepted } = renderDialog(
+      'claude',
+      undefined,
+      undefined,
+      undefined,
+      { prepareDraft },
+    );
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+    );
+    await waitFor(() => expect(onAccepted).toHaveBeenCalledOnce());
+    expect(handoffExecutionMessage.mock.calls[0][2].message).toBe(
+      '> q\n\nfollow up',
+    );
+    expect(onAccepted.mock.calls[0][0]).toMatchObject({
+      clearsComposer: true,
+      sentQuotes: quotes,
+    });
+  });
+
+  test('a quote-only composer is a draft, not the catch-up turn', async () => {
+    handoffExecutionMessage.mockResolvedValueOnce(receipt());
+    renderDialog('claude', undefined, undefined, undefined, {
+      initialMessage: '',
+      draftHasQuotes: true,
+      prepareDraft: async () => ({
+        text: '> only the quote',
+        draft: '',
+        quotes: [],
+      }),
+    });
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    expect(
+      screen.getByText('Your draft is sent as the first message.'),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+    );
+    await waitFor(() => expect(handoffExecutionMessage).toHaveBeenCalled());
+    expect(handoffExecutionMessage.mock.calls[0][2].message).toBe(
+      '> only the quote',
+    );
+  });
+
+  test('a preparation refusal sends nothing', async () => {
+    const { onDispatchStarted } = renderDialog(
+      'claude',
+      undefined,
+      undefined,
+      undefined,
+      { prepareDraft: async () => null },
+    );
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(handoffExecutionMessage).not.toHaveBeenCalled();
+    expect(onDispatchStarted).not.toHaveBeenCalled();
+  });
+
+  test('the catch-up text is shown, exactly, before it is sent', () => {
+    renderDialog('claude', undefined, undefined, undefined, {
+      initialMessage: '',
+    });
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(screen.getByText(HANDOFF_CATCH_UP_MESSAGE)).toBeTruthy();
+  });
+
+  test('a retried earlier request keeps a newer draft in the composer and says so', async () => {
+    handoffExecutionMessage.mockRejectedValueOnce(
+      new TypeError('response lost'),
+    );
+    const first = renderDialog();
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+    );
+    await waitFor(() => screen.getByRole('button', { name: 'Check status' }));
+    first.unmount();
+
+    getConversationHandoffStatus.mockResolvedValueOnce(acceptedStatus());
+    const restored = renderDialog('claude', undefined, undefined, undefined, {
+      initialMessage: 'A newer draft',
+    });
+    expect(
+      screen.getByText(
+        'Retries the earlier request. Your new draft stays in the composer.',
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    await waitFor(() => expect(restored.onAccepted).toHaveBeenCalledOnce());
+    expect(restored.onAccepted.mock.calls[0][0]).toMatchObject({
+      message: 'follow up',
+      clearsComposer: false,
+    });
+  });
+
+  test('an armed send whose Agent is gone is refused before anything is posted', async () => {
+    renderDialog('claude', undefined, [claude, unavailable], undefined, {
+      autoSubmit: { message: 'armed', targetId: 'codex', modelId: 'gpt-5' },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toContain(
+        'isn’t available anymore',
+      ),
+    );
+    expect(handoffExecutionMessage).not.toHaveBeenCalled();
+    expect(fenceConversationHandoff).not.toHaveBeenCalled();
+  });
+
+  test('an armed send whose model is gone is refused before anything is posted', async () => {
+    renderDialog('claude', undefined, undefined, undefined, {
+      autoSubmit: { message: 'armed', targetId: 'codex', modelId: 'retired' },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toContain(
+        'isn’t available anymore',
+      ),
+    );
+    expect(handoffExecutionMessage).not.toHaveBeenCalled();
+  });
+});

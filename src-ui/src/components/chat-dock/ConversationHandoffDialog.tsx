@@ -40,6 +40,7 @@ import {
 } from '../ResponsiveDialogSurface';
 import { Empty } from '../state';
 import '../chat/ConversationHandoff.css';
+import type { DraftQuote } from '../../utils/answer-quotes';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
 export interface AcceptedConversationHandoff {
@@ -48,6 +49,13 @@ export interface AcceptedConversationHandoff {
   targetId: string;
   connectionId?: string;
   message: string;
+  /**
+   * Whether the accepted request was the composer's current draft. A retried
+   * earlier request leaves a newer draft in place.
+   */
+  clearsComposer: boolean;
+  /** The quotes the sent message carried, to consume from the draft. */
+  sentQuotes: readonly DraftQuote[];
 }
 
 /**
@@ -95,6 +103,20 @@ interface ConversationHandoffDialogProps {
   initialMessage: string;
   attachments: FileAttachment[];
   blockedReason?: string;
+  /**
+   * The composer's send preparation (mentions, quotes, size and Station
+   * checks). The dialog's own Continue runs it so a typed draft leaves the
+   * same way an ordinary send would.
+   */
+  prepareDraft?: () => Promise<{
+    text: string;
+    draft: string;
+    quotes: readonly DraftQuote[];
+  } | null>;
+  /** The composer holds quotes, which are part of its draft. */
+  draftHasQuotes?: boolean;
+  /** Keep the request running but show nothing (its chat is not on screen). */
+  suspended?: boolean;
   /**
    * Dispatch at mount with this exact message and target, rendering nothing
    * unless the dispatch needs the person (a refusal, or an outcome to check).
@@ -228,6 +250,9 @@ export function ConversationHandoffDialog({
   initialMessage,
   attachments,
   blockedReason,
+  prepareDraft,
+  draftHasQuotes = false,
+  suspended = false,
   autoSubmit,
   onArm,
   onAccepted,
@@ -306,12 +331,19 @@ export function ConversationHandoffDialog({
   const modelTriggerRef = useRef<HTMLButtonElement>(null);
   // No field edits this: the composer's draft (or the armed send's exact
   // text) is the first turn, and an empty draft means the catch-up request.
-  const draft = (
-    restoredIntent?.message ??
-    autoSubmit?.message ??
-    initialMessage
-  ).trim();
-  const message = draft || HANDOFF_CATCH_UP_MESSAGE;
+  // A retained uncertain request is retried exactly as it was sent; a newer
+  // draft is not part of it and stays in the composer.
+  const composerDraft = (autoSubmit?.message ?? initialMessage).trim();
+  const composerHasDraft = Boolean(composerDraft) || draftHasQuotes;
+  const displacesDraft = Boolean(
+    restoredIntent &&
+      composerHasDraft &&
+      composerDraft !== restoredIntent.message.trim(),
+  );
+  const message =
+    restoredIntent?.message ?? (composerDraft || HANDOFF_CATCH_UP_MESSAGE);
+  const sentQuotes = useRef<readonly DraftQuote[]>([]);
+  const starting = useRef(false);
   const [state, setState] = useState<
     'idle' | 'pending' | 'indeterminate' | 'error'
   >(restoredIntent ? 'indeterminate' : 'idle');
@@ -386,7 +418,7 @@ export function ConversationHandoffDialog({
   ]);
 
   const runHandoff = async () => {
-    if (!targetId || state === 'pending') return;
+    if (!targetId || state === 'pending' || starting.current) return;
     if (blockedReason) {
       setState('error');
       setFeedback(blockedReason);
@@ -397,10 +429,41 @@ export function ConversationHandoffDialog({
       setFeedback(`Send or remove attachments before ${changeLabel}.`);
       return;
     }
+    let firstMessage = message;
+    if (!retainedIntent.current) {
+      // A new request names a target this client can still start: an armed
+      // choice can outlive its Agent, engine or model.
+      if (
+        !target ||
+        !executionTarget ||
+        (!executionPreset &&
+          !candidates.some((candidate) => candidate.slug === targetId)) ||
+        (modelId && !targetModels.some((model) => model.id === modelId))
+      ) {
+        setState('error');
+        setFeedback(
+          `${executionPreset ? (engineLabel ?? 'That engine') : targetName} isn’t available anymore. Choose again.`,
+        );
+        return;
+      }
+      if (!autoSubmit && prepareDraft) {
+        starting.current = true;
+        let prepared: Awaited<ReturnType<typeof prepareDraft>>;
+        try {
+          prepared = await prepareDraft();
+        } finally {
+          starting.current = false;
+        }
+        // Refused (the reason is already shown) or changed underneath.
+        if (!prepared) return;
+        firstMessage = prepared.text.trim() || HANDOFF_CATCH_UP_MESSAGE;
+        sentQuotes.current = prepared.quotes;
+      }
+    }
     const intent: PendingHandoffIntent = retainedIntent.current ?? {
       idempotencyKey: idempotencyKey.current,
       targetId,
-      message,
+      message: firstMessage,
       ...(executionAgentId
         ? {
             executionAgentId,
@@ -478,7 +541,9 @@ export function ConversationHandoffDialog({
             receipt: result.handoff,
             target,
             targetId,
-            message,
+            message: intent.message,
+            clearsComposer: !displacesDraft,
+            sentQuotes: sentQuotes.current,
           });
         },
       );
@@ -528,6 +593,8 @@ export function ConversationHandoffDialog({
           target,
           targetId: result.marker.targetAgentId,
           message,
+          clearsComposer: !displacesDraft,
+          sentQuotes: sentQuotes.current,
           receipt: {
             predecessorSessionId: result.marker.predecessorSessionId,
             sessionId: result.marker.sessionId,
@@ -598,7 +665,10 @@ export function ConversationHandoffDialog({
     .join(' · ');
   // The armed send stays out of sight while it dispatches: the composer shows
   // the message as sending. It surfaces only when the person must act.
-  if (autoSubmit && (state === 'idle' || state === 'pending') && !feedback)
+  if (
+    suspended ||
+    (autoSubmit && (state === 'idle' || state === 'pending') && !feedback)
+  )
     return null;
   const canArm = onArm && !autoSubmit && !restoredIntent && state !== 'pending';
   const primaryDisabled =
@@ -728,16 +798,20 @@ export function ConversationHandoffDialog({
           )}
           <div className="conversation-handoff-dialog__note">
             <span>
-              {draft
-                ? 'Your draft is sent as the first message.'
-                : 'Starts with a short catch-up turn.'}
+              {displacesDraft
+                ? 'Retries the earlier request. Your new draft stays in the composer.'
+                : restoredIntent
+                  ? 'Retries the earlier request.'
+                  : composerHasDraft
+                    ? 'Your draft is sent as the first message.'
+                    : 'Starts with a short catch-up turn.'}
             </span>
             <DisclosureToggle
               expanded={disclosureOpen}
               onToggle={() => setDisclosureOpen((open) => !open)}
               controls={disclosureId}
             >
-              What carries over
+              Details
             </DisclosureToggle>
           </div>
           {disclosureOpen && (
@@ -745,6 +819,12 @@ export function ConversationHandoffDialog({
               id={disclosureId}
               className="conversation-handoff-dialog__disclosure"
             >
+              <dt>First message</dt>
+              <dd>
+                {restoredIntent || !composerHasDraft
+                  ? message
+                  : 'Your draft from the composer'}
+              </dd>
               <dt>Carried</dt>
               <dd>
                 {CONVERSATION_HANDOFF_CARRIED_FIELDS.map(

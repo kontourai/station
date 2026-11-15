@@ -398,7 +398,11 @@ interface ChatInputAreaProps {
   agentHandoffDisabled?: boolean;
   agentHandoffDisabledReason?: string;
   /** The Agent or engine the next send hands off to, with its undo. */
-  nextMessageHandoff?: { label: string; onUndo: () => void };
+  nextMessageHandoff?: {
+    label: string;
+    kind: 'agent' | 'engine';
+    onUndo: () => void;
+  };
   workspaceRefused?: boolean;
   /**
    * The server refused this caller a send here: the disabled composer shows
@@ -1178,7 +1182,7 @@ export function ChatInputArea({
               type="button"
               className="chat-input__handoff-undo"
               onClick={nextMessageHandoff.onUndo}
-              aria-label={`Undo: keep sending to the current agent instead of ${nextMessageHandoff.label}`}
+              aria-label={`Undo: keep the current ${nextMessageHandoff.kind} instead of ${nextMessageHandoff.label}`}
             >
               Undo
             </button>
