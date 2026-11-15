@@ -65,6 +65,20 @@ export class FakeAcpProcess {
 
   constructor(readonly opts: ACPProcessOptions) {}
 
+  /**
+   * `ACPProcess.spawnedEnvHas`: the host environment, the connection's
+   * launch environment and its credential environment, layered as the real
+   * spawn does (managed pins are covered by the real-process test).
+   */
+  spawnedEnvHas(name: string): boolean {
+    const env: Record<string, string | undefined> = {
+      ...process.env,
+      ...this.opts.launchEnv,
+      ...this.opts.credentialEnv?.(),
+    };
+    return typeof env[name] === 'string' && env[name]!.length > 0;
+  }
+
   async start() {
     if (this.startError) throw this.startError;
     this.client = this.opts.createClient({ launchReplacedByPolicy: false });
@@ -144,6 +158,8 @@ export class FakeAcpProcess {
    * returns `{}` for an engine that answers with nothing).
    */
   reattachResult: Record<string, unknown> = {};
+  /** The `session/load` answer alone, when a test needs it to differ. */
+  loadSessionResult?: Record<string, unknown>;
 
   async loadSession(
     sessionId: string,
@@ -158,7 +174,7 @@ export class FakeAcpProcess {
     // notifications before it answers `session/load`.
     this.loadSessionReplay?.(this.client);
     await this.loadSessionPromise;
-    return structuredClone(this.reattachResult);
+    return structuredClone(this.loadSessionResult ?? this.reattachResult);
   }
   loadSessionReplay?: (client: ACPClientCallbacks) => void;
 
@@ -170,6 +186,9 @@ export class FakeAcpProcess {
   resumeSessionCalls = 0;
   resumeSessionError?: unknown;
 
+  /** The `session/resume` answer alone, when a test needs it to differ. */
+  resumeSessionResult?: Record<string, unknown>;
+
   async resumeSession(
     sessionId: string,
     cwd: string,
@@ -179,7 +198,7 @@ export class FakeAcpProcess {
     this.resumeSessionArgs = { sessionId, cwd, mcpServers };
     if (this.resumeSessionError) throw this.resumeSessionError;
     this.sessionId = sessionId;
-    return structuredClone(this.reattachResult);
+    return structuredClone(this.resumeSessionResult ?? this.reattachResult);
   }
 
   readonly setConfigOptionCalls: Array<{ configId: string; value: string }> =
