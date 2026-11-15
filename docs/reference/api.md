@@ -2813,6 +2813,8 @@ for draft, evidence and qualification limits.
 returns the current process's product queue, exact-receipt acknowledgements,
 loss/failure counters and OTel callback/probe state. It carries presence flags
 and counters rather than addresses, keys, installation IDs or receipt IDs.
+A refused batch's optional `lastFailure.detail` is the receiver's stated reason,
+at most 200 characters with those identifiers masked; older servers omit it.
 Unsupported versions and unavailable state must not be replaced with healthy
 defaults or cached success. Under a managed policy with `limits.telemetry:
 false`, `product.managedDenial` and `otel.managedDenial` carry the policy
