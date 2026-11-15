@@ -2525,6 +2525,22 @@ listing every failed test identity, every failure the runner itself saw,
 and whether the job's exit is fully explained by those tests. Failed jobs
 upload it as `qualification-manifest-*`.
 
+Only the job's top-level runner writes `job-manifest.json`. The phase
+driver and the e2e suite runner read the manifest location once and remove
+it from their own environment before spawning anything. The driver gives
+each corpus phase a fresh directory of its own through
+`STATION_QUALIFICATION_GROUP_MANIFEST_DIR`, and the corpus runner removes
+that variable too. The failure-identity reporter gets its report path as a
+Vitest option (`--outputFile.stationFailures`), not through the environment.
+`vitest.setup.ts` also deletes both variables in every test worker. So no
+test process can see where a real job's manifest goes, and a runner a test
+spawns writes nothing there. A phase accepts only the groups its command
+runs, each once, each exactly the group schema and naming itself.
+Anything else in its directory (an unreadable or malformed file, another
+group, a missing group, any other file) becomes a phase error, which leaves
+the phase unexplained. A manifest that cannot be built is still written,
+marked unexplained.
+
 [`config/qualification-known-failures.json`](../../config/qualification-known-failures.json)
 lists standing failures that already have an owner issue. The rules, plainly:
 

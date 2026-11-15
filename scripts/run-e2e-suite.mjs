@@ -62,7 +62,7 @@ import {
   clipText,
   JOB_LABEL_ENV,
   JOB_MANIFEST_FILE,
-  manifestDirectoryFromEnv,
+  takeManifestDirectory,
 } from './lib/qualification-failure-manifest.mjs';
 
 installNodeHttpCompatibility();
@@ -470,8 +470,7 @@ export function e2eJobManifest(
   });
 }
 
-function writeE2EManifest(thrown) {
-  const directory = manifestDirectoryFromEnv();
+function writeE2EManifest(directory, thrown) {
   if (!directory) return;
   try {
     let sourceSha = '';
@@ -3096,10 +3095,15 @@ async function main() {
 // launched the whole e2e runner inside Vitest, and its process.exit(1) surfaced
 // as an unhandled rejection that failed verify:static with every test passing.
 if (invokedDirectly(import.meta.url)) {
+  // Read once and removed from this process's environment before anything
+  // is spawned: the Station server, Playwright and every test process (and
+  // whatever a test spawns) inherit it, and none of them may write the job's
+  // manifest.
+  const manifestDirectory = takeManifestDirectory(process.env);
   main()
-    .then(() => writeE2EManifest(null))
+    .then(() => writeE2EManifest(manifestDirectory, null))
     .catch((error) => {
-      writeE2EManifest(error);
+      writeE2EManifest(manifestDirectory, error);
       console.error(error);
       process.exit(1);
     });

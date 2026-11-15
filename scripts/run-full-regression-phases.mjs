@@ -8,7 +8,13 @@
  * qualification never does. The local full:regression coordinator is unchanged.
  */
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -23,16 +29,19 @@ import {
 import {
   buildJobManifest,
   clipText,
+  GROUP_MANIFEST_DIR_ENV,
   JOB_LABEL_ENV,
   JOB_MANIFEST_FILE,
-  MANIFEST_DIR_ENV,
-  manifestDirectoryFromEnv,
+  parseGroupManifest,
+  takeManifestDirectory,
+  withoutManifestLocations,
 } from './lib/qualification-failure-manifest.mjs';
 import {
   collectWorkspaceProvenance,
   digestVerificationDependencies,
 } from './lib/test-reliability.mjs';
 import { bindVerificationRequestEnvironment } from './lib/verification-request-environment.mjs';
+import { plannedCorpusGroupNames } from './run-vitest-corpus.mjs';
 import { FULL_REGRESSION_PHASES } from './verification-lanes.mjs';
 
 const PROCESS_HEAVY_PHASE_ID = 'test-full-process-heavy';
@@ -191,8 +200,39 @@ export function resolveFullRegressionPhasePlan(
         script: phase.privateScript,
         args: Object.freeze(['run', phase.privateScript, ...extra]),
         timeoutMs: phase.timeoutMs,
+        ...(phase.id.startsWith(CORPUS_PHASE_PREFIX)
+          ? {
+              corpusGroups: plannedCorpusGroups(
+                scripts[phase.privateScript],
+                forwarded,
+              ),
+            }
+          : {}),
       });
     });
+}
+
+const CORPUS_SCRIPT =
+  /^node scripts\/run-vitest-corpus\.mjs((?: --[a-z-]+(?:=[^\s]+)?)*)$/;
+
+/**
+ * The group entries a corpus phase's runner will write, from the exact
+ * command the phase runs. Null when the command is not a plain corpus
+ * invocation: that phase then cannot be explained.
+ */
+export function plannedCorpusGroups(script, forwarded = []) {
+  const match = CORPUS_SCRIPT.exec(script);
+  if (!match) return null;
+  try {
+    return Object.freeze(
+      plannedCorpusGroupNames([
+        ...match[1].split(' ').filter(Boolean),
+        ...forwarded,
+      ]),
+    );
+  } catch {
+    return null;
+  }
 }
 
 function readPackageScripts() {
@@ -223,10 +263,15 @@ export async function runPhaseProcess(
   // The canonical lane binds STATION_VERIFICATION_HISTORY_REF to the request's
   // HEAD, so history-reading tests (commit-message corpora) inspect the
   // candidate rather than origin/main. The binding overwrites inheritance.
+  // A phase sees only the manifest location its driver hands it in
+  // `extraEnv`, never the job's own: nothing inside a phase writes the job
+  // manifest.
   const env = {
-    ...bindVerificationRequestEnvironment(process.env, {
-      headSha: git(['rev-parse', 'HEAD'], cwd).toString('utf8').trim(),
-    }),
+    ...withoutManifestLocations(
+      bindVerificationRequestEnvironment(process.env, {
+        headSha: git(['rev-parse', 'HEAD'], cwd).toString('utf8').trim(),
+      }),
+    ),
     ...extraEnv,
   };
   const execution = executeOwnedProcess(command, args, spawnProcess, label, {
@@ -293,28 +338,63 @@ export async function runPhaseProcess(
 }
 
 /**
- * The group manifest entries a phase's corpus runner wrote. An unreadable
- * entry is reported as a phase error, which leaves the phase unexplained.
+ * The group entries a phase's corpus runner wrote into the fresh directory
+ * the driver handed it. A phase accepts exactly its planned groups, each once,
+ * each exactly the group schema and naming itself. Anything else (an
+ * unreadable or malformed file, an unplanned or missing group, any other
+ * entry) is a phase error, which leaves the phase unexplained. Never throws.
  */
-export function readPhaseGroups(directory) {
-  let names;
-  try {
-    names = readdirSync(directory).filter((name) => name.endsWith('.json'));
-  } catch {
-    return { groups: [], errors: [] };
-  }
+export function readPhaseGroups(directory, plannedGroups) {
   const groups = [];
   const errors = [];
-  for (const name of names.sort()) {
+  try {
+    if (!Array.isArray(plannedGroups))
+      return {
+        groups,
+        errors: ['the planned corpus groups of this phase are unknown'],
+      };
+    let names;
     try {
-      groups.push(JSON.parse(readFileSync(resolve(directory, name), 'utf8')));
+      names = readdirSync(directory).sort();
     } catch (error) {
-      errors.push(
-        `group manifest ${name} is unreadable: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      return {
+        groups,
+        errors: [
+          `group manifest directory is unreadable: ${error instanceof Error ? error.message : String(error)}`,
+        ],
+      };
     }
+    const expected = new Map(
+      plannedGroups.map((group) => [`${group}.json`, group]),
+    );
+    for (const name of names) {
+      const planned = expected.get(name);
+      if (planned === undefined) {
+        errors.push(`unexpected entry ${name} in the group manifest directory`);
+        continue;
+      }
+      expected.delete(name);
+      try {
+        const group = parseGroupManifest(
+          readFileSync(resolve(directory, name), 'utf8'),
+        );
+        if (group.group !== planned)
+          throw new Error(`it names group ${JSON.stringify(group.group)}`);
+        groups.push(group);
+      } catch (error) {
+        errors.push(
+          `group manifest ${name} is not a valid entry for group ${planned}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    for (const group of expected.values())
+      errors.push(`group ${group} wrote no manifest`);
+  } catch (error) {
+    errors.push(
+      `group manifests could not be read: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
-  return { groups, errors };
+  return { groups, errors: errors.map(clipText) };
 }
 
 /**
@@ -348,6 +428,28 @@ export function phaseJobManifest(plan, results, phaseGroups, identity) {
 }
 
 /**
+ * A new, empty directory for one corpus phase's group entries. If it cannot
+ * be made, the phase still runs, without a manifest, and is unexplained.
+ */
+function freshGroupDirectory(manifestDirectory, phaseId, phaseGroups) {
+  try {
+    const parent = resolve(manifestDirectory, 'groups');
+    mkdirSync(parent, { recursive: true });
+    return mkdtempSync(resolve(parent, `${phaseId}-`));
+  } catch (error) {
+    phaseGroups.set(phaseId, {
+      groups: [],
+      errors: [
+        clipText(
+          `group manifest directory unavailable: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      ],
+    });
+    return null;
+  }
+}
+
+/**
  * Run every planned phase in order, continuing past failures. A phase passes
  * only on exit status 0 with no runner error; a cancellation stops the plan
  * and marks the remaining phases as not run, which is also a failure.
@@ -364,7 +466,8 @@ export async function runFullRegressionPhases(
       process.stdout.write(`${line}\n`);
     },
     // Set in hosted qualification: each corpus phase writes its group
-    // manifests under <directory>/groups/<phase>, outside the workspace.
+    // manifests into a fresh directory under <directory>/groups, outside
+    // the workspace, that only this driver and that phase's runner know.
     manifestDirectory,
     phaseGroups = new Map(),
   } = {},
@@ -388,18 +491,22 @@ export async function runFullRegressionPhases(
     let outcome;
     try {
       const before = snapshot(cwd);
-      const groupDirectory = manifestDirectory
-        ? resolve(manifestDirectory, 'groups', step.id)
-        : null;
+      const groupDirectory =
+        manifestDirectory && step.id.startsWith(CORPUS_PHASE_PREFIX)
+          ? freshGroupDirectory(manifestDirectory, step.id, phaseGroups)
+          : null;
       outcome = await runPhase(step, {
         signal,
         cwd,
         ...(groupDirectory
-          ? { extraEnv: { [MANIFEST_DIR_ENV]: groupDirectory } }
+          ? { extraEnv: { [GROUP_MANIFEST_DIR_ENV]: groupDirectory } }
           : {}),
       });
       if (groupDirectory)
-        phaseGroups.set(step.id, readPhaseGroups(groupDirectory));
+        phaseGroups.set(
+          step.id,
+          readPhaseGroups(groupDirectory, step.corpusGroups),
+        );
       const changes = workspaceChanges(before, snapshot(cwd));
       if (changes.length > 0)
         outcome = {
@@ -444,7 +551,48 @@ export async function runFullRegressionPhases(
   };
 }
 
-/** Write the job manifest; called from the driver's `finally`. */
+/**
+ * The manifest written when the real one cannot be built: every planned
+ * phase it can still name, each with the builder's error. It never explains.
+ */
+function unbuildableJobManifest(plan, identity, error) {
+  const reason = clipText(
+    `the job manifest could not be built: ${error instanceof Error ? error.message : String(error)}`,
+  );
+  let phases = [];
+  try {
+    phases = Array.from(plan, (step) => ({
+      phase: clipText(step?.id ?? ''),
+      exitStatus: null,
+      error: reason,
+      corpus: false,
+      groups: [],
+    }));
+  } catch {}
+  if (phases.length === 0)
+    phases = [
+      {
+        phase: 'full-regression-phases',
+        exitStatus: null,
+        error: reason,
+        corpus: false,
+        groups: [],
+      },
+    ];
+  return buildJobManifest({
+    producer: 'full-regression-phases',
+    identity,
+    complete: false,
+    phases,
+  });
+}
+
+/**
+ * Write the job manifest; called from the driver's `finally`. Whatever the
+ * phases, groups or results hold, a manifest is written whenever the
+ * directory is writable; a manifest that cannot be built is written as one
+ * that explains nothing.
+ */
 export function writeJobManifest(
   directory,
   plan,
@@ -456,12 +604,18 @@ export function writeJobManifest(
   try {
     sourceSha = git(['rev-parse', 'HEAD'], cwd).toString('utf8').trim();
   } catch {}
-  const manifest = phaseJobManifest(plan, results, phaseGroups, {
+  const identity = {
     jobLabel: clipText(env[JOB_LABEL_ENV] ?? ''),
     sourceSha,
     runId: String(env.GITHUB_RUN_ID ?? ''),
     runAttempt: String(env.GITHUB_RUN_ATTEMPT ?? ''),
-  });
+  };
+  let manifest;
+  try {
+    manifest = phaseJobManifest(plan, results, phaseGroups, identity);
+  } catch (error) {
+    manifest = unbuildableJobManifest(plan, identity, error);
+  }
   mkdirSync(directory, { recursive: true });
   writeFileSync(
     resolve(directory, JOB_MANIFEST_FILE),
@@ -475,7 +629,9 @@ async function main() {
   const unregister = ['SIGINT', 'SIGTERM'].map((name) =>
     registerProcessSignal(name, () => controller.abort(name)),
   );
-  const manifestDirectory = manifestDirectoryFromEnv();
+  // Read once and removed from this process's environment, so no phase,
+  // and nothing a phase spawns, can write the job manifest.
+  const manifestDirectory = takeManifestDirectory(process.env);
   let plan = [];
   let results = [];
   const phaseGroups = new Map();

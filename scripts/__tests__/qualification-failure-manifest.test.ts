@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import {
   copyFileSync,
   mkdirSync,
@@ -14,23 +14,32 @@ import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { executeOwnedProcess } from '../lib/owned-process.mjs';
 import {
+  GROUP_MANIFEST_DIR_ENV,
   groupExplained,
   JOB_MANIFEST_FILE,
   jobExplained,
+  MANIFEST_DIR_ENV,
   manifestDirectoryFromEnv,
+  parseGroupManifest,
   parseJobManifest,
 } from '../lib/qualification-failure-manifest.mjs';
+import { e2eJobManifest } from '../run-e2e-suite.mjs';
 import {
   phaseJobManifest,
   readPhaseGroups,
+  resolveFullRegressionPhasePlan,
   runFullRegressionPhases,
+  runPhaseProcess,
+  writeJobManifest,
 } from '../run-full-regression-phases.mjs';
 import {
   buildVitestCommand,
   runVitestGroup,
   vitestGroupManifest,
 } from '../run-vitest-corpus.mjs';
-import VitestFailureReporter from '../vitest-failure-reporter.mjs';
+import VitestFailureReporter, {
+  FAILURE_REPORT_OUTPUT_KEY,
+} from '../vitest-failure-reporter.mjs';
 
 const exec = promisify(execFile);
 const repo = resolve(import.meta.dirname, '../..');
@@ -68,6 +77,12 @@ describe('outer', () => {
 });
 `;
 const group = { name: 'process-heavy', maxWorkers: 1 } as const;
+
+/** The failure report path the corpus runner hands Vitest on its argv. */
+function failureReportArgument(argv: readonly string[]) {
+  const prefix = `--outputFile.${FAILURE_REPORT_OUTPUT_KEY}=`;
+  return argv.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
+}
 
 async function produce(
   files: Record<string, string>,
@@ -204,8 +219,7 @@ it('outlives the deadline', async () => { await new Promise((done) => setTimeout
         // The nearest seam: delete the failure report as the child exits.
         execute: (...args: Parameters<typeof executeOwnedProcess>) => {
           const execution = executeOwnedProcess(...args);
-          const report = (args[4] as { env?: NodeJS.ProcessEnv } | undefined)
-            ?.env?.STATION_VITEST_FAILURE_REPORT;
+          const report = failureReportArgument(args[1] as string[]);
           execution.completion = execution.completion.then((value) => {
             if (report) rmSync(report, { force: true });
             return value;
@@ -262,11 +276,12 @@ describe('the manifest never changes a run (real runner)', () => {
   // its fallback error record fail to write inside onTestRunEnd.
   const unwritableReport = (directory: string) => ({
     execute: (...args: Parameters<typeof executeOwnedProcess>) => {
-      const options = args[4] as { env: NodeJS.ProcessEnv };
-      options.env = {
-        ...options.env,
-        STATION_VITEST_FAILURE_REPORT: directory,
-      };
+      const argv = args[1] as string[];
+      const index = argv.findIndex((arg) =>
+        arg.startsWith(`--outputFile.${FAILURE_REPORT_OUTPUT_KEY}=`),
+      );
+      expect(index).toBeGreaterThan(-1);
+      argv[index] = `--outputFile.${FAILURE_REPORT_OUTPUT_KEY}=${directory}`;
       return executeOwnedProcess(...args);
     },
   });
@@ -299,30 +314,26 @@ describe('the manifest never changes a run (real runner)', () => {
   it('records a reporter that throws instead of letting it escape', () => {
     const root = makeTempDir('station-reporter-throw-');
     const target = join(root, 'failures.json');
-    const previous = process.env.STATION_VITEST_FAILURE_REPORT;
-    process.env.STATION_VITEST_FAILURE_REPORT = target;
-    try {
-      expect(() =>
-        new VitestFailureReporter().onTestRunEnd(
-          [
-            {
-              moduleId: join(root, 'a.test.mjs'),
-              children: {
-                allTests() {
-                  throw new Error('reporter bug');
-                },
+    const reporter = new VitestFailureReporter();
+    reporter.onInit({
+      config: { outputFile: { [FAILURE_REPORT_OUTPUT_KEY]: target } },
+    });
+    expect(() =>
+      reporter.onTestRunEnd(
+        [
+          {
+            moduleId: join(root, 'a.test.mjs'),
+            children: {
+              allTests() {
+                throw new Error('reporter bug');
               },
             },
-          ] as never,
-          [],
-          'passed',
-        ),
-      ).not.toThrow();
-    } finally {
-      if (previous === undefined)
-        delete process.env.STATION_VITEST_FAILURE_REPORT;
-      else process.env.STATION_VITEST_FAILURE_REPORT = previous;
-    }
+          },
+        ] as never,
+        [],
+        'passed',
+      ),
+    ).not.toThrow();
     const entry = vitestGroupManifest(
       { name: 'process-heavy', status: 0, signal: null, error: null },
       { failureReport: target, jsonReport: join(root, 'absent.json') },
@@ -493,6 +504,7 @@ describe('the manifest gate (STATION_QUALIFICATION_MANIFEST_DIR)', () => {
     const plain = buildVitestCommand(group, files, {
       root: '/r',
       failureReportJson: '/t/vitest.json',
+      failureReport: '/t/failures.json',
       env: {},
     });
     expect(plain).toEqual([
@@ -503,6 +515,7 @@ describe('the manifest gate (STATION_QUALIFICATION_MANIFEST_DIR)', () => {
       '--reporter=json',
       '--outputFile.json=/t/vitest.json',
       '--reporter=/r/scripts/vitest-failure-reporter.mjs',
+      '--outputFile.stationFailures=/t/failures.json',
       'a.test.mjs',
     ]);
     expect(
@@ -615,9 +628,14 @@ describe('the explanation rule', () => {
     // An unreadable group manifest is a phase error.
     const dir = makeTempDir('station-phase-groups-');
     writeFileSync(join(dir, 'broken.json'), '{');
-    expect(readPhaseGroups(dir).errors).toEqual([
-      expect.stringContaining('broken.json is unreadable'),
-    ]);
+    expect(readPhaseGroups(dir, ['broken'])).toEqual({
+      groups: [],
+      errors: [
+        expect.stringContaining(
+          'broken.json is not a valid entry for group broken',
+        ),
+      ],
+    });
   });
 
   it('writes a manifest that alerts when the driver cannot even plan', async () => {
@@ -651,5 +669,444 @@ describe('the explanation rule', () => {
       phases: [],
       explained: false,
     });
+  });
+});
+
+/**
+ * Run `fn` with the manifest location variables set in this process, as the
+ * hosted job sets them on the processes above a test, then restore them.
+ */
+async function withManifestEnvironment<T>(
+  values: Partial<Record<string, string>>,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const keys = [MANIFEST_DIR_ENV, GROUP_MANIFEST_DIR_ENV];
+  const previous = keys.map((key) => process.env[key]);
+  for (const key of keys)
+    if (values[key] === undefined) delete process.env[key];
+    else process.env[key] = values[key];
+  try {
+    return await fn();
+  } finally {
+    keys.forEach((key, index) => {
+      if (previous[index] === undefined) delete process.env[key];
+      else process.env[key] = previous[index];
+    });
+  }
+}
+
+/** Every file under `directory`, as paths relative to it. */
+function filesUnder(directory: string): string[] {
+  const listed: string[] = [];
+  const walk = (current: string, prefix: string) => {
+    for (const entry of readdirSync(current, { withFileTypes: true }))
+      if (entry.isDirectory())
+        walk(join(current, entry.name), `${prefix}${entry.name}/`);
+      else listed.push(`${prefix}${entry.name}`);
+  };
+  walk(directory, '');
+  return listed.sort();
+}
+
+// A grandchild that behaves like a producer a test spawns: it writes into
+// whatever manifest location it can see.
+const LEAKING_GRANDCHILD = `
+const { writeFileSync } = require('node:fs');
+const { join } = require('node:path');
+for (const key of ['${MANIFEST_DIR_ENV}', '${GROUP_MANIFEST_DIR_ENV}']) {
+  const directory = process.env[key];
+  if (directory) writeFileSync(join(directory, 'leak.json'), '{}');
+}
+`;
+
+describe('test processes never see the manifest location (real corpus runner)', () => {
+  it('a runner spawned inside a test cannot write into the job or group directory above it', async () => {
+    const jobDirectory = makeTempDir('station-job-manifest-');
+    const handedDirectory = makeTempDir('station-handed-groups-');
+    const root = fixture({
+      'a.test.mjs': `import { it } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+it('spawns a producer-like grandchild', () => {
+  const seen = Object.entries(process.env)
+    .filter(([key, value]) =>
+      key === '${MANIFEST_DIR_ENV}' ||
+      key === '${GROUP_MANIFEST_DIR_ENV}' ||
+      String(value).includes('station-vitest-manifest-'))
+    .map(([key]) => key);
+  writeFileSync('seen.json', JSON.stringify(seen));
+  const result = spawnSync(process.execPath, ['-e', ${JSON.stringify(LEAKING_GRANDCHILD)}], { stdio: 'inherit', windowsHide: true });
+  if (result.status !== 0) throw new Error('grandchild failed');
+});
+`,
+    });
+    const manifestDirectory = join(handedDirectory, 'groups');
+    const result = await withManifestEnvironment(
+      {
+        [MANIFEST_DIR_ENV]: jobDirectory,
+        [GROUP_MANIFEST_DIR_ENV]: handedDirectory,
+      },
+      () => runVitestGroup(group, ['a.test.mjs'], { root, manifestDirectory }),
+    );
+    expect(result.status, result.output).toBe(0);
+    expect(JSON.parse(readFileSync(join(root, 'seen.json'), 'utf8'))).toEqual(
+      [],
+    );
+    expect(filesUnder(jobDirectory)).toEqual([]);
+    expect(filesUnder(handedDirectory)).toEqual(['groups/process-heavy.json']);
+    expect(
+      parseGroupManifest(
+        readFileSync(join(manifestDirectory, 'process-heavy.json'), 'utf8'),
+      ),
+    ).toMatchObject({ group: 'process-heavy', exitStatus: 0, explained: true });
+  }, 60_000);
+});
+
+describe('the real producer CLIs remove the manifest location from their own environment', () => {
+  // Loaded into each CLI with --import: records, as the process exits,
+  // whether a location variable is still in its environment (everything it
+  // spawned inherited exactly that environment).
+  const probe = (directory: string) => {
+    const path = join(directory, 'probe.mjs');
+    writeFileSync(
+      path,
+      `import { writeFileSync } from 'node:fs';
+process.on('exit', () => {
+  writeFileSync(${JSON.stringify(join(directory, 'seen-'))} + process.pid + '.json', JSON.stringify({
+    argv: process.argv.slice(1),
+    job: process.env.${MANIFEST_DIR_ENV} ?? null,
+    group: process.env.${GROUP_MANIFEST_DIR_ENV} ?? null,
+  }));
+});
+`,
+    );
+    return path;
+  };
+  for (const [script, args] of [
+    ['scripts/run-full-regression-phases.mjs', ['--phase=no-such-phase']],
+    ['scripts/run-e2e-suite.mjs', ['--suite=no-such-suite']],
+  ] as const)
+    it(`${script} still writes its job manifest`, async () => {
+      const directory = makeTempDir('station-cli-take-');
+      const jobDirectory = join(directory, 'job');
+      const probePath = probe(directory);
+      await exec(
+        process.execPath,
+        ['--import', probePath, join(repo, script), ...args],
+        {
+          cwd: repo,
+          env: {
+            ...process.env,
+            [MANIFEST_DIR_ENV]: jobDirectory,
+            [GROUP_MANIFEST_DIR_ENV]: join(directory, 'groups'),
+            GITHUB_RUN_ID: '7',
+            GITHUB_RUN_ATTEMPT: '1',
+          },
+          windowsHide: true,
+        },
+      ).catch(() => undefined);
+      expect(readdirSync(jobDirectory)).toEqual([JOB_MANIFEST_FILE]);
+      const seen = readdirSync(directory)
+        .filter((name) => name.startsWith('seen-'))
+        .map((name) => JSON.parse(readFileSync(join(directory, name), 'utf8')))
+        .find((entry) => entry.argv[0] === join(repo, script));
+      expect(seen).toMatchObject({ job: null, group: null });
+    }, 60_000);
+});
+
+/** A group entry exactly as the corpus runner writes one. */
+function groupEntry(name: string) {
+  return {
+    group: name,
+    exitStatus: 1,
+    signal: null,
+    failedTests: [{ file: 'a.test.mjs', titlePath: ['outer', 'fails here'] }],
+    failedFiles: [],
+    runnerErrors: [],
+    counts: {
+      reporterFailedTests: 1,
+      reporterFailedFiles: 1,
+      unhandledErrors: 0,
+    },
+    explained: true,
+  };
+}
+
+describe('a corpus phase accepts exactly its planned groups (real phase process)', () => {
+  // A committed git fixture whose npm scripts stand in for a corpus runner:
+  // each writes the group entries its mode names into the directory the
+  // driver handed it, and prints which manifest locations it can see.
+  function phaseFixture(foreign: object) {
+    const root = makeTempDir('station-phase-fixture-');
+    const scripts = Object.fromEntries(
+      [
+        'planned',
+        'hosted-pollution',
+        'foreign-only',
+        'malformed',
+        'misnamed',
+        'grandchild',
+      ].map((mode) => [mode, `node phase.mjs ${mode}`]),
+    );
+    writeFileSync(
+      join(root, 'package.json'),
+      `${JSON.stringify({ name: 'phase-fixture', private: true, scripts })}\n`,
+    );
+    writeFileSync(join(root, 'foreign.json'), JSON.stringify(foreign));
+    writeFileSync(
+      join(root, 'phase.mjs'),
+      `import { spawnSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+const mode = process.argv[2];
+const directory = process.env.${GROUP_MANIFEST_DIR_ENV};
+const entries = ${JSON.stringify({ fixture: groupEntry('fixture'), other: groupEntry('other') })};
+const entry = (name) => entries[name];
+const write = (name, value) =>
+  writeFileSync(join(directory, name), typeof value === 'string' ? value : JSON.stringify(value));
+console.log('SEEN ' + JSON.stringify({ job: process.env.${MANIFEST_DIR_ENV} ?? null, group: directory ?? null }));
+if (mode === 'planned' || mode === 'hosted-pollution' || mode === 'grandchild') write('fixture.json', entry('fixture'));
+// What the hosted run left in the group directory: a job manifest written by
+// an e2e suite runner a test spawned.
+if (mode === 'hosted-pollution') write('job-manifest.json', readFileSync('foreign.json', 'utf8'));
+if (mode === 'foreign-only') write('other.json', entry('other'));
+if (mode === 'malformed') write('fixture.json', { group: 'fixture' });
+if (mode === 'misnamed') write('fixture.json', entry('other'));
+if (mode === 'grandchild') {
+  const result = spawnSync(process.execPath, ['-e', ${JSON.stringify(LEAKING_GRANDCHILD)}], { stdio: 'inherit', windowsHide: true });
+  if (result.status !== 0) process.exit(3);
+}
+process.exit(1);
+`,
+    );
+    const git = (...args: string[]) =>
+      execFileSync('git', args, { cwd: root, windowsHide: true });
+    git('init', '--quiet');
+    git('config', 'user.email', 'test@example.invalid');
+    git('config', 'user.name', 'Test');
+    git('config', 'commit.gpgsign', 'false');
+    git('add', '.');
+    git('commit', '--quiet', '-m', 'fixture');
+    return root;
+  }
+
+  const identity = {
+    jobLabel: 'Process-heavy corpus 3 of 3',
+    sourceSha: 'a'.repeat(40),
+    runId: '7',
+    runAttempt: '1',
+  };
+
+  async function runMode(mode: string) {
+    const root = phaseFixture(
+      e2eJobManifest([], null, { identity: { ...identity, runId: '' } }),
+    );
+    const jobDirectory = makeTempDir('station-job-manifest-');
+    const plan = [
+      {
+        id: 'test-full-fixture',
+        script: mode,
+        args: ['run', '--silent', mode],
+        timeoutMs: 60_000,
+        corpusGroups: ['fixture'],
+      },
+    ];
+    const phaseGroups = new Map();
+    const stdout: string[] = [];
+    const { results } = await withManifestEnvironment(
+      // The job's own location is set on the driver, as in the hosted job.
+      { [MANIFEST_DIR_ENV]: jobDirectory },
+      () =>
+        runFullRegressionPhases(
+          plan as never,
+          {
+            cwd: root,
+            manifestDirectory: jobDirectory,
+            phaseGroups,
+            log: () => {},
+            snapshot: () => ({
+              headSha: 'a',
+              workspaceDigest: 'b',
+              dependencyDigest: 'c',
+              status: [],
+            }),
+            runPhase: (step: never, options: object) =>
+              runPhaseProcess(step, {
+                ...options,
+                forward: {
+                  stdout: (chunk: Buffer) =>
+                    stdout.push(chunk.toString('utf8')) > 0,
+                  stderr: () => true,
+                },
+              }),
+          } as never,
+        ),
+    );
+    const written = writeJobManifest(jobDirectory, plan, results, phaseGroups, {
+      cwd: root,
+      env: { GITHUB_RUN_ID: '7', GITHUB_RUN_ATTEMPT: '1' },
+    });
+    const manifest = parseJobManifest(
+      readFileSync(join(jobDirectory, JOB_MANIFEST_FILE), 'utf8'),
+    );
+    expect(manifest).toEqual(written);
+    const seenLine = stdout
+      .join('')
+      .split('\n')
+      .find((line) => line.startsWith('SEEN '));
+    return {
+      manifest,
+      phase: manifest.phases[0],
+      jobDirectory,
+      seen: JSON.parse(String(seenLine).slice('SEEN '.length)),
+    };
+  }
+
+  it('explains a phase whose only entry is its planned group (positive control)', async () => {
+    const { manifest, phase, seen, jobDirectory } = await runMode('planned');
+    expect(phase).toMatchObject({
+      phase: 'test-full-fixture',
+      exitStatus: 1,
+      error: null,
+      groups: [groupEntry('fixture')],
+      explained: true,
+    });
+    expect(manifest.explained).toBe(true);
+    // The phase saw only its own fresh group directory, never the job's.
+    expect(seen.job).toBeNull();
+    expect(seen.group).toMatch(/groups\/test-full-fixture-[^/]+$/);
+    expect(seen.group.startsWith(jobDirectory)).toBe(true);
+  }, 60_000);
+
+  it('keeps the failing test and alerts when a job manifest sits in the group directory (the hosted crash)', async () => {
+    const { manifest, phase } = await runMode('hosted-pollution');
+    expect(phase.groups).toEqual([groupEntry('fixture')]);
+    expect(phase.error).toContain(
+      'unexpected entry job-manifest.json in the group manifest directory',
+    );
+    expect(phase.explained).toBe(false);
+    expect(manifest.explained).toBe(false);
+  }, 60_000);
+
+  it('never lets another group stand in for a planned group that wrote nothing', async () => {
+    const { manifest, phase } = await runMode('foreign-only');
+    expect(phase.groups).toEqual([]);
+    expect(phase.error).toContain('unexpected entry other.json');
+    expect(phase.error).toContain('group fixture wrote no manifest');
+    expect(manifest.explained).toBe(false);
+  }, 60_000);
+
+  for (const [mode, reason] of [
+    ['malformed', 'fixture.json is not a valid entry for group fixture'],
+    ['misnamed', 'it names group "other"'],
+  ] as const)
+    it(`records a ${mode} entry under a planned name as a phase error`, async () => {
+      const { manifest, phase } = await runMode(mode);
+      expect(phase.groups).toEqual([]);
+      expect(phase.error).toContain(reason);
+      expect(manifest.explained).toBe(false);
+    }, 60_000);
+
+  it('gives a phase no way to reach the job manifest directory', async () => {
+    const { phase, jobDirectory } = await runMode('grandchild');
+    // The stand-in runner does not withhold its group directory, so its
+    // grandchild writes there and the phase is unexplained; the job's own
+    // directory holds nothing but the driver's manifest and the groups.
+    expect(phase.error).toContain('unexpected entry leak.json');
+    expect(phase.explained).toBe(false);
+    expect(
+      filesUnder(jobDirectory).filter((file) => !file.startsWith('groups/')),
+    ).toEqual([JOB_MANIFEST_FILE]);
+  }, 60_000);
+});
+
+describe('the job manifest is always written', () => {
+  const identity = {
+    jobLabel: 'Process-heavy corpus 3 of 3',
+    sourceSha: 'a'.repeat(40),
+    runId: '7',
+    runAttempt: '1',
+  };
+
+  it('writes an unexplained manifest when the phases cannot be read', () => {
+    const directory = makeTempDir('station-unbuildable-');
+    const plan = [{ id: 'test-full-process-heavy' }];
+    const hostile = {
+      get() {
+        throw new Error('hostile phase groups');
+      },
+    };
+    writeJobManifest(
+      directory,
+      plan,
+      [{ id: 'test-full-process-heavy', status: 1, error: null }],
+      hostile,
+      { cwd: repo, env: { GITHUB_RUN_ID: '7', GITHUB_RUN_ATTEMPT: '1' } },
+    );
+    const manifest = parseJobManifest(
+      readFileSync(join(directory, JOB_MANIFEST_FILE), 'utf8'),
+    );
+    expect(manifest).toMatchObject({
+      complete: false,
+      explained: false,
+      phases: [
+        {
+          phase: 'test-full-process-heavy',
+          error: expect.stringContaining(
+            'the job manifest could not be built: hostile phase groups',
+          ),
+          explained: false,
+        },
+      ],
+    });
+  });
+
+  it('never explains, and never throws on, a group that is not exactly a group entry', () => {
+    const malformed = [
+      {},
+      { ...groupEntry('fixture'), failedTests: undefined },
+      { ...groupEntry('fixture'), extra: true },
+      // The shape the hosted run put in a group directory: a job manifest.
+      e2eJobManifest([], null, { identity }),
+    ];
+    for (const group of malformed) {
+      expect(groupExplained(group as never), JSON.stringify(group)).toBe(false);
+      const job = phaseJobManifest(
+        [{ id: 'test-full-fixture' }],
+        [{ id: 'test-full-fixture', status: 1, error: null }],
+        new Map([['test-full-fixture', { groups: [group], errors: [] }]]),
+        identity,
+      );
+      expect(job.explained).toBe(false);
+    }
+    expect(groupExplained(groupEntry('fixture'))).toBe(true);
+  });
+
+  it('plans exactly the group each canonical corpus phase runs', () => {
+    const plan = resolveFullRegressionPhasePlan({
+      phaseIds: [
+        'test-full-ordinary-7-of-8',
+        'test-full-process-heavy',
+        'test-full-process-exclusive',
+        'test-full-shared-output',
+        'verify-static',
+      ],
+      processHeavyShard: '3/3',
+    });
+    expect(
+      Object.fromEntries(plan.map((step) => [step.id, step.corpusGroups])),
+    ).toEqual({
+      'verify-static': undefined,
+      'test-full-ordinary-7-of-8': ['ordinary-7-of-8'],
+      'test-full-process-heavy': ['process-heavy-3-of-3'],
+      'test-full-process-exclusive': ['process-exclusive'],
+      'test-full-shared-output': ['shared-output'],
+    });
+    expect(
+      resolveFullRegressionPhasePlan({
+        phaseIds: ['test-full-process-heavy'],
+        processHeavyShard: null,
+      })[0].corpusGroups,
+    ).toEqual(['process-heavy']);
   });
 });
