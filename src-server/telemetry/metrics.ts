@@ -418,6 +418,41 @@ export const routingDecision = meter.createCounter('station.routing.decision', {
 export const agentOps = meter.createCounter('station.agent.operations', {
   description: 'Agent CRUD operations',
 });
+/**
+ * #4995: setup-requirement probe reads (not memoized reuses) by bounded
+ * `outcome`: `ready` | `blocked` | `failed`. No Agent slug or error text.
+ */
+export const stationSetupRequirementProbeOutcomes = meter.createCounter(
+  'station.setup_requirement.probe_outcomes',
+  {
+    description:
+      'Station setup requirement probe reads by bounded outcome (ready, blocked, failed)',
+  },
+);
+/**
+ * #4995: bytes one durable JsonFileStore write puts on disk, for stores that
+ * name themselves. Attributes: `store` (closed `JsonFileStoreMetricName`) and
+ * `artifact` (`primary` | `previous`, the retained prior copy).
+ */
+export const jsonFileStoreWriteBytes = meter.createHistogram(
+  'station.json_store.write_bytes',
+  {
+    description:
+      'Bytes written per durable JSON store write by bounded store and artifact (primary, previous)',
+    unit: 'By',
+  },
+);
+/**
+ * #4995: startup sweep of orphaned `*.mutation.<uuid>.tmp` lock temporaries,
+ * by bounded `outcome`: `removed` | `retained_live` | `failed`.
+ */
+export const fileMutationLockOrphanTemporaries = meter.createCounter(
+  'station.file_mutation_lock.orphan_temporaries',
+  {
+    description:
+      'Orphaned file mutation lock temporaries found by the startup sweep, by bounded outcome',
+  },
+);
 export const projectOps = meter.createCounter('station.project.operations', {
   description: 'Project CRUD operations',
 });

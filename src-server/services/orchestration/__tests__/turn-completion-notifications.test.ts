@@ -20,6 +20,7 @@ import {
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   notificationOps: { add: vi.fn() },
+  jsonFileStoreWriteBytes: { record: vi.fn() },
   orchestrationEventPersistDuration: { record: vi.fn() },
   orchestrationEventsPersisted: { add: vi.fn() },
   orchestrationStreamPresenceOps: { add: vi.fn() },
