@@ -266,7 +266,9 @@ describe.skipIf(process.platform === 'win32')(
   () => {
     test('is refused at once rather than blocking the session start', async () => {
       const home = makeTempDir('station-claude-fifo-');
-      execFileSync('mkfifo', [join(home, 'settings.json')]);
+      execFileSync('mkfifo', [join(home, 'settings.json')], {
+        windowsHide: true,
+      });
       const module = join(__dirname, '../adapters/claude-instruction-files.ts');
       // A blocking open would stall this process's event loop for good, so the
       // call runs in a child that is killed if it has not returned in time.

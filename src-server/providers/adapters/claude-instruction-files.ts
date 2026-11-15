@@ -63,15 +63,13 @@ export const CLAUDE_USER_SETTINGS_MAX_BYTES = 1024 * 1024;
  * More managed drop-in files than this and Station sets nothing rather than
  * read only some of them.
  */
-export const CLAUDE_MANAGED_DROP_IN_MAX_FILES = 256;
+const CLAUDE_MANAGED_DROP_IN_MAX_FILES = 256;
 
 /**
  * The engine's managed settings folder for this platform. Claude Code fixes
  * it per platform; no environment variable moves it.
  */
-export function claudeManagedSettingsRoot(
-  os: NodeJS.Platform = platform(),
-): string {
+function claudeManagedSettingsRoot(os: NodeJS.Platform = platform()): string {
   if (os === 'darwin') return '/Library/Application Support/ClaudeCode';
   if (os === 'win32') return 'C:\\Program Files\\ClaudeCode';
   return '/etc/claude-code';
