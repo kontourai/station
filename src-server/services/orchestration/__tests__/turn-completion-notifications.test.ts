@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -7,6 +7,10 @@ import { agentActivityPhaseFor } from '../../notifications/agent-activity-card.j
 import { isCardAlerted } from '../../notifications/delivery/card-alerted-categories.js';
 import { NotificationService } from '../../notifications/notification-service.js';
 import { EventBus } from '../event-bus.js';
+import {
+  createFileFinishedAlertEpisodeStore,
+  FinishedAlertEpisodes,
+} from '../finished-alert-episodes.js';
 import {
   type FinishedAlertHoldFacts,
   finishedAlertHoldReasons,
@@ -1562,5 +1566,162 @@ describe('wireTurnCompletionNotifications: one finished alert per completion epi
     await emit({ finishReason: 'stop' });
     await elapse();
     expect(titles()).toEqual(['Your agent finished']);
+  });
+});
+
+/**
+ * The episode record the phone card reads, and its persistence across a
+ * restart. Real NotificationService records and a real file store in a
+ * temporary Station home: a restart is a second wiring over the same home.
+ */
+describe('wireTurnCompletionNotifications: episode record and restart', () => {
+  const owner = orchestrationStreamPresenceSubjectForSession('owner-1');
+  let home: string;
+  let holding: Set<string>;
+  const services: NotificationService[] = [];
+  const unwires: Array<() => void> = [];
+
+  beforeEach(() => {
+    home = makeTempDir('turn-completion-episodes-');
+    holding = new Set();
+  });
+  afterEach(async () => {
+    for (const unwire of unwires.splice(0)) unwire();
+    for (const service of services.splice(0)) await service.shutdown();
+  });
+
+  /** One Station process: its bus, records, listener and episode record. */
+  async function boot(clock = { now: Date.parse('2026-11-15T16:00:00Z') }) {
+    const bus = new EventBus();
+    const notifications = new NotificationService(bus, home, 999_999);
+    services.push(notifications);
+    await notifications.start();
+    const timers = manualTimers();
+    const episodes = new FinishedAlertEpisodes();
+    const warn = vi.fn();
+    unwires.push(
+      wireTurnCompletionNotifications(
+        bus,
+        {
+          isReadOnlyAttachedSession: () => false,
+          isEphemeralSession: () => false,
+          resolveSessionPresenceSubject: () => owner,
+          readFinishedAlertHold: (threadId) =>
+            holding.has(threadId) ? ['child-agent'] : [],
+        },
+        notifications,
+        { warn },
+        {
+          setTimer: timers.setTimer,
+          episodes,
+          episodeStore: createFileFinishedAlertEpisodeStore(home),
+          now: () => clock.now,
+        },
+      ),
+    );
+    const emit = (event: Record<string, unknown>) =>
+      bus.emit('orchestration:event', { event: baseEvent(event) });
+    const elapse = async () => {
+      await notifications.drainAsyncDispatch();
+      timers.runAll();
+      await notifications.drainAsyncDispatch();
+    };
+    const finished = async () =>
+      (await notifications.list()).filter(
+        (record) => record.category === 'turn-completed',
+      );
+    return { notifications, episodes, emit, elapse, finished, warn, clock };
+  }
+
+  test('a completed turn is pending from the moment it is published, and its release names its terminal and time', async () => {
+    const station = await boot();
+    station.emit({ method: 'turn.started' });
+    station.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    // Synchronously, before the producer's queued task runs: the card
+    // cannot read Done in that moment.
+    expect(station.episodes.isPending('thread-1')).toBe(true);
+    await station.notifications.drainAsyncDispatch();
+    expect(station.episodes.isPending('thread-1')).toBe(true);
+    expect(station.episodes.releaseFor('thread-1')).toBeUndefined();
+
+    station.clock.now += FINISHED_ALERT_CONFIRM_MS;
+    await station.elapse();
+    expect(station.episodes.isPending('thread-1')).toBe(false);
+    expect(station.episodes.releaseFor('thread-1')).toEqual({
+      key: 'event:terminal-1',
+      at: station.clock.now,
+    });
+    expect(await station.finished()).toHaveLength(1);
+  });
+
+  test('a finish still in its confirmation window when Station stops is sent once after the next start', async () => {
+    const first = await boot();
+    first.emit({ method: 'turn.started' });
+    first.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await first.notifications.drainAsyncDispatch();
+    expect(await first.finished()).toEqual([]);
+    // Stopped inside the window: its timer never runs.
+    for (const unwire of unwires.splice(0)) unwire();
+    await first.notifications.shutdown();
+
+    const second = await boot();
+    // Replayed: the card reads it pending until it is sent.
+    expect(second.episodes.isPending('thread-1')).toBe(true);
+    await second.elapse();
+    expect(await second.finished()).toEqual([
+      expect.objectContaining({
+        title: 'Your agent finished',
+        metadata: expect.objectContaining({ turnId: 'turn-1' }),
+      }),
+    ]);
+    expect(second.episodes.releaseFor('thread-1')?.key).toBe(
+      'event:terminal-1',
+    );
+    expect(second.warn).not.toHaveBeenCalled();
+
+    // Sent, so a third start has nothing to replay.
+    for (const unwire of unwires.splice(0)) unwire();
+    await second.notifications.shutdown();
+    const third = await boot();
+    expect(third.episodes.isPending('thread-1')).toBe(false);
+    await third.elapse();
+    expect(await third.finished()).toHaveLength(1);
+  });
+
+  test('a finish held across a restart is read again and sent once nothing holds it', async () => {
+    holding.add('thread-1');
+    const first = await boot();
+    first.emit({ method: 'turn.started' });
+    first.emit({ finishReason: 'stop' });
+    await first.elapse();
+    expect(await first.finished()).toEqual([]);
+    for (const unwire of unwires.splice(0)) unwire();
+    await first.notifications.shutdown();
+
+    const second = await boot();
+    await second.elapse();
+    // Still held after the restart: not sent.
+    expect(await second.finished()).toEqual([]);
+    expect(second.episodes.isPending('thread-1')).toBe(true);
+
+    holding.delete('thread-1');
+    // The recheck opens the window; the window sends it.
+    await second.elapse();
+    await second.elapse();
+    expect(await second.finished()).toHaveLength(1);
+    expect(second.episodes.isPending('thread-1')).toBe(false);
+  });
+
+  test('an unreadable saved record replays nothing and says so, and the next finish still goes out', async () => {
+    writeFileSync(join(home, 'finished-alert-episodes.json'), '{not json');
+    const station = await boot();
+    expect(station.warn).toHaveBeenCalledWith(
+      'turn-completion: pending finished alerts are unreadable; none were replayed',
+      expect.anything(),
+    );
+    station.emit({ method: 'turn.started' });
+    station.emit({ finishReason: 'stop' });
+    await station.elapse();
+    expect(await station.finished()).toHaveLength(1);
   });
 });

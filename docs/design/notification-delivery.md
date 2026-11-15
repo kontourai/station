@@ -110,8 +110,9 @@ left running in the background never holds "finished". Claude counts every
 background shell task as open engine work, so the engine flag alone is not
 trusted when the record can classify what is running. A hold is read again
 on events that can release it (child-work, session exit and state, any
-turn terminal) and every `FINISHED_ALERT_RECHECK_MS` (10 s) while held. A
-hold that cannot be read fails open and the alert is sent.
+turn terminal, a session projection update such as Claude's pending
+follow-up expiring) and every `FINISHED_ALERT_RECHECK_MS` (10 s) while held.
+A hold that cannot be read fails open and the alert is sent.
 
 Failures, stops, approvals and questions are not held: a failure or stop ends
 the episode and is pushed at once, and the held finish is never sent. A
@@ -123,19 +124,34 @@ Its failures, approvals and questions still notify.
 The record is written when the alert is decided, not earlier and later
 upgraded, so the in-app list never shows "finished" while work runs. The
 coordinator wake reads the same `NOTIFICATION_DELIVERED` frame, so it wakes on
-the settled finish. Episodes live in memory: a restart while one is held
-drops that alert. The engine and its children do not survive the restart
-either.
+the settled finish.
 
-The agent-activity card applies the same hold. A finished session whose
-finish is held reads Running (`finishHeld`) instead of Done, so the phone
-raises no "Agent finished" while the work runs. When the hold releases, the
-finish dates from the release, not the turn's end. Otherwise a long hold would
-fall outside the two-minute alert window and the phone would get no alert,
-because the Station notification is left to the card. The card refreshes on
-`child-work.updated` as well as lifecycle events. A hold that releases with no
-event on the bus is picked up at the card's next lifecycle event or refresh.
-After a restart, the terminal event's time stands.
+Pending episodes persist in `finished-alert-episodes.json` in the Station
+home (one row per thread, rewritten on each change). A restart replays them
+with no turn open, reads each hold again and sends each finish once nothing
+holds it, through the same confirmation window. A row is removed only after
+its record is written. A write that fails stays saved and is retried at the
+next start, where the record's dedupe tag makes the repeat a no-op. An
+unreadable or oversized file replays nothing and is logged.
+
+The agent-activity card reads the same episodes
+([finished-alert-episodes.ts](../../src-server/services/orchestration/finished-alert-episodes.ts)),
+not the hold facts, so the card and the push agree on one finish per episode,
+after confirmation. The producer marks a completed turn pending as the bus
+publishes it, before its queued task decides, so the card cannot read Done in
+between. An attached session with a pending episode reads Running
+(`finishHeld`). A detached one reads Done without an alert until the release.
+The release names the episode's last terminal event, the same key the card
+derives from the event log, and the card dates that Done from the release on
+every rebuild. A finish held past the two-minute alert window therefore still
+alerts once, even when the send waits out the per-phone floor. The Station
+notification is left to the card, so this is the phone's only alert. A
+change to the episodes flushes the card, so a hold that releases with no bus
+event updates it by the next recheck. A release is kept in memory. After a
+restart the card falls back to the terminal event's time under the same key,
+and the phone's remembered alert ids already cover it. A Station-delegated
+child's Done raises no "Agent finished" on the card either. Its Failed and
+attention phases still alert.
 
 Focus is per session for these records. A focus report may list the sessions
 its document shows (`viewingSessionIds` in

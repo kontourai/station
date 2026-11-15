@@ -3289,6 +3289,53 @@ describe('OrchestrationService', () => {
       withOpenWork.hasOpenEngineWork = undefined;
       expect(holdService.readFinishedAlertHold(threadId)).toEqual([]);
 
+      // Claude says it is about to open a turn of its own after a
+      // background child settled: that pending follow-up holds.
+      claude.events.push({
+        eventId: `follow-up-${randomUUID()}`,
+        provider: 'claude',
+        threadId,
+        method: 'extension.notification',
+        namespace: 'claude-code',
+        type: 'provider/follow-up-pending',
+        payload: { pending: true },
+        createdAt: new Date().toISOString(),
+      } as unknown as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'follow-up-pending',
+      ]);
+      // The provider's turn opens: the fact is spent.
+      claude.events.push({
+        eventId: `follow-up-turn-${randomUUID()}`,
+        provider: 'claude',
+        threadId,
+        method: 'turn.started',
+        turnId: 'provider-turn-1',
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([]);
+
+      // A Station-delegated child session this one started, still starting:
+      // its result comes back here, so it holds.
+      claude.events.push({
+        eventId: `held-finish-started-${randomUUID()}`,
+        provider: 'claude',
+        threadId,
+        method: 'session.started',
+        sessionId: threadId,
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      eventStore.reserveOwnershipStart('held-finish-owned-child', {
+        stationDelegationProvenance: 'caller-derived',
+        delegation: { parentSessionId: threadId },
+      });
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'owned-session',
+      ]);
+
       expect(holdService.isDelegatedChildSession(threadId)).toBe(false);
       eventStore.delegationResultStore().arm({
         childConversationId: threadId,

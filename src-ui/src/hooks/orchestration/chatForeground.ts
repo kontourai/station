@@ -10,14 +10,32 @@ import { navigationStore } from '../../contexts/NavigationContext';
  */
 let fullscreenChatSurfaces = 0;
 
+/**
+ * Listeners for the counts below. Fullscreen placements and reader covers
+ * live outside the navigation and chat stores, so a change to either must
+ * say so itself, or the focus report keeps naming a chat no longer on screen.
+ */
+const surfaceListeners = new Set<() => void>();
+function surfacesChanged(): void {
+  for (const listener of [...surfaceListeners]) {
+    try {
+      listener();
+    } catch {
+      // One listener's failure must not hide the change from the others.
+    }
+  }
+}
+
 /** Called by a full-screen Chat placement for as long as it is mounted. */
 export function registerFullscreenChatSurface(): () => void {
   fullscreenChatSurfaces += 1;
+  surfacesChanged();
   let released = false;
   return () => {
     if (released) return;
     released = true;
     fullscreenChatSurfaces -= 1;
+    surfacesChanged();
   };
 }
 
@@ -30,11 +48,13 @@ let chatReaderCovers = 0;
 /** Register only while an opaque reader visibly covers this chat. */
 export function registerChatReaderCover(): () => void {
   chatReaderCovers += 1;
+  surfacesChanged();
   let released = false;
   return () => {
     if (released) return;
     released = true;
     chatReaderCovers -= 1;
+    surfacesChanged();
   };
 }
 
@@ -134,8 +154,11 @@ export function foregroundChatSessionIds(): string[] {
 export function subscribeForegroundChat(listener: () => void): () => void {
   const offNavigation = navigationStore.subscribe(listener);
   const offChats = activeChatsStore.subscribe(listener);
+  const surface = () => listener();
+  surfaceListeners.add(surface);
   return () => {
     offNavigation();
     offChats();
+    surfaceListeners.delete(surface);
   };
 }

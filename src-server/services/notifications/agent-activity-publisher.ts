@@ -128,13 +128,10 @@ const CARD_KEY = 'card';
  * Canonical runtime events that can move a session's lifecycle state or set
  * its display title. Content deltas and tool traffic are deliberately absent:
  * they would turn every streamed token into a read-model scan.
- * `child-work.updated` is here because a child settling releases a held
- * finish (`finishHeld`): without it a session would read Running until some
- * other lifecycle event. Flushes are coalesced, so a chatty child costs at
- * most one read per send interval.
+ * A held finish's release is not one of these: the runtime flushes the card
+ * when the finished-alert episodes change (`finished-alert-episodes.ts`).
  */
 const CARD_RELEVANT_METHODS = new Set([
-  'child-work.updated',
   'session.started',
   'session.configured',
   'session.state-changed',
@@ -207,6 +204,23 @@ export interface AgentActivitySessionRow extends AgentActivitySessionFacts {
   lastEventAt?: string;
   /** Which entry into its current phase, from the event log. */
   entry?: { key: string; at: number };
+  /**
+   * Its completion episode's release (`finished-alert-episodes.ts`): a Done
+   * entry with this key dates from the release, not the turn's end.
+   */
+  finishRelease?: { key: string; at: number };
+}
+
+/**
+ * The finished-alert facts for the card (`finished-alert-episodes.ts`):
+ * whether a session's completion episode is still pending, its release, and
+ * whether its finish is announced by its parent instead. Each read is only
+ * made for a row that would otherwise read Done.
+ */
+export interface AgentActivityFinishFacts {
+  held(threadId: string): boolean;
+  release?(threadId: string): { key: string; at: number } | undefined;
+  quiet?(threadId: string): boolean;
 }
 
 /**
@@ -217,12 +231,10 @@ export interface AgentActivitySessionRow extends AgentActivitySessionFacts {
 export function agentActivityRowFromSummary(
   summary: OrchestrationSessionSummary,
   projectName: (slug: string) => string | undefined,
-  finishedAlertHeld?: (threadId: string) => boolean,
+  finish?: AgentActivityFinishFacts,
 ): AgentActivitySessionRow {
   return {
-    ...(finishHeldFor(summary, finishedAlertHeld)
-      ? { finishHeld: true as const }
-      : {}),
+    ...finishFactsFor(summary, finish),
     sessionId: summary.threadId,
     controlMode: summary.controlMode,
     ...(summary.displayTitle ? { title: summary.displayTitle } : {}),
@@ -253,27 +265,43 @@ export function agentActivityRowFromSummary(
 }
 
 /**
- * Read the hold only for a session the card would otherwise show Done: an
- * attached session whose turn ended (`idle`/`completed`). A failure or stop
- * is never held, and the read is not paid for any other row.
+ * Read the finish facts only for a session the card would otherwise show
+ * Done: one whose turn ended (`idle`/`completed`). A failure or stop is never
+ * held, and the reads are not paid for any other row. Each read fails open:
+ * a broken read leaves the row as if nothing held or quieted it.
  */
-function finishHeldFor(
+function finishFactsFor(
   summary: OrchestrationSessionSummary,
-  finishedAlertHeld: ((threadId: string) => boolean) | undefined,
-): boolean {
-  if (!finishedAlertHeld || !summary.isLoaded) return false;
+  finish: AgentActivityFinishFacts | undefined,
+): Pick<
+  AgentActivitySessionRow,
+  'finishHeld' | 'finishQuiet' | 'finishRelease'
+> {
+  if (!finish) return {};
   if (
     summary.lifecycleState !== 'idle' &&
     summary.lifecycleState !== 'completed'
   )
-    return false;
-  if (sessionAttentionDisposition(summary).state !== 'finished') return false;
-  try {
-    return finishedAlertHeld(summary.threadId);
-  } catch {
-    // Fail open to Done: the card must not read Running on a broken read.
-    return false;
-  }
+    return {};
+  if (sessionAttentionDisposition(summary).state !== 'finished') return {};
+  const read = <T>(fn: () => T, fallback: T): T => {
+    try {
+      return fn();
+    } catch {
+      return fallback;
+    }
+  };
+  const threadId = summary.threadId;
+  const held = read(() => finish.held(threadId), false);
+  const quiet = read(() => finish.quiet?.(threadId) === true, false);
+  const release = held
+    ? undefined
+    : read(() => finish.release?.(threadId), undefined);
+  return {
+    ...(held ? { finishHeld: true as const } : {}),
+    ...(quiet ? { finishQuiet: true as const } : {}),
+    ...(release ? { finishRelease: release } : {}),
+  };
 }
 
 function latestOf(
@@ -381,9 +409,15 @@ export function agentActivityRowsWithEntries(
   const events = readEvents([...phases.keys()]);
   return rows.map((row) => {
     const phase = phases.get(row.sessionId);
-    const entry = phase
+    let entry = phase
       ? phaseEntryFromEvents(phase, events.get(row.sessionId) ?? [])
       : undefined;
+    // The episode's release names the terminal it settled on: that Done
+    // dates from the release, on every rebuild, so a finish held past the
+    // alert window still alerts once (and its id stays the terminal's).
+    const release = row.finishRelease;
+    if (phase === 'completed' && entry && release?.key === entry.key)
+      entry = { key: entry.key, at: Math.max(entry.at, release.at) };
     return entry ? { ...row, entry } : row;
   });
 }
@@ -678,16 +712,7 @@ export function wireAgentActivityPublisher(
         previous !== undefined &&
         previous.phase !== phase &&
         row.entry.at < previous.enteredAt;
-      if (phase === 'completed' && previous?.finishHeld === true) {
-        // The finish was held by running work and has just been released:
-        // the person learns of it now, so it dates from now. Dating it from
-        // the turn's end would put a long hold outside the alert window and
-        // leave the phone with no "finished" at all (the Station
-        // notification is left to the card). In memory only: after a
-        // restart the terminal event's time stands.
-        enteredAt = at;
-        entryKey = row.entry?.key ?? `observed:${at}`;
-      } else if (row.entry && !staleEntry) {
+      if (row.entry && !staleEntry) {
         enteredAt = Math.min(row.entry.at, at);
         entryKey = row.entry.key;
       } else if (previous?.phase === phase) {
@@ -705,8 +730,9 @@ export function wireAgentActivityPublisher(
         phase,
         enteredAt,
         entryKey,
-        ...(phase === 'running' && row.finishHeld === true
-          ? { finishHeld: true as const }
+        ...(phase === 'completed' &&
+        (row.finishHeld === true || row.finishQuiet === true)
+          ? { quietFinish: true as const }
           : {}),
       });
     }

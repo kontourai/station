@@ -50,6 +50,10 @@ import {
   FileConversationAcknowledgementStore,
   ownerDevicePredicate,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import {
+  createFileFinishedAlertEpisodeStore,
+  FinishedAlertEpisodes,
+} from '../../services/orchestration/finished-alert-episodes.js';
 import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
 import { createTaskLeadReader } from '../../services/orchestration/task-question-wake.js';
 import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
@@ -509,12 +513,22 @@ export function configureRuntimeSupportServices(
   // Whether it interrupts a surface (Web Push, native alert, desktop feed)
   // is the delivery router's focus/liveness decision below, not a check on
   // whether the owner holds any open `/events` stream.
+  // One record of each thread's completion episode: the listener below
+  // writes it, the phone card reads it, so both send one "finished" per
+  // episode, after confirmation (finished-alert-episodes.ts).
+  const finishedAlertEpisodes = new FinishedAlertEpisodes();
   wireTurnCompletionNotifications(
     context.eventBus,
     context.orchestrationService,
     notificationService,
     context.logger,
-    { readFinishedAlertHold },
+    {
+      readFinishedAlertHold,
+      episodes: finishedAlertEpisodes,
+      episodeStore: createFileFinishedAlertEpisodeStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+    },
   );
   // station#3525 fix round FIX 1: the corrective half — see that function's
   // own docblock. Must be wired alongside `wireTurnCompletionNotifications`
@@ -909,7 +923,11 @@ export function configureRuntimeSupportServices(
       deviceHasOwnerStanding: (deviceId) =>
         context.environmentSecurityService.deviceHasOwnerStanding(deviceId),
       finishedAlertHeld: (threadId) =>
-        readFinishedAlertHold(threadId).length > 0,
+        finishedAlertEpisodes.isPending(threadId),
+      finishedAlertRelease: (threadId) =>
+        finishedAlertEpisodes.releaseFor(threadId),
+      isDelegatedChildSession: (threadId) =>
+        context.orchestrationService.isDelegatedChildSession(threadId),
       listSessionReadModel: (authority) =>
         context.orchestrationService.listSessionReadModel(authority),
       listProjectionEvents: (threadIds) => {
@@ -933,6 +951,10 @@ export function configureRuntimeSupportServices(
         ),
     }),
   });
+
+  // A held finish that settles, or a finish released after its window,
+  // changes the card without a lifecycle event of its own.
+  finishedAlertEpisodes.subscribe(() => agentActivityPublisher.requestFlush());
 
   const attentionProjection = new AttentionProjectionService(
     notificationService,

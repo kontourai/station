@@ -22,6 +22,10 @@ import {
   FOCUS_REPORT_TIMEOUT_MS,
   retryAfterMs,
 } from '../focusReporter';
+import {
+  registerChatReaderCover,
+  registerFullscreenChatSurface,
+} from '../orchestration/chatForeground';
 import { useFocusReporter } from '../useFocusReporter';
 
 /** Longer than every retry the reporter would schedule on its own. */
@@ -482,6 +486,46 @@ describe('useFocusReporter', () => {
       navigationStore.setDockState(false);
       await advance(FOCUS_REPORT_DEBOUNCE_MS);
       expect(viewing()).toEqual([['session-2'], []]);
+    } finally {
+      navigationStore.setDockState(false);
+      navigationStore.setActiveChat(null);
+    }
+  });
+
+  test('an opaque reader cover or a full-screen Chat changes what the report says is on screen', async () => {
+    // Covers and full-screen placements live outside the navigation and
+    // chat stores: each must reach the report by itself, or a finish the
+    // person cannot see stays quieted.
+    navigationStore.setDockState(true);
+    navigationStore.setActiveChat('session-1');
+    try {
+      await mount();
+      await advance(FOCUS_REPORT_DEBOUNCE_MS);
+      const viewing = () =>
+        mocks.authenticatedFetch.mock.calls.map(
+          ([, init]) => JSON.parse(init.body).viewingSessionIds,
+        );
+      expect(viewing().at(-1)).toEqual(['session-1']);
+      mocks.authenticatedFetch.mockClear();
+
+      // Inbox or New chat covers the chat: nothing is on screen.
+      const uncover = registerChatReaderCover();
+      await advance(FOCUS_REPORT_DEBOUNCE_MS);
+      expect(viewing()).toEqual([[]]);
+      uncover();
+      await advance(FOCUS_REPORT_DEBOUNCE_MS);
+      expect(viewing()).toEqual([[], ['session-1']]);
+
+      // With the dock closed, a full-screen Chat still shows the chat.
+      navigationStore.setDockState(false);
+      await advance(FOCUS_REPORT_DEBOUNCE_MS);
+      mocks.authenticatedFetch.mockClear();
+      const release = registerFullscreenChatSurface();
+      await advance(FOCUS_REPORT_DEBOUNCE_MS);
+      expect(viewing()).toEqual([['session-1']]);
+      release();
+      await advance(FOCUS_REPORT_DEBOUNCE_MS);
+      expect(viewing()).toEqual([['session-1'], []]);
     } finally {
       navigationStore.setDockState(false);
       navigationStore.setActiveChat(null);

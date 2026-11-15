@@ -21,6 +21,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { canReadAgentActivity } from '../../services/notifications/agent-activity-eligibility.js';
 import {
+  type AgentActivityFinishFacts,
   type AgentActivitySessionReader,
   agentActivityRowFromSummary,
   agentActivityRowsWithEntries,
@@ -42,11 +43,20 @@ export interface AgentActivitySessionReaderDeps {
   ): Map<string, CanonicalRuntimeEvent[]>;
   projectNames(): Map<string, string>;
   /**
-   * Whether the session's finish is still held by running work
-   * (`finished-alert-hold.ts`): the card shows it Running, not Done.
-   * Absent: never held.
+   * The session's completion episode (`finished-alert-episodes.ts`): pending
+   * (held by running work or in its confirmation window) reads Running, and
+   * a released one dates its Done from the release. Absent: the terminal
+   * event decides, as before episodes.
    */
   finishedAlertHeld?(threadId: string): boolean;
+  finishedAlertRelease?(
+    threadId: string,
+  ): { key: string; at: number } | undefined;
+  /**
+   * A Station-delegated child whose result returns to its parent: its Done
+   * raises no "Agent finished" (the parent's finish covers it).
+   */
+  isDelegatedChildSession?(threadId: string): boolean;
 }
 
 export function createAgentActivitySessionReader(
@@ -71,12 +81,24 @@ export function createAgentActivitySessionReader(
           sessionReadAuthorityFromRequest(principal.id, undefined, undefined),
         );
         const projects = deps.projectNames();
+        const finish: AgentActivityFinishFacts | undefined =
+          deps.finishedAlertHeld || deps.isDelegatedChildSession
+            ? {
+                held: deps.finishedAlertHeld ?? (() => false),
+                ...(deps.finishedAlertRelease
+                  ? { release: deps.finishedAlertRelease }
+                  : {}),
+                ...(deps.isDelegatedChildSession
+                  ? { quiet: deps.isDelegatedChildSession }
+                  : {}),
+              }
+            : undefined;
         return agentActivityRowsWithEntries(
           sessions.map((session) =>
             agentActivityRowFromSummary(
               session,
               (slug) => projects.get(slug),
-              deps.finishedAlertHeld,
+              finish,
             ),
           ),
           (threadIds) => deps.listProjectionEvents?.(threadIds) ?? new Map(),
