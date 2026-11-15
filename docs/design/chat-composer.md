@@ -267,9 +267,12 @@ with its reason in place of its kind: a paired Station whose public handshake
 is not `online` (**Recovering · server down or restarting**, **Unreachable**,
 **Unconfirmed · not answering as a Station**, or an identity mismatch), or an
 SSH environment whose connection is in error (**Connection failed**). The
-server probes each paired Station's handshake for
-`GET /api/environments/peers` ([peer readiness](../../src-server/services/peers/peer-readiness-service.ts)),
-and an older host that reports no readiness leaves its peers choosable. The
+server keeps each paired Station's last handshake answer and returns it with
+`GET /api/environments/peers` without waiting on a probe
+([peer readiness](../../src-server/services/peers/peer-readiness-service.ts));
+each read refreshes stale answers in the background, and the open list re-reads
+every 5 seconds. A peer not yet probed, or one from an older host that reports
+no readiness, stays choosable. The
 current choice is never hidden. A caller
 whose authority observation reports a grant without `orchestration:operate`
 is offered This Station only; any failed read of the observation (an older
