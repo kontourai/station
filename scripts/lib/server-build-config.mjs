@@ -75,7 +75,7 @@ export const STATION_SERVER_EXTERNALS = [
  * what lets a build remove an earlier build's chunks without touching any
  * other file in the server directory.
  */
-export const SERVER_CHUNK_PREFIX = 'station-chunk-';
+const SERVER_CHUNK_PREFIX = 'station-chunk-';
 export const SERVER_CHUNK_NAMES = `${SERVER_CHUNK_PREFIX}[hash]`;
 const SERVER_CHUNK_FILE = /^station-chunk-[A-Z0-9]+\.js(?:\.map)?$/;
 

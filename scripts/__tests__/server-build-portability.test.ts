@@ -464,7 +464,12 @@ function assertColdSubsystemsLoadLazily(release: string, serverOutput: string) {
         '-e',
         `await import(${JSON.stringify(`./dist-server/${chunk}`)});`,
       ],
-      { cwd: release, stdio: ['ignore', 'ignore', 'pipe'], timeout: 20_000 },
+      {
+        cwd: release,
+        stdio: ['ignore', 'ignore', 'pipe'],
+        timeout: 20_000,
+        windowsHide: true,
+      },
     );
   }
 }
