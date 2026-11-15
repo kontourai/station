@@ -47,26 +47,27 @@ function exitingProcess(): IPtyProcess {
   };
 }
 
-/** A command that runs until its `exit` is called; no native process. */
+/** A command that runs until its `exit` is called or it is killed. */
 function heldProcess(): { process: IPtyProcess; exit: () => void } {
   const exits = new Set<
     (event: { exitCode: number; signal: number | null }) => void
   >();
+  const exit = () => {
+    for (const listener of exits) listener({ exitCode: 0, signal: null });
+  };
   return {
     process: {
       pid: 4343,
       write() {},
       resize() {},
-      kill() {},
+      kill: exit,
       onData: () => () => {},
       onExit(cb) {
         exits.add(cb);
         return () => exits.delete(cb);
       },
     },
-    exit: () => {
-      for (const exit of exits) exit({ exitCode: 0, signal: null });
-    },
+    exit,
   };
 }
 
