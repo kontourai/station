@@ -1,0 +1,15 @@
+{
+  "revision": "3f559cefbdec0083f814deebb224f72c8fceebb2",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"#4852 fix round 7 (repair entries claimed by rename before reading, newest claim of a record wins, empty-only repair directory removal, staging cleanup on failed publication, lstat-checked store trees): the refusal list now states that a linked, non-directory or un-lookupable bindings/ or repair/ root or level is a problem, and the supported repair describes temp-name-then-rename, the claimed name, newest-claim-wins with superseded older claims, failed-publication staging cleanup and empty-only directory removal. Checked against applyRepairs, publishRepair, storeDirectory and scanReferences in task-room-attachments.ts and the round-7 route tests.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/config.md","note":"#4852 fix round 7 (repair entries claimed by rename before reading, newest claim of a record wins, empty-only repair directory removal, staging cleanup on failed publication, lstat-checked store trees): the Project channel store sentence now also names store directories that cannot be read, including linked ones. Checked against storeDirectory and scanReferences in task-room-attachments.ts. Task-room retention sentences are unchanged and still true.","inputs":["docs/reference/config.md","src-server/services/projects/task-room-attachments.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"#4852 fix round 7 (repair entries claimed by rename before reading, newest claim of a record wins, empty-only repair directory removal, staging cleanup on failed publication, lstat-checked store trees): task-room-attachments.ts changed only the Project-room repair path and the per-level lookup in the shared reference scan. The Task asset store claims here (bindings, authority, signature check, retention and #4947) are unaffected; prose unchanged.","inputs":["docs/design/task-room-agent-requests.md","src-server/services/projects/task-room-attachments.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"#4852 fix round 7 (repair entries claimed by rename before reading, newest claim of a record wins, empty-only repair directory removal, staging cleanup on failed publication, lstat-checked store trees): api.md changed only the Project room files section; this page cites the terminal socket transport section, which is unchanged. Prose unchanged.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#4852 fix round 7 (repair entries claimed by rename before reading, newest claim of a record wins, empty-only repair directory removal, staging cleanup on failed publication, lstat-checked store trees): api.md changed only the Project room files section; this guide cites the S3 sources section and the reference as a whole. No claim here touches Project room files; prose unchanged.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}
