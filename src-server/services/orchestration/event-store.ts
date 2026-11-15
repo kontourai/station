@@ -1126,6 +1126,12 @@ const UNRESOLVED_COMPLETION_STANDS_SQL_FUNCTION =
   'station_unresolved_completion_stands';
 /** Distinct (thread, high-water) transcript checks kept for paging reuse. */
 const STANDING_UNRESOLVED_CACHE_MAX = 8;
+/**
+ * Threads whose session projection facts and event count are kept between
+ * reads (#4992). Each entry holds a thread's handful of folded facts, without
+ * hydrated attachment data, so the bound is on thread count, not history.
+ */
+const SESSION_PROJECTION_CACHE_MAX = 2048;
 
 /** SQLite function: whether the exact input read would serve this row. */
 const READABLE_USER_INPUT_SQL_FUNCTION = 'station_is_readable_user_input';
@@ -2801,6 +2807,26 @@ export class EventStore {
    * per process.
    */
   private readonly standingUnresolvedCache = new Map<string, Set<string>>();
+  /**
+   * Per-thread session projection facts and event count, keyed by the
+   * thread's highest `global_sequence` (#4992). Every write that can change a
+   * thread's projection (an append, which also maintains its fact and request
+   * rows, or the thread's deletion) moves or removes that mark, and global
+   * sequences come from a monotonic high-water and are never reused. So an
+   * entry whose mark still matches describes exactly the rows a fresh read
+   * would fold. Rows are stored unhydrated and frozen; attachment data is
+   * read at return time, as before. Small LRU, per process.
+   */
+  private readonly sessionProjectionCache = new Map<
+    string,
+    {
+      highWater: number;
+      events?: readonly PersistedRuntimeEvent[];
+      eventCount?: number;
+    }
+  >();
+  /** Set only while the projection is computed for the cache above. */
+  private deferAttachmentHydration = false;
   /** Kept private: room history receives a separate connection, never this DB. */
   private readonly databasePath: string;
   private usageExportActivation?: () => string;
@@ -5188,7 +5214,9 @@ export class EventStore {
     if (row.payload === null)
       throw new Error('Projection payload exceeds read budget');
     const event = mapPersistedEventRow(row);
-    return hydrate ? this.hydrateAttachments(event) : event;
+    return hydrate && !this.deferAttachmentHydration
+      ? this.hydrateAttachments(event)
+      : event;
   }
 
   /**
@@ -10476,6 +10504,106 @@ export class EventStore {
     threadIds: readonly string[],
   ): Map<string, PersistedRuntimeEvent[]> {
     const uniqueThreadIds = [...new Set(threadIds)];
+    const marks = this.sessionProjectionCacheMarks(uniqueThreadIds);
+    if (!marks) return this.foldSessionProjectionEvents(uniqueThreadIds);
+    // #4992: the read model folds every readable thread on each list, and it
+    // is listed several times a second while any session streams. Only the
+    // threads whose mark moved are folded again.
+    const stale = uniqueThreadIds.filter(
+      (threadId) =>
+        this.cachedSessionProjection(threadId, marks)?.events === undefined,
+    );
+    let folded = new Map<string, PersistedRuntimeEvent[]>();
+    if (stale.length > 0) {
+      this.deferAttachmentHydration = true;
+      try {
+        folded = this.foldSessionProjectionEvents(stale);
+      } finally {
+        this.deferAttachmentHydration = false;
+      }
+      for (const threadId of stale) {
+        const events = folded.get(threadId) ?? [];
+        this.storeSessionProjection(threadId, marks, {
+          events: events.map(deepFreezeEvent),
+        });
+      }
+    }
+    const result = new Map<string, PersistedRuntimeEvent[]>();
+    for (const threadId of uniqueThreadIds) {
+      const events =
+        folded.get(threadId) ??
+        this.cachedSessionProjection(threadId, marks)?.events ??
+        [];
+      result.set(
+        threadId,
+        events.map((event) => this.hydrateAttachments(event)),
+      );
+    }
+    return result;
+  }
+
+  /**
+   * Each thread's highest `global_sequence`, the key of
+   * {@link sessionProjectionCache}, or `undefined` when no cache may be used
+   * for this read. A read inside an open transaction is never cached: a
+   * rollback would hand its global sequences to different events.
+   */
+  private sessionProjectionCacheMarks(
+    threadIds: readonly string[],
+  ): Map<string, number> | undefined {
+    if (this.cachesDisabled || this.db.isTransaction) return undefined;
+    // One min/max-optimised index seek per thread; a `GROUP BY` over the
+    // same index walks every row of each thread.
+    const statement = this.readStatement(
+      `SELECT MAX(global_sequence) AS highWater
+         FROM orchestration_events WHERE thread_id = ?`,
+    );
+    const marks = new Map<string, number>();
+    for (const threadId of threadIds) {
+      const row = statement.get(threadId) as
+        | { highWater: number | null }
+        | undefined;
+      if (typeof row?.highWater === 'number')
+        marks.set(threadId, row.highWater);
+      else this.sessionProjectionCache.delete(threadId);
+    }
+    return marks;
+  }
+
+  private cachedSessionProjection(
+    threadId: string,
+    marks: ReadonlyMap<string, number>,
+  ) {
+    const highWater = marks.get(threadId);
+    const entry = this.sessionProjectionCache.get(threadId);
+    if (highWater === undefined || entry?.highWater !== highWater)
+      return undefined;
+    this.sessionProjectionCache.delete(threadId);
+    this.sessionProjectionCache.set(threadId, entry);
+    return entry;
+  }
+
+  private storeSessionProjection(
+    threadId: string,
+    marks: ReadonlyMap<string, number>,
+    facts: { events?: readonly PersistedRuntimeEvent[]; eventCount?: number },
+  ): void {
+    const highWater = marks.get(threadId);
+    if (highWater === undefined) return;
+    const current = this.sessionProjectionCache.get(threadId);
+    const kept = current?.highWater === highWater ? current : { highWater };
+    this.sessionProjectionCache.delete(threadId);
+    this.sessionProjectionCache.set(threadId, { ...kept, ...facts });
+    while (this.sessionProjectionCache.size > SESSION_PROJECTION_CACHE_MAX) {
+      const oldest = this.sessionProjectionCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.sessionProjectionCache.delete(oldest);
+    }
+  }
+
+  private foldSessionProjectionEvents(
+    uniqueThreadIds: readonly string[],
+  ): Map<string, PersistedRuntimeEvent[]> {
     const result = new Map<string, PersistedRuntimeEvent[]>();
     if (uniqueThreadIds.length === 0) return result;
 
@@ -12100,6 +12228,30 @@ export class EventStore {
    */
   countEventsByThreads(threadIds: readonly string[]): Map<string, number> {
     const uniqueThreadIds = [...new Set(threadIds)];
+    const marks = this.sessionProjectionCacheMarks(uniqueThreadIds);
+    if (!marks) return this.queryEventCountsByThreads(uniqueThreadIds);
+    // #4992: a count only moves with the thread's mark, so only threads whose
+    // mark moved are counted again. A thread without a mark has no events.
+    const counts = new Map<string, number>();
+    const stale: string[] = [];
+    for (const threadId of uniqueThreadIds) {
+      if (!marks.has(threadId)) continue;
+      const cached = this.cachedSessionProjection(threadId, marks)?.eventCount;
+      if (cached === undefined) stale.push(threadId);
+      else counts.set(threadId, cached);
+    }
+    const counted = this.queryEventCountsByThreads(stale);
+    for (const threadId of stale) {
+      const eventCount = counted.get(threadId) ?? 0;
+      this.storeSessionProjection(threadId, marks, { eventCount });
+      if (eventCount > 0) counts.set(threadId, eventCount);
+    }
+    return counts;
+  }
+
+  private queryEventCountsByThreads(
+    uniqueThreadIds: readonly string[],
+  ): Map<string, number> {
     const counts = new Map<string, number>();
     if (uniqueThreadIds.length === 0) return counts;
     for (const chunk of this.chunkArray(
@@ -18786,6 +18938,25 @@ export class EventStore {
       .get() as { max_sequence: number };
     return row.max_sequence + 1;
   }
+}
+
+/**
+ * Freezes a cached projection row and everything it holds (#4992). The cache
+ * hands the same objects to every later read, so a caller that mutated one
+ * would change another request's answer; frozen, it fails where it writes.
+ */
+function deepFreezeEvent(event: PersistedRuntimeEvent): PersistedRuntimeEvent {
+  const pending: object[] = [event];
+  const seen = new Set<object>();
+  while (pending.length > 0) {
+    const value = pending.pop()!;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    Object.freeze(value);
+    for (const child of Object.values(value))
+      if (child !== null && typeof child === 'object') pending.push(child);
+  }
+  return event;
 }
 
 function parsePersistedTenantExecutionContext(value: unknown) {
