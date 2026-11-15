@@ -1002,7 +1002,9 @@ the fixed invariants plus browser/performance smoke and the UI bundle budget.
 The `fast-checks` result combines job outcomes with exact-plan shard receipts;
 the required `Source verification policy` context reconciles it (the
 [ruleset](#landing-a-pull-request) lists required contexts). A failing shard also annotates each failed test and uploads its
-redacted Vitest JSON report. Local `ci:fast` remains unsharded; see the
+redacted Vitest JSON report. After its summary line the shard log lists each
+failed test as `file > name`, then failed suites and infrastructure errors,
+because a job log shows an annotation's message but not its file or title. Local `ci:fast` remains unsharded; see the
 [testing guide](testing.md#what-counts-as-tested) for evidence interpretation.
 Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.
 Follow the [local feedback rule](testing.md#what-counts-as-tested).
