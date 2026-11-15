@@ -51,7 +51,7 @@ export function DeviceShares({
   if (devices.length === 0)
     return (
       <p className="device-setup__muted">
-        Once the device hub lists simulators or emulators, you can share each
+        Once the device helper lists simulators or emulators, you can share each
         one with a Project here.
       </p>
     );

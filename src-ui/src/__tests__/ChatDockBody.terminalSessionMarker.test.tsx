@@ -944,7 +944,7 @@ describe('ChatDockBody memory-exhaustion marker', () => {
     );
     expect(
       await screen.findByText(
-        /restarted — continuing/i,
+        /restarted\. Continuing/i,
         {},
         { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
       ),
@@ -1125,11 +1125,11 @@ describe('ChatDockBody marker actions follow callerAccess', () => {
   ] as const)(
     'an unsafe workspace offers %s caller %j, never Send again',
     async (caller, expected) => {
-      expect(await actionsFor(WORKSPACE, caller, /Can't resume/)).toEqual(
-        expected,
-      );
+      expect(
+        await actionsFor(WORKSPACE, caller, /This chat can’t continue/),
+      ).toEqual(expected);
       // Its hint is "New chat.": shown only to a caller allowed one.
-      expect(Boolean(screen.queryByText('New chat.'))).toBe(
+      expect(Boolean(screen.queryByText('Start a new chat.'))).toBe(
         expected.length > 0,
       );
     },

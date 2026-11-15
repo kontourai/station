@@ -18,6 +18,10 @@ const exclusions = {
     'acp.agent-projection-unapplied',
     'Runtime warning that the engine runs its own default agent; the session started and runs, so no turn, start or engine failure.',
   ],
+  'packages/contracts/src/provider.ts:ACP_SESSION_STARTED_FRESH_CODE': [
+    'acp.session-started-fresh',
+    'Runtime warning that the engine could not reload the conversation and Station started a new engine session in its place; the session started and runs, so no turn, start or engine failure.',
+  ],
   'packages/contracts/src/peer-chat.ts:PEER_CHAT_REFUSAL_CODE': [
     'peer_chat_target_refused',
     'Target-authored relay custody/pre-dispatch receipt, not an engine failure kind: 401/403 name target credentials, while 409 retains its specific refusalCode. The SDK parses this envelope before retiring source credentials or settling delivery.',

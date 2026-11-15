@@ -1,0 +1,11 @@
+{
+  "revision": "ae46e3faadd8dd6a65a4b95a8aef5695be345de3",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Only Run setup trigger text assertions changed (visible label is the model when an Agent mark is shown; accessible name keeps Agent · model). Checked citing pages: no claims about that label beyond docs/design/chat-composer.md, which was updated.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Only Run setup trigger text assertions changed (visible label is the model when an Agent mark is shown; accessible name keeps Agent · model). Checked citing pages: no claims about that label beyond docs/design/chat-composer.md, which was updated.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Only Run setup trigger text assertions changed (visible label is the model when an Agent mark is shown; accessible name keeps Agent · model). Checked citing pages: no claims about that label beyond docs/design/chat-composer.md, which was updated.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]}
+  ]
+}

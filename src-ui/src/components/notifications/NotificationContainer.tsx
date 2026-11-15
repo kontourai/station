@@ -202,20 +202,16 @@ function ToastCard({
           {(isApproval || isPairing || isActivity || isTurn) && (
             <div className="toast-card__meta">
               {isApproval && (
-                <span className="toast-card__eyebrow">
-                  Tool Approval Request
-                </span>
+                <span className="toast-card__eyebrow">Approval request</span>
               )}
               {isActivity && (
-                <span className="toast-card__eyebrow">Tool Activity</span>
+                <span className="toast-card__eyebrow">Tool activity</span>
               )}
               {isTurn && (
                 <span className="toast-card__eyebrow">Agent turn</span>
               )}
               {isPairing && (
-                <span className="toast-card__eyebrow">
-                  Device Pairing Request
-                </span>
+                <span className="toast-card__eyebrow">Pairing request</span>
               )}
               <time className="toast-card__time">
                 {relativeTime(notification.timestamp, Date.now())}
