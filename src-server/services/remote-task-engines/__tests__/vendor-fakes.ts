@@ -438,6 +438,11 @@ export function cursorFake() {
       result,
     });
   };
+  /** End the latest run with no `result` (a cancelled or failed run may). */
+  const endRunWithoutResult = (status = 'CANCELLED') => {
+    finishRun('', status);
+    delete state.run.result;
+  };
   /** A follow-up run begins (newest first). */
   const startRun = (id: string, createdAt: string) => {
     const next: Record<string, unknown> = {
@@ -525,5 +530,5 @@ export function cursorFake() {
           { event: 'heartbeat', data: {} },
         ]),
   );
-  return { fake, state, agentId, finishRun, startRun };
+  return { fake, state, agentId, finishRun, endRunWithoutResult, startRun };
 }

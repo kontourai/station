@@ -6,9 +6,12 @@
  * connections never see each other's credential.
  */
 import { remoteTaskAcknowledgementStatement } from '@kontourai/station-contracts/remote-task-engine';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { harness } from '../../../services/remote-task-engines/__tests__/harness.js';
-import { devinFake } from '../../../services/remote-task-engines/__tests__/vendor-fakes.js';
+import {
+  devinFake,
+  json,
+} from '../../../services/remote-task-engines/__tests__/vendor-fakes.js';
 import { REMOTE_TASK_CREDENTIAL_KEY } from '../../../services/remote-task-engines/credentials.js';
 import { RemoteTaskTracker } from '../../../services/remote-task-engines/tracker.js';
 import { createLogger } from '../../../utils/logger.js';
@@ -494,5 +497,35 @@ describe('remote task engine routes', () => {
     await s.call('GET', `/connections/${id}/tasks/${taskId}/events?after=0`);
     // Already scheduled: a read does not add or hurry a poll.
     expect(s.timers).toHaveLength(1);
+  });
+
+  test('after a hard vendor failure a read does not resume polling; POST sync does', async () => {
+    const s = setup();
+    const id = await readyConnection(s);
+    const created = await s.call('POST', `/connections/${id}/tasks`, {
+      prompt: 'Go',
+    });
+    const taskId = (created.body.data as { taskId: string }).taskId;
+    expect(s.timers).toHaveLength(1);
+    // The vendor refuses the scheduled poll: a failure only a person can fix.
+    s.devinA.fake.inject(1, () =>
+      json(403, { detail: 'Forbidden for this organization' }),
+    );
+    const before = s.vendorRequests();
+    s.timers[0]?.();
+    await vi.waitFor(() => expect(s.vendorRequests()).toBe(before + 1));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(s.timers).toHaveLength(1);
+    // Reading is not a new attempt: still nothing scheduled.
+    await s.call('GET', `/connections/${id}/tasks/${taskId}/events?after=0`);
+    await s.call('GET', `/connections/${id}/tasks/${taskId}`);
+    expect(s.timers).toHaveLength(1);
+    // An explicit sync is: it reaches the vendor and polling resumes.
+    const synced = await s.call(
+      'POST',
+      `/connections/${id}/tasks/${taskId}/sync`,
+    );
+    expect(synced.status).toBe(200);
+    expect(s.timers).toHaveLength(2);
   });
 });

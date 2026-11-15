@@ -153,6 +153,27 @@ function runMessage(run: Record<string, unknown>): RemoteTaskEvent | undefined {
   };
 }
 
+/**
+ * A finished run that ended without a result, as a Station-authored note.
+ * Storing it (under the run's own id) marks the run consumed, so it is never
+ * read again; a cancelled, failed or expired run may carry no result at all.
+ */
+function emptyRunNote(
+  run: Record<string, unknown>,
+): RemoteTaskEvent | undefined {
+  const id = stringField(run, 'id');
+  const status = stringField(run, 'status');
+  if (!id || !status || !TERMINAL_RUN_STATES.has(status)) return undefined;
+  const createdAt =
+    stringField(run, 'updatedAt') ?? stringField(run, 'createdAt');
+  return {
+    id: `run:${id}`,
+    author: 'system',
+    text: `${VENDOR} run ended ${status.toLowerCase()} with no result.`,
+    ...(createdAt ? { createdAt } : {}),
+  };
+}
+
 export const cursorBinding: RemoteTaskBinding = {
   vendor: 'cursor',
   baseUrl: 'https://api.cursor.com',
@@ -259,13 +280,21 @@ export const cursorBinding: RemoteTaskBinding = {
    * run Station already stored, so a burst of runs between polls is not cut
    * at the first page. A finished run the list leaves without its `result`
    * is read on its own, at most five per call and never one already stored;
-   * when more remain, `hasMore` asks the service to call again before the
-   * task can settle. The list has no resume position, so the cursor stays
-   * null and `known` does the skipping.
+   * one that ended with no result is stored as a note, so it counts as read.
+   * When more remain, `hasMore` asks the service to call again before the
+   * task can settle.
+   *
+   * A call reads at most ten list pages. When the list goes on past them,
+   * the vendor's `nextCursor` comes back as the resume cursor with `hasMore`,
+   * and the next call continues from there; once that backlog is read the
+   * cursor returns to null, so listing starts again from the newest run.
+   * While results are still unread, the cursor does not advance, so the same
+   * window is read again first. `known` does the skipping either way.
    */
-  async pageEvents(context, taskId, _cursor, known = () => false) {
+  async pageEvents(context, taskId, cursor, known = () => false) {
     const runs: Array<Record<string, unknown>> = [];
-    let next: string | undefined;
+    let next: string | undefined = cursor ?? undefined;
+    let capped = false;
     for (let page = 0; page < RUN_LIST_PAGES; page += 1) {
       const { body } = await context.http.json({
         method: 'GET',
@@ -282,6 +311,7 @@ export const cursorBinding: RemoteTaskBinding = {
         return id !== undefined && known(`run:${id}`);
       });
       if (!next || reachedStored) break;
+      if (page === RUN_LIST_PAGES - 1) capped = true;
     }
     const finished = runs
       .filter((run) =>
@@ -310,11 +340,18 @@ export const cursorBinding: RemoteTaskBinding = {
           method: 'GET',
           path: `${agentPath(taskId)}/runs/${encodeURIComponent(runId)}`,
         });
-        message = runMessage(asRecord(full));
+        message = runMessage(asRecord(full)) ?? emptyRunNote(asRecord(full));
       }
+      message ??= emptyRunNote(run);
       if (message) events.push(message);
     }
-    return { events, cursor: null, hasMore: unread > 0 };
+    if (capped && unread === 0 && next)
+      return { events, cursor: next, hasMore: true };
+    return {
+      events,
+      cursor: unread > 0 ? (cursor ?? null) : null,
+      hasMore: unread > 0 || capped,
+    };
   },
 
   async cancelTask(context, taskId) {
