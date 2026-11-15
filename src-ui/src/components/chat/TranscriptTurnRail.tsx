@@ -477,7 +477,7 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
         <ol className="transcript-turn-rail__ticks">
           {landmarks.map((landmark, index) => (
             <li
-              key={landmark.rowId}
+              key={landmark.turnId ?? landmark.rowId}
               className="transcript-turn-rail__item"
               style={{ top: `${(landmark.rowIndex / rowCount) * 100}%` }}
             >

@@ -104,7 +104,11 @@ function app(
     listThreadIdsStartedIn: () => SESSIONS,
     readTurnDirectoryFacts: (
       ids: readonly string[],
-      options: { turnLimit: number; beforeGlobalSequence?: number },
+      options: {
+        turnLimit: number;
+        beforeGlobalSequence?: number;
+        includeCount?: boolean;
+      },
     ) =>
       directoryStore?.readTurnDirectoryFacts(ids, options) ?? {
         turns: [],
@@ -256,7 +260,7 @@ describe('the leaves refuse every internal request themselves', () => {
 
 const makeDirectoryTemp = trackTempDirs();
 
-test('the turn directory pages an entire long conversation in two metadata statements per page', async () => {
+test('the turn directory pages an entire long conversation with one total count and one metadata statement per page', async () => {
   const store = new EventStore(
     join(makeDirectoryTemp('turn-directory-'), 'events.sqlite'),
   );
@@ -296,11 +300,11 @@ test('the turn directory pages an entire long conversation in two metadata state
       let cursor: string | null = null;
       do {
         const response = await routes.request(
-          `/r/in-viewable/turn-directory?turnLimit=100${cursor ? `&cursor=${cursor}` : ''}`,
+          `/r/in-viewable/turn-directory?turnLimit=100${cursor ? `&cursor=${cursor}&includeCount=false` : ''}`,
         );
         expect(response.status).toBe(200);
         const page = (await response.json()).data;
-        expect(page.session.turnCount).toBe(205);
+        expect(page.session.turnCount).toBe(cursor ? undefined : 205);
         expect(page.turns.length).toBeLessThanOrEqual(100);
         expect(page.turns[0]).toMatchObject({
           request: `Request ${204 - turns.length}`,
@@ -314,7 +318,7 @@ test('the turn directory pages an entire long conversation in two metadata state
       expect(turns).toEqual(
         Array.from({ length: 205 }, (_, index) => `turn-${204 - index}`),
       );
-      expect(prepared).toHaveBeenCalledTimes(6);
+      expect(prepared).toHaveBeenCalledTimes(4);
     } finally {
       prepared.mockRestore();
     }

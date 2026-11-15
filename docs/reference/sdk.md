@@ -2189,7 +2189,8 @@ the [CLI delegate reference](cli.md#delegate).
 
 `getConversationTurnDirectory(apiBase, conversationId, cursor?, options?)` reads
 up to 100 prompt excerpts and outcomes per page, without transcript bodies,
-tools or file details. The conversation rail and turn browser share its
+tools or file details. Later pages may supply `options.turnCountSnapshot` from
+the first page to retain that count and skip a full-history recount. The conversation rail and turn browser share its
 React Query entry, keyed by the owning Station and request authority. Selecting
 an unloaded turn uses the bounded transcript loader. A `404` returns `null` for
 the older-host fallback; other failures remain errors. This navigation read

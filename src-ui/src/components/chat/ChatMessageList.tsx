@@ -335,17 +335,40 @@ function ChatMessageListComponent({
   const coarsePointer = useCoarsePointer();
   const touchTurnControls = isMobile || coarsePointer;
   const [turnBrowserOpen, setTurnBrowserOpen] = useState(false);
+  const [pendingTurnJump, setPendingTurnJump] = useState<string | null>(null);
+  const turnNavigationRequest = useRef<AbortController | null>(null);
+  const cancelTurnNavigation = useCallback(() => {
+    turnNavigationRequest.current?.abort();
+    turnNavigationRequest.current = null;
+    setPendingTurnJump(null);
+  }, []);
+  useEffect(() => () => turnNavigationRequest.current?.abort(), []);
   const openTurnBrowser = useCallback(() => setTurnBrowserOpen(true), []);
   const loadTurnAndReveal = useCallback(
     async (turnId: string, signal: AbortSignal) => {
       if (!onLoadTurn) return false;
-      const found = await onLoadTurn(turnId, signal);
-      if (found && !signal.aborted) setPendingTurnJump(turnId);
-      return found;
+      turnNavigationRequest.current?.abort();
+      const request = new AbortController();
+      turnNavigationRequest.current = request;
+      const abort = () => request.abort(signal.reason);
+      if (signal.aborted) abort();
+      else signal.addEventListener('abort', abort, { once: true });
+      try {
+        const found = await onLoadTurn(turnId, request.signal);
+        request.signal.throwIfAborted();
+        if (found) setPendingTurnJump(turnId);
+        return found;
+      } catch (error) {
+        request.signal.throwIfAborted();
+        throw error;
+      } finally {
+        signal.removeEventListener('abort', abort);
+        if (turnNavigationRequest.current === request)
+          turnNavigationRequest.current = null;
+      }
     },
     [onLoadTurn],
   );
-  const [pendingTurnJump, setPendingTurnJump] = useState<string | null>(null);
   useEffect(() => {
     const browse = (event: Event) => {
       if (
@@ -1500,6 +1523,7 @@ function ChatMessageListComponent({
   // stays "scrolled up" for the glide so the pin and the virtualizer's
   // follow cannot snap it; reader input cancels and leaves them in control.
   const handleScrollToBottom = () => {
+    cancelTurnNavigation();
     const el = messagesContainerRef.current;
     if (!el) return;
     // Before the glide, not after it: a message settling mid-glide must not
@@ -1554,6 +1578,7 @@ function ChatMessageListComponent({
   );
   const jumpToTurn = useCallback(
     (turnIndex: number) => {
+      cancelTurnNavigation();
       const landmark = turnLandmarksRef.current[turnIndex];
       const element = messagesContainerRef.current;
       if (!landmark || !element) return;
@@ -1618,7 +1643,12 @@ function ChatMessageListComponent({
       );
       visibleAnchorRef.current = captureChatScrollAnchor(element);
     },
-    [writeProgrammaticScroll, clearMessageRevealHash, messagesContainerRef],
+    [
+      writeProgrammaticScroll,
+      clearMessageRevealHash,
+      messagesContainerRef,
+      cancelTurnNavigation,
+    ],
   );
   useEffect(() => {
     if (!pendingTurnJump) return;
@@ -1638,27 +1668,31 @@ function ChatMessageListComponent({
   // later, so stepping to the same turn twice is announced twice.
   const [turnAnnouncement, setTurnAnnouncement] = useState('');
   const announceFrameRef = useRef<number | undefined>(undefined);
+  const announceTurnStep = useCallback((text: string) => {
+    if (announceFrameRef.current !== undefined)
+      cancelAnimationFrame(announceFrameRef.current);
+    setTurnAnnouncement('');
+    announceFrameRef.current = requestAnimationFrame(() => {
+      announceFrameRef.current = undefined;
+      setTurnAnnouncement(text);
+    });
+  }, []);
   const stepToTurn = useCallback(
     (turnIndex: number) => {
       const landmarks = turnLandmarksRef.current;
       const landmark = landmarks[turnIndex];
       if (!landmark) return;
       jumpToTurn(turnIndex);
-      const text = turnLabel(
-        landmark,
-        turnIndex,
-        landmarks.length,
-        Boolean(hasOlderMessages),
+      announceTurnStep(
+        turnLabel(
+          landmark,
+          turnIndex,
+          landmarks.length,
+          Boolean(hasOlderMessages),
+        ),
       );
-      if (announceFrameRef.current !== undefined)
-        cancelAnimationFrame(announceFrameRef.current);
-      setTurnAnnouncement('');
-      announceFrameRef.current = requestAnimationFrame(() => {
-        announceFrameRef.current = undefined;
-        setTurnAnnouncement(text);
-      });
     },
-    [jumpToTurn, hasOlderMessages],
+    [jumpToTurn, hasOlderMessages, announceTurnStep],
   );
   // What was said names a position in one chat's loaded window ("Loaded
   // turn 5 of 10"): a chat switch, older history finishing loading, or a
@@ -2330,6 +2364,7 @@ function ChatMessageListComponent({
               touchStepsShown={isUserScrolledUp}
               conversationId={activeSession.conversationId!}
               activeStartVisible={turnViewport.activeStartVisible}
+              onAnnounceStep={announceTurnStep}
               onLoadTurn={loadTurnAndReveal}
             />
           )}

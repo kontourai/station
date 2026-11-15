@@ -278,7 +278,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
             name: width === 390 ? 'Search chats and tasks' : 'Search inbox',
           });
           const searchBox = (await search.boundingBox())!;
-          expect(searchBox.height).toBeGreaterThanOrEqual(40);
+          expect(searchBox.height).toBeGreaterThanOrEqual(
+            width === 390 ? 44 : 40,
+          );
           expect(searchBox.height).toBeLessThanOrEqual(48);
           if (width === 1440) {
             const toolbar = (await pg

@@ -77,6 +77,7 @@ test('the rail pages all turn metadata independently of loaded history and cance
     name: 'Turn 1 of 3: Original request',
   });
   expect(directory).toHaveBeenCalledTimes(2);
+  expect(directory.mock.calls[1][3]).toMatchObject({ turnCountSnapshot: 3 });
   expect(load).not.toHaveBeenCalled();
   fireEvent.click(oldest);
   await waitFor(() =>
@@ -92,4 +93,72 @@ test('the rail pages all turn metadata independently of loaded history and cance
   fireEvent.click(oldest);
   unmount();
   expect(load.mock.calls[1][1].aborted).toBe(true);
+});
+
+test('loading a focused indexed tick keeps its DOM identity and indexed steps announce the destination', async () => {
+  directory.mockResolvedValue({
+    session: { conversationId: 'conversation', turnCount: 2 },
+    turns: [
+      { turnId: 'newest', request: 'Latest request', outcome: 'completed' },
+      { turnId: 'oldest', request: 'First request', outcome: 'completed' },
+    ],
+    nextCursor: null,
+  });
+  const client = new QueryClient();
+  const announce = vi.fn();
+  const load = vi.fn().mockResolvedValue(true);
+  const props = {
+    conversationId: 'conversation',
+    onLoadTurn: load,
+    onAnnounceStep: announce,
+    rowCount: 2,
+    scrollElement: createRef<HTMLDivElement>(),
+    railRef: createRef<HTMLElement>(),
+    activeTurn: 0,
+    activeStartVisible: true,
+    onJump: vi.fn(),
+    olderHistory: true,
+    previousTurn: undefined,
+    nextTurn: undefined,
+    onStep: vi.fn(),
+    touchControls: false,
+  };
+  const newest = {
+    turnId: 'newest',
+    rowId: 'u2',
+    prompt: 'Latest request',
+    rowIndex: 0,
+    endRowIndex: 2,
+  };
+  const view = (landmarks: (typeof newest)[]) => (
+    <QueryClientProvider client={client}>
+      <IndexedTranscriptTurnRail
+        {...props}
+        landmarks={landmarks}
+        activeTurn={landmarks.length - 1}
+      />
+    </QueryClientProvider>
+  );
+  const { rerender } = render(view([newest]));
+  const oldest = await screen.findByRole('button', {
+    name: 'Turn 1 of 2: First request',
+  });
+  oldest.focus();
+  rerender(
+    view([
+      {
+        turnId: 'oldest',
+        rowId: 'u1',
+        prompt: 'First request',
+        rowIndex: 0,
+        endRowIndex: 2,
+      },
+      { ...newest, rowIndex: 2, endRowIndex: 4 },
+    ]),
+  );
+  expect(document.activeElement).toBe(oldest);
+  fireEvent.click(screen.getByRole('button', { name: 'Previous turn' }));
+  await waitFor(() =>
+    expect(announce).toHaveBeenCalledWith('Turn 1 of 2: First request'),
+  );
 });

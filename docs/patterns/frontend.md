@@ -177,7 +177,8 @@ with its feature. A new rule should have real consumers and one style owner.
   `control control--input` classes when the caller needs a native input ref.
   `filter-toolbar` places an ordinary control beside compact actions and lets
   the control shrink. Hosts add placement spacing; borders, focus, typography
-  and control height stay with the shared control contract.
+  and control height stay with the shared control contract. The global input
+  recipe honors the shell's 44px mobile target floor.
 - `Field` and `Select` from `@kontourai/ui/react` own labels, hints, control
   geometry, and the select chevron. The select retains native keyboard and
   mobile behavior. Do not add a bare select with separate border, padding,

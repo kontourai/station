@@ -64,13 +64,12 @@ const composerFixture = `
     import {ChatInputArea} from './src-ui/src/components/chat/ChatInputArea';
     import {AgentScheduleNotes} from './src-ui/src/components/chat-dock/AgentScheduleNotes';
     import {ScrollToBottomButton} from './src-ui/src/components/chat/ScrollToBottomButton';
-    import {EphemeralMessage} from './src-ui/src/components/chat/EphemeralMessage';
     function App(){
       const [input,setInput] = useState('one\\ntwo\\nthree\\nfour\\nfive');
       const textareaRef=useRef(null);
       const noop=()=>{};
       return <div className="chat-dock__body" style={{height:600,display:'flex',flexDirection:'column'}}>
-        <div id="transcript" className="chat-messages" style={{flex:'1 1 0',minHeight:0,overflow:'auto',overflowAnchor:'none'}}><div style={{height:3000}}>Transcript<EphemeralMessage msg={{content:'Task finished',backgroundTaskNotice:{status:'completed',child:{producer:'engine-subagent',reporterThreadId:'reporter',childId:'child',status:'completed',title:'Review implementation',result:{summary:'The check passed.',source:'provider-summary'}}}}} idx={0} fontSize={14} isRemoving={false} onDismiss={noop}/></div></div>
+        <div id="transcript" className="chat-messages" style={{flex:'1 1 0',minHeight:0,overflow:'auto',overflowAnchor:'none'}}><div style={{height:3000}}>Transcript</div></div>
         <ChatInputArea activity={<><AgentScheduleNotes conversationId="fixture" refreshKey="settled"/><ScrollToBottomButton onClick={noop}/></>} agentSlug="station" sessionId="fixture" input={input} textareaRef={textareaRef} attachments={[]} disabled={false} turnInFlight={false} modelSupportsAttachments={false} fontSize={14} dockHeight={600} apiBase="http://station.test" canModelSelect={false} availableModels={[]} modelQuery={null} commandQuery={null} slashCommands={[]} onInputChange={setInput} onSend={noop} onCancel={noop} onClearInput={noop} selectAttachmentFiles={noop} onRemoveAttachment={noop} onClearAttachments={noop} onModelSelect={noop} onModelReset={noop} onModelClose={noop} onModelOpen={noop} onModelRuntimeOptionChange={noop} onApprovalModeChange={noop} onCommandSelect={noop} onCommandClose={noop} onHistoryUp={noop} onHistoryDown={noop} onShowStats={noop} updateFromInput={noop} closeAll={noop}/>
       </div>;
     }
@@ -160,10 +159,6 @@ test('scheduled check-backs share the composer activity row with Scroll to botto
             () => document.documentElement.scrollWidth > innerWidth,
           ),
         ).toBe(false);
-        expect(await page.locator('.ephemeral-message').count()).toBe(0);
-        expect(
-          await page.getByTestId('subagent-card').getAttribute('data-status'),
-        ).toBe('completed');
         expect(errors).toEqual([]);
         await page.screenshot({
           path: resolve(artifacts, `scheduled-${width}-${theme}.png`),

@@ -9,7 +9,11 @@ import {
 } from 'react';
 import { Button } from '../Button';
 import { ErrorState } from '../state';
-import { TranscriptTurnRail, turnStepTarget } from './TranscriptTurnRail';
+import {
+  TranscriptTurnRail,
+  turnLabel,
+  turnStepTarget,
+} from './TranscriptTurnRail';
 import type { TranscriptTurnLandmark } from './transcriptTurnLandmarks';
 import { useTranscriptTurnDirectory } from './useTranscriptTurnDirectory';
 
@@ -17,6 +21,7 @@ type Props = ComponentProps<typeof TranscriptTurnRail> & {
   conversationId: string;
   onLoadTurn: (turnId: string, signal: AbortSignal) => Promise<boolean>;
   activeStartVisible: boolean;
+  onAnnounceStep?: (text: string) => void;
 };
 
 export const IndexedTranscriptTurnRail = memo(
@@ -24,6 +29,7 @@ export const IndexedTranscriptTurnRail = memo(
     conversationId,
     onLoadTurn,
     activeStartVisible,
+    onAnnounceStep,
     ...props
   }: Props) {
     const directory = useTranscriptTurnDirectory(conversationId);
@@ -54,7 +60,7 @@ export const IndexedTranscriptTurnRail = memo(
       const known = new Set(turns.map((turn) => turn.turnId));
       const mapped = turns.map(
         (turn): TranscriptTurnLandmark => ({
-          rowId: loaded.get(turn.turnId)?.rowId ?? `indexed:${turn.turnId}`,
+          rowId: `indexed:${turn.turnId}`,
           turnId: turn.turnId,
           rowIndex: 0,
           endRowIndex: 0,
@@ -81,13 +87,17 @@ export const IndexedTranscriptTurnRail = memo(
     const activeTurn = indexed
       ? Math.max(
           0,
-          landmarks.findIndex((mark) => mark.rowId === activeRow?.rowId),
+          landmarks.findIndex((mark) =>
+            mark.turnId
+              ? mark.turnId === activeRow?.turnId
+              : mark.rowId === activeRow?.rowId,
+          ),
         )
       : props.activeTurn;
     const jump = useCallback(
       async (index: number) => {
         const mark = landmarks[index];
-        if (!mark) return;
+        if (!mark) return false;
         request.current?.abort();
         const loaded = props.landmarks.findIndex(
           (item) =>
@@ -96,20 +106,41 @@ export const IndexedTranscriptTurnRail = memo(
         );
         if (loaded >= 0) {
           props.onJump(loaded);
-          return;
+          return true;
         }
-        if (!mark.turnId) return;
+        if (!mark.turnId) return false;
         const controller = new AbortController();
         request.current = controller;
         setFailure(false);
         try {
           const found = await onLoadTurn(mark.turnId, controller.signal);
-          if (!controller.signal.aborted) setFailure(!found);
-        } catch {
-          if (!controller.signal.aborted) setFailure(true);
+          if (controller.signal.aborted) return false;
+          setFailure(!found);
+          return found;
+        } catch (error) {
+          if (
+            !controller.signal.aborted &&
+            !(error instanceof DOMException && error.name === 'AbortError')
+          )
+            setFailure(true);
+          return false;
         }
       },
       [landmarks, props.landmarks, props.onJump, onLoadTurn],
+    );
+    const step = useCallback(
+      async (index: number) => {
+        if (!indexed) {
+          props.onStep(index);
+          return;
+        }
+        const moved = await jump(index);
+        if (moved)
+          onAnnounceStep?.(
+            turnLabel(landmarks[index]!, index, landmarks.length, false),
+          );
+      },
+      [indexed, props.onStep, jump, onAnnounceStep, landmarks],
     );
     useEffect(() => {
       void landmarks;
@@ -143,7 +174,7 @@ export const IndexedTranscriptTurnRail = memo(
               : props.nextTurn
           }
           onJump={jump}
-          onStep={jump}
+          onStep={step}
         />
       </>
     );

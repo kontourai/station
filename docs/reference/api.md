@@ -6181,7 +6181,8 @@ Session for a caller that is not a bound operator, another Station) answers `404
 `GET /api/orchestration/session-reads/:sessionId/turn-directory?turnLimit=&cursor=`
 serves the conversation's indexed turn metadata independently of loaded history.
 Each page contains at most 100 turn IDs, timestamps, prompt excerpts and outcomes,
-plus the total turn count and an older-page cursor. It reads no transcript bodies,
+plus the total turn count and an older-page cursor. `includeCount=false` omits
+the count on later pages when the reader retains its first-page snapshot. It reads no transcript bodies,
 tool inventory or file details. It uses the same person, owner and Project checks
 as Person Session Reads below, including refusal of internal credentials.
 It is available for existing turn navigation without enabling the CLI reads

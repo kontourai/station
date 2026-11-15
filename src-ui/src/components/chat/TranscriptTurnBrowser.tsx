@@ -50,8 +50,11 @@ export function TranscriptTurnBrowser({
             'Could not reach this turn yet. Try again to continue loading.',
           );
       }
-    } catch {
-      if (!request.signal.aborted)
+    } catch (error) {
+      if (
+        !request.signal.aborted &&
+        !(error instanceof DOMException && error.name === 'AbortError')
+      )
         setFailure('Could not load this turn. Try again.');
     } finally {
       if (!request.signal.aborted) setPending(null);

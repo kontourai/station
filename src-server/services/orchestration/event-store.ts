@@ -8174,7 +8174,11 @@ export class EventStore {
   /** Navigation reads two indexed statements per page, without tools, files or transcript bodies. */
   readTurnDirectoryFacts(
     threadIds: readonly string[],
-    options: { beforeGlobalSequence?: number; turnLimit: number },
+    options: {
+      beforeGlobalSequence?: number;
+      turnLimit: number;
+      includeCount?: boolean;
+    },
   ): {
     turns: Pick<
       TurnDigestFacts,
@@ -8185,7 +8189,7 @@ export class EventStore {
       | 'promptPrefix'
       | 'terminal'
     >[];
-    totalTurns: number;
+    totalTurns?: number;
     hasMore: boolean;
   } {
     const ids = [...new Set(threadIds)];
@@ -8202,15 +8206,18 @@ export class EventStore {
       );
     const startsWhere = `thread_id IN (${ids.map(() => '?').join(', ')}) AND method = 'turn.started'
       AND turn_id IS NOT NULL AND json_valid(payload) AND json_extract(payload, '$.inputKind') IS NULL`;
-    const totalTurns = Number(
-      (
-        this.db
-          .prepare(
-            `SELECT COUNT(*) AS total FROM orchestration_events WHERE ${startsWhere}`,
-          )
-          .get(...ids) as { total: number }
-      ).total,
-    );
+    const totalTurns =
+      options.includeCount === false
+        ? undefined
+        : Number(
+            (
+              this.db
+                .prepare(
+                  `SELECT COUNT(*) AS total FROM orchestration_events WHERE ${startsWhere}`,
+                )
+                .get(...ids) as { total: number }
+            ).total,
+          );
     const starts = this.db
       .prepare(`
       SELECT thread_id, turn_id, created_at, global_sequence,

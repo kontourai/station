@@ -689,7 +689,10 @@ function createSessionActivityCore(deps: SessionProjectActivityDeps) {
     };
     if (directoryOnly) {
       try {
-        const read = deps.eventStore.readTurnDirectoryFacts(lineage, options);
+        const read = deps.eventStore.readTurnDirectoryFacts(lineage, {
+          ...options,
+          includeCount: c.req.query('includeCount') !== 'false',
+        });
         return c.json({
           success: true,
           data: {

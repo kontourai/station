@@ -102,7 +102,11 @@ export function EphemeralMessage({
   if (msg.backgroundTaskNotice?.child)
     return (
       <SubagentTranscriptCard
-        child={{ item: msg.backgroundTaskNotice.child, toolAnchor: false }}
+        child={{
+          item: msg.backgroundTaskNotice.child,
+          stationName: msg.backgroundTaskNotice.stationName,
+          toolAnchor: false,
+        }}
       />
     );
   const messageId = msg.id || `ephemeral-${idx}`;

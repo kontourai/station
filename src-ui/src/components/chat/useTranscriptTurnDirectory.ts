@@ -16,13 +16,24 @@ export function useTranscriptTurnDirectory(conversationId?: string) {
       connection?.station?.runtimeKey,
       conversationId,
     ],
-    initialPageParam: undefined as string | undefined,
+    initialPageParam: undefined as
+      | { cursor: string; turnCount: number }
+      | undefined,
     queryFn: ({ signal, pageParam }) =>
-      getConversationTurnDirectory(apiBase!, conversationId!, pageParam, {
-        signal,
-        requestScope: scope!,
-      }),
-    getNextPageParam: (page) => page?.nextCursor ?? undefined,
+      getConversationTurnDirectory(
+        apiBase!,
+        conversationId!,
+        pageParam?.cursor,
+        {
+          signal,
+          turnCountSnapshot: pageParam?.turnCount,
+          requestScope: scope!,
+        },
+      ),
+    getNextPageParam: (page) =>
+      page?.nextCursor
+        ? { cursor: page.nextCursor, turnCount: page.session.turnCount }
+        : undefined,
     enabled:
       !!conversationId &&
       !!scope?.isCurrent() &&
