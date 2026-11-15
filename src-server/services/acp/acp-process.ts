@@ -413,6 +413,13 @@ export class ACPProcess extends EventEmitter {
   /** The pid this object spawned. Never cleared -- see survivesCleanup(). */
   private spawnedPid: number | null = null;
   /**
+   * Names of the variables the spawned engine received with a non-empty
+   * value, after every layer (launch, credential, Station, managed pins).
+   * Names only: no value is kept. Folded to upper case on Windows, where
+   * the child sees variable names case-insensitively.
+   */
+  private spawnedEnvNames: ReadonlySet<string> | null = null;
+  /**
    * The birth fingerprint of `spawnedPid`, recorded in the same breath as the
    * pid itself and never cleared. See survivesCleanup() (archive#3441): this
    * is what lets a recycled pid be told apart from the process actually
@@ -581,6 +588,11 @@ export class ACPProcess extends EventEmitter {
       { command: bin, args: [], env: launchedWithStationEnv },
       'user',
     ).env;
+    this.spawnedEnvNames = new Set(
+      Object.entries(env)
+        .filter(([, value]) => typeof value === 'string' && value.length > 0)
+        .map(([name]) => foldEnvName(name)),
+    );
     // archive#1863: spawn through the owned-process primitive so the child is
     // tagged with this Station's identity and recorded in the host-wide
     // registry. `detached: true` is preserved deliberately — a group kill reaps
@@ -738,6 +750,16 @@ export class ACPProcess extends EventEmitter {
     if ('type' in method && method.type === 'terminal')
       throw new Error('That sign-in runs in a terminal.');
     await this.connection.request(methods.agent.authenticate, { methodId });
+  }
+
+  /**
+   * Whether the engine process was started with `name` set to a non-empty
+   * value, as it actually received it: a locked managed pin that empties a
+   * variable wins over the connection's stored credential. `false` before
+   * the process is spawned.
+   */
+  spawnedEnvHas(name: string): boolean {
+    return this.spawnedEnvNames?.has(foldEnvName(name)) ?? false;
   }
 
   /**
@@ -1150,4 +1172,9 @@ export class ACPProcess extends EventEmitter {
     }
     return findCliBinaryAsync(command);
   }
+}
+
+/** An environment variable name as the platform compares it. */
+function foldEnvName(name: string): string {
+  return process.platform === 'win32' ? name.toUpperCase() : name;
 }
