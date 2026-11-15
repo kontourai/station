@@ -22,6 +22,7 @@ import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { createPackagedReleaseManifest } from '../lib/container-release-metadata.mjs';
 import { rollingManifestUrl } from '../lib/public-release-locations.mjs';
 import {
   buildPrebuiltArchive,
@@ -1516,5 +1517,131 @@ exec '${realCurl}' "$@"
     expect(launchedFrom(fixture, currentRelease(fixture, 'nightly'))).toBe(
       true,
     );
+  });
+});
+
+describe('version-bound archive descriptor assembly', () => {
+  function candidateDescriptor() {
+    const dir = makeTempDir('station-version-descriptor-');
+    const name = 'station-server-linux-x64.tar.gz';
+    const archive = join(dir, name);
+    writeFileSync(archive, 'immutable candidate archive fixture');
+    const sourceSha = 'a'.repeat(40);
+    const createdAt = '2026-11-15T12:00:00.000Z';
+    const release = createPackagedReleaseManifest({
+      tag: 'v1.2.3-rc.4',
+      sha: sourceSha,
+      createdAt,
+    });
+    const descriptor = {
+      schemaVersion: 1,
+      name,
+      target: 'linux-x64',
+      format: 'tar.gz',
+      sha256: digest(archive),
+      size: Buffer.byteLength('immutable candidate archive fixture'),
+      node: {
+        version: JSON.parse(
+          readFileSync(
+            join(root, 'config/portable-server-node-runtime.json'),
+            'utf8',
+          ),
+        ).version,
+      },
+      release,
+    };
+    const path = join(dir, `${name}.json`);
+    const assemble = (tag: string) =>
+      run([
+        'assemble',
+        '--descriptors',
+        dir,
+        '--version',
+        '1.2.3',
+        '--channel',
+        'stable',
+        '--source-sha',
+        sourceSha,
+        '--base-url',
+        `https://github.com/kontourai/station/releases/download/${tag}/`,
+        '--location-tag',
+        tag,
+        '--launcher-protocol-min',
+        '1',
+        '--launcher-protocol-max',
+        '1',
+        '--targets',
+        'linux-x64',
+        '--published-at',
+        createdAt,
+        '--output',
+        join(dir, 'payload.json'),
+      ]);
+    writeFileSync(path, JSON.stringify(descriptor));
+    return { dir, path, descriptor, assemble, archive };
+  }
+
+  it('assembles the same candidate provenance and archive bytes at RC and final locations', () => {
+    const { dir, archive, descriptor, assemble } = candidateDescriptor();
+    const original = readFileSync(archive);
+    for (const tag of ['v1.2.3-rc.4', 'v1.2.3']) {
+      const result = assemble(tag);
+      expect(result.status, result.stderr).toBe(0);
+      const payload = JSON.parse(
+        readFileSync(join(dir, 'payload.json'), 'utf8'),
+      );
+      expect(payload).toMatchObject({
+        version: '1.2.3',
+        releaseTag: 'v1.2.3',
+        sourceSha: 'a'.repeat(40),
+      });
+      expect(payload.artifacts).toEqual([
+        {
+          os: 'linux',
+          arch: 'x64',
+          name: 'station-server-linux-x64.tar.gz',
+          format: 'tar.gz',
+          url: `https://github.com/kontourai/station/releases/download/${tag}/station-server-linux-x64.tar.gz`,
+          sha256: descriptor.sha256,
+          size: original.length,
+        },
+      ]);
+      expect(readFileSync(archive)).toEqual(original);
+    }
+  });
+
+  it.each([
+    ['source SHA', { sha: 'b'.repeat(40) }],
+    ['product version', { version: '1.2.4' }],
+    ['runtime channel', { channel: 'nightly' }],
+    ['release ring', { releaseChannel: 'nightly' }],
+    ['prerelease claim', { prerelease: true }],
+    ['additional origin tag', { ref: 'v1.2.3-rc.4' }],
+    ['timestamp', { createdAt: 'not-a-time' }],
+  ])('rejects a descriptor with mismatched %s', (_label, overrides) => {
+    const { path, descriptor, assemble } = candidateDescriptor();
+    writeFileSync(
+      path,
+      JSON.stringify({
+        ...descriptor,
+        release: { ...descriptor.release, ...overrides },
+      }),
+    );
+    const refused = assemble('v1.2.3');
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain('not v1.2.3 (stable)');
+  });
+
+  it('does not reinterpret a legacy tag-bound descriptor as version-bound provenance', () => {
+    const { path, descriptor, assemble } = candidateDescriptor();
+    const { version: _version, ...identity } = descriptor.release;
+    writeFileSync(
+      path,
+      JSON.stringify({
+        ...descriptor,
+        release: { ...identity, schemaVersion: 2, ref: 'v1.2.3-rc.4' },
+      }),
+    );
+    expect(assemble('v1.2.3').status).toBe(1);
   });
 });

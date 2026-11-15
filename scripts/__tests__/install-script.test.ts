@@ -72,6 +72,7 @@ function makeFixtureArchive(
   failStop = false,
   releaseChannel: 'stable' | 'preview' = 'stable',
   provenanceSchema: 2 = 2,
+  releaseTag = releaseChannel === 'preview' ? 'v0.1.0-preview.1' : 'v0.1.0',
 ): {
   archive: string;
   checksum: string;
@@ -102,7 +103,7 @@ function makeFixtureArchive(
     `${JSON.stringify({
       schemaVersion: provenanceSchema,
       sha: id.repeat(40),
-      ref: releaseChannel === 'preview' ? 'v0.1.0-preview.1' : 'v0.1.0',
+      ref: releaseTag,
       createdAt: '2026-07-22T00:00:00.000Z',
       channel:
         provenanceSchema === 2 && releaseChannel === 'preview'
@@ -180,7 +181,7 @@ exec "${process.execPath}" "$@"
       schemaVersion: 1,
       channel: releaseChannel,
       prerelease: releaseChannel === 'preview',
-      ref: releaseChannel === 'preview' ? 'v0.1.0-preview.1' : 'v0.1.0',
+      ref: releaseTag,
       sha: id.repeat(40),
       createdAt: '2026-07-22T00:00:00.000Z',
       archive: { name: 'station-portable.tar.gz', sha256: digest },
@@ -292,13 +293,12 @@ function runInstaller(
         ).match(/"sha":\s*"([0-9a-f]+)"/)?.[1] ?? '',
       STATION_TEST_GH_LOG: fixture.ghLog,
       STATION_TEST_RELEASE_METADATA: JSON.stringify({
-        tag_name:
-          envOverrides.STATION_CHANNEL === 'beta'
-            ? 'v0.1.0-preview.1'
-            : 'v0.1.0',
+        tag_name: JSON.parse(readFileSync(fixture.manifest, 'utf8')).ref,
         target_commitish: 'main',
         draft: false,
-        prerelease: envOverrides.STATION_CHANNEL === 'beta',
+        prerelease: JSON.parse(
+          readFileSync(fixture.manifest, 'utf8'),
+        ).ref.includes('-'),
         assets: [],
       }),
       STATION_TEST_LOG: fixture.log,
@@ -669,6 +669,42 @@ describe('one-line Station installer', {
     expect(existsSync(launcher)).toBe(false);
     markersRemainAbsent();
   }, 60_000);
+
+  it('installs an exact RC pin as Stable and verifies its producer tag and digest', () => {
+    const root = tempDir('station-installer-rc-');
+    const fixture = makeFixtureArchive(
+      root,
+      'a',
+      false,
+      false,
+      'stable',
+      2,
+      'v0.1.0-rc.1',
+    );
+    const installed = runInstaller(root, fixture, [], {
+      STATION_VERSION: 'v0.1.0-rc.1',
+    });
+    expect(installed.result.status, installed.result.stderr).toBe(0);
+    expect(readFileSync(join(installed.binDir, 'station'), 'utf8')).toContain(
+      "export STATION_CHANNEL='stable'",
+    );
+    expect(readFileSync(fixture.ghLog, 'utf8')).toContain(
+      '--source-ref refs/tags/v0.1.0-rc.1 --source-digest ' + 'a'.repeat(40),
+    );
+    expect(existsSync(join(installed.binDir, 'station-beta'))).toBe(false);
+  });
+
+  it.each(['v0.1.0-rc.0', 'v0.1.0-rc.99'])(
+    'refuses invalid candidate pin %s before installation',
+    (tag) => {
+      const root = tempDir('station-installer-invalid-rc-');
+      const fixture = makeFixtureArchive(root);
+      const result = runInstaller(root, fixture, [], { STATION_VERSION: tag });
+      expect(result.result.status).not.toBe(0);
+      expect(result.result.stderr).toContain('invalid STATION_VERSION');
+      expect(existsSync(join(result.installRoot, 'current'))).toBe(false);
+    },
+  );
 
   it('maps a verified preview release to an isolated beta runtime wrapper', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-installer-'));
@@ -1787,6 +1823,62 @@ describe('prebuilt archive installs (#2675 B2)', {
   timeout: MAX_INSTALLER_RUNS_PER_TEST * INSTALLER_RUN_TIMEOUT_MS,
 }, () => {
   const tempDir = trackTempDirs();
+
+  it('installs identical version-bound bytes from candidate and final publication locations', () => {
+    const harness = archiveHarness(tempDir('station-archive-promote-'));
+    const archive = buildPrebuiltArchive(harness.root, '1.2.3', {
+      provenance: { schemaVersion: 3, ref: undefined, version: '1.2.3' },
+    });
+    for (const tag of ['v1.2.3-rc.1', 'v1.2.3']) {
+      const location = join(harness.root, 'releases', tag, archive.name);
+      mkdirSync(dirname(location), { recursive: true });
+      copyFileSync(archive.archive, location);
+      expect(
+        createHash('sha256').update(readFileSync(location)).digest('hex'),
+      ).toBe(archive.sha256);
+      const manifest = archiveManifest(harness, {
+        ...archive,
+        archive: location,
+      });
+      const result = runArchiveInstaller(harness, manifest);
+      expect(result.status, result.stderr).toBe(0);
+    }
+    const provenance = JSON.parse(
+      readFileSync(
+        join(harness.installRoot, 'current/.station-release.json'),
+        'utf8',
+      ),
+    );
+    expect(provenance).toMatchObject({
+      schemaVersion: 3,
+      version: '1.2.3',
+      sha: 'a'.repeat(40),
+    });
+    expect(provenance).not.toHaveProperty('ref');
+  });
+
+  it.each([
+    ['wrong version', { version: '1.2.4' }],
+    ['wrong source', { sha: 'b'.repeat(40) }],
+    ['invented field', { unexpected: true }],
+  ])('refuses version-bound provenance with %s', (_label, invalid) => {
+    const harness = archiveHarness(tempDir('station-archive-neutral-refuse-'));
+    const archive = buildPrebuiltArchive(harness.root, '1.2.3', {
+      provenance: {
+        schemaVersion: 3,
+        ref: undefined,
+        version: '1.2.3',
+        ...invalid,
+      },
+    });
+    const result = runArchiveInstaller(
+      harness,
+      archiveManifest(harness, archive),
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('release provenance is invalid');
+    expect(existsSync(join(harness.installRoot, 'current'))).toBe(false);
+  });
 
   it('finishes a signed install when macOS leaves Finder metadata in the extraction stage', () => {
     const harness = archiveHarness(tempDir('station-archive-finder-'));

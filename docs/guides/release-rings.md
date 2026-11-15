@@ -27,6 +27,19 @@ preview artifact.
 > tags until rc publication lands. The `preview` ring and Beta installer text below are
 > removed by later slices of that issue.
 
+New Stable portable server archives carry schema-3 provenance bound to source SHA and
+product version, not the tag where they were staged. An RC and its final release
+can therefore select the same Stable archive bytes. Both installers check the
+authenticated manifest's SHA, version and channel; older schema-2 archives keep
+exact-ref validation. The archived launcher reports a canonical `v<version>`
+identity for schema 3. See the [provenance decision](../decisions/rc-promotion-provenance.md).
+
+An exact source-release pin such as `STATION_VERSION=v0.2.0-rc.1` selects the
+Stable runtime and requires a GitHub prerelease at that exact tag. Its asset
+attestations still verify the producing `refs/tags/v0.2.0-rc.1` and source SHA.
+Unpinned Stable installation continues to select only final releases. This
+selection support does not publish candidates or move Stable pointers.
+
 Nightly is a separate, opt-in signed-public-manifest path:
 `STATION_CHANNEL=nightly` installs from the rolling `portable-nightly`
 manifest unless `STATION_INSTALL_PUBLIC_MANIFEST_URL` names another signed

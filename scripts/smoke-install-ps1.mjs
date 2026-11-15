@@ -120,8 +120,14 @@ function describeArchive(path) {
     path,
     ring,
     runtime: RUNTIME[ring],
-    version: descriptor.release.ref.replace(/^v/, ''),
-    tag: descriptor.release.ref,
+    version:
+      descriptor.release.schemaVersion === 3
+        ? descriptor.release.version
+        : descriptor.release.ref.replace(/^v/, ''),
+    tag:
+      descriptor.release.schemaVersion === 3
+        ? `v${descriptor.release.version}`
+        : descriptor.release.ref,
     sha: descriptor.release.sha,
     sha256: descriptor.sha256,
     size: descriptor.size,

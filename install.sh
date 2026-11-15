@@ -1408,8 +1408,8 @@ if [ "$version" != latest ]; then
   version_release_channel="$(node -e '
     const [version, ringsJson] = process.argv.slice(1);
     const rings = JSON.parse(ringsJson);
-    const match = /^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-([a-z]+)\.[1-9][0-9]*)?$/.exec(version);
-    const ring = !match ? undefined : match[1] === undefined
+    const match = /^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-([a-z]+)\.([1-9][0-9]*))?$/.exec(version);
+    const ring = !match ? undefined : match[1] === undefined || (match[1] === "rc" && Number(match[2]) <= 98)
       ? Object.keys(rings).find((name) => !rings[name].prerelease)
       : Object.hasOwn(rings, match[1]) && rings[match[1]].prerelease ? match[1] : undefined;
     if (!ring) process.exit(1);
@@ -1690,6 +1690,7 @@ else
 fi
 
 release_tag="$(printf '%s' "$release_metadata" | node -e 'const fs=require("node:fs");const v=JSON.parse(fs.readFileSync(0,"utf8"));if(typeof v.tag_name!=="string"||typeof v.target_commitish!=="string")process.exit(1);process.stdout.write(v.tag_name)')" || fail 'release metadata is incomplete'
+[ "$version" = latest ] || [ "$version" = "$release_tag" ] || fail 'requested version does not match the selected GitHub release'
 release_object="$(gh api "repos/$REPOSITORY/git/ref/tags/$release_tag")" || fail "could not resolve immutable source SHA for $release_tag"
 release_object_type="$(printf '%s' "$release_object" | node -e 'const fs=require("node:fs");const v=JSON.parse(fs.readFileSync(0,"utf8"));if(!["commit","tag"].includes(v?.object?.type)||typeof v.object.sha!=="string")process.exit(1);process.stdout.write(v.object.type)')" || fail 'release tag ref is malformed'
 release_sha="$(printf '%s' "$release_object" | node -e 'const fs=require("node:fs");const v=JSON.parse(fs.readFileSync(0,"utf8"));process.stdout.write(v.object.sha)')"
@@ -1711,7 +1712,9 @@ esac
 [ "$actual_channel" = "$release_channel" ] || fail 'requested channel does not match the selected release tag'
 printf '%s' "$release_metadata" | node -e '
   const fs=require("node:fs"); const [channel, tag]=process.argv.slice(1); const v=JSON.parse(fs.readFileSync(0,"utf8"));
-  if (v.draft || v.tag_name !== tag || Boolean(v.prerelease) !== (channel === "preview")) process.exit(1);
+  const candidate = /^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-rc\.([1-9]\d*)$/.exec(tag);
+  if (candidate && Number(candidate[1]) > 98) process.exit(1);
+  if (v.draft || v.tag_name !== tag || Boolean(v.prerelease) !== (channel === "preview" || Boolean(candidate))) process.exit(1);
 ' "$release_channel" "$release_tag" || fail 'release metadata channel/prerelease policy is invalid'
 
 resolve_asset_url() {
@@ -1873,7 +1876,15 @@ candidate_identity="$(node -e '
     runtimeChannel = value.channel;
     provenanceReleaseChannel = value.releaseChannel;
   }
-  if (!runtimeChannel || value.sha !== sha || value.ref !== ref ||
+  const base = "(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)";
+  const expectedVersion = ref.slice(1).replace(/-rc\.[1-9][0-9]*$/, "");
+  const versionShape = releaseChannel === "stable" ? new RegExp(`^${base}$`) : new RegExp(`^${base}-${releaseChannel}\\.[1-9][0-9]*(?:\\.[1-9][0-9]*)?$`);
+  const schema3 = value?.schemaVersion === 3 && ring && ["stable", "nightly"].includes(releaseChannel) &&
+      value.channel === ring.runtimeChannel && value.prerelease === ring.prerelease &&
+      typeof value.version === "string" && versionShape.test(value.version) && value.version === expectedVersion &&
+      JSON.stringify(Object.keys(value).sort()) === JSON.stringify(["channel", "createdAt", "prerelease", "releaseChannel", "schemaVersion", "sha", "version"]);
+  if (schema3) { runtimeChannel = value.channel; provenanceReleaseChannel = value.releaseChannel; }
+  if (!runtimeChannel || value.sha !== sha || (!schema3 && value.ref !== ref) ||
       provenanceReleaseChannel !== releaseChannel ||
       typeof value.createdAt !== "string" ||
       new Date(value.createdAt).toISOString() !== value.createdAt) {
@@ -2013,7 +2024,10 @@ check_public_manifest_version() {
       return { core: match.slice(1, 4).map(Number), label: match[4] ?? null, build: match[5] ? Number(match[5]) : null };
     };
     let installedTag;
-    try { installedTag = JSON.parse(fs.readFileSync(provenancePath, "utf8"))?.ref; } catch { process.exit(1); }
+    try {
+      const release = JSON.parse(fs.readFileSync(provenancePath, "utf8"));
+      installedTag = release?.schemaVersion === 3 && typeof release.version === "string" ? `v${release.version}` : release?.ref;
+    } catch { process.exit(1); }
     const installed = typeof installedTag === "string" ? parse(installedTag) : null;
     const candidate = parse(candidateTag);
     if (!installed || !candidate) process.exit(1);

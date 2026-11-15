@@ -5,7 +5,9 @@ import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.j
 import {
   compareStationReleaseVersions,
   packagedInstallerCommand,
+  packagedReleaseVersion,
   readArchiveInstallState,
+  validatePackagedReleaseManifest,
 } from '../prebuilt-archive.js';
 
 const makeTempDir = trackTempDirs();
@@ -144,5 +146,56 @@ describe('packagedInstallerCommand', () => {
       ],
       file: join(version, 'install.ps1'),
     });
+  });
+});
+
+describe('packaged provenance schemas', () => {
+  const identity = {
+    sha: 'a'.repeat(40),
+    createdAt: '2026-11-15T12:00:00.000Z',
+    channel: 'stable',
+    releaseChannel: 'stable',
+    prerelease: false,
+  };
+  const current = { schemaVersion: 3, ...identity, version: '1.2.3' };
+  test('reads new version-bound provenance and legacy exact-tag provenance', () => {
+    const legacy = { schemaVersion: 2, ...identity, ref: 'v1.2.3' };
+    expect(validatePackagedReleaseManifest(current)).toEqual(current);
+    expect(validatePackagedReleaseManifest(legacy)).toEqual(legacy);
+    expect(packagedReleaseVersion({ version: '1.2.3' })).toBe('1.2.3');
+    expect(packagedReleaseVersion({ ref: 'v1.2.3' })).toBe('1.2.3');
+    const nightly = {
+      ...current,
+      version: '1.2.3-nightly.7',
+      channel: 'nightly',
+      releaseChannel: 'nightly',
+      prerelease: true,
+    };
+    expect(validatePackagedReleaseManifest(nightly)).toEqual(nightly);
+  });
+  test.each([
+    ['origin tag', { ref: 'v1.2.3-rc.1' }],
+    ['wrong schema', { schemaVersion: 4 }],
+    ['wrong SHA', { sha: 'abc' }],
+    ['RC suffix in product version', { version: '1.2.3-rc.1' }],
+    ['wrong ring version', { version: '1.2.3-nightly.7' }],
+    ['invalid version type', { version: 123 }],
+    ['oversized version', { version: `${'1'.repeat(130)}.0.0` }],
+    ['wrong runtime channel', { channel: 'nightly' }],
+    ['wrong prerelease claim', { prerelease: true }],
+    ['invalid timestamp', { createdAt: 'not-a-time' }],
+    [
+      'retired preview provenance',
+      {
+        version: '1.2.3-preview.1',
+        channel: 'beta',
+        releaseChannel: 'preview',
+        prerelease: true,
+      },
+    ],
+  ])('rejects v3 %s', (_label, overrides) => {
+    expect(
+      validatePackagedReleaseManifest({ ...current, ...overrides }),
+    ).toBeNull();
   });
 });
