@@ -179,7 +179,7 @@ export function withStationControlRuntimeEnv(
         ? { STATION_INTERNAL_TENANT: tenantExecutionContext.tenantId }
         : {}),
     },
-    resolveHomeDir,
+    { resolveHome: resolveHomeDir },
   );
 }
 

@@ -314,7 +314,18 @@ Node never prunes the cache. One minute after boot, the server removes any
 Node-version subdirectory that nothing has written to for 30 days, except the
 one its own process uses. It then removes the whole cache if that is still over
 256 MiB. A subdirectory that is only read ages too, and costs one cold start
-once it is removed.
+once it is removed. The prune never follows a link inside the cache: it ages
+only real directories, counts only regular files, and removing a link removes
+the link, not its target.
+
+`cache` and `cache/node-compile` under the home must each be a real directory
+or not exist yet, and the cache must resolve inside the home's real path. The
+home itself may be a link. If either component is a symbolic link or anything
+other than a directory, the server neither hands the cache to the built-in
+children nor prunes it, and logs that once for the home. Otherwise Node and
+the prune would write into, or delete from, the link's target, such as an
+operator's shared directory. The desktop sidecar sets its own server's cache
+path natively, and this check does not cover that.
 
 No pre-generated cache ships with the desktop build. Node names each cache
 subdirectory after the Node version, architecture, V8 flags and user id, and

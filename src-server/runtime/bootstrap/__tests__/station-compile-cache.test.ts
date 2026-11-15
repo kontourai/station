@@ -1,9 +1,16 @@
-import { existsSync, mkdirSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { adoptStationCompileCache } from '../adopt-compile-cache.js';
 import {
-  adoptStationCompileCache,
   scheduleStationCompileCachePrune,
   withStationCompileCache,
 } from '../station-compile-cache.js';
@@ -15,34 +22,47 @@ import {
 
 const tempDir = trackTempDirs();
 const NODE_VERSION_DIR = 'v24.0.0-arm64-00000000-501';
+const silent = () => {};
 
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
 describe('withStationCompileCache', () => {
-  test("adds the home's cache directory", () => {
-    expect(
-      withStationCompileCache({ A: '1' }, () => '/station/home', {}),
-    ).toEqual({
+  test("adds the home's cache directory, existing or not yet created", () => {
+    const home = tempDir('station-compile-cache-home-');
+    const expected = {
       A: '1',
-      NODE_COMPILE_CACHE: resolve('/station/home/cache/node-compile'),
-    });
+      NODE_COMPILE_CACHE: resolve(home, 'cache', 'node-compile'),
+    };
+    const options = { resolveHome: () => home, parent: {}, warn: silent };
+    expect(withStationCompileCache({ A: '1' }, options)).toEqual(expected);
+    mkdirSync(join(home, 'cache', 'node-compile'), { recursive: true });
+    expect(withStationCompileCache({ A: '1' }, options)).toEqual(expected);
   });
 
   test('adds nothing when the operator disabled the cache or the home is unavailable', () => {
+    const home = tempDir('station-compile-cache-home-');
     expect(
-      withStationCompileCache({ A: '1' }, () => '/station/home', {
-        NODE_DISABLE_COMPILE_CACHE: '1',
-      }),
+      withStationCompileCache(
+        { A: '1' },
+        {
+          resolveHome: () => home,
+          parent: { NODE_DISABLE_COMPILE_CACHE: '1' },
+          warn: silent,
+        },
+      ),
     ).toEqual({ A: '1' });
     expect(
       withStationCompileCache(
         { A: '1' },
-        () => {
-          throw new Error('home refused');
+        {
+          resolveHome: () => {
+            throw new Error('home refused');
+          },
+          parent: {},
+          warn: silent,
         },
-        {},
       ),
     ).toEqual({ A: '1' });
   });
@@ -176,5 +196,113 @@ describe('scheduleStationCompileCachePrune', () => {
     await expect(
       scheduleStationCompileCachePrune(home, { delayMs: 0, now: NOW }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('a cache root that is not a plain directory in the home', () => {
+  const DAY_MS = 24 * 60 * 60_000;
+  const NOW = Date.UTC(2026, 10, 1);
+  const old = (NOW - 400 * DAY_MS) / 1000;
+
+  /** An operator's directory outside the home: one old subdirectory and one
+   * recent 4 KiB file, what both prune passes would remove if they reached
+   * it. */
+  function outsideTree(
+    outside: string = tempDir('station-compile-cache-outside-'),
+  ) {
+    mkdirSync(join(outside, 'old-dir'), { recursive: true });
+    writeFileSync(join(outside, 'old-dir', 'keep-me'), 'x');
+    utimesSync(join(outside, 'old-dir'), old, old);
+    writeFileSync(join(outside, 'recent-file'), Buffer.alloc(4096));
+    return outside;
+  }
+
+  const untouched = (outside: string) => {
+    expect(readdirSync(outside).sort()).toEqual(['old-dir', 'recent-file']);
+    expect(existsSync(join(outside, 'old-dir', 'keep-me'))).toBe(true);
+  };
+
+  /** `link` links part of the home's cache path out of the home and returns
+   * the directory a prune following that link would act on. */
+  async function refusesLinkedRoot(link: (home: string) => string) {
+    const home = tempDir('station-compile-cache-home-');
+    const outside = outsideTree(link(home));
+    const warn = vi.fn();
+    // Over the size bound and with an old directory: both passes would act.
+    await expect(
+      scheduleStationCompileCachePrune(home, {
+        delayMs: 0,
+        now: NOW,
+        maxBytes: 1,
+        warn,
+      }),
+    ).resolves.toBeUndefined();
+    untouched(outside);
+    // The children are not handed it either, and the refusal is logged once
+    // for the home across both uses.
+    expect(
+      withStationCompileCache(
+        {},
+        { resolveHome: () => home, parent: {}, warn },
+      ),
+    ).toEqual({});
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][1]).toMatchObject({
+      reason: expect.stringContaining('symbolic link'),
+    });
+  }
+
+  test('a linked cache directory is neither pruned nor handed to children', async () => {
+    await refusesLinkedRoot((home) => {
+      const shared = tempDir('station-compile-cache-shared-');
+      symlinkSync(shared, join(home, 'cache'), 'dir');
+      return join(shared, 'node-compile');
+    });
+  });
+
+  test('a linked node-compile directory is neither pruned nor handed to children', async () => {
+    await refusesLinkedRoot((home) => {
+      const shared = tempDir('station-compile-cache-shared-');
+      mkdirSync(join(home, 'cache'));
+      symlinkSync(shared, join(home, 'cache', 'node-compile'), 'dir');
+      return shared;
+    });
+  });
+
+  test('a link inside the root is never followed: its target survives both prune passes', async () => {
+    const home = tempDir('station-compile-cache-home-');
+    const outside = outsideTree();
+    const root = join(home, 'cache', 'node-compile');
+    mkdirSync(join(root, NODE_VERSION_DIR), { recursive: true });
+    writeFileSync(join(root, NODE_VERSION_DIR, 'entry'), Buffer.alloc(1024));
+    symlinkSync(outside, join(root, 'v0.0.0-linked-dir'), 'dir');
+    symlinkSync(
+      join(outside, 'recent-file'),
+      join(root, NODE_VERSION_DIR, 'linked-file'),
+    );
+    // Age pass: the link is not a directory to age out.
+    const aged = await scheduleStationCompileCachePrune(home, {
+      activeDir: join(root, NODE_VERSION_DIR),
+      delayMs: 0,
+      now: NOW,
+      warn: silent,
+    });
+    expect(aged).toMatchObject({
+      removedVersionDirs: [],
+      // The 4 KiB file behind the link is not counted.
+      totalBytes: 1024,
+      clearedForSize: false,
+    });
+    untouched(outside);
+    // Size pass: removing the cache removes the links, not their targets.
+    const cleared = await scheduleStationCompileCachePrune(home, {
+      delayMs: 0,
+      now: NOW,
+      maxBytes: 1,
+      warn: silent,
+    });
+    expect(cleared).toMatchObject({ clearedForSize: true });
+    expect(readdirSync(root)).toEqual([]);
+    untouched(outside);
   });
 });

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
-import { adoptStationCompileCache } from '../runtime/bootstrap/station-compile-cache.js';
+import { adoptStationCompileCache } from '../runtime/bootstrap/adopt-compile-cache.js';
 import { installStationControlStdioEntry } from './station-control-shared.js';
 import { createStationKnowledgeMcpServer } from './station-knowledge-mcp-server.js';
 

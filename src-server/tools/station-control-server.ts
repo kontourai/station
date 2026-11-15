@@ -6,7 +6,7 @@
  */
 
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
-import { adoptStationCompileCache } from '../runtime/bootstrap/station-compile-cache.js';
+import { adoptStationCompileCache } from '../runtime/bootstrap/adopt-compile-cache.js';
 import { createStationControlMcpServer } from './station-control-mcp-server.js';
 import { installStationControlStdioEntry } from './station-control-shared.js';
 
