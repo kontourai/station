@@ -210,6 +210,7 @@ describe('two-phase native Nightly', () => {
       'native-cohort',
       'nightly-cli',
       'portable-nightly',
+      'record-cli-ledger',
     ]);
   });
 

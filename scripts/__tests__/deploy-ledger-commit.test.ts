@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -330,6 +330,55 @@ describe('deploy-ledger commit-back with bounded re-derive-and-retry (MED-2)', (
         env: testEnv(),
       }),
     ).toThrow(/not retryable/);
+    expect(git(origin, 'rev-parse', 'main').trim()).toBe(before);
+  });
+
+  it('refuses malformed record groups and subject choices before touching git', () => {
+    const { origin, writerA } = makeTwoWriterScratch();
+    const before = git(origin, 'rev-parse', 'main').trim();
+    const helper = resolve(scriptRoot, 'lib/deploy-ledger-commit.mjs');
+    const record = recordArgv(writerA, {
+      channel: 'stable-npm',
+      version: '0.4.1',
+      sha: A_SHA,
+      artifact: 'npm:@kontourai/station-cli@0.4.1 (dist-tag latest)',
+    });
+    for (const [label, args, reason] of [
+      [
+        'an empty record group',
+        ['--subject-run-id', '7', '--record', '--record', ...record],
+        /every --record group/,
+      ],
+      [
+        'both subject flags',
+        [
+          '--commit-subject',
+          'docs(ledger): x',
+          '--subject-run-id',
+          '7',
+          '--',
+          ...record,
+        ],
+        /usage/,
+      ],
+      ['no subject', ['--record', ...record], /usage/],
+    ] as const) {
+      const result = spawnSync(
+        process.execPath,
+        [helper, '--repo-root', writerA, ...args],
+        { encoding: 'utf8', windowsHide: true, env: testEnv() },
+      );
+      expect(result.status, label).toBe(1);
+      expect(result.stderr, label).toMatch(reason);
+    }
+    expect(() =>
+      commitLedgerWithRetry({
+        repoRoot: writerA,
+        recordArgvs: [record],
+        subjectRunId: '0',
+        env: testEnv(),
+      }),
+    ).toThrow(/positive decimal run id/);
     expect(git(origin, 'rev-parse', 'main').trim()).toBe(before);
   });
 });

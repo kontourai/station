@@ -578,6 +578,25 @@ publication incidents until actual native-ledger or CLI registry-provenance
 recovery, independently of source-qualification repair. Read provider receipts
 for the failed leg; a green or skipped later job does not prove recovery.
 
+A Nightly records its deploy-ledger rows in one commit to `main`. In run
+history, every ledger push made GitHub discard and rebuild the merge groups in
+flight. The CLI job no longer writes
+its `nightly-npm` row. When the native cohort reaches `record-native-completion`,
+that job writes the npm, Android and desktop rows in one commit through
+[`deploy-ledger-commit.mjs`](../../scripts/lib/deploy-ledger-commit.mjs). It
+includes the npm row only after the CLI's provider receipt from the same run
+names that run's version and source, and the registry still binds that version
+to the source. The `record-cli-ledger` job runs after the cohort ends, whether it
+succeeded, failed, was skipped or was cancelled. When the CLI publish was verified,
+it records the npm row alone unless `main` already holds it. Both writers pass
+`--if-absent`, so either order leaves exactly one row. The commit subject names
+the rows it adds (`docs(ledger): record nightly-npm …, nightly-android …,
+nightly-desktop … from run <id>`), and the helper refuses a subject that
+[`normalize-deploy-ledger-head.mjs`](../../scripts/normalize-deploy-ledger-head.mjs)
+would not peel. A failure of `record-cli-ledger` counts against the CLI leg in
+health monitoring. Stable releases and package publication still write one
+record per commit.
+
 Preview
 and Stable are evidence-driven owner decisions, not automatic calendar releases.
 No public release is created merely by merging a normal PR. Package-version

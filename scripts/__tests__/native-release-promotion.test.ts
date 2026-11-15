@@ -622,10 +622,13 @@ process.stdout.write(String(response.status));
     const ledgerCalls = (ledger.run ?? '')
       .split('\n')
       .filter((line) => line.includes('node scripts/deploy-ledger.mjs'));
-    expect(ledgerCalls).toHaveLength(2);
+    // The run's npm row rides the same commit but is the CLI's ship, so it
+    // carries the CLI's own note, not the iOS result.
     expect(
       ledgerCalls.map((line) => /--channel (\S+)/.exec(line)?.[1]),
-    ).toEqual(['nightly-android', 'nightly-desktop']);
+    ).toEqual(['nightly-npm', 'nightly-android', 'nightly-desktop']);
+    expect(ledgerCalls[0]).not.toContain('TestFlight');
+    ledgerCalls.shift();
     for (const call of ledgerCalls) {
       expect(call).toContain(
         '--note "ios: TestFlight delivery $IOS_DELIVERY_RESULT (run $GITHUB_RUN_ID)"',
