@@ -131,10 +131,14 @@ export function ComposerRunControl({
               label
             ) : (
               <span className="composer-run-control__label">
-                <span className="composer-run-control__agent">
-                  {label.slice(0, separator)}
-                  {' · '}
-                </span>
+                {/* The Agent's own mark names it; the scarce text goes to the
+                    Model. The accessible name keeps the full label. */}
+                {!icon && (
+                  <span className="composer-run-control__agent">
+                    {label.slice(0, separator)}
+                    {' · '}
+                  </span>
+                )}
                 <span className="composer-run-control__model">
                   {label.slice(separator + 3)}
                 </span>

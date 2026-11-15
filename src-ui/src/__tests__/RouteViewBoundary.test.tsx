@@ -215,7 +215,7 @@ describe('RouteViewBoundary', () => {
         );
 
         expect(screen.getByRole('alert').textContent).toContain(
-          'not saved on this device',
+          'isn’t saved on this device',
         );
         expect(
           screen.queryByRole('button', { name: 'Reload Station' }),
@@ -240,7 +240,7 @@ describe('RouteViewBoundary', () => {
       );
 
       expect(screen.getByRole('alert').textContent).toContain(
-        'not available to you',
+        'isn’t available to you',
       );
       expect(
         screen.queryByRole('button', { name: 'Reload Station' }),

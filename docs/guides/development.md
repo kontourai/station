@@ -504,7 +504,7 @@ calls never reported a result (secrets redacted, set as code, and labelled as
 a record of the previous engine's commands rather than an instruction from the
 user), the peak and the limit, and the instruction to check their partial
 results and run heavy steps one at a time. The chat shows "The engine ran out
-of memory and was restarted — continuing", with **Stop** while it runs.
+of memory and was restarted. Continuing.", with **Stop** while it runs.
 
 Automatic continuation is withheld when the turn was interrupted, when a
 request (approval or question) was still open at the kill, when the

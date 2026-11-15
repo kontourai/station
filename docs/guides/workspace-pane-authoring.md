@@ -91,7 +91,8 @@ when its plugin renderer fails, the [required-slot default](plugins.md#required-
 renders instead of the standard-data alternative.
 
 The current [standard-data view](../../src-ui/src/workspace-panes/WorkspacePaneStandardDataView.tsx)
-displays the projection label and descriptor metadata as read-only information.
+shows a read-only placeholder with the projection and descriptor metadata behind
+a Details disclosure.
 It does not fetch `schemaRef` or resolve business rows from the projection name.
 The conformance command exercises data parsing and renderer selection; it does
 not mount a plugin or prove MCP resource execution, approval or sandbox behavior.
