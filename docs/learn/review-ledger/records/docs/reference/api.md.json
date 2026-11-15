@@ -660,7 +660,11 @@
 
     "src-server/providers/registries/agent-registry-provider.ts",
 
-    "src-server/routes/system/__tests__/install-provenance.test.ts"
+    "src-server/routes/system/__tests__/install-provenance.test.ts",
+
+    "src-server/routes/evidence/task-code-reviews.ts",
+
+    "src-server/services/evidence/task-code-review-module.ts"
   ],
 
   "checks": [

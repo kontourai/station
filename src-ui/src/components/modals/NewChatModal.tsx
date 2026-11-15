@@ -1421,6 +1421,7 @@ export function NewChatModal({
           status: 'ready',
           agent: draftAgent,
           modelLabel: draftModelLabel,
+          effortLabel: draftModel?.effortLabel,
           executionAgent:
             agents.find(
               (entry) => entry.slug === draftModel?.executionAgentId,

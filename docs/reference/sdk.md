@@ -6789,6 +6789,23 @@ use these same fetchers.
 
 ### Task review threads
 
+`taskCodeReviewQueryKey(scope, projectId, taskId, taskCreatedAt)`,
+`useTaskCodeReviewQuery(scope, projectId, taskId, taskCreatedAt, enabled)` and
+`useRequestTaskCodeReviewMutation(scope, projectId, taskId, taskCreatedAt)`
+are exported from the SDK root and query barrel. They call the
+[Task code-review API](api.md#independent-code-review) using the supplied
+authority scope. Keys include the API base, authority, Project ID and Task
+incarnation. A failed read hides cached protected data; 404 explains that the
+host or preview does not support this surface. The query refreshes every four
+seconds only while returned requests are running, and stops after a read error.
+Disable it when its view is hidden.
+
+The mutation submits `TaskCodeReviewRequest` with retries disabled and
+invalidates that exact query after settlement. The caller retains the original
+Project ID/creation time, request ID and commit pair across uncertain transport
+outcomes; explicit retry reuses those values. A replacement Project cannot
+inherit that saved intent. A completed request is not a passed gate.
+
 The SDK root and query barrel export `fetchTaskReview(taskId)`,
 `taskReviewQueryKey(taskId)` and `useTaskReviewQuery(taskId, {poll})` for the
 [Task review API](api.md#task-review-threads). `poll` defaults to false. Enable

@@ -97,10 +97,18 @@ defined in [`share-image.ts`](../../src-ui/src/platform/native/share-image.ts).
 - **Clipboard (`clipboard-image`).** Android reads the primary clip's image
   URIs through `ContentResolver`, judging each item by its own type, so a clip
   that mixes an image with a PDF pastes the image; iOS reads admitted
-  pasteboard representations. An empty clipboard is an empty list. The composers' **Paste
-  image** action (reply, start and Task composers) calls the native read where
+  pasteboard representations. An empty clipboard is an empty list. The room
+  composer's **Paste image** action calls the native read where
   `clipboard-image` is enabled and `navigator.clipboard.read()` on a touch
-  browser, then hands the files to that composer's own Attach path.
+  browser, then hands the files to the room's own Attach path.
+- **Android keyboard images.** Wry's configured `RustWebView` extension wraps
+  the input connection on API 25+ and the system selection-menu callback.
+  The media-intake plugin reads the received URI through the same admission
+  and image bounds above, then delivers files to the captured reply/start
+  composer's paste handler. It drops delivery when that field loses focus or
+  changes identity. This does not add an adapter command or automatically send.
+  JVM/DOM tests are separate from physical Gboard and image-only system Paste
+  acceptance; see [the device sequence](../guides/mobile-release.md).
 - **Share target (`image-share-intake`).** Android's generated MainActivity
   carries an `image/*` filter for `ACTION_SEND` and `ACTION_SEND_MULTIPLE`; the
   channel bootstrap (`scripts/apply-android-native-bootstrap.mjs`) restores it
