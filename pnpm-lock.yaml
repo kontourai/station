@@ -145,6 +145,9 @@ importers:
       '@kontourai/console-ui':
         specifier: ^0.3.0
         version: 0.3.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@kontourai/corpus':
+        specifier: 0.8.1
+        version: 0.8.1
       '@kontourai/corpus-store':
         specifier: 0.1.0-next.5
         version: 0.1.0-next.5
@@ -425,18 +428,27 @@ importers:
       '@biomejs/biome':
         specifier: ^2.6.6
         version: 2.6.6
+      '@changesets/assemble-release-plan':
+        specifier: 7.0.0
+        version: 7.0.0
       '@changesets/cli':
         specifier: ^3.0.3
         version: 3.0.3
+      '@changesets/config':
+        specifier: 4.0.1
+        version: 4.0.1
+      '@changesets/parse':
+        specifier: 1.0.0
+        version: 1.0.0
+      '@changesets/should-skip-package':
+        specifier: 1.0.0
+        version: 1.0.0
       '@cyclonedx/cyclonedx-npm':
         specifier: 6.0.1
         version: 6.0.1(supports-color@7.2.0)
       '@kontourai/console':
         specifier: ^2.9.0
         version: 2.9.0(supports-color@7.2.0)
-      '@kontourai/corpus':
-        specifier: github:kontourai/corpus#dfadba4e64883e6187fb42e32911ca9f091e0fa7
-        version: https://codeload.github.com/kontourai/corpus/tar.gz/dfadba4e64883e6187fb42e32911ca9f091e0fa7
       '@kontourai/station-supervisor':
         specifier: ^0.1.0
         version: link:packages/supervisor
@@ -2327,9 +2339,8 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
-  '@kontourai/corpus@https://codeload.github.com/kontourai/corpus/tar.gz/dfadba4e64883e6187fb42e32911ca9f091e0fa7':
-    resolution: {gitHosted: true, integrity: sha512-4c4mdW5gpHs9WwD7+BWMVkO2NjgtTt/qy5BT6q7l5DSkmDa3W6SxkV+m46yWbFU9J2nNAqLo6ZzDPq4iHouJ8Q==, tarball: https://codeload.github.com/kontourai/corpus/tar.gz/dfadba4e64883e6187fb42e32911ca9f091e0fa7}
-    version: 0.7.0
+  '@kontourai/corpus@0.8.1':
+    resolution: {integrity: sha512-NeLgc7SCzwenBbcdmBUtG/1+Qe/UOTUnb/4yzfPa5kcQYLUFsqqZUMok8Babdb25dJ84F22E4pGJ0AlQFtwobQ==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -10426,7 +10437,7 @@ snapshots:
     dependencies:
       js-yaml: 5.4.2
 
-  '@kontourai/corpus@https://codeload.github.com/kontourai/corpus/tar.gz/dfadba4e64883e6187fb42e32911ca9f091e0fa7':
+  '@kontourai/corpus@0.8.1':
     dependencies:
       '@modelcontextprotocol/server': 2.4.0
       github-slugger: 2.0.0

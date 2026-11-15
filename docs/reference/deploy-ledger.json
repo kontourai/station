@@ -1,5 +1,254 @@
 [
   {
+    "timestampUtc": "2026-11-15T12:33:49Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.20261115",
+    "sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+    "artifactBuiltAt": "2026-11-15T11:44:05.731Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43709226198",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 43709226198)"
+    ],
+    "changelog": {
+      "previousSha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+      "groups": {
+        "feat": [
+          "[#4900](https://github.com/kontourai/station/pull/4900) feat(docs): rank station_docs search with Corpus over one shipped bundle (#4831)",
+          "[#4979](https://github.com/kontourai/station/pull/4979) feat(browser): record bounded HTML preview failure diagnostics"
+        ],
+        "fix": [
+          "[#4982](https://github.com/kontourai/station/pull/4982) fix(qualification): keep test-spawned runners out of the real failure manifest",
+          "[#4968](https://github.com/kontourai/station/pull/4968) fix(html-replies): run visual-reply scripts in app shells and route visuals to html_render",
+          "[#4981](https://github.com/kontourai/station/pull/4981) fix(orchestration): don't fence a thread when recovery is refused by the governance check",
+          "[#4978](https://github.com/kontourai/station/pull/4978) fix(release): let the generated release pull request pass its source checks"
+        ],
+        "ci": [
+          "[#4983](https://github.com/kontourai/station/pull/4983) ci(nightly): record each Nightly's deploy-ledger rows in one commit",
+          "[#4980](https://github.com/kontourai/station/pull/4980) ci(supersession): retire every workflow run of a superseded merge group",
+          "[#4977](https://github.com/kontourai/station/pull/4977) ci(gallery): capture PRs merged into main and attribute failures main already has",
+          "[#4976](https://github.com/kontourai/station/pull/4976) ci(qualification): list the #4948 and #4971 failures as known"
+        ],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
+    "timestampUtc": "2026-11-15T12:33:49Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.20261115",
+    "sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+    "artifactBuiltAt": "2026-11-15T11:43:21.171Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43709226198",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 43709226198)"
+    ],
+    "changelog": {
+      "previousSha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+      "groups": {
+        "feat": [
+          "[#4900](https://github.com/kontourai/station/pull/4900) feat(docs): rank station_docs search with Corpus over one shipped bundle (#4831)",
+          "[#4979](https://github.com/kontourai/station/pull/4979) feat(browser): record bounded HTML preview failure diagnostics"
+        ],
+        "fix": [
+          "[#4982](https://github.com/kontourai/station/pull/4982) fix(qualification): keep test-spawned runners out of the real failure manifest",
+          "[#4968](https://github.com/kontourai/station/pull/4968) fix(html-replies): run visual-reply scripts in app shells and route visuals to html_render",
+          "[#4981](https://github.com/kontourai/station/pull/4981) fix(orchestration): don't fence a thread when recovery is refused by the governance check",
+          "[#4978](https://github.com/kontourai/station/pull/4978) fix(release): let the generated release pull request pass its source checks"
+        ],
+        "ci": [
+          "[#4983](https://github.com/kontourai/station/pull/4983) ci(nightly): record each Nightly's deploy-ledger rows in one commit",
+          "[#4980](https://github.com/kontourai/station/pull/4980) ci(supersession): retire every workflow run of a superseded merge group",
+          "[#4977](https://github.com/kontourai/station/pull/4977) ci(gallery): capture PRs merged into main and attribute failures main already has",
+          "[#4976](https://github.com/kontourai/station/pull/4976) ci(qualification): list the #4948 and #4971 failures as known"
+        ],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
+    "timestampUtc": "2026-11-15T11:48:12Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261115.43709226198",
+    "sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43709226198",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261115.43709226198 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+      "groups": {
+        "feat": [
+          "[#4900](https://github.com/kontourai/station/pull/4900) feat(docs): rank station_docs search with Corpus over one shipped bundle (#4831)",
+          "[#4979](https://github.com/kontourai/station/pull/4979) feat(browser): record bounded HTML preview failure diagnostics"
+        ],
+        "fix": [
+          "[#4982](https://github.com/kontourai/station/pull/4982) fix(qualification): keep test-spawned runners out of the real failure manifest",
+          "[#4968](https://github.com/kontourai/station/pull/4968) fix(html-replies): run visual-reply scripts in app shells and route visuals to html_render",
+          "[#4981](https://github.com/kontourai/station/pull/4981) fix(orchestration): don't fence a thread when recovery is refused by the governance check",
+          "[#4978](https://github.com/kontourai/station/pull/4978) fix(release): let the generated release pull request pass its source checks"
+        ],
+        "ci": [
+          "[#4983](https://github.com/kontourai/station/pull/4983) ci(nightly): record each Nightly's deploy-ledger rows in one commit",
+          "[#4980](https://github.com/kontourai/station/pull/4980) ci(supersession): retire every workflow run of a superseded merge group",
+          "[#4977](https://github.com/kontourai/station/pull/4977) ci(gallery): capture PRs merged into main and attribute failures main already has",
+          "[#4976](https://github.com/kontourai/station/pull/4976) ci(qualification): list the #4948 and #4971 failures as known"
+        ],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
+    "timestampUtc": "2026-11-15T00:22:06Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.20261114.2",
+    "sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+    "artifactBuiltAt": "2026-11-14T23:37:41.176Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43653046102",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 43653046102)"
+    ],
+    "changelog": {
+      "previousSha": "e54d5784edda09dc704955455b4fe000547231ca",
+      "groups": {
+        "feat": [
+          "[#4969](https://github.com/kontourai/station/pull/4969) feat(acp): make Google Antigravity (agy acp) a working built-in engine on generic ACP seams",
+          "[#4970](https://github.com/kontourai/station/pull/4970) feat(muse): full Muse Code support on muse serve, on generic engine seams",
+          "[#4961](https://github.com/kontourai/station/pull/4961) feat(docs): record one review note per widely cited input",
+          "[#4897](https://github.com/kontourai/station/pull/4897) feat(ui): unify run setup beside composer send actions"
+        ],
+        "fix": [
+          "[#4967](https://github.com/kontourai/station/pull/4967) fix(plugins): recover from an unreadable plugin inventory instead of showing unsupported tabs",
+          "[#4966](https://github.com/kontourai/station/pull/4966) fix(deps): record the owner-approved zod exception and renew three residuals"
+        ],
+        "ci": [
+          "[#4974](https://github.com/kontourai/station/pull/4974) ci(qualification): classify red runs from runner-written failure manifests, in report mode",
+          "[#4964](https://github.com/kontourai/station/pull/4964) ci(qualification): spend less runner time on main qualification",
+          "[#4962](https://github.com/kontourai/station/pull/4962) ci(fast-checks): spread PR shards over five slots and give the release bot its own",
+          "[#4960](https://github.com/kontourai/station/pull/4960) ci: repair scheduled automation that failed every run and harden its issue writes"
+        ],
+        "docs": [],
+        "other": [
+          "[#4965](https://github.com/kontourai/station/pull/4965) test(android): reconcile release pairing keeper with Stable RC staging",
+          "[#4959](https://github.com/kontourai/station/pull/4959) test(gallery): phone chat actions lead the child-chat breadcrumb"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
+    "timestampUtc": "2026-11-15T00:22:04Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.20261114.2",
+    "sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+    "artifactBuiltAt": "2026-11-14T23:36:57.099Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43653046102",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 43653046102)"
+    ],
+    "changelog": {
+      "previousSha": "e54d5784edda09dc704955455b4fe000547231ca",
+      "groups": {
+        "feat": [
+          "[#4969](https://github.com/kontourai/station/pull/4969) feat(acp): make Google Antigravity (agy acp) a working built-in engine on generic ACP seams",
+          "[#4970](https://github.com/kontourai/station/pull/4970) feat(muse): full Muse Code support on muse serve, on generic engine seams",
+          "[#4961](https://github.com/kontourai/station/pull/4961) feat(docs): record one review note per widely cited input",
+          "[#4897](https://github.com/kontourai/station/pull/4897) feat(ui): unify run setup beside composer send actions"
+        ],
+        "fix": [
+          "[#4967](https://github.com/kontourai/station/pull/4967) fix(plugins): recover from an unreadable plugin inventory instead of showing unsupported tabs",
+          "[#4966](https://github.com/kontourai/station/pull/4966) fix(deps): record the owner-approved zod exception and renew three residuals"
+        ],
+        "ci": [
+          "[#4974](https://github.com/kontourai/station/pull/4974) ci(qualification): classify red runs from runner-written failure manifests, in report mode",
+          "[#4964](https://github.com/kontourai/station/pull/4964) ci(qualification): spend less runner time on main qualification",
+          "[#4962](https://github.com/kontourai/station/pull/4962) ci(fast-checks): spread PR shards over five slots and give the release bot its own",
+          "[#4960](https://github.com/kontourai/station/pull/4960) ci: repair scheduled automation that failed every run and harden its issue writes"
+        ],
+        "docs": [],
+        "other": [
+          "[#4965](https://github.com/kontourai/station/pull/4965) test(android): reconcile release pairing keeper with Stable RC staging",
+          "[#4959](https://github.com/kontourai/station/pull/4959) test(gallery): phone chat actions lead the child-chat breadcrumb"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
+    "timestampUtc": "2026-11-14T23:38:21Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261114.43653046102",
+    "sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43653046102",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261114.43653046102 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "e54d5784edda09dc704955455b4fe000547231ca",
+      "groups": {
+        "feat": [
+          "[#4969](https://github.com/kontourai/station/pull/4969) feat(acp): make Google Antigravity (agy acp) a working built-in engine on generic ACP seams",
+          "[#4970](https://github.com/kontourai/station/pull/4970) feat(muse): full Muse Code support on muse serve, on generic engine seams",
+          "[#4961](https://github.com/kontourai/station/pull/4961) feat(docs): record one review note per widely cited input",
+          "[#4897](https://github.com/kontourai/station/pull/4897) feat(ui): unify run setup beside composer send actions"
+        ],
+        "fix": [
+          "[#4967](https://github.com/kontourai/station/pull/4967) fix(plugins): recover from an unreadable plugin inventory instead of showing unsupported tabs",
+          "[#4966](https://github.com/kontourai/station/pull/4966) fix(deps): record the owner-approved zod exception and renew three residuals"
+        ],
+        "ci": [
+          "[#4974](https://github.com/kontourai/station/pull/4974) ci(qualification): classify red runs from runner-written failure manifests, in report mode",
+          "[#4964](https://github.com/kontourai/station/pull/4964) ci(qualification): spend less runner time on main qualification",
+          "[#4962](https://github.com/kontourai/station/pull/4962) ci(fast-checks): spread PR shards over five slots and give the release bot its own",
+          "[#4960](https://github.com/kontourai/station/pull/4960) ci: repair scheduled automation that failed every run and harden its issue writes"
+        ],
+        "docs": [],
+        "other": [
+          "[#4965](https://github.com/kontourai/station/pull/4965) test(android): reconcile release pairing keeper with Stable RC staging",
+          "[#4959](https://github.com/kontourai/station/pull/4959) test(gallery): phone chat actions lead the child-chat breadcrumb"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
     "timestampUtc": "2026-11-14T15:37:21Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.20261114.1",

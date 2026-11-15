@@ -13,6 +13,7 @@
  * and the pure `mapAcpStopReasonToFinishReason`/`mapAcpDecisionToOutcome`
  * helpers. Zero dependency on `ACPProcess`/spawn.
  */
+
 import crypto from 'node:crypto';
 import type {
   ContentBlock,
@@ -22,6 +23,7 @@ import type {
   SessionUpdate,
   StopReason,
 } from '@agentclientprotocol/sdk/unstable';
+import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import type {
   ApprovalStatus,
   TokenUsageUpdatedEvent,
@@ -179,7 +181,7 @@ function extractTurnErrorCauseMessage(payload: unknown): string | undefined {
 }
 
 export interface AcpMapperContext {
-  provider: 'acp';
+  provider: EngineId;
   session: ProviderSession;
   activeTurnId?: string;
   publish: (event: CanonicalRuntimeEvent) => void;

@@ -35,7 +35,7 @@
         "font-src": "'self' data:",
         "img-src": "'self' asset: http://asset.localhost data: blob: http: https:",
         "media-src": "'self' asset: http://asset.localhost data: blob: http: https:",
-        "frame-src": "'self' data: blob: http: https:",
+        "frame-src": "'self' data: blob: http: https: station-html-reply:",
         "worker-src": "'self' blob:",
         "manifest-src": "'self'",
         "object-src": "'none'",

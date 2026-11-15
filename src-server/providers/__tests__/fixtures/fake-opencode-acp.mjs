@@ -42,6 +42,13 @@
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 
+// `--version` prints `1.18.18`, or what FAKE_OPENCODE_VERSION
+// says, and launches nothing (the version probe, ruling R1).
+if (process.argv[2] === '--version') {
+  process.stdout.write(`${process.env.FAKE_OPENCODE_VERSION ?? '1.18.18'}\n`);
+  process.exit(0);
+}
+
 // `debug agent <name>` prints the agent's resolved rules (#3290), as
 // `opencode debug agent` does; it is not an engine launch.
 const debugAgent =

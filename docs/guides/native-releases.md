@@ -232,7 +232,11 @@ attestation, then writes an Android row and a shared desktop row for the
 providers the receipt verified as published, with `native cohort final receipt <state>` in the gate
 column and, on every row it writes, a note per `NOT_VERIFIED` or
 `NOT_PUBLISHED` platform and an `ios:` note carrying the TestFlight job
-result (iOS has no ledger channel of its own). The rolling Android marker `refs/tags/nightly` moves only when the
+result (iOS has no ledger channel of its own). The same commit carries the
+run's `nightly-npm` row when the CLI receipt from this run verifies; one commit
+means one push, so a night disturbs in-flight merge groups once, and
+[releasing](releasing.md) describes the fallback that records the npm row
+alone. The rolling Android marker `refs/tags/nightly` moves only when the
 receipt says Android published; the desktop publisher binds `nightly-desktop` in
 its publishing job, before its claim step. The next plan's decide step
 (`scripts/nightly-cohort-decide.mjs`, rule in

@@ -8,9 +8,10 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { sessionAttentionKind } from '@kontourai/station-contracts/session-attention';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import type {
-  ProviderAdapterShape,
-  ProviderSession,
+import {
+  ApprovalGovernanceRefusedError,
+  type ProviderAdapterShape,
+  type ProviderSession,
 } from '../../../providers/adapter-shape.js';
 import { waitForReceipt } from '../../infra/receipt-bus.js';
 import { ToolLibraryService } from '../../plugins/tool-library-service.js';
@@ -27,7 +28,11 @@ import {
   trackOrchestrationSession,
 } from '../orchestration-session-state.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
-import { SessionStartIndeterminateError } from '../session-turn-boundary-binding.js';
+import {
+  createInMemorySessionTurnBoundaryAuthority,
+  runSessionStartWithBoundary,
+  SessionStartIndeterminateError,
+} from '../session-turn-boundary-binding.js';
 
 /**
  * archive#3476: the engine-start half of recovery, which boot no longer runs.
@@ -1064,6 +1069,65 @@ describe('orchestration-session-state', () => {
         message: expect.stringContaining('ollama not ready yet'),
       }),
     );
+  });
+
+  /**
+   * #4435: OpenCode 2.x has no `debug agent <name>`, so the ACP adapter's
+   * governance check refuses. On recovery that check ran inside the start
+   * boundary, so the refusal was recorded as a start that may have happened
+   * and every retry was refused with "Session start admission is
+   * unavailable". The check now runs first, and the boundary stays free.
+   */
+  test('startRecoveredOrchestrationSession refuses an ungovernable start before the start boundary, so a retry can start', async () => {
+    const authority = createInMemorySessionTurnBoundaryAuthority();
+    let governable = false;
+    const refusal = new ApprovalGovernanceRefusedError(
+      "Station can't apply its approval mode to OpenCode, so the chat was not started: Station could not read OpenCode's resolved approval rules (debug agent build exited with code 1:     agents).",
+    );
+    const session: ProviderSession = {
+      provider: 'acp',
+      threadId: 'thread-governance',
+      status: 'running',
+      model: 'glm',
+      createdAt: '2026-11-14T16:00:00.000Z',
+      updatedAt: '2026-11-14T19:00:00.000Z',
+    };
+    // The real adapter repeats the check inside startSession when no
+    // preflight result is fresh, so both refuse until the rules are readable.
+    const adapter = {
+      provider: 'acp',
+      preflightStart: vi.fn(async () => {
+        if (!governable) throw refusal;
+      }),
+      startSession: vi.fn(async () => {
+        if (!governable) throw refusal;
+        return { ...session, status: 'ready' };
+      }),
+    } as unknown as ProviderAdapterShape;
+    const options = {
+      eventStore: {
+        upsertSession: vi.fn(),
+        markSessionClosed: vi.fn(),
+        appendEventIfAbsent: vi.fn(),
+      } as any,
+      invokeSessionStart: <T>(threadId: string, invoke: () => Promise<T>) =>
+        runSessionStartWithBoundary(authority, threadId, invoke),
+    };
+
+    const first = startRecovered({ session, adapter, options });
+    await expect(first).rejects.toBe(refusal);
+    await expect(first).rejects.not.toBeInstanceOf(
+      SessionStartIndeterminateError,
+    );
+    expect(adapter.startSession).not.toHaveBeenCalled();
+
+    governable = true;
+    await expect(
+      startRecovered({ session, adapter, options }),
+    ).resolves.toEqual(
+      expect.objectContaining({ threadId: 'thread-governance' }),
+    );
+    expect(adapter.startSession).toHaveBeenCalledTimes(1);
   });
 
   test("startRecoveredOrchestrationSession recovers an acp session via the cursor's connectionId when no metadata survives", async () => {

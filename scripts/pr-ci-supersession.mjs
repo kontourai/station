@@ -91,6 +91,9 @@ function mergedOwner(pr, number, repository) {
 
 // These inventories authorize cancellation, so truncation, duplicate identities
 // and changing total counts are errors rather than an incomplete success.
+// InconsistentInventory marks a listing that disagreed with itself while runs
+// were changing state; malformed listings are plain errors.
+class InconsistentInventory extends Error {}
 async function completeListing(path, key) {
   const result = [];
   let total;
@@ -102,28 +105,70 @@ async function completeListing(path, key) {
     if (!Array.isArray(items) || items.length > 100)
       throw new Error('Incomplete retirement inventory');
     if (key) {
-      if (
-        !Number.isSafeInteger(data.total_count) ||
-        data.total_count < 0 ||
-        (total !== undefined && total !== data.total_count)
-      )
-        throw new Error('Changing retirement inventory');
+      if (!Number.isSafeInteger(data.total_count) || data.total_count < 0)
+        throw new Error('Malformed retirement inventory count');
+      if (total !== undefined && total !== data.total_count)
+        throw new InconsistentInventory('Changing retirement inventory');
       total = data.total_count;
     }
     result.push(...items);
-    const ids = result.map((item) => (key ? item.id : item.number));
-    if (
-      ids.some((id) => !Number.isSafeInteger(id) || id <= 0) ||
-      new Set(ids).size !== ids.length
-    )
-      throw new Error('Ambiguous retirement inventory');
+    checkInventoryIds(result.map((item) => (key ? item.id : item.number)));
     if (items.length < 100) {
       if (total !== undefined && total !== result.length)
-        throw new Error('Truncated retirement inventory');
+        throw new InconsistentInventory('Truncated retirement inventory');
       return result;
     }
   }
   throw new Error('Retirement inventory pagination exceeded bound');
+}
+
+function checkInventoryIds(ids) {
+  if (ids.some((id) => !Number.isSafeInteger(id) || id <= 0))
+    throw new Error('Ambiguous retirement inventory');
+  if (new Set(ids).size !== ids.length)
+    throw new InconsistentInventory('Duplicate retirement inventory');
+}
+
+const GROUP_LISTING_ATTEMPTS = 3;
+function listingPauseMs() {
+  const raw = process.env.PR_CI_SUPERSESSION_LISTING_PAUSE_MS;
+  if (raw === undefined) return 2_000;
+  const value = Number(raw);
+  if (!/^[0-9]+$/.test(raw) || value > 10_000)
+    throw new Error('PR_CI_SUPERSESSION_LISTING_PAUSE_MS must be 0-10000');
+  return value;
+}
+
+// Live merge-group runs of every workflow. GitHub's counts disagree with the
+// returned page while a new group's runs are being created, so an
+// inconsistent listing is re-read a bounded number of times. If it stays
+// inconsistent, this pass retires nothing (null): the next queue event retries,
+// and a missed retirement only spends runner time.
+async function liveGroupRuns(number) {
+  const pause = listingPauseMs();
+  let reason = '';
+  for (let attempt = 1; attempt <= GROUP_LISTING_ATTEMPTS; attempt++) {
+    try {
+      const runs = [];
+      for (const status of ['queued', 'pending', 'in_progress'])
+        runs.push(
+          ...(await completeListing(
+            `actions/runs?event=merge_group&status=${status}`,
+            'workflow_runs',
+          )),
+        );
+      return runs;
+    } catch (error) {
+      if (!(error instanceof InconsistentInventory)) throw error;
+      reason = error.message;
+      if (attempt < GROUP_LISTING_ATTEMPTS)
+        await new Promise((resolve) => setTimeout(resolve, pause));
+    }
+  }
+  console.log(
+    `::warning::Merge retirement skipped for #${number}: ${reason} on all ${GROUP_LISTING_ATTEMPTS} listing attempts; nothing was cancelled`,
+  );
+  return null;
 }
 
 function qualifiedOptionalTail(jobs, run) {
@@ -489,6 +534,17 @@ function sameGroupRun(live, run, workflow, repository) {
   );
 }
 
+// A listed run's own workflow identity, which every later read of that run
+// must repeat.
+function runWorkflow(run) {
+  return Number.isSafeInteger(run.workflow_id) &&
+    run.workflow_id > 0 &&
+    typeof run.path === 'string' &&
+    run.path
+    ? { id: run.workflow_id, path: run.path }
+    : null;
+}
+
 // Queue squash commits intentionally do not retain the original PR head ancestry.
 // GitHub's live entry binds the current PR head to its synthetic commit instead.
 async function queueSourceBinding(number, source, run, repository) {
@@ -602,27 +658,26 @@ async function retireReplacedGroups(trigger, repository) {
   }
   let requested = 0;
   let refused = 0;
-  const runs = [];
-  for (const status of ['queued', 'pending', 'in_progress']) {
-    runs.push(
-      ...(await completeListing(
-        `actions/workflows/${workflow.id}/runs?event=merge_group&status=${status}`,
-        'workflow_runs',
-      )),
-    );
-  }
+  // Every workflow's merge-group runs, not only PR: CI: a superseded group's
+  // other runs belong to the same dead candidate commit. The deadness proof
+  // below is per candidate (PR number, commit, ref), never per workflow.
+  const runs = await liveGroupRuns(number);
+  if (!runs) return;
   for (const run of new Map(runs.map((run) => [run.id, run])).values()) {
+    const own = runWorkflow(run);
     if (
-      !sameGroupRun(run, run, workflow, repository) ||
+      !own ||
+      !sameGroupRun(run, run, own, repository) ||
       Number(GROUP_BRANCH.exec(run.head_branch)[1]) !== number ||
       run.head_sha === replacement.head_sha ||
+      // Implied by the sha check: a run's head_sha never changes.
       run.id === replacement.id ||
       !(Date.parse(run.created_at) < Date.parse(replacement.created_at))
     )
       continue;
     const live = await github(`actions/runs/${run.id}`);
     if (
-      !sameGroupRun(live, run, workflow, repository) ||
+      !sameGroupRun(live, run, own, repository) ||
       !LIVE_RUN_STATES.has(live.status)
     )
       continue;
@@ -647,7 +702,7 @@ async function retireReplacedGroups(trigger, repository) {
     const finalRun = await github(`actions/runs/${run.id}`);
     if (
       !sameGroupRun(latest, replacement, workflow, repository) ||
-      !sameGroupRun(finalRun, run, workflow, repository) ||
+      !sameGroupRun(finalRun, run, own, repository) ||
       !LIVE_RUN_STATES.has(finalRun.status) ||
       currentOwner.state !== 'open' ||
       currentOwner.base?.ref !== 'main' ||
@@ -677,10 +732,10 @@ async function retireReplacedGroups(trigger, repository) {
     requested++;
     const settled = await github(`actions/runs/${run.id}`);
     const terminal =
-      sameGroupRun(settled, run, workflow, repository) &&
+      sameGroupRun(settled, run, own, repository) &&
       settled.status === 'completed';
     console.log(
-      `Replaced merge candidate #${number}: run ${run.id}/${run.run_attempt}, ${run.head_sha}; replacement ${replacement.id}/${replacement.run_attempt}, ${replacement.head_sha}; normal cancellation ${terminal ? `terminal ${settled.conclusion}` : 'requested, terminal state not verified'}`,
+      `Replaced merge candidate #${number}: ${run.path} run ${run.id}/${run.run_attempt}, ${run.head_sha}; replacement ${replacement.id}/${replacement.run_attempt}, ${replacement.head_sha}; normal cancellation ${terminal ? `terminal ${settled.conclusion}` : 'requested, terminal state not verified'}`,
     );
   }
   console.log(
