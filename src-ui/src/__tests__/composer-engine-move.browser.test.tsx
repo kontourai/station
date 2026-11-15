@@ -108,7 +108,7 @@ function unclipped(selector: string) {
   };
 }
 
-test('a phone composer shows the next-turn destination in full beside four chips', async () => {
+test('a phone composer shows the next-turn destination in full beside Run setup', async () => {
   const { browser, page, errors } = await scrollBrowserFixture(composer(true), [
     controls,
   ]);
