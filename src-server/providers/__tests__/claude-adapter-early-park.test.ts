@@ -81,6 +81,9 @@ type Hook = (
   options: { signal: AbortSignal },
 ) => Promise<Record<string, unknown>>;
 
+/** The Claude Code whose hook reporting Station checked. */
+const VERIFIED_VERSION = '2.1.322';
+
 /** Only Station's own in-process servers, as the engine reports them. */
 const STATION_ONLY = [
   { name: 'station-control', status: 'connected', source: 'sdk' },
@@ -110,7 +113,11 @@ async function start(threadId: string) {
       undefined,
       { signal },
     );
-  const init = async (mcp_servers: unknown[]) => {
+  const init = async (
+    mcp_servers: unknown[],
+    /** `null`: an engine that does not report its version. */
+    claude_code_version: string | null = VERIFIED_VERSION,
+  ) => {
     engine.push({
       type: 'system',
       subtype: 'init',
@@ -119,6 +126,7 @@ async function start(threadId: string) {
       model: 'claude-sonnet',
       tools: [],
       mcp_servers,
+      ...(claude_code_version ? { claude_code_version } : {}),
     });
     await vi.waitFor(() =>
       expect(seen.some((event) => event.method === 'session.configured')).toBe(
@@ -140,7 +148,31 @@ async function start(threadId: string) {
     await init(STATION_ONLY);
     await stop({ session_crons: [] });
   };
-  return { adapter, engine, init, stop, postToolUse, settle, seen };
+  /** A hook from the user's settings, as the engine reports one it runs. */
+  const settingsHook = (subtype: 'hook_started' | 'hook_response') =>
+    engine.push({
+      type: 'system',
+      subtype,
+      hook_id: 'hook-1',
+      hook_name: 'Stop',
+      hook_event: 'Stop',
+      ...(subtype === 'hook_response'
+        ? { output: '', stdout: '', stderr: '', outcome: 'success' }
+        : {}),
+      uuid: `u-${subtype}`,
+      session_id: 'engine-session',
+    });
+  return {
+    adapter,
+    engine,
+    init,
+    stop,
+    postToolUse,
+    settle,
+    seen,
+    options,
+    settingsHook,
+  };
 }
 
 describe('the finished-session park on a Claude engine', () => {
@@ -148,6 +180,55 @@ describe('the finished-session park on a Claude engine', () => {
     const { adapter, settle } = await start('eligible');
     await settle();
     expect(adapter.earlyParkRefusal('eligible')).toBeUndefined();
+    await adapter.stopAll();
+  });
+
+  test('the engine is asked to report every hook it runs', async () => {
+    const { adapter, options } = await start('hook-events');
+    expect(options.includeHookEvents).toBe(true);
+    await adapter.stopAll();
+  });
+
+  // #2540 delta review 2 P1: a hook Station did not install (here an async
+  // Stop hook from the user's settings) can outlive the turn and rewake the
+  // engine; parking would kill it.
+  test('a hook Station did not install refuses it, for the rest of the engine’s life', async () => {
+    const { adapter, settle, settingsHook } = await start('foreign-hook');
+    await settle();
+    expect(adapter.earlyParkRefusal('foreign-hook')).toBeUndefined();
+    settingsHook('hook_started');
+    await vi.waitFor(() =>
+      expect(adapter.earlyParkRefusal('foreign-hook')).toMatch(/hook/),
+    );
+    // Its end does not make the next one safe.
+    settingsHook('hook_response');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(adapter.earlyParkRefusal('foreign-hook')).toMatch(/hook/);
+    // And it is the finished-session park's alone.
+    expect(adapter.hasOpenEngineWork('foreign-hook')).toBe(false);
+    await adapter.stopAll();
+  });
+
+  test.each([
+    ['older than the checked one', '2.1.200'],
+    ['not reported', null],
+    ['unreadable', 'next'],
+  ])(
+    'an engine whose Claude Code version is %s is not parked early',
+    async (_label, version) => {
+      const { adapter, init, stop } = await start('version');
+      await init(STATION_ONLY, version);
+      await stop({ session_crons: [] });
+      expect(adapter.earlyParkRefusal('version')).toMatch(/version/);
+      await adapter.stopAll();
+    },
+  );
+
+  test('a newer Claude Code than the checked one may be parked early', async () => {
+    const { adapter, init, stop } = await start('newer');
+    await init(STATION_ONLY, '2.2.0');
+    await stop({ session_crons: [] });
+    expect(adapter.earlyParkRefusal('newer')).toBeUndefined();
     await adapter.stopAll();
   });
 
@@ -264,10 +345,12 @@ describe('the finished-session park on a Claude engine', () => {
     await adapter.stopAll();
   });
 
-  test('an engine that has not reported its servers is not parked early', async () => {
+  test('an engine that has not reported its init is not parked early', async () => {
     const { adapter, stop } = await start('no-init');
     await stop({ session_crons: [] });
-    expect(adapter.earlyParkRefusal('no-init')).toMatch(/MCP/);
+    // Without an `init` nothing is known: neither its version nor its
+    // servers.
+    expect(adapter.earlyParkRefusal('no-init')).toBeDefined();
     await adapter.stopAll();
   });
 

@@ -288,6 +288,16 @@ export interface ClaudeMessageState extends ClaudeUsageLimitState {
    */
   mcpServersStationOnly?: boolean;
   /**
+   * #2540: the engine ran a hook Station did not install: it reported a
+   * `hook_started` (Station's own hooks are SDK callbacks, which report no
+   * hook events). Such a hook may still run, or rewake the engine, after the
+   * turn (`async`, `asyncRewake`), so it holds the engine for the rest of
+   * this process's life as far as the finished-session park is concerned.
+   */
+  foreignHookObserved?: boolean;
+  /** #2540: the CLI version the engine's last `init` reported. */
+  claudeCodeVersion?: string;
+  /**
    * #2348: called with a task's id when the engine reports it ended (either
    * terminal). The adapter withdraws the permission requests THAT subagent
    * raised — `canUseTool`'s `agentID` is the subagent's `task_id` (captured:
@@ -590,6 +600,10 @@ export function mapClaudeSdkMessage({
     record.stationBrowserVerified = stationBrowserVerifiedByInit(
       message.mcp_servers,
     );
+    record.claudeCodeVersion =
+      typeof message.claude_code_version === 'string'
+        ? message.claude_code_version
+        : undefined;
     record.mcpServersStationOnly =
       Array.isArray(message.mcp_servers) &&
       message.mcp_servers.every(
@@ -672,6 +686,14 @@ export function mapClaudeSdkMessage({
       // affordance alive off this reason plus the child-work running set.
       reason: liveTasks.length > 0 ? 'background-tasks' : undefined,
     });
+    return;
+  }
+
+  // #2540: every hook the engine runs is reported (`includeHookEvents`), and
+  // Station's own hooks are SDK callbacks, which report none: any hook seen
+  // here is one Station did not install.
+  if (message.type === 'system' && message.subtype === 'hook_started') {
+    record.foreignHookObserved = true;
     return;
   }
 

@@ -9589,6 +9589,7 @@ describe('ClaudeAdapter', () => {
         // A supplied title skips the engine's own session-naming request.
         title: 'Station conversation thread-no-system-prompt-baseline',
         includePartialMessages: true,
+        includeHookEvents: true,
         // station#1877: asks the SDK to summarise what a subagent is doing.
         // task_progress.summary is documented as carrying the model-generated
         // status only when this is on, so without it a background subagent

@@ -335,6 +335,14 @@ type PendingRequest = {
 
 /** The command Station resolves on PATH for this engine. */
 const CLAUDE_CLI_COMMAND = 'claude';
+/**
+ * #2540: the oldest Claude Code whose hook reporting (`includeHookEvents`)
+ * Station has checked: a settings hook, `async` and `asyncRewake` alike,
+ * reports `hook_started` before the turn's `result` and `hook_response` when
+ * it ends, and an SDK callback hook reports nothing. An older or unreported
+ * version is not parked early.
+ */
+const CLAUDE_HOOK_REPORTING_VERIFIED_VERSION = '2.1.322';
 /** #2540: tools that change the engine's session-scoped wakeups. */
 const CLAUDE_WAKEUP_SCHEDULING_TOOLS: ReadonlySet<string> = new Set([
   'CronCreate',
@@ -827,6 +835,10 @@ type ClaudeSessionRecord = {
   housekeepingTasks?: Set<string>;
   /** Mirrors `ClaudeMessageState.mcpServersStationOnly` (#2540). */
   mcpServersStationOnly?: boolean;
+  /** Mirrors `ClaudeMessageState.foreignHookObserved` (#2540). */
+  foreignHookObserved?: boolean;
+  /** Mirrors `ClaudeMessageState.claudeCodeVersion` (#2540). */
+  claudeCodeVersion?: string;
   /**
    * How many session-scoped wakeups (CronCreate, ScheduleWakeup, a loop) the
    * engine reported scheduled when it last stopped (its Stop hook's
@@ -4005,13 +4017,31 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    * - its own scheduled wakeups are known from the last Stop hook's
    *   `session_crons`, and become unknown again at any scheduling-tool call;
    * - its only MCP servers are Station's in-process (`sdk`) ones, whose state
-   *   lives in Station, not in a server process the engine started.
-   * Anything the engine keeps alive that none of these report (a process a
-   * hook or a plugin starts outside a task, an LSP server) is not seen.
+   *   lives in Station, not in a server process the engine started;
+   * - every hook it runs is reported (`includeHookEvents`, on a CLI at least
+   *   {@link CLAUDE_HOOK_REPORTING_VERIFIED_VERSION}), Station's own hooks
+   *   being SDK callbacks that report none; any reported hook therefore is
+   *   foreign and refuses for the rest of the engine's life.
+   * Not seen: a hook that is configured but has not fired in this engine (it
+   * has nothing running to lose; one that fires only after idling, such as
+   * an idle `Notification`, does not fire once parked, as after the idle
+   * park), and a process a command leaves running after its tool call
+   * returned without making it a background task.
    */
   earlyParkRefusal(threadId: string): string | undefined {
     const record = this.sessions.get(threadId);
     if (!record) return 'no live engine';
+    const version = parseClaudeCodeVersion(record.claudeCodeVersion);
+    if (
+      !version ||
+      compareClaudeCodeVersions(
+        version,
+        CLAUDE_HOOK_REPORTING_VERIFIED_VERSION,
+      ) < 0
+    )
+      return 'its hook reporting is unverified for this Claude Code version';
+    if (record.foreignHookObserved)
+      return 'a hook Station did not install has run';
     if (record.mcpServersStationOnly !== true)
       return 'an MCP server other than Station’s own, or unreported servers';
     if (record.scheduledWakeupsUnknown || record.scheduledWakeups === undefined)
@@ -4656,6 +4686,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ? { title: newSessionTitle(input.threadId) }
         : {}),
       includePartialMessages: true,
+      // #2540: report every hook the engine runs, so one Station did not
+      // install keeps the engine from the finished-session park
+      // (`earlyParkRefusal`). Station's own hooks are SDK callbacks and
+      // report nothing.
+      includeHookEvents: true,
       // station#1877 follow-up: ask the SDK to summarise what a subagent is
       // doing, so `task_progress.summary` carries a live status line instead
       // of nothing. Without it a five-minute background agent reports its

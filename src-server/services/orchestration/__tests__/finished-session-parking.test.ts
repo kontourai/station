@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import type {
   CanonicalRuntimeEvent,
@@ -20,6 +21,7 @@ import type {
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
+import { DELEGATION_RESULT_CLIENT_ORIGIN } from '../delegation-result-delivery.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -69,6 +71,8 @@ class EngineProcessAdapter extends GateTestAdapter {
    */
   constructor(readonly reportsAllOpenWork = true) {
     super();
+    // An engine that takes input mid-turn, as Claude does.
+    Object.assign(this.metadata, { durability: STEERING_ENGINE_DURABILITY });
     if (reportsAllOpenWork)
       Object.assign(this.metadata, { openEngineWork: 'complete' });
   }
@@ -137,6 +141,16 @@ class EngineProcessAdapter extends GateTestAdapter {
 
   hasOpenEngineWork(threadId: string): boolean {
     return this.openWork.has(threadId);
+  }
+
+  /** A steer lands in the running turn, reported as the engine does. */
+  async steerTurn(threadId: string, input: string, turnId: string) {
+    this.push(threadId, {
+      method: 'turn.started',
+      turnId,
+      inputKind: 'steer',
+      prompt: input,
+    });
   }
 
   earlyParkRefusal(threadId: string): string | undefined {
@@ -526,6 +540,80 @@ describe('finished-by-design Sessions release their engine early', () => {
     );
     await new Promise((resolve) => setTimeout(resolve, SETTLED_WAIT_MS));
     expect(adapter.stopped).toEqual([]);
+  });
+
+  /**
+   * Starts a delegated turn, steers it the way `origin` does through the
+   * service's own steer command, and completes it.
+   */
+  const steeredDelegatedRun = async (
+    booted: Awaited<ReturnType<typeof boot>>,
+    origin: ClientOrigin,
+  ) => {
+    const { adapter, lifecycle, service, start } = booted;
+    const threadId = await start();
+    const accepted = (await service.dispatch(
+      {
+        type: 'sendTurn',
+        input: { threadId, input: 'work', clientTurnId: randomUUID() },
+      },
+      OWNER,
+      { dispatchOrigin: 'delegation' },
+    )) as ProviderTurnStartResult;
+    await vi.waitFor(async () =>
+      expect(await lifecycle(threadId)).toBe('running'),
+    );
+    const steered = (await service.dispatch(
+      {
+        type: 'steerTurn',
+        threadId,
+        input: 'more context',
+        clientInputId: randomUUID(),
+      },
+      { ...OWNER, clientOrigin: origin },
+    )) as { outcome?: string };
+    expect(steered.outcome).toBe('steered');
+    adapter.push(threadId, {
+      method: 'turn.completed',
+      turnId: accepted.turnId,
+      invocationId: adapter.invocations.get(accepted.turnId),
+      finishReason: 'stop',
+    });
+    await vi.waitFor(async () =>
+      expect(await lifecycle(threadId)).toBe('idle'),
+    );
+    return threadId;
+  };
+
+  // #2540 delta review 2 P3: a child's result Station steered into a
+  // delegated parent is Station's own input, so the parent still qualifies.
+  test("a delegated parent its child's result was steered into is still released", async () => {
+    const booted = await boot();
+    const threadId = await steeredDelegatedRun(booted, {
+      ...DELEGATION_RESULT_CLIENT_ORIGIN,
+      sender: { kind: 'delegation-result', sessionId: 'child-session' },
+    });
+    await vi.waitFor(() => expect(booted.adapter.stopped).toEqual([threadId]), {
+      timeout: 5_000,
+    });
+  });
+
+  test("a person's steer into a delegated run keeps its engine", async () => {
+    const booted = await boot();
+    await steeredDelegatedRun(booted, person);
+    await new Promise((resolve) => setTimeout(resolve, SETTLED_WAIT_MS));
+    expect(booted.adapter.stopped).toEqual([]);
+  });
+
+  test('a steer that only claims to be a result keeps its engine', async () => {
+    const booted = await boot();
+    // The sender without Station's internal actor: not Station's own input.
+    await steeredDelegatedRun(booted, {
+      ...person,
+      sender: { kind: 'delegation-result', sessionId: 'child-session' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, SETTLED_WAIT_MS));
+    expect(booted.adapter.stopped).toEqual([]);
   });
 
   test('a chat whose earlier turns predate the origin record keeps its engine', async () => {
