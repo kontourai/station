@@ -111,6 +111,8 @@ describe('competing Station selections', () => {
     await flush();
     expect(store.getActive()?.name).toBe('C');
     expect(opened).toEqual([{ chat: 'C-thread', station: 'C' }]);
+    // The overtaken tap is not reported as a failed switch over C's thread.
+    expect(getNotificationOpenNotice()).toBeNull();
   });
 
   test('tap B then C, B finishing first: B never opens, C opens on C', async () => {
@@ -121,9 +123,15 @@ describe('competing Station selections', () => {
     await act(async () => prepared.get(ids.B)?.());
     await flush();
     expect(opened).toEqual([]);
+    // Overtaken, not failed: C is still opening.
+    expect(getNotificationOpenNotice()).toMatchObject({
+      kind: 'switching',
+      stationName: 'C',
+    });
     await act(async () => prepared.get(ids.C)?.());
     await flush();
     expect(opened).toEqual([{ chat: 'C-thread', station: 'C' }]);
+    expect(getNotificationOpenNotice()).toBeNull();
   });
 
   test('a manual switch to D overtakes the tap: nothing opens, and it says so', async () => {
