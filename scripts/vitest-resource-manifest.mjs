@@ -141,6 +141,7 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  'src-server/services/evidence/__tests__/task-code-review-module.test.ts',
   // Real launcher exit/stderr protocol with in-memory ChildProcess/streams
   // and substituted spawnOwnedChild; no child launch or wall-clock assertion.
   'src-server/services/browser/__tests__/chromium-server-host.test.ts',
@@ -155,6 +156,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fixture replay's persistence decline reads; no wall-clock assertion.
   'src-server/providers/__tests__/opencode-adapter.replay.test.ts',
   'src-server/providers/__tests__/claude-adapter-native-web-read.test.ts',
+  // #4852 review: one short-lived tsx child commits a Project-room file in a
+  // second Project on the same home while the parent releases a deleted
+  // message's files; no wall-clock assertion.
+  'src-server/services/projects/project-room-attachment-release-race.test.ts',
   // #3075: one short-lived tsx child writes a person's first acknowledgement
   // as another process would, while this suite holds the event store open.
   'src-server/services/orchestration/__tests__/thread-content-backfill.test.ts',

@@ -23,6 +23,20 @@ import { mapWithConcurrency } from '../../utils/bounded-async.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { reviewEvidenceId } from './review-evidence-identity.js';
 
+export interface ReviewTaskBinding {
+  projectId: string;
+  projectCreatedAt: string;
+  taskId: string;
+  taskCreatedAt: string;
+}
+
+export class ReviewRequestConflictError extends Error {
+  constructor() {
+    super('Review request identity collision.');
+    this.name = 'ReviewRequestConflictError';
+  }
+}
+
 /**
  * A project with no configured `workingDirectory`. This is a normal state on
  * the Project contract (the field is optional), so the aggregate treats it as
@@ -79,12 +93,33 @@ interface ResolvedReviewReviewer extends ReviewReviewerDeclaration {
   actor: ReviewActorIdentity;
 }
 
-interface ReviewExecutionContext {
+export interface ReviewStorageIdentity {
+  path: string;
+  realpath: string;
+  dev: number;
+  ino: number;
+}
+
+export interface ReviewWriteGuard {
+  storageIdentity?: ReviewStorageIdentity;
+  assertCurrent?: () => void;
+}
+
+export interface ReviewReceiptReadOptions {
+  storageIdentity?: ReviewStorageIdentity;
+  includeTaskReviews?: boolean;
+  taskAssociation?: { binding?: ReviewTaskBinding };
+}
+
+interface ReviewExecutionContext extends ReviewWriteGuard {
   requestedBy: { actorId: string; displayName?: string };
   userId?: string;
   /** See `SessionOwnerStamp`: an unverified agent's review acts for no one. */
   ownerAttribution?: StartOwnerAttribution;
   tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext;
+  /** Server-derived association retained with submission admission, never receipt claims. */
+  taskBinding?: ReviewTaskBinding;
+  includeTaskReviews?: boolean;
 }
 
 export type ReviewExecutionOutcome =
@@ -108,12 +143,17 @@ export interface ReadOnlyReviewExecutor {
 export interface ReviewReceiptStore {
   write(
     receipt: Omit<IndependentReviewReceipt, 'receiptId'>,
+    guard?: ReviewWriteGuard,
   ): Promise<IndependentReviewReceipt>;
   read(
     receiptId: string,
     projectSlug: string,
-  ): Promise<IndependentReviewReceipt | null>;
-  list(projectSlug: string): Promise<IndependentReviewReceipt[]>;
+    options?: ReviewReceiptReadOptions,
+  ): Promise<IndependentReviewReceipt | null | undefined>;
+  list(
+    projectSlug: string,
+    includeTaskReviews?: boolean,
+  ): Promise<IndependentReviewReceipt[]>;
   references(projectSlug: string): Promise<ReviewReceiptReference[]>;
 }
 
@@ -124,7 +164,7 @@ export interface ReviewReceiptReference {
 }
 
 export type ReviewSubmissionAdmission =
-  | { kind: 'acquired' }
+  | { kind: 'acquired'; storageIdentity?: ReviewStorageIdentity }
   | { kind: 'existing'; status: IndependentReviewRequestStatus };
 
 /** Durable idempotency authority composed before any reviewer invocation. */
@@ -132,15 +172,19 @@ export interface ReviewSubmissionStore {
   begin(input: {
     request: IndependentReviewRequest;
     startedAt: string;
+    taskBinding?: ReviewTaskBinding;
+    assertCurrent?: () => void;
   }): Promise<ReviewSubmissionAdmission>;
   invoking(input: {
     request: IndependentReviewRequest;
     updatedAt: string;
+    guard?: ReviewWriteGuard;
   }): Promise<void>;
   complete(input: {
     request: IndependentReviewRequest;
     result: IndependentReviewRunResult;
     completedAt: string;
+    guard?: ReviewWriteGuard;
   }): Promise<IndependentReviewRequestStatus>;
   fail(input: {
     request: IndependentReviewRequest;
@@ -148,11 +192,13 @@ export interface ReviewSubmissionStore {
     updatedAt: string;
     unavailableLenses?: string[];
     failureReason?: string;
+    guard?: ReviewWriteGuard;
   }): Promise<IndependentReviewRequestStatus>;
   status(
     requestId: string,
     projectSlug: string,
     currentOwnerActive?: boolean,
+    includeTaskReviews?: boolean,
   ): Promise<IndependentReviewRequestStatus | null>;
 }
 
@@ -235,6 +281,7 @@ export class ReviewEvidenceModule {
   readonly #now: () => Date;
   readonly #timeoutMs: number;
   readonly #maxConcurrentReviewers: number;
+  readonly #inflightIdentities = new Map<string, string>();
   readonly #inflight = new Map<
     string,
     Promise<IndependentReviewRequestStatus>
@@ -275,14 +322,27 @@ export class ReviewEvidenceModule {
     context: ReviewExecutionContext,
   ): Promise<IndependentReviewRequestStatus> {
     const request = parseIndependentReviewRequest(value);
+    context.assertCurrent?.();
     const startedAt = this.#now().toISOString();
     const key = `${request.target.projectSlug}\0${request.requestId}`;
+    const identity = reviewEvidenceId({
+      request,
+      task: context.taskBinding ?? null,
+    });
     const inflight = this.#inflight.get(key);
-    if (inflight) return inflight;
+    if (inflight) {
+      if (this.#inflightIdentities.get(key) !== identity)
+        throw new ReviewRequestConflictError();
+      return inflight;
+    }
     const execution = this.#admitAndRun(request, context, startedAt).finally(
-      () => this.#inflight.delete(key),
+      () => {
+        this.#inflight.delete(key);
+        this.#inflightIdentities.delete(key);
+      },
     );
     this.#inflight.set(key, execution);
+    this.#inflightIdentities.set(key, identity);
     return execution;
   }
 
@@ -291,20 +351,41 @@ export class ReviewEvidenceModule {
     context: ReviewExecutionContext,
     startedAt: string,
   ): Promise<IndependentReviewRequestStatus> {
-    const admission = await this.#submissions.begin({ request, startedAt });
+    const admission = await this.#submissions.begin({
+      request,
+      startedAt,
+      ...(context.taskBinding ? { taskBinding: context.taskBinding } : {}),
+      ...(context.assertCurrent
+        ? { assertCurrent: context.assertCurrent }
+        : {}),
+    });
     if (admission.kind === 'existing') return admission.status;
-    return this.#runAcquired(request, context, startedAt);
+    if (context.taskBinding && !admission.storageIdentity)
+      throw new Error('Task review storage identity is unavailable.');
+    return this.#runAcquired(
+      request,
+      {
+        ...context,
+        ...(context.taskBinding
+          ? { storageIdentity: admission.storageIdentity }
+          : {}),
+      },
+      startedAt,
+    );
   }
 
-  status(
+  async status(
     requestId: string,
     projectSlug: string,
+    includeTaskReviews = true,
   ): Promise<IndependentReviewRequestStatus | null> {
-    return this.#submissions.status(
+    const status = await this.#submissions.status(
       requestId,
       projectSlug,
       this.#inflight.has(`${projectSlug}\0${requestId}`),
+      includeTaskReviews,
     );
+    return status;
   }
 
   async #runAcquired(
@@ -315,17 +396,20 @@ export class ReviewEvidenceModule {
     const operationStarted = Date.now();
     let workspace: ReadOnlyReviewWorkspace | undefined;
     let reviewerBoundaryEntered = false;
+    let reviewerSettlementConfirmed = false;
+    let workspaceCloseAttempted = false;
     let retainWorkspace = false;
     let cleanup: IndependentReviewRunResult['cleanup'] = {
       status: 'completed',
     };
     try {
-      const prior = await this.#resolvePrior(request);
+      const prior = await this.#resolvePrior(request, context);
       if (
         prior &&
         (prior.findings.length === 0 || prior.findings.length > 100)
       ) {
         const status = await this.#submissions.fail({
+          guard: context,
           request,
           state: 'not-verified',
           updatedAt: this.#now().toISOString(),
@@ -339,6 +423,7 @@ export class ReviewEvidenceModule {
       const selected = await this.#selectReviewers(request, prior);
       if (selected.kind === 'unavailable') {
         const status = await this.#submissions.fail({
+          guard: context,
           request,
           state: 'not-verified',
           updatedAt: this.#now().toISOString(),
@@ -375,6 +460,7 @@ export class ReviewEvidenceModule {
           })),
         ),
       ]);
+      context.assertCurrent?.();
       workspace = await this.#source.open(executableRequest.target);
       if (selected.target && !sameTarget(workspace.target, selected.target)) {
         throw new Error('review workspace target changed after routing');
@@ -388,7 +474,9 @@ export class ReviewEvidenceModule {
           'delta review base must be the exact head of its prior receipt',
         );
       }
+      context.assertCurrent?.();
       await this.#submissions.invoking({
+        guard: context,
         request,
         updatedAt: this.#now().toISOString(),
       });
@@ -409,30 +497,38 @@ export class ReviewEvidenceModule {
       retainWorkspace = reviewerOutcomes.some(
         (outcome) => outcome.workspaceRelease === 'retain',
       );
+      reviewerSettlementConfirmed = true;
       const executions = reviewerOutcomes.map((outcome) => outcome.record);
       const completedAt = this.#now().toISOString();
-      const receipt = await this.#receipts.write({
-        schemaVersion: REVIEW_EVIDENCE_SCHEMA_VERSION,
-        requestId: executableRequest.requestId,
-        mode: executableRequest.mode,
-        target: workspace.target,
-        requestedBy: context.requestedBy,
-        implementer,
-        ...(executableRequest.delta ? { delta: executableRequest.delta } : {}),
-        ...(selected.routing ? { routing: selected.routing } : {}),
-        startedAt,
-        completedAt,
-        executions,
-        findings: executions.flatMap((execution) => execution.findings),
-        deltaAssessments: executions.flatMap(
-          (execution) => execution.deltaAssessments,
-        ),
-        interpretation: {
-          kind: 'review-findings',
-          decision: 'input-only',
-          gateVerdict: null,
+      context.assertCurrent?.();
+      const receipt = await this.#receipts.write(
+        {
+          schemaVersion: REVIEW_EVIDENCE_SCHEMA_VERSION,
+          requestId: executableRequest.requestId,
+          mode: executableRequest.mode,
+          target: workspace.target,
+          requestedBy: context.requestedBy,
+          implementer,
+          ...(executableRequest.delta
+            ? { delta: executableRequest.delta }
+            : {}),
+          ...(selected.routing ? { routing: selected.routing } : {}),
+          startedAt,
+          completedAt,
+          executions,
+          findings: executions.flatMap((execution) => execution.findings),
+          deltaAssessments: executions.flatMap(
+            (execution) => execution.deltaAssessments,
+          ),
+          interpretation: {
+            kind: 'review-findings',
+            decision: 'input-only',
+            gateVerdict: null,
+          },
         },
-      });
+        context,
+      );
+      context.assertCurrent?.();
       const partialResult = {
         receipt,
         attachment: await this.#attach(executableRequest, receipt),
@@ -445,6 +541,7 @@ export class ReviewEvidenceModule {
         };
       } else {
         try {
+          workspaceCloseAttempted = true;
           await workspace.close();
           workspace = undefined;
         } catch (error) {
@@ -457,6 +554,7 @@ export class ReviewEvidenceModule {
       }
       const result: IndependentReviewRunResult = { ...partialResult, cleanup };
       const completed = await this.#submissions.complete({
+        guard: context,
         request,
         result,
         completedAt: this.#now().toISOString(),
@@ -465,7 +563,12 @@ export class ReviewEvidenceModule {
       return completed;
     } catch (error) {
       this.#diagnostic('run', error, request);
-      if (workspace && !retainWorkspace && !reviewerBoundaryEntered) {
+      if (
+        workspace &&
+        !retainWorkspace &&
+        !workspaceCloseAttempted &&
+        (!reviewerBoundaryEntered || reviewerSettlementConfirmed)
+      ) {
         try {
           await workspace.close();
         } catch (cleanupError) {
@@ -473,7 +576,9 @@ export class ReviewEvidenceModule {
         }
       }
       const state = reviewerBoundaryEntered ? 'indeterminate' : 'rejected';
+      context.assertCurrent?.();
       const status = await this.#submissions.fail({
+        guard: context,
         request,
         state,
         updatedAt: this.#now().toISOString(),
@@ -568,15 +673,23 @@ export class ReviewEvidenceModule {
     return { ...result, target, routing };
   }
 
-  read(
+  async read(
     receiptId: string,
     projectSlug: string,
+    includeTaskReviews = true,
   ): Promise<IndependentReviewReceipt | null> {
-    return this.#receipts.read(receiptId, projectSlug);
+    return (
+      (await this.#receipts.read(receiptId, projectSlug, {
+        includeTaskReviews,
+      })) ?? null
+    );
   }
 
-  list(projectSlug: string): Promise<IndependentReviewReceipt[]> {
-    return this.#receipts.list(projectSlug);
+  async list(
+    projectSlug: string,
+    includeTaskReviews = true,
+  ): Promise<IndependentReviewReceipt[]> {
+    return this.#receipts.list(projectSlug, includeTaskReviews);
   }
 
   /**
@@ -595,6 +708,7 @@ export class ReviewEvidenceModule {
    */
   async listAll(
     projectSlugs: readonly string[],
+    includeTaskReviews = true,
   ): Promise<ReviewEvidenceAggregate> {
     const uniqueProjectSlugs = [...new Set(projectSlugs)].sort();
     if (uniqueProjectSlugs.length > MAX_REVIEW_PROJECTS) {
@@ -641,7 +755,9 @@ export class ReviewEvidenceModule {
         const receipt = await this.#receipts.read(
           reference.receiptId,
           reference.projectSlug,
+          { includeTaskReviews },
         );
+        if (receipt === undefined) continue;
         if (!receipt) {
           throw new Error('Review receipt index references missing evidence.');
         }
@@ -681,11 +797,16 @@ export class ReviewEvidenceModule {
 
   async #resolvePrior(
     request: IndependentReviewRequest,
+    context: ReviewExecutionContext,
   ): Promise<IndependentReviewReceipt | undefined> {
     if (!request.delta) return undefined;
     const prior = await this.#receipts.read(
       request.delta.priorReceiptId,
       request.target.projectSlug,
+      {
+        includeTaskReviews: context.includeTaskReviews,
+        taskAssociation: { binding: context.taskBinding },
+      },
     );
     if (!prior) throw new Error('prior review receipt was not found');
     if (prior.target.projectSlug !== request.target.projectSlug) {
@@ -696,6 +817,7 @@ export class ReviewEvidenceModule {
       request.target.projectSlug,
       new Set(),
       0,
+      context,
     );
     if (findings.length > 100) {
       throw new Error(
@@ -721,6 +843,7 @@ export class ReviewEvidenceModule {
     projectSlug: string,
     seen: Set<string>,
     depth: number,
+    context: ReviewExecutionContext,
   ): Promise<ReviewFinding[]> {
     if (depth >= MAX_DELTA_ANCESTRY || seen.has(receipt.receiptId)) {
       throw new Error('delta review receipt ancestry is invalid');
@@ -731,13 +854,23 @@ export class ReviewEvidenceModule {
       const parent = await this.#receipts.read(
         receipt.delta.priorReceiptId,
         projectSlug,
+        {
+          includeTaskReviews: context.includeTaskReviews,
+          taskAssociation: { binding: context.taskBinding },
+        },
       );
       if (!parent || parent.target.projectSlug !== projectSlug) {
         throw new Error('delta review receipt ancestry is unavailable');
       }
       const effective = new Map(
         (
-          await this.#effectiveFindings(parent, projectSlug, seen, depth + 1)
+          await this.#effectiveFindings(
+            parent,
+            projectSlug,
+            seen,
+            depth + 1,
+            context,
+          )
         ).map((finding) => [finding.findingId, finding]),
       );
       const assessments = new Map(

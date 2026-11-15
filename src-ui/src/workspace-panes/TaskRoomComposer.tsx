@@ -3,6 +3,7 @@ import type { TaskStatus } from '@kontourai/station-contracts/task-graph';
 import type {
   TaskRoomContextSnapshot,
   TaskRoomWorkInput,
+  TaskRoomWorkRecord,
 } from '@kontourai/station-contracts/task-room-work';
 import { useUpdateTaskStatusMutation } from '@kontourai/station-sdk';
 import {
@@ -36,6 +37,22 @@ import {
   type TaskRoomDraftRecovery,
 } from './task-room-draft-recovery';
 import './TaskRoomComposer.css';
+
+/** What a recorded saved request means for retrying it, in the user's words. */
+export function savedRequestStateNotice(
+  state: TaskRoomWorkRecord['state'],
+): string {
+  switch (state) {
+    case 'starting':
+      return 'This request was saved but not confirmed as sent. Check its run before retrying.';
+    case 'dispatched':
+      return 'This request was sent to the agent. Check its run before retrying.';
+    case 'indeterminate':
+      return 'Couldn’t confirm whether this request ran. Check its run before retrying.';
+    case 'refused':
+      return 'This request was refused, so it didn’t run. Send it again as a new request.';
+  }
+}
 
 function startsWithSelectedPerson(value: string, person?: string) {
   if (person === undefined) return false;
@@ -784,8 +801,8 @@ export function TaskRoomComposer({
               );
             setNotice(
               recorded
-                ? `The saved request is recorded as ${recorded.state}. Review its full run before retrying.`
-                : 'No matching receipt is available. This does not prove the request failed; its outcome remains unknown.',
+                ? savedRequestStateNotice(recorded.state)
+                : 'Couldn’t confirm whether this request ran. Check the run list before retrying.',
             );
           }}
         >
@@ -794,7 +811,7 @@ export function TaskRoomComposer({
       )}
       {unconfirmedMessage && (
         <p role="status">
-          This message has an unknown outcome. Retry uses the same proposal;
+          Couldn’t confirm this message was sent. Retry sends the same message;
           discarding only removes your local copy.
         </p>
       )}

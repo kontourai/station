@@ -96,11 +96,32 @@ const laptop: SavedConnection = {
 };
 const unregister: Array<() => void> = [];
 const reachable = new Set<string>();
-const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-  const origin = new URL(String(input)).origin;
-  if (reachable.has(origin)) return new Response(null, { status: 200 });
-  throw new TypeError('Failed to fetch');
-});
+/** Origins answering something other than a readable Station handshake. */
+const answers = new Map<string, (init?: RequestInit) => Response>();
+const fetchMock = vi.fn(
+  async (input: RequestInfo | URL, init?: RequestInit) => {
+    const origin = new URL(String(input)).origin;
+    const answer = answers.get(origin);
+    if (answer) return answer(init);
+    if (reachable.has(origin))
+      return Response.json({
+        schemaVersion: 1,
+        environmentId: `env-${origin}`,
+      });
+    throw new TypeError('Failed to fetch');
+  },
+);
+/** What the Station UI proxy answers while its host is down or restarting. */
+const hostDown = () =>
+  Response.json({ ready: false, status: 'unavailable' }, { status: 503 });
+/**
+ * A UI proxy whose host is down, seen cross-origin: its 503 carries no CORS
+ * headers, so a readable request fails and only an opaque one gets through.
+ */
+const opaqueOnly = (init?: RequestInit) => {
+  if (init?.mode !== 'no-cors') throw new TypeError('Failed to fetch');
+  return new Response(null, { status: 200 });
+};
 beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   window.localStorage.clear();
@@ -111,6 +132,7 @@ afterEach(() => {
   for (const connection of [station, laptop, ...extras])
     forgetStationProbe(connection.url);
   reachable.clear();
+  answers.clear();
   fetchMock.mockClear();
   vi.unstubAllGlobals();
 });
@@ -419,7 +441,8 @@ test('reuses an answer, but re-checks a Station that did not answer', async () =
   });
   reachable.add('https://three.example.test');
   expect((await probeStation(extras[0].url)).reachability).toBe('online');
-  expect(fetchMock).toHaveBeenCalledTimes(3);
+  // The failed probe also sent an opaque request to tell why it failed.
+  expect(fetchMock).toHaveBeenCalledTimes(4);
 });
 
 test('the forget prompt is announced for a Station whose name has spaces', () => {
@@ -707,6 +730,83 @@ test('the ages in an open menu keep up with the clock', async () => {
       vi.advanceTimersByTime(3 * 60_000);
     });
     expect(row('Workstation — Connected · checked 3m ago')).toBeTruthy();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('a Station whose host is down behind its UI proxy reads Recovering, greyed out, and is never switched to', async () => {
+  // The defect: an opaque probe counted the proxy's own 503 as Online.
+  answers.set('https://two.example.test', hostDown);
+  const { select } = openMenu();
+  const recovering = await screen.findByRole('menuitemradio', {
+    name: 'Laptop — Recovering · server down or restarting · checked just now',
+  });
+  expect((recovering as HTMLButtonElement).disabled).toBe(true);
+  expect(recovering.querySelector('[aria-label="error"]')).not.toBeNull();
+  fireEvent.click(recovering);
+  expect(select).not.toHaveBeenCalled();
+});
+
+test('an unreachable Station is greyed out but can still be forgotten', async () => {
+  const forget = vi.fn(async (_connection: SavedConnection) => {});
+  const { select } = openMenu([station, laptop], forget);
+  const down = await screen.findByRole('menuitemradio', {
+    name: /^Laptop — Unreachable/,
+  });
+  expect((down as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(down);
+  expect(select).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Forget Laptop' }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Forget Laptop' }));
+  });
+  expect(forget).toHaveBeenCalledWith(laptop);
+});
+
+test('an answer this page cannot read is not shown as Online', async () => {
+  answers.set('https://two.example.test', opaqueOnly);
+  answers.set(
+    'https://three.example.test',
+    () => new Response('<html>a captive portal</html>'),
+  );
+  openMenu([station, laptop, extras[0]]);
+  const unconfirmed = await screen.findByRole('menuitemradio', {
+    name: 'Laptop — Not confirmed · answered, but not as a Station this page can read · checked just now',
+  });
+  // Still selectable: switching verifies access itself and says what failed.
+  expect((unconfirmed as HTMLButtonElement).disabled).toBe(false);
+  expect(unconfirmed.querySelector('[aria-label="connected"]')).toBeNull();
+  expect(
+    await screen.findByRole('menuitemradio', {
+      name: /^Build box — Not confirmed/,
+    }),
+  ).toBeTruthy();
+  expect(screen.queryByText('Online')).toBeNull();
+});
+
+test('the open menu checks again, so a Station that went down stops reading Online', async () => {
+  vi.useFakeTimers({
+    toFake: ['setInterval', 'clearInterval', 'Date'],
+    shouldAdvanceTime: true,
+  });
+  try {
+    reachable.add('https://two.example.test');
+    openMenu();
+    expect(
+      await screen.findByRole('menuitemradio', {
+        name: 'Laptop — Online · checked just now',
+      }),
+    ).toBeTruthy();
+    answers.set('https://two.example.test', hostDown);
+    await act(async () => {
+      vi.advanceTimersByTime(15_000);
+    });
+    expect(
+      await screen.findByRole('menuitemradio', {
+        name: /^Laptop — Recovering/,
+      }),
+    ).toBeTruthy();
   } finally {
     vi.useRealTimers();
   }

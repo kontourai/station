@@ -1,5 +1,4 @@
 import {
-  ConnectionStatusDot,
   type SavedConnection,
   useConnections,
 } from '@kontourai/station-connect';
@@ -9,11 +8,15 @@ import {
   useActiveStationName,
 } from '../hooks/useActiveStationName';
 import { openConnectionsModal } from '../lib/connectionModalEvents';
-import { retainInitialStartup } from '../lib/startup-presentation';
+import {
+  rememberPreparingStation,
+  retainInitialStartup,
+} from '../lib/startup-presentation';
 import { readRecentStations } from '../lib/stationSwitcher';
 import { describeStationFailure } from '../utils/stationFailure';
 import { ActionRow } from './ActionRow';
 import { Button } from './Button';
+import { StationPreparingSurface } from './StationPreparingSurface';
 import './StationConnectingScreen.css';
 
 /**
@@ -94,9 +97,13 @@ export function StationConnectingScreen({
     return () => window.clearInterval(timer);
   }, []);
   const slow = now - startedAt >= STATION_CONNECTING_SLOW_MS;
+  // What the Station is doing, by name: the cold-launch splash shows this as
+  // its one line, and later preparing stages keep it as their title.
+  const title = answered ? `Opening ${name}` : `Connecting to ${name}`;
+  useLayoutEffect(() => rememberPreparingStation(title), [title]);
   useLayoutEffect(
-    () => (slow ? undefined : retainInitialStartup(step)),
-    [slow, step],
+    () => (slow ? undefined : retainInitialStartup(`${title}…`)),
+    [slow, title],
   );
 
   const previous = readRecentStations()
@@ -155,56 +162,40 @@ export function StationConnectingScreen({
       : `Still no answer from ${name}. It may be offline or unreachable from this device.`;
 
   return (
-    <div className="station-connecting" aria-busy={!slow}>
-      <div className="station-connecting__panel">
-        <div className="station-connecting__identity">
-          <span aria-hidden="true">
-            <ConnectionStatusDot
-              status={slow && !answered ? 'error' : 'connecting'}
-              size={10}
-            />
-          </span>
-          <div>
-            <h1 className="station-connecting__title">Connecting to {name}</h1>
-            {host && host !== name && (
-              <p className="station-connecting__host">{host}</p>
-            )}
-          </div>
-        </div>
-        {/* Only the sentence is live, so it is announced when it changes and
-            the actions below are not read out as status. */}
-        <p className="station-connecting__message" role="status">
-          {message}
+    <StationPreparingSurface
+      title={title}
+      host={host && host !== name ? host : undefined}
+      message={message}
+      busy={!slow}
+    >
+      {slow && (
+        // Two labelled actions at most (#3045): retrying and going back are
+        // the likely next steps, so Manage Stations takes a button only
+        // when one of them is unavailable and otherwise waits in the menu.
+        <ActionRow
+          className="station-connecting__actions"
+          overflowLabel="More Station actions"
+          primary={labelled[0]}
+          secondary={labelled[1]}
+          overflow={
+            labelled.length > 2
+              ? [
+                  {
+                    key: 'manage',
+                    label: 'Manage Stations',
+                    haspopup: 'dialog',
+                    onSelect: manageStations,
+                  },
+                ]
+              : []
+          }
+        />
+      )}
+      {backError && (
+        <p className="station-connecting__error" role="alert">
+          {backError}
         </p>
-        {slow && (
-          // Two labelled actions at most (#3045): retrying and going back are
-          // the likely next steps, so Manage Stations takes a button only
-          // when one of them is unavailable and otherwise waits in the menu.
-          <ActionRow
-            className="station-connecting__actions"
-            overflowLabel="More Station actions"
-            primary={labelled[0]}
-            secondary={labelled[1]}
-            overflow={
-              labelled.length > 2
-                ? [
-                    {
-                      key: 'manage',
-                      label: 'Manage Stations',
-                      haspopup: 'dialog',
-                      onSelect: manageStations,
-                    },
-                  ]
-                : []
-            }
-          />
-        )}
-        {backError && (
-          <p className="station-connecting__error" role="alert">
-            {backError}
-          </p>
-        )}
-      </div>
-    </div>
+      )}
+    </StationPreparingSurface>
   );
 }

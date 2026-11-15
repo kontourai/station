@@ -1,14 +1,15 @@
 import { createHash, randomBytes } from 'node:crypto';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
+  unlinkSync,
   utimesSync,
-  writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -17,6 +18,7 @@ import {
   attachmentBlobOperations,
 } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { publishThroughOwnedFile } from './owned-staging-file.js';
 
 interface BlobStoreLogger {
   debug: (message: string, meta?: Record<string, unknown>) => void;
@@ -56,7 +58,12 @@ export function attachmentBlobRefFor(bytes: Buffer): string {
 interface AttachmentBlobStoreOptions {
   rootDir: string;
   logger?: BlobStoreLogger;
-  retention?: Partial<AttachmentBlobRetentionPolicy>;
+  /**
+   * Age and size eviction. `false` turns it off for a store whose owner
+   * deletes only bytes it has proven unreferenced (Project rooms, #4852):
+   * eviction does not know what still names a blob.
+   */
+  retention?: Partial<AttachmentBlobRetentionPolicy> | false;
   now?: () => number;
 }
 
@@ -111,6 +118,7 @@ export class AttachmentBlobStore {
   private readonly rootDir: string;
   private readonly logger?: BlobStoreLogger;
   private readonly retention: AttachmentBlobRetentionPolicy;
+  private readonly evicts: boolean;
   private readonly now: () => number;
   private lastRetentionDay?: number;
 
@@ -118,15 +126,17 @@ export class AttachmentBlobStore {
     this.rootDir = options.rootDir;
     this.logger = options.logger;
     this.now = options.now ?? (() => Date.now());
+    this.evicts = options.retention !== false;
+    const policy = options.retention || undefined;
     this.retention = {
       maxAgeDays:
-        options.retention?.maxAgeDays ??
+        policy?.maxAgeDays ??
         readPositiveInteger(
           process.env.STATION_ATTACHMENT_RETENTION_DAYS,
           DEFAULT_ATTACHMENT_BLOB_RETENTION.maxAgeDays,
         ),
       maxBytes:
-        options.retention?.maxBytes ??
+        policy?.maxBytes ??
         readPositiveInteger(
           process.env.STATION_ATTACHMENT_MAX_BYTES,
           DEFAULT_ATTACHMENT_BLOB_RETENTION.maxBytes,
@@ -176,10 +186,14 @@ export class AttachmentBlobStore {
       }
       mkdirSync(join(this.rootDir, digest.slice(0, 2)), { recursive: true });
       // Same-directory rename so a reader never observes a partially written
-      // blob under a name that promises a complete one.
-      const staging = `${path}.${randomBytes(8).toString('hex')}.part`;
-      writeFileSync(staging, bytes);
-      renameSync(staging, path);
+      // blob under a name that promises a complete one; a failed attempt
+      // removes its own staging file.
+      publishThroughOwnedFile(
+        `${path}.${randomBytes(8).toString('hex')}.part`,
+        bytes,
+        (staging) => renameSync(staging, path),
+        0o666,
+      );
       count(() => attachmentBlobOperations, 1, {
         operation: 'write',
         outcome: 'stored',
@@ -269,11 +283,41 @@ export class AttachmentBlobStore {
   }
 
   /**
+   * Deletes one blob and reports whether its absence is proven: `true` only
+   * when the unlink succeeded or the path does not exist (`ENOENT`). Any
+   * other failure (EACCES, EIO, a path that cannot be traversed) is `false`,
+   * so a caller that must not give up its record of the bytes until they are
+   * gone keeps it (#4852 review).
+   */
+  removeByRefConfirmed(ref: string): boolean {
+    if (!isAttachmentBlobRef(ref)) return false;
+    const path = this.pathForDigest(ref.slice('sha256-'.length));
+    try {
+      const size = lstatSync(path).size;
+      unlinkSync(path);
+      count(() => attachmentBlobBytesReclaimed, size);
+      count(() => attachmentBlobOperations, 1, {
+        operation: 'reclaim',
+        outcome: 'unreferenced',
+      });
+      return true;
+    } catch (error) {
+      return (
+        !!error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      );
+    }
+  }
+
+  /**
    * Age pass then size pass, oldest first — the same two axes and the same
    * order `RuntimeEventLog` and `ServerLogStore` already use. Runs at most
    * once a day, and only on a write, so an idle Station never walks the tree.
    */
   applyRetention(options?: { force?: boolean }): void {
+    if (!this.evicts) return;
     const today = Math.floor(this.now() / DAY_MS);
     if (!options?.force && this.lastRetentionDay === today) return;
     this.lastRetentionDay = today;

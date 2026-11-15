@@ -463,6 +463,9 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/station-connection-chat.spec.ts',
     // Creates real Projects, channels and read markers on the instance.
     'tests/project-channel-navigation.spec.ts',
+    // Starts its own Station with local accounts and sharing, pairs browsers
+    // and approves an account-bound device, as device-pairing-mobile does.
+    'tests/project-room-message-actions.spec.ts',
     'tests/conversation-surfaces.spec.ts',
     'tests/owned-work-custody.spec.ts',
     // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
@@ -1201,6 +1204,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/project-room-message-actions.spec.ts',
+    bucket: 'product',
+    surface: 'Project channels',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#4796/#4797/#4812 on a real isolated Station: two paired operator browsers see a reaction and its removal, an edit and a delete (both kept after reload); a file uploaded on one downloads byte for byte on the other; an oversize file is refused in the composer; a 900px desktop keeps row actions and the picker on screen; an invited contributor, through their own account-bound session, is refused edit and delete of the operator message (and the operator theirs), and their message offers no Edit or Delete. The contributor room UI is not exercised: a browser guest is shown Available Projects, not the room.',
+    exceptions: [],
+  },
+  {
     path: 'tests/project-channel-navigation.spec.ts',
     bucket: 'product',
     surface: 'Project channels',
@@ -1898,6 +1911,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       "Credential-free isolated Station comment, relocation, Send refusal, resolve/reopen and real Chromium capture/pin journeys. The room revision-publication prerequisite passes after #4211. PR-smoke admission remains deferred: the full nine-spec candidate lane failed its existing orchestration-chat approval assertion, and the strict receipt also rejected this spec's explicit live-provider skip. Credential-free Review cases passed, but three clean full-lane runs are not qualified. A separate live-Claude text-reply/commit-verification test is explicitly skipped as NOT_QUALIFIED unless STATION_REVIEW_USE_CLAUDE=1 and signed-in Claude are supplied; there is no ACP fallback. Missing Chromium is explicitly NOT_VERIFIED.",
+    exceptions: [],
+  },
+  {
+    path: 'tests/task-code-review.spec.ts',
+    bucket: 'extended',
+    surface: 'Task code review',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      'Real Task checkout observation plus explicitly controlled review transport-loss, freshness and failed-reviewer UI states; captures desktop and mobile in both themes without invoking a provider.',
     exceptions: [],
   },
   {
