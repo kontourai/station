@@ -11,6 +11,7 @@ import type {
 } from './ChildChatNavigationContext';
 import { ChildChatOutlet } from './ChildChatNavigationContext';
 import '../chat/TaskShaping.css';
+import './ChatDockDeepLinkOpening.css';
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
