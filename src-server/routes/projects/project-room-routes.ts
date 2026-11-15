@@ -1,10 +1,14 @@
+import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contracts/chat-attachment';
 import {
   PROJECT_ROOM_PROJECT_NOT_FOUND_CODE,
   parseProjectRoomAgentRequestInput,
   parseProjectRoomAppendInput,
   parseProjectRoomChannelCreateInput,
   parseProjectRoomChannelUpdateInput,
+  parseProjectRoomDeleteInput,
+  parseProjectRoomEditInput,
   parseProjectRoomNoteInput,
+  parseProjectRoomReactionInput,
 } from '@kontourai/station-contracts/project-room';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
@@ -20,6 +24,7 @@ import type { ProjectRoomMutationGuard } from '../../services/projects/project-r
 import { ProjectRoomService } from '../../services/projects/project-room-service.js';
 import { ProjectRoomRefusal } from '../../services/projects/project-room-store.js';
 import { createLogger } from '../../utils/logger.js';
+import { roomAttachmentUploadItemsSchema } from '../orchestration/task-room-attachment-http.js';
 import { streamSSE } from '../sse-response.js';
 
 const logger = createLogger({ name: 'project-room-routes' });
@@ -30,9 +35,12 @@ const guards = z.object({
 });
 const channelGuards = guards.omit({ expectedRoomId: true });
 class InvalidRoomInput extends Error {}
-async function body(c: Context) {
+async function body(c: Context, maxBytes = 32768) {
+  const length = Number(c.req.header('content-length'));
+  if (Number.isFinite(length) && length > maxBytes)
+    throw new InvalidRoomInput();
   const text = await c.req.text();
-  if (Buffer.byteLength(text) > 32768) throw new InvalidRoomInput();
+  if (Buffer.byteLength(text) > maxBytes) throw new InvalidRoomInput();
   return JSON.parse(text) as unknown;
 }
 function parse<T>(parser: (v: unknown) => T, value: unknown): T {
@@ -97,7 +105,11 @@ export function createProjectRoomRoutes(
               ? 404
               : error.code === 'capacity'
                 ? 429
-                : 409,
+                : error.code === 'files_unavailable'
+                  ? 503
+                  : // `forbidden` too: a 403 here means access changed, and
+                    // clients stop the whole room on it.
+                    409,
         );
       if (error instanceof ProjectMembershipRefusal)
         return c.json({ error: { code: 'project_room_access_changed' } }, 403);
@@ -332,6 +344,7 @@ export function createProjectRoomRoutes(
               intentId: z.unknown(),
               text: z.unknown(),
               replyTo: z.unknown().optional(),
+              attachments: z.unknown().optional(),
             })
             .strict()
             .parse(await body(c));
@@ -344,6 +357,106 @@ export function createProjectRoomRoutes(
             parse(parseProjectRoomAppendInput, input),
             channel(c),
           ),
+        );
+      }),
+    );
+    const messageId = (c: Context) =>
+      z.string().uuid().parse(c.req.param('messageId'));
+    app.post(`${prefix}/messages/:messageId/reactions`, (c) =>
+      perform(c, async () => {
+        const { expectedRoomId, expectedProjectId, expectedActorId, ...input } =
+          guards
+            .extend({ emoji: z.unknown(), reacted: z.unknown() })
+            .strict()
+            .parse(await body(c));
+        return deliver(
+          c,
+          await service.react(
+            c.req.raw,
+            c.req.param('slug')!,
+            { expectedRoomId, expectedProjectId, expectedActorId },
+            messageId(c),
+            parse(parseProjectRoomReactionInput, input),
+            channel(c),
+          ),
+        );
+      }),
+    );
+    app.post(`${prefix}/messages/:messageId/edit`, (c) =>
+      perform(c, async () => {
+        const { expectedRoomId, expectedProjectId, expectedActorId, ...input } =
+          guards
+            .extend({ intentId: z.unknown(), text: z.unknown() })
+            .strict()
+            .parse(await body(c));
+        return deliver(
+          c,
+          await service.edit(
+            c.req.raw,
+            c.req.param('slug')!,
+            { expectedRoomId, expectedProjectId, expectedActorId },
+            messageId(c),
+            parse(parseProjectRoomEditInput, input),
+            channel(c),
+          ),
+        );
+      }),
+    );
+    app.post(`${prefix}/messages/:messageId/delete`, (c) =>
+      perform(c, async () => {
+        const { expectedRoomId, expectedProjectId, expectedActorId, ...input } =
+          guards
+            .extend({ intentId: z.unknown() })
+            .strict()
+            .parse(await body(c));
+        return deliver(
+          c,
+          await service.deleteMessage(
+            c.req.raw,
+            c.req.param('slug')!,
+            { expectedRoomId, expectedProjectId, expectedActorId },
+            messageId(c),
+            parse(parseProjectRoomDeleteInput, input),
+            channel(c),
+          ),
+        );
+      }),
+    );
+    app.post(`${prefix}/attachments`, (c) =>
+      perform(c, async () => {
+        const { attachments, ...guard } = guards
+          .extend({ attachments: roomAttachmentUploadItemsSchema })
+          .strict()
+          .parse(await body(c, CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES));
+        return deliver(
+          c,
+          await service.storeAttachments(
+            c.req.raw,
+            c.req.param('slug')!,
+            guard,
+            attachments,
+            channel(c),
+          ),
+        );
+      }),
+    );
+    // Bytes, never rendered by the browser as a page of this origin.
+    app.get(`${prefix}/attachments/:attachmentId`, (c) =>
+      perform(c, async () => {
+        const result = await service.readAttachment(
+          c.req.raw,
+          c.req.param('slug')!,
+          z.string().uuid().parse(c.req.param('attachmentId')),
+          channel(c),
+        );
+        return guardProjectResponse(
+          c.body(Uint8Array.from(result.data.bytes), 200, {
+            'Cache-Control': 'private, no-cache',
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Type': 'application/octet-stream',
+            'Content-Security-Policy': 'sandbox',
+          }),
+          () => service.current(c.req.raw, result.admission),
         );
       }),
     );

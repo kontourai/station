@@ -1,12 +1,18 @@
 import {
   isProjectRoomUuid,
   PROJECT_ROOM_DEFAULT_CHANNEL_NAME,
+  PROJECT_ROOM_FILES_UNAVAILABLE_CODE,
+  PROJECT_ROOM_FORBIDDEN_CODE,
   PROJECT_ROOM_LIMITS,
+  type ProjectRoomAttachment,
 } from '@kontourai/station-contracts/project-room';
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import {
   type ApiRequestScope,
+  fetchProjectRoomAttachment,
   isProjectRoomAccessError,
   PROJECT_ROOM_HISTORY_MAX_PAGES,
+  PROJECT_ROOM_RETAINED_REREAD_MESSAGES,
   type ProjectRoomAgentHandle,
   type ProjectRoomAgentIntent,
   type ProjectRoomBrowserView,
@@ -14,9 +20,12 @@ import {
   ProjectRoomProtocolError,
   parseProjectRoomAgentIntent,
   parseProjectRoomMessageIntent,
+  uploadProjectRoomAttachments,
   useProjectRoom,
   useProjectRoomAgent,
   useProjectRoomChannels,
+  useProjectRoomHistorySpan,
+  useProjectRoomRetainedHistory,
 } from '@kontourai/station-sdk/project-rooms';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
@@ -28,6 +37,7 @@ import {
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
 } from 'react';
@@ -36,8 +46,18 @@ import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { IconButton } from '../../components/IconButton';
-import { ArrowLeftGlyph, ReturnGlyph } from '../../components/icons/Glyph';
+import {
+  ArrowLeftGlyph,
+  CheckGlyph,
+  EditGlyph,
+  PeopleGlyph,
+  ReturnGlyph,
+} from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
+import {
+  RoomAttachmentList,
+  type RoomAttachmentSource,
+} from '../../components/room/RoomAttachmentList';
 import { RoomAvatar } from '../../components/room/RoomAvatar';
 import { RoomComposer } from '../../components/room/RoomComposer';
 import {
@@ -49,6 +69,14 @@ import {
   RoomMentionPicker,
   useRoomMention,
 } from '../../components/room/RoomMentionPicker';
+import {
+  ReactGlyph,
+  RoomEmojiPicker,
+  RoomReactionBar,
+  RoomReactionsSheet,
+  type RoomReactionView,
+  TrashGlyph,
+} from '../../components/room/RoomReactions';
 import { RoomThreadSummary } from '../../components/room/RoomThreadSummary';
 import { useMarkRoomRead } from '../../components/room/useMarkRoomRead';
 import {
@@ -58,6 +86,8 @@ import {
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
+import { useProjectRoomMessageActions } from '../../hooks/useProjectRoomMessageActions';
+import { useRoomAttachments } from '../../hooks/useRoomAttachments';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import './ProjectRoom.css';
 import {
@@ -278,6 +308,8 @@ function useFillPageHeight(
 }
 const ROOM_MIN_HEIGHT_PX = 320;
 
+/** One history read: its messages, and its place in the SDK read order. */
+type HistoryRead = { messages: RoomMessage[]; readSeq: number };
 type RoomMessage = NonNullable<
   ReturnType<typeof useProjectRoom>['history']['data']
 >['pages'][number]['messages'][number];
@@ -287,16 +319,113 @@ type RoomMessage = NonNullable<
  * room's latest sequence, so each new message starts a fresh query; keeping
  * the rows already read stops the list from emptying and losing the reader's
  * place while the new window loads.
+ *
+ * Rows kept from a window the room has moved past are owned by no history
+ * query, so `reread` brings them up to date (#4797): each new read of that
+ * span is applied once, and the live windows always win over it. A kept row
+ * older than the re-read span is retired rather than shown stale, and
+ * `unloaded` says so until the reader loads earlier messages again; an open
+ * thread whose root is retired seeks it again from the live history, within
+ * the windows a room keeps (#4855).
  */
-function useRoomMessages(roomId: string | undefined, fetched: RoomMessage[]) {
-  const retained = useRef<{ roomId?: string; byId: Map<string, RoomMessage> }>({
-    byId: new Map(),
-  });
+function useRoomMessages(
+  roomId: string | undefined,
+  pages: HistoryRead[],
+  reread: HistoryRead | undefined,
+  recheck: HistoryRead | undefined,
+) {
+  const retained = useRef<{
+    roomId?: string;
+    byId: Map<string, RoomMessage>;
+    /** The SDK read order of the read that last set each row. */
+    readById: Map<string, number>;
+    rereadSeq?: number;
+    recheckSeq?: number;
+    live: Set<string>;
+    unloaded?: boolean;
+  }>({ byId: new Map(), readById: new Map(), live: new Set() });
+  const [, rerender] = useReducer((count: number) => count + 1, 0);
   if (retained.current.roomId !== roomId)
-    retained.current = { roomId, byId: new Map() };
-  for (const message of fetched)
-    retained.current.byId.set(message.messageId, message);
-  return [...retained.current.byId.values()].sort((a, b) => a.seq - b.seq);
+    retained.current = {
+      roomId,
+      byId: new Map(),
+      readById: new Map(),
+      rereadSeq: reread?.readSeq,
+      recheckSeq: recheck?.readSeq,
+      live: new Set(),
+    };
+  // A read that started earlier never replaces what a later one set, from
+  // whichever source either came (#4852 review).
+  const put = (read: HistoryRead) => {
+    for (const message of read.messages)
+      if (
+        (retained.current.readById.get(message.messageId) ?? 0) <= read.readSeq
+      ) {
+        retained.current.byId.set(message.messageId, message);
+        retained.current.readById.set(message.messageId, read.readSeq);
+      }
+  };
+  for (const source of [
+    { read: reread, key: 'rereadSeq' as const },
+    { read: recheck, key: 'recheckSeq' as const },
+  ])
+    if (source.read && retained.current[source.key] !== source.read.readSeq) {
+      retained.current[source.key] = source.read.readSeq;
+      put(source.read);
+    }
+  for (const page of pages) put(page);
+  const fetched = pages.flatMap((page) => page.messages);
+  if (fetched.length) {
+    const refreshable =
+      Math.min(...fetched.map((message) => message.seq)) -
+      1 -
+      PROJECT_ROOM_RETAINED_REREAD_MESSAGES;
+    for (const [id, message] of retained.current.byId)
+      if (message.seq <= refreshable) {
+        retained.current.byId.delete(id);
+        retained.current.readById.delete(id);
+        retained.current.unloaded = true;
+      }
+  }
+  // Rows that were live and no longer are: their last read may be from a
+  // window whose refresh was cancelled as the tail moved, so they are read
+  // again now rather than at the next live event (#4852 review).
+  const live = new Set(fetched.map((message) => message.messageId));
+  const left = [...retained.current.live]
+    .filter((id) => !live.has(id))
+    .map((id) => retained.current.byId.get(id))
+    .filter((message): message is RoomMessage => !!message)
+    .map((message) => message.seq);
+  retained.current.live = live;
+  return {
+    messages: [...retained.current.byId.values()].sort((a, b) => a.seq - b.seq),
+    unloaded: !!retained.current.unloaded,
+    /** Rows that just left the live windows, to be read again. */
+    left: left.length
+      ? { after: Math.min(...left) - 1, end: Math.max(...left) }
+      : undefined,
+    /** Earlier messages loaded again: the unloaded notice is done. */
+    acknowledgeUnloaded: () => {
+      if (!retained.current.unloaded) return;
+      retained.current.unloaded = false;
+      rerender();
+    },
+  };
+}
+/**
+ * The shown rows older than every live history window: the span the retained
+ * re-read covers, through the message just before the oldest live one.
+ */
+function retainedSpan(
+  shown: RoomMessage[],
+  fetched: RoomMessage[],
+): { after: number; end: number } | undefined {
+  if (!fetched.length) return undefined;
+  const oldestLive = Math.min(...fetched.map((message) => message.seq));
+  const oldestShown = shown[0]?.seq;
+  return oldestShown !== undefined && oldestShown < oldestLive
+    ? { after: oldestShown - 1, end: oldestLive - 1 }
+    : undefined;
 }
 
 /** What a Project room keeps for an unsent message (#4810 review 3). */
@@ -346,6 +475,32 @@ const PROJECT_DRAFT_CODEC = {
   isEmpty: (draft: ProjectRoomDraft) =>
     !draft.text && !draft.replyTo && !draft.recipient,
 };
+/** A person's own message being edited in the composer (#4797). */
+interface ProjectRoomEdit {
+  messageId: string;
+  /** The text the edit started from; saving it unchanged is a no-op. */
+  original: string;
+  text: string;
+  /** Files stay on the message, so its text may be emptied. */
+  hasFiles: boolean;
+}
+/** What a refused reaction, edit or delete tells the person. */
+function messageActionFailure(error: unknown, action: string) {
+  const code = error instanceof StationHttpError ? error.code : undefined;
+  if (code === 'project_room_capacity')
+    return action === 'react'
+      ? 'This message has all the reactions it can hold.'
+      : 'This message cannot be edited again.';
+  if (code === PROJECT_ROOM_FORBIDDEN_CODE)
+    return 'You can change only your own messages.';
+  if (code === 'project_room_conflict')
+    return 'That message changed. The conversation has been refreshed.';
+  return action === 'react'
+    ? 'The reaction was not saved. Try again.'
+    : action === 'edit'
+      ? 'The edit was not saved. Your text is still in the composer.'
+      : 'The message was not deleted. Try again.';
+}
 /** An open thread's own draft key: its channel's draft key plus the root. */
 function threadDraftKey(key: string | undefined, root: string | undefined) {
   if (!key || !root) return key;
@@ -492,6 +647,107 @@ function ProjectRoomSession({
       mounted.current = false;
     };
   }, []);
+  // Reactions, edits, deletes and files (#4796, #4797, #4812) need a host
+  // that serves them; an older one keeps the room as it was. Only an open
+  // room asks: one that is missing or unavailable has nothing to act on.
+  const messageActions = useProjectRoomMessageActions(
+    requestScope.apiBase,
+    !!view,
+  );
+  const [editing, setEditing] = useState<ProjectRoomEdit>();
+  const [picker, setPicker] = useState<string>();
+  const [reactionsFor, setReactionsFor] = useState<string>();
+  const [deleting, setDeleting] = useState<string>();
+  const popoverAnchor = useRef<HTMLElement | null>(null);
+  const roomIdForFiles = view?.roomId;
+  const actorForFiles = view?.actor.id;
+  const roomStopped = useRef(room.stopped);
+  roomStopped.current = room.stopped;
+  const fileTarget = useMemo(
+    () =>
+      messageActions && roomIdForFiles && actorForFiles
+        ? {
+            owner: [
+              requestScope.apiBase,
+              requestScope.authorityKey,
+              projectId,
+              roomIdForFiles,
+              actorForFiles,
+            ],
+            label: 'Room',
+            isCurrent: () => !roomStopped.current,
+            upload: (
+              attachments: Parameters<
+                typeof uploadProjectRoomAttachments
+              >[2]['attachments'],
+            ) =>
+              uploadProjectRoomAttachments(
+                requestScope,
+                slug,
+                {
+                  expectedRoomId: roomIdForFiles,
+                  expectedProjectId: projectId,
+                  expectedActorId: actorForFiles,
+                  attachments,
+                },
+                channelId,
+              ),
+          }
+        : undefined,
+    [
+      messageActions,
+      roomIdForFiles,
+      actorForFiles,
+      requestScope,
+      projectId,
+      slug,
+      channelId,
+    ],
+  );
+  // Staged files go where the draft goes: a thread and its channel each keep
+  // their own, so a file chosen in a thread never rides a channel send.
+  const files = useRoomAttachments(
+    fileTarget,
+    () => setNotice(''),
+    JSON.stringify([channelId ?? null, threadRoot ?? null]),
+  );
+  const fileSource = useMemo<RoomAttachmentSource>(
+    () => ({
+      key: [
+        'project',
+        requestScope.apiBase,
+        requestScope.authorityKey,
+        projectId,
+        roomIdForFiles,
+      ],
+      enabled: !!roomIdForFiles,
+      isCurrent: () => !roomStopped.current,
+      load: (attachment, signal) =>
+        fetchProjectRoomAttachment(
+          requestScope,
+          slug,
+          attachment.id,
+          channelId,
+          signal,
+        ),
+    }),
+    [requestScope, projectId, roomIdForFiles, slug, channelId],
+  );
+  // Starting an edit puts the caret at the end of the message's text.
+  const editingId = editing?.messageId;
+  useEffect(() => {
+    const field = composer.current;
+    if (!editingId || !field) return;
+    field.focus();
+    field.setSelectionRange(field.value.length, field.value.length);
+  }, [editingId]);
+  // An edit belongs to the conversation it started in; leaving that thread
+  // or channel ends it, as it would a reply.
+  useEffect(() => {
+    void threadRoot;
+    void channelId;
+    setEditing(undefined);
+  }, [threadRoot, channelId]);
   const keyboardOpen = useMobileVisualViewport().bottomInset > 0;
   useFillPageHeight(
     section,
@@ -584,6 +840,7 @@ function ProjectRoomSession({
     setDraft(EMPTY_PROJECT_DRAFT);
     setProposal(undefined);
     setNoteDraft(undefined);
+    setEditing(undefined);
     try {
       sessionStorage.removeItem(storageKey);
       sessionStorage.removeItem(`${storageKey}:agent`);
@@ -608,6 +865,7 @@ function ProjectRoomSession({
       setDraft(EMPTY_PROJECT_DRAFT);
       setProposal(undefined);
       setNoteDraft(undefined);
+      setEditing(undefined);
       try {
         sessionStorage.removeItem(storageKey);
         sessionStorage.removeItem(`${storageKey}:agent`);
@@ -618,10 +876,43 @@ function ProjectRoomSession({
     }
     discoveredActor.current = actorId;
   }, [actorId, storageKey, setDraft]);
-  const messages = useRoomMessages(
-    room.stopped ? undefined : view?.roomId,
-    room.history.data?.pages.flatMap((page) => page.messages) ?? [],
+  const shownRoomId = room.stopped ? undefined : view?.roomId;
+  const liveReads = room.history.data?.pages ?? [];
+  const fetchedMessages = liveReads.flatMap((page) => page.messages);
+  // Asked when the room changes (a live event or a mutation), for the rows
+  // shown at the last render.
+  const olderShown = useRef<{ after: number; end: number }>(undefined);
+  const reread = useProjectRoomRetainedHistory(
+    requestScope,
+    slug,
+    projectId,
+    channelId,
+    shownRoomId,
+    () => olderShown.current,
   );
+  // Rows that just left the live windows are read again at once.
+  const [leftSpan, setLeftSpan] = useState<{ after: number; end: number }>();
+  const recheck = useProjectRoomHistorySpan(
+    requestScope,
+    slug,
+    projectId,
+    channelId,
+    shownRoomId,
+    leftSpan,
+  );
+  const {
+    messages,
+    unloaded: earlierUnloaded,
+    left,
+    acknowledgeUnloaded,
+  } = useRoomMessages(shownRoomId, liveReads, reread.data, recheck.data);
+  olderShown.current = retainedSpan(messages, fetchedMessages);
+  const leftAfter = left?.after;
+  const leftEnd = left?.end;
+  useEffect(() => {
+    if (leftAfter === undefined || leftEnd === undefined) return;
+    setLeftSpan({ after: leftAfter, end: leftEnd });
+  }, [leftAfter, leftEnd]);
   // Every send and Agent ask from an open thread replies to its root, read
   // from the route on each send rather than kept in the draft (#4795).
   const replyTarget = threadRoot ?? replyTo;
@@ -653,6 +944,18 @@ function ProjectRoomSession({
     !threadRootLoaded &&
     !!room.history.hasNextPage &&
     historyPages >= PROJECT_ROOM_HISTORY_MAX_PAGES;
+  // Paging back stops where the seek does: a page past the bound would drop
+  // the newest window while its rows stayed on screen with nothing to
+  // refresh them. Both limits are said, never silent.
+  const olderInHistory = variant === 'full' && !!room.history.hasNextPage;
+  const olderLoadable =
+    olderInHistory && historyPages < PROJECT_ROOM_HISTORY_MAX_PAGES;
+  const olderNote =
+    olderInHistory && !olderLoadable
+      ? `This view keeps the latest ${PROJECT_ROOM_RETAINED_REREAD_MESSAGES} messages.`
+      : earlierUnloaded && olderLoadable
+        ? 'Earlier messages were unloaded to keep this view current.'
+        : undefined;
   const awaitingThreadRoot =
     !!threadRoot &&
     !threadRootLoaded &&
@@ -709,6 +1012,28 @@ function ProjectRoomSession({
     if (!view || room.stopped || !restored || unrevised || room.send.isPending)
       return;
     if (proposal && !retry) return;
+    // Files upload first; the message then names them by their stored ids.
+    // The files are the ones staged where this send started, even if the
+    // reader moves to another thread or channel before the upload finishes.
+    const filesFor = files.destination;
+    let attachments: ProjectRoomAttachment[] = [];
+    if (!retry && files.files.length) {
+      try {
+        attachments = await files.prepare(filesFor);
+      } catch (error) {
+        // The room's file store is paused for repair (#4852): say so, and
+        // that the text still sends without the files.
+        files.setError(
+          error instanceof StationHttpError &&
+            error.code === PROJECT_ROOM_FILES_UNAVAILABLE_CODE
+            ? 'Attachments are paused for now. Remove the files to send your message.'
+            : 'The files were not uploaded. Try sending again.',
+          filesFor,
+        );
+        return;
+      }
+      if (!mounted.current) return;
+    }
     const input = retry ?? {
       expectedRoomId: view.roomId,
       expectedProjectId: projectId,
@@ -716,6 +1041,7 @@ function ProjectRoomSession({
       intentId: randomCorrelationId(),
       text,
       ...(replyTarget ? { replyTo: replyTarget } : {}),
+      ...(attachments.length ? { attachments } : {}),
     };
     try {
       // Persist the exact immutable payload before the network can commit it.
@@ -731,6 +1057,7 @@ function ProjectRoomSession({
       // The message now lives in the conversation as a pending row.
       setText('');
       setReplyTo(undefined);
+      files.clear(filesFor);
     }
     setNotice('');
     try {
@@ -884,6 +1211,96 @@ function ProjectRoomSession({
       <ReturnGlyph /> Replying to <strong>{authorOf(messageId)}</strong>
     </span>
   );
+  const me = view.actor;
+  const guards = {
+    expectedRoomId: view.roomId,
+    expectedProjectId: projectId,
+    expectedActorId: me.id,
+  };
+  // Reacting, editing and deleting need the host's support and discuss.
+  const canAct = messageActions && view.capabilities.discuss;
+  /** A person's own message that still stands; Agent messages never are. */
+  const isOwn = (message: RoomMessage) =>
+    message.actor.kind === 'person' &&
+    message.actor.id === me.id &&
+    !message.deletedAt;
+  const reactionViews = (message: RoomMessage): RoomReactionView[] =>
+    (message.reactions ?? []).map((reaction) => ({
+      emoji: reaction.emoji,
+      mine: reaction.actors.some(
+        (actor) => actor.id === me.id && actor.kind === me.kind,
+      ),
+      names: reaction.actors.map((actor) =>
+        actor.id === me.id && actor.kind === me.kind
+          ? 'You'
+          : actor.displayName,
+      ),
+    }));
+  const react = (messageId: string, emoji: string, reacted: boolean) =>
+    room.react.mutate(
+      { target: { ...guards, messageId }, emoji, reacted },
+      {
+        onError: (error) => {
+          if (mounted.current) setNotice(messageActionFailure(error, 'react'));
+        },
+      },
+    );
+  const openPopover = (
+    open: (messageId: string) => void,
+    messageId: string,
+    anchor: HTMLElement,
+  ) => {
+    popoverAnchor.current = anchor;
+    open(messageId);
+  };
+  const startEdit = (message: RoomMessage) => {
+    setNotice('');
+    setEditing({
+      messageId: message.messageId,
+      original: message.text,
+      text: message.text,
+      hasFiles: !!message.attachments?.length,
+    });
+  };
+  async function saveEdit() {
+    if (!editing || room.edit.isPending) return;
+    const current = editing;
+    if (current.text === current.original) {
+      setEditing(undefined);
+      return;
+    }
+    try {
+      await room.edit.mutateAsync({
+        target: { ...guards, messageId: current.messageId },
+        intentId: randomCorrelationId(),
+        text: current.text,
+      });
+      if (mounted.current)
+        setEditing((value) =>
+          value?.messageId === current.messageId ? undefined : value,
+        );
+    } catch (error) {
+      if (mounted.current) setNotice(messageActionFailure(error, 'edit'));
+    }
+  }
+  async function confirmDelete() {
+    const messageId = deleting;
+    if (!messageId || room.remove.isPending) return;
+    try {
+      await room.remove.mutateAsync({
+        target: { ...guards, messageId },
+        intentId: randomCorrelationId(),
+      });
+      if (!mounted.current) return;
+      setEditing((value) =>
+        value?.messageId === messageId ? undefined : value,
+      );
+    } catch (error) {
+      if (mounted.current) setNotice(messageActionFailure(error, 'delete'));
+    } finally {
+      if (mounted.current) setDeleting(undefined);
+    }
+  }
   const toRow = (
     message: RoomMessage,
     inThread = false,
@@ -903,12 +1320,28 @@ function ProjectRoomSession({
         ]),
       ).values(),
     ];
+    const name = message.actor.displayName;
+    const reactions = reactionViews(message);
+    const showReactions = (anchor: HTMLElement) =>
+      openPopover(setReactionsFor, message.messageId, anchor);
+    // With threads on, Reply from the channel opens the message's thread.
+    const replyInThread = threadsOn && !inThread && !!thread;
+    const reply = () => {
+      if (replyInThread) {
+        thread?.open(rootOf(message.messageId));
+        return;
+      }
+      if (!inThread) setReplyTo(message.messageId);
+      composer.current?.focus();
+    };
+    const replyLabel = replyInThread ? 'Reply in thread' : 'Reply';
+    const live = view.capabilities.discuss && !message.deletedAt;
     return {
       id: message.messageId,
       kind: 'message',
       author: {
         id: message.actor.id,
-        label: message.actor.displayName,
+        label: name,
         agent: message.actor.kind === 'agent',
       },
       at: message.createdAt,
@@ -918,7 +1351,84 @@ function ProjectRoomSession({
           ? replyContext(message.replyTo)
           : undefined,
       text: message.text,
+      editedAt: message.editedAt,
+      // A tombstone keeps its place, and its thread stays reachable below it.
+      deleted: !!message.deletedAt,
+      highlighted: editing?.messageId === message.messageId,
       own: message.actor.id === view.actor.id,
+      attachments: (
+        <RoomAttachmentList
+          attachments={message.attachments}
+          source={fileSource}
+        />
+      ),
+      reactions: reactions.length ? (
+        <RoomReactionBar
+          reactions={reactions}
+          disabled={!canAct}
+          onToggle={(emoji, reacted) =>
+            react(message.messageId, emoji, reacted)
+          }
+          onAdd={
+            canAct
+              ? (anchor) => openPopover(setPicker, message.messageId, anchor)
+              : undefined
+          }
+          onShowWho={showReactions}
+        />
+      ) : undefined,
+      // Touch and phones: the same actions as labelled menu rows (no
+      // tooltips there), Delete last and destructive.
+      menu: live
+        ? [
+            ...(canAct
+              ? [
+                  {
+                    key: 'react',
+                    label: 'React',
+                    glyph: <ReactGlyph />,
+                    onSelect: (trigger: HTMLElement) =>
+                      openPopover(setPicker, message.messageId, trigger),
+                  },
+                ]
+              : []),
+            {
+              key: 'reply',
+              label: replyLabel,
+              glyph: <ReturnGlyph />,
+              disabled: room.send.isPending,
+              onSelect: reply,
+            },
+            ...(canAct && isOwn(message)
+              ? [
+                  {
+                    key: 'edit',
+                    label: 'Edit',
+                    glyph: <EditGlyph />,
+                    disabled: !!proposal,
+                    onSelect: () => startEdit(message),
+                  },
+                  {
+                    key: 'delete',
+                    label: 'Delete',
+                    glyph: <TrashGlyph />,
+                    tone: 'danger' as const,
+                    onSelect: () => setDeleting(message.messageId),
+                  },
+                ]
+              : []),
+            ...(reactions.length
+              ? [
+                  {
+                    key: 'who-reacted',
+                    label: 'Who reacted',
+                    glyph: <PeopleGlyph />,
+                    onSelect: (trigger: HTMLElement) => showReactions(trigger),
+                  },
+                ]
+              : []),
+          ]
+        : undefined,
       footer:
         replies.length && thread ? (
           <RoomThreadSummary
@@ -928,23 +1438,49 @@ function ProjectRoomSession({
             onOpen={() => thread.open(message.messageId)}
           />
         ) : undefined,
-      actions: view.capabilities.discuss ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={room.send.isPending}
-          aria-label={`Reply to ${message.actor.displayName}`}
-          onClick={() => {
-            if (threadsOn && !inThread && thread) {
-              thread.open(rootOf(message.messageId));
-              return;
-            }
-            if (!inThread) setReplyTo(message.messageId);
-            composer.current?.focus();
-          }}
-        >
-          <ReturnGlyph /> {threadsOn && !inThread ? 'Reply in thread' : 'Reply'}
-        </Button>
+      // Desktop: icon actions named by label and tooltip (#3045 keeps a row
+      // to two labelled actions). A tombstone takes none.
+      actions: live ? (
+        <>
+          {canAct && (
+            <IconButton
+              aria-label={`React to ${name}`}
+              title="React"
+              onClick={(event) =>
+                openPopover(setPicker, message.messageId, event.currentTarget)
+              }
+            >
+              <ReactGlyph />
+            </IconButton>
+          )}
+          <IconButton
+            disabled={room.send.isPending}
+            aria-label={`Reply to ${name}`}
+            title={replyLabel}
+            onClick={reply}
+          >
+            <ReturnGlyph />
+          </IconButton>
+          {canAct && isOwn(message) && (
+            <>
+              <IconButton
+                aria-label="Edit message"
+                title="Edit"
+                disabled={!!proposal}
+                onClick={() => startEdit(message)}
+              >
+                <EditGlyph />
+              </IconButton>
+              <IconButton
+                aria-label="Delete message"
+                title="Delete"
+                onClick={() => setDeleting(message.messageId)}
+              >
+                <TrashGlyph />
+              </IconButton>
+            </>
+          )}
+        </>
       ) : undefined,
     };
   };
@@ -970,6 +1506,15 @@ function ProjectRoomSession({
               ? replyContext(proposal.replyTo)
               : undefined,
           text: proposal.text,
+          attachments: proposal.attachments?.length ? (
+            <ul className="room-attachments" aria-label="Attached files">
+              {proposal.attachments.map((file) => (
+                <li key={file.id}>
+                  <span>{file.name}</span>
+                </li>
+              ))}
+            </ul>
+          ) : undefined,
           own: true,
           tone: room.send.isPending ? 'pending' : 'failed',
           footer: room.send.isPending ? (
@@ -1017,6 +1562,10 @@ function ProjectRoomSession({
         ...(pendingRow && proposalInThread ? [pendingRow] : []),
       ]
     : [];
+  const shownMessages = openThread
+    ? [openThread, ...threadReplies]
+    : visibleMessages;
+  const lastOwnMessage = [...shownMessages].reverse().find(isOwn);
   const leaveThread = () => thread?.open(undefined);
   // Still paging back to the linked root (or reading the first window).
   const threadLoading =
@@ -1230,10 +1779,14 @@ function ProjectRoomSession({
                   />
                 )
               }
-              hasOlder={variant === 'full' && !!room.history.hasNextPage}
+              hasOlder={olderLoadable}
+              olderNote={olderNote}
               loadingOlder={room.history.isFetchingNextPage}
               onLoadOlder={() => {
-                void room.history.fetchNextPage();
+                // The notice stays until earlier messages actually load.
+                void room.history.fetchNextPage().then((result) => {
+                  if (!result.isError) acknowledgeUnloaded();
+                });
               }}
             />
           )}
@@ -1280,6 +1833,21 @@ Report observed freshness and coverage, including timestamps or checkpoints when
                 void room.history.refetch();
               }}
               thread={!!openThread}
+              files={canAct ? files : undefined}
+              editing={canAct ? editing : undefined}
+              editPending={room.edit.isPending}
+              setEditText={(value) =>
+                setEditing((current) =>
+                  current ? { ...current, text: value } : current,
+                )
+              }
+              cancelEdit={() => setEditing(undefined)}
+              saveEdit={() => void saveEdit()}
+              editLast={
+                canAct && lastOwnMessage
+                  ? () => startEdit(lastOwnMessage)
+                  : undefined
+              }
             />
           ) : (
             <p className="project-room__notice">
@@ -1367,6 +1935,45 @@ Report observed freshness and coverage, including timestamps or checkpoints when
           </div>
         </div>
       )}
+      {picker && (
+        <RoomEmojiPicker
+          anchorRef={popoverAnchor}
+          onClose={() => setPicker(undefined)}
+          onPick={(emoji) => {
+            const messageId = picker;
+            setPicker(undefined);
+            const reacted = messages
+              .find((message) => message.messageId === messageId)
+              ?.reactions?.find((reaction) => reaction.emoji === emoji)
+              ?.actors.some((actor) => actor.id === me.id);
+            // Picking an emoji you already used takes it back, as a tap would.
+            react(messageId, emoji, !reacted);
+          }}
+        />
+      )}
+      {reactionsFor &&
+        (() => {
+          const message = messages.find(
+            (item) => item.messageId === reactionsFor,
+          );
+          return message?.reactions?.length ? (
+            <RoomReactionsSheet
+              reactions={reactionViews(message)}
+              anchorRef={popoverAnchor}
+              onClose={() => setReactionsFor(undefined)}
+            />
+          ) : null;
+        })()}
+      <ConfirmModal
+        isOpen={!!deleting}
+        title="Delete this message?"
+        message="Everyone in the channel sees “Message deleted” in its place."
+        confirmLabel="Delete"
+        variant="danger"
+        pending={room.remove.isPending}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setDeleting(undefined)}
+      />
       <DiscardModal />
     </section>
   );
@@ -1400,6 +2007,13 @@ function ProjectRoomComposer({
   prepareRecap,
   refresh,
   thread = false,
+  files,
+  editing,
+  editPending,
+  setEditText,
+  cancelEdit,
+  saveEdit,
+  editLast,
 }: {
   id: string;
   view: ProjectRoomBrowserView;
@@ -1429,6 +2043,16 @@ function ProjectRoomComposer({
   refresh(): void;
   /** Replies go to the open thread (#4795): `replyTo` is its root. */
   thread?: boolean;
+  /** The composer's files, when the host stores them (#4812). */
+  files?: ReturnType<typeof useRoomAttachments>;
+  /** The reader's own message being edited in place of a new one (#4797). */
+  editing?: ProjectRoomEdit;
+  editPending: boolean;
+  setEditText(value: string): void;
+  cancelEdit(): void;
+  saveEdit(): void;
+  /** Up in an empty composer edits the reader's last message. */
+  editLast?(): void;
 }) {
   const agents = view.capabilities.execute;
   const catalog = useProjectRoomAgent(
@@ -1506,7 +2130,7 @@ function ProjectRoomComposer({
   ];
   const mention = useRoomMention({
     candidates,
-    enabled: !blocked && !recipient,
+    enabled: !blocked && !recipient && !editing,
     onPick(candidate, query) {
       if (candidate.agent) {
         setRecipient({ id: candidate.id, name: candidate.name });
@@ -1521,9 +2145,22 @@ function ProjectRoomComposer({
       composer.current?.focus();
     },
   });
+  const value = editing ? editing.text : text;
   const tooLong =
-    new TextEncoder().encode(text).length > PROJECT_ROOM_LIMITS.textBytes;
-  const canSend = restored && !blocked && !!text.trim() && !tooLong && !waiting;
+    new TextEncoder().encode(value).length > PROJECT_ROOM_LIMITS.textBytes;
+  const hasFiles = !!files?.files.length;
+  // Saving an edit needs a change; an unchanged text has nothing to save.
+  const canSend = editing
+    ? !editPending &&
+      editing.text !== editing.original &&
+      (!!editing.text.trim() || editing.hasFiles) &&
+      !tooLong
+    : restored &&
+      !blocked &&
+      (!!text.trim() || (hasFiles && !recipient)) &&
+      !files?.busy &&
+      !tooLong &&
+      !waiting;
   return (
     <>
       {agents && view.capabilities.discuss && (
@@ -1539,7 +2176,7 @@ function ProjectRoomComposer({
           prompt={text}
           checkpointSeq={view.checkpoint.lastSeq}
           replyTo={replyTo}
-          blocked={!restored || blocked}
+          blocked={!restored || blocked || !!editing}
           toolsSlot={toolsSlot}
           askRef={agentPanel}
           onPendingChange={setPendingAgent}
@@ -1553,29 +2190,48 @@ function ProjectRoomComposer({
         id={id}
         label={thread ? 'Reply in thread' : 'Message the project'}
         placeholder={thread ? 'Reply in thread' : `Message #${channelName}`}
-        value={text}
-        onValueChange={(value, caret) => {
-          setText(value);
+        value={value}
+        onValueChange={(next, caret) => {
+          if (editing) {
+            setEditText(next);
+            return;
+          }
+          setText(next);
           setRecipientNotice('');
-          mention.find(value, caret);
+          mention.find(next, caret);
         }}
         onSend={() => {
-          if (recipient) {
+          if (editing) saveEdit();
+          else if (recipient) {
             // The revision travels with the accepted request; nothing is
             // recorded for an attempt the panel refuses.
             if (!waiting) agentPanel.current?.ask(recipient.id, draft);
           } else send();
         }}
         canSend={canSend}
-        pending={sending}
+        pending={editing ? editPending : sending}
         sendLabel={
-          waiting
-            ? `Waiting for ${pendingName}…`
-            : recipient
-              ? `Ask ${recipient.name}`
-              : 'Send message'
+          editing
+            ? 'Save edit'
+            : waiting
+              ? `Waiting for ${pendingName}…`
+              : recipient
+                ? `Ask ${recipient.name}`
+                : 'Send message'
         }
         textareaRef={composer}
+        sendGlyph={editing ? <CheckGlyph /> : undefined}
+        attachments={
+          files
+            ? {
+                port: files,
+                // Files go with a new message; an edit changes text only, and
+                // an Agent request carries none.
+                locked: blocked || !!editing || !!recipient,
+                owner: view.roomId,
+              }
+            : undefined
+        }
         inputProps={{
           'aria-controls': mention.open ? `${id}-mentions` : undefined,
           'aria-activedescendant':
@@ -1583,7 +2239,30 @@ function ProjectRoomComposer({
               ? `${id}-mentions-option-${mention.selected}`
               : undefined,
           'aria-describedby': `${id}-help`,
-          onKeyDown: mention.onKeyDown,
+          onKeyDown: (event) => {
+            mention.onKeyDown(event);
+            if (event.defaultPrevented) return;
+            const plain =
+              !event.shiftKey &&
+              !event.altKey &&
+              !event.metaKey &&
+              !event.ctrlKey;
+            if (event.key === 'Escape' && editing) {
+              event.preventDefault();
+              cancelEdit();
+            } else if (
+              event.key === 'ArrowUp' &&
+              plain &&
+              !editing &&
+              !text &&
+              !hasFiles &&
+              editLast
+            ) {
+              // #4793 deferred this: Up in an empty composer edits your last message.
+              event.preventDefault();
+              editLast();
+            }
+          },
           onClick: (event) =>
             mention.find(
               event.currentTarget.value,
@@ -1591,7 +2270,14 @@ function ProjectRoomComposer({
             ),
         }}
         above={
-          (replyTo && !thread) || recipient ? (
+          editing ? (
+            <span className="room-composer__chip">
+              <EditGlyph /> Editing message
+              <Button variant="ghost" size="sm" onClick={cancelEdit}>
+                Cancel
+              </Button>
+            </span>
+          ) : (replyTo && !thread) || recipient ? (
             <>
               {replyTo && !thread && (
                 <span className="room-composer__chip">
@@ -1628,7 +2314,7 @@ function ProjectRoomComposer({
               aria-label="Mention a person or agent"
               title="Mention a person or agent"
               className="room-composer__tool"
-              disabled={blocked || !!recipient}
+              disabled={blocked || !!recipient || !!editing}
               onClick={() => {
                 const field = composer.current;
                 const caret = field?.selectionStart ?? text.length;
@@ -1664,8 +2350,9 @@ function ProjectRoomComposer({
               }}
             />
             <p className="sr-only" id={`${id}-help`}>
-              Enter to send, Shift+Enter for a new line. Type @ to mention a
-              person or agent.
+              {editing
+                ? 'Enter to save, Escape to cancel the edit.'
+                : 'Enter to send, Shift+Enter for a new line. Type @ to mention a person or agent.'}
             </p>
             {waiting && (
               <p className="room-composer__status" role="status">
