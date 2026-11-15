@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import * as childWorkload from '@kontourai/station-shared/child-workload';
 import {
@@ -29,6 +29,7 @@ import {
   projectDelegatedTaskEvent,
   snapshotFor,
 } from '../../tools/station-control-delegation.js';
+import { resolveHomeDir } from '../../utils/paths.js';
 import * as claudeEngine from '../adapters/claude-code-spawn.js';
 import {
   CredentialProfileEnvironmentError,
@@ -9947,7 +9948,15 @@ describe('ClaudeAdapter', () => {
         type: 'stdio',
         command: 'node',
         args: [builtinStationControlServerPath()],
-        env: { [INTERNAL_API_TOKEN_ENV]: expect.any(String) },
+        // The home's compile cache rides only the built-in child, like the token.
+        env: {
+          [INTERNAL_API_TOKEN_ENV]: expect.any(String),
+          NODE_COMPILE_CACHE: resolve(
+            resolveHomeDir(),
+            'cache',
+            'node-compile',
+          ),
+        },
       });
       expect(queryArgs.options.mcpServers['third-party']).toEqual({
         type: 'stdio',
