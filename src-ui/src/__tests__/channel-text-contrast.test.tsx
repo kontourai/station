@@ -361,9 +361,8 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
     }
   }
 
-  const cases = (['release', 'dev', 'nightly'] as const).flatMap(
-    (channel) =>
-      (['dark', 'light'] as const).map((mode) => [channel, mode] as const),
+  const cases = (['release', 'dev', 'nightly'] as const).flatMap((channel) =>
+    (['dark', 'light'] as const).map((mode) => [channel, mode] as const),
   );
 
   test.each(cases)(
