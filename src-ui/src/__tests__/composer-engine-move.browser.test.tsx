@@ -2,8 +2,9 @@ import type { Plugin } from 'esbuild';
 import { expect, test } from 'vitest';
 import { scrollBrowserFixture } from './scroll-browser-fixture';
 
-// Controls that need an API provider are stubbed; the four chips on the row
-// (Agent, Engine & model, Mode, Approval) are the real components.
+// Controls that need an API provider are stubbed; Run setup and the four
+// controls in its panel (Agent, Engine & model, Mode, Approval) are the real
+// components.
 const controls: Plugin = {
   name: 'composer-controls',
   setup(builder) {
@@ -45,7 +46,7 @@ const controls: Plugin = {
   },
 };
 
-/** A phone composer with four chips and long engine names. */
+/** A phone composer with Run setup and long engine names. */
 function composer(nextTurn: boolean) {
   return `
     import React, {useRef} from 'react';
@@ -108,7 +109,7 @@ function unclipped(selector: string) {
   };
 }
 
-test('a phone composer shows the next-turn destination in full beside Run setup', async () => {
+test('a phone composer shows the next-turn destination in full', async () => {
   const { browser, page, errors } = await scrollBrowserFixture(composer(true), [
     controls,
   ]);
