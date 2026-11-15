@@ -1,7 +1,14 @@
 import { fetchConversationById } from '@kontourai/station-sdk';
 import { useEffect, useRef, useState } from 'react';
 import type { OpenConversationOptions } from '../../hooks/useChatDockActions';
+import {
+  markNotificationChat,
+  setNotificationOpenNotice,
+  takeNotificationChat,
+} from '../../lib/notificationStationOpen';
 import { type ChatSession } from '../../types';
+
+type ConversationLookup = Awaited<ReturnType<typeof fetchConversationById>>;
 
 interface UseChatDockActiveChatSyncArgs {
   activeChat: string | null;
@@ -45,8 +52,26 @@ export function useChatDockActiveChatSync({
   updateParams,
   showSurface,
   beginOpen,
-}: UseChatDockActiveChatSyncArgs) {
+}: UseChatDockActiveChatSyncArgs): {
+  /**
+   * The chat a cold open is still resolving, or null. While it is set the
+   * dock shows that it is opening rather than the conversation it showed
+   * before (#5: a warm tap used to show the previous thread until the new
+   * one opened).
+   */
+  pendingChat: string | null;
+} {
   const [lookupRetryGeneration, setLookupRetryGeneration] = useState(0);
+  const [pendingChat, setPendingChat] = useState<string | null>(null);
+  /**
+   * The lookup in flight, shared by a second attempt for the same chat on
+   * the same Station: the catalog loading mid-lookup re-runs the open, not
+   * the request (#6).
+   */
+  const lookupRef = useRef<{
+    key: string;
+    promise: Promise<ConversationLookup>;
+  } | null>(null);
   const attemptRef = useRef<{
     activeChat: string;
     attemptKeys: string[];
@@ -78,6 +103,7 @@ export function useChatDockActiveChatSync({
   useEffect(() => {
     if (!activeChat) {
       attemptRef.current = null;
+      setPendingChat(null);
       return;
     }
     if (
@@ -85,8 +111,12 @@ export function useChatDockActiveChatSync({
         (session) =>
           session.conversationId === activeChat || session.id === activeChat,
       )
-    )
+    ) {
+      setPendingChat(null);
+      // Already open here: nothing a notification could report.
+      takeNotificationChat(activeChat);
       return;
+    }
     if (attemptRef.current?.activeChat !== activeChat) {
       attemptRef.current = { activeChat, attemptKeys: [] };
     }
@@ -106,6 +136,7 @@ export function useChatDockActiveChatSync({
     // when that catalog's actual contents (or loaded state) change; callback
     // identity changes must never create an unbounded reopen loop.
     attempt.attemptKeys.push(attemptKey);
+    setPendingChat(activeChat);
     const requestGeneration = ++requestGenerationRef.current;
     let cancelled = false;
     const request = beginOpenRef.current?.();
@@ -131,6 +162,27 @@ export function useChatDockActiveChatSync({
       updateParamsRef.current({ chat: null, dock: null });
     };
     /**
+     * A notification asked for this chat: say why it did not open instead
+     * of only clearing the pointer. Any other `?chat=` open (a reload of a
+     * draft that was never saved, #1582) stays quiet.
+     */
+    const reportFailedNotificationOpen = (
+      failure: 'not-found' | 'forbidden' | 'unreachable',
+    ) => {
+      if (!takeNotificationChat(activeChat)) return;
+      setNotificationOpenNotice(
+        failure === 'unreachable'
+          ? {
+              kind: 'unreachable',
+              retry: () => {
+                markNotificationChat(activeChat);
+                updateParamsRef.current({ chat: activeChat, dock: 'open' });
+              },
+            }
+          : { kind: failure },
+      );
+    };
+    /**
      * Preserve a recovery surface for an existing or unresolved Session
      * (archive#1284). A definitive missing record must skip this path: #1582
      * otherwise opened an unrequested region full of nonexistent-session
@@ -152,9 +204,25 @@ export function useChatDockActiveChatSync({
           session.conversationId === activeChat || session.id === activeChat,
       );
 
+    const lookupKey = `${apiBase}\u0000${activeChat}`;
+    const lookup =
+      lookupRef.current?.key === lookupKey
+        ? lookupRef.current.promise
+        : fetchConversationById(activeChat, apiBase);
+    if (lookupRef.current?.key !== lookupKey) {
+      const entry = { key: lookupKey, promise: lookup };
+      lookupRef.current = entry;
+      // Shared only while in flight: a settled answer is never reused, so a
+      // retry asks the Station again.
+      const release = () => {
+        if (lookupRef.current === entry) lookupRef.current = null;
+      };
+      lookup.then(release, release);
+    }
+
     (async () => {
       try {
-        const conversation = await fetchConversationById(activeChat, apiBase);
+        const conversation = await lookup;
         if (!isCurrent()) return;
         // A persisted tab can hydrate while a cold lookup is in flight. Its
         // durable local identity wins; never reopen it or clear the URL based
@@ -163,6 +231,7 @@ export function useChatDockActiveChatSync({
         if (!conversation) {
           // No record: this Station does not know the id at all (#1582).
           clearDeadChatPointer();
+          reportFailedNotificationOpen('not-found');
           return;
         }
         // Hydrating the conversation the URL already names is not a reveal:
@@ -203,9 +272,24 @@ export function useChatDockActiveChatSync({
           // something to show (archive#801, station#1284).
           revealSessionInChat();
         }
-      } catch {
+        if (opened !== false) takeNotificationChat(activeChat);
+      } catch (error) {
         if (!isCurrent()) return;
         if (hydratedLocally()) return;
+        // `StationHttpError.status`, read by shape: tests and older bundles
+        // mock the SDK barrel without the class.
+        const status =
+          typeof error === 'object' && error !== null && 'status' in error
+            ? (error as { status: unknown }).status
+            : undefined;
+        // A refusal is the Station's answer, not a transient miss: retrying
+        // cannot change it, and there is nothing this device may show. (A
+        // 401 is a credential being renewed, which the auth recovery owns.)
+        if (status === 403) {
+          clearDeadChatPointer();
+          reportFailedNotificationOpen('forbidden');
+          return;
+        }
         // A just-dispatched runtime conversation can become addressable a
         // moment after its URL/session pointer is written. A single bounded
         // retry keeps a temporary projection miss from erasing the chat the
@@ -221,8 +305,12 @@ export function useChatDockActiveChatSync({
         // unknown rather than settled. An unresolved pointer keeps
         // station#1284's reveal; only a definitive miss loses it.
         revealSessionInChat();
+        if (status === 401) takeNotificationChat(activeChat);
+        else reportFailedNotificationOpen('unreachable');
       } finally {
         request?.finish();
+        // A scheduled retry is still opening this chat.
+        if (isCurrent() && retryTimer === undefined) setPendingChat(null);
       }
     })();
 
@@ -238,4 +326,6 @@ export function useChatDockActiveChatSync({
     apiBase,
     lookupRetryGeneration,
   ]);
+
+  return { pendingChat };
 }

@@ -5,6 +5,11 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatDockActiveChatSync } from '../components/chat-dock/useChatDockActiveChatSync';
+import {
+  getNotificationOpenNotice,
+  markNotificationChat,
+  setNotificationOpenNotice,
+} from '../lib/notificationStationOpen';
 
 const fetchConversationById = vi.fn();
 const updateParams = vi.fn();
@@ -640,4 +645,129 @@ describe('useChatDockActiveChatSync', () => {
       expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
     },
   );
+
+  describe('opening a deep-linked conversation (notification taps)', () => {
+    beforeEach(() => setNotificationOpenNotice(null));
+
+    function hook(activeChat: string, openConversation = vi.fn()) {
+      return renderHook(
+        ({ agentCatalogKey, agentsLoaded }) =>
+          useChatDockActiveChatSync({
+            activeChat,
+            agentCatalogKey,
+            agentsLoaded,
+            apiBase: '/api',
+            sessions: [],
+            openConversation,
+            setActiveSessionId: vi.fn(),
+            updateParams,
+            showSurface,
+          }),
+        { initialProps: { agentCatalogKey: 'claude', agentsLoaded: true } },
+      );
+    }
+
+    it('reports the chat as opening until it opens, so the dock does not show the previous one', async () => {
+      let answer: (value: unknown) => void = () => {};
+      fetchConversationById.mockReturnValue(
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+      );
+      const openConversation = vi.fn().mockResolvedValue(true);
+      const { result } = hook('thread-new', openConversation);
+      await waitFor(() =>
+        expect(result.current.pendingChat).toBe('thread-new'),
+      );
+      answer({ id: 'thread-new', agentSlug: 'claude', projectSlug: null });
+      await waitFor(() => expect(result.current.pendingChat).toBeNull());
+      expect(openConversation).toHaveBeenCalledTimes(1);
+    });
+
+    it('says a notification chat was not found instead of only clearing it', async () => {
+      fetchConversationById.mockResolvedValue(null);
+      markNotificationChat('thread-gone');
+      const { result } = hook('thread-gone');
+      await waitFor(() =>
+        expect(getNotificationOpenNotice()).toEqual({ kind: 'not-found' }),
+      );
+      expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
+      expect(result.current.pendingChat).toBeNull();
+    });
+
+    it('a chat no notification asked for still clears quietly (#1582)', async () => {
+      fetchConversationById.mockResolvedValue(null);
+      hook('draft-never-saved');
+      await waitFor(() =>
+        expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null }),
+      );
+      expect(getNotificationOpenNotice()).toBeNull();
+    });
+
+    it('a refusal says this device has no access, without a retry', async () => {
+      fetchConversationById.mockRejectedValue(
+        Object.assign(new Error('forbidden'), { status: 403 }),
+      );
+      markNotificationChat('thread-private');
+      hook('thread-private');
+      await waitFor(() =>
+        expect(getNotificationOpenNotice()).toEqual({ kind: 'forbidden' }),
+      );
+      expect(fetchConversationById).toHaveBeenCalledTimes(1);
+      expect(showSurface).not.toHaveBeenCalled();
+    });
+
+    it('an unreachable Station offers Retry, which asks for the chat again', async () => {
+      fetchConversationById.mockRejectedValue(new Error('network down'));
+      markNotificationChat('thread-far');
+      hook('thread-far');
+      await waitFor(
+        () =>
+          expect(getNotificationOpenNotice()).toMatchObject({
+            kind: 'unreachable',
+          }),
+        { timeout: 2000 },
+      );
+      const notice = getNotificationOpenNotice();
+      if (notice?.kind !== 'unreachable') throw new Error('no retry');
+      updateParams.mockClear();
+      notice.retry();
+      expect(updateParams).toHaveBeenCalledWith({
+        chat: 'thread-far',
+        dock: 'open',
+      });
+    });
+
+    it('the catalog loading mid-lookup reuses the lookup in flight (#6)', async () => {
+      let answer: (value: unknown) => void = () => {};
+      fetchConversationById.mockReturnValue(
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+      );
+      const openConversation = vi.fn().mockResolvedValue(true);
+      const { rerender } = renderHook(
+        ({ agentCatalogKey, agentsLoaded }) =>
+          useChatDockActiveChatSync({
+            activeChat: 'thread-1',
+            agentCatalogKey,
+            agentsLoaded,
+            apiBase: '/api',
+            sessions: [],
+            openConversation,
+            setActiveSessionId: vi.fn(),
+            updateParams,
+            showSurface,
+          }),
+        { initialProps: { agentCatalogKey: '', agentsLoaded: false } },
+      );
+      await waitFor(() =>
+        expect(fetchConversationById).toHaveBeenCalledTimes(1),
+      );
+      rerender({ agentCatalogKey: 'claude', agentsLoaded: true });
+      answer({ id: 'thread-1', agentSlug: 'claude', projectSlug: null });
+      await waitFor(() => expect(openConversation).toHaveBeenCalledTimes(1));
+      expect(fetchConversationById).toHaveBeenCalledTimes(1);
+    });
+  });
 });

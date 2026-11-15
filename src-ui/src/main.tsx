@@ -63,7 +63,10 @@ import { AuthorityQueryProvider } from './contexts/AuthorityQueryContext';
 import { ConversationsProvider } from './contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from './contexts/KeyboardShortcutsContext';
 import { MessageContextContext } from './contexts/MessageContextContext';
-import { NavigationProvider } from './contexts/NavigationContext';
+import {
+  NavigationProvider,
+  navigationStore,
+} from './contexts/NavigationContext';
 import { PaneRelationsProvider } from './contexts/PaneRelationsContext';
 import { PreviewProvider } from './contexts/PreviewContext';
 import { RecoveryQueryBoundary } from './contexts/RecoveryQueryBoundary';
@@ -92,6 +95,7 @@ import {
   resolveBootAccentColor,
   resolveBootTheme,
 } from './lib/device-settings-store';
+import { holdColdNotificationLink } from './lib/notificationStationOpen';
 import {
   stationMutationDefaults,
   stationQueryDefaults,
@@ -275,6 +279,12 @@ if (_bootBrandingTheme)
 bindColorThemeToSettings(document.documentElement, deviceSettingsStore);
 
 function renderApp(): void {
+  // A notification link loaded cold names its Station: hold its conversation
+  // back from the URL until the opener knows which Station that is.
+  if (!isAccountPath && !isSharedAnswerPath)
+    holdColdNotificationLink(window.location, (params) =>
+      navigationStore.updateParams(params),
+    );
   ReactDOM.createRoot(document.getElementById('root')!).render(
     isAccountPath ? (
       <React.StrictMode>

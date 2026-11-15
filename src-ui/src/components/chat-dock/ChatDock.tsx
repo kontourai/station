@@ -2795,7 +2795,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     };
   }, [beginReaderOpen]);
   // Sync activeChat (conversationId) from URL to local state
-  useChatDockActiveChatSync({
+  const { pendingChat: openingChat } = useChatDockActiveChatSync({
     activeChat,
     agentCatalogKey: agents
       .map((agent) => agent.slug)
@@ -2810,6 +2810,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     updateParams,
     showSurface,
   });
+  // The dock still holds the conversation it showed before; until the one
+  // the URL names opens, cover it with the opening state.
+  const coveringStaleChat =
+    openingChat !== null &&
+    activeSession?.conversationId !== openingChat &&
+    activeSession?.id !== openingChat;
 
   useEffect(() => {
     const openProjectChats = (event: Event) => {
@@ -4442,6 +4448,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               }
                             />
                           ) : null}
+                          {/* A deep link (a notification tap) is opening another
+                      conversation: say so instead of showing the previous one
+                      until it opens. */}
+                          {workspaceShown &&
+                          coveringStaleChat &&
+                          !showNewChatModal &&
+                          !importedSessionId ? (
+                            <SkeletonBlock
+                              count={2}
+                              label="Opening conversation"
+                            />
+                          ) : null}
                           {/* The chat the draft opened over stays mounted under it,
                       hidden and inert, so its form answers, reply text and
                       scroll survive a draft that is dismissed. */}
@@ -4450,8 +4468,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           !importedSessionId ? (
                             <div
                               className="chat-dock__covered-chat"
-                              hidden={showNewChatModal}
-                              inert={showNewChatModal}
+                              hidden={showNewChatModal || coveringStaleChat}
+                              inert={showNewChatModal || coveringStaleChat}
                             >
                               <ChatDockContentArea
                                 connection={conversationConnection}

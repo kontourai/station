@@ -1,7 +1,8 @@
-import type {
-  Notification,
-  NotificationEnvelopeV1,
-  NotificationSource,
+import {
+  type Notification,
+  type NotificationEnvelopeV1,
+  type NotificationSource,
+  notificationSessionHref,
 } from '@kontourai/station-contracts/notification';
 import { markNotificationRead } from '@kontourai/station-sdk/notification-read';
 import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
@@ -25,8 +26,9 @@ export function agentAttributionLabel(
  * `path` targets were validated as same-origin relative Station paths by the
  * envelope reader. A `session` target — or an agent notification with no
  * target at all, whose default is the calling session (design §2) — opens
- * that chat in the dock, the same `/?chat=…&dock=open` shape the server's
- * `resolveNotificationOpenHref` produces for a managed session.
+ * that chat in the dock: the notification href every channel opens
+ * (`notificationSessionHref`, which the server's OS links use too). A toast
+ * lists the active Station's records, so it names no Station.
  */
 export function notificationOpenTarget(
   envelope: NotificationEnvelopeV1,
@@ -39,9 +41,12 @@ export function notificationOpenTarget(
       : envelope.source.kind === 'agent'
         ? envelope.source.sessionId
         : undefined;
-  return sessionId
-    ? { path: '/', params: { chat: sessionId, dock: 'open' } }
-    : undefined;
+  if (!sessionId) return undefined;
+  const href = new URL(
+    notificationSessionHref({ sessionId }),
+    'https://station.invalid',
+  );
+  return { path: href.pathname, params: Object.fromEntries(href.searchParams) };
 }
 
 export interface NotificationActivationDeps {
