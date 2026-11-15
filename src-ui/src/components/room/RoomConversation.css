@@ -582,24 +582,11 @@ a.room-attachments__file:focus-visible {
   box-shadow: inset 0 0 0 var(--k-border-thin)
     color-mix(in oklab, var(--k-caution) 55%, transparent);
 }
-/* The message a notification opened: a brief wash that fades. */
+/* The message a notification opened: a still wash the list removes after a
+   moment, so reduced motion loses nothing. */
 .room-row--focused {
-  animation: room-row-focus 2.4s ease-out;
-}
-@keyframes room-row-focus {
-  0%,
-  40% {
-    background: color-mix(in oklab, var(--k-caution) 22%, transparent);
-  }
-  100% {
-    background: transparent;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .room-row--focused {
-    animation: none;
-    background: color-mix(in oklab, var(--k-caution) 16%, transparent);
-  }
+  background: color-mix(in oklab, var(--k-caution) 18%, transparent);
+  box-shadow: inset 2px 0 0 var(--k-caution);
 }
 /* "Lin is typing…": one quiet line that keeps its height, so rows never jump. */
 .room-conversation__typing {

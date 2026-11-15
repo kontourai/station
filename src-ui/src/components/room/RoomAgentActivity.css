@@ -57,7 +57,8 @@
   block-size: var(--k-space-2);
   border-radius: 50%;
   background: var(--k-brand);
-  animation: room-agent-pulse 1.4s ease-in-out infinite;
+  animation: room-agent-pulse var(--motion-status-pulse) var(--ease-standard)
+    infinite;
 }
 @keyframes room-agent-pulse {
   0%,
@@ -68,11 +69,6 @@
   50% {
     opacity: 1;
     transform: scale(1);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .room-agent-activity__pulse {
-    animation: none;
   }
 }
 .room-agent-activity__actions {

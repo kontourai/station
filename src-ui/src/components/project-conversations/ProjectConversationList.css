@@ -262,7 +262,8 @@
   block-size: var(--k-space-2);
   border-radius: 50%;
   background: var(--k-active);
-  animation: conversation-list-working 1.4s ease-in-out infinite;
+  animation: conversation-list-working var(--motion-status-pulse)
+    var(--ease-standard) infinite;
 }
 @keyframes conversation-list-working {
   0%,
@@ -271,11 +272,6 @@
   }
   50% {
     opacity: 1;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .conversation-list__working {
-    animation: none;
   }
 }
 /* An unread message names the reader (#4799): an "@" in the caution ink,
