@@ -41,7 +41,7 @@ Before writing feature CSS, inspect the published `@kontourai/ui/react` primitiv
 
 | Conversation surface | Shared owner |
 | --- | --- |
-| Dock, Activity, attached session, coding tab | `components/conversation/ConversationBody` |
+| Dock, attached session, coding tab | `components/conversation/ConversationBody` |
 | Reply and exact needs-input draft | `components/chat/ChatInputArea`; exact adapters retain request identity |
 | Owner, member and guest Task history | `components/conversation/SharedTaskHistoryList` |
 | Desktop and mobile Inbox | `components/chat-dock/useInboxPanelController` |

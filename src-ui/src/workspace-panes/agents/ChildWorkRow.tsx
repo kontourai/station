@@ -1,5 +1,6 @@
 import {
   CHILD_WORK_SUMMARY_MAX_CHARS,
+  type ChildWorkItem,
   childWorkDisplayStatus,
   childWorkKindOf,
 } from '@kontourai/station-contracts/child-work';
@@ -13,10 +14,14 @@ import {
   cacheInclusiveTotalTokens,
   foldUsageEvents,
 } from '@kontourai/station-shared/usage-fold';
-import { type CSSProperties, useId, useMemo, useState } from 'react';
+import { type CSSProperties, useMemo, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ChildWorkActivity } from '../../components/chat/ChildWorkActivity';
 import { ChildWorkIdentity } from '../../components/chat/ChildWorkIdentity';
+import {
+  childChatTarget,
+  useChildChatNavigation,
+} from '../../components/chat-dock/ChildChatNavigationContext';
 import { useOptionalConversationConnection } from '../../components/conversation/ConversationConnectionContext';
 import { ConversationStopControl } from '../../components/conversation/ConversationStopControl';
 import {
@@ -30,7 +35,6 @@ import {
   latestChildTool,
 } from '../../utils/child-work-display';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
-import { ChildWorkTranscript } from './ChildWorkTranscript';
 import type {
   ChildWorkProvenance,
   ChildWorkRowModel,
@@ -129,6 +133,7 @@ export function ChildWorkRow({
   now,
   showProvenance,
   onOpenSession,
+  onOpenChild,
   agent,
   stationName,
 }: {
@@ -138,12 +143,12 @@ export function ChildWorkRow({
   now: number;
   showProvenance: boolean;
   onOpenSession: (threadId: string) => void;
+  onOpenChild?: (item: ChildWorkItem, title: string) => void;
 }) {
   const target = useOptionalConversationConnection();
   const owningStationName = target?.station?.binding.stationName ?? stationName;
   const [expanded, setExpanded] = useState(false);
-  const [transcriptOpen, setTranscriptOpen] = useState(false);
-  const transcriptId = useId();
+  const openChild = useChildChatNavigation();
   const { item } = row;
   const running = item.status === 'running';
   const interrupt = useInterruptDelegatedTaskMutation();
@@ -313,23 +318,19 @@ export function ChildWorkRow({
             <Button
               size="sm"
               className="tap-target"
-              {...(sessionHandle
-                ? {}
-                : {
-                    'aria-expanded': transcriptOpen,
-                    'aria-controls': transcriptId,
-                  })}
-              onClick={() =>
-                sessionHandle
-                  ? onOpenSession(sessionHandle.threadId)
-                  : setTranscriptOpen((current) => !current)
-              }
+              onClick={() => {
+                if (openChild && target) {
+                  openChild({
+                    ...childChatTarget(item, target),
+                    title: row.title,
+                  });
+                  return;
+                }
+                if (onOpenChild) onOpenChild(item, row.title);
+                else if (sessionHandle) onOpenSession(sessionHandle.threadId);
+              }}
             >
-              {sessionHandle
-                ? 'Open session'
-                : transcriptOpen
-                  ? 'Hide transcript'
-                  : 'View transcript'}
+              Open chat
             </Button>
           )}
           {row.stop && (
@@ -363,17 +364,6 @@ export function ChildWorkRow({
               Nothing to stop yet — try again.
             </span>
           )}
-        </div>
-      )}
-      {transcript && transcriptOpen && (
-        <div className="child-work-row__detail">
-          <ChildWorkTranscript
-            id={transcriptId}
-            threadId={item.reporterThreadId}
-            childId={item.childId}
-            running={running}
-            revision={JSON.stringify([item.status, item.progress, item.usage])}
-          />
         </div>
       )}
     </li>

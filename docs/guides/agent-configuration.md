@@ -301,7 +301,7 @@ without that reference uses its persisted notification's Allow/Deny actions;
 `review_pending` without one opens the session. `needs_input` sends a normal
 orchestration turn to the owning session. An item for a delegated task that
 runs on a paired Station offers no reply. It says to answer on that Station
-and opens the Activity detail. The header
+and opens the Chat reader. The header
 badge is the same deduplicated active-attention count shown in the Inbox.
 Concrete approval requests suppress a duplicate lifecycle item for the same
 session. Gate exceptions also suppress that session's lifecycle duplicate;
@@ -318,12 +318,13 @@ enforce tenant ownership. See the [Session API attention contract](../reference/
 ### Questions from agent harnesses
 
 Claude Code's `AskUserQuestion`, Codex's `requestUserInput` and questions an
-ACP engine asks through Cursor's `cursor/ask_question` appear as one form in the Session, rendered by the same card as a tool server's form
+ACP engine asks through Cursor's `cursor/ask_question` or Grok Build's
+`_x.ai/ask_user_question` appear as one form in the Session, rendered by the same card as a tool server's form
 (#3390): inline on desktop, and in the request sheet on a phone. Each
 question keeps the engine's short header above it, when it has one. Select an
 option, choose several where the harness supports it, or choose Other to
-enter a custom answer (`cursor/ask_question` offers no Other: the engine
-takes back only the options it offered). Send checks every question first; an unanswered one is
+enter a custom answer (`cursor/ask_question` and `_x.ai/ask_user_question`
+offer no Other: the engine takes back only the options it offered). Send checks every question first; an unanswered one is
 marked on its own field with its reason, and focus moves to the first.
 Ctrl/Cmd+Enter sends. Decline and Cancel return that action to the engine
 instead of an answer. Answering a question never grants permission to later
@@ -588,7 +589,7 @@ approval paths; these hooks do not establish external policy enforcement.
 | Hook | When it fires | What it does |
 |------|--------------|--------------|
 | `beforeToolCall` | Before any tool executes | Checks auto-approve and the untrusted-content permission; triggers approval flow if needed |
-| `afterToolCall` | After a tool returns | Debug logging; marks the turn when the result came from an integration classified untrusted |
+| `afterToolCall` | After a tool returns | Debug logging; marks the turn when the result came from an integration classified untrusted, or from the HTTP request built-in |
 | `endInvocation` | Once when the turn ends, including on error and abort | Releases the turn's untrusted-content state; the conversation's mark stays until a person clears it |
 | `afterInvocation` | After the full turn completes | Updates conversation stats (tokens, cost, tool call count) in the memory adapter |
 

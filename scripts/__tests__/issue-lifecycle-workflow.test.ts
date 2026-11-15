@@ -37,6 +37,18 @@ describe('issue lifecycle workflow', () => {
       });
     }
   });
+  // A comment on a pull request raises issue_comment with
+  // `issue.pull_request` set; the job is skipped before a runner starts.
+  // Issue events and comments on issues carry no `pull_request` key.
+  test('skips pull-request comments at the job, keeping issue events', () => {
+    const document = load(workflow, { schema: JSON_SCHEMA }) as {
+      jobs: Record<string, { if?: string }>;
+    };
+    expect(document.jobs.reduce.if).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      '${{ !github.event.issue.pull_request }}',
+    );
+  });
   test('checks maintainer permission and delegates all label decisions to the reducer', () => {
     expect(workflow).toContain('getCollaboratorPermissionLevel');
     expect(workflow).toContain('reduceIssueLifecycle(input)');

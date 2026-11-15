@@ -558,7 +558,9 @@ describe('the review layout kind', () => {
     const { unmount } = renderLayout();
 
     let detail = screen.getByTestId('independent-review-receipt-detail');
-    expect(detail.textContent).toContain('Review evidence is incomplete.');
+    expect(detail.textContent).toContain(
+      "Not every reviewer finished, so no findings doesn't mean a clean review.",
+    );
     expect(detail.textContent).not.toContain('All reviewers completed');
     unmount();
 
@@ -571,8 +573,8 @@ describe('the review layout kind', () => {
 
     detail = screen.getByTestId('independent-review-receipt-detail');
     expect(detail.textContent).toContain(
-      'All reviewers completed; no concrete findings were recorded.',
+      'All reviewers finished with no findings.',
     );
-    expect(detail.textContent).not.toContain('Review evidence is incomplete.');
+    expect(detail.textContent).not.toContain('Not every reviewer finished');
   });
 });

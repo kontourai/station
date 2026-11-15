@@ -72,8 +72,6 @@
 
     "src-server/runtime/agents/__tests__/runtime-default-agent.test.ts",
 
-    "src-server/security/pairing-route-scopes.ts",
-
     "src-server/security/__tests__/pairing-route-scopes.test.ts"
   ],
 

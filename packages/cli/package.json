@@ -41,14 +41,14 @@
     "@kontourai/station-contracts": "^0.13.0",
     "@kontourai/station-sdk": "^0.13.0",
     "@kontourai/station-shared": "^0.13.0",
-    "commander": "^15.0.0",
+    "commander": "^15.1.0",
     "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
     "typescript-api": "npm:typescript@5.9.3"
   },
   "dependencies": {
     "@napi-rs/keyring": "2.1.2",
-    "koffi": "3.3.6",
+    "koffi": "3.3.7",
     "qrcode": "^1.5.4"
   }
 }

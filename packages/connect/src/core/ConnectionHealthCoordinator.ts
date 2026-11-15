@@ -53,6 +53,13 @@ export interface ConnectionHealthSnapshot {
    * supervised managed-loopback server is never probed, so it reads null.
    */
   checkedAt: number | null;
+  /**
+   * Completed runs, whatever their outcome; an aborted run does not count.
+   * It changes once per run even where `checking` and `checkedAt` cannot
+   * show one: a managed-loopback run publishes `checking` true and false in
+   * one synchronous pass and reports no check time.
+   */
+  completedProbes: number;
 }
 
 export type ConnectionHealthCheckResult =
@@ -96,6 +103,7 @@ export class ConnectionHealthCoordinator {
     failureWindows: [],
     routes: [],
     checkedAt: null,
+    completedProbes: 0,
   };
   private timer: ReturnType<typeof setTimeout> | null = null;
   private windowOpen = false;
@@ -185,6 +193,7 @@ export class ConnectionHealthCoordinator {
         // Nothing was probed: the supervisor vouches for this server, so
         // there is no check time to report, including an earlier probe's.
         checkedAt: null,
+        completedProbes: this.snapshot.completedProbes + 1,
       });
       this.schedule(this.options.pollIntervalMs ?? 10_000);
       this.runQueuedCheck();
@@ -272,6 +281,7 @@ export class ConnectionHealthCoordinator {
         failureWindows: this.closeFailureWindow(),
         routes: routeResults,
         checkedAt: Date.now(),
+        completedProbes: this.snapshot.completedProbes + 1,
       });
       this.schedule(this.options.pollIntervalMs ?? 10_000);
     } else {
@@ -331,6 +341,7 @@ export class ConnectionHealthCoordinator {
         failureWindows,
         routes: routeResults,
         checkedAt: Date.now(),
+        completedProbes: this.snapshot.completedProbes + 1,
       });
       if (!blocked) this.schedule(this.retryDelay());
     }

@@ -3,14 +3,17 @@
 // (#2924), in the merge-friendly ledger layout (#2936).
 //
 //   npm run docs:review:record -- <path> --note "<what you checked>" [--drop-source <path>]... [--add-source <path>]... [--rereview]
+//   npm run docs:review:record -- --input <cited source> --note "<what you checked>"
 //   npm run docs:review:record -- --batch <file.json>
 //   npm run docs:review:record -- --advance-baseline
 //   npm run docs:review:record -- --show-delta [<path>...]
 //   npm run docs:review:record -- --verify-bindings [<path>...]
 //
 // <path> names an existing review record (a document) or a docs/learn/media
-// capture. Batch input is a JSON array of
-// `{ path, note, removedSources?, addedSources?, rereview? }`. Recording
+// capture. `--input` names one cited source and records a single review of it
+// for every record and capture that cites it. Batch input is a JSON array of
+// `{ path, note, removedSources?, addedSources?, rereview? }` or
+// `{ input, note }`. Recording
 // rebinds each changed document or source to the commit that contains its
 // reviewed bytes, adds the notes as one new append-only notes file, and writes
 // nothing unless every entry validates. It records a review that a person
@@ -51,12 +54,14 @@ import {
   serializeLedgerIndex,
   serializeNotesFile,
   serializeRecordFile,
+  withReviewHistory,
   writeReviewFiles,
 } from './lib/review-ledger-store.mjs';
 import { redactReviewNoteHosts } from './lib/review-note-privacy.mjs';
 
 const USAGE = [
   'Usage: docs:review:record -- <path> --note "<review note>" [--drop-source <path>]... [--add-source <path>]... [--rereview] [--json]',
+  '       docs:review:record -- --input <cited source> --note "<review note>" [--json]',
   '       docs:review:record -- --batch <file.json>',
   '       docs:review:record -- --advance-baseline',
   '       docs:review:record -- --redact-private-hosts <note-file>...',
@@ -86,6 +91,7 @@ function git(root, args) {
 export function parseRecordArguments(argv) {
   let batch;
   let note;
+  let input;
   let mode = 'record';
   let rereview = false;
   const paths = [];
@@ -102,7 +108,15 @@ export function parseRecordArguments(argv) {
     };
     if (arg === '--batch') batch = value();
     else if (arg === '--note') note = value();
-    else if (arg === '--drop-source') removedSources.push(value());
+    else if (arg === '--input') {
+      // One input per note, so one command cannot clear every changed input.
+      if (input !== undefined)
+        throw reviewError(
+          'usage',
+          `--input names one input per note; record each input separately or use --batch\n${USAGE}`,
+        );
+      input = value();
+    } else if (arg === '--drop-source') removedSources.push(value());
     else if (arg === '--add-source') addedSources.push(value());
     else if (arg === '--rereview') rereview = true;
     else if (arg === '--json') continue;
@@ -125,6 +139,7 @@ export function parseRecordArguments(argv) {
   const recording =
     batch !== undefined ||
     note !== undefined ||
+    input !== undefined ||
     rereview ||
     removedSources.length ||
     addedSources.length;
@@ -142,6 +157,7 @@ export function parseRecordArguments(argv) {
     if (
       paths.length ||
       note !== undefined ||
+      input !== undefined ||
       rereview ||
       removedSources.length ||
       addedSources.length
@@ -151,6 +167,19 @@ export function parseRecordArguments(argv) {
         `--batch cannot be combined with a path, note or flag\n${USAGE}`,
       );
     return { mode, batch };
+  }
+  if (input !== undefined) {
+    if (
+      paths.length ||
+      rereview ||
+      removedSources.length ||
+      addedSources.length
+    )
+      throw reviewError(
+        'usage',
+        `--input cannot be combined with a document path or source flag\n${USAGE}`,
+      );
+    return { mode, entries: [{ input, note }] };
   }
   if (paths.length !== 1) throw reviewError('usage', USAGE);
   return {
@@ -166,9 +195,29 @@ function validateEntries(entries) {
       'Review batch must be a non-empty JSON array',
     );
   const seen = new Set();
+  const seenInputs = new Set();
   return entries.map((entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry))
       throw reviewError('invalid-batch', 'Each review entry must be an object');
+    if (Object.hasOwn(entry, 'input')) {
+      const { input, note, ...rest } = entry;
+      if (Object.keys(rest).length)
+        throw reviewError(
+          'invalid-batch',
+          `An input review entry has only input and note: ${String(input)}`,
+        );
+      if (typeof input !== 'string' || !isBindingPath(input))
+        throw reviewError(
+          'invalid-path',
+          `An input review entry names one repository path or JSON value path: ${JSON.stringify(input)}`,
+        );
+      if (seenInputs.has(input))
+        throw reviewError('duplicate-entry', `Duplicate input entry: ${input}`);
+      seenInputs.add(input);
+      if (typeof note !== 'string' || !note.trim())
+        throw reviewError('empty-note', `Review note is empty: ${input}`);
+      return { input, note: note.trim() };
+    }
     const {
       path: file,
       note,
@@ -504,6 +553,11 @@ export async function recordDocumentationReviews({
   const snapshot = createRepositorySnapshot(root);
   const { parsed, manifest } = readReviewFiles(root);
   const before = serializeLedgerFiles(parsed);
+  if (parsed.index.version !== 3 && entries.some((entry) => 'input' in entry))
+    throw reviewError(
+      'unsupported-version',
+      'Input review notes need the path-only ledger (version 3); run node scripts/migrate-review-ledger.mjs --path-only first',
+    );
   if (parsed.index.version === 3)
     return recordReviewNotes(
       root,
@@ -630,7 +684,9 @@ async function recordReviewNotes(
   before,
   now,
 ) {
-  const state = readReviewState(root);
+  // One history replay per run: reading the files again and replaying a long
+  // baseline range a second time for the closing report doubled its cost.
+  const state = withReviewHistory(root, compileReviewState(parsed, manifest));
   const committed = reviewedAtHead(root);
   const policy = resolveDocumentationFreshness({
     root,
@@ -640,7 +696,26 @@ async function recordReviewNotes(
   });
   const notes = [];
   const recorded = [];
-  for (const entry of entries) {
+  /** Throws unless HEAD holds the bytes or value a review names. */
+  const requireCommitted = async (input) => {
+    const file = bindingFile(input);
+    if (!snapshot.tracked.has(file))
+      throw reviewError(
+        'untracked',
+        `Recorded input is not tracked: ${input}; add it or drop its citation`,
+      );
+    const bytes = await snapshot.read(file);
+    const value = bindingDigest(input, bytes);
+    if (value === undefined)
+      throw reviewError('missing-value', `No value at ${input}`);
+    if (!committed(input, value, bytes))
+      throw reviewError(
+        'not-committed',
+        `Reviewed bytes are not committed: ${input}; commit them first`,
+      );
+    return bytes;
+  };
+  for (const entry of entries.filter((item) => !('input' in item))) {
     const raw =
       parsed.records.get(entry.path) ?? parsed.captures.get(entry.path);
     if (!raw)
@@ -718,21 +793,7 @@ async function recordReviewNotes(
     ];
     for (const input of [entry.path, ...sources.map((source) => source.path)]) {
       if (input === entry.path && reviewAbsentNote) continue;
-      const file = bindingFile(input);
-      if (!snapshot.tracked.has(file))
-        throw reviewError(
-          'untracked',
-          `Recorded input is not tracked: ${input}; add it or drop its citation`,
-        );
-      const bytes = await snapshot.read(file);
-      const value = bindingDigest(input, bytes);
-      if (value === undefined)
-        throw reviewError('missing-value', `No value at ${input}`);
-      if (!committed(input, value, bytes))
-        throw reviewError(
-          'not-committed',
-          `Reviewed bytes are not committed: ${input}; commit them first`,
-        );
+      const bytes = await requireCommitted(input);
       if (
         kind === 'capture' &&
         input === entry.path &&
@@ -746,6 +807,53 @@ async function recordReviewNotes(
     raw.data.sources = sources.map((source) => source.path);
     notes.push({ path: entry.path, note: entry.note, inputs });
     recorded.push({ kind, path: entry.path, rebound: [] });
+  }
+  // An input entry is shorthand for one ordinary note per record or capture
+  // that cites the input, each covering only that input. It is written in the
+  // existing note form, so scripts on any branch read it like any other note.
+  // After the document entries, so a source this batch adds or drops is
+  // judged by the dependency lists it writes.
+  for (const { input, note } of entries.filter((item) => 'input' in item)) {
+    const paths = [...parsed.records.values(), ...parsed.captures.values()]
+      .filter(
+        ({ data }) =>
+          data.path !== bindingFile(input) &&
+          data.sources.some(
+            (source) =>
+              (typeof source === 'string' ? source : source.path) === input,
+          ),
+      )
+      .map(({ data }) => data.path)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    if (!paths.length) {
+      const sameFile = [
+        ...new Set(
+          [...parsed.records.values(), ...parsed.captures.values()].flatMap(
+            ({ data }) =>
+              data.sources
+                .map((source) =>
+                  typeof source === 'string' ? source : source.path,
+                )
+                .filter(
+                  (source) =>
+                    source !== input &&
+                    bindingFile(source) === bindingFile(input),
+                ),
+          ),
+        ),
+      ].sort();
+      throw reviewError(
+        'not-cited',
+        `No record or capture cites ${input}${
+          sameFile.length
+            ? `; cited bindings in that file: ${sameFile.join(', ')}`
+            : ''
+        }; an input note covers only the exact citation it names`,
+      );
+    }
+    await requireCommitted(input);
+    for (const path of paths) notes.push({ path, note, inputs: [input] });
+    recorded.push({ kind: 'input', path: input, paths, rebound: [] });
   }
   const notesText = serializeNotesFile({ revision: head, notes });
   const notesFile = notesFileName(notesText, now);
@@ -771,13 +879,47 @@ async function recordReviewNotes(
       { reportMissing: true },
     );
   writeReviewFiles(root, after, before);
+  // What a fresh replay would report, without running it again: the new,
+  // uncommitted note removes its inputs from its entry, only inputs still
+  // cited stay pending, and then, as in deriveReviewHistory, every input whose
+  // file differs from HEAD is outstanding again because a note binds only
+  // committed bytes.
+  const pending = new Map(
+    state.ledger.records.map((record) => [record.path, record.historyChanges]),
+  );
+  const dirty = new Set(
+    git(root, ['diff', '--no-renames', '--name-only', '-z', 'HEAD', '--'])
+      .split('\0')
+      .filter(Boolean),
+  );
   return {
     revision: head,
     notesFile,
     recorded,
-    dependents: readReviewState(root)
-      .ledger.records.filter((record) => record.historyChanges?.length)
-      .map((record) => ({ path: record.path, changed: record.historyChanges })),
+    dependents: proposed.ledger.records
+      .map((record) => {
+        const covered = new Set(
+          record.notes
+            .filter((note) => note.file === notesFile)
+            .flatMap((note) => note.inputs ?? []),
+        );
+        const cited = new Set([
+          record.path,
+          ...record.sources.map((source) => source.path),
+        ]);
+        return {
+          path: record.path,
+          changed: [
+            ...new Set([
+              ...(pending.get(record.path) ?? []).filter(
+                (input) => cited.has(input) && !covered.has(input),
+              ),
+              ...[...cited].filter((input) => dirty.has(bindingFile(input))),
+            ]),
+          ].sort(),
+        };
+      })
+      .filter((record) => record.changed.length),
   };
 }
 
@@ -827,12 +969,59 @@ async function evaluateAll(root, paths) {
  */
 export async function showReviewDelta({ root = process.cwd(), paths = [] }) {
   const entries = await evaluateAll(root, paths);
+  // A landed note can cover global history without reviewing this branch.
+  // Use the same outstanding-input policy as the gate before saying fresh.
+  const policy = resolveDocumentationFreshness({
+    root,
+    env: { ...process.env, STATION_DOCS_FRESHNESS: 'scoped' },
+  });
   const blobs = headBlobs(root);
   const snapshot = createRepositorySnapshot(root);
   const deltas = [];
   for (const { kind, record, evaluated } of entries) {
+    const scopedInputs = [
+      ...new Set(
+        (policy.sourceDrops ?? [])
+          .filter(
+            (item) =>
+              item.kind === kind &&
+              item.path === record.path &&
+              item.rule === 'stale',
+          )
+          .flatMap((item) => item.changed),
+      ),
+    ];
+    const scopedDiffs = [];
+    if (scopedInputs.length) {
+      const revision = policy.mergeBase;
+      const files = [...new Set(scopedInputs.map(bindingFile))];
+      scopedDiffs.push({
+        scope: 'current-change',
+        revision,
+        inputs: scopedInputs,
+        files,
+        lacksReviewedBytes: [],
+        uncommitted: [],
+        available: true,
+        diff: git(root, [
+          'diff',
+          '--no-color',
+          revision,
+          '--',
+          ...files,
+        ]).trimEnd(),
+      });
+    }
     if (!evaluated.changed.length) {
-      if (paths.length) deltas.push({ kind, path: record.path, fresh: true });
+      if (scopedDiffs.length)
+        deltas.push({
+          kind,
+          path: record.path,
+          fresh: false,
+          diffs: scopedDiffs,
+        });
+      else if (paths.length)
+        deltas.push({ kind, path: record.path, fresh: true });
       continue;
     }
     if (record.historyChanges !== undefined) {
@@ -843,25 +1032,28 @@ export async function showReviewDelta({ root = process.cwd(), paths = [] }) {
         path: record.path,
         fresh: false,
         historyUnavailable: record.historyUnavailable,
-        diffs: revision
-          ? [
-              {
-                revision,
-                inputs: evaluated.changed,
-                files,
-                lacksReviewedBytes: [],
-                uncommitted: [],
-                available: true,
-                diff: git(root, [
-                  'diff',
-                  '--no-color',
+        diffs: [
+          ...scopedDiffs,
+          ...(revision
+            ? [
+                {
                   revision,
-                  '--',
-                  ...files,
-                ]).trimEnd(),
-              },
-            ]
-          : [],
+                  inputs: evaluated.changed,
+                  files,
+                  lacksReviewedBytes: [],
+                  uncommitted: [],
+                  available: true,
+                  diff: git(root, [
+                    'diff',
+                    '--no-color',
+                    revision,
+                    '--',
+                    ...files,
+                  ]).trimEnd(),
+                },
+              ]
+            : []),
+        ],
       });
       continue;
     }
@@ -908,7 +1100,12 @@ export async function showReviewDelta({ root = process.cwd(), paths = [] }) {
           : undefined,
       });
     }
-    deltas.push({ kind, path: record.path, fresh: false, diffs });
+    deltas.push({
+      kind,
+      path: record.path,
+      fresh: false,
+      diffs: [...scopedDiffs, ...diffs],
+    });
   }
   return deltas;
 }
@@ -926,9 +1123,9 @@ function formatReviewDelta(deltas) {
         (input) => input !== bindingFile(input),
       );
       lines.push(
-        `== ${delta.kind} ${delta.path}: git diff ${item.revision} HEAD -- ${item.files.join(' ')}${
+        `== ${delta.kind} ${delta.path}: git diff ${item.revision}${item.scope === 'current-change' ? '' : ' HEAD'} -- ${item.files.join(' ')}${
           values.length ? ` (cited values: ${values.join(', ')})` : ''
-        }`,
+        }${item.scope === 'current-change' ? ' (outstanding current-change review)' : ''}`,
       );
       for (const input of item.lacksReviewedBytes)
         lines.push(
@@ -1102,6 +1299,8 @@ export async function main(argv = process.argv.slice(2)) {
   for (const entry of result.recorded)
     console.log(
       `  ${entry.kind} ${entry.path}${
+        entry.paths ? ` for ${entry.paths.join(', ')}` : ''
+      }${
         entry.rebound.length
           ? `; rebound to a revision that contains its bytes: ${entry.rebound.join(', ')}`
           : ''

@@ -1,7 +1,0 @@
-{
-  "revision": "39dd3b5bae17b73ddab5593864b16633fe757fb0",
-
-  "notes": [
-    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Reviewed all 14 lane routes, domain route children, pane/settings authority, preview consumers and evidence distinctions against cited sources and campaign owner reports. Required landed fixes and exact integrated acceptance remain exit criteria; protected worktrees and recovery data rules match campaign authorization. This is an execution plan, not runtime qualification. Root independent review corrections are included. Index and link checks passed; live grants/results stay in issue 4506.","inputs":["docs/plans/whole-app-ux-campaign.md","docs/guides/e2e-coverage-matrix.md","docs/guides/feature-previews.md","src-server/services/feature-previews/feature-preview-registry.ts","src-ui/src/app-shell/destination-registry.ts","src-ui/src/app-shell/routing.ts","src-ui/src/hooks/developer-features.ts","src-ui/src/views/settings/settings-catalog.ts","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx","tests/e2e-manifest.mjs"]}
-  ]
-}

@@ -39,7 +39,7 @@ import {
   FilteredEmpty,
   SkeletonList,
 } from '../state';
-import { AgentPickerGroups } from './AgentPickerRow';
+import { AgentPickerGroups, NO_AGENT_SETUP_HINT } from './AgentPickerRow';
 import { ContextPickerOptions, CwdBreadcrumb } from './ContextPickerOptions';
 // The menus reuse the composer popover shell (`.composer-popover-*`).
 import '../chat/chat.css';
@@ -139,7 +139,7 @@ export function StartAgentMenu({
         type="text"
         className="new-chat-modal__search start-menu__search"
         aria-label="Search agents"
-        placeholder="Search agents..."
+        placeholder="Search agents…"
         value={search}
         onChange={(event) => {
           onSearch(event.target.value);
@@ -196,7 +196,7 @@ export function StartAgentMenu({
             <Empty
               variant="compact"
               label="Nothing to chat with yet"
-              description="Connect an engine (Claude Code, Codex, OpenCode…) or add a Model connection."
+              description={NO_AGENT_SETUP_HINT}
               action={
                 <Button onClick={onSetUpConnections}>Set up Connections</Button>
               }
@@ -283,7 +283,17 @@ export function StartProjectMenu({
         // One line: the folder's parent gives way, its leaf stays readable.
         <p className="start-menu__hint start-menu__hint--path">
           <span className="start-menu__hint-lead">Runs in</span>
-          <CwdBreadcrumb path={workspaceHint.path} />
+          {workspaceHint.kind === 'project' && workspaceHint.repository ? (
+            <span
+              title={[workspaceHint.repositoryRemote, workspaceHint.path]
+                .filter(Boolean)
+                .join(' · ')}
+            >
+              {workspaceHint.repository}
+            </span>
+          ) : (
+            <CwdBreadcrumb path={workspaceHint.path} />
+          )}
           {workspaceHint.kind === 'unverified' && (
             <span className="start-menu__hint-lead">(not checked yet)</span>
           )}
@@ -370,8 +380,7 @@ export function StartStationMenu({
         onClose={onClose}
       />
       <p className="start-menu__hint">
-        Choose the Station whose computer runs this work. On another Station,
-        Start sends it there as a task after you choose its engine.
+        Work on another Station runs there as a Task.
       </p>
       <div className="start-menu__list">
         {stations.map((station) => {

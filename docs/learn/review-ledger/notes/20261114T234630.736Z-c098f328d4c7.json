@@ -1,0 +1,9 @@
+{
+  "revision": "8c5d67560ea0251ed7e70a8fd8fac743e3364b62",
+
+  "notes": [
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Updated the release-versioning paragraph for this round and checked it against scripts/lib/release-versioning-review.mjs: supported config limited to updateInternalDependencies patch with onlyUpdatePeerDependentsWhenOutOfRange and bumpVersionsWithWorkspaceProtocolOnly off; the changelog section is rebuilt from the plan and notes in sorted file order with each note's adding commit (git log --diff-filter=AC --follow from the starting tree, no prefix when none, refused when a shallow checkout cannot resolve it) and exactly the dependents the CLI updates; trailing whitespace is the only tolerance and its reason is stated. Corrected the history wording: a release that consumed notes changesets would keep (2468c17fc0, notes naming the then-private connect package) is refused, separately from releases that raced newer notes.","inputs":["docs/guides/documentation-review-ledger.md"]},
+
+    {"path":"docs/guides/documentation.md","note":"Only the generated-release section changed; documentation.md's link to it and its summary remain accurate.","inputs":["docs/guides/documentation-review-ledger.md"]}
+  ]
+}

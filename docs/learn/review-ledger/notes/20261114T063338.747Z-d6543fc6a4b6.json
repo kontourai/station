@@ -1,0 +1,15 @@
+{
+  "revision": "a715f2a7d593cda4e958216f8c01939e69579f2c",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Cites contracts.md/session-api.md; only the openRequestKinds input wording gained links to open; this document's claims are unaffected.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]},
+
+    {"path":"docs/glossary.md","note":"Cites contracts.md/session-api.md; only the openRequestKinds input wording gained links to open; this document's claims are unaffected.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Cites contracts.md/session-api.md; only the openRequestKinds input wording gained links to open; this document's claims are unaffected.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"openRequestKinds input now names links to open; matches isInputRequestEvent classifying URL requests as input.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"openRequestKinds input now includes links to open; matches the shared classifier.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

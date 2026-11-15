@@ -1,0 +1,49 @@
+{
+  "revision": "6384b6d7e7af575f6cfedc176f6bf501337ef185",
+
+  "notes": [
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Rewrote 'One note for a widely cited input' for the shipped storage: --input writes one ordinary {path, note, inputs:[binding]} entry per citing record or capture, identical gate semantics, the honest trade, refusals and rename behaviour; removed the input-note layout row and the older-branch warning. Checked each claim against record-documentation-review.mjs and the input review note tests, including the old-script compatibility test.","inputs":["docs/guides/documentation-review-ledger.md","scripts/lib/documentation-freshness.mjs","scripts/lib/review-history.mjs","scripts/lib/review-ledger-store.mjs","scripts/migrate-review-ledger.mjs","scripts/record-documentation-review.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"The keep-reviews-fresh bullet now says --input writes the document note for every page citing one changed source; checked against the record command. Other claims unchanged.","inputs":["docs/guides/documentation.md","docs/guides/documentation-review-ledger.md","scripts/lib/documentation-freshness.mjs","scripts/lib/review-ledger-store.mjs","scripts/record-documentation-review.mjs"]},
+
+    {"path":".veritas/README.md","note":"Checked every page citing the skill: it gained one sentence about --input writing the same note per citing document; none of these pages restates the review-note rule, so no claim changed.","inputs":[".agents/skills/documentation-audit/SKILL.md"]},
+
+    {"path":"AGENTS.md","note":"Checked every page citing the skill: it gained one sentence about --input writing the same note per citing document; none of these pages restates the review-note rule, so no claim changed.","inputs":[".agents/skills/documentation-audit/SKILL.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked every page citing the skill: it gained one sentence about --input writing the same note per citing document; none of these pages restates the review-note rule, so no claim changed.","inputs":[".agents/skills/documentation-audit/SKILL.md"]},
+
+    {"path":"docs/guides/development.md","note":"Checked every page citing the skill: it gained one sentence about --input writing the same note per citing document; none of these pages restates the review-note rule, so no claim changed.","inputs":[".agents/skills/documentation-audit/SKILL.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked every page citing the skill: it gained one sentence about --input writing the same note per citing document; none of these pages restates the review-note rule, so no claim changed.","inputs":[".agents/skills/documentation-audit/SKILL.md"]},
+
+    {"path":".veritas/README.md","note":"Checked every page citing the maintenance guide: only the --input option was added to the keep-reviews-fresh bullet; their routing and limit claims are unchanged.","inputs":["docs/guides/documentation.md"]},
+
+    {"path":"docs/README.md","note":"Checked every page citing the maintenance guide: only the --input option was added to the keep-reviews-fresh bullet; their routing and limit claims are unchanged.","inputs":["docs/guides/documentation.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked every page citing the maintenance guide: only the --input option was added to the keep-reviews-fresh bullet; their routing and limit claims are unchanged.","inputs":["docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked every page citing the maintenance guide: only the --input option was added to the keep-reviews-fresh bullet; their routing and limit claims are unchanged.","inputs":["docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/development.md","note":"Checked every page citing the maintenance guide: only the --input option was added to the keep-reviews-fresh bullet; their routing and limit claims are unchanged.","inputs":["docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked every page citing the maintenance guide: only the --input option was added to the keep-reviews-fresh bullet; their routing and limit claims are unchanged.","inputs":["docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked every page citing the maintenance guide: only the --input option was added to the keep-reviews-fresh bullet; their routing and limit claims are unchanged.","inputs":["docs/guides/documentation.md"]},
+
+    {"path":".veritas/README.md","note":"Only the closing hint text gained the --input route; the freshness policy is byte-identical to main otherwise. Checked each citing page's mode, guard and limit claims: none changed.","inputs":["scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Only the closing hint text gained the --input route; the freshness policy is byte-identical to main otherwise. Checked each citing page's mode, guard and limit claims: none changed.","inputs":["scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Only the closing hint text gained the --input route; the freshness policy is byte-identical to main otherwise. Checked each citing page's mode, guard and limit claims: none changed.","inputs":["scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"Only the closing hint text gained the --input route; the freshness policy is byte-identical to main otherwise. Checked each citing page's mode, guard and limit claims: none changed.","inputs":["scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"Only the closing hint text gained the --input route; the freshness policy is byte-identical to main otherwise. Checked each citing page's mode, guard and limit claims: none changed.","inputs":["scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Checked each citing page against the record command: --input adds per-document notes in the existing form, and the closing report now replays once and re-adds dirty-file inputs. Existing record, batch, refusal, show-delta and advance-baseline claims still hold.","inputs":["scripts/record-documentation-review.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"Checked each citing page against the record command: --input adds per-document notes in the existing form, and the closing report now replays once and re-adds dirty-file inputs. Existing record, batch, refusal, show-delta and advance-baseline claims still hold.","inputs":["scripts/record-documentation-review.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"Checked each citing page against the record command: --input adds per-document notes in the existing form, and the closing report now replays once and re-adds dirty-file inputs. Existing record, batch, refusal, show-delta and advance-baseline claims still hold.","inputs":["scripts/record-documentation-review.mjs"]}
+  ]
+}

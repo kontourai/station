@@ -1,7 +1,0 @@
-{
-  "revision": "75b6e36ce242cc05deb7b12369375fe44978f64c",
-
-  "notes": [
-    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Scanned for claims about origin admission, WebSocket origins, the sign-in picker, live-surface Retry, the input notice, the codec label, the float pill, the Stations pending row and Chromium launch failures; none here describe those mechanics. Changed sources: runtime-routes now builds one StationOriginPolicy (configured origins, then the daemon-attested own Tailscale Serve origin) for the HTTP gates, pairing check and sign-in picker; a launch hang maps to browser-host-failed and stderr is classified per chunk before trimming; the float pill is one row with a status mark instead of a caption row; the input notice is one slim line (under the bar in immersive mode), held-back presses recheck eligibility, the codec label is a data-codec diagnostic only; Retry keeps only input refused before dispatch (surface-busy), per epoch; indeterminate failures replay nothing; the Open failure notice is a component whose How to fix link is a 44px row.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/browser/hosts/chromium-server-host.ts","src-ui/src/float-over-chat/FloatOverChatHost.tsx","src-ui/src/live-surface/LiveSurfaceCanvas.tsx","src-ui/src/live-surface/useLiveSurface.ts","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]}
-  ]
-}

@@ -335,6 +335,31 @@ describe('composition', () => {
     ).toEqual(['replies']);
   });
 
+  test('visual replies route through html_preview then html_render by default, with the Artifact refusal fallback', () => {
+    const text = compose(caps()).text;
+    // The default route for a chart or visual, before any Artifact skill.
+    expect(text).toContain(
+      'reach for `html_preview` then `html_render` by default',
+    );
+    // A refused Artifact tool must not strand the visual as a local file.
+    expect(text).toContain(
+      'If an Artifact tool refuses with an auth-token message, publish the same page with `html_render` instead of leaving a local file',
+    );
+    // Neither line exists when the visual tools are not offered.
+    const without = compose(
+      caps({
+        controlTools: new Set(['notify_user']),
+        browser: false,
+        devices: false,
+        progressiveFamilies: false,
+        toolSearch: false,
+      }),
+    ).text;
+    expect(without).not.toContain('html_preview');
+    expect(without).not.toContain('html_render');
+    expect(without).not.toContain('Artifact');
+  });
+
   test('orchestration discovery follows what is offered', () => {
     const base = ['delegate_task', 'wait_session'];
     const withTargets = compose(

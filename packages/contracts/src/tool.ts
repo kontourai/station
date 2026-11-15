@@ -451,6 +451,23 @@ export interface IntegrationEngineCoverage {
 }
 
 /**
+ * #4828: whether Station marks a conversation as having read untrusted
+ * content when an engine reads the web with its own built-in tools.
+ * - `covered`: each of the engine's web-reading tools marks it;
+ * - `partial`: only what the engine itself labels as a web read marks it;
+ * - `uncovered`: nothing marks it. Never read as safe.
+ * A shell command that downloads is not recognised on any engine.
+ */
+export interface NativeWebReadCoverage {
+  engine: 'station' | 'claude' | 'codex' | 'acp' | 'muse';
+  coverage: 'covered' | 'partial' | 'uncovered';
+  /** What Station marks from, in the engine's own names. */
+  signals: string[];
+  /** Why the coverage is what it is. */
+  reason: string;
+}
+
+/**
  * #3483: a stored trust setting that would widen what runs (a trusted
  * classification, an `allow`, trusted read-only hints) whose ownership
  * cannot be authenticated. It is not applied, and the integration does not
@@ -882,6 +899,14 @@ export interface AgentConnectionView extends ConnectionConfig {
   modelExecution?: ModelInventoryExecutionIdentity;
   /** Adapter-declared continuity; absent older/plugin rows mean no native capability. */
   continuity?: import('./provider.js').ProviderContinuityCapabilities;
+  /**
+   * #2266: the adapter's declared model-launch capability: whether an
+   * explicit model selector is applied at each lifecycle point. Independent
+   * of `runtimeCatalog`: an engine can apply a selector it cannot enumerate,
+   * so an empty catalog never means selection is unsupported. Absent (an
+   * older host, or an adapter that declares none) is unknown.
+   */
+  modelLaunch?: import('./provider.js').ModelLaunchCapabilities;
   runtimeCatalog?: RuntimeCatalogStatus;
   /** Live ACP provider-routing evidence; absent on non-ACP connections. */
   providerRouting?: ACPProviderRoutingStatus;

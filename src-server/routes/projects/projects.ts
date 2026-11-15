@@ -110,7 +110,10 @@ import {
   ProjectCreationConflict,
   ProjectCreationService,
 } from '../../services/projects/project-creation-service.js';
-import { discoverProjectIconCandidates } from '../../services/projects/project-icon-discovery.js';
+import {
+  discoverProjectIconCandidates,
+  withDiscoveredProjectIcon,
+} from '../../services/projects/project-icon-discovery.js';
 import { ProjectIdentityService } from '../../services/projects/project-identity-service.js';
 import {
   describeProjectResolution,
@@ -523,6 +526,9 @@ export function createProjectCatalogueReader(
           )
         : undefined;
       const projects = await projectService.listProjects();
+      const displayProjects = allowed
+        ? projects
+        : await Promise.all(projects.map(withDiscoveredProjectIcon));
       const currentAdmissions = allowed
         ? ((await deps.memberProjectAdmissions?.(c)) ?? [])
         : undefined;
@@ -553,7 +559,7 @@ export function createProjectCatalogueReader(
                   )!;
                   return memberProjectView(project, admission.actions);
                 })
-            : projects,
+            : displayProjects,
       });
       if (!allowed || !currentReadable || !readable || !currentScopes)
         return response;
@@ -1378,6 +1384,7 @@ export function createProjectRoutes(
           data: memberProjectView(project, memberAdmission.actions),
         });
       }
+      const displayProject = await withDiscoveredProjectIcon(project);
       const knownAgents = await readKnownAgents();
       const diagnostics = knownAgents
         ? validateProjectAgentScope(project, {
@@ -1389,8 +1396,8 @@ export function createProjectRoutes(
         success: true,
         data:
           diagnostics.length > 0
-            ? { ...project, _integrityDiagnostics: diagnostics }
-            : project,
+            ? { ...displayProject, _integrityDiagnostics: diagnostics }
+            : displayProject,
       });
     } catch (error: unknown) {
       const failure = projectReadFailure(error, 'Project');

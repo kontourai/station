@@ -1499,7 +1499,8 @@ describe('settings catalog completeness', () => {
   });
 
   test('a save that never settles is released at the deadline with its drafts kept', async () => {
-    vi.useFakeTimers();
+    // Keep JSDOM's rendering/focus interval alive across timer restoration.
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
     try {
       const sdk = await import('@kontourai/station-sdk/app-config');
       const { SETTINGS_SAVE_DEADLINE_MS } = await import(
@@ -2155,7 +2156,8 @@ describe('settings catalog completeness', () => {
   });
 
   test('keeps a cold target timeout visible while Settings is still loading', async () => {
-    vi.useFakeTimers();
+    // Keep JSDOM's rendering/focus interval alive across timer restoration.
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
     try {
       configSnapshot = { config: null, dataUpdatedAt: 0 };
       window.history.replaceState(
@@ -2164,6 +2166,12 @@ describe('settings catalog completeness', () => {
         '/settings?view=system&highlight=log-level',
       );
       const { container } = await renderSettings();
+      // Let the mounted target observer register its timeout on a real frame.
+      await act(async () => {
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => resolve()),
+        );
+      });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(5_100);
       });

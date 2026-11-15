@@ -147,6 +147,9 @@ test('owner Device chats through a real Station delegation and keeps target refu
   await expect(transcript).toContainText(
     'The receiver accepted the attachment turn.',
   );
+  // The turn must be settled before its events are cut: the lost send below
+  // is the next turn, not this one's unobserved completion.
+  await expect(composer).toBeEditable();
   const keyedSends: string[] = [];
   page.on('request', (request) => {
     if (
@@ -290,4 +293,59 @@ test('owner Device chats through a real Station delegation and keeps target refu
   await expect(
     page.getByRole('heading', { name: 'Connect to a Station', exact: true }),
   ).toBeVisible();
+});
+
+test('a settled relay chat reads only through its tunnel and is not re-negotiated by health ticks', async ({
+  page,
+  stations,
+}) => {
+  // Wide enough that the session context card (pull requests, Scheduled)
+  // sits beside the transcript, as on the desktop client.
+  await page.setViewportSize({ width: 1680, height: 1000 });
+  const { streams } = stations;
+  const responses: Array<{ url: string; status: number }> = [];
+  page.on('response', (response) =>
+    responses.push({ url: response.url(), status: response.status() }),
+  );
+  const receipt = await startConnectionChat(page, 'relay', 'Settle here.');
+  const conversationId = receipt.conversationId!;
+  await expect.poll(() => streams.length).toBe(1);
+  streams[0]!.stream.text('Settled receiver reply.');
+  streams[0]!.stream.finish();
+  await expect(
+    page.getByRole('log', { name: 'Conversation transcript' }),
+  ).toContainText('Settled receiver reply.');
+  const negotiations = () =>
+    responses.filter((entry) => entry.url.endsWith('/chat-connection')).length;
+  const settled = negotiations();
+  expect(settled).toBeGreaterThan(0);
+  // Two connection health ticks re-create the saved profiles. Each one used
+  // to re-resolve the relay: a new descriptor, a new event stream, and every
+  // conversation read refetched.
+  for (let tick = 0; tick < 2; tick += 1)
+    await page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/api/system/identity',
+      { timeout: 30_000 },
+    );
+  expect(negotiations()).toBe(settled);
+  const ids = [conversationId, encodeURIComponent(conversationId)];
+  const conversationReads =
+    /\/(stats|summary|checkpoints|skill-experience)(\?|$)|\/api\/conversation-pull-requests\/|\/api\/orchestration\/agent-schedule\//;
+  const refused = responses.filter(
+    (entry) =>
+      entry.status >= 400 &&
+      conversationReads.test(entry.url) &&
+      ids.some((id) => entry.url.includes(id)),
+  );
+  expect(refused).toEqual([]);
+  // The checkpoint read the transcript owns still reaches the receiver.
+  expect(
+    responses.some(
+      (entry) =>
+        entry.status === 200 &&
+        /\/chat-api\/api\/orchestration\/sessions\/[^/]+\/checkpoints\?revision=/.test(
+          entry.url,
+        ),
+    ),
+  ).toBe(true);
 });

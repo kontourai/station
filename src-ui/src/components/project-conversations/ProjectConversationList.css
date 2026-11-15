@@ -1,0 +1,256 @@
+/* A Project's channels and Task rooms (#4794, #4795). One component, two
+   densities: compact rows under the sidebar's expanded Project, and a full
+   page of 48px rows on a phone. */
+
+.conversation-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.conversation-list__section {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.conversation-list__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-1);
+  min-width: 0;
+}
+
+.conversation-list__heading > :first-child {
+  margin: 0;
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--k-text-muted);
+}
+
+/* "New channel": present but quiet until the reader reaches for it. */
+.conversation-list__add {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--k-space-4) + var(--k-space-1));
+  height: calc(var(--k-space-4) + var(--k-space-1));
+  padding: 0;
+  border: 0;
+  border-radius: var(--k-radius-control);
+  background: transparent;
+  color: var(--k-text-faint);
+  cursor: pointer;
+}
+
+.conversation-list__add svg {
+  width: 12px;
+  height: 12px;
+}
+
+.conversation-list__add:hover,
+.conversation-list__add:focus-visible {
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+}
+
+.conversation-list__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation-list__item {
+  display: block;
+  min-width: 0;
+}
+
+.conversation-list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  width: 100%;
+  min-width: 0;
+  min-height: calc(var(--k-space-6) - 2px);
+  padding: 0 var(--k-space-2);
+  border: 0;
+  border-radius: var(--k-radius-control);
+  background: transparent;
+  /* Full-strength text: muted measured under 4.5:1 on the light sidebar.
+     Read and unread differ by weight, as chat apps do. */
+  color: var(--k-text);
+  font: inherit;
+  font-size: var(--k-text-sm);
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+
+.conversation-list__row:hover {
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+}
+
+.conversation-list__row:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: -2px;
+}
+
+/* Unread is the server's answer (#3075): the name goes bold and full
+   strength, the way chat apps mark a place with something new. */
+.conversation-list__row--unread {
+  font-weight: 650;
+}
+
+/* The current row: the tint says where you are; the text stays full
+   strength (action-colored text on the tint measured under 4.5:1 in the
+   light theme). */
+.conversation-list__row--current,
+.conversation-list__row--current:hover {
+  background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel));
+  color: var(--k-text);
+}
+
+.conversation-list__mark {
+  flex: 0 0 var(--k-space-4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--k-space-4);
+  color: var(--k-text-faint);
+  font-weight: 500;
+}
+
+.conversation-list__row--current .conversation-list__mark {
+  color: var(--k-action);
+}
+
+/* The mark, count and chevron are generated content: what the row shows as
+   text is exactly the start of its accessible name. */
+.conversation-list__hash::before {
+  content: "#";
+}
+
+/* A Task room's mark: a small square, like an agent's avatar. */
+.conversation-list__task-mark::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+}
+
+/* An agent in the room is running: the mark fills with the active color. */
+.conversation-list__task-mark--working {
+  color: var(--k-active);
+}
+
+.conversation-list__task-mark--working::before {
+  background: currentColor;
+}
+
+.conversation-list__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-list__count::before {
+  content: attr(data-count);
+}
+
+.conversation-list__count {
+  flex: 0 0 auto;
+  min-width: calc(var(--k-space-4) + 2px);
+  padding: 0 var(--k-space-1);
+  border-radius: 999px;
+  background: var(--k-action);
+  color: var(--k-action-contrast);
+  font-size: var(--k-text-xs);
+  font-weight: 700;
+  line-height: calc(var(--k-space-4) + 2px);
+  text-align: center;
+}
+
+.conversation-list__more {
+  color: var(--k-action);
+}
+
+.conversation-list__chevron::before {
+  content: "\203A";
+}
+
+.conversation-list__chevron {
+  flex: 0 0 auto;
+  color: var(--k-text-faint);
+  font-size: var(--k-text-lg);
+  line-height: 1;
+}
+
+/* Sidebar: nested under the Project, aligned with its layout chips. */
+.conversation-list--sidebar {
+  gap: var(--k-space-2);
+  margin: var(--k-space-1) 0 var(--k-space-2)
+    calc(var(--k-space-4) + var(--k-space-1));
+  padding-left: var(--k-space-2);
+  border-left: 1px solid var(--k-line);
+}
+
+.conversation-list--sidebar .conversation-list__heading {
+  padding: 0 0 0 var(--k-space-2);
+}
+
+/* Phone page: full-width rows, room for a thumb. */
+.conversation-list--page {
+  gap: var(--k-space-4);
+  margin-bottom: var(--k-space-5);
+}
+
+.conversation-list--page .conversation-list__heading {
+  padding: 0 var(--k-space-1) var(--k-space-1);
+}
+
+.conversation-list--page .conversation-list__rows {
+  gap: 0;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  overflow: hidden;
+}
+
+.conversation-list--page .conversation-list__item + .conversation-list__item {
+  border-top: 1px solid var(--k-line);
+}
+
+.conversation-list--page .conversation-list__row {
+  min-height: calc(var(--k-space-6) + var(--k-space-4));
+  padding: 0 var(--k-space-3);
+  border-radius: 0;
+  font-size: var(--k-text-md);
+  color: var(--k-text);
+}
+
+.conversation-list--page .conversation-list__row--unread {
+  font-weight: 650;
+}
+
+/* Touch: every row and the add control reach the 44px floor. The component
+   sets this class from `useIsMobile` (MOBILE_MEDIA_QUERY), the one phone
+   breakpoint, rather than a media query of its own. */
+.conversation-list--touch .conversation-list__row {
+  min-height: 44px;
+}
+
+.conversation-list--touch .conversation-list__add {
+  width: 44px;
+  height: 44px;
+}

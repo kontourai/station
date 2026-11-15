@@ -76,6 +76,11 @@ match. Supported services download first, then offer a confirmed restart or
 **When idle**. The existing server observer keeps following an accepted
 request if the panel is closed. Browser and mobile devices can open this
 server section, and mobile app release links appear in the same panel.
+The server section also shows its installed version’s changelog. App and server
+upgrades can each open a changelog once; server presentation is remembered per
+endpoint and instance, and the app prompt takes precedence when both are pending.
+The first observation of each server records its version without a popup.
+
 **Update policies and details** opens Settings, where automatic-download
 policies remain. Source-installation and manual host guidance remain reachable
 from the server section; see [update mechanisms](nightly.md#update-checks-in-settings-source-check-vs-release-check).
@@ -122,7 +127,11 @@ and license; its browser distributions and TypeScript sources are omitted.
 The OTLP transformer likewise retains its Node `build/src` implementation,
 metadata and license. Its alternate `build/esm` and `build/esnext` bundler
 distributions are omitted; normal Node imports and `require` share the retained
-implementation. Flow Agents ships its compiled `build/`, hooks, skills, kits,
+implementation. Semantic conventions retains its stable and incubating Node
+exports and license while omitting its `build/esm` and `build/esnext` bundler
+copies. That rule applies only to the reviewed default Node export targets;
+an added Node-specific condition or changed target keeps every distribution
+until it is reviewed. Flow Agents ships its compiled `build/`, hooks, skills, kits,
 schemas and context; since 9.14 it no longer publishes per-harness `dist/`
 bundles, a TypeScript `src/` or its own `evals/` harness, and a portability
 test fails if they return. It ships those bundles instead as one ~7 MB pack,
@@ -389,7 +398,7 @@ hashes/nonces that bundled assets require.
 | `style-src` | Existing runtime/plugin styles require inline styles; this exception does not apply to scripts. The same installed-plugin protocol sources admit Desktop plugin stylesheets. Fonts are self-hosted (#2648). |
 | `connect-src` | Tauri's `ipc:`/`http://ipc.localhost` transports plus Station user-selected `http:`, `https:`, `ws:`, and `wss:` endpoints. |
 | `font-src` | Bundled/data fonts only — UI faces are vendored under `src-ui/public/fonts/` (#2648); no remote font CDN. |
-| `img-src`, `media-src`, `frame-src` | Tauri `asset:`/`http://asset.localhost` where applicable, plus existing `data:`, `blob:`, `http:`, and `https:` content. MCP frames retain their separate sandbox and policy. |
+| `img-src`, `media-src`, `frame-src` | Tauri `asset:`/`http://asset.localhost` where applicable, plus existing `data:`, `blob:`, `http:`, and `https:` content. `frame-src` also admits the shell's `station-html-reply:` scheme for staged visual replies; Wry's `http://station-html-reply.localhost` alias on Windows and Android falls under `http:`. MCP frames retain their separate sandbox and policy. |
 | `worker-src` | Bundled and blob-backed diff workers. |
 | `manifest-src`, `form-action` | Same-origin application metadata and forms only. |
 | `object-src`, `base-uri`, `frame-ancestors` | All denied to prevent object embedding, base replacement, and framing Station. |
@@ -434,6 +443,20 @@ credential from native custody, disables redirects, caps decoded content at
 16 MiB, and revalidates authority after reading. No renderer headers or
 upstream response headers are forwarded. The installed endpoint checks its
 recorded content digest and current artifact before delivery.
+
+The [`station-html-reply` handler](../../src-desktop/src/html_reply_protocol.rs)
+registers on every platform, including the phone. A visual reply without a
+reachable frame origin renders in an opaque `sandbox="allow-scripts"` frame;
+as a `srcdoc` child that frame would inherit this shell policy, whose
+`script-src` refuses inline scripts, so script-built pages would stay blank.
+The shell's own webview instead stages the composed page document with the
+`station_html_reply_stage` command and frames it from this scheme, where the
+page's own meta policy governs. The handler serves only staged bytes (16
+slots, about 8 MiB each, oldest replaced first), never proxies the network or
+reads credentials, and uses the same label set, per-launch capability, top-frame
+guard and four-request limit as the plugin handler. A delivered page carries no
+response CSP, so a header cannot re-create the inherited refusal; refusals are
+empty and sandboxed. Browsers and older shells keep the `srcdoc` fallback.
 
 The external Vite development header retains the base policy, so Windows
 Vite-based plugin loading remains unavailable; packaged Windows assets use

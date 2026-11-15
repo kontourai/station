@@ -216,7 +216,7 @@ export function ActionOperationsSection() {
       return;
     }
     if (operation.reentry.kind === 'session') {
-      showSurface('activity', { session: operation.reentry.sessionId });
+      showSurface('chat', { session: operation.reentry.sessionId });
       return;
     }
     if (operation.reentry.kind === 'walkthrough') {

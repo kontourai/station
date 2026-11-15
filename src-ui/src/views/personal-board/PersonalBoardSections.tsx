@@ -153,7 +153,7 @@ function AttentionSection({
       </ReadState>
       {query.data?.unavailableSources?.length ? (
         <p role="status">
-          Some attention sources are unavailable. Open Activity to inspect the
+          Some attention sources are unavailable. Open the inbox to inspect the
           remaining work.
         </p>
       ) : null}
@@ -182,7 +182,7 @@ function RecentSection({
         {rows.map((session) => (
           <li key={session.threadId}>
             <StationLink
-              href={`/?surface=activity&session=${encodeURIComponent(session.threadId)}`}
+              href={`/?surface=chat&session=${encodeURIComponent(session.threadId)}`}
             >
               {session.displayTitle || 'Untitled conversation'}
             </StationLink>

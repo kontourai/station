@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ActionOperationsSection } from '../../components/action-operations/ActionOperationsSection';
 import { Tabs, tabElementId, tabPanelElementId } from '../../components/Tabs';
 import { MonitoringViewWithBoundary } from '../MonitoringView';
 import { TelemetryCompanion } from './TelemetryCompanion';
@@ -11,6 +12,7 @@ export default function TelemetryTab() {
       className="pane-host developer-tab developer-tab--telemetry section-nav-rail__contained"
       aria-label="Monitoring"
     >
+      <ActionOperationsSection />
       <Tabs
         id="telemetry-surfaces"
         aria-label="Telemetry views"

@@ -1,7 +1,0 @@
-{
-  "revision": "34ba5915b76d60913947e245eb54b346f66a26c6",
-
-  "notes": [
-    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed this PR's latest change to config.routes.test.ts: it adds one test that saves the five terminalHistory* settings and clears them with null, as Reset Station settings does. No telemetry test or assertion changed (the diff has no telemetry lines), so this document's telemetry tier and destination claims that cite that file stay accurate.","inputs":["docs/reference/usage-telemetry.md","src-server/routes/system/__tests__/config.routes.test.ts"]}
-  ]
-}

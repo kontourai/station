@@ -52,7 +52,6 @@ const LABEL_READERS = new Set([
 
 /** Surfaces that print a session's state, each through the ladder. */
 const GUARDED_SURFACES = [
-  join('views', 'SessionsView.tsx'),
   join('views', 'project-page', 'ProjectLiveWorkSection.tsx'),
   join('components', 'session-detail', 'SessionDetailHeader.tsx'),
   join('components', 'chat-dock', 'ChatDockInboxRows.tsx'),

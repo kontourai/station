@@ -49,7 +49,7 @@ vi.mock('../SessionInventoryCompact', () => ({
           })
         }
       >
-        Open full Basis
+        See all
       </button>
     </aside>
   ),
@@ -97,9 +97,7 @@ describe('SessionInventoryHost', () => {
   test('a direct Inventory launch opens the full reader without a summary handoff', () => {
     const view = renderHost({ full: true });
     expect(screen.getByRole('dialog', { name: 'Basis' })).toBeTruthy();
-    expect(
-      screen.queryByRole('button', { name: 'Open full Basis' }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'See all' })).toBeNull();
     expect(hooks.fallback).toHaveBeenCalledWith(
       expect.objectContaining({
         scope,
@@ -174,7 +172,7 @@ describe('SessionInventoryHost', () => {
   test('replaces compact inventory with the full fallback and returns focus to the invoking control on close', () => {
     const { onClose, trigger } = renderHost();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open full Basis' }));
+    fireEvent.click(screen.getByRole('button', { name: 'See all' }));
 
     expect(screen.queryByLabelText('Chat inventory')).toBeNull();
     expect(screen.getByRole('dialog', { name: 'Basis' })).not.toBeNull();
@@ -203,7 +201,7 @@ describe('SessionInventoryHost', () => {
 
   test('re-activating a hosted full pane focuses it instead of remounting compact inventory', () => {
     const { trigger } = renderHost();
-    fireEvent.click(screen.getByRole('button', { name: 'Open full Basis' }));
+    fireEvent.click(screen.getByRole('button', { name: 'See all' }));
     const fallback = hooks.fallback.mock.lastCall?.[0] as {
       onHostOpened?(focus: () => boolean): void;
     };

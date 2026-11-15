@@ -1,7 +1,0 @@
-{
-  "revision": "1378d4277015e215b9f825e6d506ff5b84ba777b",
-
-  "notes": [
-    {"path":"docs/guides/desktop-build.md","note":"#4515 integration: src-desktop/Cargo.toml adds only the windows-sys Win32_System_Registry feature (the desktop update reader checks whether the Windows Policies key exists; Windows-only, no new crate, Cargo.lock unchanged). Checked this doc's Cargo, feature and platform claims; none names windows-sys features, and nothing it says changes.","inputs":["docs/guides/desktop-build.md","src-desktop/Cargo.toml"]}
-  ]
-}

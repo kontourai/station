@@ -1,7 +1,0 @@
-{
-  "revision": "e2ecbd1a0628b0300881b7c9fbff7dab3158cd80",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Regenerated station-docs-content.ts via docs:mcp:generate; the only change is the shipped architecture topic body carrying the reviewed module-map Automation paragraph (per-rule off/observe/live mode and decisions). station-docs.md's claims about topic generation, exclusions and receipts are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

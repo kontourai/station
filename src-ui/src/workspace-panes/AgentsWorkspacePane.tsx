@@ -329,7 +329,7 @@ export function AgentsWorkspacePane() {
       : undefined;
 
   const openSession = (threadId: string) =>
-    showSurface('activity', { session: threadId });
+    showSurface('chat', { session: threadId });
 
   const sessionByThread = useMemo(
     () => new Map(sessions.map((session) => [session.threadId, session])),
@@ -352,6 +352,28 @@ export function AgentsWorkspacePane() {
       }
       showProvenance={scope === 'all'}
       onOpenSession={openSession}
+      onOpenChild={(item, title) => {
+        if (item.producer === 'station-delegate') {
+          const handle = item.result?.handle;
+          const sessionId =
+            handle?.kind === 'session' ? handle.threadId : item.childId;
+          showSurface(
+            'chat',
+            item.reporterThreadId === sessionId
+              ? { session: sessionId }
+              : {
+                  session: item.reporterThreadId,
+                  childSessionId: sessionId,
+                  childTitle: title,
+                },
+          );
+        } else
+          showSurface('chat', {
+            session: item.reporterThreadId,
+            childId: item.childId,
+            childTitle: title,
+          });
+      }}
     />
   );
 

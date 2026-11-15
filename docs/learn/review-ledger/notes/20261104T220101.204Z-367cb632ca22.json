@@ -1,7 +1,0 @@
-{
-  "revision": "031fdb7fe5a22022d5574cf0fd8504fa3113ccc3",
-
-  "notes": [
-    {"path":"docs/design/task-dispatcher.md","note":"Corrected the Finishing section: finalization's git calls run through the judged config copy except the branch deletion, which runs update-ref against the real git directory with hooks pointed at a missing folder and is then checked gone (kept as failed otherwise); a refused include keeps the worktree as unsafe-config. Checked against finalizeForTask and unsafeConfigDetail in worktree-provisioning-service.ts and the removal-race tests. This replaces the generic note recorded in this round for this file.","inputs":["docs/design/task-dispatcher.md"]}
-  ]
-}

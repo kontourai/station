@@ -1,0 +1,7 @@
+{
+  "revision": "54cbb50e825668473fd4f0ea28cd213065999b05",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"One clause added to the PR Gallery excuse rules: an error that is empty once normalised never matches, as failureKey in gallery-main-attribution.mjs now gives it a null signature. Checked against the script and its tests at this commit; nothing else in the page changed.","inputs":["docs/guides/testing.md"]}
+  ]
+}

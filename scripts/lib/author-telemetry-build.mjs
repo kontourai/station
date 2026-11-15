@@ -1,4 +1,5 @@
 import { STATION_RELEASE_RINGS } from '../../packages/shared/src/release-rings.generated.mjs';
+import { isReleaseTag } from './release-tag.mjs';
 
 /** Public binary metadata. Release workflows are the only supported writers. */
 export function authorTelemetryEndpoint(channel, env = process.env) {
@@ -9,7 +10,8 @@ export function authorTelemetryEndpoint(channel, env = process.env) {
   const workflow = env.GITHUB_WORKFLOW_REF || '';
   const release =
     env.GITHUB_EVENT_NAME === 'push' &&
-    /^refs\/tags\/v\d+\.\d+\.\d+(?:-preview\.[1-9]\d*)?$/.test(ref) &&
+    ref.startsWith('refs/tags/') &&
+    isReleaseTag(ref.slice('refs/tags/'.length)) &&
     workflow === `kontourai/station/.github/workflows/release.yml@${ref}`;
   const nightly =
     ['schedule', 'workflow_dispatch'].includes(env.GITHUB_EVENT_NAME) &&
@@ -25,11 +27,8 @@ export function authorTelemetryEndpoint(channel, env = process.env) {
       'Author telemetry endpoint is forbidden outside official release builds',
     );
   }
-  const ring = release
-    ? ref.includes('-preview.')
-      ? 'preview'
-      : 'stable'
-    : 'nightly';
+  // A tagged release, candidate or final, is the Stable ring (#4929).
+  const ring = release ? 'stable' : 'nightly';
   if (channel !== STATION_RELEASE_RINGS[ring].runtimeChannel) {
     throw new Error(
       'Author telemetry endpoint requires the existing build channel to match the release',

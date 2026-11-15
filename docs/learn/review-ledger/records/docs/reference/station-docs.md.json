@@ -128,8 +128,6 @@
 
     "src-ui/src/components/chat/TaskProposalCard.tsx",
 
-    "docs/architecture/module-map.md",
-
     "docs/learn/atlas.json"
   ],
 

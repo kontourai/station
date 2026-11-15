@@ -214,6 +214,11 @@ export interface ConversationMessage {
      */
     stationRestartContinuation?: true;
     /**
+     * An in-place engine rewind hid this turn from the engine
+     * (`ACP_SESSION_REWOUND_CODE`). The row stays; it is shown as rewound.
+     */
+    rewound?: true;
+    /**
      * The interrupted-turn boundary a `[TURN_INTERRUPTED]` banner row reports
      * (`SessionStateChangedEvent.interruptedTurnBoundary.boundaryId`). The
      * chat's Continue keys its send on it.

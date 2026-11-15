@@ -4,8 +4,10 @@ import {
   registerACPConnectionRegistryProvider,
 } from '../../../providers/registries/registry.js';
 import {
+  listValidatedACPRegistryEntries,
   nameSkeleton,
   registryLaunchEnvFor,
+  registryMinimumVersionFor,
 } from '../acp-engine-descriptors.js';
 
 /**
@@ -69,5 +71,117 @@ describe('nameSkeleton', () => {
     ]) {
       expect(nameSkeleton(name)).toBe('goose');
     }
+  });
+});
+
+describe('managedRuntime admission', () => {
+  afterEach(() => clearAll());
+
+  const managedRuntime = {
+    installId: 'example-engine',
+    argv: ['--experimental-wasm-modules', '{script}', '--transport=stdio'],
+  };
+
+  test('a built-in entry may name a managed runtime; a plugin entry may not', () => {
+    registerACPConnectionRegistryProvider(
+      {
+        listAvailable: () => [
+          {
+            id: 'managed-builtin',
+            name: 'Managed',
+            command: 'node',
+            managedRuntime,
+          },
+        ],
+      },
+      'builtin-acp-connections',
+      true,
+    );
+    registerACPConnectionRegistryProvider(
+      {
+        listAvailable: () => [
+          {
+            id: 'managed-plugin',
+            name: 'Plugin Engine',
+            command: 'node',
+            managedRuntime,
+          },
+          { id: 'plain-plugin', name: 'Plain Engine', command: 'plain' },
+        ],
+      },
+      'example-plugin',
+      false,
+    );
+    expect(
+      listValidatedACPRegistryEntries().map(({ entry }) => entry.id),
+    ).toEqual(['managed-builtin', 'plain-plugin']);
+  });
+
+  test('a built-in entry with an invalid managed runtime is refused whole', () => {
+    registerACPConnectionRegistryProvider(
+      {
+        listAvailable: () => [
+          {
+            id: 'managed-builtin',
+            name: 'Managed',
+            command: 'node',
+            managedRuntime: { installId: 'example-engine', argv: ['run'] },
+          },
+        ],
+      },
+      'builtin-acp-connections',
+      true,
+    );
+    expect(listValidatedACPRegistryEntries()).toEqual([]);
+  });
+});
+
+describe('minimumVersion admission', () => {
+  afterEach(() => clearAll());
+
+  const minimumVersion = {
+    versionCommand: ['example', '--version'],
+    minimum: '1.5.0',
+    updateHint: 'Update example.',
+  };
+
+  test('a built-in entry may name a version floor; a plugin entry may not', () => {
+    registerACPConnectionRegistryProvider(
+      {
+        listAvailable: () => [
+          {
+            id: 'floor-builtin',
+            name: 'Floor',
+            command: 'example',
+            minimumVersion,
+          },
+        ],
+      },
+      'builtin-acp-connections',
+      true,
+    );
+    registerACPConnectionRegistryProvider(
+      {
+        listAvailable: () => [
+          {
+            id: 'floor-plugin',
+            name: 'Plugin Engine',
+            command: 'other',
+            minimumVersion,
+          },
+          { id: 'plain-plugin', name: 'Plain Engine', command: 'plain' },
+        ],
+      },
+      'example-plugin',
+      false,
+    );
+    expect(
+      listValidatedACPRegistryEntries().map(({ entry }) => entry.id),
+    ).toEqual(['floor-builtin', 'plain-plugin']);
+    expect(registryMinimumVersionFor({ command: '/opt/bin/example' })).toEqual({
+      command: 'example',
+      minimumVersion,
+    });
+    expect(registryMinimumVersionFor({ command: 'other' })).toBeUndefined();
   });
 });

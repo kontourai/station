@@ -1,0 +1,7 @@
+{
+  "revision": "a601ad3679e0dcbe678719b3defd3ff4d97fb5fb",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed shared trigger marks, Agent glyph fallback, corner safety badge and Agent-first truncation against ComposerRunControl and both callers. Existing picker and safety ownership is retained; rendered and device evidence is separate.","inputs":["docs/design/chat-composer.md","src-ui/src/components/ComposerRunControl.css","src-ui/src/components/ComposerRunControl.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

@@ -26,6 +26,36 @@ import type { InvocationContext } from '../../runtime/types.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { UntrustedConversationMarks } from './untrusted-conversation-marks.js';
 
+/**
+ * Station-control tools whose result carries a delegated child's output
+ * into the conversation that reads it.
+ */
+export const DELEGATED_RESULT_TOOLS: ReadonlySet<string> = new Set([
+  'delegate_task',
+  'get_task',
+  'get_task_events',
+  'continue_task',
+  'respond_to_task_request',
+  'list_delegated_tasks',
+]);
+
+/**
+ * #4828: every id a call's conversation answers to for an untrusted read:
+ * its own, and the conversation and Session that delegated to it, and the
+ * root. A marked ancestor protects its descendants.
+ */
+export function untrustedContentAncestry(invocation: {
+  conversationId?: string;
+  delegation?: InvocationContext['delegation'];
+}): (string | undefined)[] {
+  return [
+    invocation.conversationId,
+    invocation.delegation?.parentConversationId,
+    invocation.delegation?.parentSessionId,
+    invocation.delegation?.rootConversationId,
+  ];
+}
+
 /** Conversations remembered per lineage set; the oldest is forgotten first. */
 const CONVERSATION_MEMORY_LIMIT = 10_000;
 
@@ -140,11 +170,7 @@ export class UntrustedContentLedger {
     invocation: InvocationContext,
   ): Promise<boolean> {
     if (!this.durable) return false;
-    const ids = [
-      invocation.conversationId,
-      invocation.delegation?.parentConversationId,
-      invocation.delegation?.rootConversationId,
-    ];
+    const ids = untrustedContentAncestry(invocation);
     await Promise.all(
       ids.flatMap((id) => [
         ...((id && this.pendingConversationMarks.get(id)) || []),
@@ -182,11 +208,7 @@ export class UntrustedContentLedger {
         : {}),
       marks: [],
       references: new Set(
-        [
-          invocation.conversationId,
-          invocation.delegation?.parentConversationId,
-          invocation.delegation?.rootConversationId,
-        ].filter((id): id is string => !!id),
+        untrustedContentAncestry(invocation).filter((id): id is string => !!id),
       ),
       latched: false,
     };
@@ -201,6 +223,7 @@ export class UntrustedContentLedger {
       !delegation ||
       !(
         this.conversationsRead.has(delegation.parentConversationId) ||
+        this.conversationsRead.has(delegation.parentSessionId) ||
         this.conversationsRead.has(delegation.rootConversationId)
       )
     )
@@ -216,6 +239,7 @@ export class UntrustedContentLedger {
   private recordConversationRead(invocation: InvocationContext): void {
     this.conversationsRead.add(invocation.conversationId);
     this.descendantsRead.add(invocation.delegation?.parentConversationId);
+    this.descendantsRead.add(invocation.delegation?.parentSessionId);
     this.descendantsRead.add(invocation.delegation?.rootConversationId);
     if (!this.durable || !invocation.conversationId) return;
     try {
@@ -305,9 +329,14 @@ export class UntrustedContentLedger {
 
   /**
    * #3483: a Station seam saw an untrusted read for an external engine's
-   * conversation (no Station turn is involved).
+   * conversation (no Station turn is involved). #4828: a delegated child's
+   * read also marks its parent and root for the delegation tools' results.
    */
-  markConversation(conversationId: string, untrusted: Promise<boolean>): void {
+  markConversation(
+    conversationId: string,
+    untrusted: Promise<boolean>,
+    delegation?: InvocationContext['delegation'],
+  ): void {
     const recorded = untrusted
       .catch(() => true)
       .then((read) => {
@@ -315,9 +344,25 @@ export class UntrustedContentLedger {
           this.recordConversationRead({
             agentSlug: '',
             conversationId,
+            ...(delegation ? { delegation } : {}),
           } as InvocationContext);
       });
     this.trackPending(conversationId, recorded);
+  }
+
+  /**
+   * #4828: a delegated child's result reached this conversation (by any of
+   * these ids). When a child it delegated to has read untrusted content,
+   * the conversation is marked like any other untrusted read, durably when
+   * the durable marks are wired. Returns whether it was.
+   */
+  carryDescendantRead(...conversationIds: (string | undefined)[]): boolean {
+    const ids = [
+      ...new Set(conversationIds.filter((id): id is string => !!id)),
+    ];
+    if (!ids.some((id) => this.hasDescendantRead(id))) return false;
+    for (const id of ids) this.markConversation(id, Promise.resolve(true));
+    return true;
   }
 
   /**

@@ -31,6 +31,32 @@ type PluginDisposer = () => void;
 
 /** Plugin discovery must never block the app shell indefinitely. */
 export const PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS = 8_000;
+/**
+ * Inventory reads one load makes before it reports the registry unavailable.
+ * Attempt `n` gets `n` times the inventory deadline.
+ */
+export const PLUGIN_REGISTRY_INVENTORY_ATTEMPTS = 3;
+const PLUGIN_REGISTRY_INVENTORY_RETRY_DELAY_MS = 1_000;
+/** Most healthy probes skipped between re-reads of an unavailable inventory. */
+const HEALTHY_PROBE_BACKOFF_CEILING = 7;
+
+function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const abort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', abort);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', abort, { once: true });
+  });
+}
 /** Marks the script preloads `prefetchBundles` adds, removed once the pass ends. */
 const BUNDLE_PRELOAD_ATTRIBUTE = 'data-station-plugin-preload';
 
@@ -81,6 +107,10 @@ export type PluginRegistrySettledLoadState = Exclude<
   PluginRegistryLoadState,
   'loading'
 >;
+
+/** What a person is told when the `registry-unavailable` failure is the cause. */
+export const PLUGIN_INVENTORY_UNAVAILABLE_MESSAGE =
+  'Station could not read the installed plugin inventory.';
 
 export type PluginRegistryFailure =
   | 'remote-isolation'
@@ -246,6 +276,18 @@ export class PluginRegistry {
   private apiBaseAbortController = new AbortController();
   private failedPluginNames: string[] = [];
   private failure: PluginRegistryFailure | undefined;
+  /**
+   * Set only when the settled load failed `registry-unavailable` on a read
+   * that may succeed later (timeout, transport failure, 5xx), not on a
+   * refusal or an abort.
+   */
+  private inventoryRetryable = false;
+  /** Healthy probes still to skip before the next inventory re-read. */
+  private healthyProbesToSkip = 0;
+  /** Probes skipped after the next re-read; grows up to a ceiling. */
+  private healthyProbeBackoff = 1;
+  /** Whether the in-flight load is a background re-read nobody is watching. */
+  private backgroundReloadInFlight = false;
   private loadListeners = new Set<() => void>();
   private loadStatus: PluginRegistryLoadStatus = {
     state: 'loading',
@@ -283,6 +325,7 @@ export class PluginRegistry {
       this.apiBaseAbortController.abort();
       this.apiBaseAbortController = new AbortController();
       this.apiBaseGeneration += 1;
+      this.resetHealthyProbeBackoff();
     }
     this.apiBase = apiBase;
     this.connectionKey = connectionKey;
@@ -297,6 +340,7 @@ export class PluginRegistry {
     const registryGeneration = ++this.registryGeneration;
     this.failedPluginNames = [];
     this.failure = undefined;
+    this.inventoryRetryable = false;
     if (!apiBase) return 'ready';
     this.nativeHost = (await this.platformPromise).platform === 'tauri';
     const remoteBrowserIsolation =
@@ -328,15 +372,22 @@ export class PluginRegistry {
     }
 
     try {
-      const res = await authenticatedFetch(`${apiBase}/api/plugins`, {
-        signal,
-        timeoutMs: PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,
-      });
-      if (!res.ok) {
+      let inventory: Awaited<ReturnType<PluginRegistry['readInventory']>>;
+      try {
+        inventory = await this.readInventory(apiBase, signal);
+      } catch (e) {
+        log.api('[PluginRegistry] Failed to read the plugin inventory:', e);
         this.failure = 'registry-unavailable';
+        // Only a read that failed may succeed later; an abort is a new load's.
+        this.inventoryRetryable = !signal.aborted;
         return 'degraded';
       }
-      const { plugins } = await res.json();
+      if ('refusedStatus' in inventory) {
+        this.failure = 'registry-unavailable';
+        this.inventoryRetryable = inventory.refusedStatus >= 500;
+        return 'degraded';
+      }
+      const { plugins } = inventory;
       if (!this.isCurrentConfiguredOrigin(apiBase, apiBaseGeneration)) {
         return 'ready';
       }
@@ -380,6 +431,9 @@ export class PluginRegistry {
       if (!allBundlesLoaded) this.failure = 'bundle-load-failure';
       return allBundlesLoaded ? 'ready' : 'degraded';
     } catch (e) {
+      // The inventory was read; something after it threw, possibly with some
+      // plugins already registered. Re-reading would not change that, so this
+      // is not retryable.
       log.api('[PluginRegistry] Failed to initialize:', e);
       this.failure = 'registry-unavailable';
       return 'degraded';
@@ -389,6 +443,69 @@ export class PluginRegistry {
       ))
         link.remove();
     }
+  }
+
+  /**
+   * Reads `GET /api/plugins`, retrying a read that timed out, failed in
+   * transit or got a 5xx, with a longer deadline each time. The server scans
+   * every installed package for this answer, so on a loaded host one read can
+   * outlast its deadline while the connection stays healthy. Nothing else
+   * retries a failed load then (`PluginRegistryBootstrap` reloads only when
+   * the connection comes back), so a single slow read would leave every
+   * plugin tab "Unsupported" until the page reloads. The load status stays
+   * `loading` across attempts. Returns the status of a refused read; throws
+   * when the last attempt fails or the load is aborted.
+   */
+  private async readInventory(
+    apiBase: string,
+    signal: AbortSignal,
+  ): Promise<{ plugins: any[] } | { refusedStatus: number }> {
+    for (let attempt = 1; ; attempt += 1) {
+      const last = attempt >= PLUGIN_REGISTRY_INVENTORY_ATTEMPTS;
+      try {
+        const res = await authenticatedFetch(`${apiBase}/api/plugins`, {
+          signal,
+          timeoutMs: PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS * attempt,
+        });
+        if (res.ok) return await res.json();
+        if (last || !(res.status >= 500))
+          return { refusedStatus: Number(res.status) || 0 };
+      } catch (error) {
+        if (signal.aborted || last) throw error;
+      }
+      await abortableDelay(PLUGIN_REGISTRY_INVENTORY_RETRY_DELAY_MS, signal);
+    }
+  }
+
+  /**
+   * Called on each healthy connection probe. While the inventory is
+   * unavailable for a reason that may pass, re-reads it in the background on
+   * the 1st, 3rd, 7th, 15th probe and then every 8th, so a Station that
+   * recovers heals this page without a reload. Probes during a re-read do not
+   * count, so against a Station that hangs, re-reads never run back to back.
+   * The page keeps showing the failure (and its Retry) until a re-read
+   * succeeds. A refused read, a load in flight, or any other state does
+   * nothing.
+   */
+  retryUnavailableInventory(): void {
+    // Every load clears the flag before its first await, so this also refuses
+    // to start a re-read beside a load in flight.
+    if (!this.inventoryRetryable) return;
+    if (this.healthyProbesToSkip > 0) {
+      this.healthyProbesToSkip -= 1;
+      return;
+    }
+    this.healthyProbesToSkip = this.healthyProbeBackoff;
+    this.healthyProbeBackoff = Math.min(
+      this.healthyProbeBackoff * 2 + 1,
+      HEALTHY_PROBE_BACKOFF_CEILING,
+    );
+    void this.startReload(true);
+  }
+
+  private resetHealthyProbeBackoff(): void {
+    this.healthyProbesToSkip = 0;
+    this.healthyProbeBackoff = 1;
   }
 
   private registerIsolatedPlugin(pluginMeta: any, generation: number): boolean {
@@ -893,33 +1010,55 @@ export class PluginRegistry {
   /** Reload — re-fetch plugin list and load any new bundles */
   reload(): Promise<PluginRegistrySettledLoadState> {
     if (this.reloadInFlight) {
+      // Every caller gets a fresh pass behind the running one: its read may
+      // predate an install or a recovery. Behind a background re-read, show
+      // that a load is now under way rather than the old failure.
+      if (this.backgroundReloadInFlight) {
+        this.backgroundReloadInFlight = false;
+        this.setLoadStatus('loading');
+      }
       this.reloadQueued = true;
       return this.reloadInFlight;
     }
-    const operation = this.drainReloads();
+    return this.startReload(false);
+  }
+
+  private startReload(
+    background: boolean,
+  ): Promise<PluginRegistrySettledLoadState> {
+    this.backgroundReloadInFlight = background;
+    const operation = this.drainReloads(background);
     this.reloadInFlight = operation;
-    void operation.then(
-      () => {
-        if (this.reloadInFlight === operation) this.reloadInFlight = undefined;
-      },
-      () => {
-        if (this.reloadInFlight === operation) this.reloadInFlight = undefined;
-      },
-    );
+    const settle = () => {
+      if (this.reloadInFlight !== operation) return;
+      this.reloadInFlight = undefined;
+      this.backgroundReloadInFlight = false;
+    };
+    void operation.then(settle, settle);
     return operation;
   }
 
-  private async drainReloads(): Promise<PluginRegistrySettledLoadState> {
+  private async drainReloads(
+    background: boolean,
+  ): Promise<PluginRegistrySettledLoadState> {
     let loadState: PluginRegistrySettledLoadState = 'ready';
+    let quiet = background;
     do {
       this.reloadQueued = false;
-      loadState = await this.performReload();
+      loadState = await this.performReload(quiet);
+      quiet = false;
     } while (this.reloadQueued);
     return loadState;
   }
 
-  private async performReload(): Promise<PluginRegistrySettledLoadState> {
-    this.setLoadStatus('loading');
+  /**
+   * A background pass leaves the settled status (a failure and its Retry) on
+   * screen until it finishes; an unchanged result notifies nobody.
+   */
+  private async performReload(
+    background = false,
+  ): Promise<PluginRegistrySettledLoadState> {
+    if (!background) this.setLoadStatus('loading');
     this.disposePlugins();
     this.layouts.clear();
     this.pluginMeta.clear();
@@ -937,6 +1076,11 @@ export class PluginRegistry {
     // rather than trusting whatever the window holds.
     delete (window as any).__station_ai_plugins;
     const loadState = await this.initialize();
+    if (this.failure !== 'registry-unavailable')
+      this.resetHealthyProbeBackoff();
+    // A pass queued behind a background re-read reports the outcome; showing
+    // this one's first would flash the old failure between two loads.
+    if (background && this.reloadQueued) return loadState;
     this.setLoadStatus(loadState, this.failedPluginNames, this.failure);
     return loadState;
   }

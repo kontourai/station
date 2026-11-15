@@ -1,7 +1,0 @@
-{
-  "revision": "0755a9d3343f56626d2964cb5d94422a524a6aed",
-
-  "notes": [
-    {"path":"docs/reference/cli.md","note":"Re-reviewed the added published-entry telemetry-command.test.ts after covering both legacy and namespaced plugin forms. The 42-test focused baseline passed in 17.50 seconds, including real built-in config persistence, plugin alias refusal, terminal labels and byte-identical JSON. On clean committed 0755a9d3343f, removing anonymous-to-lite normalization made both built-in persistence cases fail with CLI usage errors (2 failed, 5 passed; 25.39 seconds). The production source was restored exactly; restored test evidence is reported separately. Namespaced plugin persistence hit the existing app.schema.json slash-key rejection; server repair remains outside this CLI-only change.","inputs":["docs/reference/cli.md"]}
-  ]
-}

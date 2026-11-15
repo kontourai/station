@@ -1,7 +1,0 @@
-{
-  "revision": "f26c82ae8414aa2b59192350f4a61e7136519111",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Regenerated MCP topics carry only the added module-map ProductTelemetryReceiver paragraph (lite-core and the Worker receiver); checked the one-line generated diff in station-docs-content.ts. The manual's own topics make no telemetry receiver claim and are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

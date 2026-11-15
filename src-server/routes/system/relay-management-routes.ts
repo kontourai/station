@@ -36,44 +36,69 @@ const durations = {
   never: null,
 } as const;
 
-export function createRelayManagementRoutes(deps: {
-  owner: RelayInvitationOwner;
-  registry: NativeSurfaceRegistry;
-  enrollment?: NativeRelayEnrollmentService;
+interface RelayCapabilityDeps {
   isManager(request: Request): boolean;
   resolveActor(context: Context): PrincipalRef;
-  actorCurrency(
-    request: Request,
-    actor: PrincipalRef,
-  ): RelayManagementActorCurrency;
-  captureDecision(
-    request: Request,
-    subjectId: string,
-    actor: PrincipalRef,
-  ): RelayManagementApproval;
-  recordDecision?(request: Request, operation: string, subject: string): void;
-  /**
-   * #4519: the managed policy's refusal sentence when it allows no remote
-   * clients. Then nothing that lets a device in through the relay (a setup
-   * approval, an invitation, a device approval) is done.
-   */
-  managedRemoteRefusal?: () => string | undefined;
-}) {
+}
+
+function relayCapabilities(
+  c: Context,
+  deps: RelayCapabilityDeps,
+  configured: boolean,
+) {
+  let canManage = deps.isManager(c.req.raw);
+  if (canManage) {
+    try {
+      deps.resolveActor(c);
+    } catch {
+      canManage = false;
+    }
+  }
+  return c.json({ data: { canManage, configured } }, 200, {
+    'Cache-Control': 'no-store',
+  });
+}
+
+/**
+ * The capability probe for a Station with no relay connector configured.
+ * Remote access views ask it before anything else, so it answers
+ * `configured: false` instead of leaving the path unmounted (a 404 on every
+ * visit to Computers). The management leaves themselves stay unmounted.
+ */
+export function createUnconfiguredRelayManagementRoutes(
+  deps: RelayCapabilityDeps,
+) {
+  const app = new Hono();
+  app.get('/capabilities', (c) => relayCapabilities(c, deps, false));
+  return app;
+}
+
+export function createRelayManagementRoutes(
+  deps: RelayCapabilityDeps & {
+    owner: RelayInvitationOwner;
+    registry: NativeSurfaceRegistry;
+    enrollment?: NativeRelayEnrollmentService;
+    actorCurrency(
+      request: Request,
+      actor: PrincipalRef,
+    ): RelayManagementActorCurrency;
+    captureDecision(
+      request: Request,
+      subjectId: string,
+      actor: PrincipalRef,
+    ): RelayManagementApproval;
+    recordDecision?(request: Request, operation: string, subject: string): void;
+    /**
+     * #4519: the managed policy's refusal sentence when it allows no remote
+     * clients. Then nothing that lets a device in through the relay (a setup
+     * approval, an invitation, a device approval) is done.
+     */
+    managedRemoteRefusal?: () => string | undefined;
+  },
+) {
   const app = new Hono();
 
-  app.get('/capabilities', (c) => {
-    let canManage = deps.isManager(c.req.raw);
-    if (canManage) {
-      try {
-        deps.resolveActor(c);
-      } catch {
-        canManage = false;
-      }
-    }
-    return c.json({ data: { canManage, configured: true } }, 200, {
-      'Cache-Control': 'no-store',
-    });
-  });
+  app.get('/capabilities', (c) => relayCapabilities(c, deps, true));
   const managerGuard: MiddlewareHandler = async (c, next) => {
     c.header('Cache-Control', 'no-store');
     if (!deps.isManager(c.req.raw))

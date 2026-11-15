@@ -29,7 +29,10 @@ export function registerManifestRegistryProvider(
   // location, so the labels here cannot disagree with what it reads.
   const bundled = provider.origin.bundled === true;
   const origin = bundled ? 'bundled' : 'configured';
-  registerAgentRegistryProvider(provider.agentRegistry());
+  registerAgentRegistryProvider(
+    provider.agentRegistry(),
+    manifestRegistrySourceLabels[origin],
+  );
   registerIntegrationRegistryProvider(provider.integrationRegistry(), {
     bundled,
   });
