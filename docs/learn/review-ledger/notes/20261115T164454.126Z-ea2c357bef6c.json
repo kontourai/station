@@ -1,0 +1,7 @@
+{
+  "revision": "940be3079c4399a864e8e2ec18ab76ffc8a99af8",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Compatibility paragraph for FocusReport.viewingSessionIds checked against packages/contracts/src/presence.ts and the focus route's parser; provider-turn sentence checked against turn-completion-notifications.ts episode merge (done if any user turn, else replied).","inputs":["docs/reference/contracts.md"]}
+  ]
+}
