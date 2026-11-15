@@ -254,6 +254,21 @@ export async function inspectGitReviewRange(
   };
 }
 
+/** The immutable review repository identity, without requiring a changed range. */
+export async function readReviewRepositoryIdentity(
+  projectRoot: string,
+): Promise<string> {
+  const repository = await ownRepositoryGitArgs(projectRoot, projectRoot);
+  const origin = await execGit(
+    [...repository.args, 'config', '--get', 'remote.origin.url'],
+    { encoding: 'utf8', timeout: GIT_INSPECTION_TIMEOUT_MS },
+  ).catch(() => ({ stdout: '', stderr: '' }));
+  return (
+    normalizeGitOrigin(origin.stdout.trim()) ||
+    `local:${createHash('sha256').update(repository.top).digest('hex')}`
+  );
+}
+
 async function resolveCommit(
   repo: readonly string[],
   revision: string,

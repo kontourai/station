@@ -87,7 +87,7 @@ function appendRuntimeErrorPart(
   const previousText = previous?.type === 'text' ? previous.text : undefined;
   if (previousText?.startsWith(prefix)) {
     const suffix = previousText.slice(prefix.length);
-    const match = /^ \(repeated (\d+)×\)$/.exec(suffix);
+    const match = /^ \(repeated (\d+)\u00d7\)$/.exec(suffix);
     if (suffix && !match) return [...parts, runtimeErrorPart(prefix, code)];
     const count = match ? Number(match[1]) + 1 : 2;
     return [

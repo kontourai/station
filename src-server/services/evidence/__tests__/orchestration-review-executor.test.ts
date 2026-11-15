@@ -84,6 +84,21 @@ function runtime(options?: { stopFails?: boolean }) {
 }
 
 describe('OrchestrationReviewExecutor', () => {
+  it('retains the snapshot when Session start may have happened before its reply was lost', async () => {
+    const orchestration = runtime();
+    orchestration.dispatchWithReceipt.mockRejectedValueOnce(
+      new Error('start response lost'),
+    );
+    const executor = new OrchestrationReviewExecutor({
+      orchestration: orchestration as never,
+      supportsReadOnlyReview: () => true,
+    });
+    await expect(executor.execute(input())).resolves.toMatchObject({
+      kind: 'failed',
+      workspaceRelease: 'retain',
+    });
+    expect(orchestration.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+  });
   it('enforces native read-only isolation on both provider boundaries', async () => {
     const orchestration = runtime();
     const executor = new OrchestrationReviewExecutor({
