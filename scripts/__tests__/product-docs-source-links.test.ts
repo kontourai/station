@@ -290,12 +290,15 @@ describe('public product documentation source links', () => {
     const index = readFileSync('docs/pages/index.html', 'utf8');
     const pagesScreens = [
       ...index.matchAll(
-        /(?:src="\.\/media\/|content="https:\/\/kontourai\.github\.io\/station\/media\/)([a-z0-9-]+)\.png"/g,
+        /(?:(?:src|srcset)="\.\/media\/|content="https:\/\/kontourai\.github\.io\/station\/media\/)([a-z0-9-]+)\.png"/g,
       ),
     ].map(([, name]) => name);
     expect(index).toMatch(/<meta property="og:image" content="https:/);
     expect(index).toMatch(/<meta name="twitter:image" content="https:/);
     expect(pagesScreens.length).toBeGreaterThanOrEqual(3);
+    // Dark and phone captures load only through <source srcset>.
+    expect(pagesScreens).toContain('room-long-dark-mobile');
+    expect(index).not.toMatch(/srcset="[^"]*[\s,]/);
     for (const name of pagesScreens)
       expect(PAGES_GALLERY_SCREENS, `Pages image ${name}`).toContain(name);
 

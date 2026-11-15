@@ -45,8 +45,21 @@ const PUBLIC_SOURCE = /^(?:user|guides)\/[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
  * baseline is regenerated instead of drifting as one-off captures. Each is
  * published at `media/<name>.png`; a renamed or dropped screen fails the build.
  */
+// The home page swaps light and dark captures with the reader's theme, and
+// phone captures for desktop ones at narrow widths, so it names both of each.
 export const PAGES_GALLERY_SCREENS = Object.freeze([
+  'room-long-light-desktop',
+  'room-long-dark-desktop',
+  'room-long-light-mobile',
+  'room-long-dark-mobile',
+  'channel-nav-list-light-mobile',
+  'channel-nav-list-dark-mobile',
+  'channel-nav-thread-light-mobile',
+  'channel-nav-thread-dark-mobile',
   'task-capabilities-light-desktop',
+  'task-capabilities-dark-desktop',
+  'task-capabilities-light-mobile',
+  'task-capabilities-dark-mobile',
 ]);
 const galleryBaselineRoot = path.join(
   repoRoot,
