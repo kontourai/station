@@ -110,7 +110,7 @@ on `station.console.emissions` and logged once per outage.
 
 - [Desktop startup and Linux graphics](../guides/desktop-build.md#startup-cost-and-linux-graphics): `WEBKIT_DISABLE_DMABUF_RENDERER` overrides the NVIDIA/Wayland fallback; `NODE_DISABLE_COMPILE_CACHE=1` opts out of Node's compile cache.
 
-- [Server logs and attachment retention](config.md#logging): `STATION_LOG_LEVEL`, `STATION_SERVER_LOG_RETENTION_DAYS`, `STATION_SERVER_LOG_MAX_BYTES`, `STATION_ATTACHMENT_RETENTION_DAYS`, and `STATION_ATTACHMENT_MAX_BYTES`.
+- [Server logs and attachment retention](config.md#logging): `STATION_LOG_LEVEL`, `STATION_SERVER_LOG_RETENTION_DAYS`, `STATION_SERVER_LOG_MAX_BYTES`, `STATION_LOG_REPEAT_LIMIT`, `STATION_LOG_REPEAT_WINDOW_SECONDS`, `STATION_LOG_FILE_MAX_BYTES`, `STATION_LOG_FILE_GENERATIONS`, `STATION_ATTACHMENT_RETENTION_DAYS`, and `STATION_ATTACHMENT_MAX_BYTES`.
 - [Monitoring history](../guides/monitoring.md#environment-variables): `STATION_EVENT_LOG_RETENTION_DAYS` and `STATION_EVENT_LOG_MAX_BYTES`.
 - [Native recovery](../user/native-recovery.md#check-the-local-diagnosis): `STATION_DESKTOP_LOG_LEVEL` and the shell's separate logs.
 - [Conversations started outside Station](../user/getting-started.md#see-conversations-started-outside-station): `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`, `STATION_EXTERNAL_CODEX_SOURCE_ROOT`, `STATION_EXTERNAL_GROK_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT` select the folders Station reads Claude Code, Codex, Grok and OpenCode history from, instead of `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME` and OpenCode's `XDG_DATA_HOME` data folder and their defaults ([details](session-api.md), [OpenCode source](../../src-server/providers/sessions/opencode-session-source.ts)).

@@ -70,6 +70,7 @@ import {
   getInstalledServerLogSink,
   installServerLogSink,
 } from './services/infra/server-log-store.js';
+import { startStdoutLogFileRotation } from './services/infra/server-stdout-log-file.js';
 import {
   initializeWorkloadResources,
   stopWorkloadResources,
@@ -239,6 +240,11 @@ async function main() {
     name: 'station',
     level: resolveLogLevel(),
   });
+  // #4995: the launcher's stdout log file is held open by this process for
+  // its whole life, so only this process can keep it bounded.
+  if (process.env.STATION_LOG_FILE) {
+    startStdoutLogFileRotation({ path: process.env.STATION_LOG_FILE, logger });
+  }
 
   // The machine administrator's managed policy (#4515), loaded once, before
   // anything it may restrict is built. A policy this build cannot enforce

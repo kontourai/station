@@ -2555,6 +2555,27 @@ export const serverLogStoreRetentionRemovedFiles = meter.createCounter(
   },
 );
 
+/** #4995: repeated identical records the logger seam suppressed, by the
+ * logger's component (a source-literal `createLogger` name, so bounded by
+ * call sites) and level. Never message text or context. */
+export const logRecordsSuppressed = meter.createCounter(
+  'station.logs.suppressed_records',
+  {
+    description:
+      'Repeated identical log records suppressed by the logger repeat limit, by component and level',
+  },
+);
+
+/** #4995: size-cap rotations of the server's stdout log file
+ * (`STATION_LOG_FILE`), by bounded outcome (rotated|failed). */
+export const serverStdoutLogRotations = meter.createCounter(
+  'station.logs.stdout_file.rotations',
+  {
+    description:
+      'Size-cap rotations of the server stdout log file by outcome (rotated|failed)',
+  },
+);
+
 export const serverLogsRead = meter.createCounter('station.logs.read', {
   description:
     'Server log read-path queries (station#1896 logging slice 2), by surface (route|tool)',
