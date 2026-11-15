@@ -300,6 +300,9 @@ it('reads published task content through the real member SDK without starting op
   );
   await screen.findByText('Published document text');
   await screen.findByText('Published discussion');
+  // The room is unavailable here, so it never asks the public handshake
+  // (`/.well-known/station/v1`) whether its host takes message actions: that
+  // read waits for an open room (#4796).
   expect(paths().sort()).toEqual(
     [
       '/api/auth/authority',

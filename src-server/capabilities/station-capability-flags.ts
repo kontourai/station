@@ -58,6 +58,10 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // read-marker-routes.ts. Served in both modes; hosted reads are keyed by
   // the tenant, as the conversation inventory's own acknowledgements are.
   readMarkers: true,
+  // Reactions, edits, deletes and files on Project room messages (#4796,
+  // #4797, #4812): src-server/routes/projects/project-room-routes.ts. Served
+  // wherever Project rooms are; the room's own access check decides each call.
+  projectRoomMessageActions: true,
   // Scoped pairing (archive#1098): pairing grants/device sessions carry an
   // OAuth-style scope string, enforced by one route -> required-scope table.
   // src-server/security/pairing-route-scopes.ts,
