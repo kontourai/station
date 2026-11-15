@@ -1703,13 +1703,31 @@ async function sessionTurns(api, sessionId) {
 }
 
 /** Waits for a turn not in `known` to complete with the stub's reply. */
-async function awaitNewTurnReply(api, sessionId, known, label) {
-  await poll(label, 120_000, async () => {
-    const { events, turnIds } = await sessionTurns(api, sessionId);
-    const turnId = turnIds.find((id) => !known.includes(id));
-    return turnId ? acceptedTurnReply(events, turnId, STUB_REPLY_TEXT) : false;
-  });
+async function awaitNewTurnReply(
+  api,
+  sessionId,
+  known,
+  label,
+  intervalMs = 500,
+) {
+  await poll(
+    label,
+    120_000,
+    async () => {
+      const { events, turnIds } = await sessionTurns(api, sessionId);
+      const turnId = turnIds.find((id) => !known.includes(id));
+      return turnId
+        ? acceptedTurnReply(events, turnId, STUB_REPLY_TEXT)
+        : false;
+    },
+    intervalMs,
+  );
 }
+
+/** Follow-ups are timed to the reply; poll finely enough to tell them apart. */
+const FOLLOW_UP_POLL_MS = 50;
+/** Follow-up pairs timed in a delegated run; each re-parks the run first. */
+const FOLLOW_UP_ROUNDS = 3;
 
 /** One task delegated as the operator; resolves once its turn completed. */
 async function delegateHi(api, cwd) {
@@ -1769,7 +1787,48 @@ async function continueDelegatedHi(api, taskId, sessionId) {
     sessionId,
     turnIds,
     'the delegated follow-up to complete',
+    FOLLOW_UP_POLL_MS,
   );
+}
+
+/** A person's follow-up into an existing conversation, through `/chat`. */
+async function chatFollowUp(api, cwd, sessionId) {
+  const { turnIds } = await sessionTurns(api, sessionId);
+  const response = await api.call('POST', '/api/orchestration/chat', {
+    target: {
+      environment: { kind: 'current' },
+      agent: 'claude',
+      workspace: { kind: 'directory', cwd },
+    },
+    message: PROMPT,
+    clientTurnId: randomUUID(),
+    conversationId: sessionId,
+  });
+  assert(
+    response.status < 400 && response.json?.success !== false,
+    `chat follow-up: HTTP ${response.status} ${response.text.slice(0, 400)}`,
+  );
+  await awaitNewTurnReply(
+    api,
+    response.json?.data?.sessionId ?? sessionId,
+    turnIds,
+    'the chat follow-up to complete',
+    FOLLOW_UP_POLL_MS,
+  );
+}
+
+/**
+ * Waits until the tree holds no more engines than `count`; resolves the
+ * time that took, or `null` past `maxMs`.
+ */
+async function engineCountFallsTo(treeNow, count, maxMs) {
+  const start = performance.now();
+  while (performance.now() - start < maxMs) {
+    if (engineProcessCount(treeNow()) <= count)
+      return performance.now() - start;
+    await wait(250);
+  }
+  return null;
 }
 
 /**
@@ -1783,16 +1842,12 @@ async function measureDelegatedRun(api, cwd, context) {
   const { treeNow, memorySnapshot, settings, warmSessionId } = context;
   const enginesBefore = engineProcessCount(treeNow());
   const delegated = await delegateHi(api, cwd);
-  const finishedAt = performance.now();
   const enginesAtFinish = engineProcessCount(treeNow());
-  let releasedAfterMs = null;
-  while (performance.now() - finishedAt < settings.delegatedReleaseMaxMs) {
-    if (engineProcessCount(treeNow()) <= enginesBefore) {
-      releasedAfterMs = performance.now() - finishedAt;
-      break;
-    }
-    await wait(500);
-  }
+  const releasedAfterMs = await engineCountFallsTo(
+    treeNow,
+    enginesBefore,
+    settings.delegatedReleaseMaxMs,
+  );
   const finishedMemory = restMetric(
     await settleTree(memorySnapshot, settings),
     {
@@ -1804,20 +1859,38 @@ async function measureDelegatedRun(api, cwd, context) {
     await run();
     return performance.now() - start;
   };
-  const warmFollowUpMs = await timed(() => sendHi(api, cwd, warmSessionId));
-  const releasedFollowUpMs = await timed(() =>
-    continueDelegatedHi(api, delegated.taskId, delegated.sessionId),
-  );
+  const warm = [];
+  const released = [];
+  const releasedAgainAfterMs = [];
+  for (let round = 0; round < FOLLOW_UP_ROUNDS; round += 1) {
+    // Each follow-up restarts the run's engine; it is parked again first.
+    if (round > 0)
+      releasedAgainAfterMs.push(
+        await engineCountFallsTo(
+          treeNow,
+          enginesBefore,
+          settings.delegatedReleaseMaxMs,
+        ),
+      );
+    warm.push(await timed(() => chatFollowUp(api, cwd, warmSessionId)));
+    released.push(
+      await timed(() =>
+        continueDelegatedHi(api, delegated.taskId, delegated.sessionId),
+      ),
+    );
+  }
   return {
     status: 'measured',
     reportOnly: true,
     engineProcessesBefore: enginesBefore,
     engineProcessesAtFinish: enginesAtFinish,
     engineReleasedAfterMs: releasedAfterMs,
+    engineReleasedAgainAfterMs: releasedAgainAfterMs,
     finishedMemoryBytes: finishedMemory,
-    warmFollowUpMs,
-    releasedFollowUpMs,
-    note: 'engine processes are counted by executable name (claude); a follow-up is one stub-answered turn, measured from the request to its reply',
+    warmFollowUpMs: median(warm),
+    releasedFollowUpMs: median(released),
+    followUpSamplesMs: { warm, released },
+    note: `engine processes are counted by executable name (claude); a follow-up is one stub-answered turn, timed from the request to its reply (polled every ${FOLLOW_UP_POLL_MS} ms), median of ${FOLLOW_UP_ROUNDS}`,
   };
 }
 

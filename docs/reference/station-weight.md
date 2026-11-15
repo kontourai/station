@@ -58,6 +58,35 @@ Every turn is answered by the stub (`ok`). No real model is called.
 | `request.stationAddedToolCount` | Tools Station's request carries beyond the control's, with schemas or named only (deferred). |
 | `request.stationAddedToolDefinitionBytes` | JSON size of the added tool definitions, plus the byte growth of any tool both requests carry whose definition Station changed. Tools are compared by whole definition, not by name. |
 | `request.sideCallCount` | Other Messages requests during the turn window, such as a title request. |
+
+### Delegated run (optional, report-only)
+
+`--delegated-run` adds one step after the idle-session sample. It delegates one
+stub-answered task as the operator (`POST /api/orchestration/delegations`), the
+way an agent's delegation starts a child Session. It then writes a
+`delegatedRun` section to `result.json`. That section is never a budget and
+never recorded in the baseline:
+
+- `engineProcessesBefore`, `engineProcessesAtFinish`: Claude engine processes
+  in the tree, counted by executable name, before the task and when its turn
+  completed.
+- `engineReleasedAfterMs`: how long after the turn completed the count fell
+  back to `engineProcessesBefore`. A finished delegated run is
+  [parked early](../architecture/module-map.md#conversationsessionlineage).
+  `null` when that did not happen within `--delegated-release-max-ms` (default
+  90 s).
+- `finishedMemoryBytes`: the tree's memory, settled as for the other memory
+  metrics, after the task finished. Compare it with `idleSessionsMemoryBytes`.
+- `warmFollowUpMs`, `releasedFollowUpMs`: medians of three stub-answered
+  follow-ups each, timed from the request to its reply, polled every 50 ms
+  (samples in `followUpSamplesMs`). A warm follow-up goes through `/chat` into
+  an idle session whose engine is still running. A released one goes into the
+  parked task through `/delegations/:taskId/continue`, which restarts its
+  engine in place from its resume cursor. Before each later round the task is
+  parked again (`engineReleasedAgainAfterMs`).
+
+A failed step is written as `delegatedRun.status: not_measured` with its
+reason. It does not fail the run.
 | `repoRules` | Whether the `CLAUDE.md` and `AGENTS.md` markers reached the first request: yes or no for each. |
 
 **Process tree.** The tree is found three ways, and the union is measured:
@@ -280,8 +309,9 @@ Each run writes `result.json` (metrics, per-process detail, request breakdown,
 verdicts) and `requests.json` (every request the stub received) under
 `.kontourai/station-weight/<sha>/<run-id>/`. Diff two results to compare
 revisions. `--out=<dir>`, `--baseline=<file>`, `--settle-ms`,
-`--settle-max-ms`, `--cpu-window-ms`, `--sessions`, `--stop-grace-ms` and
-`--ready-launches` override the defaults.
+`--settle-max-ms`, `--cpu-window-ms`, `--sessions`, `--stop-grace-ms`,
+`--ready-launches` and `--delegated-release-max-ms` override the defaults.
+`--delegated-run` adds the [delegated run](#delegated-run-optional-report-only).
 
 ## Gaps
 
