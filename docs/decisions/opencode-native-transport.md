@@ -292,18 +292,26 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   withdrawn and its open tools closed. A second refusal in the same turn
   keeps the first one's reason and wait. A turn that nothing runs yet has
   its prompt taken back out of the inbox once its POST lands, and the error
-  says whether that worked. Some asks are not the live turn's: one from a
-  descendant that an earlier turn started and that still runs in the
-  background, or the session's own ask from a turn that has already ended.
-  Station interrupts the session that asked, with a `runtime.warning`, and
-  the live turn goes on. The session's own ask with no turn live ends in a
+  says whether that worked. If Station could not take it back (a command
+  has no inbox item, or the withdrawal failed) and OpenCode starts it after
+  all, before the next turn is sent, Station interrupts that execution with
+  a warning. Some asks are not the live turn's: one from a descendant that
+  an earlier turn started and that still runs in the background, or the
+  session's own ask from a turn that has already ended. Station interrupts
+  the session that asked, with a `runtime.warning`, and the live turn goes
+  on. When the ended turn's execution has ended too, OpenCode dropped the
+  ask with it, so Station interrupts nothing (an interrupt would stop only
+  the live turn) and the warning says so. The session's own ask with no turn live ends in a
   `runtime.error` of its own, and a next turn is refused as busy until the
   interrupt answers or the same three seconds pass. An interrupt that fails
   gets a warning of its own. The error then says OpenCode may still be
   running the turn, including when a descendant's interrupt failed and that
   descendant has not been seen to end. Until OpenCode reports the asking
   session's execution ended, stopping the session counts the ask as running
-  work: it interrupts that session again and repeats the rejection. A
+  work: it interrupts that session again and repeats the rejection. So
+  does an ask whose automatic answer Station was still deciding or sending
+  when the session stopped: the stop rejects it and interrupts the
+  descendant that asked. A
   refusal that comes back after that execution ended counts as nothing
   held. Station remembers at most 200 refused asks that OpenCode no longer
   holds, and never forgets one it may still hold. Past 1,000 of those it
