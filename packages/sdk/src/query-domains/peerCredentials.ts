@@ -1,3 +1,4 @@
+import type { PeerStationReadiness } from '@kontourai/station-contracts/environment-security';
 import { useQuery } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
 import { apiErrorMessage } from '../api-core';
@@ -17,6 +18,13 @@ export interface PeerCredentialSummary {
   label: string | null;
   createdAt: number;
   updatedAt: number;
+  /**
+   * How the peer's public handshake last answered this Station
+   * (`online`/`recovering`/`unconfirmed`/`unreachable`). Absent from an
+   * older host, which does not probe its peers: treat absent as unknown,
+   * never as not ready.
+   */
+  readiness?: PeerStationReadiness;
 }
 
 interface ApiEnvelope<T> {
@@ -56,7 +64,9 @@ export const peerCredentialQueries = {
   list: () => ({
     queryKey: ['peer-credentials'] as const,
     queryFn: fetchPeerCredentials,
-    staleTime: 30_000,
+    // Readiness rides on this read and the server caches it briefly, so a
+    // short stale time keeps a recovering peer's state current in pickers.
+    staleTime: 10_000,
     retry: false,
   }),
 };

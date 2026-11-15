@@ -238,6 +238,7 @@ import { OrchestrationStreamPresence } from '../../services/orchestration/orches
 import type { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
+import { PeerReadinessService } from '../../services/peers/peer-readiness-service.js';
 import { AgentPluginLoader } from '../../services/plugins/agent-plugin-loader.js';
 import type { MCPService } from '../../services/plugins/mcp-service.js';
 import { FocusPresence } from '../../services/presence/focus-presence.js';
@@ -1822,6 +1823,7 @@ export class StationRuntime {
           connect: (id) => this.sshEnvironmentService.connect(id),
         },
         peers: new PeerCredentialStore(projectHomeDir),
+        readiness: new PeerReadinessService(),
         warn: (message) => this.logger.warn(message),
       });
       this.discordGatewayService = new DiscordGatewayService({

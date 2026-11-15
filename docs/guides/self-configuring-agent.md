@@ -736,7 +736,13 @@ that could adopt it. See the
 3. Call `list_delegation_environments`, then `list_delegation_targets` to choose
    a ready worker with the capabilities the task needs, using a bound operator
    caller for saved-Environment discovery. Environment listing is
-   secret-free, read-only, and never reconnects; inspecting a selected saved SSH
+   secret-free, read-only, and never reconnects. It lists paired Stations
+   (`kind: "peer"`) beside SSH environments; a paired Station whose public
+   handshake is not `online`, or whose credential lacks
+   `orchestration:operate`, is `ready: false` with an `unavailableReason`.
+   Delegating to a paired Station that a fresh handshake probe finds
+   recovering, unreachable, or answering as a different Station fails at once
+   with that reason instead of timing out. Inspecting a selected saved SSH
    Station's targets may reconnect its verified binding, so only that second
    step remains approval-gated. Use `delegate_task` when the work needs a
    resumable task, lifecycle status, or explicit observation and interrupt

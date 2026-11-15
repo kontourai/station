@@ -527,7 +527,9 @@ project** clears it. Home and New Chat use the same composer and pickers;
 **Runs on <Station>** sits below the message box.
 
 When another Station is available, **Runs on <Station>** opens **Where this work
-runs**. Choose the Station, then its **Engine & model**. With **Paired Station
+runs**. Choose the Station, then its **Engine & model**. A Station that
+cannot take work right now is greyed out with its reason, such as
+**Recovering · server down or restarting** or **Unreachable**. With **Paired Station
 chats** enabled in Settings → Advanced → Feature previews, choose a Project
 from that Station’s own list, or **start without a project**. **Start** opens a
 chat tab that reads and replies to the conversation on the chosen Station.

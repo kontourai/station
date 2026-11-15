@@ -5,6 +5,7 @@ import {
   type PeerCredentialStore,
 } from '../../services/peers/peer-credential-store.js';
 import type { PeerEnrollmentService } from '../../services/peers/peer-enrollment-service.js';
+import type { PeerReadinessService } from '../../services/peers/peer-readiness-service.js';
 import {
   errorMessage,
   getBody,
@@ -59,6 +60,12 @@ export function createPeerCredentialRoutes(
   hasSshProfile?: (environmentId: string) => boolean,
   authorize?: (request: Request) => boolean,
   enrollments?: PeerEnrollmentService,
+  /**
+   * When provided, each listed peer carries `readiness`: how its public
+   * handshake answered (`online`/`recovering`/`unconfirmed`/`unreachable`),
+   * probed without its credential and briefly cached.
+   */
+  readiness?: Pick<PeerReadinessService, 'probeAll'>,
 ) {
   const app = new Hono();
 
@@ -199,7 +206,18 @@ export function createPeerCredentialRoutes(
     }
   });
 
-  app.get('/', (c) => c.json({ success: true, data: store.list() }));
+  app.get('/', async (c) => {
+    const peers = store.list();
+    if (!readiness) return c.json({ success: true, data: peers });
+    const observed = await readiness.probeAll(peers);
+    return c.json({
+      success: true,
+      data: peers.map((peer, index) => ({
+        ...peer,
+        readiness: observed[index],
+      })),
+    });
+  });
 
   app.post('/', validate(peerCredentialUpsertSchema), async (c) => {
     const request = c.req.raw;

@@ -400,10 +400,14 @@ test('the Station choice marks where the work runs now and reports the chosen St
 });
 
 describe('the start menus wire the Station choice to the start', () => {
-  function renderMenus(environment?: string, unavailable = false) {
+  function renderMenus(
+    environment?: string,
+    unavailable = false,
+    peers: unknown[] = [PAIRED],
+  ) {
     reads.peers = unavailable
       ? { isSuccess: false, isError: true, data: [] }
-      : { isSuccess: true, isError: false, data: [PAIRED] };
+      : { isSuccess: true, isError: false, data: peers };
     const agent = { slug: 'reviewer', name: 'Reviewer' };
     const start = {
       modelChoiceFor: () =>
@@ -482,5 +486,67 @@ describe('the start menus wire the Station choice to the start', () => {
       'current',
     );
     expect(setMenu).toHaveBeenCalledWith(null);
+  });
+
+  test('a recovering paired Station stays listed but greyed with its reason, and choosing it does nothing', () => {
+    const { start, setMenu } = renderMenus(undefined, false, [
+      { ...PAIRED, readiness: { status: 'recovering', checkedAt: 1 } },
+    ]);
+    const row = screen.getByRole('button', { name: /brian-media/ });
+    expect((row as HTMLButtonElement).disabled).toBe(true);
+    expect(row.className).toContain('start-menu__station--unavailable');
+    const reason = screen.getByText('Recovering · server down or restarting');
+    expect(row.getAttribute('aria-describedby')).toBe(reason.id);
+    fireEvent.click(row);
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(start.setExecutionEnvironment).not.toHaveBeenCalled();
+    expect(setMenu).not.toHaveBeenCalled();
+    // This Station is still a choice beside it.
+    expect(
+      (screen.getByRole('button', { name: /kontour/ }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
+  test('an online paired Station and one from an older host (no readiness) stay choosable', () => {
+    renderMenus(undefined, false, [
+      { ...PAIRED, readiness: { status: 'online', checkedAt: 1 } },
+      { ...PAIRED, environmentId: 'env-old', label: 'old-host' },
+    ]);
+    for (const name of [/brian-media/, /old-host/])
+      expect(
+        (screen.getByRole('button', { name }) as HTMLButtonElement).disabled,
+      ).toBe(false);
+  });
+
+  test('an unreachable paired Station that is the current choice stays listed with its reason', () => {
+    const { setMenu } = renderMenus('env-brian-media', false, [
+      { ...PAIRED, readiness: { status: 'unreachable', checkedAt: 1 } },
+    ]);
+    const row = screen.getByRole('button', { name: /brian-media/ });
+    expect(row.getAttribute('aria-current')).toBe('true');
+    expect(screen.getByText('Unreachable')).toBeTruthy();
+    // Re-choosing the current choice only closes, as before.
+    fireEvent.click(row);
+    expect(setMenu).toHaveBeenCalledWith(null);
+  });
+
+  test('an SSH Station whose connection is in error is greyed with a reason', () => {
+    reads.ssh = {
+      isSuccess: true,
+      isError: false,
+      data: [
+        {
+          ...sshEnvironment('/srv/project'),
+          state: { phase: 'error', reason: 'timeout', action: 'Retry' },
+        },
+      ],
+    };
+    const { start } = renderMenus(undefined, false, []);
+    const row = screen.getByRole('button', { name: /build-box/ });
+    expect((row as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('Connection failed')).toBeTruthy();
+    fireEvent.click(row);
+    expect(start.setExecutionEnvironment).not.toHaveBeenCalled();
   });
 });
