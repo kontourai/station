@@ -71,7 +71,13 @@ function ToastCard({
   const isActivity = notification.type === 'tool-activity';
   const isTurn = notification.type === 'turn-activity';
   const isPairing = notification.type === 'pairing-request';
-  useDecisionSurface('approval-toast', isApproval || isPairing);
+  // Any notification that carries actions can be a decision (a tool approval,
+  // a pairing request, or a decision a newer server sends), so all of them
+  // hold custom CSS off while shown.
+  useDecisionSurface(
+    'approval-toast',
+    isApproval || isPairing || (notification.actions?.length ?? 0) > 0,
+  );
   const cardRef = useRef<HTMLElement>(null);
   const swipe = useSwipeToDismiss(swipeToDismiss, () =>
     dismissToast(notification.id),

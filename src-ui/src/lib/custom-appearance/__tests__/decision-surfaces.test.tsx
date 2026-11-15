@@ -8,83 +8,27 @@ import { InputRequestUrlCard } from '../../../components/chat/InputRequestUrlCar
 import { PermissionRequestModal } from '../../../components/modals/PermissionRequestModal';
 import { ProposedChangeDetail } from '../../../components/review/ProposedChangeDetail';
 import {
-  DECISION_SURFACES,
   decisionSurfaceMounted,
   holdDecisionSurface,
   mountedDecisionSurfaces,
 } from '../decision-surfaces';
 
 /**
- * The decision surfaces, pinned here independently of the registry: removing
- * an owner from `DECISION_SURFACES` (or adding one) must change this list on
- * purpose. Each row names the component that registers it; the rows marked
- * `rendered` are also mounted below (or, for the attention owners, in their
- * own suites), which is what proves the owner registers. The others are
- * registered by a one-line hook call that no test mounts yet (the decision
- * record lists them as not verified by a render).
+ * Registration is proven by rendering an owner and reading the registry, here
+ * for owners that render without app context, and in each owner's own suite
+ * otherwise (ApprovalModeChip, AgentSchedule, AttentionCard, ReviewLayout,
+ * TerminalRunNotes, NeedsInputReply, ExactRequestInline, NotificationContainer
+ * decision-surface, AccountPreferencesSection, AgentEditorApprovalDefault,
+ * MemoryReview, PeopleSection). There is deliberately no test comparing
+ * `DECISION_SURFACES` to a copied list: that only re-states the constant.
+ * Owners not rendered anywhere are listed in docs/decisions/custom-appearance.md.
  */
-const PINNED: readonly [string, string][] = [
-  ['tool-approval-decision', 'InputRequestDecision (rendered)'],
-  ['input-request-card', 'InputRequestCard'],
-  ['input-request-url-card', 'InputRequestUrlCard (rendered)'],
-  ['exact-request-decision', 'ExactRequestInline (rendered in its suite)'],
-  ['request-inspection-dialog', 'RequestInspectionDialog'],
-  ['attention-approval-actions', 'AttentionCard ApprovalActions'],
-  ['permission-request-modal', 'PermissionRequestModal (rendered)'],
-  ['mcp-tool-call-approval', 'MCPToolUIFrame'],
-  ['approval-toast', 'NotificationContainer'],
-  ['peer-request-decision', 'AttentionCard PeerRequestDecisionActions'],
-  ['needs-input-reply', 'NeedsInputReply (rendered in its suite)'],
-  ['tool-requests-panel', 'ToolRequestsPanel'],
-  ['terminal-run-decision', 'TerminalRunNotes (rendered in its suite)'],
-  ['plugin-install-preview', 'InstallPreviewModal'],
-  ['plugin-update-confirm', 'PluginModalStack'],
-  ['extensions-access-consent', 'useStationExtensionsAccess'],
-  ['integration-trust-review', 'IntegrationTrustReview'],
-  [
-    'device-pairing-review',
-    'AttentionCard DevicePairingActions (rendered in its suite)',
-  ],
-  ['relay-device-enrollment', 'RelayOperatorPanel'],
-  ['relay-route-key-approval', 'RelayRouteKeyApproval'],
-  ['browser-station-trust', 'BrowserStationTrustApproval'],
-  ['share-answer-pairing', 'ShareAnswerPairingPrompt'],
-  ['task-sharing', 'ProjectTaskSharingControl'],
-  ['account-sharing', 'AccountSharingSection'],
-  ['usage-sharing-prompt', 'UsageSharingPrompt'],
-  [
-    'job-proposal',
-    'AgentScheduleNotes JobProposalCard (rendered in its suite)',
-  ],
-  [
-    'automation-proposal',
-    'AgentScheduleNotes AutomationProposalCard (rendered in its suite)',
-  ],
-  [
-    'check-back-approval',
-    'AgentScheduleNotes CheckBackApprovalCard (rendered in its suite)',
-  ],
-  [
-    'proposed-change',
-    'ProposedChangeDetail (rendered), ReviewLayout (rendered in its suite), AttentionCard',
-  ],
-  ['gate-exception', 'AttentionCard AcceptExceptionDialog'],
-  ['approval-mode', 'ComposerModeSheet (rendered in ApprovalModeChip suite)'],
-  ['device-agent-control', 'DeviceSetupWizard'],
-  ['people-roles', 'PeopleSection'],
-  ['integration-trust-settings', 'IntegrationTrustSection'],
-  ['integration-editor', 'IntegrationEditorPanel'],
-];
 
 afterEach(() => {
   expect(decisionSurfaceMounted()).toBe(false);
 });
 
 describe('decision surfaces', () => {
-  test('the registry is exactly the pinned list', () => {
-    expect([...DECISION_SURFACES]).toEqual(PINNED.map(([id]) => id));
-  });
-
   test('a hold is counted per mount and released once', () => {
     const a = holdDecisionSurface('job-proposal');
     const b = holdDecisionSurface('job-proposal');

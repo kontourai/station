@@ -25,7 +25,7 @@ export const DECISION_SURFACES = [
   'attention-approval-actions', // AttentionCard: ApprovalActions
   'permission-request-modal', // PermissionRequestModal
   'mcp-tool-call-approval', // MCPToolUIFrame: pending call confirm
-  'approval-toast', // NotificationContainer: tool-approval and pairing toasts
+  'approval-toast', // NotificationContainer: any notification with actions
   // Task and agent requests
   'peer-request-decision', // AttentionCard: PeerRequestDecisionActions
   'needs-input-reply', // NeedsInputReply
@@ -58,6 +58,12 @@ export const DECISION_SURFACES = [
   'people-roles', // PeopleSection: roles and admin changes
   'integration-trust-settings', // IntegrationTrustSection
   'integration-editor', // IntegrationEditorPanel: allow render UI and trust controls
+  'acp-session-mode', // AcpSessionModeSheet: applies an engine mode at once
+  'account-approval-defaults', // AccountPreferencesSection: default approval modes
+  'agent-approval-default', // AgentEditorApprovalDefault
+  'memory-review', // MemoryReview: remember / don't remember
+  'device-shares', // DeviceShares: sharing devices with Projects
+  'access-tokens', // OwnAccessTokensPanel: personal access tokens
 ] as const;
 
 export type DecisionSurfaceId = (typeof DECISION_SURFACES)[number];
