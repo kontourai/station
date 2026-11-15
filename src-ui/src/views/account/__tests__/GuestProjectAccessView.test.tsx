@@ -250,7 +250,7 @@ test('a non-admin never sees the enable-sharing action after a 403', async () =>
   expect(onAccessLost).not.toHaveBeenCalled();
 });
 
-test('self-demotion acknowledges without content and hands back a refreshed view-only list', async () => {
+test('self-demotion acknowledges without content and hands back the view-only section without claiming a refresh', async () => {
   let demoted = false;
   const stub: Stub = {
     posts: [],
@@ -281,9 +281,12 @@ test('self-demotion acknowledges without content and hands back a refreshed view
   expect(
     (await screen.findByText(/You changed your own Project role/)).textContent,
   ).toBe(
-    "List refreshed. You changed your own Project role. You can still read the Project, but can't change people or invitations.",
+    "You changed your own Project role. You can still read the Project, but can't change people or invitations.",
   );
   expect(await screen.findByText(/limited to Project admins/)).toBeTruthy();
+  // The re-read after demotion was refused (403), so no refresh is claimed.
+  expect(screen.queryByText(/List refreshed/)).toBeNull();
+  expect(stub.posts).toHaveLength(1);
 });
 
 test('a stale revision refuses honestly, refreshes, and never retries the mutation', async () => {

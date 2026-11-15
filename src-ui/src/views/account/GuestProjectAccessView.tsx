@@ -231,7 +231,9 @@ export function GuestProjectAccessView({
         (stamped.role !== 'admin' || stamped.status !== 'active')
       )
         setBanner({
-          refreshed: true,
+          // A demoted actor's re-read is usually refused (403), so claim a
+          // refresh only if the access list actually came back.
+          refreshed: accessReadSucceeded(),
           cause:
             "You changed your own Project role. You can still read the Project, but can't change people or invitations.",
         });
@@ -415,8 +417,8 @@ export function GuestProjectAccessView({
 
 /**
  * `refreshed` is true only where the access list was actually re-read
- * successfully before the banner was set (a self-demotion; a 401 or 403
- * refusal of a change only when its re-read came back), so
+ * successfully before the banner was set (a self-demotion, or a 401 or 403
+ * refusal of a change, only when its re-read came back), so
  * "List refreshed." is never claimed after a read Station refused.
  */
 interface GuestAccessBanner {
