@@ -1764,7 +1764,9 @@
 
     "src-server/providers/adapters/muse-serve-schema.ts",
 
-    "src-server/services/orchestration/child-work-history.ts"
+    "src-server/services/orchestration/child-work-history.ts",
+
+    "packages/sdk/src/relay-management.ts"
   ],
 
   "checks": [

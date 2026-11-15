@@ -185,8 +185,8 @@ minor through a normal isolated delivery PR. The existing tag/source remains
 frozen. From a clean sibling worktree descended from that source:
 
 ```sh
-node scripts/release-cut.mjs --tag v0.2.0-rc.1
-node scripts/release-cut.mjs --tag v0.2.0-rc.1 --apply
+npm run release:cut -- --tag v0.2.0-rc.1
+npm run release:cut -- --tag v0.2.0-rc.1 --apply
 ```
 
 The first command prints the plan without editing. Explicit apply changes only
