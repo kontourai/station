@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  type Dirent,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -351,27 +352,28 @@ export class TaskRoomAttachments {
  * `release` and `sweep` refuse to run outside `locked`.
  *
  * Fails closed: when any file record's references cannot be known (damaged
- * or unreadable), a release removes and deletes nothing. Uploads are then
- * refused with `ProjectRoomFilesUnavailable` until a scan reads every record.
- * The refusal never depends on a file write: this process latches it in
- * memory, every process scans before its first upload, and
- * `reclamation-blocked.json` (best effort) tells other processes and the
- * operator which records to repair. Reading and resolving existing files
- * never consult it.
+ * or unreadable), a release removes and deletes nothing. Every upload
+ * re-derives the store's health under the lock, by the same scan of
+ * `bindings/` and `repair/` that a release uses, and is refused with
+ * `ProjectRoomFilesUnavailable` while any record is unknown or any repair is
+ * incomplete. Admission depends on no cached observation and no file write,
+ * so every live process refuses alike; `reclamation-blocked.json` (best
+ * effort) only tells the operator which records to repair. Reading and
+ * resolving existing files never consult it.
  *
  * Supported repair, under the same lock: leave a damaged record in place (it
  * keeps every release blocked) and write the corrected record to `repair/`
  * at the same relative path as under `bindings/`. Each upload and release
- * first moves complete repair records whose bytes are still stored into
- * place. Removing a record, or fixing its permissions, may be done in place.
+ * first publishes the exact bytes it read and validated from each complete
+ * repair record whose bytes are still stored (staged, then renamed into
+ * `bindings/`), and removes the repair entry only if it still holds those
+ * bytes. Removing a record, or fixing its permissions, may be done in place.
  * Adding or rewriting a record directly under `bindings/` while Station runs
  * is not supported: nothing could keep a release from missing it.
  */
 export class ProjectRoomAttachments {
   private readonly files: RoomAttachments;
   private holding = 0;
-  /** Whether this process has seen every record read cleanly since it began. */
-  private verified = false;
   constructor(private readonly root: string) {
     this.files = new RoomAttachments(root, 'room', { retention: false });
   }
@@ -394,17 +396,17 @@ export class ProjectRoomAttachments {
     inputs: ChatAttachmentInput[],
   ): TaskRoomAttachment[] {
     this.held();
-    const pending = this.applyRepairs();
-    if (!this.verified || this.marked()) {
-      const { unknown } = this.files.scanReferences();
-      if (unknown.length) {
-        this.verified = false;
-        this.block([...unknown, ...pending]);
-        throw new ProjectRoomFilesUnavailable(unknown);
-      }
-      this.verified = true;
-      this.unblock();
+    // Health is derived afresh for every upload (#4852 review): the same
+    // scan a release uses, plus any repair that could not be applied.
+    const problems = [
+      ...this.applyRepairs(),
+      ...this.files.scanReferences().unknown,
+    ];
+    if (problems.length) {
+      this.block(problems);
+      throw new ProjectRoomFilesUnavailable(problems);
     }
+    this.unblock();
     return this.files.store(binding, inputs);
   }
   read(binding: readonly string[], id: string) {
@@ -445,13 +447,6 @@ export class ProjectRoomAttachments {
   private get marker() {
     return join(this.root, 'reclamation-blocked.json');
   }
-  private marked() {
-    try {
-      return existsSync(this.marker);
-    } catch {
-      return true;
-    }
-  }
   private settle(
     result: {
       scanned: boolean;
@@ -461,31 +456,62 @@ export class ProjectRoomAttachments {
     pending: { path: string; reason: string }[],
   ): ReclaimOutcome {
     if (result.unknown.length) {
-      this.verified = false;
       this.block([...result.unknown, ...pending]);
       return 'blocked';
     }
-    // Only a full scan that read every record clears a block.
+    // A full scan that read every record clears the diagnostic, unless a
+    // repair is still pending.
     if (result.scanned) {
-      this.verified = true;
-      this.unblock();
+      if (pending.length) this.block(pending);
+      else this.unblock();
     }
     return result.kept ? 'kept' : 'reclaimed';
   }
   /**
-   * Moves complete repair records into place (under the lock), replacing
-   * what is there. A repair record that is incomplete, or whose bytes are no
-   * longer stored, stays in `repair/` and is reported.
+   * Publishes complete repair records (under the lock): the exact bytes read
+   * and validated are staged, then renamed into `bindings/`, and the repair
+   * entry is removed only if it still holds those bytes, so an operator's
+   * later rewrite is applied or rejected on the next pass. A repair that is
+   * incomplete or whose bytes are gone, an unexpected entry, and any error
+   * reading the repair tree are reported as problems, never thrown.
    */
   private applyRepairs(): { path: string; reason: string }[] {
     const repair = join(this.root, 'repair');
-    if (!existsSync(repair)) return [];
     const problems: { path: string; reason: string }[] = [];
-    for (const key of readdirSync(repair)) {
-      const from = join(repair, key);
-      for (const name of readdirSync(from)) {
-        const path = join(from, name);
-        const record = completeRecord(path);
+    let keys: Dirent[];
+    try {
+      if (!existsSync(repair)) return [];
+      keys = readdirSync(repair, { withFileTypes: true });
+    } catch (error) {
+      return [{ path: repair, reason: describeError(error) }];
+    }
+    for (const key of keys) {
+      const from = join(repair, key.name);
+      if (!key.isDirectory() || !/^[0-9a-f]{64}$/.test(key.name)) {
+        problems.push({ path: from, reason: 'not a repair directory' });
+        continue;
+      }
+      let names: Dirent[];
+      try {
+        names = readdirSync(from, { withFileTypes: true });
+      } catch (error) {
+        problems.push({ path: from, reason: describeError(error) });
+        continue;
+      }
+      for (const name of names) {
+        const path = join(from, name.name);
+        if (!name.isFile() || !/^[0-9a-f-]{36}\.json$/.test(name.name)) {
+          problems.push({ path, reason: 'not a repair record' });
+          continue;
+        }
+        let raw: Buffer;
+        try {
+          raw = readFileSync(path);
+        } catch (error) {
+          problems.push({ path, reason: describeError(error) });
+          continue;
+        }
+        const record = completeRecord(raw.toString('utf8'));
         if (!record) {
           problems.push({ path, reason: 'not a complete file record' });
           continue;
@@ -494,15 +520,28 @@ export class ProjectRoomAttachments {
           problems.push({ path, reason: 'its bytes are no longer stored' });
           continue;
         }
-        const to = join(this.root, 'bindings', key);
-        mkdirSync(to, { recursive: true });
-        renameSync(path, join(to, name));
+        try {
+          const staging = join(this.root, 'staging');
+          mkdirSync(staging, { recursive: true });
+          const staged = join(staging, `repair.${randomUUID()}.json`);
+          writeFileSync(staged, raw, { flag: 'wx', mode: 0o600 });
+          const to = join(this.root, 'bindings', key.name);
+          mkdirSync(to, { recursive: true });
+          renameSync(staged, join(to, name.name));
+          if (readFileSync(path).equals(raw)) rmSync(path);
+        } catch (error) {
+          problems.push({ path, reason: describeError(error) });
+        }
       }
-      if (!readdirSync(from).length) rmSync(from, { recursive: true });
+      try {
+        if (!readdirSync(from).length) rmSync(from, { recursive: true });
+      } catch {
+        // A directory that cannot be tidied is listed again next pass.
+      }
     }
     return problems;
   }
-  /** Tells other processes and the operator; the latch does not rely on it. */
+  /** Tells the operator which records to repair; admission does not rely on it. */
   private block(records: { path: string; reason: string }[]) {
     try {
       const staging = join(this.root, 'staging');
@@ -523,8 +562,8 @@ export class ProjectRoomAttachments {
       );
       renameSync(pending, this.marker);
     } catch {
-      // The in-memory latch and each process's first-upload scan still hold
-      // the refusal; the service logs the block itself.
+      // Admission re-derives health on every upload, so the refusal holds
+      // without this file; the service logs the block itself.
     }
   }
   private unblock() {
@@ -544,10 +583,10 @@ export class ProjectRoomAttachments {
 
 /** A file record that parses whole, with its descriptor and reference. */
 function completeRecord(
-  path: string,
+  raw: string,
 ): { attachment: TaskRoomAttachment; blobRef: string } | undefined {
   try {
-    const stored: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    const stored: unknown = JSON.parse(raw);
     if (
       !stored ||
       typeof stored !== 'object' ||

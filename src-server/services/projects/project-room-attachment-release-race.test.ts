@@ -25,7 +25,7 @@ import { ProjectRoomAttachments } from './task-room-attachments.js';
  * never take bytes that another process has committed to a message elsewhere.
  *
  * The parent pauses at the latest point a release can still delete bytes:
- * inside `removeByRef`, after its reference scan. There another process, ready
+ * inside `removeByRefConfirmed`, after its reference scan. There another process, ready
  * to upload the same bytes in another Project, gets a window to publish them.
  * The store lock keeps it out of that window, so its bytes land after the
  * deletion; without the lock it publishes inside the window and loses them.
@@ -180,20 +180,22 @@ it('releasing a deleted message never takes bytes another process commits to a m
     finished = new Promise((resolve) => child.on('close', resolve));
   };
   let paused = false;
-  const remove = AttachmentBlobStore.prototype.removeByRef;
-  vi.spyOn(AttachmentBlobStore.prototype, 'removeByRef').mockImplementation(
-    function (this: AttachmentBlobStore, ref: string) {
-      if (!paused) {
-        paused = true;
-        // The other process is about to upload the same bytes; give it a
-        // window to publish them after this release's reference scan.
-        startElsewhere();
-        expect(waitForFile(ready, 20_000), errors()).toBe(true);
-        waitForFile(published, 1_500);
-      }
-      return remove.call(this, ref);
-    },
-  );
+  // Pause at the real deletion point, after the release's reference scan.
+  const remove = AttachmentBlobStore.prototype.removeByRefConfirmed;
+  vi.spyOn(
+    AttachmentBlobStore.prototype,
+    'removeByRefConfirmed',
+  ).mockImplementation(function (this: AttachmentBlobStore, ref: string) {
+    if (!paused) {
+      paused = true;
+      // The other process is about to upload the same bytes; give it a
+      // window to publish them after this release's reference scan.
+      startElsewhere();
+      expect(waitForFile(ready, 20_000), errors()).toBe(true);
+      waitForFile(published, 1_500);
+    }
+    return remove.call(this, ref);
+  });
   await service.deleteMessage(request, 'first', guard, sent.messageId, {
     intentId: randomUUID(),
   });
@@ -613,3 +615,170 @@ it('persisted block survives an actual child-process restart, is per store, and 
   });
   console.log('R4_PROCESS_RESTART', JSON.stringify({ blocked, repaired }));
 });
+
+it.skipIf(process.getuid?.() === 0)(
+  'a warmed peer process refuses uploads after another process found damage it could not write down (#4852 review)',
+  async () => {
+    const fs = await import('node:fs');
+    const { createHash } = await import('node:crypto');
+    const { createInterface } = await import('node:readline');
+    const root = makeTempDir('r5-warmed-peer-');
+    const files = new ProjectRoomAttachments(root);
+    const binding = ['owner'];
+    const [owned] = await files.locked(() =>
+      files.store(binding, [png('owner.png')]),
+    );
+    const key = createHash('sha256')
+      .update(JSON.stringify(binding))
+      .digest('hex');
+    const record = join(root, 'bindings', key, `${owned!.id}.json`);
+    const code = `
+ import {ProjectRoomAttachments} from './src-server/services/projects/task-room-attachments.ts';
+ import {createInterface} from 'node:readline';
+ const f=new ProjectRoomAttachments(process.env.R5_ROOT);
+ const input=JSON.parse(process.env.R5_INPUT);
+ await f.locked(()=>f.store(['peer'],[input]));
+ console.log('READY');
+ for await(const command of createInterface({input:process.stdin})){
+  try{await f.locked(()=>f.store(['peer'],[input]));console.log(JSON.stringify({blocked:false}));}
+  catch(e){console.log(JSON.stringify({blocked:true,name:e.name,code:e.code}));}
+  break;
+ }
+ `;
+    const child = spawn(
+      process.execPath,
+      ['--import', 'tsx', '--input-type=module', '-e', code],
+      {
+        windowsHide: true,
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          R5_ROOT: root,
+          R5_INPUT: JSON.stringify(png('peer.png')),
+        },
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    );
+    const exited = new Promise((resolve) => child.on('close', resolve));
+    let stderr = '';
+    child.stderr.on('data', (c) => (stderr += c));
+    const lines = createInterface({ input: child.stdout })[
+      Symbol.asyncIterator
+    ]();
+    try {
+      expect((await lines.next()).value, stderr).toBe('READY');
+      fs.writeFileSync(record, '{');
+      const staging = join(root, 'staging');
+      fs.chmodSync(staging, 0o500);
+      let outcome: string;
+      try {
+        outcome = await files.locked(() => files.release(binding, [owned!.id]));
+      } finally {
+        fs.chmodSync(staging, 0o700);
+      }
+      expect(outcome!).toBe('blocked');
+      expect(fs.existsSync(join(root, 'reclamation-blocked.json'))).toBe(false);
+      child.stdin.write('upload\n');
+      child.stdin.end();
+      const line = (await lines.next()).value;
+      const result = JSON.parse(line!);
+      expect(await exited, stderr).toBe(0);
+      console.log(
+        'R5_WARMED_PEER',
+        JSON.stringify({ outcome: outcome!, marker: false, ...result }),
+      );
+      expect(result.blocked).toBe(true);
+    } finally {
+      if (child.exitCode === null) child.kill('SIGKILL');
+      await exited;
+    }
+  },
+  30000,
+);
+
+it('a crash after a blob unlink but before its record goes keeps the retry, and a later release recovers (#4852 review)', async () => {
+  const fs = await import('node:fs');
+  const { createHash } = await import('node:crypto');
+  const root = makeTempDir('r5-crash-delete-');
+  const f = new ProjectRoomAttachments(root);
+  const binding = ['owner'];
+  const [file] = await f.locked(() => f.store(binding, [png('crash.png')]));
+  const key = createHash('sha256')
+    .update(JSON.stringify(binding))
+    .digest('hex');
+  const path = join(root, 'bindings', key, `${file!.id}.json`);
+  const code = `
+ import fs from 'node:fs';import {syncBuiltinESMExports} from 'node:module';
+ import {ProjectRoomAttachments} from './src-server/services/projects/task-room-attachments.ts';
+ const original=fs.rmSync;
+ fs.rmSync=function(p,...rest){if(p===process.env.R5_RECORD)process.exit(73);return original(p,...rest);};syncBuiltinESMExports();
+ const f=new ProjectRoomAttachments(process.env.R5_ROOT);await f.locked(()=>f.release(['owner'],[process.env.R5_ID]));
+ `;
+  const child = spawn(
+    process.execPath,
+    ['--import', 'tsx', '--input-type=module', '-e', code],
+    {
+      windowsHide: true,
+      cwd: process.cwd(),
+      env: { ...process.env, R5_ROOT: root, R5_RECORD: path, R5_ID: file!.id },
+      stdio: ['ignore', 'ignore', 'pipe'],
+    },
+  );
+  let stderr = '';
+  child.stderr.on('data', (c) => (stderr += c));
+  expect(await new Promise((r) => child.on('close', r)), stderr).toBe(73);
+  expect(fs.existsSync(path)).toBe(true);
+  expect(f.read(binding, file!.id)).toBeUndefined();
+  const fresh = new ProjectRoomAttachments(root);
+  expect(await fresh.locked(() => fresh.release(binding, [file!.id]))).toBe(
+    'reclaimed',
+  );
+  expect(fs.existsSync(path)).toBe(false);
+  expect(
+    (await fresh.locked(() => fresh.store(binding, [png('after.png')]))).length,
+  ).toBe(1);
+  console.log(
+    'R5_CRASH_RELEASE exit=73, record retained, fresh-process lock takeover/release/upload recovered',
+  );
+}, 30000);
+
+it('a crash before a record is renamed into place leaves no torn record, and a restart accepts (#4852 review)', async () => {
+  const fs = await import('node:fs');
+  const root = makeTempDir('r5-crash-publish-');
+  const code = `
+ import fs from 'node:fs';import {syncBuiltinESMExports} from 'node:module';
+ import {ProjectRoomAttachments} from './src-server/services/projects/task-room-attachments.ts';
+ const rename=fs.renameSync;fs.renameSync=function(from,to){if(String(to).includes('/bindings/'))process.exit(74);return rename(from,to);};syncBuiltinESMExports();
+ const f=new ProjectRoomAttachments(process.env.R5_ROOT);await f.locked(()=>f.store(['owner'],[JSON.parse(process.env.R5_INPUT)]));
+ `;
+  const child = spawn(
+    process.execPath,
+    ['--import', 'tsx', '--input-type=module', '-e', code],
+    {
+      windowsHide: true,
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        R5_ROOT: root,
+        R5_INPUT: JSON.stringify(png('crash.png')),
+      },
+      stdio: ['ignore', 'ignore', 'pipe'],
+    },
+  );
+  let stderr = '';
+  child.stderr.on('data', (c) => (stderr += c));
+  expect(await new Promise((r) => child.on('close', r)), stderr).toBe(74);
+  const bindings = fs
+    .readdirSync(join(root, 'bindings'))
+    .flatMap((k) => fs.readdirSync(join(root, 'bindings', k)));
+  expect(bindings).toEqual([]);
+  expect(fs.readdirSync(join(root, 'staging'))).toHaveLength(1);
+  const fresh = new ProjectRoomAttachments(root);
+  expect(
+    (await fresh.locked(() => fresh.store(['owner'], [png('after.png')])))
+      .length,
+  ).toBe(1);
+  console.log(
+    'R5_CRASH_PUBLICATION exit=74, zero bindings, one staging record/orphan, fresh-process upload recovered',
+  );
+}, 30000);
