@@ -182,7 +182,7 @@ function isTime(value: unknown): value is number {
 }
 
 /** Parses one persisted row; anything malformed is dropped. */
-export function parsePersistedFinishedAlertEpisode(
+function parsePersistedFinishedAlertEpisode(
   value: unknown,
 ): PersistedFinishedAlertEpisode | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value))
