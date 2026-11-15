@@ -2,10 +2,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   type Dirent,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   renameSync,
+  rmdirSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -60,6 +62,29 @@ function describeError(error: unknown) {
       ? error.message
       : String(error);
 }
+
+/**
+ * What a store directory is (#4852 review): `absent` only when the lookup
+ * says ENOENT. Any other lookup error (EACCES, EIO), a link, or anything that
+ * is not a directory is returned as the reason it cannot be trusted, so a
+ * tree that cannot be inspected is never mistaken for an empty one.
+ */
+function storeDirectory(path: string): 'absent' | 'directory' | string {
+  try {
+    const entry = lstatSync(path);
+    if (entry.isSymbolicLink()) return 'a link, which is not supported';
+    return entry.isDirectory() ? 'directory' : 'not a directory';
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ENOENT'
+      ? 'absent'
+      : describeError(error);
+  }
+}
+
+/** A repair entry's name, and the name Station renames it to on claiming. */
+const REPAIR_RECORD = /^[0-9a-f-]{36}\.json$/;
+const CLAIMED_REPAIR =
+  /^([0-9a-f-]{36}\.json)\.claimed-(\d{15})-[0-9a-f-]{36}$/;
 
 /**
  * Room attachment bytes. Bindings (which room may read which file) are kept
@@ -162,7 +187,9 @@ export class RoomAttachments {
    * that cannot be parsed still protects any `sha256-` reference recoverable
    * from its text; a record (or directory) whose references cannot be known
    * at all (unparseable with none recoverable, or unreadable: EIO, EACCES)
-   * is listed in `unknown`.
+   * is listed in `unknown`. So is every directory level that is not a
+   * plain directory or cannot be looked up (`storeDirectory`); only a tree
+   * root or level that does not exist counts as empty.
    */
   scanReferences(): {
     byRecord: Map<string, string[]>;
@@ -180,10 +207,17 @@ export class RoomAttachments {
     };
     // Records waiting in `repair/` protect their bytes too: they are about
     // to become live (`ProjectRoomAttachments`).
+    const directory = (path: string) => {
+      const kind = storeDirectory(path);
+      if (kind === 'absent' || kind === 'directory') return kind;
+      unknown.push({ path, reason: kind });
+      return undefined;
+    };
     for (const tree of ['bindings', 'repair']) {
       const top = join(this.root, tree);
-      if (!existsSync(top)) continue;
-      for (const key of list(top))
+      if (directory(top) !== 'directory') continue;
+      for (const key of list(top)) {
+        if (directory(join(top, key)) !== 'directory') continue;
         for (const name of list(join(top, key))) {
           const path = join(top, key, name);
           let raw: string;
@@ -197,6 +231,7 @@ export class RoomAttachments {
           if (refs.length) byRecord.set(path, refs);
           else unknown.push({ path, reason: 'no readable blob reference' });
         }
+      }
     }
     return { byRecord, unknown };
   }
@@ -364,10 +399,13 @@ export class TaskRoomAttachments {
  * Supported repair, under the same lock: leave a damaged record in place (it
  * keeps every release blocked) and write the corrected record to `repair/`
  * at the same relative path as under `bindings/`. Each upload and release
- * first publishes the exact bytes it read and validated from each complete
- * repair record whose bytes are still stored (staged, then renamed into
- * `bindings/`), and removes the repair entry only if it still holds those
- * bytes. Removing a record, or fixing its permissions, may be done in place.
+ * first claims each new repair entry by renaming it to a Station-owned name
+ * beside it, then reads, validates and publishes only the claimed file
+ * (staged, then renamed into `bindings/`), and deletes a claimed file only
+ * after its bytes are published. A write that lands on the original name
+ * after the claim is a new entry for the next pass; a claimed file that is
+ * incomplete, or whose bytes are gone, stays a pending repair. Removing a
+ * record, or fixing its permissions, may be done in place.
  * Adding or rewriting a record directly under `bindings/` while Station runs
  * is not supported: nothing could keep a release from missing it.
  */
@@ -468,19 +506,29 @@ export class ProjectRoomAttachments {
     return result.kept ? 'kept' : 'reclaimed';
   }
   /**
-   * Publishes complete repair records (under the lock): the exact bytes read
-   * and validated are staged, then renamed into `bindings/`, and the repair
-   * entry is removed only if it still holds those bytes, so an operator's
-   * later rewrite is applied or rejected on the next pass. A repair that is
-   * incomplete or whose bytes are gone, an unexpected entry, and any error
+   * Publishes complete repair records (under the lock, #4852 review). Each
+   * new entry is first claimed by an atomic rename to
+   * `<name>.claimed-<time>-<uuid>` in the same directory, so whatever an
+   * operator writes to the original name afterwards is a new entry and is
+   * never deleted with the claimed one. Of the claimed files of a record,
+   * including any left by an earlier pass or process, the newest is
+   * published: the exact bytes read and validated are staged, then renamed
+   * into `bindings/`, and only after that is it deleted, with the older
+   * claims it supersedes. A claimed file that is incomplete, whose bytes are
+   * gone or that could not be published stays, with any it supersedes, and
+   * is reported again on every pass. A failed
+   * publication removes its own staging copy. Repair directories are removed
+   * only when empty, never recursively. Unexpected entries and any error
    * reading the repair tree are reported as problems, never thrown.
    */
   private applyRepairs(): { path: string; reason: string }[] {
     const repair = join(this.root, 'repair');
+    const kind = storeDirectory(repair);
+    if (kind === 'absent') return [];
+    if (kind !== 'directory') return [{ path: repair, reason: kind }];
     const problems: { path: string; reason: string }[] = [];
     let keys: Dirent[];
     try {
-      if (!existsSync(repair)) return [];
       keys = readdirSync(repair, { withFileTypes: true });
     } catch (error) {
       return [{ path: repair, reason: describeError(error) }];
@@ -498,48 +546,112 @@ export class ProjectRoomAttachments {
         problems.push({ path: from, reason: describeError(error) });
         continue;
       }
+      const claims: { path: string; target: string; order: string }[] = [];
       for (const name of names) {
         const path = join(from, name.name);
-        if (!name.isFile() || !/^[0-9a-f-]{36}\.json$/.test(name.name)) {
+        if (!name.isFile()) {
           problems.push({ path, reason: 'not a repair record' });
           continue;
         }
-        let raw: Buffer;
+        const claimed = CLAIMED_REPAIR.exec(name.name);
+        if (claimed?.[1] && claimed[2]) {
+          claims.push({ path, target: claimed[1], order: name.name });
+          continue;
+        }
+        if (!REPAIR_RECORD.test(name.name)) {
+          problems.push({ path, reason: 'not a repair record' });
+          continue;
+        }
+        const order = `${name.name}.claimed-${String(Date.now()).padStart(15, '0')}-${randomUUID()}`;
         try {
-          raw = readFileSync(path);
-        } catch (error) {
-          problems.push({ path, reason: describeError(error) });
-          continue;
-        }
-        const record = completeRecord(raw.toString('utf8'));
-        if (!record) {
-          problems.push({ path, reason: 'not a complete file record' });
-          continue;
-        }
-        if (!this.files.hasBlob(record.blobRef)) {
-          problems.push({ path, reason: 'its bytes are no longer stored' });
-          continue;
-        }
-        try {
-          const staging = join(this.root, 'staging');
-          mkdirSync(staging, { recursive: true });
-          const staged = join(staging, `repair.${randomUUID()}.json`);
-          writeFileSync(staged, raw, { flag: 'wx', mode: 0o600 });
-          const to = join(this.root, 'bindings', key.name);
-          mkdirSync(to, { recursive: true });
-          renameSync(staged, join(to, name.name));
-          if (readFileSync(path).equals(raw)) rmSync(path);
+          renameSync(path, join(from, order));
+          claims.push({ path: join(from, order), target: name.name, order });
         } catch (error) {
           problems.push({ path, reason: describeError(error) });
         }
       }
+      // The newest claim of each record is the operator's latest write, and
+      // only it is published (claimed names sort by claim time). Older claims
+      // of the same record are superseded, as a rewrite at the same name was
+      // before claiming: they are deleted once the newest is published, and
+      // until then they stay pending, so an older claim that becomes valid
+      // later can never overwrite a newer repair.
+      const byTarget = new Map<string, typeof claims>();
+      for (const claim of claims)
+        byTarget.set(claim.target, [
+          ...(byTarget.get(claim.target) ?? []),
+          claim,
+        ]);
+      for (const group of byTarget.values()) {
+        group.sort((a, b) => a.order.localeCompare(b.order));
+        const newest = group.pop();
+        if (!newest) continue;
+        const problem = this.publishRepair(key.name, newest);
+        if (problem) {
+          problems.push({ path: newest.path, reason: problem });
+          for (const older of group)
+            problems.push({
+              path: older.path,
+              reason: 'superseded by a later repair that is not yet applied',
+            });
+          continue;
+        }
+        for (const older of group)
+          try {
+            rmSync(older.path);
+          } catch (error) {
+            problems.push({ path: older.path, reason: describeError(error) });
+          }
+      }
       try {
-        if (!readdirSync(from).length) rmSync(from, { recursive: true });
+        rmdirSync(from);
       } catch {
-        // A directory that cannot be tidied is listed again next pass.
+        // Not empty (ENOTEMPTY: a pending claim, or an entry that arrived
+        // during this pass) or already gone: left for the next pass.
       }
     }
     return problems;
+  }
+  /** Publishes one claimed repair file; the reason it stays, if it does. */
+  private publishRepair(
+    key: string,
+    claim: { path: string; target: string },
+  ): string | undefined {
+    let raw: Buffer;
+    try {
+      raw = readFileSync(claim.path);
+    } catch (error) {
+      return describeError(error);
+    }
+    const record = completeRecord(raw.toString('utf8'));
+    if (!record) return 'not a complete file record';
+    if (!this.files.hasBlob(record.blobRef))
+      return 'its bytes are no longer stored';
+    const staging = join(this.root, 'staging');
+    const staged = join(staging, `repair.${randomUUID()}.json`);
+    let created = false;
+    try {
+      mkdirSync(staging, { recursive: true });
+      writeFileSync(staged, raw, { flag: 'wx', mode: 0o600 });
+      created = true;
+      const to = join(this.root, 'bindings', key);
+      mkdirSync(to, { recursive: true });
+      renameSync(staged, join(to, claim.target));
+    } catch (error) {
+      if (created)
+        try {
+          rmSync(staged, { force: true });
+        } catch {
+          // A staging copy that cannot be removed is only stray bytes.
+        }
+      return describeError(error);
+    }
+    try {
+      rmSync(claim.path);
+    } catch (error) {
+      return describeError(error);
+    }
+    return undefined;
   }
   /** Tells the operator which records to repair; admission does not rely on it. */
   private block(records: { path: string; reason: string }[]) {
