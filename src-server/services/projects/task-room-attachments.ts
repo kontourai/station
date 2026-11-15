@@ -21,8 +21,11 @@ import {
   type TaskRoomAttachment,
 } from '@kontourai/station-contracts/project-task-room';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { createLogger } from '../../utils/logger.js';
 import { AttachmentBlobStore } from '../orchestration/attachment-blob-store.js';
 import { publishThroughOwnedFile } from '../orchestration/owned-staging-file.js';
+
+const logger = createLogger({ name: 'project-room-attachments' });
 
 /** Files stored under one binding (a Task incarnation or a Project room). */
 const FILES_PER_BINDING = 1280;
@@ -85,6 +88,13 @@ function storeDirectory(path: string): 'absent' | 'directory' | string {
  * published), as distinct from input the store refuses (#4852 review).
  */
 class RoomStorageFailure extends Error {}
+/** An error a filesystem call raised (it carries an `E…` code). */
+function isFilesystemError(error: unknown) {
+  return (
+    error instanceof Error &&
+    /^E[A-Z0-9]+$/.test(String((error as NodeJS.ErrnoException).code ?? ''))
+  );
+}
 /** Runs one storage step, typing any failure as `RoomStorageFailure`. */
 function storage<T>(step: () => T): T {
   try {
@@ -450,10 +460,22 @@ export class ProjectRoomAttachments {
   }
   /** Runs `operation` while holding the store's cross-process lock. */
   async locked<T>(operation: () => Promise<T> | T): Promise<T> {
-    mkdirSync(this.root, { recursive: true });
-    const unlock = await acquireFileMutationLockAsync(
-      join(this.root, 'store.lock'),
-    );
+    let unlock: () => Promise<void>;
+    try {
+      mkdirSync(this.root, { recursive: true });
+      unlock = await acquireFileMutationLockAsync(
+        join(this.root, 'store.lock'),
+      );
+    } catch (error) {
+      // The store root or its lock file could not be written (#4852 review):
+      // the files are unavailable. Waiting out another holder is not a
+      // filesystem error and stays the generic refusal.
+      if (isFilesystemError(error))
+        throw new ProjectRoomFilesUnavailable([
+          { path: this.root, reason: describeError(error) },
+        ]);
+      throw error;
+    }
     this.holding += 1;
     try {
       return await operation();
@@ -536,6 +558,27 @@ export class ProjectRoomAttachments {
   }
   /** Tells the operator which records to repair; admission does not rely on it. */
   private block(records: { path: string; reason: string }[]) {
+    const repair = join(this.root, 'repair');
+    const kinds = new Set(
+      records.map((record) =>
+        record.path === repair || record.path.startsWith(`${repair}/`)
+          ? 'repair'
+          : 'bindings',
+      ),
+    );
+    // Each kind of item gets its own instruction (#4852 review).
+    const steps = [
+      ...(kinds.has('bindings')
+        ? [
+            'fix each listed path under bindings/: restore the record, fix its permissions, or remove it once you have decided its file is not needed',
+          ]
+        : []),
+      ...(kinds.has('repair')
+        ? [
+            'a listed repair/ directory was left by an earlier build: apply any repair it was meant to carry to bindings/ by hand, then remove repair/',
+          ]
+        : []),
+    ];
     try {
       const staging = join(this.root, 'staging');
       mkdirSync(staging, { recursive: true });
@@ -544,7 +587,7 @@ export class ProjectRoomAttachments {
         JSON.stringify(
           {
             since: new Date().toISOString(),
-            note: 'Project room file records could not be read, so no stored bytes are deleted and new attachments are refused. Stop every Station process using this home, then fix each listed record under bindings/ (restore it, fix its permissions, or remove it once you have decided its file is not needed), and start Station again; the next upload re-checks and clears this file.',
+            note: `Project room file records could not be read, so no stored bytes are deleted and new attachments are refused. Stop every Station process using this home; ${steps.join('; ')}; then start Station again. The next upload re-checks and clears this file.`,
             records,
           },
           null,
@@ -552,9 +595,14 @@ export class ProjectRoomAttachments {
         ),
         (pending) => renameSync(pending, this.marker),
       );
-    } catch {
+    } catch (error) {
       // Admission re-derives health on every upload, so the refusal holds
-      // without this file; the service logs the block itself.
+      // without this file. The operator still learns what to repair, from
+      // the server log (never from a room response).
+      logger.warn(
+        'Project room file records need repair, and the diagnostic file could not be written',
+        { records, marker: this.marker, error: describeError(error) },
+      );
     }
   }
   private unblock() {

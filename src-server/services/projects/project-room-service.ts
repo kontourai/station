@@ -137,8 +137,17 @@ export class ProjectRoomService {
    * taken first and the operation's authority check runs inside it, so access
    * revoked while waiting refuses before anything is written.
    */
-  private underFileLock<T>(operation: () => Promise<T>): Promise<T> {
-    return this.attachments ? this.attachments.locked(operation) : operation();
+  private async underFileLock<T>(operation: () => Promise<T>): Promise<T> {
+    if (!this.attachments) return operation();
+    try {
+      return await this.attachments.locked(operation);
+    } catch (error) {
+      // The store could not even be opened for writing (its root or lock
+      // file): the files are unavailable, not the room (#4852 review).
+      if (error instanceof ProjectRoomFilesUnavailable)
+        throw new ProjectRoomRefusal('files_unavailable');
+      throw error;
+    }
   }
   /**
    * Refused input (a validation, the per-room cap) is invalid; a store that
@@ -382,6 +391,19 @@ export class ProjectRoomService {
       'discuss',
       guard,
       (scope, actor, _caps, assertCurrent) => {
+        // An exact retry of a committed send is acknowledged first, as the
+        // message now stands: its files may since have been released, and a
+        // replay links nothing (#4852 review).
+        if (input.attachments?.length) {
+          const replay = this.store.sendReceipt(
+            scope,
+            actor,
+            input,
+            assertCurrent,
+            channelId,
+          );
+          if (replay) return replay;
+        }
         // Every file must be the sender's own upload to this room, unchanged.
         if (input.attachments?.length) {
           const roomId = this.store.lookupRoom(scope, channelId)?.roomId;

@@ -816,6 +816,45 @@ export class ProjectRoomStore {
     return message;
   }
 
+  /**
+   * The committed message an exact send retry names: the same author, room
+   * and intent with the same payload, as it stands now (its tombstone once
+   * deleted, its latest text once edited), so a retry after a lost
+   * acknowledgement settles without needing the message's files again.
+   * Undefined when the intent is new; a changed payload conflicts.
+   */
+  sendReceipt(
+    scope: ProjectMembershipScope,
+    actor: ProjectRoomActor,
+    input: ProjectRoomAppendInput,
+    assertCurrent: ProjectRoomAssertCurrent,
+    channelId?: string,
+  ): ProjectRoomMessage | undefined {
+    this.assertActor(actor);
+    const value = parseProjectRoomAppendInput(input);
+    return this.transaction(() => {
+      const { roomId } = this.writableRoom(scope, channelId);
+      return this.replayed(roomId, actor, value, assertCurrent);
+    }, true);
+  }
+  private replayed(
+    roomId: string,
+    actor: ProjectRoomActor,
+    value: ReturnType<typeof parseProjectRoomAppendInput>,
+    assertCurrent: ProjectRoomAssertCurrent,
+  ): ProjectRoomMessage | undefined {
+    const existing = this.db
+      .prepare(
+        'SELECT * FROM project_room_messages WHERE room_id=? AND author=? AND intent_id=?',
+      )
+      .get(roomId, author(actor), value.intentId);
+    if (!existing) return undefined;
+    if (existing.payload !== JSON.stringify(value))
+      throw new ProjectRoomRefusal('conflict');
+    assertSynchronousCurrent(assertCurrent);
+    return this.project(existing);
+  }
+
   append(
     scope: ProjectMembershipScope,
     actor: ProjectRoomActor,
@@ -828,17 +867,8 @@ export class ProjectRoomStore {
     return this.transaction(() => {
       const { roomId } = this.writableRoom(scope, channelId);
       const payload = JSON.stringify(value);
-      const existing = this.db
-        .prepare(
-          'SELECT * FROM project_room_messages WHERE room_id=? AND author=? AND intent_id=?',
-        )
-        .get(roomId, author(actor), value.intentId);
-      if (existing) {
-        if (existing.payload !== payload)
-          throw new ProjectRoomRefusal('conflict');
-        assertSynchronousCurrent(assertCurrent);
-        return this.storedMessage(existing);
-      }
+      const replay = this.replayed(roomId, actor, value, assertCurrent);
+      if (replay) return replay;
       if (value.replyTo) this.message(roomId, value.replyTo);
       // Each uploaded file belongs to one message.
       for (const attachment of value.attachments ?? [])

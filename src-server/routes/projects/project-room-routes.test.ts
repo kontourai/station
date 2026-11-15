@@ -2785,3 +2785,274 @@ test('message files: a Station home reached through a linked ancestor directory 
   );
   expect(files.read(['owner'], file!.id)).toBeUndefined();
 });
+
+test.each([false, true])(
+  'message files: an exact send retry after the message was deleted acknowledges its tombstone (files=%s) (#4852 review)',
+  async (withFiles) => {
+    const fs = await import('node:fs');
+    const h = await harness();
+    const f = await aliceFiles(h);
+    const attachments = withFiles
+      ? await f.upload(pngVariant('retry.png', 'retry-receipt'))
+      : undefined;
+    const input = {
+      ...guard(f.a),
+      intentId: randomUUID(),
+      text: 'Lost send acknowledgement',
+      ...(withFiles ? { attachments } : {}),
+    };
+    const initial = await h.request('alice', '/messages', 'POST', input);
+    expect(initial.status).toBe(200);
+    const sent = parseProjectRoomMessage(await data(initial));
+    expect((await h.request('alice', '/messages', 'POST', input)).status).toBe(
+      200,
+    );
+    let blob: string | undefined;
+    if (withFiles) blob = await aliceBlob(f, sent.attachments![0]!.id);
+    expect(await f.remove(sent.messageId)).toBe(200);
+    // The files are released with the message, so a replay cannot need them.
+    if (blob) expect(fs.existsSync(blob)).toBe(false);
+    const replay = await h.request('alice', '/messages', 'POST', input);
+    const envelope = (await replay.json()) as {
+      data: {
+        messageId: string;
+        text: string;
+        deletedAt?: string;
+        editedAt?: string;
+        attachments?: { id: string }[];
+      };
+    };
+    expect(replay.status).toBe(200);
+    expect(envelope.data.messageId).toBe(sent.messageId);
+    expect(envelope.data.deletedAt).toBeDefined();
+    expect(envelope.data.text).toBe('');
+    expect(envelope.data.attachments).toBeUndefined();
+    // A changed payload under the same intent still conflicts.
+    expect(
+      (
+        await h.request('alice', '/messages', 'POST', {
+          ...input,
+          text: 'A different message',
+        })
+      ).status,
+    ).toBe(409);
+  },
+);
+
+test.each([false, true])(
+  'message files: an exact send retry after the message was edited acknowledges its latest text (files=%s) (#4852 review)',
+  async (withFiles) => {
+    const h = await harness();
+    const f = await aliceFiles(h);
+    const attachments = withFiles
+      ? ((await f.upload(pngVariant('edited.png', 'edited-receipt'))) as {
+          id: string;
+        }[])
+      : undefined;
+    const input = {
+      ...guard(f.a),
+      intentId: randomUUID(),
+      text: 'Before the edit',
+      ...(withFiles ? { attachments } : {}),
+    };
+    const sent = parseProjectRoomMessage(
+      await data(await h.request('alice', '/messages', 'POST', input)),
+    );
+    const edited = await h.request(
+      'alice',
+      `/messages/${sent.messageId}/edit`,
+      'POST',
+      { ...guard(f.a), intentId: randomUUID(), text: 'After the edit' },
+    );
+    expect(edited.status).toBe(200);
+    const replay = await h.request('alice', '/messages', 'POST', input);
+    const envelope = (await replay.json()) as {
+      data: {
+        messageId: string;
+        text: string;
+        deletedAt?: string;
+        editedAt?: string;
+        attachments?: { id: string }[];
+      };
+    };
+    expect(replay.status).toBe(200);
+    expect(envelope.data.messageId).toBe(sent.messageId);
+    expect(envelope.data.text).toBe('After the edit');
+    expect(envelope.data.editedAt).toBeDefined();
+    expect(envelope.data.deletedAt).toBeUndefined();
+    expect((envelope.data.attachments ?? []).map((file) => file.id)).toEqual(
+      (attachments ?? []).map((file) => file.id),
+    );
+  },
+);
+
+test('message files: a store root that cannot be created is files unavailable, not the room (#4852 review)', async () => {
+  const fs = await import('node:fs');
+  const { syncBuiltinESMExports } = await import('node:module');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const mkdir = fs.mkdirSync;
+  let reached = 0;
+  const spy = vi
+    .spyOn(fs.default, 'mkdirSync')
+    .mockImplementation((...args: Parameters<typeof fs.mkdirSync>) => {
+      if (args[0] === f.root) {
+        reached++;
+        throw Object.assign(new Error('root directory ENOSPC'), {
+          code: 'ENOSPC',
+        });
+      }
+      return Reflect.apply(mkdir, fs, args);
+    });
+  syncBuiltinESMExports();
+  let response: Response;
+  try {
+    response = await h.request('alice', '/attachments', 'POST', {
+      ...guard(f.a),
+      attachments: [png('root.png')],
+    });
+  } finally {
+    spy.mockRestore();
+    syncBuiltinESMExports();
+  }
+  expect(reached).toBe(1);
+  await unavailable(response!);
+  expect(Array.isArray(await f.upload(png('recovered.png')))).toBe(true);
+});
+
+test('message files: an exclusive staging write never touches a file it did not create (#4852 review)', async () => {
+  const fs = await import('node:fs');
+  const { publishThroughOwnedFile } = await import(
+    '../../services/orchestration/owned-staging-file.js'
+  );
+  const root = makeTempDir('r8-owned-collision-');
+  const path = join(root, 'staging');
+  fs.writeFileSync(path, 'prior-owner');
+  let published = false;
+  expect(() =>
+    publishThroughOwnedFile(path, 'new-data', () => {
+      published = true;
+    }),
+  ).toThrow(expect.objectContaining({ code: 'EEXIST' }));
+  expect(published).toBe(false);
+  expect(fs.readFileSync(path, 'utf8')).toBe('prior-owner');
+});
+
+test.skipIf(process.getuid?.() === 0)(
+  'message files: when the diagnostic cannot be written, the server log still names each damaged record (#4852 review)',
+  async () => {
+    const fs = await import('node:fs');
+    const { installLoggerLineSink } = await import('../../utils/logger.js');
+    const h = await harness();
+    const f = await aliceFiles(h);
+    const damaged = await bobsRecord(h, f);
+    const [gone] = (await f.upload(
+      pngVariant('gone.png', 'diagnostic-signal'),
+    )) as { id: string }[];
+    const sent = await f.send([gone]);
+    fs.writeFileSync(damaged.path, '{');
+    const staging = join(f.root, 'staging');
+    fs.chmodSync(staging, 0o500);
+    const lines: string[] = [];
+    installLoggerLineSink({
+      writeLine(line) {
+        lines.push(line);
+      },
+    });
+    let response: Response;
+    try {
+      expect(await f.remove(sent.messageId)).toBe(200);
+      response = await h.request('alice', '/attachments', 'POST', {
+        ...guard(f.a),
+        attachments: [png('paused.png')],
+      });
+    } finally {
+      installLoggerLineSink(undefined);
+      fs.chmodSync(staging, 0o700);
+    }
+    // The room is told only the generic code; the path is operator-only.
+    const body = JSON.stringify(await response!.clone().json());
+    expect(body).not.toContain(damaged.path);
+    await unavailable(response!);
+    expect(fs.existsSync(join(f.root, 'reclamation-blocked.json'))).toBe(false);
+    expect(
+      lines.some(
+        (line) =>
+          line.includes(damaged.path) &&
+          line.includes('no readable blob reference'),
+      ),
+    ).toBe(true);
+  },
+);
+
+test('message files: the diagnostic words each item by its kind (#4852 review)', async () => {
+  const fs = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  await f.upload(png('warm.png'));
+  const marker = join(f.root, 'reclamation-blocked.json');
+  const attempt = () =>
+    h.request('alice', '/attachments', 'POST', {
+      ...guard(f.a),
+      attachments: [png('next.png')],
+    });
+  // Only a leftover repair/: no bindings/ instruction.
+  fs.mkdirSync(join(f.root, 'repair', 'operator'), { recursive: true });
+  fs.writeFileSync(join(f.root, 'repair', 'operator', 'pending.json'), '{');
+  await unavailable(await attempt());
+  const repairOnly = JSON.parse(fs.readFileSync(marker, 'utf8')).note;
+  expect(repairOnly).toContain('remove repair/');
+  expect(repairOnly).not.toContain('fix each listed path under bindings/');
+  // Only a damaged record: no repair/ instruction.
+  fs.rmSync(join(f.root, 'repair'), { recursive: true });
+  const damaged = await bobsRecord(h, f);
+  fs.writeFileSync(damaged.path, '{');
+  await unavailable(await attempt());
+  const bindingsOnly = JSON.parse(fs.readFileSync(marker, 'utf8')).note;
+  expect(bindingsOnly).toContain('fix each listed path under bindings/');
+  expect(bindingsOnly).not.toContain('repair/');
+});
+
+test.skipIf(process.getuid?.() === 0)(
+  'message files: a bindings root linked through an untraversable target is unavailable and keeps its bytes (#4852 review)',
+  async () => {
+    const fs = await import('node:fs');
+    const h = await harness();
+    const f = await aliceFiles(h);
+    const [file] = (await f.upload(
+      pngVariant('retained.png', 'bindings-eacces'),
+    )) as { id: string }[];
+    const sent = await f.send([file]);
+    const blob = await aliceBlob(f, file!.id);
+    const bindings = join(f.root, 'bindings');
+    const parent = join(h.home, 'offline-moved');
+    fs.mkdirSync(parent);
+    const target = join(parent, 'bindings');
+    fs.renameSync(bindings, target);
+    fs.symlinkSync(target, bindings, 'dir');
+    fs.chmodSync(parent, 0o000);
+    let lookupCode: string | undefined;
+    let response: Response;
+    try {
+      try {
+        fs.statSync(bindings);
+      } catch (e) {
+        lookupCode = (e as NodeJS.ErrnoException).code;
+      }
+      response = await h.request('alice', '/attachments', 'POST', {
+        ...guard(f.a),
+        attachments: [png('blocked.png')],
+      });
+      expect(await f.remove(sent.messageId)).toBe(200);
+    } finally {
+      fs.chmodSync(parent, 0o700);
+    }
+    expect(lookupCode).toBe('EACCES');
+    await unavailable(response!);
+    expect(fs.existsSync(blob)).toBe(true);
+    fs.unlinkSync(bindings);
+    fs.renameSync(target, bindings);
+    expect(Array.isArray(await f.upload(png('recovered.png')))).toBe(true);
+    expect(fs.existsSync(blob)).toBe(false);
+  },
+);

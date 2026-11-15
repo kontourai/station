@@ -1054,7 +1054,7 @@ intent and grant no permission.
 | `GET` base | none | Room identity, current actor/capabilities, note, checkpoint and presence |
 | `POST /init` | `{ expectedProjectId }` | `{ scope, roomId }`; requires discussion permission and is idempotent |
 | `GET /messages` | `after` sequence, `limit` 1–100 | ordered history, checkpoint, `nextAfter`; byte limits may split a page |
-| `POST /messages` | guards plus `{ intentId, text, replyTo?, attachments? }` | committed message; exact actor/Room/intent retry returns the same message, changed payload conflicts |
+| `POST /messages` | guards plus `{ intentId, text, replyTo?, attachments? }` | committed message; an exact actor/Room/intent/payload retry returns that message as it now stands (its tombstone once deleted, its latest text once edited) and never needs its files again; a changed payload conflicts |
 | `PUT /note` | guards plus `{ expectedRevision, markdown, sourceMessageIds }` | revision-checked shared note |
 | `POST /presence` | guards plus `{ clientId, state: 'join' | 'leave' }` | current leased participants |
 | `GET /events` | none | SSE `changed`, `presence`, terminal `revoked`, and heartbeat comments |
@@ -1157,14 +1157,17 @@ reacted. The stored message row is never rewritten.
   existing files keep working. Nothing is cached between uploads, so every
   Station process sharing the home refuses alike, and no file write is needed
   for the refusal. `reclamation-blocked.json` in the store names each problem
-  when it can be written; it is a diagnostic only. The `bindings/` root, or
+  when it can be written; it is a diagnostic only. When it cannot be written,
+  the server log names each record and its reason (operator logs only; room
+  members see just the code). The `bindings/` root, or
   any directory under it, that is a symbolic link, is not a directory, or
   cannot be looked up for any reason other than not existing (such as
   `EACCES`) counts as a problem, not as empty: a linked `bindings/` is not
   supported and pauses uploads until it is a plain directory again. A Station
   home reached through a linked ancestor (such as macOS `/var`) is fine. A
-  write that fails while storing a file (its bytes, its record, or a
-  directory for them, for example on `ENOSPC` or `EACCES`) is refused with
+  write that fails while storing a file (its bytes, its record, a directory
+  for them, or the store root or its lock file, for example on `ENOSPC` or
+  `EACCES`) is refused with
   the same `503 project_room_files_unavailable` and leaves no staging copy;
   input Station refuses (limits, a wrong image type) stays `400`.
 - **Supported repair (offline only).** To repair the store:
