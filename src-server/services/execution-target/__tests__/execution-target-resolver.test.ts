@@ -806,6 +806,130 @@ describe('resolveExecutionTarget', () => {
     });
   });
 
+  // #2266, caller level: the resolution a Muse target gets (with an empty
+  // catalog, as live) carries the selector and effort through to the exact
+  // frames the serve adapter writes, and a selector muse does not know is
+  // still refused by muse, never silently dropped.
+  test('a muse override resolved with an empty catalog reaches session/start and turn/start; an unknown one is refused by muse', async () => {
+    const { FakeMuseServeHost, loadMuseServeCapture, replayMuseServeCapture } =
+      await import('../../../providers/__tests__/muse-serve-replay.js');
+    const hosts: InstanceType<typeof FakeMuseServeHost>[] = [];
+    const muse = new MuseAdapter({
+      serve: {
+        spawnHost: () => {
+          const host = new FakeMuseServeHost(['serve']);
+          hosts.push(host);
+          return { process: host };
+        },
+        terminateHost: async (spawned) => {
+          (spawned.process as InstanceType<typeof FakeMuseServeHost>).exit(0);
+        },
+        handshakeTimeoutMs: 2_000,
+        requestTimeoutMs: 2_000,
+      },
+      processFactory: () => {
+        throw new Error('this chain runs on serve');
+      },
+      logger: { warn: () => {}, info: () => {} },
+    });
+    try {
+      const resolved = await resolveExecutionTarget(
+        {
+          environment: { kind: 'current' },
+          agent: agentId('muse'),
+          model: {
+            override: 'muse-spark-1.3-contributor',
+            options: { effort: 'high' },
+          },
+        },
+        dependencies({
+          getAgent: async () => ({
+            slug: 'muse',
+            execution: { agentConnectionId: engineConnectionId('muse') },
+          }),
+          getConnection: async () => connection('muse', 'muse'),
+          getProviderAdapter: () => muse,
+        }),
+      );
+      expect(resolved.modelLaunchPlan).toEqual({
+        kind: 'engine-selected',
+        evidence: 'adapter-declared',
+      });
+      expect(resolved.modelId).toBe('muse-spark-1.3-contributor');
+
+      const frames = loadMuseServeCapture('steer');
+      const starting = muse.startSession({
+        provider: 'muse',
+        threadId: 'thread-chain',
+        cwd: '/workspace/probe/repo',
+        modelId: resolved.modelId,
+        modelOptions: resolved.modelOptions,
+      });
+      for (let i = 0; i < 200 && !hosts[0]; i += 1)
+        await new Promise((r) => setImmediate(r));
+      let sent: Promise<unknown> | undefined;
+      await replayMuseServeCapture(hosts[0]!, frames, {
+        stopAt: frames.findIndex((frame) => frame.msg.method === 'turn/steer'),
+        onDrivenRequest: (method) => {
+          if (method !== 'turn/start') return undefined;
+          sent = (async () => {
+            await starting;
+            return muse.sendTurn({ threadId: 'thread-chain', input: 'go' });
+          })();
+          return sent;
+        },
+      });
+      await sent;
+      const wire = hosts[0]!.sent;
+      expect(
+        wire.find((frame) => frame.method === 'session/start')?.params,
+      ).toMatchObject({ modelId: 'muse-spark-1.3-contributor' });
+      expect(
+        wire.find((frame) => frame.method === 'turn/start')?.params,
+      ).toMatchObject({ reasoningEffort: 'high' });
+      // The capture's turn ends; a later turn names a model muse lacks.
+      const turnStart = frames.find(
+        (frame) => frame.dir === 's2c' && frame.msg.method === 'turn/started',
+      )!.msg.params as Record<string, unknown>;
+      hosts[0]!.writeFrame({
+        jsonrpc: '2.0',
+        method: 'turn/completed',
+        params: {
+          sessionId: turnStart.sessionId,
+          turnId: turnStart.turnId,
+          terminal: 'completed',
+        },
+      });
+      await new Promise((r) => setTimeout(r, 20));
+      const refused = muse.sendTurn({
+        threadId: 'thread-chain',
+        input: 'again',
+        modelId: 'muse-nonexistent',
+      });
+      const setModel = await hosts[0]!.nextRequest(
+        'session/setModel',
+        new Set(),
+      );
+      expect(setModel.params).toMatchObject({
+        model: { modelId: 'muse-nonexistent' },
+      });
+      hosts[0]!.writeFrame({
+        jsonrpc: '2.0',
+        id: setModel.id,
+        error: {
+          code: -32030,
+          message: 'model `muse-nonexistent` is not in the catalog',
+        },
+      });
+      await expect(refused).rejects.toThrow(/not in the catalog/);
+      expect(
+        hosts[0]!.sent.filter((frame) => frame.method === 'turn/start'),
+      ).toHaveLength(1);
+    } finally {
+      await muse.stopAll();
+    }
+  });
+
   test.each([
     ['bedrock', new BedrockAdapter()],
     ['ollama', new OllamaAdapter('http://127.0.0.1:11434')],
@@ -899,7 +1023,8 @@ describe('resolveExecutionTarget', () => {
   });
 
   // Absent from `PROVIDER_MODEL_OPTION_SUPPORT`, muse's `modelOptions` were
-  // accepted here and then read by nothing.
+  // accepted here and then read by nothing. `effort` is read now (the
+  // turn's reasoning tier); `serviceTier` still is not.
   test('rejects modelOptions muse cannot apply', async () => {
     await expect(
       resolveExecutionTarget(
@@ -909,7 +1034,7 @@ describe('resolveExecutionTarget', () => {
           model: {
             override: 'muse-spark-1.2-contributor',
             options: {
-              effort: 'high',
+              serviceTier: 'fast',
             },
           },
         },
@@ -921,7 +1046,7 @@ describe('resolveExecutionTarget', () => {
           getConnection: async () => connection('muse', 'muse'),
         }),
       ),
-    ).rejects.toThrow('effort');
+    ).rejects.toThrow('serviceTier');
   });
 
   test('rejects direct ACP model overrides from the shared resolver', async () => {

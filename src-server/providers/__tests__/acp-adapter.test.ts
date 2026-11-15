@@ -56,6 +56,7 @@ import { ACPProcess } from '../../services/acp/acp-process.js';
 import { normalizeCanonicalRuntimeEventLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import type { CanonicalRuntimeEvent } from '../adapter-shape.js';
 import {
+  ProviderTurnEndedError,
   SendTurnRefusedError,
   SessionStartRefusedError,
 } from '../adapter-shape.js';
@@ -6991,6 +6992,288 @@ describe('AcpAdapter.steerTurn', () => {
     await adapter.stopAll();
   });
 
+  test('OpenCode 2.x steers through _session/steering and keeps the in-flight prompt', async () => {
+    // The identity OpenCode 2.3.0 answered `initialize` with
+    // (fixtures/opencode-serve-2.3.0-crossload.jsonl).
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-opencode-steer',
+      {
+        connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+        onProcess: (proc) => {
+          proc.initResult!.agentInfo = { name: 'OpenCode', version: '2.3.0' };
+          proc.initResult!._meta = { steering: { supported: true } };
+          proc.extMethod = async (method, params) => {
+            proc.extMethodCalls.push({ method, params });
+            return { outcome: 'injected' };
+          };
+        },
+      },
+    );
+
+    await adapter.steerTurn('thread-opencode-steer', 'go left', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls).toEqual([
+      {
+        method: '_session/steering',
+        params: {
+          sessionId: processes[0]?.sessionId,
+          prompt: [{ type: 'text', text: 'go left' }],
+        },
+      },
+    ]);
+    expect(processes[0]?.cancelCalls).toBe(0);
+    expect(processes[0]?.promptContents).toHaveLength(1);
+    await adapter.stopAll();
+  });
+
+  test('an OpenCode steer answered promptRequired reports the turn ended, not a delivered steer', async () => {
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-opencode-late-steer',
+      {
+        connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+        onProcess: (proc) => {
+          proc.initResult!.agentInfo = { name: 'OpenCode', version: '2.3.0' };
+          proc.initResult!._meta = { steering: { supported: true } };
+          proc.extMethod = async (method, params) => {
+            proc.extMethodCalls.push({ method, params });
+            return { outcome: 'promptRequired', reason: 'noRunningTurn' };
+          };
+        },
+      },
+    );
+
+    await expect(
+      adapter.steerTurn('thread-opencode-late-steer', 'too late', turn.turnId),
+    ).rejects.toBeInstanceOf(ProviderTurnEndedError);
+    expect(processes[0]?.cancelCalls).toBe(0);
+    expect(processes[0]?.promptContents).toHaveLength(1);
+    await adapter.stopAll();
+  });
+
+  test('OpenCode 1.x, which declares no steering, keeps cancel + re-prompt', async () => {
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-opencode-1x-steer',
+      {
+        connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+        onProcess: (proc) => {
+          proc.initResult!.agentInfo = { name: 'OpenCode', version: '1.18.18' };
+          proc.extMethod = async (method, params) => {
+            proc.extMethodCalls.push({ method, params });
+            return { outcome: 'injected' };
+          };
+        },
+      },
+    );
+
+    await adapter.steerTurn('thread-opencode-1x-steer', 'go left', turn.turnId);
+    expect(processes[0]?.extMethodCalls).toEqual([]);
+    expect(processes[0]?.cancelCalls).toBe(1);
+    await adapter.stopAll();
+  });
+
+  test("another engine's steer answer is never read as OpenCode's decline", async () => {
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-kiro-promptrequired',
+      {
+        connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+        onProcess: (proc) => {
+          proc.initResult!.agentInfo = { name: 'Kiro CLI Agent' };
+          proc.extMethod = async (method, params) => {
+            proc.extMethodCalls.push({ method, params });
+            return { outcome: 'promptRequired' };
+          };
+        },
+      },
+    );
+
+    await expect(
+      adapter.steerTurn('thread-kiro-promptrequired', 'go', turn.turnId),
+    ).resolves.toBeUndefined();
+    expect(processes[0]?.extMethodCalls.map((call) => call.method)).toEqual([
+      '_session/steer',
+    ]);
+    await adapter.stopAll();
+  });
+
+  test('Antigravity steers by a second session/prompt that takes over the running turn', async () => {
+    // Recorded on Antigravity CLI 1.5.8: the first prompt answers `end_turn`
+    // as soon as the mid-turn prompt arrives; the work and the reply carry on
+    // under the second one.
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [
+        { id: 'kiro', command: 'agy', args: ['acp', '--process-per-session'] },
+      ],
+      onProcess: (proc) => {
+        proc.initResult!.agentInfo = {
+          name: 'Antigravity ACP Server',
+          version: '1.5.8',
+        };
+      },
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-agy-steer',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-agy-steer',
+      input: 'start',
+    });
+    await nextEvent(iterator, 'turn.started');
+
+    await adapter.steerTurn('thread-agy-steer', 'go left', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls).toEqual([]);
+    expect(processes[0]?.cancelCalls).toBe(0);
+    expect(processes[0]?.promptContents).toEqual([
+      [{ type: 'text', text: 'start' }],
+      [{ type: 'text', text: 'go left' }],
+    ]);
+    const steer = await nextEvent(iterator, 'steer turn.started');
+    expect(steer).toMatchObject({
+      method: 'turn.started',
+      turnId: turn.turnId,
+      inputKind: 'steer',
+    });
+    // Nothing was cancelled, so the steer claims no interruption.
+    expect(steer).not.toHaveProperty('steerInterruptedRun');
+
+    // The superseded prompt's `end_turn` does not end the steered turn. Let
+    // its settlement run first, so a completion it caused would be next.
+    processes[0]!.resolvePrompt('end_turn');
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await processes[0]!.client.sessionUpdate({
+      sessionId: 'native-agy',
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'going left' },
+      },
+    } as any);
+    // The very next event is the reply, not a completion of the turn.
+    await expect(
+      nextEvent(iterator, 'content.text-delta'),
+    ).resolves.toMatchObject({
+      method: 'content.text-delta',
+      turnId: turn.turnId,
+    });
+    processes[0]!.resolvePrompt('end_turn');
+    await expect(nextEvent(iterator, 'turn.completed')).resolves.toMatchObject({
+      method: 'turn.completed',
+      turnId: turn.turnId,
+    });
+    await adapter.stopAll();
+  });
+
+  test('an Antigravity steer waits for the answer to an open request instead of breaking the turn', async () => {
+    // Antigravity 1.5.8 refuses a mid-turn prompt while the running one waits
+    // on a permission or question answer (seen in a live Station run).
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [
+        { id: 'kiro', command: 'agy', args: ['acp', '--process-per-session'] },
+      ],
+      onProcess: (proc) => {
+        proc.initResult!.agentInfo = {
+          name: 'Antigravity ACP Server',
+          version: '1.5.8',
+        };
+      },
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-agy-steer-pending',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-agy-steer-pending',
+      input: 'start',
+    });
+    await nextEvent(iterator, 'turn.started');
+    const answered = requestPermission(processes[0]!.client, 'tool-pending');
+    const opened = await nextEvent(iterator, 'request.opened');
+
+    await expect(
+      adapter.steerTurn('thread-agy-steer-pending', 'go left', turn.turnId),
+    ).rejects.toMatchObject({
+      name: 'ProviderRefusalError',
+      kind: 'conflict',
+      message: expect.stringContaining('waits for your answer'),
+    });
+    // Nothing reached the engine, and the request is still open to answer.
+    expect(processes[0]?.promptContents).toHaveLength(1);
+    expect(processes[0]?.cancelCalls).toBe(0);
+    await adapter.respondToRequest(
+      'thread-agy-steer-pending',
+      (opened as { requestId: string }).requestId,
+      'accept',
+    );
+    await expect(answered).resolves.toMatchObject({
+      outcome: { outcome: 'selected' },
+    });
+    processes[0]!.resolvePrompt('end_turn');
+    let event = await nextEvent(iterator, 'turn.completed');
+    while (event.method !== 'turn.completed')
+      event = await nextEvent(iterator, 'turn.completed');
+    expect(event).toMatchObject({ turnId: turn.turnId });
+    await adapter.stopAll();
+  });
+
+  test('a turn running a routed engine command is not taken over by a prompt hand-off', async () => {
+    // An engine with the hand-off steer that also routes a declared command:
+    // the running request is not a session/prompt, so the steer cancels and
+    // re-prompts as for any engine.
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [
+        { id: 'kiro', command: 'agy', args: ['acp', '--process-per-session'] },
+      ],
+      onProcess: (proc) => {
+        proc.initResult!.agentInfo = {
+          name: 'Antigravity ACP Server',
+          version: '1.5.8',
+        };
+        proc.initResult!.agentCapabilities._meta = {
+          acme: { extensionMethods: ['_kiro/session/context'] },
+        };
+        proc.extMethod = async (method, params) => {
+          proc.extMethodCalls.push({ method, params });
+          // Still running when the steer arrives.
+          return new Promise((resolve) => setTimeout(() => resolve({}), 300));
+        };
+      },
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-agy-steer-command',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-agy-steer-command',
+      input: '/context',
+    });
+    expect(processes[0]?.extMethodCalls.map((call) => call.method)).toEqual([
+      '_kiro/session/context',
+    ]);
+
+    await adapter.steerTurn('thread-agy-steer-command', 'go left', turn.turnId);
+
+    expect(processes[0]?.cancelCalls).toBe(1);
+    expect(processes[0]?.promptContents).toEqual([
+      [{ type: 'text', text: 'go left' }],
+    ]);
+    await adapter.stopAll();
+  });
+
   test('Grok injects via _x.ai/interject without cancelling the turn', async () => {
     const { adapter, processes } = createAdapter({
       connectionOverrides: [
@@ -7821,5 +8104,75 @@ describe('after an untrusted read, ACP changes to instructions are declined (#48
           new Promise((resolve) => setTimeout(() => resolve('PENDING'), 1_000)),
         ]),
       ).toEqual({ outcome: { outcome: 'selected', optionId: 'reject-once' } });
+  });
+});
+
+describe('AcpAdapter provider and connection filter', () => {
+  function filteredAdapter() {
+    const processes: FakeAcpProcess[] = [];
+    const adapter = new AcpAdapter({
+      provider: 'opencode',
+      connectionFilter: (config) => config.id === 'other',
+      getConnections: async () => createConnections(),
+      logger: { debug: () => {}, warn: () => {}, error: () => {} },
+      managedWorkspaceHomeDir: managedWorkspaceHome,
+      processFactory: (opts) => {
+        const proc = new FakeAcpProcess(opts);
+        processes.push(proc);
+        return proc as unknown as ACPProcess;
+      },
+    });
+    return { adapter, processes };
+  }
+
+  test('sessions and events carry the provider the adapter was built for', async () => {
+    const { adapter, processes } = filteredAdapter();
+    expect(adapter.provider).toBe('opencode');
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    const session = await adapter.startSession({
+      provider: 'opencode',
+      threadId: 'thread-provider-option',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'other' },
+    });
+    expect(session.provider).toBe('opencode');
+    const started = await nextEvent(iterator, 'session.started');
+    expect(started.provider).toBe('opencode');
+    await nextEvent(iterator, 'session.configured');
+    await adapter.sendTurn({ threadId: 'thread-provider-option', input: 'hi' });
+    await nextEvent(iterator, 'turn.started');
+    // A mapper-built event, which the mappers build as the ACP adapter's.
+    await processes[0]!.client.sessionUpdate({
+      sessionId: processes[0]!.sessionId!,
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'hello' },
+      },
+    } as any);
+    const delta = await nextEvent(iterator, 'content.text-delta');
+    expect(delta).toMatchObject({
+      method: 'content.text-delta',
+      provider: 'opencode',
+    });
+    await adapter.stopAll();
+  });
+
+  test('a connection the filter leaves out is never started or listed', async () => {
+    const { adapter, processes } = filteredAdapter();
+    await expect(
+      adapter.startSession({
+        provider: 'opencode',
+        threadId: 'thread-filtered-out',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+      }),
+    ).rejects.toThrow('Unknown ACP connection: kiro');
+    expect(processes).toHaveLength(0);
+    await adapter.stopAll();
+  });
+
+  test('the registered ACP adapter keeps its id and every connection', () => {
+    const { adapter } = createAdapter();
+    expect(adapter.provider).toBe('acp');
   });
 });

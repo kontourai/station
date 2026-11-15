@@ -141,12 +141,19 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real launcher exit/stderr protocol with in-memory ChildProcess/streams
+  // and substituted spawnOwnedChild; no child launch or wall-clock assertion.
+  'src-server/services/browser/__tests__/chromium-server-host.test.ts',
   // Real Node sidecars verify native model relay framing, queued delivery and cancellation settlement.
   'src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts',
   // #4828: short-lived `git init`, `git config` and `git status` children
   // prove the persistence protection reads the effective core.hooksPath from
   // git and runs no repository-named program; no wall-clock assertion.
   'src-server/services/plugins/__tests__/untrusted-persistence-protection.test.ts',
+  // #4828 on the OpenCode native transport: short-lived `git init` and
+  // `git config` children build a repository whose core.hooksPath the
+  // fixture replay's persistence decline reads; no wall-clock assertion.
+  'src-server/providers/__tests__/opencode-adapter.replay.test.ts',
   'src-server/providers/__tests__/claude-adapter-native-web-read.test.ts',
   // #3075: one short-lived tsx child writes a person's first acknowledgement
   // as another process would, while this suite holds the event store open.
@@ -302,8 +309,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/ci-ubuntu-bootstrap-source.test.ts',
   // Runs the evidence CLI against temporary Git roots and a loopback Actions API.
   'scripts/__tests__/qualification-evidence.test.ts',
-  // Runs the advisory review gate as a real child against a loopback GitHub API.
-  'scripts/__tests__/advisory-review-gate.test.ts',
   // #2675: runs the Nightly plan step's shell under bash in a temporary dir.
   'scripts/__tests__/ios-web-build-version.test.ts',
   // Executes cancellation against a loopback Actions API; owns one short Node child.
@@ -318,6 +323,16 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/pr-source-admission.test.ts',
   // Executes repair publication against real temporary checkouts and a loopback API.
   'scripts/__tests__/qualification-repair.test.ts',
+  // Runs the real Vitest corpus runner on tiny fixture projects (one child
+  // Vitest per case, including a leaked child and a deadline kill) and the
+  // real phase driver once, to assert the failure manifest they write.
+  'scripts/__tests__/qualification-failure-manifest.test.ts',
+  // Runs the repair prepare CLI against a loopback API with on-disk
+  // failure manifests and a temporary known-failure list.
+  'scripts/__tests__/qualification-failure-signal.test.ts',
+  // Runs the real Playwright test runner on tiny fixture projects (no
+  // browser) to assert the e2e failure manifest built from its JSON report.
+  'scripts/__tests__/playwright-failure-manifest.test.ts',
   // #3101: runs the dequeue report as a child against temporary Git remotes
   // (git fetch + merge-tree) and a loopback GitHub API.
   'scripts/__tests__/merge-queue-dequeue.test.ts',
@@ -416,6 +431,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/pending-pairing-journal.browser.test.ts',
   // Executes the hosted Android identity admission step in bounded bash children.
   'scripts/__tests__/android-channel-release-generation.test.ts',
+  // Runs the release identity shell step and real Android helpers on private fixtures.
+  'scripts/__tests__/android-pairing-scheme.test.ts',
   'scripts/__tests__/local-collaboration-lab.test.ts',
   // Owns a UDP relay child and private command-output diagnostics.
   'scripts/__tests__/browser-transport-fixture.test.ts',
@@ -435,6 +452,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // see that seam; under the ordinary four-worker corpus two of its cases
   // timed out at canonical phase load.
   'packages/shared/src/__tests__/plugin-build.test.ts',
+  // #4831: builds the docs server bundle, which starts esbuild's service
+  // child; the file imports no child_process itself.
+  'src-server/tools/__tests__/station-docs-bundle.test.ts',
   // Epic #2323 S3: each draft build forks a disposable process that is
   // killed at its deadline; the test observes that process and a FIFO.
   'src-server/services/plugins/__tests__/plugin-draft-build-process.test.ts',
@@ -817,6 +837,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Runs the PR workflow's allowlist-ceiling step under bash against
   // disposable Git repositories (fetch, judge child).
   'scripts/__tests__/gallery-allowlist-ceiling.test.ts',
+  // Runs the PR workflow's composition, attribution and verdict steps under
+  // bash against disposable Git repositories (merge, worktree, judge child,
+  // a fake npm standing in for the capture).
+  'scripts/__tests__/gallery-pr-composition.test.ts',
   // Launches one headless Chromium for the gallery audit's fixture pages.
   'scripts/__tests__/gallery-ui-audit.browser.test.ts',
   'scripts/__tests__/code-hygiene.test.ts',
@@ -1155,6 +1179,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // tracked NUL/clean fixture repositories. The child is single-shot and has
   // no wall-clock assertion, but still belongs in the bounded spawn pool.
   'scripts/__tests__/run-ci-fast.test.ts',
+  // Drives the real Conduit conformance generator through the fast lane
+  // against a fixture root; one single-shot child per case.
+  'scripts/__tests__/ci-fast-conformance.test.ts',
   // Runs the installed analyzer against committed Git fixtures to prove
   // new-versus-inherited attribution and resistance to candidate rebaselining.
   'scripts/__tests__/code-health-gate.test.ts',
@@ -1184,6 +1211,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // exhaustion, and the duplicate re-record refusal all assert real git
   // state, so the child processes are the claim.
   'scripts/__tests__/deploy-ledger-commit.test.ts',
+  // Runs the Nightly's real ledger step scripts under bash against a local
+  // fixture origin, then every ledger reader as a child process on the
+  // resulting history: one commit per run is a claim about real git state.
+  'scripts/__tests__/deploy-ledger-nightly-batch.test.ts',
   // Proves the published-packages
   // JSON parse's success and refusal exit statuses as a real child process,
   // the same "gate as a real child" shape as the entry-point gates above.
@@ -1409,13 +1440,23 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // announced and answered.
   'src-server/providers/__tests__/acp-kiro-announce.process.test.ts',
   'src-server/providers/__tests__/acp-kiro-parity.process.test.ts',
-  // #3924: runs the real `opencode` (when this host has one) with fresh XDG
-  // directories against a planted project plugin; skips loudly where no
-  // opencode binary resolves.
+  // The fake ACP agent, driven by the recorded Antigravity profile, through
+  // the real adapter and ACPProcess: what session and prompt answers carry.
+  'src-server/providers/__tests__/acp-session-answers.process.test.ts',
+  // #3924: runs the real `opencode` (when this host has a 1.x one) with fresh
+  // XDG directories against a planted project plugin; skips loudly where no
+  // OpenCode 1.x binary resolves.
   'src-server/providers/__tests__/opencode-project-config.process.test.ts',
-  // #3957: runs the real `opencode` (when this host has one) against a local
-  // mock model; skips loudly where no opencode binary resolves.
+  // #3957: runs the real `opencode` (when this host has a 1.x one) against a
+  // local mock model; skips loudly where no OpenCode 1.x binary resolves.
   'src-server/providers/__tests__/opencode-client-write.process.test.ts',
+  // Runs a real OpenCode 2.x `opencode serve` (STATION_TEST_OPENCODE_2_BINARY
+  // or PATH, a verified version only) through the real server pool against a
+  // local mock model; skips loudly otherwise.
+  'src-server/providers/__tests__/opencode-native.process.test.ts',
+  // One case stops a real detached node child (the `opencode serve --stdio`
+  // stand-in) by process group, so the process boundary is the claim.
+  'src-server/providers/__tests__/opencode-serve-pool.test.ts',
   // Runs npm and the real lockfile gate against an isolated two-workspace
   // fixture. The children are network-free and short-lived, but the actual
   // process boundary is the claim, so it belongs in the bounded spawn pool.
@@ -1601,6 +1642,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/__tests__/strict-indexeddb.browser.test.ts',
   // Owns Chromium to decode, resize and encode a real photo into a thumbnail.
   'src-ui/src/__tests__/attachment-thumbnails.browser.test.ts',
+  // Owns Chromium (routed origins, no listener) to prove the visual
+  // reply viewer's script execution: proxy parity with preview, the srcdoc
+  // fallback's inherited-refusal under an app-shell CSP, and the staged
+  // scheme's escape from that inheritance.
+  'src-ui/src/__tests__/html-reply-viewer-scripts.browser.test.tsx',
   // station#4474: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved layout (sibling
   // toolbar control x-offsets across connection states).

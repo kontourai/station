@@ -5,9 +5,10 @@ import {
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
-import type {
-  EngineId,
-  ProviderDurabilityProfile,
+import {
+  type EngineId,
+  isAcpFamilyEngine,
+  type ProviderDurabilityProfile,
 } from '@kontourai/station-contracts/provider';
 import {
   isSessionLifecycleStateStopped,
@@ -1026,10 +1027,15 @@ export function preferredChatRuntime(
   // ACP connections are excluded here (they have their own separate
   // resolution path elsewhere); `connected[0]` below is a same-bucket
   // fallback, not a "first non-station" catch-all.
+  // An OpenCode connection projects the engine id `opencode` while its
+  // Feature Preview is on, but it is still a saved ACP connection
+  // (`isAcpFamilyEngine`), so it stays out of this bucket too.
   const connected = ready.filter((connection) => {
     const engineId = connectionEngineId(connection);
     return (
-      engineId !== undefined && engineId !== 'station' && engineId !== 'acp'
+      engineId !== undefined &&
+      engineId !== 'station' &&
+      !isAcpFamilyEngine(engineId)
     );
   });
   const managed = ready.filter(

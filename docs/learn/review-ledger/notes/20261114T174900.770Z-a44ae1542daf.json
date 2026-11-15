@@ -1,0 +1,7 @@
+{
+  "revision": "e3f3d880eaa77a53fe91942099dc2f15924aea5f",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Searched for shard, slot, statics, concurrency-group and FIFO claims after the PR shard-slot change to ci.yml, actionlint-gate.mjs and the testing guide; the document makes no claim about PR fast-checks concurrency groups, so it stays accurate.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

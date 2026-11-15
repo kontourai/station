@@ -1,0 +1,7 @@
+{
+  "revision": "d7dfb82cbe7b1aaa7ac7e5b1c5528e6998125130",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Fix round 2 (Muse): runCliCommand gained an optional omitEnv bound that deletes inherited variables after the overlay merge (default unchanged; augmented env now copied). Re-read the engine CLI probe, TMPDIR/PATH and workload-scope passages (incl. 'ACP, Muse and in-process engines'): none describe the overlay semantics, so no prose change.","inputs":["docs/guides/development.md","src-server/providers/auth/cli-auth.ts"]}
+  ]
+}

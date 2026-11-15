@@ -244,6 +244,15 @@ runs as Auto inside Muse's sandbox. Under a ceiling of `ask`, a Muse chat
 that would run through `muse exec` (because `muse serve` is turned off or
 fails to start) does not start, and says why. Under `auto` it runs as usual.
 
+Separately from any ceiling, a `muse serve` host that reports it cannot
+enforce its sandbox (`sandboxAvailability: unavailable`) refuses Auto, which
+relies on that sandbox as its only containment: the start is refused
+(`sandbox_unavailable`) without falling back to `muse exec`, and so is a turn
+asking for Auto. Other approval modes still run on `muse serve`, with a
+`muse-sandbox-unavailable` warning, but never fall back to `muse exec`, which
+would run them unprompted without the sandbox: only Full access (`never`)
+does.
+
 A plugin Agent's tool approvals (`autoApprove`, `unattendedAutoApprove`) can
 be removed or narrowed under a ceiling, but not added to.
 
@@ -622,6 +631,14 @@ Station launches are started.
 
 Station refuses an unknown engine id, a repeated one, and an `instances`
 entry for an engine `allowed` leaves out.
+
+OpenCode has no id of its own here. The `acp` entry covers it in every form: an
+OpenCode ACP connection, and the `opencode` engine behind the OpenCode native
+engine Feature Preview, natively or over ACP, with the preview on or off.
+`instances.acp` pins it too. Natively, the pinned binary and environment apply
+to `opencode serve`, but pinned arguments do not, because they belong to the
+`acp` command line. Turning the preview on neither widens nor narrows a
+policy. See [the decision](../decisions/opencode-native-transport.md#managed-policy-r5).
 
 ### An engine that is not allowed
 

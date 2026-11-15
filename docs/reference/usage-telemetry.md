@@ -525,6 +525,10 @@ controlled endpoints; a live ingestion deployment needs its own delivery evidenc
 
 The contracts/product-telemetry inventory declares event and envelope fields; shared/product-telemetry renders and fingerprints them. The Full revision includes envelope and Full events. Lite has its own revision over every field and bound. Neither revision can substitute for the other.
 
+An `engine` value names an engine family, not each engine: a turn on the
+`opencode` engine reports `acp`, as OpenCode chats did before that engine
+existed (`terminalEngineFamily`).
+
 ## Version 1 envelope
 
 ### batch fields

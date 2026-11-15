@@ -1,0 +1,7 @@
+{
+  "revision": "cd992c8a62bca428e7d40114f0651304f8ce079a",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Re-read the draft/ready passage naming the changeset-release/main PR: it describes heavy platform jobs skipping on that PR, which the release-bot source slot does not change; the guide makes no PR concurrency-group claim.","inputs":["docs/guides/development.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]}
+  ]
+}

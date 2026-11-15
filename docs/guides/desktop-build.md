@@ -398,7 +398,7 @@ hashes/nonces that bundled assets require.
 | `style-src` | Existing runtime/plugin styles require inline styles; this exception does not apply to scripts. The same installed-plugin protocol sources admit Desktop plugin stylesheets. Fonts are self-hosted (#2648). |
 | `connect-src` | Tauri's `ipc:`/`http://ipc.localhost` transports plus Station user-selected `http:`, `https:`, `ws:`, and `wss:` endpoints. |
 | `font-src` | Bundled/data fonts only — UI faces are vendored under `src-ui/public/fonts/` (#2648); no remote font CDN. |
-| `img-src`, `media-src`, `frame-src` | Tauri `asset:`/`http://asset.localhost` where applicable, plus existing `data:`, `blob:`, `http:`, and `https:` content. MCP frames retain their separate sandbox and policy. |
+| `img-src`, `media-src`, `frame-src` | Tauri `asset:`/`http://asset.localhost` where applicable, plus existing `data:`, `blob:`, `http:`, and `https:` content. `frame-src` also admits the shell's `station-html-reply:` scheme for staged visual replies; Wry's `http://station-html-reply.localhost` alias on Windows and Android falls under `http:`. MCP frames retain their separate sandbox and policy. |
 | `worker-src` | Bundled and blob-backed diff workers. |
 | `manifest-src`, `form-action` | Same-origin application metadata and forms only. |
 | `object-src`, `base-uri`, `frame-ancestors` | All denied to prevent object embedding, base replacement, and framing Station. |
@@ -443,6 +443,20 @@ credential from native custody, disables redirects, caps decoded content at
 16 MiB, and revalidates authority after reading. No renderer headers or
 upstream response headers are forwarded. The installed endpoint checks its
 recorded content digest and current artifact before delivery.
+
+The [`station-html-reply` handler](../../src-desktop/src/html_reply_protocol.rs)
+registers on every platform, including the phone. A visual reply without a
+reachable frame origin renders in an opaque `sandbox="allow-scripts"` frame;
+as a `srcdoc` child that frame would inherit this shell policy, whose
+`script-src` refuses inline scripts, so script-built pages would stay blank.
+The shell's own webview instead stages the composed page document with the
+`station_html_reply_stage` command and frames it from this scheme, where the
+page's own meta policy governs. The handler serves only staged bytes (16
+slots, about 8 MiB each, oldest replaced first), never proxies the network or
+reads credentials, and uses the same label set, per-launch capability, top-frame
+guard and four-request limit as the plugin handler. A delivered page carries no
+response CSP, so a header cannot re-create the inherited refusal; refusals are
+empty and sandboxed. Browsers and older shells keep the `srcdoc` fallback.
 
 The external Vite development header retains the base policy, so Windows
 Vite-based plugin loading remains unavailable; packaged Windows assets use

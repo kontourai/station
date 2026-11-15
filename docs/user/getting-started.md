@@ -878,7 +878,7 @@ and **Check again**. Available engine prerequisites include installation steps,
 commands, and links supplied by that engine’s integration. Commands are shown
 for you to run; opening a guide does not install software. Install engines on
 the computer running Station, including when using Station from a phone.
-Claude and Codex account management opens their existing in-UI sign-in flow;
+Claude, Codex and Muse account management opens their existing in-UI sign-in flow;
 other integrations retain their own authorization instructions.
 
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
@@ -950,8 +950,8 @@ When the engine transcript is open, sent instructions are collapsed in the
 Station list; open one to read its attributed copy. Unconfirmed instructions
 remain visible, and the engine's prompts remain available in its transcript.
 
-Keep typing during a turn. With Claude Code and Codex, which take native
-steering, **Send** defaults to **Steer**; elsewhere it defaults to **Queue**,
+Keep typing during a turn. With Claude Code, Codex and Muse, which take native
+steering, **Send** defaults to **Steer**; elsewhere, including a Muse chat that fell back to `muse exec`, it defaults to **Queue**,
 which delivers after the turn finishes. The dropdown switches between them. Other engines hold steering until a safe boundary can be proven;
 currently they wait until the turn finishes. Each pending row shows its mode.
 For a locally queued message, **Send now** stops the active turn and sends the
@@ -1364,7 +1364,9 @@ conversation with that error already attached:
 
 - a view that stopped working (under **More actions** when Station refused
   the view), and an error notification;
-- a pane that is temporarily unavailable, and a layout tab Station can't show;
+- a pane that is temporarily unavailable, and a layout tab Station can't show
+  (when Station could not read its installed plugins, the tab offers
+  **Retry** instead);
 - an engine that isn't connected, and an agent that can't run;
 - a local Station that stopped or failed when **Restart Station** isn't
   offered;

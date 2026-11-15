@@ -103,6 +103,22 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    advertises `loadSession`. Any other resume failure fails the start rather
    than loading: the fallback is closed, so an unexplained resume failure is
    reported instead of hidden behind a replayed load.
+   The `session/resume` or `session/load` answer carries the same `modes`,
+   `configOptions` and `models` as `session/new`, and the adapter adopts them
+   by the same rule, so a reopened session can still change mode and effort.
+   A field the answer leaves out keeps what the session already holds. An
+   engine need not keep a conversation's model or options across processes
+   (Antigravity 1.5.8 resumes on its account default), so the start's
+   explicit mode, model and effort are applied again, in that order, where
+   the resumed session differs. A value the session no longer advertises is
+   skipped rather than refusing the reopen, and a model or effort the engine
+   refuses or will not confirm is logged and leaves the engine's own; a mode
+   that fails still refuses the start, and so does an engine that exits
+   meanwhile. `session.configured`'s
+   `reportedModel` says what the engine runs (`effectiveModel` stays what was
+   requested). No governed default mode is applied; a
+   governed start refuses a mode outside build and plan before launch, for
+   a reopen as for a new chat.
    On `session/load`, ACP has the agent replay the whole conversation as
    `session/update` notifications before it answers. Station already stored
    that history, so while the session reattaches the adapter does not publish
@@ -152,9 +168,11 @@ Advertised session modes are honored on that one agent (station#1945). `Provider
 
 The current Agent catalog reports `engineId`, `engineDisplayName` and
 `engineConnectionType` for engine grouping and connection-method display. For an
-ACP-bound Agent `engineId` is always `acp` and `engineConnectionType` is `acp`,
-read from the connection record even when the live inspection fails, so its
-icon keeps its initials.
+ACP-bound Agent `engineConnectionType` is always `acp`, and `engineId` is `acp`
+unless an engine that runs saved ACP connections claims the connection (an
+OpenCode connection reads `opencode` while the OpenCode native engine Feature
+Preview is on). Both are read from the connection record even when the live
+inspection fails, so its icon keeps its initials.
 `execution.agentConnectionId` is the persisted binding. The Agent ID remains
 independent of how the connection is implemented; do not use a legacy
 `source: 'acp'` discriminator. Model choices and image support depend on the
@@ -184,7 +202,7 @@ provide no confirmed safe execution boundary, so the composer waits for the turn
 to finish. Attachments remain in the draft until then. See the
 [composer contract](../design/chat-composer.md#turn-activity-and-follow-up-delivery).
 
-An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro and Grok answer these methods without declaring them, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag). Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
+An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro, Grok and OpenCode 2.x answer methods they do not declare as extension methods, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag; OpenCode 2.x's `_meta.steering.supported`, steered through `_session/steering`, where an answer of `promptRequired` means no turn was running and the steer fails as ended). Antigravity (`agentInfo.name` `Antigravity ACP Server`) takes a second core `session/prompt` sent mid-turn as a steer: it answers the running prompt at once and carries the work on under the new one, so Station sends the steer as a prompt on the same turn and moves the turn's settlement to it (`prompt-handoff`), cancelling nothing. Every other ACP engine, including OpenCode 1.x, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
 
 ### Canonical Event Vocabulary
 
@@ -199,7 +217,7 @@ There is no bespoke ACP SSE-chunk vocabulary anymore. The adapter emits the same
 | `tool.started` / `tool.progress` / `tool.completed` | Tool execution |
 | `request.opened` / `request.resolved` | Tool approval / permission requests |
 | `plan.updated` | The agent's current ordered plan, as a full replace (see Plan Rendering below) |
-| `token-usage.updated` | Context occupancy; an engine's own context reading (`contextPercent`) and cost in its own unit (`reportedCost`) |
+| `token-usage.updated` | Context occupancy (`usage_update`); per-turn token figures from the prompt answer's `usage` (input, output, cache read and write, thought, total), published only for an engine recorded reporting per-turn figures (`ACP_PER_TURN_PROMPT_USAGE_ENGINES`: Antigravity), so ACP is declared `per-turn`; no cost is read; an engine's own context reading (`contextPercent`) and cost in its own unit (`reportedCost`) |
 | `model.rerouted` | The engine moved work to another model (see Kiro extensions below) |
 | `engine-mcp.status` | The engine's own MCP servers and their state |
 | `extension.notification` | Namespaced, app-specific payload (see Extension Rendering below) |
@@ -524,15 +542,15 @@ Each consumer is a generic Station mechanism any engine can feed:
 |---|---|---|
 | URL input request | `station.input-request/v1` body `{ kind: 'url', url, purpose, elicitationId? }`, answered `{ action: 'accept' \| 'cancel' }` (the same words as every other answer; the transcript records an accepted link as `opened`); https only, no user info, at most 2,048 characters, never opened automatically | `_kiro/openExternalUrl`; `_kiro.dev/mcp/oauth_request` has a row, but `input-request.url` is not marked implemented and the older binding still renders it as the **Open authentication page** link (see [Extension Rendering](#extension-rendering)) |
 | Form and choice input requests | existing `form` body | `_kiro/mcp/elicitation`, core `elicitation/create`, `_kiro/userInput` (always answered `answered`, with explicit text for decline or no person); Grok `_x.ai/ask_user_question` |
-| Engine MCP status | `engine-mcp.status` event: `servers[]` with `starting \| ready \| failed \| needs-auth \| disabled`, and `complete` | `_kiro.dev/mcp/server_initialized\|server_init_failure` (partial), `_kiro/mcp/status` (full; `failedAuthorization` reads `needs-auth`, `_meta.kiro.resource.source.origin: client` reads scope `session`); Codex `mcpServer/startupStatus/updated` (partial); Grok `_x.ai/mcp/server_status` (partial) |
-| Model reroute | `model.rerouted` event: `fromModel`, `toModel?`, `trigger`, `scope`, `childWorkId?` | v2 `_kiro.dev/session/update` `model_fallback` (the hop is scope `turn`; the `promoted: true` notice is scope `session`); v3 `model_fallback` kind (declared by `modelFallbackReporting`); Codex `model/rerouted` (scope `turn`, trigger `other`) |
-| Reported cost and context | `token-usage.updated` `reportedCost { amount, unit, scope }` (never converted) and `contextPercent` | v3 `turn_completion` (credits, scope `turn`), `session_usage` (scope `session`), `context_usage`; v2 `_kiro.dev/metadata` `contextUsagePercentage`; core ACP `usage_update.cost` (scope `session`, unit = its `currency`); Grok `turn_completed` (USD, scope `turn`) |
+| Engine MCP status | `engine-mcp.status` event: `servers[]` with `starting \| ready \| failed \| needs-auth \| disabled \| configured`, and `complete`; `configured` means the engine's configuration enables the server and the engine reports no connection state | `_kiro.dev/mcp/server_initialized\|server_init_failure` (partial), `_kiro/mcp/status` (full; `failedAuthorization` reads `needs-auth`, `_meta.kiro.resource.source.origin: client` reads scope `session`); Codex `mcpServer/startupStatus/updated` (partial); Grok `_x.ai/mcp/server_status` (partial); Muse `muse mcp list --json` at session start (full, scope `engine-config`, enabled servers `configured`) |
+| Model reroute | `model.rerouted` event: `fromModel`, `toModel?`, `trigger`, `scope`, `childWorkId?` | v2 `_kiro.dev/session/update` `model_fallback` (the hop is scope `turn`; the `promoted: true` notice is scope `session`); v3 `model_fallback` kind (declared by `modelFallbackReporting`); Codex `model/rerouted` (scope `turn`, trigger `other`); Muse `session/modelChanged` with `source: policy` (scope `session`) |
+| Reported cost and context | `token-usage.updated` `reportedCost { amount, unit, scope }` (never converted) and `contextPercent` | v3 `turn_completion` (credits, scope `turn`), `session_usage` (scope `session`), `context_usage`; v2 `_kiro.dev/metadata` `contextUsagePercentage`; core ACP `usage_update.cost` (scope `session`, unit = its `currency`); Grok `turn_completed` (USD, scope `turn`); Muse `session/tokenUsage.cumulative.cost` (scope `session`, USD, only when not `partial`) |
 | Child work | `child-work.updated` (subagents, background commands, monitors); a session whose engine reports none states `not-reported` once at start | Grok's subagent, background-task and monitor frames; see [Grok Build extensions](#grok-build-extensions) |
 | Engine-opened turns | `turn.started` / its terminal with `metadata.trigger: 'provider'` (`PROVIDER_TURN_TRIGGER`) | Grok's wake prompts (`_x.ai/queue/changed` `runningPromptId`, ended by `turn_completed`) |
 | Engine commands | `@kontourai/station-contracts/engine-commands` routes | see [agent extension bindings](../decisions/agent-extension-bindings.md) |
 | Managed runtime | built-in descriptor `managedRuntime { installId, argv }`, with exactly one `{script}` argument; plugin entries carrying one are refused. The entry's command is `station-managed:<installId>`; `ACPProcess` resolves it at launch to the installed runtime and the argv (refusing extra arguments, and failing before spawn when not installed). Descriptor lookups key it by install id, never by the runtime's executable name. Installs: [`services/engines/managed-install.ts`](../../src-server/services/engines/managed-install.ts) | the Kiro agent-service bundle (`kiro-kas-bundle`, install `kiro-kas` 0.66.104) |
 | Declared features | `declaredHandshake.engineVariant`, `declaredFeatures`, `logChannels` (names only; paths stay server-side) | `agentCapabilities._meta.kiro` |
-| Effort | `modelOptions.effort`, applied through a `thought_level` config option the session advertises (or Kiro's `effortLevel` id), and read back. A session without one refuses `effort`, at start or for the turn, and never drops it | none on 2.35 or 3.3.0 with model `auto`; see below |
+| Effort | `modelOptions.effort`, applied through a `thought_level` config option the session advertises (or Kiro's `effortLevel` id), and read back. A session without one refuses `effort`, at start or for the turn, and never drops it. The connection catalog offers that option's values, with the engine's names, as each model's effort levels (`supportsEffort`, `supportedEffortLevels`, `effortLabels`); an engine with no such option offers no effort field | none on 2.35 or 3.3.0 with model `auto`; see below |
 
 How the events behave:
 
@@ -849,6 +867,81 @@ shown as a transcript notice in the chat.
 | `_kiro/memory/create\|update\|delete\|import\|export\|sync` | Station's knowledge stores stay authoritative (ADR 0009); `list` and `get` are read-only and engine-attributed. |
 | `_kiro/session/rename` | No consumer. |
 
+### Google Antigravity
+
+The built-in `antigravity` entry runs `agy acp --process-per-session`, the
+ACP server inside Google's Antigravity CLI ([Google's ACP
+guide](https://antigravity.google/docs/cli/acp)). It replaced
+`agy_acp_server.par`, Google's earlier editor download; a saved connection
+keeps its own command. Evidence is a live run of CLI 1.5.8 on 2026-11-13,
+recorded in
+[`antigravity-1.5.8-session-frames.jsonl`](../../src-server/services/acp/__tests__/fixtures/antigravity-1.5.8-session-frames.jsonl)
+and the scripted profile
+[`antigravity-1.5.8.json`](../../src-server/providers/__tests__/fixtures/acp-scripted-profiles/antigravity-1.5.8.json).
+
+- **Detection and version.** Station looks for `agy` on `PATH`. `agy acp`
+  first shipped in CLI 1.5.0; 1.4.4 has no such command and answers nothing
+  ([recorded](../../src-server/services/acp/__tests__/fixtures/antigravity-1.4.4-acp-help.txt)),
+  so the entry's `minimumVersion` (`agy --version`, 1.5.0) names an older
+  install and says to run `agy update`. The CLI also updates itself when it
+  runs interactively.
+- **Sign-in.** Signed out, `session/new` answers ACP `auth_required`
+  (`-32000 Authentication required`), which Station records as a sign-in
+  refusal. `agy models` is the status command: signed out it exits 1 with
+  "Please sign in to view available models"; signed in it exits 0. The
+  engine lists `oauth-personal` and `oauth-business`, which open a browser
+  on the computer Station runs on, so they suit a Station on your own
+  computer; `terminal-login` (offered because the sign-in process announces
+  `auth.terminal`), which Station runs as `agy acp --process-per-session
+  --login` in a terminal and which prints a link and takes the pasted code,
+  so it works for a remote Station; `gemini-api-key`, which reads the
+  `GEMINI_API_KEY` stored for the connection; and `agent-platform`, which
+  reads Google Cloud credentials from the host. The CLI's own sign-in is
+  shared with `agy acp`.
+- **Station's tools.** Without `--process-per-session` the engine declares no
+  `mcpCapabilities`, and Station's HTTP tool servers are skipped. With it, it
+  declares `http` and called a client HTTP MCP server with its headers.
+- **Questions** arrive as core `elicitation/create` forms (a `oneOf` choice
+  and a free-text `q1_other`) because Station announces `elicitation`.
+  Without it the engine prints the question as text and takes the next
+  prompt as the answer.
+- **Modes** (`default`, `accept-edits`, `auto`, `plan`), the `model` option,
+  `thought_level` (offered as the effort picker), `available_commands_update`,
+  `usage_update` (context), the prompt answer's per-turn `usage`, images,
+  cancel, `session/resume` (whose answer re-advertises modes and options)
+  and `session/load` are core ACP and take the generic paths above. Its permission requests use string
+  ids, which the SDK answers as sent.
+- **Steering** is a mid-turn prompt (`prompt-handoff`, above; capture
+  `mid-turn-steer`). Station's composer queues follow-ups for ACP engines,
+  so the hand-off runs through Station's steer command. While the engine
+  waits for an approval or question answer it refuses a new prompt, and the
+  refusal would end the turn, so the adapter refuses that steer before
+  sending anything and the turn and its request stay open. A direct steer
+  call receives the refusal; a durable steer (one with a `clientInputId`)
+  is recorded as unconfirmed, as orchestration records any steer an engine
+  refuses.
+- **In an open chat**, Station's composer does not send a changed mode, and
+  the effort picker is fixed after the chat starts. Both are Station limits
+  for every ACP engine; a new chat applies its chosen mode and effort.
+
+#### Antigravity features Station does not support
+
+| Feature | Why not |
+|---|---|
+| Managed install of the CLI | Google publishes it with its own installer and self-updater, and its release manifest is a moving "latest" document, so there is no versioned manifest for a reviewed pin. Station shows Google's install command instead. |
+| `_meta.antigravity.systemPrompt.append` on `session/new` | Station delivers an agent's instructions in the first turn for every engine; appending them to the engine's system prompt as well would send them twice. |
+| `_meta.antigravity.tier` (`session/new` names the account's plan) | No consumer; it describes the Google account, not the session. |
+| Subagents (`invoke_subagent`) as child work | The tool call carries the role and prompt but no child session id, and the child finishes inside the parent's turn, so the tool card already shows all there is. |
+| Rewind and fork | The engine declares neither. |
+| Effort levels that differ by model | The connection catalog offers the probe session's `thought_level` values on every model; a model with other levels refuses one it lacks when the turn applies it. |
+| Text and data file attachments | The engine declares `embeddedContext` and answered from text sent as `resource` blocks (capture `embedded-resource`). Station offers file input per adapter, not per engine, so every ACP engine refuses files today; offering them needs a per-connection gate in the composer and in orchestration. Images work. |
+| Signing out (`auth.logout`) | Station has no sign-out for any ACP engine. Run `agy`, then `/logout`, on the computer Station runs on. |
+| Usage limits and cost | ACP carries no quota or cost; Google's quota service is not a published contract. |
+| Engine-suggested titles (`session_info_update.title`) | Station has no event that carries an engine's title. Whether it may replace a Station-generated title, re-title itself, or title a continuation's root conversation is an open product decision. |
+| Text arriving after a turn's answer | 1.5.8 can send the last text chunk of a turn after answering its prompt. It has no message id to tell turns apart, so that chunk joins the next turn's reply. |
+| `/goal`, `/schedule`, `/swarm` and other engine commands | Offered as the engine lists them and sent as prompt text; their background work is the engine's own and is not tracked by Station. |
+| The older `agy_acp_server.par` | Superseded by `agy acp`. Add it as a custom engine if you still need it. |
+
 ### Grok Build extensions
 
 Grok Build (`grok agent stdio`, connection `grok-build`) sends no `agentInfo`
@@ -927,7 +1020,7 @@ be `declared` without any other engine reading "nothing running".
 | `_meta.yoloMode`, `_meta.autoMode` on `session/new`; the `/always-approve` command | They let the engine approve calls without asking, bypassing Station's `requestPermission` policy. |
 | `x.ai/feedback`, `x.ai/telemetry/*` | Telemetry to xAI; no Station consumer. |
 | A context reading | Grok reports no context occupancy for the session; deriving one from `totalTokens` and a model's `totalContextTokens` would be Station's claim, not the engine's. |
-| Token counts (`turn_completed.usage` `inputTokens`, `outputTokens`, ...) | Usage scope is declared per provider (`usage-semantics.ts`), and `acp` is context-occupancy-only for every engine it runs. Declaring `acp` per-turn would be a claim about every other ACP engine. |
+| Token counts (`turn_completed.usage` `inputTokens`, `outputTokens`, ...) | Station publishes ACP token totals only from the prompt answer's `usage`, and only for engines recorded reporting per-turn figures there (`ACP_PER_TURN_PROMPT_USAGE_ENGINES`). Grok states its counts in `turn_completed` instead, which has no recorded mapping to a turn's totals yet. |
 | Subagent nesting | A subagent's own subagents stream on the child's session, which the adapter drops, so Station cannot tell a child from a grandchild. Child work carries no depth. |
 | Grok's own prompt queue (`_x.ai/queue/changed` `entries`) | Station queues its own sends; only the running prompt is read, to find wake turns. |
 
@@ -1001,6 +1094,44 @@ OpenCode runs some code without any permission request, so no approval mode reac
 - **Approved commands.** A shell command a person allows can change anything, OpenCode configuration included.
 
 The `build`/`plan` agents are overridden in place rather than given approval copies selected through `session/set_config_option`: OpenCode attaches plan behaviour to the agent named `plan` (its plan-mode reminder, and `plan_exit` switching to the agent named `build`), so a renamed copy would lose plan mode.
+
+#### OpenCode 2 and OpenCode 1
+
+Everything above about how OpenCode is governed over ACP was checked against
+OpenCode 1.18.18 (npm `opencode-ai`). OpenCode 2.x behaves differently, and
+Station reads the binary's `--version` to tell the two apart
+([version probe](../../src-server/providers/adapters/opencode-version-probe.ts)).
+
+- **Approval rules.** Station's check reads 1.x's `opencode debug agent <name>`.
+  2.x has no such subcommand: it exits 1 with "Unknown subcommand", which is the
+  failure reported in #4435. 2.x's `debug agents` (plural) lists each agent's
+  configured rules but not the approvals the person saved. Over ACP, Station
+  therefore does not govern 2.x (ruling R1). A start or takeover that asks for a
+  Station approval mode on 2.x is refused with `acp_approval_governance_refused`,
+  and the reason names the version. Without a Station mode, OpenCode's own
+  approvals apply as before. No launch overlay is built for 2.x.
+- **Steering.** 2.x's `initialize` declares `_meta.steering.supported`, and
+  Station steers it through `_session/steering`
+  ([steer channels](../../src-server/providers/adapters/acp-steer.ts)). 1.x
+  declares nothing and keeps cancel and re-prompt.
+- **Native engine.** With the `opencode-native-engine` Feature Preview on, new
+  chats on an OpenCode connection run on the `opencode` engine. It drives 2.x
+  over its own `opencode serve`, where Station verified the served API, and
+  governs it through the session's permission rules. An edit of OpenCode's
+  own configuration asks you there under Ask and Auto, even after an
+  "allow for this session". Under Ask and Auto, OpenCode's own tool for moving
+  the chat to another folder is turned off, because OpenCode loads the new
+  folder's plugins as it moves; a chat moved there anyway, into a folder whose
+  OpenCode configuration runs code, is stopped with a warning. A chat started
+  as an Agent runs there too: Station's tool policy for the Agent is checked
+  on each permission OpenCode asks for, as over ACP. That path does not
+  need `debug agent`, so it is where #4435 is resolved. 1.x, an unverified 2.x,
+  and every chat while the preview is off still run over ACP. A 2.x chat that
+  falls back to ACP gets the refusal above (ruling R1) for any Station approval
+  mode, Ask and Auto included; without one, OpenCode's own approvals apply. The design,
+  fallback rules and limits are in
+  [the OpenCode native transport decision](../decisions/opencode-native-transport.md).
+  #4435 stays open until this ships.
 
 **Every other ACP engine (`engine`).** Station has no channel into its permission rules. It answers the requests the engine chooses to send, but it cannot make the engine ask for others. Such a connection gets no approval mode: the server sends none, a `setApprovalMode` is refused with "This engine has no approval control.", a carried `approvalMode` is refused as an unsupported option, and the composer's approval control reads "Set by engine" and explains that the engine decides. An engine whose own modes are approval levels (claude-code-acp advertises `default`, `acceptEdits`, `plan`, `auto` and, when allowed, `bypassPermissions`) is changed through its Mode picker; Station does not map those modes onto its own, and a full-access mode is withheld outside a `host` session (#2569).
 
@@ -1180,6 +1311,7 @@ and any a plugin contributes. Besides the launch fields above, an entry
 | `platforms` | The host platforms the entry launches on; absent means all. Elsewhere it is reported as not detected and `POST /acp/registry/:id/install` refuses it. |
 | `auth` | Sign-in, matched like `launchEnv` and read from built-in entries only. `statusCommand` (argv) runs only with a `statusRule` (`signedInJsonField`, `signedOutText`, `signedOutExitCodes`, `signedInText`, `exitZeroMeansSignedIn`); anything the rule does not name reads as unknown. `signInHint`; `credentialEnvVars`, the variables whose values a person may store for a connection; `hiddenAuthMethodIds`, advertised methods Station does not offer; `subscriptionTermsNotices` (`provider`, https `termsUrl`, optional `authMethodIds`). See [Sign an engine in](connections.md#sign-an-engine-in). |
 | `homepageUrl` | An https link to the engine's docs. Data only; nothing renders it yet. |
+| `minimumVersion` | Built-in entries only. `versionCommand` (argv) prints the installed version, `minimum` is the oldest working `major.minor.patch`, and `updateHint` says how to update. Read only after a check of the engine fails for a reason other than sign-in: the command runs bounded like a status command, and a version below `minimum` makes the failure `engine-update-required` with Station's own sentence naming both versions and the hint. A failed run or output without a version leaves it unnamed. |
 | `managedRuntime` | Built-in entries only. `installId` names a pinned install Station downloads with consent and verifies from its manifest digest (`@kontourai/station-contracts/managed-engine-install`); `argv` are the runtime's arguments, exactly one of them `{script}`, the install's entry script. |
 
 `validateACPEngineDescriptor` checks these fields and the entry's `name`,
@@ -1193,7 +1325,7 @@ without an engine-scoped prefix (so `NODE_OPTIONS`, `LD_PRELOAD`, `PATH` or a
 proxy variable is refused), or one that looks like a credential (a `KEY`,
 `TOKEN`, `SECRET`, `PASSWORD`, `AUTH` or `SESSION` segment, or a name the entry
 lists as a credential variable). A plugin entry is also refused when it
-carries `launchEnv` or `managedRuntime`, reuses a built-in entry's id, or has a name that reads as
+carries `launchEnv`, `managedRuntime` or `minimumVersion`, reuses a built-in entry's id, or has a name that reads as
 a built-in's (compared after NFKC, case-folding and mapping common Cyrillic and
 Greek look-alikes), and every entry from a plugin provider registered as
 "Station", "Kontour" or a built-in engine's name is refused; the built-in card
@@ -1363,7 +1495,7 @@ If the binary is installed but not on the server's PATH, use an absolute path in
 
 ### Probe does not establish availability
 
-The reason shown in Station (`lastError.message`) is written for people: it names the engine, says a time-out as the wait that ran out ("didn't answer within a minute"), and says a command that cannot be found or run, including one with its arguments typed into the command, in words. The raw error is in the server log. Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Common causes:
+The reason shown in Station (`lastError.message`) is written for people: it names the engine, says a time-out as the wait that ran out ("didn't answer within a minute"), and says a command that cannot be found or run, including one with its arguments typed into the command, in words. The raw error is in the server log. An engine whose built-in entry sets a `minimumVersion` and whose installed version is older says so instead (`lastError.code` `engine-update-required`), with the update step. Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Common causes:
 
 - The subprocess exits immediately — run the command manually to see its output
 - The runtime doesn't speak ACP ndjson on stdio — verify it implements the ACP SDK server side

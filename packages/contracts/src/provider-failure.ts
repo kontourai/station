@@ -45,7 +45,11 @@ import {
   MUSE_APPROVAL_MODE_NOT_APPLIED_CODE,
   MUSE_HELD_TURN_UNFINISHED_CODE,
   MUSE_LINGERING_CHILD_REAPED_CODE,
+  MUSE_MODEL_RETRY_SCHEDULED_CODE,
+  MUSE_MODEL_ROUTE_UNSERVED_CODE,
+  MUSE_SANDBOX_UNAVAILABLE_CODE,
   MUSE_SERVE_HOST_EXITED_CODE,
+  MUSE_SERVE_SCHEMA_UNVERIFIED_COMPATIBLE_CODE,
   MUSE_SERVE_STOP_UNCONFIRMED_CODE,
   MUSE_SERVE_UNAVAILABLE_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
@@ -185,6 +189,9 @@ export const PROVIDER_FAILURE_KINDS = {
   'muse-exit-without-terminal': 'engine_crashed',
   'muse-spawn-failed': 'unavailable',
   'muse-terminal-not-completed': 'provider_error',
+  // Station's own OpenCode server client refused a route it never calls
+  // (credential, auth, config writes): a retry cannot reach it.
+  opencode_serve_denied_path: 'permission_denied',
   [CONFINEMENT_REFUSAL_CODES[0]]: 'permission_denied',
   [CONFINEMENT_REFUSAL_CODES[1]]: 'permission_denied',
   [CONFINEMENT_REFUSAL_CODES[2]]: 'permission_denied',
@@ -229,6 +236,10 @@ export const PROVIDER_FAILURE_KINDS = {
   [MUSE_APPROVAL_DECIDE_FAILED_CODE]: 'warning',
   [MUSE_SERVE_UNAVAILABLE_CODE]: 'warning',
   [MUSE_APPROVAL_MODE_NOT_APPLIED_CODE]: 'warning',
+  [MUSE_MODEL_RETRY_SCHEDULED_CODE]: 'warning',
+  [MUSE_MODEL_ROUTE_UNSERVED_CODE]: 'warning',
+  [MUSE_SANDBOX_UNAVAILABLE_CODE]: 'warning',
+  [MUSE_SERVE_SCHEMA_UNVERIFIED_COMPATIBLE_CODE]: 'warning',
   [ACP_APPROVAL_TAKEOVER_FAILED_CODE]: 'warning',
   [ACP_APPROVAL_GOVERNANCE_REFUSED_CODE]: 'permission_denied',
   // #4519: remote access the machine's managed policy forbids.

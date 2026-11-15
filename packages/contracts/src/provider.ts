@@ -665,6 +665,31 @@ export function readApprovalMode(
 export const PROVIDER_ACP = 'acp';
 export const PROVIDER_OLLAMA = 'ollama';
 export const PROVIDER_MUSE = 'muse';
+/**
+ * OpenCode as its own engine: it runs saved ACP connection records, over
+ * OpenCode 2's own server where verified and over ACP otherwise
+ * (`opencode-adapter.ts`). New chats get it only while the
+ * `opencode-native-engine` Feature Preview is on; a chat keeps the provider
+ * it started with.
+ */
+export const PROVIDER_OPENCODE = 'opencode';
+
+/**
+ * Engines that run saved ACP connection records: `acp` itself, and an
+ * engine that drives some of those records its own way (`opencode`). Read it
+ * where a behaviour belongs to the ACP connection a session runs on (its
+ * folder, its approval control, its agent scoping), never to tell the
+ * engines apart.
+ */
+export const ACP_FAMILY_ENGINE_IDS: readonly string[] = [
+  PROVIDER_ACP,
+  PROVIDER_OPENCODE,
+];
+
+/** Whether `engine` runs saved ACP connection records ({@link ACP_FAMILY_ENGINE_IDS}). */
+export function isAcpFamilyEngine(engine: string | undefined | null): boolean {
+  return typeof engine === 'string' && ACP_FAMILY_ENGINE_IDS.includes(engine);
+}
 
 /**
  * archive#978 — the per-provider `modelOptions` keys each adapter actually
@@ -728,6 +753,12 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
       'serviceTier',
     ],
     [PROVIDER_ACP]: ['mode', 'effort'],
+    // `opencode-adapter.ts` reads `approvalMode` (OpenCode's approval rules
+    // are always Station's to set) and `mode` (the OpenCode agent), and over
+    // ACP hands `effort` to the inner ACP adapter, which applies it as above.
+    // A session with `effort` runs over ACP rather than natively, where it
+    // could not be honoured (`OPENCODE_NATIVE_UNSUPPORTED_SETTING`).
+    [PROVIDER_OPENCODE]: ['approvalMode', 'mode', 'effort'],
     [PROVIDER_OLLAMA]: [],
     [PROVIDER_BEDROCK]: [],
     // #2452: `muse-adapter.ts` reads `approvalMode` (`readApprovalMode`) at
@@ -735,9 +766,14 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
     // (`museServeApprovalPlan`: MSP approval mode + host sandbox posture). A
     // session on the `muse exec` fallback cannot: it runs `--approval-mode
     // never` in muse's sandbox, and reports `approvalMode: 'auto'` as what
-    // applied, beside a `muse-serve-unavailable` warning. Nothing else in
-    // `modelOptions` is read, so nothing else is listed.
-    [PROVIDER_MUSE]: ['approvalMode'],
+    // applied, beside a `muse-serve-unavailable` warning.
+    // `effort` is read by `readMuseReasoningEffort` at start and on every
+    // turn and sent as the turn's tier: `turn/start.reasoningEffort` on serve,
+    // `--reasoning-effort` on exec. Station's effort words are all Muse tiers
+    // (`none|minimal|low|medium|high|xhigh|max|ultra`), so it maps by
+    // identity; a value outside that set is refused, never coerced. Nothing
+    // else in `modelOptions` is read, so nothing else is listed.
+    [PROVIDER_MUSE]: ['approvalMode', 'effort'],
   };
 
 /**
@@ -1050,7 +1086,8 @@ export const MUSE_APPROVAL_DECIDE_FAILED_CODE = 'muse-approval-decide-failed';
 /**
  * #2452: `runtime.warning` code for a Muse session that runs on the `muse
  * exec` fallback because `muse serve` could not be used (no such subcommand,
- * a failed handshake, or a protocol schema this Station has not verified).
+ * a failed handshake, or a protocol schema that is neither verified nor
+ * shown, by the binary's own schema export, to declare what Station uses).
  * On that path no approval can reach Station: tools run under `--approval-mode
  * never`, whatever approval mode was requested.
  */
@@ -1078,6 +1115,40 @@ export const MUSE_SERVE_HOST_EXITED_CODE = 'muse-serve-host-exited';
  * owned-process registry so the next startup's sweep can reap it.
  */
 export const MUSE_SERVE_STOP_UNCONFIRMED_CODE = 'muse-serve-stop-unconfirmed';
+
+/**
+ * `runtime.warning` code for a `muse serve` turn whose model call muse is
+ * retrying (`turn/retryScheduled`, `turn/modelRetryScheduled`): the attempt
+ * failed and muse scheduled another. The turn is still running; this is
+ * not its outcome. `details` carries the attempt numbers and the delay.
+ */
+export const MUSE_MODEL_RETRY_SCHEDULED_CODE = 'muse-model-retry-scheduled';
+
+/**
+ * `runtime.warning` code for a `muse serve` session whose standing model the
+ * provider muse now uses cannot serve (`session/modelRouteUnserved`). Muse
+ * keeps the selection; turns on it fail until another model is chosen.
+ */
+export const MUSE_MODEL_ROUTE_UNSERVED_CODE = 'muse-model-route-unserved';
+
+/**
+ * `runtime.warning` code for a `muse serve` session on a host that reports it
+ * cannot enforce its sandbox (`initialize.sandboxAvailability:
+ * 'unavailable'`). Postures that rely on that sandbox run tools uncontained;
+ * `details.reason` is muse's own reason when it sent one.
+ */
+export const MUSE_SANDBOX_UNAVAILABLE_CODE = 'muse-sandbox-unavailable';
+
+/**
+ * `runtime.warning` code, once per session, for a `muse serve` host whose MSP
+ * stable-schema fingerprint is not one Station was verified against, but
+ * whose own exported schema still declares every method, notification and
+ * member Station uses, so the session runs on serve. `details.fingerprint`
+ * names the schema and `details.museVersion` the host's version. Structure
+ * is checked, meaning is not.
+ */
+export const MUSE_SERVE_SCHEMA_UNVERIFIED_COMPATIBLE_CODE =
+  'muse-serve-schema-unverified-compatible';
 
 /**
  * #2324: refusal code for a send that arrived while the engine is running a

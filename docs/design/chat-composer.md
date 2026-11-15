@@ -968,7 +968,8 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 - Station-managed chats may switch Model Providers. Externally managed agent
   chats remain bound to their engine so resume semantics stay intact.
 - An ACP engine applies a model only when its session starts, so Model stays
-  closed on an ACP conversation that has run a turn. In the chat dock, a
+  closed on an ACP conversation that has run a turn. The same holds for a chat
+  on the `opencode` engine, on either of its transports (`isAcpFamilyEngine`). In the chat dock, a
   conversation that has never run one (a Draft, or one whose only sends were
   refused or failed) keeps Model open. The next send starts a successor session with the chosen
   model, and there is no engine history to carry over. The session list that
@@ -991,7 +992,9 @@ uses explicit Queue and Steer labels. Stop stays visible throughout the turn. It
 picker defaults to **Steer** where the selected engine can prove native mid-turn
 input, and to **Queue** (a new turn after the entire current turn finishes)
 everywhere else, including safe-stop steering. A chosen mode holds until the
-conversation changes. Claude Code and Codex have additive steering.
+conversation changes. Claude Code, Codex and Muse on `muse serve` have additive
+steering; a Muse Session on the `muse exec` fallback reports no steering in
+its Session summary, so it defaults to **Queue**, and refuses a steer.
 ACP's capability matrix also includes cancel-and-reprompt, which is not proof
 of native steering for the current session.
 After a device's full access is revoked, a turn that started unconfined is not

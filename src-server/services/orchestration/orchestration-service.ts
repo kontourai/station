@@ -26,7 +26,10 @@ import {
   type AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
 import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
-import { projectDelegateChildWork } from '@kontourai/station-contracts/child-work';
+import {
+  type ChildWorkItem,
+  projectDelegateChildWork,
+} from '@kontourai/station-contracts/child-work';
 import type {
   ClientOrigin,
   ClientOriginActor,
@@ -97,6 +100,7 @@ import {
   CLIENT_TURN_IN_FLIGHT_CODE,
   DELEGATION_PROVENANCE_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  isAcpFamilyEngine,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
   MUSE_TURN_SLOT_RELEASING_CODE,
@@ -2131,7 +2135,8 @@ async function resolveStartSessionCwd(
     // `default` project (no workingDirectory) and unbound chats both land
     // here; the resolver's product-side follow-ups in archive#1023 still apply.
     //
-    // ACP is still excluded here, for the same reason as before: its adapter
+    // ACP (and OpenCode, which runs saved ACP connections the same way:
+    // `isAcpFamilyEngine`) is still excluded here, for the same reason as before: its adapter
     // carries a connection-level fallback (`config.cwd`) that only the
     // adapter can see, and defaulting unconditionally here would permanently
     // shadow it. Since archive#1403, the adapter ends that chain in a private,
@@ -2142,7 +2147,11 @@ async function resolveStartSessionCwd(
     // own rather than the whole home folder, unless this Station opted out
     // (`AppConfig.noProjectChatFolder: 'home'`) or the conversation already
     // ran somewhere (the callback returns that folder).
-    if (!projectSlug && input.provider !== 'acp' && noProjectChatFolder) {
+    if (
+      !projectSlug &&
+      !isAcpFamilyEngine(input.provider) &&
+      noProjectChatFolder
+    ) {
       const folder = await noProjectChatFolder();
       if (folder) {
         sessionCwdResolution.add(1, {
@@ -2154,7 +2163,9 @@ async function resolveStartSessionCwd(
         return { ...input, cwd: folder, cwdDefaulted: true };
       }
     }
-    const home = input.provider === 'acp' ? undefined : safeHomeDirectory();
+    const home = isAcpFamilyEngine(input.provider)
+      ? undefined
+      : safeHomeDirectory();
     if (home) {
       sessionCwdResolution.add(1, {
         provider: input.provider,
@@ -2169,11 +2180,10 @@ async function resolveStartSessionCwd(
     sessionCwdResolution.add(1, {
       provider: input.provider,
       source: 'none',
-      outcome: input.provider === 'acp' ? 'deferred' : 'inherited',
-      reason:
-        input.provider === 'acp'
-          ? 'acp_connection_default'
-          : 'home_unavailable',
+      outcome: isAcpFamilyEngine(input.provider) ? 'deferred' : 'inherited',
+      reason: isAcpFamilyEngine(input.provider)
+        ? 'acp_connection_default'
+        : 'home_unavailable',
     });
     // archive#1174: still no real project/user cwd, even though this
     // degenerate-host/ACP branch leaves `cwd` itself untouched.
@@ -4338,6 +4348,9 @@ export class OrchestrationService {
       });
       startInput = await this.resolveSessionAgentForStart(startInput);
       throwIfAborted(startInput.signal);
+      // #4435: before the start boundary, so a governance refusal is
+      // definitive rather than a start that may have happened.
+      await adapter.preflightStart?.(startInput);
       const admissionLease = await admitEngineStartForIntent(
         this.options.resourcePosture,
         this.options.logger,
@@ -4870,6 +4883,8 @@ export class OrchestrationService {
       this.options.adapterRegistry
         .list()
         .filter((adapter) => adapter.provider !== 'station-agent')
+        // An adapter behind an off Feature Preview is not inventory.
+        .filter((adapter) => adapter.listedInProviderInventory?.() !== false)
         .map(async (adapter) => {
           const [sessions, prerequisites] = await Promise.all([
             adapter.listSessions(),
@@ -5811,14 +5826,37 @@ export class OrchestrationService {
     );
   }
 
+  /**
+   * The engine's durability profile; with `threadId`, that session's. A
+   * session its adapter says cannot steer (`canSteerTurn`, e.g. Muse on the
+   * `muse exec` fallback) reports no steering, so a client composer offers
+   * queueing instead of a steer that `steerTurn` would refuse.
+   */
   readonly durabilityProfileForProvider = (
     provider: string | undefined,
-  ): ProviderDurabilityProfile | undefined =>
-    readProviderDurabilityProfile(
+    threadId?: string,
+  ): ProviderDurabilityProfile | undefined => {
+    const adapter =
       provider === undefined
         ? undefined
-        : this.options.adapterRegistry.get(provider)?.metadata,
-    );
+        : this.options.adapterRegistry.get(provider);
+    const profile = readProviderDurabilityProfile(adapter?.metadata);
+    if (
+      !profile ||
+      threadId === undefined ||
+      profile.steerPlacement.state === 'none' ||
+      adapter?.canSteerTurn?.(threadId) !== false
+    )
+      return profile;
+    return {
+      ...profile,
+      steerPlacement: {
+        state: 'none',
+        detail:
+          'This session has no live input channel; additional input waits for the next turn.',
+      },
+    };
+  };
 
   recordPostToolSteer(input: {
     threadId: string;
@@ -10909,7 +10947,28 @@ export class OrchestrationService {
               .listEventsByMethods(command.threadId, ACTIVE_TURN_FOLD_METHODS)
               .map((stored) => stored.payload),
           );
-          if (!parentTurnId || this.isDormantSessionThread(command.threadId)) {
+          const dormant = this.isDormantSessionThread(command.threadId);
+          // With no running parent turn, only a child its adapter declares
+          // outlives that turn, and that the projection still holds running
+          // under this steer token, is steerable.
+          let earlyAdapter: ProviderAdapterShape | undefined;
+          let outlivingChild: ChildWorkItem | undefined;
+          if (!parentTurnId && !dormant) {
+            try {
+              earlyAdapter = await resolveOrchestrationAdapterForThread({
+                threadId: command.threadId,
+                threadProviders: this.threadProviders,
+                requireAdapter: (provider) => this.requireAdapter(provider),
+                adapters: this.options.adapterRegistry.list(),
+              });
+            } catch {
+              earlyAdapter = undefined;
+            }
+            outlivingChild =
+              earlyAdapter &&
+              this.outlivingSteerableChild(earlyAdapter, command);
+          }
+          if ((!parentTurnId && !outlivingChild) || dormant) {
             this.persistReceipt(receipt);
             return {
               receipt,
@@ -10919,7 +10978,13 @@ export class OrchestrationService {
               } as SteerChildWorkResult,
             };
           }
-          if (this.ranUnconfinedNowConfined(command.threadId, parentTurnId)) {
+          // The turn whose confinement the child runs under: the running
+          // parent turn, else the turn that launched the outliving child.
+          const confinementTurnId =
+            parentTurnId ?? outlivingChild?.parent?.turnId;
+          if (
+            this.ranUnconfinedNowConfined(command.threadId, confinementTurnId)
+          ) {
             this.persistReceipt(receipt);
             return {
               receipt,
@@ -10929,12 +10994,14 @@ export class OrchestrationService {
               } as SteerChildWorkResult,
             };
           }
-          const adapter = await resolveOrchestrationAdapterForThread({
-            threadId: command.threadId,
-            threadProviders: this.threadProviders,
-            requireAdapter: (provider) => this.requireAdapter(provider),
-            adapters: this.options.adapterRegistry.list(),
-          });
+          const adapter =
+            earlyAdapter ??
+            (await resolveOrchestrationAdapterForThread({
+              threadId: command.threadId,
+              threadProviders: this.threadProviders,
+              requireAdapter: (provider) => this.requireAdapter(provider),
+              adapters: this.options.adapterRegistry.list(),
+            }));
           this.assertAdapterCurrent(adapter);
           if (!adapter.steerChildWork) {
             this.persistReceipt(receipt);
@@ -10953,7 +11020,7 @@ export class OrchestrationService {
               context.userId,
               context.tenantExecutionContext,
             ) ||
-            this.ranUnconfinedNowConfined(command.threadId, parentTurnId)
+            this.ranUnconfinedNowConfined(command.threadId, confinementTurnId)
           ) {
             this.persistReceipt(receipt);
             return {
@@ -11002,15 +11069,20 @@ export class OrchestrationService {
                 context.userId,
                 context.tenantExecutionContext,
               ) ||
-              this.ranUnconfinedNowConfined(command.threadId, parentTurnId) ||
-              activeTurnIdForEvents(
-                store
-                  .listEventsByMethods(
-                    command.threadId,
-                    ACTIVE_TURN_FOLD_METHODS,
-                  )
-                  .map((stored) => stored.payload),
-              ) !== parentTurnId
+              this.ranUnconfinedNowConfined(
+                command.threadId,
+                confinementTurnId,
+              ) ||
+              (parentTurnId
+                ? activeTurnIdForEvents(
+                    store
+                      .listEventsByMethods(
+                        command.threadId,
+                        ACTIVE_TURN_FOLD_METHODS,
+                      )
+                      .map((stored) => stored.payload),
+                  ) !== parentTurnId
+                : !this.outlivingSteerableChild(adapter, command))
             ) {
               this.persistReceipt(receipt);
               return { receipt, result: uncertain };
@@ -11150,7 +11222,8 @@ export class OrchestrationService {
           if (
             !durability ||
             durability.steerPlacement.state === 'none' ||
-            !adapter.steerTurn
+            !adapter.steerTurn ||
+            adapter.canSteerTurn?.(command.threadId) === false
           ) {
             const result: SteerTurnResult = {
               outcome: 'unsupported-engine',
@@ -15068,6 +15141,28 @@ export class OrchestrationService {
    * recorded `never`, a grant given back) is not stale: the turn ran
    * stricter than what applies now.
    */
+  /**
+   * The running child a steer targets when no parent turn runs: only for an
+   * adapter that declares its children outlive that turn
+   * (`childSteerOutlivesParentTurn`), and only while the child-work
+   * projection holds the child running with this steer token.
+   */
+  private outlivingSteerableChild(
+    adapter: ProviderAdapterShape,
+    target: { threadId: string; childId: string; turnId: string },
+  ): ChildWorkItem | undefined {
+    if (adapter.childSteerOutlivesParentTurn !== true) return undefined;
+    const view = this.readChildWork(target.threadId, adapter.provider);
+    if (view?.observability !== 'reported') return undefined;
+    return view.running.find(
+      (item) =>
+        item.producer === 'engine-subagent' &&
+        item.childId === target.childId &&
+        item.status === 'running' &&
+        item.controls?.steer?.turnId === target.turnId,
+    );
+  }
+
   private ranUnconfinedNowConfined(threadId: string, turnId?: string): boolean {
     const accepted = this.acceptedTurnConfinement.get(threadId);
     const ran =

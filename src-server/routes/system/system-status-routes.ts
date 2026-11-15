@@ -19,6 +19,7 @@ import { resolveDeploymentCapabilities } from '../../capabilities/deployment-cap
 import {
   connectionIdForAdapter,
   engineIdForAdapter,
+  isAcpConnectionBacked,
 } from '../../providers/adapter-identity.js';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { checkBedrockCredentials } from '../../providers/llm/bedrock.js';
@@ -346,6 +347,9 @@ export async function resolveExternalEngineReadiness(
   const candidates = adapters.filter(
     (adapter) =>
       adapter.provider !== 'acp' &&
+      // An adapter that runs saved ACP connections (OpenCode) has no engine
+      // of its own to be ready; its connections are ACP's.
+      !isAcpConnectionBacked(adapter) &&
       engineIdForAdapter(adapter) !== 'station' &&
       adapter.metadata.capabilities.includes('agent-runtime') &&
       engineCanDeliverChat(adapter.provider),

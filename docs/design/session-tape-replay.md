@@ -158,7 +158,7 @@ the adapter mechanisms below do not by themselves establish the dock capability:
 
 Send-while-busy uses `sessionAdapterSupportsSteering`, not a connection
 `capabilities` string. The dock currently enables native steering for Claude
-Code and Codex, and holds Station-owned steering for an observed post-tool
+Code, Codex and Muse, and holds Station-owned steering for an observed post-tool
 boundary, otherwise a terminal. ACP uses a safe-waiting fallback because its
 capability matrix also admits interruptive cancel-and-reprompt. A steer fold appends a user row and
 **does not** reset `streamingMessage`. The event-log projection
@@ -180,14 +180,16 @@ Adapter mappings, same Station event:
 | Any ACP declaring a native method | The declared ACP extension **method** (`_session/steer` or `_x.ai/interject`) named in its `initialize` capability `_meta` `extensionMethods` list |
 | Kiro | ACP extension **method** `_session/steer` (additive; not a notification). Kiro does not declare it; matched on its handshake's `agentInfo.name` `Kiro CLI Agent` or its `_meta.kiro` capability namespace, never on the command |
 | Grok | ACP extension **method** `_x.ai/interject` (then `x.ai/interject`), undeclared; matched on the handshake's `_meta.grokShell` flag. `_x.ai/queue/changed` is the engine's prompt **queue**, host→agent interject is steer. |
+| Antigravity | A second core `session/prompt` on the same Station `turnId` (additive): the engine answers the running prompt with `end_turn` and carries the work on under the new one, so the turn settles on the new prompt (`prompt-handoff`). Matched on the handshake's `agentInfo.name` `Antigravity ACP Server`; recorded on CLI 1.5.8 and documented by Google. |
+| OpenCode 2.x over ACP | ACP extension **method** `_session/steering` `{sessionId, prompt}`, undeclared as a method; matched on `_meta.steering.supported === true` in the handshake's `initialize` result (OpenCode 1.x names itself the same and declares nothing, so it keeps the fallback). An answer `{outcome: "promptRequired"}` means no turn was running, and the steer fails with `ProviderTurnEndedError` |
+| OpenCode 2.x native (`opencode` engine) | `POST /api/session/{id}/prompt` with `delivery: 'steer'`, acknowledged by the engine's `session.inbox.delivered`; if the execution ends first, the inbox item is withdrawn and the steer fails with `ProviderTurnEndedError` |
 | Any other ACP | Cancel + re-prompt fallback: `session/cancel` + `session/prompt` on the same Station `turnId` (interruptive: it also cancels any tool the prompt was running). Also the fallback when the native method returns JSON-RPC -32601. Its steer `turn.started` carries `steerInterruptedRun: true`, and the steer row says it was sent by stopping the running step. |
-
-Muse can run one `muse serve` host per Session, with `muse exec` per-turn fallback where configured. Neither process mode establishes native mid-turn steering in the dock; supported input and control capabilities remain owned by the Muse adapter and capability matrix.
+| Muse | `muse serve` `turn/steer` `{ expectedTurnId }` (additive; #1952). A Session on the `muse exec` per-turn fallback has no live input channel and refuses a steer (`canSteerTurn`). |
 
 The pending-message section starts collapsed. Expanding it reveals each mode,
 status and its explicit Send now action. Send remains separate from Stop. The
-Send-mode picker defaults to native Steer for Claude Code and Codex, and to
-Queue elsewhere. Other engines hold steering until a supported safe boundary can be
+Send-mode picker defaults to native Steer for engines whose matrix declares
+native steering (Claude Code, Codex and Muse), and to Queue elsewhere. Other engines hold steering until a supported safe boundary can be
 proven, and currently wait for turn completion. Send now explicitly overrides
 that waiting, stopping immediately and sending after a settled receipt.
 

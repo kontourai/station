@@ -118,8 +118,10 @@ frames, scrubbed of host paths, ids and private names, are
   Grok's `turn_completed` ends a turn and states that turn's cost, so its row
   is `session.turn-boundary` with `also` `usage.reported-cost`. A row runs
   only when every consumer it names is implemented. Grok's token counts are
-  not published: usage scope is declared per provider, and `acp` stays
-  context-occupancy-only.
+  not published: `acp` token totals come only from the prompt answer's
+  `usage`, for engines recorded reporting per-turn figures there
+  (`ACP_PER_TURN_PROMPT_USAGE_ENGINES`), and `turn_completed` has no recorded
+  mapping to them.
 - **Engine-opened turns.** `session.turn-boundary` is implemented: a prompt
   the engine runs while no turn is open, and that Station never sent, opens a
   `PROVIDER_TURN_TRIGGER` turn. `_x.ai/session/prompt_complete` follows only

@@ -714,6 +714,130 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(JSON.stringify(catalog)).not.toContain('must-not-leak');
   });
 
+  // #2266: a Muse connection whose catalog is empty can still apply an
+  // explicit selector. Discovery reads that from the adapter's declared
+  // launch capability, carried on the connection view the real inspector
+  // builds over a real (serve) MuseAdapter whose `model/list` was empty.
+  test('a Muse target with an empty live catalog still offers model selection (#2266)', async () => {
+    const { MuseAdapter } = await import(
+      '../../providers/adapters/muse-adapter.js'
+    );
+    const { FakeMuseServeHost, loadMuseServeCapture } = await import(
+      '../../providers/__tests__/muse-serve-replay.js'
+    );
+    const { createConnectionInspector } = await import(
+      '../../services/connections/connection-inspector.js'
+    );
+    const { setProviderAdapterRegistrationProvenance } = await import(
+      '../../providers/adapter-shape.js'
+    );
+    const { engineConnectionId } = await import(
+      '@kontourai/station-contracts/agent-identity'
+    );
+    const initialize = loadMuseServeCapture('steer').find(
+      (frame) =>
+        frame.dir === 's2c' &&
+        (frame.msg.result as { schema?: unknown } | undefined)?.schema,
+    )!.msg.result;
+    const muse = new MuseAdapter({
+      serve: {
+        spawnHost: () => {
+          const host = new FakeMuseServeHost(['serve']);
+          void (async () => {
+            const consumed = new Set<unknown>();
+            for (const [method, result] of [
+              ['initialize', initialize],
+              [
+                'model/list',
+                {
+                  providerId: 'meta',
+                  profileId: null,
+                  source: 'bundledCatalog',
+                  models: [],
+                },
+              ],
+            ] as const) {
+              const request = await host.nextRequest(
+                method,
+                consumed as Set<never>,
+              );
+              consumed.add(request);
+              host.writeFrame({ jsonrpc: '2.0', id: request.id, result });
+            }
+          })().catch(() => {});
+          return { process: host };
+        },
+        terminateHost: async (spawned) => {
+          (spawned.process as InstanceType<typeof FakeMuseServeHost>).exit(0);
+        },
+      },
+      findBinary: () => '/usr/local/bin/muse',
+      runCommand: async () => ({ code: 0, stdout: 'muse 1.4.18', stderr: '' }),
+      credentialFileExists: () => true,
+      env: {},
+    });
+    setProviderAdapterRegistrationProvenance(muse, 'builtin');
+    const inspection = (await createConnectionInspector({
+      adapters: () => [muse],
+      appConfig: () => ({ agentConnections: {} }) as never,
+      acpConnections: () => [],
+      acpStatus: () => ({}),
+      publicConnection: (runtimeId) => ({
+        id: engineConnectionId('muse'),
+        engineId: runtimeId,
+      }),
+      now: () => Date.parse('2026-11-13T00:00:00.000Z'),
+    }).inspect({ kind: 'runtime-capability-inventory' })) as unknown as {
+      connections: Array<Record<string, unknown>>;
+    };
+    const view = inspection.connections[0]!;
+    expect(view.runtimeCatalog).toMatchObject({ source: 'live', models: [] });
+    expect(view.modelLaunch).toMatchObject({ overrideAtStart: true });
+
+    const discover = async (connection: Record<string, unknown>) => {
+      installRemoteStationFetch(
+        '/api/orchestration/delegations',
+        {},
+        { workingDirectory: '/srv/station' },
+      );
+      const original = fetchMock.getMockImplementation()!;
+      fetchMock.mockImplementation(async (input, init) => {
+        const url = String(input);
+        if (url === `${REMOTE_API}/api/connections/agents`)
+          return json({
+            success: true,
+            data: [{ ...connection, status: 'ready', enabled: true }],
+          });
+        if (url === `${REMOTE_API}/api/agents`)
+          return json({
+            success: true,
+            data: [
+              {
+                slug: 'muse',
+                name: 'Muse',
+                execution: { agentConnectionId: 'muse' },
+              },
+            ],
+          });
+        return original(input, init);
+      });
+      const { discoverDelegationOptions } = await import(
+        '../station-control-delegation.js'
+      );
+      return (
+        await discoverDelegationOptions({ environmentId: 'environment-remote' })
+      ).targets[0];
+    };
+    const viewJson = JSON.parse(JSON.stringify(view));
+    const target = await discover(viewJson);
+    expect(target?.models).toEqual([]);
+    expect(target?.capabilities.modelSelection).toBe(true);
+    // An older host's view carries no declaration: the catalog decides.
+    const { modelLaunch: _absent, ...olderView } = viewJson;
+    const older = await discover(olderView);
+    expect(older?.capabilities.modelSelection).toBe(false);
+  });
+
   test('rejects a tilde suffix collision while discovering remote delegation options', async () => {
     installRemoteStationFetch(
       '/api/orchestration/delegations',
@@ -2055,6 +2179,82 @@ describe('Station Control canonical Environment + Agent execution', () => {
   // only the project shape was rebuilt. Swapping the session-cwd read for a
   // field nothing writes leaves the pure tests green and restores the bug, so
   // the seam needs its own proof.
+  test.each([
+    ['opencode', 'opencode'],
+    ['acp', 'acp'],
+  ] as const)(
+    'a follow-up keeps the provider its current session runs on (stored %s, R2)',
+    async (stored, expected) => {
+      fetchMock.mockImplementation(async (input) => {
+        const url = String(input);
+        if (url === `${CURRENT_API}/.well-known/station/v1`)
+          return json({ environmentId: 'environment-current' });
+        if (url === `${CURRENT_API}/api/agents/opencode-agent`)
+          return json({
+            success: true,
+            data: {
+              slug: 'opencode-agent',
+              available: true,
+              execution: { agentConnectionId: 'opencode' },
+            },
+          });
+        if (url === `${CURRENT_API}/api/connections/opencode`)
+          return json({
+            success: true,
+            data: {
+              id: 'opencode',
+              kind: 'agent',
+              type: 'acp',
+              name: 'OpenCode',
+              enabled: true,
+              status: 'ready',
+              capabilities: ['agent-runtime', 'acp'],
+              prerequisites: [],
+              // The preview is now off: a new chat would get `acp`.
+              config: { engineId: 'acp', provider: 'acp' },
+            },
+          });
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      const orchestrationService = localService();
+      const resolveConversationContinuation = vi.fn(async () => ({
+        sessionId: 'conversation:opencode:session:2',
+        startRequired: true,
+      }));
+      Object.assign(orchestrationService, { resolveConversationContinuation });
+      orchestrationService.readSession.mockResolvedValue({
+        session: { cwd: '/srv/scratch', provider: stored },
+        events: [
+          {
+            method: 'session.configured',
+            metadata: {
+              environmentId: 'environment-current',
+              targetKind: 'agent',
+              targetId: 'opencode-agent',
+              connectionId: 'opencode',
+            },
+          },
+        ],
+      } as never);
+      const { continueExecutionTargetMessage } = await import(
+        '../station-control-delegation.js'
+      );
+      await continueExecutionTargetMessage(
+        {
+          userId: 'test-user',
+          conversationId: 'conversation:opencode',
+          message: 'Keep going',
+        },
+        orchestrationService as never,
+      ).catch(() => undefined);
+      expect(resolveConversationContinuation).toHaveBeenCalledWith(
+        'conversation:opencode',
+        expect.anything(),
+        expect.objectContaining({ provider: expected }),
+      );
+    },
+  );
+
   test('continues local work for a conversation bound to a directory rather than a project', async () => {
     fetchMock.mockImplementation(async (input) => {
       const url = String(input);

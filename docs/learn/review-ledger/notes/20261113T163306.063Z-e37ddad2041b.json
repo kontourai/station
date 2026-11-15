@@ -1,0 +1,7 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Checked: its ACP line only routes to the ACP guide for limits; the usage-semantics change (acp declared per-turn, published only for recorded engines) is described in the guide and monitoring, not here. No claim changed.","inputs":["docs/architecture.md","packages/shared/src/usage-semantics.ts"]}
+  ]
+}
