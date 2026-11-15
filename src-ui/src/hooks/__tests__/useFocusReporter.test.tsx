@@ -14,6 +14,7 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
 
+import { navigationStore } from '../../contexts/navigation-store';
 import { CLIENT_DOCUMENT_SESSION_ID } from '../clientDocumentSession';
 import {
   FOCUS_HEARTBEAT_MS,
@@ -120,6 +121,8 @@ describe('useFocusReporter', () => {
       clientSessionId: CLIENT_DOCUMENT_SESSION_ID,
       state: 'focused',
       seq: 1,
+      // No chat on screen: the dock is closed.
+      viewingSessionIds: [],
     });
   });
 
@@ -413,15 +416,75 @@ describe('useFocusReporter', () => {
   });
 
   test('400 and 403 are not retried', async () => {
-    for (const code of [400, 403]) {
+    // A 400 first drops `viewingSessionIds` (an older host refuses the
+    // unknown field) and resends once without it; that one is not retried.
+    for (const [code, sends] of [
+      [400, 2],
+      [403, 1],
+    ] as const) {
       mocks.authenticatedFetch
         .mockReset()
         .mockImplementation(async () => status(code));
       const { unmount } = await mount();
       await advance(FOCUS_REPORT_DEBOUNCE_MS);
       await advance(RETRY_WINDOW_MS);
-      expect(sentStates(), `status ${code}`).toEqual(['focused']);
+      expect(sentStates(), `status ${code}`).toEqual(
+        Array(sends).fill('focused'),
+      );
       unmount();
+    }
+  });
+
+  test('an older host that refuses the viewing field still gets focus reports', async () => {
+    mocks.authenticatedFetch
+      .mockReset()
+      .mockImplementation(async (_url, init) =>
+        'viewingSessionIds' in JSON.parse(init.body) ? status(400) : ok(),
+      );
+    await mount();
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    await advance(0);
+    const bodies = mocks.authenticatedFetch.mock.calls.map(([, init]) =>
+      JSON.parse(init.body),
+    );
+    expect(bodies.map((body) => 'viewingSessionIds' in body)).toEqual([
+      true,
+      false,
+    ]);
+    // It stays off for this document: a later change sends without it.
+    focused = false;
+    await fire(window, 'blur');
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    expect(
+      'viewingSessionIds' in
+        JSON.parse(mocks.authenticatedFetch.mock.calls.at(-1)![1].body),
+    ).toBe(false);
+  });
+
+  test('reports the chat on screen, and reports again when a focused document switches chats', async () => {
+    navigationStore.setDockState(true);
+    navigationStore.setActiveChat('session-1');
+    try {
+      await mount();
+      await advance(FOCUS_REPORT_DEBOUNCE_MS);
+      const viewing = () =>
+        mocks.authenticatedFetch.mock.calls.map(
+          ([, init]) => JSON.parse(init.body).viewingSessionIds,
+        );
+      expect(viewing().at(-1)).toEqual(['session-1']);
+      mocks.authenticatedFetch.mockClear();
+
+      navigationStore.setActiveChat('session-2');
+      await advance(FOCUS_REPORT_DEBOUNCE_MS);
+      expect(viewing()).toEqual([['session-2']]);
+
+      // Closing the dock leaves no chat on screen.
+      navigationStore.setDockState(false);
+      await advance(FOCUS_REPORT_DEBOUNCE_MS);
+      expect(viewing()).toEqual([['session-2'], []]);
+    } finally {
+      navigationStore.setDockState(false);
+      navigationStore.setActiveChat(null);
     }
   });
 

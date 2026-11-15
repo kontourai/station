@@ -27,6 +27,15 @@
  * a valid binding) has no one who may read it, so nothing is scheduled for
  * it at all.
  *
+ * A finish is announced once per completion episode, not once per turn. A
+ * `done` or `replied` outcome waits while the session still has work that
+ * will produce more (`finished-alert-hold.ts`: subagents, delegated or owned
+ * sessions, a foreground command, unclassified open engine work, Claude's
+ * pending follow-up, a queued inbox follow-up). It is sent after
+ * `FINISHED_ALERT_CONFIRM_MS` with nothing holding it and no new turn. A
+ * Station-delegated child whose result returns to its parent announces no
+ * finish of its own. Failures, stops, approvals and questions are not held.
+ *
  * Body is deliberately minimal (`Agent finished in session <threadId>`) —
  * never the turn's `outputText` — matching archive#1225's guardrail against
  * a push notification leaking response content.
@@ -96,7 +105,64 @@ interface TurnCompletionOrchestrationService {
    * the card.
    */
   isEphemeralSession(threadId: string): boolean;
+  /**
+   * Why the session's "finished" alert must wait; empty when nothing holds
+   * it (`OrchestrationService.readFinishedAlertHold`). The runtime passes a
+   * reader that also counts queued inbox follow-ups through
+   * {@link TurnCompletionNotificationOptions.readFinishedAlertHold}, which
+   * takes precedence. Absent in both places: nothing holds.
+   */
+  readFinishedAlertHold?(threadId: string): readonly string[];
+  /**
+   * A Station-delegated child whose result goes back to its parent
+   * conversation: its own finish is not announced. Absent: never.
+   */
+  isDelegatedChildSession?(threadId: string): boolean;
 }
+
+type Cancel = () => void;
+
+export interface TurnCompletionNotificationOptions {
+  /** See {@link TurnCompletionOrchestrationService.readFinishedAlertHold}. */
+  readFinishedAlertHold?: (threadId: string) => readonly string[];
+  /** Defaults to {@link FINISHED_ALERT_CONFIRM_MS}. */
+  confirmMs?: number;
+  /** Defaults to {@link FINISHED_ALERT_RECHECK_MS}. */
+  recheckMs?: number;
+  /** Tests: replaces the unref'd `setTimeout` behind the confirmation. */
+  setTimer?: (callback: () => void, delayMs: number) => Cancel;
+}
+
+/**
+ * How long a finish must stay settled (no new turn, nothing holding it)
+ * before its alert goes out. An engine can end a turn moments before it
+ * opens its own follow-up turn, as Claude does after a background child
+ * settles. The same window t3code's agent-awareness relay uses.
+ */
+export const FINISHED_ALERT_CONFIRM_MS = 5_000;
+/**
+ * While a finish is held, how often its hold is read again. Events that can
+ * release a hold also trigger a read; this catches releases that publish
+ * nothing on the bus (an adapter's open-work flag, an owned session's row).
+ */
+export const FINISHED_ALERT_RECHECK_MS = 10_000;
+
+function defaultSetTimer(callback: () => void, delayMs: number): Cancel {
+  const timer = setTimeout(callback, delayMs);
+  timer.unref?.();
+  return () => clearTimeout(timer);
+}
+
+/** Events that can release a held finish on any thread (see `isHoldRelevantEvent`). */
+const HOLD_RELEVANT_METHODS: ReadonlySet<string> = new Set([
+  'child-work.updated',
+  'extension.notification',
+  'session.exited',
+  'session.state-changed',
+  'turn.completed',
+  'turn.aborted',
+  'runtime.error',
+]);
 
 /**
  * #2589: whether the agent-activity card carries this terminal, so the phone
@@ -415,7 +481,134 @@ export function wireTurnCompletionNotifications(
   orchestrationService: TurnCompletionOrchestrationService,
   notificationService: NotificationService,
   logger: TurnCompletionLogger,
+  options: TurnCompletionNotificationOptions = {},
 ): () => void {
+  const confirmMs = options.confirmMs ?? FINISHED_ALERT_CONFIRM_MS;
+  const recheckMs = options.recheckMs ?? FINISHED_ALERT_RECHECK_MS;
+  const setTimer = options.setTimer ?? defaultSetTimer;
+  // One completion episode per thread. A `done` or `replied` outcome is not
+  // pushed when its turn ends. It is held here until nothing holds it (see
+  // finished-alert-hold.ts) and no turn has started for FINISHED_ALERT_CONFIRM_MS,
+  // then ONE push goes out for the whole episode: "finished" if any turn in
+  // it was the user's, "replied" if every turn was the engine's own. A later
+  // turn's completion joins the episode (its turn id is the push's), so a
+  // user turn followed by a provider reply after background work is one
+  // alert, not two. A failure or stop ends the episode and is pushed at once,
+  // as before. The record is written only at delivery: writing it early
+  // would put "finished" in the in-app list while work still runs. The
+  // coordinator wake reads the same delivery, so it wakes on the settled
+  // finish. Episodes are in memory: a restart while one is held drops its
+  // push (the engine and its children do not survive the restart either).
+  interface HeldFinish {
+    turnId: string;
+    outcome: 'done' | 'replied';
+    onActivityCard: boolean;
+    /** A turn started after the episode's latest completion and has not ended. */
+    turnOpen: boolean;
+    cancelConfirm?: Cancel;
+  }
+  const heldFinishes = new Map<string, HeldFinish>();
+  let cancelRecheck: Cancel | undefined;
+
+  const readHold = (threadId: string): readonly string[] => {
+    try {
+      return (
+        options.readFinishedAlertHold?.(threadId) ??
+        orchestrationService.readFinishedAlertHold?.(threadId) ??
+        []
+      );
+    } catch (error) {
+      // Fail open: an unreadable hold must not swallow the alert.
+      logger.warn('turn-completion: finished-alert hold is unreadable', {
+        threadId,
+        error: errorMessage(error),
+      });
+      return [];
+    }
+  };
+
+  const isDelegatedChild = (threadId: string): boolean => {
+    try {
+      return orchestrationService.isDelegatedChildSession?.(threadId) === true;
+    } catch (error) {
+      // Fail open: announce the finish rather than lose it.
+      logger.warn('turn-completion: delegated-child lookup failed', {
+        threadId,
+        error: errorMessage(error),
+      });
+      return false;
+    }
+  };
+
+  const dropHeldFinish = (threadId: string): void => {
+    const pending = heldFinishes.get(threadId);
+    if (!pending) return;
+    pending.cancelConfirm?.();
+    heldFinishes.delete(threadId);
+  };
+
+  const armRecheck = (): void => {
+    if (cancelRecheck) return;
+    cancelRecheck = setTimer(() => {
+      cancelRecheck = undefined;
+      notificationService.dispatch(TURN_COMPLETION_SOURCE, async () => {
+        for (const threadId of [...heldFinishes.keys()])
+          evaluateHeldFinish(threadId);
+      });
+    }, recheckMs);
+  };
+
+  const confirmHeldFinish = async (
+    threadId: string,
+    expected: HeldFinish,
+  ): Promise<void> => {
+    const pending = heldFinishes.get(threadId);
+    if (pending !== expected) return;
+    pending.cancelConfirm = undefined;
+    if (pending.turnOpen) return;
+    if (readHold(threadId).length > 0) {
+      armRecheck();
+      return;
+    }
+    heldFinishes.delete(threadId);
+    const result = await deliverTurnCompletionPush({
+      orchestrationService,
+      notificationService,
+      threadId,
+      turnId: pending.turnId,
+      outcome: pending.outcome,
+      onActivityCard: pending.onActivityCard,
+    });
+    turnCompletionNotificationOps.add(1, { outcome: pending.outcome, result });
+  };
+
+  /** Starts, keeps, or cancels the episode's confirmation window. */
+  function evaluateHeldFinish(threadId: string): void {
+    const pending = heldFinishes.get(threadId);
+    if (!pending || pending.turnOpen) return;
+    if (readHold(threadId).length > 0) {
+      // Work is running: any window in progress no longer counts.
+      pending.cancelConfirm?.();
+      pending.cancelConfirm = undefined;
+      armRecheck();
+      return;
+    }
+    if (pending.cancelConfirm) return;
+    pending.cancelConfirm = setTimer(() => {
+      notificationService.dispatch(TURN_COMPLETION_SOURCE, async () => {
+        try {
+          await confirmHeldFinish(threadId, pending);
+        } catch (error) {
+          turnCompletionNotificationOps.add(1, { result: 'error' });
+          logger.warn(
+            'turn-completion: failed to schedule a push-on-completion notification',
+            { error: errorMessage(error) },
+          );
+        }
+      });
+    }, confirmMs);
+  }
+
   // archive#3573: a third, independent turn-identity fold, scoped to the
   // life of this one wiring (fresh per call) — deliberately NOT a call into
   // `OrchestrationService`. This listener observes the SAME event stream
@@ -519,6 +712,32 @@ export function wireTurnCompletionNotifications(
             touchTurnIdentityAnchorEviction(event.threadId);
           }
 
+          // A new turn on a held episode's thread cancels its confirmation
+          // window; the turn's own end decides what comes next.
+          if (event.method === 'turn.started') {
+            const episode = heldFinishes.get(event.threadId);
+            if (episode) {
+              episode.turnOpen = true;
+              episode.cancelConfirm?.();
+              episode.cancelConfirm = undefined;
+            }
+          }
+          // A child settling, a delegated session ending, or Claude's
+          // follow-up fact can release a held finish on this thread or its
+          // parent. A terminal on this thread is handled below instead.
+          if (
+            heldFinishes.size > 0 &&
+            HOLD_RELEVANT_METHODS.has(event.method)
+          ) {
+            const ownTerminal =
+              event.method === 'turn.completed' ||
+              event.method === 'turn.aborted' ||
+              event.method === 'runtime.error';
+            for (const threadId of [...heldFinishes.keys()])
+              if (!ownTerminal || threadId !== event.threadId)
+                evaluateHeldFinish(threadId);
+          }
+
           let outcome = resolveTurnCompletionOutcome(event);
           if (!outcome || !event.turnId) return;
           const providerTurn = isProviderTriggeredTurn(event);
@@ -547,6 +766,11 @@ export function wireTurnCompletionNotifications(
             return;
           }
 
+          // The terminal is accepted: the turn a held episode was waiting
+          // on has ended, whatever it is about to be reported as.
+          const episode = heldFinishes.get(event.threadId);
+          if (episode) episode.turnOpen = false;
+
           // A Codex stop can confirm as turn.completed with
           // finishReason:'cancelled'; the settled-stop fact is the proof that
           // this particular completion was a stop, while an unaccompanied
@@ -559,6 +783,9 @@ export function wireTurnCompletionNotifications(
             // #2324 (D1): a provider turn is never reported "stopped" — the
             // Stop was the user's own act on a reply they did not ask for.
             if (providerTurn) {
+              // The person stopped it, so they are here: the episode ends
+              // without an alert.
+              dropHeldFinish(event.threadId);
               turnCompletionNotificationOps.add(1, {
                 outcome: 'stopped',
                 result: 'skipped_provider_turn',
@@ -574,6 +801,8 @@ export function wireTurnCompletionNotifications(
             // from the adapter's own marker, not `finishReason`: a reply that
             // ended on a deferred tool is `'other'` too, and is a reply.
             if (event.metadata?.closedWithoutResult !== undefined) {
+              // An episode it interrupted resumes waiting.
+              evaluateHeldFinish(event.threadId);
               turnCompletionNotificationOps.add(1, {
                 outcome,
                 result: 'skipped_provider_turn',
@@ -607,6 +836,8 @@ export function wireTurnCompletionNotifications(
               outcome === 'stopped') &&
             orchestrationService.consumeInternalStopSuppression?.(event.turnId)
           ) {
+            // The redispatch's `turn.started` cancels this window.
+            evaluateHeldFinish(event.threadId);
             turnCompletionNotificationOps.add(1, {
               outcome,
               result: 'skipped_internal_stop',
@@ -614,6 +845,39 @@ export function wireTurnCompletionNotifications(
             return;
           }
 
+          if (outcome === 'done' || outcome === 'replied') {
+            if (isDelegatedChild(event.threadId)) {
+              dropHeldFinish(event.threadId);
+              turnCompletionNotificationOps.add(1, {
+                outcome,
+                result: 'skipped_delegated_child',
+              });
+              return;
+            }
+            const previous = heldFinishes.get(event.threadId);
+            previous?.cancelConfirm?.();
+            heldFinishes.set(event.threadId, {
+              turnId: event.turnId,
+              outcome:
+                previous?.outcome === 'done' || outcome === 'done'
+                  ? 'done'
+                  : 'replied',
+              onActivityCard: turnTerminalOnActivityCard(
+                orchestrationService,
+                event,
+              ),
+              turnOpen: false,
+            });
+            turnCompletionNotificationOps.add(1, {
+              outcome,
+              result: 'deferred',
+            });
+            evaluateHeldFinish(event.threadId);
+            return;
+          }
+
+          // A failure or stop ends the episode and is reported at once.
+          dropHeldFinish(event.threadId);
           const result = await deliverTurnCompletionPush({
             orchestrationService,
             notificationService,
@@ -655,6 +919,10 @@ export function wireTurnCompletionNotifications(
     turnIdentityAnchors.clear();
     for (const timer of settledStopTimers.values()) clearTimeout(timer);
     settledStopTimers.clear();
+    for (const episode of heldFinishes.values()) episode.cancelConfirm?.();
+    heldFinishes.clear();
+    cancelRecheck?.();
+    cancelRecheck = undefined;
   };
 }
 

@@ -41,6 +41,12 @@ export interface AgentActivitySessionReaderDeps {
     threadIds: readonly string[],
   ): Map<string, CanonicalRuntimeEvent[]>;
   projectNames(): Map<string, string>;
+  /**
+   * Whether the session's finish is still held by running work
+   * (`finished-alert-hold.ts`): the card shows it Running, not Done.
+   * Absent: never held.
+   */
+  finishedAlertHeld?(threadId: string): boolean;
 }
 
 export function createAgentActivitySessionReader(
@@ -67,7 +73,11 @@ export function createAgentActivitySessionReader(
         const projects = deps.projectNames();
         return agentActivityRowsWithEntries(
           sessions.map((session) =>
-            agentActivityRowFromSummary(session, (slug) => projects.get(slug)),
+            agentActivityRowFromSummary(
+              session,
+              (slug) => projects.get(slug),
+              deps.finishedAlertHeld,
+            ),
           ),
           (threadIds) => deps.listProjectionEvents?.(threadIds) ?? new Map(),
         );

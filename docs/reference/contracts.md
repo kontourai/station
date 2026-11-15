@@ -1990,6 +1990,15 @@ be presented as current by inference.
 opt-in to move a Task to `done` when every pull request kept on it is merged;
 a Task store that carries it is refused by Station builds that predate it.
 
+`FocusReport.viewingSessionIds` (`@kontourai/station-contracts/presence`) is
+optional, and absent means the client does not say what it shows, so focus
+stays device-wide. A list (at most `FOCUS_VIEWING_SESSION_IDS_MAX`, each
+matching `FOCUS_VIEWING_SESSION_ID_PATTERN`; `[]` for no chat on screen) scopes
+a focused surface's quieting of `done`/`info` records to those sessions. A host
+built before the field refuses a report carrying it with 400. The client then
+drops the field for that document
+([notification delivery](../design/notification-delivery.md#finished-alerts-one-per-completion-episode)).
+
 `@kontourai/station-shared` still re-exports many of these types so older code can compile during convergence. That is a compatibility layer, not the canonical ownership model. New code should import the owning `@kontourai/station-contracts/*` module directly.
 
 Server-only provider interfaces now live directly in `src-server/providers/provider-interfaces.ts`, `src-server/providers/provider-contracts.ts`, and `src-server/providers/llm/model-provider-types.ts`. The old `src-server/providers/types.ts` barrel was removed during convergence.

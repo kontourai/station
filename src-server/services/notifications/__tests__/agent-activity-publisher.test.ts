@@ -173,10 +173,16 @@ function readSummaries(sessions: Map<string, CanonicalRuntimeEvent[]>) {
 }
 
 /** Folds sessions exactly as the runtime wiring does. */
-function readRows(sessions: Map<string, CanonicalRuntimeEvent[]>) {
+function readRows(
+  sessions: Map<string, CanonicalRuntimeEvent[]>,
+  /** Sessions whose finish running work still holds (finished-alert-hold.ts). */
+  held: ReadonlySet<string> = new Set(),
+) {
   const rows = readSummaries(sessions).map((summary) =>
-    agentActivityRowFromSummary(summary, (slug) =>
-      slug === 'login-app' ? 'Login App' : undefined,
+    agentActivityRowFromSummary(
+      summary,
+      (slug) => (slug === 'login-app' ? 'Login App' : undefined),
+      (threadId) => held.has(threadId),
     ),
   );
   return agentActivityRowsWithEntries(
@@ -238,7 +244,8 @@ async function harness(
   const eventBus = new EventBus();
   let clock = START;
   const sessions = new Map<string, CanonicalRuntimeEvent[]>();
-  const listSessions = vi.fn(async () => readRows(sessions));
+  const held = new Set<string>();
+  const listSessions = vi.fn(async () => readRows(sessions, held));
   const answers = [...(options.answers ?? [])];
   const delivered: Delivered[] = [];
   const refused: string[] = [];
@@ -365,6 +372,7 @@ async function harness(
     keys,
     eventBus,
     sessions,
+    held,
     listSessions,
     fetchImpl,
     fetchInits,
@@ -962,6 +970,30 @@ describe('agent-activity publisher', () => {
     expect(h.listSessions.mock.calls.length - readsBefore).toBeLessThanOrEqual(
       3,
     );
+    await h.publisher.stop();
+  });
+
+  test('a finish held by running work reads Running, then alerts "finished" when it is released', async () => {
+    const h = await harness();
+    await h.pairAndRegister();
+    h.sessions.set('s1', sessionEvents('s1', 'completed', START));
+    h.held.add('s1');
+    h.emit('turn.completed');
+    await h.settle();
+    expect(h.delivered).toHaveLength(1);
+    expect(h.delivered[0]?.card).toMatchObject({ activity_phase: 'running' });
+    expect(h.delivered[0]?.card.alert_title).toBeUndefined();
+
+    // The subagent runs well past the finish-alert window, then settles.
+    h.advance(10 * 60_000);
+    h.held.delete('s1');
+    h.emit('child-work.updated');
+    await h.settle();
+    const card = h.delivered.at(-1)?.card;
+    expect(card).toMatchObject({
+      activity_phase: 'completed',
+      alert_title: 'Agent finished',
+    });
     await h.publisher.stop();
   });
 

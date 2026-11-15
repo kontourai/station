@@ -78,6 +78,74 @@ Station-owned session using an external engine, or a new Station-owned
 continuation of an external transcript, keeps its ordinary notification
 behavior. Automation triggers are separate from this notification policy.
 
+## Finished alerts: one per completion episode
+
+"Your agent finished" means the work is done, not that one turn ended. The
+[completion producer](../../src-server/services/orchestration/turn-completion-notifications.ts)
+holds a `done` or `replied` outcome. It writes the record once nothing holds
+it and no turn has started for `FINISHED_ALERT_CONFIRM_MS` (5 s, the window
+t3code's agent-awareness relay uses). One completion episode per thread gets
+one alert. A later turn's completion joins the episode and its turn id names
+the record. So a user turn followed by Claude's own reply after a background
+child settles is one "finished", not "finished" then "replied". An episode
+made only of engine-opened turns reads "replied".
+
+What holds it ([finished-alert-hold.ts](../../src-server/services/orchestration/finished-alert-hold.ts),
+read by `OrchestrationService.readFinishedAlertHold`, plus the inbox's
+`hasWaitingFollowUp` composed in
+[runtime-route-support.ts](../../src-server/runtime/routes/runtime-route-support.ts)):
+
+| Fact | Holds |
+| --- | --- |
+| A running child of kind `agent` (engine subagent or Station delegate) | Always |
+| A running `command` or `monitor` child | Only while not `backgrounded` |
+| An owned child session running, or a cascade stop pending | Always |
+| The adapter's `hasOpenEngineWork` | Only when the child-work record is not reported, absent, or lists nothing running |
+| Claude's `provider/follow-up-pending` (5 s) | Always |
+| A follow-up queued, being placed, or unconfirmed in the inbox | Always |
+
+Child-work carries no "the agent is awaiting this" signal. `backgrounded`
+("outlives the turn that spawned it") is the closest fact, so a dev server
+left running in the background never holds "finished". Claude counts every
+background shell task as open engine work, so the engine flag alone is not
+trusted when the record can classify what is running. A hold is read again
+on events that can release it (child-work, session exit and state, any
+turn terminal) and every `FINISHED_ALERT_RECHECK_MS` (10 s) while held. A
+hold that cannot be read fails open and the alert is sent.
+
+Failures, stops, approvals and questions are not held: a failure or stop ends
+the episode and is pushed at once, and the held finish is never sent. A
+Station-delegated child whose result returns to its parent conversation
+(#3158's owner record) announces no finish of its own. The parent's own
+completion covers it, and the parent's finish is held while the child runs.
+Its failures, approvals and questions still notify.
+
+The record is written when the alert is decided, not earlier and later
+upgraded, so the in-app list never shows "finished" while work runs. The
+coordinator wake reads the same `NOTIFICATION_DELIVERED` frame, so it wakes on
+the settled finish. Episodes live in memory: a restart while one is held
+drops that alert. The engine and its children do not survive the restart
+either.
+
+The agent-activity card applies the same hold. A finished session whose
+finish is held reads Running (`finishHeld`) instead of Done, so the phone
+raises no "Agent finished" while the work runs. When the hold releases, the
+finish dates from the release, not the turn's end. Otherwise a long hold would
+fall outside the two-minute alert window and the phone would get no alert,
+because the Station notification is left to the card. The card refreshes on
+`child-work.updated` as well as lifecycle events. A hold that releases with no
+event on the bus is picked up at the card's next lifecycle event or refresh.
+After a restart, the terminal event's time stands.
+
+Focus is per session for these records. A focus report may list the sessions
+its document shows (`viewingSessionIds` in
+`@kontourai/station-contracts/presence`, at most four ids). The policy then
+counts a focused surface for a session-targeted `done` or `info` record only
+while that surface shows the record's session. A focused laptop showing
+another chat, or none, leaves the phone's alert in place and gets its own.
+Attention and failed keep surface-wide focus, and so does a surface whose
+client does not report what it shows.
+
 ## Approval actions in the running client
 
 The in-app approval toast sends the selected decision and opens its originating
@@ -503,7 +571,8 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   derives from an unresolved non-input `request.opened`) →
   `waiting_for_approval`, `needs_input` → `waiting_for_input`, `blocked` →
   `stale` (live, but not counted as attention: the phone's attention means an
-  approval or input request), `completed` → `completed`, `failed` → `failed`;
+  approval or input request), `completed` → `completed` (`running` while the
+  finish is held, see "Finished alerts" above), `failed` → `failed`;
   canceled sessions leave the card. Failed sessions leave after 15 minutes
   like any other finished one, and live phases require the session to be
   attached in this process.

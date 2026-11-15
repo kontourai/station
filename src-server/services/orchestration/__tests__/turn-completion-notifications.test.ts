@@ -7,11 +7,17 @@ import { isCardAlerted } from '../../notifications/delivery/card-alerted-categor
 import { NotificationService } from '../../notifications/notification-service.js';
 import { EventBus } from '../event-bus.js';
 import {
+  type FinishedAlertHoldFacts,
+  finishedAlertHoldReasons,
+} from '../finished-alert-hold.js';
+import {
   type OrchestrationStreamPresenceSubject,
   orchestrationStreamPresenceSubjectForSession,
 } from '../orchestration-stream-presence.js';
 import { projectSessionLifecycle } from '../session-lifecycle-service.js';
 import {
+  FINISHED_ALERT_CONFIRM_MS,
+  FINISHED_ALERT_RECHECK_MS,
   resolveTurnCompletionOutcome,
   turnTerminalOnActivityCard,
   wireInternalStopRedispatchFailureNotifications,
@@ -38,6 +44,40 @@ function baseEvent(overrides: Record<string, unknown> = {}) {
     threadId: 'thread-1',
     turnId: 'turn-1',
     ...overrides,
+  };
+}
+
+/**
+ * A timer the test runs by hand. The listener holds a finish for its
+ * confirmation window before pushing it; the per-turn suites below run
+ * every armed window at the end of each emit, so one completion with nothing
+ * holding it still yields its push within that emit.
+ */
+function manualTimers() {
+  let queue: Array<{ callback: () => void; delayMs: number; live: boolean }> =
+    [];
+  return {
+    setTimer(callback: () => void, delayMs: number) {
+      const entry = { callback, delayMs, live: true };
+      queue.push(entry);
+      return () => {
+        entry.live = false;
+      };
+    },
+    /** Runs every live timer armed so far (not ones they arm). */
+    runAll() {
+      const due = queue.filter((entry) => entry.live);
+      queue = [];
+      for (const entry of due) {
+        entry.live = false;
+        entry.callback();
+      }
+      return due.length;
+    },
+    /** Delays of the live timers, oldest first. */
+    pending() {
+      return queue.filter((entry) => entry.live).map((entry) => entry.delayMs);
+    },
   };
 }
 
@@ -174,6 +214,7 @@ describe('resolveTurnCompletionOutcome', () => {
 });
 
 describe('wireTurnCompletionNotifications (station#1225)', () => {
+  let timers: ReturnType<typeof manualTimers>;
   let bus: EventBus;
   let dir: string;
   let notificationService: NotificationService;
@@ -184,6 +225,7 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
   ): Promise<void> {
     bus.emit(event, data);
     await notificationService.drainAsyncDispatch();
+    if (timers.runAll() > 0) await notificationService.drainAsyncDispatch();
   }
   let resolveSessionPresenceSubject: (
     threadId: string,
@@ -196,6 +238,7 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
 
   beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), 'turn-completion-notifications-'));
+    timers = manualTimers();
     bus = new EventBus();
     notificationService = new NotificationService(bus, dir, 999_999);
     resolveSessionPresenceSubject = () =>
@@ -219,6 +262,7 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
       },
       notificationService,
       logger,
+      { setTimer: timers.setTimer },
     );
     await notificationService.start();
   });
@@ -840,6 +884,7 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
 });
 
 describe('wireTurnCompletionNotifications station#3525 internal-stop suppression', () => {
+  let timers: ReturnType<typeof manualTimers>;
   let bus: EventBus;
   let dir: string;
   let notificationService: NotificationService;
@@ -856,10 +901,12 @@ describe('wireTurnCompletionNotifications station#3525 internal-stop suppression
   ): Promise<void> {
     bus.emit(event, data);
     await notificationService.drainAsyncDispatch();
+    if (timers.runAll() > 0) await notificationService.drainAsyncDispatch();
   }
 
   beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), 'turn-completion-notifications-stop-'));
+    timers = manualTimers();
     bus = new EventBus();
     notificationService = new NotificationService(bus, dir, 999_999);
     logger = {
@@ -879,6 +926,7 @@ describe('wireTurnCompletionNotifications station#3525 internal-stop suppression
       },
       notificationService,
       logger,
+      { setTimer: timers.setTimer },
     );
     await notificationService.start();
   });
@@ -1299,5 +1347,218 @@ describe('wireTurnCompletionNotifications turn-identity-anchor eviction timer (s
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('wireTurnCompletionNotifications: one finished alert per completion episode', () => {
+  let timers: ReturnType<typeof manualTimers>;
+  let bus: EventBus;
+  let dir: string;
+  let notificationService: NotificationService;
+  let schedule: ReturnType<typeof vi.spyOn>;
+  /** The facts the real `OrchestrationService.readFinishedAlertHold` folds. */
+  let facts: Map<string, FinishedAlertHoldFacts>;
+  let delegatedChildren: Set<string>;
+  let holdThrows: boolean;
+  const subagent = {
+    producer: 'engine-subagent' as const,
+    reporterThreadId: 'thread-1',
+  };
+
+  async function emit(event: Record<string, unknown>): Promise<void> {
+    bus.emit('orchestration:event', { event: baseEvent(event) });
+    await notificationService.drainAsyncDispatch();
+  }
+  /** Lets every armed confirmation window and recheck run out. */
+  async function elapse(): Promise<void> {
+    timers.runAll();
+    await notificationService.drainAsyncDispatch();
+  }
+  const titles = () =>
+    schedule.mock.calls.map(
+      (call: unknown[]) => (call[1] as { title: string }).title,
+    );
+
+  beforeEach(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'turn-completion-held-'));
+    timers = manualTimers();
+    bus = new EventBus();
+    notificationService = new NotificationService(bus, dir, 999_999);
+    facts = new Map();
+    delegatedChildren = new Set();
+    holdThrows = false;
+    wireTurnCompletionNotifications(
+      bus,
+      {
+        isReadOnlyAttachedSession: () => false,
+        isEphemeralSession: () => false,
+        resolveSessionPresenceSubject: () =>
+          orchestrationStreamPresenceSubjectForSession('owner-1'),
+        readFinishedAlertHold: (threadId) => {
+          if (holdThrows) throw new Error('hold unreadable');
+          return finishedAlertHoldReasons(facts.get(threadId) ?? {});
+        },
+        isDelegatedChildSession: (threadId) => delegatedChildren.has(threadId),
+      },
+      notificationService,
+      { warn: vi.fn() },
+      { setTimer: timers.setTimer },
+    );
+    await notificationService.start();
+    schedule = vi
+      .spyOn(notificationService, 'scheduleEnveloped')
+      .mockResolvedValue({} as never);
+  });
+
+  afterEach(async () => {
+    await notificationService.shutdown();
+    rmSync(dir, { force: true, recursive: true });
+  });
+
+  test('a finish waits out its confirmation window before it is pushed', async () => {
+    await emit({ method: 'turn.started' });
+    await emit({ finishReason: 'stop' });
+    expect(schedule).not.toHaveBeenCalled();
+    expect(timers.pending()).toEqual([FINISHED_ALERT_CONFIRM_MS]);
+    await elapse();
+    expect(titles()).toEqual(['Your agent finished']);
+  });
+
+  test('a running subagent holds "finished" until it settles, then one alert goes out', async () => {
+    facts.set('thread-1', {
+      childWork: {
+        observability: 'reported',
+        observedAt: '2026-11-15T00:00:00.000Z',
+        running: [
+          {
+            ...subagent,
+            childId: 'agent-1',
+            status: 'running',
+            workKind: 'agent',
+          },
+        ],
+      },
+    });
+    await emit({ method: 'turn.started' });
+    await emit({ finishReason: 'stop' });
+    // Held: only the recheck is armed, no confirmation window.
+    expect(timers.pending()).toEqual([FINISHED_ALERT_RECHECK_MS]);
+    await elapse();
+    await elapse();
+    expect(schedule).not.toHaveBeenCalled();
+
+    // The child settles: the next child-work frame opens the window.
+    facts.set('thread-1', {
+      childWork: {
+        observability: 'reported',
+        observedAt: '2026-11-15T00:00:00.000Z',
+        running: [],
+      },
+    });
+    await emit({ method: 'child-work.updated', turnId: undefined });
+    expect(schedule).not.toHaveBeenCalled();
+    await elapse();
+    expect(titles()).toEqual(['Your agent finished']);
+    expect(schedule.mock.calls[0]?.[1]).toMatchObject({
+      dedupeTag: 'turn-completion:thread-1:turn-1',
+    });
+  });
+
+  test('a delegated session or queued follow-up holds; a backgrounded command does not', async () => {
+    facts.set('thread-1', {
+      ownedWork: { runningChildCount: 1, pendingStopCount: 0 },
+    });
+    await emit({ method: 'turn.started' });
+    await emit({ finishReason: 'stop' });
+    await elapse();
+    expect(schedule).not.toHaveBeenCalled();
+
+    facts.set('thread-1', { queuedFollowUp: true });
+    await elapse();
+    expect(schedule).not.toHaveBeenCalled();
+
+    // A dev server left running: backgrounded, and the engine's open-work
+    // flag is explained by it. Not held.
+    facts.set('thread-1', {
+      openEngineWork: true,
+      childWork: {
+        observability: 'reported',
+        observedAt: '2026-11-15T00:00:00.000Z',
+        running: [
+          {
+            ...subagent,
+            childId: 'bash-1',
+            status: 'running',
+            workKind: 'command',
+            backgrounded: true,
+          },
+        ],
+      },
+    });
+    await elapse(); // the recheck sees the release and opens the window
+    await elapse();
+    expect(titles()).toEqual(['Your agent finished']);
+  });
+
+  test('a user finish followed by the engine\'s own reply is one "finished", not "finished" then "replied"', async () => {
+    await emit({ method: 'turn.started' });
+    await emit({ finishReason: 'stop' });
+    // Claude opens its own turn after a background child settles.
+    await emit({
+      method: 'turn.started',
+      turnId: 'provider:p',
+      metadata: { trigger: 'provider' },
+    });
+    await elapse(); // the cancelled window does not fire
+    expect(schedule).not.toHaveBeenCalled();
+    await emit({
+      finishReason: 'stop',
+      turnId: 'provider:p',
+      metadata: { trigger: 'provider' },
+    });
+    await elapse();
+    expect(titles()).toEqual(['Your agent finished']);
+    expect(schedule.mock.calls[0]?.[1]).toMatchObject({
+      dedupeTag: 'turn-completion:thread-1:provider:p',
+    });
+  });
+
+  test('a failure ends the episode at once and the held finish is never sent', async () => {
+    await emit({ method: 'turn.started' });
+    await emit({ finishReason: 'stop' });
+    await emit({ method: 'turn.started', turnId: 'turn-2' });
+    await emit({
+      method: 'runtime.error',
+      turnId: 'turn-2',
+      severity: 'error',
+      message: 'boom',
+    });
+    expect(titles()).toEqual(['Your agent needs attention']);
+    await elapse();
+    expect(titles()).toEqual(['Your agent needs attention']);
+  });
+
+  test('a delegated child announces no finish of its own, but its failure still notifies', async () => {
+    delegatedChildren.add('thread-1');
+    await emit({ method: 'turn.started' });
+    await emit({ finishReason: 'stop' });
+    await elapse();
+    expect(schedule).not.toHaveBeenCalled();
+    await emit({ method: 'turn.started', turnId: 'turn-2' });
+    await emit({
+      method: 'runtime.error',
+      turnId: 'turn-2',
+      severity: 'error',
+      message: 'boom',
+    });
+    expect(titles()).toEqual(['Your agent needs attention']);
+  });
+
+  test('an unreadable hold fails open: the finish is still announced', async () => {
+    holdThrows = true;
+    await emit({ method: 'turn.started' });
+    await emit({ finishReason: 'stop' });
+    await elapse();
+    expect(titles()).toEqual(['Your agent finished']);
   });
 });

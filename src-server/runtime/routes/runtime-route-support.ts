@@ -420,7 +420,7 @@ export function configureRuntimeSupportServices(
   options: {
     webPushEnabled?: boolean;
     threadInbox?: () =>
-      | Pick<ThreadInboxDelivery, 'submit' | 'entry'>
+      | Pick<ThreadInboxDelivery, 'submit' | 'entry' | 'hasWaitingFollowUp'>
       | undefined;
     /**
      * #2064 (D4): paused Survey/Flow gate review sessions for the attention
@@ -488,6 +488,16 @@ export function configureRuntimeSupportServices(
     getNotificationProviders(),
     context.logger,
   );
+  // Why a session's "finished" alert (and its phone card's Done) must wait:
+  // the service's facts plus a follow-up waiting in the conversation's inbox,
+  // which the service does not own (finished-alert-hold.ts).
+  const readFinishedAlertHold = (threadId: string): string[] => {
+    const reasons: string[] =
+      context.orchestrationService.readFinishedAlertHold(threadId);
+    if (options.threadInbox?.()?.hasWaitingFollowUp(threadId))
+      reasons.push('queued-follow-up');
+    return reasons;
+  };
   wireApprovalInboxNotifications(
     context.eventBus,
     approvalInboxProvider,
@@ -504,6 +514,7 @@ export function configureRuntimeSupportServices(
     context.orchestrationService,
     notificationService,
     context.logger,
+    { readFinishedAlertHold },
   );
   // station#3525 fix round FIX 1: the corrective half — see that function's
   // own docblock. Must be wired alongside `wireTurnCompletionNotifications`
@@ -897,6 +908,8 @@ export function configureRuntimeSupportServices(
         ),
       deviceHasOwnerStanding: (deviceId) =>
         context.environmentSecurityService.deviceHasOwnerStanding(deviceId),
+      finishedAlertHeld: (threadId) =>
+        readFinishedAlertHold(threadId).length > 0,
       listSessionReadModel: (authority) =>
         context.orchestrationService.listSessionReadModel(authority),
       listProjectionEvents: (threadIds) => {

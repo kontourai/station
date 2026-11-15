@@ -82,6 +82,13 @@ export interface AgentActivitySessionFacts extends SessionAttentionSubject {
   isLoaded: boolean;
   /** `true` only for a session nothing was ever sent to. */
   draft?: boolean;
+  /**
+   * The turn ended but its finish is held by running work (subagents,
+   * delegated sessions, a foreground command; `finished-alert-hold.ts`). The
+   * card reads Running, so neither Done nor its "Agent finished" alert shows
+   * while that work runs.
+   */
+  finishHeld?: true;
 }
 
 /**
@@ -98,7 +105,9 @@ export interface AgentActivitySessionFacts extends SessionAttentionSubject {
  *   input request. `blocked` waits on the user too but has no plugin phase of
  *   its own; it reads `stale` ("Waiting"). It is not counted as attention:
  *   the phone's attention count means an approval or input request.
- * - `canceled` sessions leave the card; other finished sessions read Done.
+ * - `canceled` sessions leave the card; other finished sessions read Done,
+ *   except one whose finish is held by running work (`finishHeld`), which
+ *   reads Running while it is attached.
  * - An absent lifecycle state is not put on the card. The shared
  *   `foldedSessionLifecycleState` default leans live on purpose for in-app
  *   affordances; on a lock-screen card that would read "Working" forever.
@@ -116,8 +125,12 @@ export function agentActivityPhaseFor(
   if (facts.draft === true || facts.lifecycleState === undefined) return null;
   const disposition = sessionAttentionDisposition(facts);
   if (disposition.state === 'failed') return 'failed';
-  if (disposition.state === 'finished')
-    return facts.lifecycleState === 'canceled' ? null : 'completed';
+  if (disposition.state === 'finished') {
+    if (facts.lifecycleState === 'canceled') return null;
+    return facts.finishHeld === true && facts.isLoaded
+      ? 'running'
+      : 'completed';
+  }
   if (!facts.isLoaded) return null;
   if (disposition.state === 'awaiting') {
     if (disposition.via === 'needs_input') return 'waiting_for_input';
@@ -143,6 +156,8 @@ export interface AgentActivitySnapshot {
    * session is a different entry even when no observation saw it leave.
    */
   entryKey: string;
+  /** Running only because its finish is held (see `finishHeld` on the facts). */
+  finishHeld?: true;
 }
 
 /** One alertable entry: an approval/input request, or a recent finish. */
