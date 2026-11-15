@@ -872,7 +872,9 @@
 
     "packages/sdk/src/terminal-view/session.ts",
 
-    "packages/sdk/src/__tests__/terminal-view/controller.test.ts"
+    "packages/sdk/src/__tests__/terminal-view/controller.test.ts",
+
+    "packages/sdk/src/query-domains/peerCredentials.ts"
   ],
 
   "checks": [

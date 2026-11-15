@@ -332,7 +332,9 @@
 
     "src-server/services/orchestration/post-tool-inbox.ts",
 
-    "src-server/services/orchestration/attachment-blob-store.ts"
+    "src-server/services/orchestration/attachment-blob-store.ts",
+
+    "src-server/services/peers/peer-readiness-service.ts"
   ],
 
   "checks": [
