@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import type {
@@ -288,8 +289,8 @@ async function boot({
       mode: 'isolated-child',
       depth: 1,
       maxDepth: 3,
-      parentAgentSlug: 'lead',
-      rootAgentSlug: 'lead',
+      parentAgentSlug: agentId('lead'),
+      rootAgentSlug: agentId('lead'),
       parentSessionId,
     };
     await service.dispatch(
