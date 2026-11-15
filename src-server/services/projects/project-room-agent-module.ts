@@ -276,6 +276,21 @@ export class ProjectRoomAgentModule {
         : {}),
     };
   }
+  /**
+   * Recorded failure codes of these requests (#4800), for a reader the room
+   * already admitted. Codes only: never a Session or its output.
+   */
+  failures(requestIds: readonly string[]) {
+    const query = this.db.prepare(
+      'SELECT code FROM project_room_agent_failures WHERE request_id=?',
+    );
+    const result = new Map<string, ProjectRoomAgentFailure>();
+    for (const id of requestIds) {
+      const parsed = failureSchema.safeParse(query.get(id)?.code);
+      if (parsed.success) result.set(id, parsed.data);
+    }
+    return result;
+  }
   /** Validated private coordinate for the completion observer; never expose in handles. */
   publicationSession(
     authority: ProjectRoomAgentAuthority,

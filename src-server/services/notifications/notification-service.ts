@@ -184,6 +184,8 @@ export const INTERNAL_NOTIFICATION_SOURCES: ReadonlySet<string> = new Set([
   'agent',
   'approval-inbox',
   'device-pairing',
+  // Project-room mentions of a person (#4799).
+  'project-room',
   'scheduler',
   TURN_COMPLETION_NOTIFICATION_SOURCE,
 ]);

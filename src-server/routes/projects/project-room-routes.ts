@@ -26,6 +26,7 @@ import { ProjectRoomRefusal } from '../../services/projects/project-room-store.j
 import { createLogger } from '../../utils/logger.js';
 import { roomAttachmentUploadItemsSchema } from '../orchestration/task-room-attachment-http.js';
 import { streamSSE } from '../sse-response.js';
+import { projectRoomLiveResponse } from './project-room-live.js';
 
 const logger = createLogger({ name: 'project-room-routes' });
 const guards = z.object({
@@ -345,6 +346,7 @@ export function createProjectRoomRoutes(
               text: z.unknown(),
               replyTo: z.unknown().optional(),
               attachments: z.unknown().optional(),
+              mentions: z.unknown().optional(),
             })
             .strict()
             .parse(await body(c));
@@ -386,7 +388,11 @@ export function createProjectRoomRoutes(
       perform(c, async () => {
         const { expectedRoomId, expectedProjectId, expectedActorId, ...input } =
           guards
-            .extend({ intentId: z.unknown(), text: z.unknown() })
+            .extend({
+              intentId: z.unknown(),
+              text: z.unknown(),
+              mentions: z.unknown().optional(),
+            })
             .strict()
             .parse(await body(c));
         return deliver(
@@ -482,6 +488,33 @@ export function createProjectRoomRoutes(
           ),
         );
       }),
+    );
+    app.post(`${prefix}/typing`, (c) =>
+      perform(c, async () => {
+        const { clientId, typing, ...guard } = guards
+          .extend({ clientId: z.string().uuid(), typing: z.boolean() })
+          .strict()
+          .parse(await body(c));
+        return deliver(
+          c,
+          await service.updateTyping(
+            c.req.raw,
+            c.req.param('slug')!,
+            guard,
+            clientId,
+            typing,
+            channel(c),
+          ),
+        );
+      }),
+    );
+    app.get(`${prefix}/members`, (c) =>
+      perform(c, async () =>
+        deliver(
+          c,
+          await service.members(c.req.raw, c.req.param('slug')!, channel(c)),
+        ),
+      ),
     );
     app.post(`${prefix}/presence`, (c) =>
       perform(c, async () => {
@@ -671,5 +704,15 @@ export function createProjectRoomRoutes(
       }),
     );
   }
+  // One stream for many of a Project's rooms (#4798).
+  app.get('/:slug/rooms/live', (c) =>
+    perform(c, () =>
+      projectRoomLiveResponse(
+        c,
+        service,
+        agents ? (ids) => agents.module.failures(ids) : undefined,
+      ),
+    ),
+  );
   return app;
 }

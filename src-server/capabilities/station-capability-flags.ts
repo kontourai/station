@@ -62,6 +62,11 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // #4797, #4812): src-server/routes/projects/project-room-routes.ts. Served
   // wherever Project rooms are; the room's own access check decides each call.
   projectRoomMessageActions: true,
+  // One live connection for a Project's rooms, typing and the member
+  // directory (#4798, #4799): `GET /:slug/rooms/live`, `POST …/typing` and
+  // `GET …/members` in src-server/routes/projects/project-room-routes.ts.
+  // Served wherever Project rooms are; each room's own read check decides.
+  projectRoomLive: true,
   // Scoped pairing (archive#1098): pairing grants/device sessions carry an
   // OAuth-style scope string, enforced by one route -> required-scope table.
   // src-server/security/pairing-route-scopes.ts,
