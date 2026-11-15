@@ -830,10 +830,12 @@ it('offline repair: with Station stopped, fixing the damaged record lets a fresh
   );
   const script = `
     import {readFileSync} from 'node:fs';
-    import {ProjectRoomAttachments} from './src-server/services/projects/task-room-attachments.ts';
+    import {ProjectRoomAttachments,ProjectRoomFilesUnavailable} from './src-server/services/projects/task-room-attachments.ts';
     const {root,input,id}=JSON.parse(readFileSync(process.env.RACE_INPUT,'utf8'));
     const files=new ProjectRoomAttachments(root);
-    const stored=(await files.locked(()=>files.store(['owner'],[input]))).length;
+    let stored=0;
+    try {stored=(await files.locked(()=>files.store(['owner'],[input]))).length;}
+    catch(error) {if(!(error instanceof ProjectRoomFilesUnavailable))throw error;}
     const released=await files.locked(()=>files.release(['owner'],[id]));
     process.stdout.write(JSON.stringify({stored,released}));
   `;
