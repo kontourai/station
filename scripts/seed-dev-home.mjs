@@ -143,6 +143,9 @@ export const ROOT_DECISIONS = Object.freeze({
   'connection-smoke.json': 'bulk-or-derived',
   feedback: 'bulk-or-derived',
   'knowledge-index': 'bulk-or-derived',
+  // Pinned, sha256-verified engine installs: re-acquirable from the pin like
+  // media-tools, so the dev instance installs its own rather than copying them.
+  engines: 'bulk-or-derived',
   'media-tools': 'bulk-or-derived',
   'pull-request-guides': 'bulk-or-derived',
   scratch: 'bulk-or-derived',
