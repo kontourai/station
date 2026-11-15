@@ -1,0 +1,7 @@
+{
+  "revision": "6e12d6b6c564b387bfbf53f70773ad72554f7aca",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"The manifest gained one classified real-process supervisor test; the rule that new child-process tests are classified in scripts/vitest-resource-manifest.mjs is unchanged and still accurate.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
