@@ -2335,3 +2335,253 @@ test('a held earlier read never replaces a newer tombstone, from whichever histo
     release();
   }
 });
+
+test('review4852-r3: a held initial immediate reread cannot overwrite a newer tombstone', async () => {
+  messages = Array.from({ length: 25 }, (_, i) =>
+    storedMessage(i + 1, `Held ${i + 1}`),
+  );
+  const first = messages[0]!;
+  const { client } = mount();
+  await screen.findByText('Held 1');
+  const original = globalThis.fetch;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let heldStarted = false,
+    heldReturned = false,
+    aborted = false,
+    zeroReads = 0;
+  vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
+    const url = new URL(input);
+    if (
+      url.pathname.endsWith('/messages') &&
+      Number(url.searchParams.get('after')) === 0 &&
+      ++zeroReads === 2 &&
+      !heldStarted
+    ) {
+      heldStarted = true;
+      init?.signal?.addEventListener('abort', () => {
+        aborted = true;
+      });
+      const response = await original(input, init);
+      await held;
+      heldReturned = true;
+      return response;
+    }
+    return original(input, init);
+  });
+  try {
+    messages.push(storedMessage(26, 'Held 26'));
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['project-room'] });
+    });
+    await waitFor(() => expect(heldStarted).toBe(true));
+    messages[0] = { ...first, text: '', deletedAt: at };
+    // A second real room change re-reads retained history while the first
+    // immediate query has not yet produced its initial data.
+    act(() => {
+      void client.invalidateQueries({ queryKey: ['project-room'] });
+    });
+    await screen.findByText('Message deleted');
+    expect(screen.queryByText('Held 1')).toBeNull();
+    await act(async () => {
+      release();
+      await held;
+    });
+    await waitFor(() => expect(heldReturned).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    console.log(
+      'R3_STALE_RESPONSE',
+      JSON.stringify({
+        aborted,
+        heldReturned,
+        tombstones: screen.queryAllByText('Message deleted').length,
+        oldText: screen.queryAllByText('Held 1').length,
+      }),
+    );
+    expect(screen.queryByText('Held 1')).toBeNull();
+    expect(screen.getByText('Message deleted')).toBeTruthy();
+  } finally {
+    release();
+  }
+});
+
+test('review4852-r3: count a 100-message burst through mounted SDK queries', async () => {
+  messages = Array.from({ length: 25 }, (_, i) =>
+    storedMessage(i + 1, `Burst ${i + 1}`),
+  );
+  const { client } = mount();
+  await screen.findByText('Burst 1');
+  let requests = 0,
+    aborted = 0;
+  const original = globalThis.fetch;
+  vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
+    if (new URL(input).pathname.endsWith('/messages')) {
+      requests++;
+      init?.signal?.addEventListener('abort', () => aborted++);
+    }
+    return original(input, init);
+  });
+  messages.push(
+    ...Array.from({ length: 100 }, (_, i) =>
+      storedMessage(i + 26, `Burst ${i + 26}`),
+    ),
+  );
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['project-room'] });
+  });
+  await screen.findByText('Burst 125');
+  await waitFor(() => expect(client.isFetching()).toBe(0));
+  console.log(
+    'R3_BURST',
+    JSON.stringify({
+      messages: 100,
+      requests,
+      aborted,
+      spanQueries: client
+        .getQueryCache()
+        .getAll()
+        .filter((q) => q.queryKey.includes('span')).length,
+    }),
+  );
+  expect(screen.getAllByText('Burst 1')).toHaveLength(1);
+  expect(requests).toBeLessThanOrEqual(25);
+});
+
+test('review4852-r3: the unload notice is an unfocused status region', async () => {
+  stubResizeObserver();
+  messages = Array.from({ length: 25 }, (_, i) =>
+    storedMessage(i + 1, `Role ${i + 1}`),
+  );
+  const { client } = mount();
+  const composer = await screen.findByRole('textbox', {
+    name: 'Message the project',
+  });
+  await screen.findByText('Role 1');
+  composer.focus();
+  messages.push(
+    ...Array.from({ length: 501 }, (_, i) =>
+      storedMessage(i + 26, `Role ${i + 26}`),
+    ),
+  );
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['project-room'] });
+  });
+  const notice = await screen.findByText(
+    'Earlier messages were unloaded to keep this view current.',
+  );
+  expect(notice.getAttribute('role')).toBe('status');
+  expect(document.activeElement).toBe(composer);
+});
+
+test.each(['channel switch', 'unmount'])(
+  'review4852-r4: held span cannot publish after %s, cancellation reaches the waiting query',
+  async (mode) => {
+    messages = Array.from({ length: 25 }, (_, i) =>
+      storedMessage(i + 1, `Departure ${i + 1}`),
+    );
+    const ui = mount();
+    await screen.findByText('Departure 1');
+    const original = globalThis.fetch;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let zeroReads = 0,
+      started = false,
+      returned = false,
+      aborted = false;
+    const otherRoom = '22222222-2222-4222-8222-222222222222';
+    vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
+      const url = new URL(input);
+      if (url.pathname.includes(`/channels/${otherRoom}`)) {
+        const response = await original(input, init);
+        if (url.pathname.endsWith('/events')) return response;
+        const body = await response.json();
+        if (body.data?.roomId) body.data.roomId = otherRoom;
+        if (body.data?.messages)
+          body.data.messages = [
+            { ...storedMessage(1, 'Destination only'), roomId: otherRoom },
+          ];
+        if (body.data?.checkpoint)
+          body.data.checkpoint = { roomId: otherRoom, lastSeq: 1 };
+        return Response.json(body, { status: response.status });
+      }
+      if (
+        url.pathname.endsWith('/messages') &&
+        Number(url.searchParams.get('after')) === 0 &&
+        ++zeroReads === 2 &&
+        !started
+      ) {
+        started = true;
+        init?.signal?.addEventListener('abort', () => {
+          aborted = true;
+        });
+        const response = await original(input, init);
+        await held;
+        returned = true;
+        return response;
+      }
+      return original(input, init);
+    });
+    try {
+      messages.push(storedMessage(26, 'Departure 26'));
+      await act(async () => {
+        await ui.client.invalidateQueries({ queryKey: ['project-room'] });
+      });
+      await waitFor(() => expect(started).toBe(true));
+      const pending = ui.client
+        .getQueryCache()
+        .getAll()
+        .find(
+          (q) =>
+            q.queryKey.includes('span') && q.state.fetchStatus === 'fetching',
+        );
+      expect(pending).toBeTruthy();
+      const result = pending!.promise!.then(
+        (value) => ({ kind: 'resolved', value }),
+        (error) => ({ kind: 'rejected', error }),
+      );
+      if (mode === 'unmount') ui.unmount();
+      else
+        ui.rerender(
+          <QueryClientProvider client={ui.client}>
+            <ProjectRoom
+              slug="team"
+              projectId="project"
+              requestScope={requestScope}
+              routeChannel={{ id: otherRoom }}
+            />
+          </QueryClientProvider>,
+        );
+      await waitFor(() => expect(aborted).toBe(true));
+      expect((await result).kind).toBe('rejected');
+      if (mode === 'channel switch')
+        await screen.findByText('Destination only');
+      await act(async () => {
+        release();
+        await held;
+      });
+      await waitFor(() => expect(returned).toBe(true));
+      expect(screen.queryByText('Departure 1')).toBeNull();
+      expect(
+        ui.client
+          .getQueryCache()
+          .getAll()
+          .some(
+            (q) =>
+              q.queryKey.includes(roomId) && q.queryKey.includes('history'),
+          ),
+      ).toBe(false);
+      if (mode === 'channel switch')
+        expect(screen.getByText('Destination only')).toBeTruthy();
+      console.log(
+        'R4_READ_DEPARTURE',
+        JSON.stringify({ mode, aborted, returned }),
+      );
+    } finally {
+      release();
+    }
+  },
+);

@@ -1814,3 +1814,465 @@ test.skipIf(process.getuid?.() === 0)(
     }
   },
 );
+
+test('review4852-r3: deduplicated bytes survive a different uploader and deleted file stays private', async () => {
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const [aliceFile] = (await f.upload(png('alice.png'))) as { id: string }[];
+  const a = await f.send([aliceFile]);
+  const bob = await h.discover('bob');
+  const [bobFile] = (await data(
+    await h.request('bob', '/attachments', 'POST', {
+      ...guard(bob),
+      attachments: [png('bob.png')],
+    }),
+  )) as { id: string }[];
+  const b = parseProjectRoomMessage(
+    await data(
+      await h.request('bob', '/messages', 'POST', {
+        ...guard(bob),
+        intentId: randomUUID(),
+        text: 'bob',
+        attachments: [bobFile],
+      }),
+    ),
+  );
+  expect(await f.remove(a.messageId)).toBe(200);
+  expect((await h.request('bob', `/attachments/${bobFile!.id}`)).status).toBe(
+    200,
+  );
+  expect(
+    Buffer.from(
+      await (
+        await h.request('alice', `/attachments/${bobFile!.id}`)
+      ).arrayBuffer(),
+    ),
+  ).toEqual(PNG);
+  for (const who of ['alice', 'bob'] as const)
+    expect((await h.request(who, `/attachments/${aliceFile!.id}`)).status).toBe(
+      404,
+    );
+  expect(
+    (
+      await h.request('bob', `/messages/${b.messageId}/delete`, 'POST', {
+        ...guard(bob),
+        intentId: randomUUID(),
+      })
+    ).status,
+  ).toBe(200);
+  expect((await h.request('alice', `/attachments/${bobFile!.id}`)).status).toBe(
+    404,
+  );
+});
+
+test('review4852-r3: deletion with cleanup suppressed still refuses both downloaders', async () => {
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const [file] = (await f.upload(png('private.png'))) as { id: string }[];
+  const sent = await f.send([file]);
+  vi.spyOn(ProjectRoomAttachments.prototype, 'release').mockImplementation(
+    () => 'reclaimed',
+  );
+  expect(await f.remove(sent.messageId)).toBe(200);
+  const { existsSync } = await import('node:fs');
+  expect(existsSync(f.blobOf(file!.id))).toBe(true);
+  for (const who of ['alice', 'bob'] as const)
+    expect((await h.request(who, `/attachments/${file!.id}`)).status).toBe(404);
+});
+
+test('review4852-r3: Task retention and Project reclamation stay in separate roots', async () => {
+  const { TaskRoomAttachments } = await import(
+    '../../services/projects/task-room-attachments.js'
+  );
+  const { utimesSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const [file] = (await f.upload(png('project.png'))) as { id: string }[];
+  const sent = await f.send([file]);
+  const task = new TaskRoomAttachments(join(h.home, 'task-room-attachments'));
+  const scope = {
+    projectId: 'task-project',
+    taskId: 'task',
+    taskCreatedAt: 'now',
+  };
+  const [taskFile] = task.store(scope, [png('task.png')]);
+  const old = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000);
+  utimesSync(f.blobOf(file!.id), old, old);
+  vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 24 * 60 * 60 * 1000);
+  task.store(scope, [pngVariant('different.png', 'different')]);
+  expect((await h.request('bob', `/attachments/${file!.id}`)).status).toBe(200);
+  expect(await f.remove(sent.messageId)).toBe(200);
+  expect(task.read(scope, taskFile!.id)?.bytes).toEqual(PNG);
+});
+
+test('review4852-r4: next route upload clears a repaired persisted block with no stale files to release, per store', async () => {
+  const { readFileSync, writeFileSync, existsSync, rmSync, readdirSync } =
+    await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const damaged = await bobsRecord(h, f);
+  const good = readFileSync(damaged.path, 'utf8');
+  writeFileSync(damaged.path, '{');
+  const restarted = new ProjectRoomAttachments(f.root);
+  expect(
+    await restarted.locked(() =>
+      restarted.release(['no-files'], [randomUUID()]),
+    ),
+  ).toBe('blocked');
+  const marker = join(f.root, 'reclamation-blocked.json');
+  expect(existsSync(marker)).toBe(true);
+  const anotherRestart = new ProjectRoomAttachments(f.root);
+  await expect(
+    anotherRestart.locked(() =>
+      anotherRestart.store(['no-files'], [png('blocked.png')]),
+    ),
+  ).rejects.toThrow('unavailable');
+  const other = new ProjectRoomAttachments(join(h.home, 'independent-store'));
+  expect(
+    await other.locked(() => other.store(['other'], [png('allowed.png')])),
+  ).toHaveLength(1);
+  const aliceDir = await bindingDirectory(f.root, f.binding);
+  expect(existsSync(aliceDir) ? readdirSync(aliceDir) : []).toHaveLength(0);
+  writeFileSync(damaged.path, good);
+  // This uploader has never uploaded: sweep has no ids and cannot clear anything.
+  expect(
+    Array.isArray(await f.upload(pngVariant('recovered.png', 'recovered'))),
+  ).toBe(true);
+  expect(existsSync(marker)).toBe(false);
+  // Repeat removal recovery, still using a new binding without any release.
+  writeFileSync(damaged.path, '{');
+  expect(
+    await restarted.locked(() =>
+      restarted.release(['empty-again'], [randomUUID()]),
+    ),
+  ).toBe('blocked');
+  rmSync(damaged.path);
+  expect(
+    await anotherRestart.locked(() =>
+      anotherRestart.store(['empty-again'], [png('after-remove.png')]),
+    ),
+  ).toHaveLength(1);
+  expect(existsSync(marker)).toBe(false);
+});
+
+test('review4852-r4: a 24h unsent sweep preserves all records and bytes on unknown references', async () => {
+  const { writeFileSync, utimesSync, existsSync, readdirSync } = await import(
+    'node:fs'
+  );
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const damaged = await bobsRecord(h, f);
+  const [unsent] = (await f.upload(pngVariant('old.png', 'old'))) as {
+    id: string;
+  }[];
+  const blob = await aliceBlob(f, unsent!.id);
+  const dir = await bindingDirectory(f.root, f.binding);
+  const path = join(dir, `${unsent!.id}.json`);
+  const old = new Date(Date.now() - 25 * 3600000);
+  utimesSync(path, old, old);
+  writeFileSync(damaged.path, '{');
+  await unavailable(
+    await h.request('alice', '/attachments', 'POST', {
+      ...guard(f.a),
+      attachments: [pngVariant('next.png', 'next')],
+    }),
+  );
+  expect(existsSync(path)).toBe(true);
+  expect(existsSync(blob)).toBe(true);
+  expect(readdirSync(dir)).toHaveLength(1);
+  expect(await blobCount(f.root)).toBe(2);
+});
+
+test.each(['ambiguous', 'short', 'overlong'])(
+  'review4852-r4: %s damaged reference never permits deleting possibly named bytes',
+  async (kind) => {
+    const { readFileSync, writeFileSync, existsSync } = await import('node:fs');
+    const h = await harness();
+    const f = await aliceFiles(h);
+    const damaged = await bobsRecord(h, f);
+    const { blobRef } = JSON.parse(readFileSync(damaged.path, 'utf8')) as {
+      blobRef: string;
+    };
+    const [shared] = (await f.upload(png('same.png'))) as { id: string }[];
+    const sharedBlob = await aliceBlob(f, shared!.id);
+    const [distinct] = (await f.upload(
+      pngVariant('distinct.png', 'distinct'),
+    )) as { id: string }[];
+    const distinctBlob = await aliceBlob(f, distinct!.id);
+    const ref =
+      kind === 'short'
+        ? blobRef.slice(0, -1)
+        : kind === 'overlong'
+          ? `${blobRef}0`
+          : `${blobRef} and sha256-${'b'.repeat(64)}`;
+    writeFileSync(damaged.path, `{"blobRef":"${ref}","broken":`);
+    expect(await f.remove((await f.send([shared])).messageId)).toBe(200);
+    expect(existsSync(sharedBlob)).toBe(true);
+    expect(await f.remove((await f.send([distinct])).messageId)).toBe(200);
+    expect(existsSync(distinctBlob)).toBe(kind === 'short');
+    expect(existsSync(damaged.path)).toBe(true);
+  },
+);
+
+test('review4852-r4 FINDING: failed block-marker publication must still refuse the next upload', async () => {
+  const { writeFileSync, mkdirSync, existsSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const damaged = await bobsRecord(h, f);
+  writeFileSync(damaged.path, '{');
+  // A damaged staging pathname: ordinary random-id binding publications still work.
+  mkdirSync(join(f.root, 'staging', 'reclamation-blocked.json'));
+  const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
+    id: string;
+  }[];
+  const blob = await aliceBlob(f, gone!.id);
+  expect(await f.remove((await f.send([gone])).messageId)).toBe(200);
+  expect(existsSync(blob)).toBe(true);
+  expect(existsSync(join(f.root, 'reclamation-blocked.json'))).toBe(false);
+  const response = await h.request('alice', '/attachments', 'POST', {
+    ...guard(f.a),
+    attachments: [pngVariant('new.png', 'new')],
+  });
+  console.log(
+    'R4_MARKER_FAILURE',
+    JSON.stringify({ status: response.status, blobs: await blobCount(f.root) }),
+  );
+  await unavailable(response);
+});
+
+test.skipIf(process.getuid?.() === 0)(
+  'review4852-r4 FINDING: unlink failure must not discard release accounting and all retry custody',
+  async () => {
+    const { chmodSync, existsSync, readdirSync } = await import('node:fs');
+    const { dirname } = await import('node:path');
+    const h = await harness();
+    const f = await aliceFiles(h);
+    const [file] = (await f.upload(pngVariant('retained.png', 'retained'))) as {
+      id: string;
+    }[];
+    const blob = await aliceBlob(f, file!.id);
+    const dir = dirname(blob);
+    chmodSync(dir, 0o500);
+    try {
+      expect(await f.remove((await f.send([file])).messageId)).toBe(200);
+      expect(existsSync(blob)).toBe(true);
+      const bindings = readdirSync(await bindingDirectory(f.root, f.binding));
+      console.log(
+        'R4_UNLINK_FAILURE',
+        JSON.stringify({
+          bindings: bindings.length,
+          blobs: await blobCount(f.root),
+        }),
+      );
+      expect(bindings).toHaveLength(1);
+    } finally {
+      chmodSync(dir, 0o700);
+    }
+  },
+);
+
+test('review4852-r4: lock timeout is an unavailable response, no mutation, then next upload succeeds', async () => {
+  const { acquireFileMutationLockAsync } = await import(
+    '@kontourai/station-shared/lifecycle-events'
+  );
+  const { mkdirSync, existsSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  mkdirSync(f.root, { recursive: true });
+  const unlock = await acquireFileMutationLockAsync(join(f.root, 'store.lock'));
+  try {
+    const started = Date.now();
+    const response = await h.request('alice', '/attachments', 'POST', {
+      ...guard(f.a),
+      attachments: [png('late.png')],
+    });
+    console.log(
+      'R4_LOCK_TIMEOUT',
+      JSON.stringify({
+        status: response.status,
+        durationMs: Date.now() - started,
+      }),
+    );
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'project_room_unavailable' },
+    });
+    expect(existsSync(join(f.root, 'bindings'))).toBe(false);
+  } finally {
+    await unlock();
+  }
+  expect(Array.isArray(await f.upload(png('after.png')))).toBe(true);
+}, 20000);
+
+test.skipIf(process.getuid?.() === 0)(
+  'review4852-r4: unreadable binding directory blocks all release and admission',
+  async () => {
+    const { chmodSync, existsSync } = await import('node:fs');
+    const { dirname } = await import('node:path');
+    const h = await harness();
+    const f = await aliceFiles(h);
+    const damaged = await bobsRecord(h, f);
+    const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
+      id: string;
+    }[];
+    const blob = await aliceBlob(f, gone!.id);
+    chmodSync(dirname(damaged.path), 0o000);
+    try {
+      expect(await f.remove((await f.send([gone])).messageId)).toBe(200);
+      expect(existsSync(blob)).toBe(true);
+      await unavailable(
+        await h.request('alice', '/attachments', 'POST', {
+          ...guard(f.a),
+          attachments: [png('refused.png')],
+        }),
+      );
+    } finally {
+      chmodSync(dirname(damaged.path), 0o700);
+    }
+  },
+);
+
+test('review4852-r4: EIO reading a record blocks reclamation without deleting any bytes', async () => {
+  const fs = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const damaged = await bobsRecord(h, f);
+  const [gone] = (await f.upload(pngVariant('gone.png', 'gone'))) as {
+    id: string;
+  }[];
+  const blob = await aliceBlob(f, gone!.id);
+  const read = fs.readFileSync;
+  const spy = vi
+    .spyOn(fs.default, 'readFileSync')
+    .mockImplementation((...args: Parameters<typeof fs.readFileSync>) => {
+      if (args[0] === damaged.path)
+        throw Object.assign(new Error('injected EIO'), { code: 'EIO' });
+      return Reflect.apply(read, fs, args);
+    });
+  const { syncBuiltinESMExports } = await import('node:module');
+  syncBuiltinESMExports();
+  try {
+    expect(await f.remove((await f.send([gone])).messageId)).toBe(200);
+    expect(fs.existsSync(blob)).toBe(true);
+    expect(
+      JSON.parse(read(join(f.root, 'reclamation-blocked.json'), 'utf8'))
+        .records,
+    ).toContainEqual({ path: damaged.path, reason: 'EIO' });
+    await unavailable(
+      await h.request('alice', '/attachments', 'POST', {
+        ...guard(f.a),
+        attachments: [png('refused.png')],
+      }),
+    );
+  } finally {
+    spy.mockRestore();
+    syncBuiltinESMExports();
+  }
+});
+
+test('review4852-r4 FINDING: an operator-restored record appearing after its directory listing must protect its bytes', async () => {
+  const fs = await import('node:fs');
+  const { dirname } = await import('node:path');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const damaged = await bobsRecord(h, f);
+  const [same] = (await f.upload(png('same.png'))) as { id: string }[];
+  const blob = await aliceBlob(f, same!.id);
+  const sent = await f.send([same]);
+  const parked = join(f.root, 'staging', 'operator-backup.json');
+  fs.renameSync(damaged.path, parked);
+  const list = fs.readdirSync;
+  let restored = false;
+  const spy = vi
+    .spyOn(fs.default, 'readdirSync')
+    .mockImplementation((...args: Parameters<typeof fs.readdirSync>) => {
+      const entries = Reflect.apply(list, fs, args);
+      if (args[0] === dirname(damaged.path) && !restored) {
+        // External operator restores a record, not a cooperating Station writer.
+        fs.renameSync(parked, damaged.path);
+        restored = true;
+      }
+      return entries;
+    });
+  const { syncBuiltinESMExports } = await import('node:module');
+  syncBuiltinESMExports();
+  try {
+    expect(await f.remove(sent.messageId)).toBe(200);
+    expect(restored).toBe(true);
+    expect(fs.existsSync(damaged.path)).toBe(true);
+    console.log(
+      'R4_MIDSCAN_RESTORE',
+      JSON.stringify({ restored, blobExists: fs.existsSync(blob) }),
+    );
+    expect(fs.existsSync(blob)).toBe(true);
+  } finally {
+    spy.mockRestore();
+    syncBuiltinESMExports();
+  }
+});
+
+test('review4852-r4: actual membership revocation while waiting denies the upload and releases its lock', async () => {
+  const { acquireFileMutationLockAsync } = await import(
+    '@kontourai/station-shared/lifecycle-events'
+  );
+  const { mkdirSync, readdirSync, existsSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const bob = await h.discover('bob');
+  mkdirSync(f.root, { recursive: true });
+  const unlock = await acquireFileMutationLockAsync(join(f.root, 'store.lock'));
+  let settled = false;
+  const pending = h
+    .request('bob', '/attachments', 'POST', {
+      ...guard(bob),
+      attachments: [png('revoked.png')],
+    })
+    .finally(() => {
+      settled = true;
+    });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  expect(settled).toBe(false);
+  h.revokeMember();
+  await unlock();
+  expect((await pending).status).toBe(403);
+  const bindings = join(f.root, 'bindings');
+  expect(
+    existsSync(bindings)
+      ? readdirSync(bindings).flatMap((k) => readdirSync(join(bindings, k)))
+      : [],
+  ).toEqual([]);
+  expect(Array.isArray(await f.upload(png('still-allowed.png')))).toBe(true);
+});
+
+test('review4852-r4 FINDING: one recovered hash cannot make a second truncated reference known', async () => {
+  const { readFileSync, writeFileSync, existsSync } = await import('node:fs');
+  const h = await harness();
+  const f = await aliceFiles(h);
+  const damaged = await bobsRecord(h, f);
+  const { blobRef } = JSON.parse(readFileSync(damaged.path, 'utf8')) as {
+    blobRef: string;
+  };
+  const [same] = (await f.upload(png('same.png'))) as { id: string }[];
+  const blob = await aliceBlob(f, same!.id);
+  const sent = await f.send([same]);
+  writeFileSync(
+    damaged.path,
+    `{"blobRef":"${blobRef.slice(0, -1)}","other":"sha256-${'b'.repeat(64)}","attachment":`,
+  );
+  expect(await f.remove(sent.messageId)).toBe(200);
+  expect(existsSync(damaged.path)).toBe(true);
+  console.log(
+    'R4_MIXED_REFERENCE',
+    JSON.stringify({
+      blobExists: existsSync(blob),
+      markerExists: existsSync(join(f.root, 'reclamation-blocked.json')),
+    }),
+  );
+  expect(existsSync(blob)).toBe(true);
+  await unavailable(
+    await h.request('alice', '/attachments', 'POST', {
+      ...guard(f.a),
+      attachments: [png('refused.png')],
+    }),
+  );
+});

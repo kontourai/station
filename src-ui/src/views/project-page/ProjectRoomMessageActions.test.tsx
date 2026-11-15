@@ -666,3 +666,38 @@ test('when the room pauses attachments, the reader is told plainly, nothing is s
     calls.find((c) => c.path.endsWith('/messages'))?.body.attachments,
   ).toBeUndefined();
 });
+
+test('review4852-r3: a failed edit keeps its text and can be retried', async () => {
+  mount();
+  const field = await screen.findByRole('textbox', {
+    name: 'Message the project',
+  });
+  await row('Good catch, updating now.');
+  fireEvent.keyDown(field, { key: 'ArrowUp' });
+  await screen.findByText('Editing message');
+  fireEvent.change(field, { target: { value: 'Retried edit.' } });
+  const original = globalThis.fetch;
+  let failed = false;
+  vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
+    if (new URL(input).pathname.endsWith('/edit') && !failed) {
+      failed = true;
+      throw new TypeError('Lost connection');
+    }
+    return original(input, init);
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save edit' }));
+  await screen.findByText(
+    'The edit was not saved. Your text is still in the composer.',
+  );
+  expect((field as HTMLTextAreaElement).value).toBe('Retried edit.');
+  expect(screen.getByText('Editing message')).toBeTruthy();
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Save edit' }).matches(':disabled'),
+    ).toBe(false),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Save edit' }));
+  await waitFor(() => expect(screen.queryByText('Editing message')).toBeNull());
+  const edited = await row('Retried edit.');
+  expect(within(edited).getByText('edited')).toBeTruthy();
+});

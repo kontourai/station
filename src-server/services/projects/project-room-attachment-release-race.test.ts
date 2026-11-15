@@ -446,3 +446,174 @@ it('an upload waiting on the store lock is refused if access is revoked meanwhil
     : [];
   expect(files).toEqual([]);
 });
+
+it('review4852-r4: exact notice-journey helper fails when its limit note never appears, then passes restored', async () => {
+  const { chromium, expect: browserExpect } = await import('@playwright/test');
+  const source = readFileSync(
+    'tests/project-room-message-actions.spec.ts',
+    'utf8',
+  );
+  const helper = source.slice(
+    source.indexOf('      const pageBack = async'),
+    source.indexOf('      const readable = async'),
+  );
+  const limit = source.slice(
+    source.indexOf('      const limit = (client'),
+    source.indexOf('      const unloaded = (client'),
+  );
+  expect(helper).toContain('older.or(limit(client))');
+  // Erase only the two Client annotations; execute the spec's exact helper.
+  expect((limit + helper).split('(client: Client)').length - 1).toBe(2);
+  const compiled = (limit + helper).replaceAll('(client: Client)', '(client)');
+  const pageBack = new Function('expect', `${compiled}; return pageBack;`)(
+    browserExpect,
+  );
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    for (const mode of ['baseline', 'injected', 'restored']) {
+      // Deliberately a browser fixture of the assertion helper, not a Station journey.
+      await page.setContent(
+        `<main role="region" aria-label="Project room"><button>Load earlier messages</button></main><script>window.presses=0;document.querySelector('button').onclick=()=>{window.presses++;if(window.presses===20 && ${JSON.stringify(mode)}!=='injected'){document.querySelector('button').remove();const note=document.createElement('p');note.setAttribute('role','status');note.textContent='This view keeps the latest 500 messages.';document.querySelector('main').append(note);}}</script>`,
+      );
+      const client = {
+        page,
+        room: page.getByRole('region', { name: 'Project room' }),
+      };
+      if (mode === 'injected') {
+        await expect(pageBack(client)).rejects.toThrow();
+        expect(await page.evaluate(() => Reflect.get(window, 'presses'))).toBe(
+          25,
+        );
+        console.log(
+          'R4_NOTICE_CONTROL injected: assertion failed after 25 working button presses without a note',
+        );
+      } else {
+        await pageBack(client);
+        expect(await page.evaluate(() => Reflect.get(window, 'presses'))).toBe(
+          20,
+        );
+        console.log(`R4_NOTICE_CONTROL ${mode}: PASS after 20 presses`);
+      }
+    }
+  } finally {
+    await browser.close();
+  }
+}, 75000);
+
+it('review4852-r4: lock spans awaits, excludes a second caller, and releases after callback rejection', async () => {
+  const home = makeTempDir('room-lock-await-');
+  const root = join(home, 'files');
+  const files = new ProjectRoomAttachments(root);
+  let finish!: () => void;
+  const hold = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let entered = false,
+    secondEntered = false;
+  const first = files.locked(async () => {
+    entered = true;
+    await hold;
+    throw new Error('operation failed');
+  });
+  const firstResult = first.then(
+    () => ({ kind: 'resolved' }),
+    (error) => ({ kind: 'rejected', error }),
+  );
+  while (!entered) await new Promise((resolve) => setTimeout(resolve, 10));
+  const second = files.locked(() => {
+    secondEntered = true;
+    return 'second';
+  });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(secondEntered).toBe(false);
+  } finally {
+    finish();
+  }
+  expect(await firstResult).toMatchObject({
+    kind: 'rejected',
+    error: expect.any(Error),
+  });
+  expect(await second).toBe('second');
+  expect(secondEntered).toBe(true);
+  expect(
+    await files.locked(() =>
+      files.store(['binding'], [png('after-error.png')]),
+    ),
+  ).toHaveLength(1);
+});
+
+it('review4852-r4: persisted block survives an actual child-process restart, is per store, and repair clears without a release', async () => {
+  const { rmSync } = await import('node:fs');
+  const home = makeTempDir('room-restart-block-');
+  const root = join(home, 'files');
+  const directory = join(root, 'bindings', 'bad');
+  mkdirSync(directory, { recursive: true });
+  const damaged = join(directory, `${randomUUID()}.json`);
+  writeFileSync(damaged, '{');
+  const files = new ProjectRoomAttachments(root);
+  expect(
+    await files.locked(() => files.release(['empty'], [randomUUID()])),
+  ).toBe('blocked');
+  const config = join(home, 'child-input.json');
+  writeFileSync(config, JSON.stringify({ root, input: png('restart.png') }));
+  const script = `
+    import {readFileSync,existsSync} from 'node:fs';
+    import {ProjectRoomAttachments,ProjectRoomFilesUnavailable} from './src-server/services/projects/task-room-attachments.ts';
+    const {root,input}=JSON.parse(readFileSync(process.env.RACE_INPUT,'utf8'));
+    const store=new ProjectRoomAttachments(root);let blocked=false,stored=false;
+    try {await store.locked(()=>store.store(['new-uploader'],[input]));stored=true;}
+    catch(error) {if(!(error instanceof ProjectRoomFilesUnavailable))throw error;blocked=true;}
+    const other=new ProjectRoomAttachments(root+'-other');
+    const independent=(await other.locked(()=>other.store(['independent'],[input]))).length;
+    process.stdout.write(JSON.stringify({blocked,stored,independent,marker:existsSync(root+'/reclamation-blocked.json')}));
+  `;
+  const run = () =>
+    new Promise<{
+      blocked: boolean;
+      stored: boolean;
+      independent: number;
+      marker: boolean;
+    }>((resolve, reject) => {
+      const child = spawn(
+        process.execPath,
+        ['--import', 'tsx', '--input-type=module', '-e', script],
+        {
+          cwd: process.cwd(),
+          env: { ...process.env, RACE_INPUT: config },
+          windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
+      let out = '',
+        err = '';
+      child.stdout.on('data', (b) => {
+        out += b;
+      });
+      child.stderr.on('data', (b) => {
+        err += b;
+      });
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code !== 0) reject(new Error(err));
+        else resolve(JSON.parse(out));
+      });
+    });
+  const blocked = await run();
+  expect(blocked).toEqual({
+    blocked: true,
+    stored: false,
+    independent: 1,
+    marker: true,
+  });
+  rmSync(damaged);
+  const repaired = await run();
+  expect(repaired).toEqual({
+    blocked: false,
+    stored: true,
+    independent: 1,
+    marker: false,
+  });
+  console.log('R4_PROCESS_RESTART', JSON.stringify({ blocked, repaired }));
+});
