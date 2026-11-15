@@ -49,7 +49,7 @@ export function parseRetryAfterMs(
 }
 
 const ERROR_DETAIL_MAX_BYTES = 1024;
-export const ERROR_DETAIL_MAX_LENGTH = 200;
+const ERROR_DETAIL_MAX_LENGTH = 200;
 const IDENTIFIER_PATTERN =
   /\b(?:[0-9a-f]{64}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi;
 // Product source and publisher keys, which generic credential shapes miss.
