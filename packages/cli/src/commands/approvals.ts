@@ -49,6 +49,7 @@ import {
 import {
   consumeSseFrames,
   resolveApprovalsAgentProvider,
+  sessionProviderMatches,
 } from './session-client.js';
 
 const VALID_DECISIONS: ApprovalDecision[] = [
@@ -258,7 +259,10 @@ async function listPendingForProvider(
   const matching =
     provider === undefined
       ? sessions
-      : sessions.filter((session) => session.provider === provider);
+      : // One saved ACP connection holds `acp` and `opencode` chats alike.
+        sessions.filter((session) =>
+          sessionProviderMatches(session.provider, provider),
+        );
 
   const pending: PendingApproval[] = [];
   for (const session of matching) {

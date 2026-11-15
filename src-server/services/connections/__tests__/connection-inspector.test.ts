@@ -9,6 +9,7 @@ import kiroV3Profile from '../../../providers/__tests__/fixtures/acp-scripted-pr
 };
 import { setProviderAdapterRegistrationProvenance } from '../../../providers/adapter-shape.js';
 import { AcpAdapter } from '../../../providers/adapters/acp-adapter.js';
+import { OpenCodeAdapter } from '../../../providers/adapters/opencode-adapter.js';
 import { createConnectionInspector } from '../connection-inspector.js';
 
 describe('ConnectionInspector Interface', () => {
@@ -347,6 +348,58 @@ describe('ConnectionInspector Interface', () => {
         ?.config,
     ).toMatchObject({ engineId: 'acp', icon: 'brand:kiro' });
   });
+
+  test.each([
+    [false, { engineId: 'acp' }],
+    [true, { engineId: 'opencode', provider: 'opencode' }],
+  ] as const)(
+    'an OpenCode connection projects the engine that runs new chats on it (preview on: %s)',
+    async (previewOn, expected) => {
+      const openCode = new OpenCodeAdapter({
+        getConnections: async () => [],
+        nativeEnabled: () => previewOn,
+      });
+      const subject = createConnectionInspector({
+        adapters: () => [openCode as never],
+        appConfig: () => ({}) as any,
+        acpConnections: () =>
+          [
+            {
+              id: 'opencode',
+              enabled: true,
+              command: 'opencode',
+              args: ['acp'],
+            },
+            { id: 'kiro', enabled: true, command: 'kiro-cli', args: ['acp'] },
+          ] as any,
+        acpStatus: () => ({
+          connections: [
+            { id: 'opencode', status: 'available' },
+            { id: 'kiro', status: 'available' },
+          ],
+        }),
+        publicConnection: (runtimeId) => ({
+          id: engineConnectionId(runtimeId),
+          engineId: runtimeId,
+        }),
+        now: () => Date.now(),
+      });
+      const outcome = await subject.inspect({
+        kind: 'runtime-capability-inventory',
+      });
+      const config = (id: string) =>
+        outcome.connections.find((connection) => connection.id === id)?.config;
+      expect(config('opencode')).toMatchObject(expected);
+      if (!previewOn) expect(config('opencode')).not.toHaveProperty('provider');
+      // Another ACP engine is never claimed.
+      expect(config('kiro')).toMatchObject({ engineId: 'acp' });
+      expect(config('kiro')).not.toHaveProperty('provider');
+      // The OpenCode adapter is not an engine connection of its own.
+      expect(
+        outcome.connections.filter((connection) => connection.type !== 'acp'),
+      ).toEqual([]);
+    },
+  );
 
   test('keeps public and runtime identities distinct and omits an unmapped Adapter', async () => {
     const adapter = {

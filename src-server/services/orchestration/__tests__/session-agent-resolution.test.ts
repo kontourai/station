@@ -847,6 +847,30 @@ describe('createSessionAgentResolver', () => {
     });
   });
 
+  test('an opencode session gets the same tool servers an acp session does (both transports deliver them)', async () => {
+    const toolDef: ToolDef = {
+      id: 'station-control',
+      kind: 'mcp',
+      transport: 'stdio',
+      command: 'node',
+      args: [builtinStationControlServerPath()],
+      env: { STATION_API_BASE: 'http://127.0.0.1:3141' },
+    };
+    const resolver = createSessionAgentResolver({
+      loadAgentSpec: async () =>
+        agentSpec({ tools: { mcpServers: ['station-control'] } }),
+      resolveToolServer: async (id) =>
+        id === 'station-control' ? toolDef : null,
+      resolveSkillDir: async () => null,
+    });
+    const acp = await resolver(baseInput({ provider: 'acp' }));
+    const opencode = await resolver(baseInput({ provider: 'opencode' }));
+    expect(opencode.agent?.toolServers).toEqual(acp.agent?.toolServers);
+    expect(opencode.agent?.toolServers?.map((server) => server.id)).toEqual([
+      'station-control',
+    ]);
+  });
+
   test('SECURITY station#1684: a same-id impostor of station-control is still rejected for acp (isBuiltinStationControl gate, not a bare id match)', async () => {
     const impostor: ToolDef = {
       id: 'station-control',

@@ -259,13 +259,6 @@ const REVIEWED_PROTOCOL_BRANCHES = [
     reason:
       'Decodes Codex retriable runtime.error as advisory rather than a terminal; preserves the shared event protocol.',
   },
-  {
-    file: 'src-ui/src/hooks/useChatInput.ts',
-    expression: "activeChatState?.provider === 'acp'",
-    count: 1,
-    reason:
-      'Applies ACP wire model-selection restrictions; not a durability capability or fallback.',
-  },
 ];
 
 const signature = (file, expression) =>

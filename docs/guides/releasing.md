@@ -263,7 +263,15 @@ or retries. It maintains one P1 issue owned by repository release maintainers
 when no qualification job started within eight hours, no source qualification
 passed within fourteen hours, or the latest unqualified run has remained queued
 or running for more than three hours. The eight-hour start and fourteen-hour success bounds allow schedule and
-execution delay. It also reports a
+execution delay. It first selects the newest executed red run, downloads
+its failure manifests and classifies it; the body then says whether main is
+red only on known failures, owned by which open issues, with a line
+"red only on known failures since <run>" carried across observations, and
+that release qualification stays blocked. In report mode the alert
+decisions are unchanged. With `STATION_QUALIFICATION_SIGNAL=enforce`, a
+known-only run that completed within the 24-hour scheduled-skip window
+replaces the fourteen-hour staleness reason with that line, and a new
+failure is reported as its own reason. It also reports a
 failed scheduled or manual Nightly delivery after its source gate passed. The
 passing gate's completion time and exact source identify qualification health;
 a long native build does not make qualification stale by itself.
@@ -391,6 +399,15 @@ when they failed before creating a reservation.
 to completed canonical main-qualification runs. It keeps one P1 issue titled
 `Main qualification repair`, with failed source/run, job outcomes, an owner,
 state and a deadline 24 hours after the episode opens.
+
+Each prepare run downloads the run's `qualification-manifest-*` artifacts
+with the existing `actions: read` and writes the [failure
+classification](testing.md#known-qualification-failures) into the episode's
+report. In report mode (the default) that changes no decision. With
+`STATION_QUALIFICATION_SIGNAL=enforce`, a run red only on known failures
+whose issues are open opens no episode and only refreshes an open one;
+it never closes an episode, and a new failure still opens or updates it.
+Only a green qualification run or a person closes an episode.
 
 By default no automated repair agent runs: repository variable
 `QUALIFICATION_REPAIR_AGENT` is unset, and the issue is opened or updated with
@@ -561,13 +578,62 @@ publication incidents until actual native-ledger or CLI registry-provenance
 recovery, independently of source-qualification repair. Read provider receipts
 for the failed leg; a green or skipped later job does not prove recovery.
 
+A Nightly records its deploy-ledger rows in one commit to `main`. In run
+history, every ledger push made GitHub discard and rebuild the merge groups in
+flight. The CLI job no longer writes
+its `nightly-npm` row. When the native cohort reaches `record-native-completion`,
+that job writes the npm, Android and desktop rows in one commit through
+[`deploy-ledger-commit.mjs`](../../scripts/lib/deploy-ledger-commit.mjs). It
+includes the npm row only after the CLI's provider receipt from the same run
+names that run's version and source, and the registry still binds that version
+to the source. The `record-cli-ledger` job runs after the cohort ends, whether it
+succeeded, failed, was skipped or was cancelled. When the CLI publish was verified,
+it records the npm row alone unless `main` already holds it. Both writers pass
+`--if-absent`, so either order leaves exactly one row. The commit subject names
+the rows it adds (`docs(ledger): record nightly-npm …, nightly-android …,
+nightly-desktop … from run <id>`), and the helper refuses a subject that
+[`normalize-deploy-ledger-head.mjs`](../../scripts/normalize-deploy-ledger-head.mjs)
+would not peel. A failure of `record-cli-ledger` counts against the CLI leg in
+health monitoring. Stable releases and package publication still write one
+record per commit.
+
+If the combined commit fails for any reason, the record job falls back to the
+earlier behaviour. It records the Android and then the desktop row in their own
+commits, using exactly the earlier invocation, and leaves the npm row to
+`record-cli-ledger`. So one bad row cannot take the others with it, and the
+Android marker moves when the native rows land, as it did before. If a
+combined commit did land, these per-row writes are refused as duplicates rather
+than written twice.
+
+Roll this back workflows first. Revert `nightly.yml` and
+`nightly-native-cohort.yml`, and keep the script changes: `--if-absent`,
+`--record` and `--subject-run-id` are additive, and the single-record
+`--commit-subject … --` form the stable workflows use is unchanged. Never
+revert `scripts/deploy-ledger.mjs` while a run of the new workflow is in
+flight. The commit helper runs from the job's checkout, but the appender it
+spawns runs from `origin/main` after the detach, and the older appender
+rejects `--if-absent`. In that case the record job's per-row fallback still
+records the native rows, because it passes no new flag. `record-cli-ledger`
+fails, though, and the npm row is missing. To add a missing row by hand, take the version and `verifiedAt` from
+that run's `nightly-cli-provider-receipt-<run id>` artifact, or the native
+versions from its `nightly-cohort-final-<run id>` receipt. Then run the
+appender with the arguments the workflow passes, through
+`node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record <channel> <version> from run <run id>" -- node scripts/deploy-ledger.mjs …`
+on a checkout of `main`, with a token allowed to push there.
+
 Preview
 and Stable are evidence-driven owner decisions, not automatic calendar releases.
 No public release is created merely by merging a normal PR. Package-version
 PR maintenance runs on main pushes except those changing only the generated
 `docs/reference/deploy-ledger.json` and `docs/reference/deploy-ledger.md` outputs.
 Those receipt updates do not change the package release plan; regenerating the
-version PR would replace its scoped review notes and formatting corrections.
+version PR would replace any review notes added to it. Its generated output
+needs none: `npm run version-packages` writes changelogs through
+[`changeset-changelog.mjs`](../../scripts/changeset-changelog.mjs), which drops
+upstream's trailing whitespace, and the review ledger's
+[release-versioning contract](documentation-review-ledger.md#generated-release-records-and-removed-notes)
+accepts the version bumps and the changelog sections built from consumed notes.
+A record that cites a version value still needs a note.
 Mixed pushes and every other changed path still trigger maintenance. Manual
 package publication remains available and requires exact-source qualification.
 The separately authorized published

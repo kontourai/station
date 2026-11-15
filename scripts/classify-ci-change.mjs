@@ -171,6 +171,7 @@ const DESKTOP_RUST_FILES = new Set([
   'scripts/classify-ci-change.mjs',
   'package.json',
   'packages/cli/src/commands/profile-store.ts',
+  'src-ui/src/platform/native/htmlReplyCapability.js',
   'src-ui/src/platform/native/pluginBundleCapability.js',
   'src-ui/public/favicon.png',
   'src-ui/public/favicon-beta.png',

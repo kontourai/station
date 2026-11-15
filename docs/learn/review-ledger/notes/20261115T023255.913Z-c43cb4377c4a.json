@@ -1,0 +1,7 @@
+{
+  "revision": "eed803222d9aa398bbe40ce4ffc7c40bd6f3fd35",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"The CLI leg now also covers the record-cli-ledger fallback job; publication recovery still requires the CLI provenance step or the native ledger job, as described.","inputs":["scripts/qualification-health.mjs"]}
+  ]
+}

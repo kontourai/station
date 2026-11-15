@@ -678,6 +678,32 @@ export const PROVIDER_MUSE = 'muse';
 export const PROVIDER_COPILOT_SDK = 'copilot-sdk';
 
 /**
+ * OpenCode as its own engine: it runs saved ACP connection records, over
+ * OpenCode 2's own server where verified and over ACP otherwise
+ * (`opencode-adapter.ts`). New chats get it only while the
+ * `opencode-native-engine` Feature Preview is on; a chat keeps the provider
+ * it started with.
+ */
+export const PROVIDER_OPENCODE = 'opencode';
+
+/**
+ * Engines that run saved ACP connection records: `acp` itself, and an
+ * engine that drives some of those records its own way (`opencode`). Read it
+ * where a behaviour belongs to the ACP connection a session runs on (its
+ * folder, its approval control, its agent scoping), never to tell the
+ * engines apart.
+ */
+export const ACP_FAMILY_ENGINE_IDS: readonly string[] = [
+  PROVIDER_ACP,
+  PROVIDER_OPENCODE,
+];
+
+/** Whether `engine` runs saved ACP connection records ({@link ACP_FAMILY_ENGINE_IDS}). */
+export function isAcpFamilyEngine(engine: string | undefined | null): boolean {
+  return typeof engine === 'string' && ACP_FAMILY_ENGINE_IDS.includes(engine);
+}
+
+/**
  * archive#978 — the per-provider `modelOptions` keys each adapter actually
  * reads and applies (not a wishlist of what a wire channel could carry).
  * Derived directly from each adapter's own `modelOptions` reads, cited here
@@ -739,6 +765,12 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
       'serviceTier',
     ],
     [PROVIDER_ACP]: ['mode', 'effort'],
+    // `opencode-adapter.ts` reads `approvalMode` (OpenCode's approval rules
+    // are always Station's to set) and `mode` (the OpenCode agent), and over
+    // ACP hands `effort` to the inner ACP adapter, which applies it as above.
+    // A session with `effort` runs over ACP rather than natively, where it
+    // could not be honoured (`OPENCODE_NATIVE_UNSUPPORTED_SETTING`).
+    [PROVIDER_OPENCODE]: ['approvalMode', 'mode', 'effort'],
     [PROVIDER_OLLAMA]: [],
     [PROVIDER_BEDROCK]: [],
     // #2452: `muse-adapter.ts` reads `approvalMode` (`readApprovalMode`) at

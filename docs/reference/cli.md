@@ -1997,7 +1997,11 @@ must be a persisted Agent ID whose execution binds to an external
 engine (for example `codex` or `kiro`) — approvals are an
 orchestration-session concept, and the provider is resolved from that binding.
 Station#979 AC5: resolution reads the connection's own
-`config.provider` (or `'acp'` for an ACP-transported connection), so an
+`config.provider`. For an ACP-transported connection that is the ACP-family
+engine the host projects (`opencode` for an OpenCode connection while the
+OpenCode native engine preview is on), else `'acp'`, as the server's
+execution-target resolver reads it. One such connection holds both `acp` and
+`opencode` chats, so `--agent` lists sessions of either. An
 ACP connection (Kiro, OpenCode) or a Bedrock connection is listable and
 respondable exactly like a `claude`/`codex`/`ollama` binding. No provider
 is inferred from Agent ID text. `--watch` is

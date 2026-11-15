@@ -1957,6 +1957,11 @@ export async function startRecoveredOrchestrationSession(options: {
     if (deps.applyCredentialProfile) {
       startInput = await deps.applyCredentialProfile(startInput);
     }
+    // #4435: the adapter's governance check runs before the start boundary,
+    // as it does for a fresh start. Inside the boundary, a definitive refusal
+    // (OpenCode's approval rules could not be read) was recorded as a start
+    // that may have happened, and every retry was refused behind it.
+    await adapter.preflightStart?.(startInput);
     const admissionLease = await deps.admitEngineStart?.(startInput.threadId);
     let recovered: ProviderSession;
     try {

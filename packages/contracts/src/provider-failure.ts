@@ -195,6 +195,9 @@ export const PROVIDER_FAILURE_KINDS = {
   'muse-exit-without-terminal': 'engine_crashed',
   'muse-spawn-failed': 'unavailable',
   'muse-terminal-not-completed': 'provider_error',
+  // Station's own OpenCode server client refused a route it never calls
+  // (credential, auth, config writes): a retry cannot reach it.
+  opencode_serve_denied_path: 'permission_denied',
   [CONFINEMENT_REFUSAL_CODES[0]]: 'permission_denied',
   [CONFINEMENT_REFUSAL_CODES[1]]: 'permission_denied',
   [CONFINEMENT_REFUSAL_CODES[2]]: 'permission_denied',

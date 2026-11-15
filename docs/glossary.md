@@ -104,6 +104,7 @@ distinction:
   Codex, or a custom CLI engine (OpenCode, Kiro). *(`ConnectionKind` is
   `'agent'`.)*
 - **ACP** — transport detail only, never a connection *kind* users choose or see named: how Station drives some external engines (OpenCode, Kiro) as a subprocess over the Agent Client Protocol, as opposed to a native SDK. Users see the engine's name ("OpenCode"); when a custom engine's name can't be resolved, the displayed default is **"Custom engine"**, never "ACP" and never "command-backed" — "command-backed" described the launch plumbing, which users read (wrongly) as a capability claim (owner feedback, 2026-08-22). "Custom engine" names what it is to the user: an engine they connected themselves by giving Station its command. `/connections/acp` remains only as a URL redirect to `/connections/engines` (the route itself is retired); labels never say ACP.
+- **OpenCode native engine** — the `opencode` engine id, behind the default-off `opencode-native-engine` Feature Preview. It runs saved OpenCode ACP connections, and drives OpenCode 2 through its own local server (`opencode serve`) where Station verified that version's API, over ACP otherwise. Users still see "OpenCode". `acp` and `opencode` together are the ACP family (`isAcpFamilyEngine`): engines that run saved ACP connection records. A managed policy governs both through its `acp` entry. See [the decision](decisions/opencode-native-transport.md).
 
 > **The kind vocabulary is internal.** Ollama and Bedrock are model providers
 > (`kind: 'model'`); Claude Code and Codex are agent providers

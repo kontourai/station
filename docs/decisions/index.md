@@ -23,6 +23,7 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [html-replies](./html-replies.md) | current | Contain agent-authored HTML in a page-only sandbox |
 | [managed-policy](./managed-policy.md) | current | A machine-level managed policy that Station loads at startup and fails closed on |
 | [mcp-app-transcript-previews](./mcp-app-transcript-previews.md) | current | Display recorded MCP app results in chat without granting session actions |
+| [opencode-native-transport](./opencode-native-transport.md) | current | OpenCode 2.x runs as its own engine over a verified `opencode serve`, with ACP as the fallback, behind a Feature Preview |
 | [personal-coordinator-session](./personal-coordinator-session.md) | current | One coordinator Session per person, woken from delivered attention notifications through the conversation inbox |
 | [process-supervisor](./process-supervisor.md) | current | Station process ownership and the process supervisor |
 | [project-room-realtime](./project-room-realtime.md) | current | Keep Room durability independent of realtime transport and harden SSE first |

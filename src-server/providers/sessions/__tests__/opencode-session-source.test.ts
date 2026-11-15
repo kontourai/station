@@ -12,6 +12,10 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import {
+  isOpenCodeResumeCursor,
+  type OpenCodeResumeCursor,
+} from '../../adapters/opencode-adapter.js';
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
@@ -118,6 +122,50 @@ function writeTurn(
 }
 
 describe('OpenCodeSessionSource', () => {
+  test('names the OpenCode session a Station session owns, over either transport and under ACP', () => {
+    const source = new OpenCodeSessionSource({
+      dataDir: join(fixtureRoot(), 'opencode'),
+    });
+    const acp = {
+      acpSessionId: 'ses_overacp',
+      connectionId: 'opencode',
+      connectionFingerprint: 'f00d',
+    };
+    const native = {
+      kind: 'opencode',
+      connectionId: 'opencode',
+      sessionId: 'ses_native',
+      cwd: '/workspace/project',
+      bindingKey: 'binding',
+      transport: 'native',
+    } satisfies OpenCodeResumeCursor;
+    const fallback = {
+      ...native,
+      sessionId: 'ses_overacp',
+      transport: 'acp',
+      acp,
+    } satisfies OpenCodeResumeCursor;
+    expect([native, fallback].every(isOpenCodeResumeCursor)).toBe(true);
+    expect(
+      source.ownedNativeSessionId({
+        provider: 'opencode',
+        resumeCursor: native,
+      }),
+    ).toBe('ses_native');
+    expect(
+      source.ownedNativeSessionId({
+        provider: 'opencode',
+        resumeCursor: fallback,
+      }),
+    ).toBe('ses_overacp');
+    expect(
+      source.ownedNativeSessionId({ provider: 'acp', resumeCursor: acp }),
+    ).toBe('ses_overacp');
+    expect(
+      source.ownedNativeSessionId({ provider: 'claude', resumeCursor: acp }),
+    ).toBeUndefined();
+  });
+
   test('discovers a prompted top-level session and maps one turn to canonical events', async () => {
     const dataDir = join(fixtureRoot(), 'opencode');
     const store = writer(dataDir);

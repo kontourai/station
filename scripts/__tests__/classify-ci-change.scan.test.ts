@@ -68,6 +68,7 @@ describe('desktop Rust relevance for the Windows PR floor', () => {
       'src-ui/public/favicon-dev.png',
       'src-ui/public/favicon-nightly.png',
       'src-ui/public/favicon.png',
+      'src-ui/src/platform/native/htmlReplyCapability.js',
       'src-ui/src/platform/native/pluginBundleCapability.js',
     ]);
     for (const path of outside) {

@@ -2,6 +2,7 @@ import type { ACPConfig } from '@kontourai/station-contracts/acp';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { BuiltinAgentEngineBinding } from '@kontourai/station-contracts/engine-capability-matrix';
+import { isAcpFamilyEngine } from '@kontourai/station-contracts/provider';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { tenantExecutionContextFromSession } from '@kontourai/station-contracts/tenancy';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
@@ -35,6 +36,7 @@ import type { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
 import type { CopilotSdkAdapter } from '../../providers/adapters/copilot-sdk-adapter.js';
 import type { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import type { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
+import { OpenCodeAdapter } from '../../providers/adapters/opencode-adapter.js';
 import {
   createRegistryAwareHasAgent,
   StationAgentAdapter,
@@ -261,6 +263,12 @@ export interface InitializeRuntimeDeps {
   hostImagesPreview?: FeaturePreviewSelector;
   /** #3628: absent on a hosted Station, where no chat is a coordinator. */
   coordinatorSessionPreview?: FeaturePreviewSelector;
+  /**
+   * `opencode-native-engine`: whether new chats on an OpenCode connection
+   * run on the `opencode` engine, and whether it may use OpenCode 2's own
+   * server. Read at every claim, start, resume and server spawn.
+   */
+  openCodeNativeEnginePreview?: FeaturePreviewSelector;
   durableAgentPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
@@ -465,9 +473,9 @@ export async function initializeRuntime(
 
   applyConfiguredLogLevel(appConfig.logLevel, logger);
 
-  const acpAdapter = new AcpAdapter({
-    getConnections: async () =>
-      ((await configLoader.loadACPConfig()) as ACPConfig).connections,
+  const getAcpConnections = async () =>
+    ((await configLoader.loadACPConfig()) as ACPConfig).connections;
+  const acpAdapterOptions = {
     logger,
     resolveToolServer: (id) =>
       configLoader.loadIntegration(id).catch(() => null),
@@ -529,6 +537,23 @@ export async function initializeRuntime(
     },
     revokeStationControlMcpAuth: (threadId: string, serverId) =>
       revokeStationControlMcpToken(threadId, serverId),
+  } satisfies Omit<AcpAdapterOptions, 'getConnections'>;
+  const acpAdapter = new AcpAdapter({
+    ...acpAdapterOptions,
+    getConnections: getAcpConnections,
+  });
+  // Always registered: a chat that started on `opencode` keeps it after the
+  // preview is turned off, and then runs over ACP (ruling R2). The preview
+  // decides which provider a new OpenCode chat gets (`claimsAcpConnection`)
+  // and whether OpenCode 2's own server may run.
+  const openCodeAdapter = new OpenCodeAdapter({
+    getConnections: getAcpConnections,
+    acp: acpAdapterOptions,
+    nativeEnabled: () =>
+      deps.openCodeNativeEnginePreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) === true,
   });
   let stationAgentsReady = false;
   const durableOwner = stationAgentRuntimeOwner(
@@ -598,6 +623,7 @@ export async function initializeRuntime(
       museAdapter,
       copilotSdkAdapter,
       acpAdapter,
+      openCodeAdapter,
       stationAgentAdapter,
     ],
     { builtin: true, source: 'station-core' },
@@ -796,7 +822,7 @@ export async function initializeRuntime(
     // directory of its own, read from the same config the adapter reads, so
     // a scoped dispatch is decided on the directory it will run in.
     resolveConnectionDefaultCwd: async (provider, connectionId) => {
-      if (provider !== 'acp') return undefined;
+      if (!isAcpFamilyEngine(provider)) return undefined;
       const connection = (
         (await configLoader.loadACPConfig()) as ACPConfig
       ).connections.find((candidate) => candidate.id === connectionId);

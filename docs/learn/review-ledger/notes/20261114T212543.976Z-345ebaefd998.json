@@ -1,0 +1,7 @@
+{
+  "revision": "368355359c70493841cbbdce9475db72de3db663",
+
+  "notes": [
+    {"path":"tests/AGENTS.md","note":"Re-read after the failure-manifest review round (any failed file or repeated identity leaves a group unexplained; a failed job must fail only in its phase step; the reporter and manifest writes are contained; exact enforce value; the testing guide's new limits paragraph). This document makes no claim about those behaviors; no prose change needed.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

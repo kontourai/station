@@ -30,10 +30,12 @@ The core owns durable product responsibilities including Projects, Tasks, Sessio
 
 ## These docs, and what they cannot do
 
-`station-docs` serves this manual and the architecture topics as static content
-compiled into Station. Its tools list topics, retrieve a topic, and search by
-case-insensitive substring. They do not read user files, make network calls, or
-require a credential at request time.
+`station-docs` serves this manual and the architecture topics as a static
+Corpus docs bundle compiled into Station. Its tools list topics, retrieve a
+topic, and run a ranked search: ask in plain words, and matching uses word
+stems and synonyms, best match first. It matches words, not meaning, so a
+question in words the docs never use can miss. The tools do not read user
+files, make network calls, or require a credential at request time.
 
 The returned version and documentation digest identify shipped content, not
 live state. These tools cannot tell you which Agents exist, what is running,
@@ -294,7 +296,10 @@ The built-in Station Agent receives visual replies through its default
 station-control attachment. For an authored Claude/Codex Agent, attach
 station-control and select `html_preview` and `html_render`; ACP must attach the
 whole server without an `available` filter. Preview self-contained HTML, inspect the returned screenshot,
-height and console output, then publish the same HTML. Pages appear at the tool
+height and console output, then publish the same HTML. Reach for `html_preview`
+then `html_render` by default for chart or visual replies; if an Artifact tool
+refuses with an auth-token message, publish the same page with `html_render`
+instead of leaving a local file. Pages appear at the tool
 result and survive reload. Use the host theme CSS variables. App/session access
 and ordinary network loads are blocked. In the published viewer, WebRTC isolation is incomplete: nested
 srcdoc can send ICE UDP, exposing viewer IP or data entered into the page. Do not

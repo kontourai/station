@@ -71,6 +71,10 @@ export const PROVIDER_USAGE_SCOPE: ReadonlyMap<string, ProviderUsageScope> =
     // The attached OpenCode source sums the `step-finish` usage of one turn's
     // assistant messages and emits it once, when that turn closes
     // (`opencode-session-source.ts`), so each event is that turn's figure.
+    // The `opencode` engine's native transport publishes one event per
+    // model step (`session.step.ended`, `opencode-native-events.ts`), each
+    // that step's own usage: summing them within a turn and across turns is
+    // the turn's and the session's figure, which is what `per-turn` means.
     ['opencode', 'per-turn'],
     // ACP: the adapter publishes one event per answered `session/prompt`,
     // from that answer's `usage`, which the schema describes as "Token usage
