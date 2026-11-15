@@ -2985,6 +2985,39 @@ test.skipIf(process.getuid?.() === 0)(
   },
 );
 
+test.skipIf(process.getuid?.() === 0)(
+  'message files: a store directory that cannot be looked up is unavailable, not absent (#4852 review)',
+  async () => {
+    const fs = await import('node:fs');
+    const { dirname } = await import('node:path');
+    const h = await harness();
+    const f = await aliceFiles(h);
+    const damaged = await bobsRecord(h, f);
+    const bindings = join(f.root, 'bindings');
+    // Listable but not searchable: each key directory's lookup is EACCES.
+    fs.chmodSync(bindings, 0o400);
+    let response: Response;
+    let records: { path: string; reason: string }[];
+    try {
+      response = await h.request('alice', '/attachments', 'POST', {
+        ...guard(f.a),
+        attachments: [png('blocked.png')],
+      });
+      records = JSON.parse(
+        fs.readFileSync(join(f.root, 'reclamation-blocked.json'), 'utf8'),
+      ).records;
+    } finally {
+      fs.chmodSync(bindings, 0o700);
+    }
+    await unavailable(response!);
+    expect(records!).toContainEqual({
+      path: dirname(damaged.path),
+      reason: 'EACCES',
+    });
+    expect(Array.isArray(await f.upload(png('resumed.png')))).toBe(true);
+  },
+);
+
 test('message files: a linked bindings or repair root pauses uploads until it is a plain directory again (#4852 review)', async () => {
   const fs = await import('node:fs');
   const h = await harness();
