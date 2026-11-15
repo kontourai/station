@@ -1,4 +1,5 @@
 import { useConnections } from '@kontourai/station-connect';
+import { Spinner } from '@kontourai/ui/react';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
@@ -150,12 +151,13 @@ export function NotificationOpenNoticeView({
   };
   if (notice.kind === 'switching')
     return (
-      <div
-        className="notification-station-notice notification-station-notice--pending"
-        role="status"
-      >
-        <span className="notification-station-notice__progress" aria-hidden />
-        <p className="notification-station-notice__line">
+      // The spinner is the one live status; the line repeats it visibly.
+      <div className="notification-station-notice notification-station-notice--pending">
+        <Spinner
+          size={16}
+          label={`Opening conversation on ${notice.stationName}…`}
+        />
+        <p className="notification-station-notice__line" aria-hidden="true">
           Opening conversation on <strong>{notice.stationName}</strong>…
         </p>
       </div>

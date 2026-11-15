@@ -109,9 +109,12 @@ describe('NotificationStationOpener', () => {
       }),
     );
     await act(settle);
-    expect(screen.getByRole('status').textContent).toBe(
-      'Opening conversation on Studio Mac…',
-    );
+    expect(
+      screen.getByRole('status', {
+        name: 'Opening conversation on Studio Mac…',
+      }),
+    ).toBeTruthy();
+    expect(screen.getAllByRole('status')).toHaveLength(1);
     expect(navigate).not.toHaveBeenCalled();
     await act(async () => {
       connections.release?.();
