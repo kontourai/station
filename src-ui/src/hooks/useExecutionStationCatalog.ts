@@ -70,16 +70,34 @@ function sshUnavailableReason(state: { phase: string }): string | undefined {
  * the server resolves a saved id to its SSH profile first and the launcher
  * selects it the same way, so it is listed (or refused) once, as SSH.
  */
+/**
+ * How often an open Station list re-reads the peer list. The server answers
+ * from its readiness store and refreshes it in the background on each read,
+ * so this cadence is what keeps an open list current.
+ */
+export const STATION_READINESS_WATCH_MS = 5_000;
+
 export function useExecutionStations({
   projectSelected = false,
+  watchReadiness = false,
 }: {
   projectSelected?: boolean;
+  /** The list is open: read fresh on open and keep readiness current. */
+  watchReadiness?: boolean;
 } = {}) {
   const scope = useHostRequestAuthorityScope();
   const device = useDevicePresentation();
   const enabled = Boolean(scope?.isCurrent());
   const environments = useSshEnvironmentsQuery({ enabled });
-  const peers = usePeerCredentialsQuery({ enabled });
+  const peers = usePeerCredentialsQuery({
+    enabled,
+    ...(watchReadiness
+      ? {
+          refetchOnMount: 'always' as const,
+          refetchInterval: STATION_READINESS_WATCH_MS,
+        }
+      : {}),
+  });
   const authority = useQuery({
     queryKey: [
       'execution-station-authority',

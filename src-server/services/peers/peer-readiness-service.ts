@@ -22,6 +22,10 @@ export interface PeerReadinessTarget {
   apiBase: string;
 }
 
+function keyOf(peer: PeerReadinessTarget): string {
+  return `${peer.environmentId}\n${peer.apiBase}`;
+}
+
 export interface PeerReadinessServiceOptions {
   fetch?: typeof fetch;
   now?: () => number;
@@ -40,6 +44,12 @@ export interface PeerReadinessServiceOptions {
  * Answers are cached per (environmentId, apiBase) — `online` briefly, a
  * failure only long enough to absorb a burst — and concurrent probes of the
  * same peer share one request.
+ *
+ * Reads that list peers never wait on the network: `snapshot` answers from
+ * the last observation and refreshes stale ones in the background, so the
+ * store stays current on the cadence the peer list is read (pickers re-read
+ * it while open). Only dispatch (`probe` with `revalidateFailures`) waits,
+ * because refusing work must rest on a fresh observation.
  */
 export class PeerReadinessService {
   readonly #fetch: typeof fetch;
@@ -72,15 +82,12 @@ export class PeerReadinessService {
     peer: PeerReadinessTarget,
     options: { revalidateFailures?: boolean } = {},
   ): Promise<PeerStationReadiness> {
-    const key = `${peer.environmentId}\n${peer.apiBase}`;
+    const key = keyOf(peer);
     const cached = this.#cache.get(key);
     if (cached) {
       const online = cached.status === 'online';
       const age = this.#now() - cached.checkedAt;
-      if (
-        age < (online ? this.#onlineTtlMs : this.#failureTtlMs) &&
-        (online || !options.revalidateFailures)
-      )
+      if (age < this.#ttl(cached) && (online || !options.revalidateFailures))
         return Promise.resolve(cached);
     }
     const pending = this.#inFlight.get(key);
@@ -93,6 +100,36 @@ export class PeerReadinessService {
       .finally(() => this.#inFlight.delete(key));
     this.#inFlight.set(key, probe);
     return probe;
+  }
+
+  /**
+   * Each peer's last observed readiness, at once: `undefined` for a peer not
+   * yet probed. Peers whose answer is past its TTL (or never probed) are
+   * refreshed in the background, at most `concurrency` at a time, so the next
+   * read sees the result. Entries for peers no longer listed are dropped.
+   */
+  snapshot(
+    peers: readonly PeerReadinessTarget[],
+  ): Array<PeerStationReadiness | undefined> {
+    const keys = new Set(peers.map(keyOf));
+    for (const key of this.#cache.keys())
+      if (!keys.has(key)) this.#cache.delete(key);
+    const now = this.#now();
+    const stale: PeerReadinessTarget[] = [];
+    const observed = peers.map((peer) => {
+      const cached = this.#cache.get(keyOf(peer));
+      if (!cached || now - cached.checkedAt >= this.#ttl(cached))
+        stale.push(peer);
+      return cached;
+    });
+    if (stale.length) void this.probeAll(stale);
+    return observed;
+  }
+
+  #ttl(readiness: PeerStationReadiness): number {
+    return readiness.status === 'online'
+      ? this.#onlineTtlMs
+      : this.#failureTtlMs;
   }
 
   /** Every peer's readiness, at most `concurrency` probes at a time. */

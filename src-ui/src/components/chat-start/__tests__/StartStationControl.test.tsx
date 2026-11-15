@@ -11,6 +11,7 @@ import {
 } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { STATION_READINESS_WATCH_MS } from '../../../hooks/useExecutionStationCatalog';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { StartStationMenu } from '../StartMenus';
 import { StartPickerMenus } from '../StartPickerMenus';
@@ -98,9 +99,14 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
 vi.mock('../../../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => ({ hostName: 'kontour' }),
 }));
+/** Each peer-list read's options, to see who keeps readiness current. */
+const peerQueryConfigs: Array<Record<string, unknown> | undefined> = [];
 vi.mock('@kontourai/station-sdk', () => ({
   useSshEnvironmentsQuery: () => ({ ...reads.ssh, refetch: retries.ssh }),
-  usePeerCredentialsQuery: () => ({ ...reads.peers, refetch: retries.peers }),
+  usePeerCredentialsQuery: (config?: Record<string, unknown>) => {
+    peerQueryConfigs.push(config);
+    return { ...reads.peers, refetch: retries.peers };
+  },
   // Station config behind the No project folder hint (#4389): nothing saved.
   useConfigQuery: () => ({
     data: undefined,
@@ -486,6 +492,20 @@ describe('the start menus wire the Station choice to the start', () => {
       'current',
     );
     expect(setMenu).toHaveBeenCalledWith(null);
+  });
+
+  test('the open Station list re-reads readiness on a cadence; the closed control does not poll', () => {
+    peerQueryConfigs.length = 0;
+    reads.peers = { isSuccess: true, isError: false, data: [PAIRED] };
+    render(<StartStationControl canChoose onOpen={vi.fn()} />);
+    expect(peerQueryConfigs.at(-1)?.refetchInterval).toBeUndefined();
+    cleanup();
+    peerQueryConfigs.length = 0;
+    renderMenus();
+    expect(peerQueryConfigs.at(-1)).toMatchObject({
+      refetchOnMount: 'always',
+      refetchInterval: STATION_READINESS_WATCH_MS,
+    });
   });
 
   test('a recovering paired Station stays listed but greyed with its reason, and choosing it does nothing', () => {

@@ -64,8 +64,9 @@ export const peerCredentialQueries = {
   list: () => ({
     queryKey: ['peer-credentials'] as const,
     queryFn: fetchPeerCredentials,
-    // Readiness rides on this read and the server caches it briefly, so a
-    // short stale time keeps a recovering peer's state current in pickers.
+    // Readiness rides on this read from the server's store, which refreshes
+    // in the background whenever it is read. A short stale time keeps a
+    // recovering peer's state current; pickers also re-read while open.
     staleTime: 10_000,
     retry: false,
   }),

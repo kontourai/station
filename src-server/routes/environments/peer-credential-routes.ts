@@ -62,10 +62,12 @@ export function createPeerCredentialRoutes(
   enrollments?: PeerEnrollmentService,
   /**
    * When provided, each listed peer carries `readiness`: how its public
-   * handshake answered (`online`/`recovering`/`unconfirmed`/`unreachable`),
-   * probed without its credential and briefly cached.
+   * handshake last answered (`online`/`recovering`/`unconfirmed`/
+   * `unreachable`), probed without its credential. The list never waits on
+   * a probe: a peer not yet probed has no `readiness`, and stale ones are
+   * refreshed in the background for the next read.
    */
-  readiness?: Pick<PeerReadinessService, 'probeAll'>,
+  readiness?: Pick<PeerReadinessService, 'snapshot'>,
 ) {
   const app = new Hono();
 
@@ -206,16 +208,16 @@ export function createPeerCredentialRoutes(
     }
   });
 
-  app.get('/', async (c) => {
+  app.get('/', (c) => {
     const peers = store.list();
     if (!readiness) return c.json({ success: true, data: peers });
-    const observed = await readiness.probeAll(peers);
+    const observed = readiness.snapshot(peers);
     return c.json({
       success: true,
-      data: peers.map((peer, index) => ({
-        ...peer,
-        readiness: observed[index],
-      })),
+      data: peers.map((peer, index) => {
+        const known = observed[index];
+        return known ? { ...peer, readiness: known } : peer;
+      }),
     });
   });
 

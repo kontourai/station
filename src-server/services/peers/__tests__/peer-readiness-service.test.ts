@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { PUBLIC_STATION_HANDSHAKE_PATH } from '@kontourai/station-contracts/environment-security';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PeerReadinessService } from '../peer-readiness-service.js';
 
 /**
@@ -198,6 +198,45 @@ describe('PeerReadinessService', () => {
       (await service.probe(target, { revalidateFailures: true })).status,
     ).toBe('online');
     expect(box.seen.hits).toBe(3);
+  });
+
+  test('snapshot answers at once from the store and refreshes stale peers in the background', async () => {
+    let clock = 1_000;
+    let answer: Answer = 'hang';
+    const box = await peer(() => answer);
+    const service = new PeerReadinessService({
+      now: () => clock,
+      onlineTtlMs: 10_000,
+      failureTtlMs: 2_000,
+    });
+    const target = { environmentId: 'env-b', apiBase: box.apiBase };
+    // Never probed: no answer yet, and a hanging peer does not hold the read.
+    const started = Date.now();
+    expect(service.snapshot([target])).toEqual([undefined]);
+    expect(Date.now() - started).toBeLessThan(100);
+    await vi.waitFor(() => expect(box.seen.hits).toBe(1));
+
+    answer = handshake('env-b');
+    const fresh = new PeerReadinessService({ now: () => clock });
+    fresh.snapshot([target]);
+    await vi.waitFor(() =>
+      expect(fresh.snapshot([target])[0]?.status).toBe('online'),
+    );
+    const hits = box.seen.hits;
+    // Within its TTL the stored answer is served without probing again.
+    clock += 5_000;
+    expect(fresh.snapshot([target])[0]?.status).toBe('online');
+    expect(box.seen.hits).toBe(hits);
+    // Past it, the stale answer is still served at once, and refreshed.
+    answer = { status: 503, body: PROXY_UNAVAILABLE };
+    clock += 10_000;
+    expect(fresh.snapshot([target])[0]?.status).toBe('online');
+    await vi.waitFor(() =>
+      expect(fresh.snapshot([target])[0]?.status).toBe('recovering'),
+    );
+    // A peer that is no longer listed is dropped from the store.
+    expect(fresh.snapshot([])).toEqual([]);
+    expect(fresh.snapshot([target])).toEqual([undefined]);
   });
 
   test('concurrent probes of one peer share a request, and probeAll keeps order under its concurrency bound', async () => {

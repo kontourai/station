@@ -42,7 +42,7 @@ afterAll(() => {
 });
 
 describe('peer credential routes (station#1123 slice 2)', () => {
-  test('the list carries each peer\u2019s handshake readiness, probed without its credential', async () => {
+  test('the list answers without waiting on probes, then carries each peer\u2019s readiness, probed without its credential', async () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'station-peer-route-ready-'));
     wireHomes.push(homeDir);
     const store = new PeerCredentialStore(homeDir);
@@ -56,6 +56,10 @@ describe('peer credential routes (station#1123 slice 2)', () => {
         label: id,
       });
     const probes: Array<{ url: string; authorization: string | null }> = [];
+    let answer!: () => void;
+    const answered = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
     const readiness = new PeerReadinessService({
       now: () => 1_234,
       fetch: async (input, init) => {
@@ -64,6 +68,8 @@ describe('peer credential routes (station#1123 slice 2)', () => {
           url,
           authorization: new Headers(init?.headers).get('authorization'),
         });
+        // The peers do not answer until the test lets them.
+        await answered;
         return url.startsWith('https://env-up.')
           ? new Response(
               JSON.stringify({ schemaVersion: 1, environmentId: 'env-up' }),
@@ -82,6 +88,23 @@ describe('peer credential routes (station#1123 slice 2)', () => {
       undefined,
       readiness,
     );
+    // The first read answers while both probes are still waiting: never
+    // probed means no readiness yet, not a wait on the network.
+    const first = (await (await app.request('/')).json()) as {
+      data: Array<{ environmentId: string; readiness?: unknown }>;
+    };
+    expect(first.data.map((peer) => peer.readiness)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(probes).toHaveLength(2);
+    answer();
+    await vi.waitFor(async () => {
+      const again = (await (await app.request('/')).json()) as {
+        data: Array<{ readiness?: unknown }>;
+      };
+      expect(again.data.every((peer) => peer.readiness)).toBe(true);
+    });
     const response = await app.request('/');
     expect(response.status).toBe(200);
     const raw = await response.text();

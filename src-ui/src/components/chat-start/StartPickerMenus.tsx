@@ -234,6 +234,7 @@ function StationMenu({
   const { stations, stationsUnavailable, retryStations } = useExecutionStations(
     {
       projectSelected,
+      watchReadiness: true,
     },
   );
   return (
