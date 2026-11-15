@@ -1,0 +1,9 @@
+{
+  "revision": "5d74f3e64f1086b0346e737fc970aed2ff8de2bd",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the diff from main: the test file gains the AGENTS.md instruction-files cases (a CLAUDE_CONFIG_DIR stub per test, cleaned up in onTestFinished) and an expected instructionFiles setting in the options-shape assertion. The tool-policy and smoke-confidence tests these docs cite are unchanged, so their claims stay accurate.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the diff from main: the test file gains the AGENTS.md instruction-files cases (a CLAUDE_CONFIG_DIR stub per test, cleaned up in onTestFinished) and an expected instructionFiles setting in the options-shape assertion. The tool-policy and smoke-confidence tests these docs cite are unchanged, so their claims stay accurate.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]}
+  ]
+}
