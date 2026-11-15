@@ -1,0 +1,7 @@
+{
+  "revision": "cfbf76d1b0345749fd196d5173a2482359609661",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Updated the compile-cache verification paragraph: station start now also sets the cache; server hands it only to built-in station-control/knowledge; process regression additions (real stdio transport env for built-in versus third-party; built station-control bundle writes its cache before a signal and drops the setting from its env) traced to server-compile-cache.process.test.ts. Executed that suite and fault injections removing the forward, flush and consume. Limits: source and unit/process evidence only, no packaged-shell or device startup qualification.","inputs":["docs/guides/native-shell-verification.md","packages/cli/src/commands/lifecycle.ts","src-server/index.ts"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "cfbf76d1b0345749fd196d5173a2482359609661",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Bounded delta review: the test file gains one start test asserting the server spawn's compile-cache env. Citing pages describe other lifecycle tests; their claims are unaffected. No prose change.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Bounded delta review: the test file gains one start test asserting the server spawn's compile-cache env. Citing pages describe other lifecycle tests; their claims are unaffected. No prose change.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}
