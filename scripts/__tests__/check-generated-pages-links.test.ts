@@ -112,6 +112,43 @@ describe('generated Pages relative-link gate', () => {
     ]);
   });
 
+  it('checks home fragments from the docs index one level down', async () => {
+    // The docs index builds its header with '../index.html#…' (one level),
+    // unlike nested guides (two levels): cover that boundary too.
+    const root = await fixtureRoot();
+    await writeFile(
+      path.join(root, 'dist-pages', 'index.html'),
+      '<section id="how"></section>',
+    );
+    await writeFile(
+      path.join(root, 'dist-pages', 'docs', 'index.html'),
+      [
+        '<a href="../index.html#how">How it works</a>',
+        '<a href="./../index.html#how">How it works again</a>',
+        '<a href="../index.html#platform">Platform</a>',
+        '<a href="./../index.html#platform">Platform again</a>',
+      ].join(''),
+    );
+
+    await expect(
+      findBrokenGeneratedPageLinks({
+        files: ['dist-pages/docs/index.html'],
+        root,
+      }),
+    ).resolves.toEqual([
+      {
+        file: 'dist-pages/docs/index.html',
+        href: '../index.html#platform',
+        reason: 'missing fragment target',
+      },
+      {
+        file: 'dist-pages/docs/index.html',
+        href: './../index.html#platform',
+        reason: 'missing fragment target',
+      },
+    ]);
+  });
+
   it('discovers every generated HTML file recursively', async () => {
     const root = await fixtureRoot();
     await mkdir(path.join(root, 'dist-pages', 'docs', 'user'), {
