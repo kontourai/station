@@ -43,6 +43,7 @@
 }
 
 html {
+  background: var(--bg);
   scroll-behavior: smooth;
 }
 
@@ -76,6 +77,19 @@ footer {
   max-width: 1180px;
   margin: 0 auto;
   padding: 22px 24px;
+}
+
+footer {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 8px 28px;
+  border-top: 1px solid var(--line);
+}
+
+footer span {
+  margin-right: auto;
+  color: var(--ink);
+  font-weight: 750;
 }
 
 .brand {
@@ -118,8 +132,8 @@ main {
 }
 
 .hero {
-  padding-top: 56px;
-  padding-bottom: 40px;
+  padding-top: 40px;
+  padding-bottom: 32px;
 }
 
 .hero-copy {
@@ -145,7 +159,7 @@ li {
 
 h1 {
   margin: 0;
-  font-size: clamp(2.5rem, 6.6vw, 5.4rem);
+  font-size: clamp(2.4rem, 5.2vw, 4.25rem);
   line-height: 1;
   letter-spacing: -0.02em;
 }
@@ -172,7 +186,7 @@ code {
 
 .lede {
   max-width: 680px;
-  margin: 24px 0 0;
+  margin: 20px 0 0;
   color: var(--muted);
   font-size: 1.24rem;
 }
@@ -182,7 +196,7 @@ code {
   flex-wrap: wrap;
   align-items: center;
   gap: 14px 24px;
-  margin-top: 32px;
+  margin-top: 28px;
 }
 
 .text-link {
@@ -231,7 +245,7 @@ nav a:focus-visible,
 /* Hero: the desktop capture, with the phone capture over its lower right. */
 .hero-stage {
   position: relative;
-  margin: 48px 0 0;
+  margin: 40px 0 0;
   padding-right: 9%;
   padding-bottom: 24px;
 }
@@ -279,12 +293,12 @@ nav a:focus-visible,
   display: flex;
   align-items: center;
   gap: 14px;
-  min-height: 76px;
-  padding: 18px 22px;
+  min-height: 56px;
+  padding: 10px 18px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   font-weight: 750;
   text-decoration: none;
 }
@@ -297,8 +311,8 @@ nav a:focus-visible,
   display: inline-grid;
   flex: none;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: var(--accent);
   color: var(--accent-ink);
@@ -306,7 +320,16 @@ nav a:focus-visible,
 }
 
 #how {
-  padding-bottom: 24px;
+  padding-top: 40px;
+  padding-bottom: 8px;
+}
+
+#how .section-heading {
+  margin-bottom: 20px;
+}
+
+#how h2 {
+  font-size: clamp(1.5rem, 2.6vw, 2rem);
 }
 
 /* Story sections: copy beside a capture, alternating sides. */
@@ -315,6 +338,16 @@ nav a:focus-visible,
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr);
   gap: 56px;
   align-items: center;
+}
+
+.story {
+  padding-top: 56px;
+  padding-bottom: 56px;
+}
+
+/* The copy keeps the wide column on either side. */
+.story.reverse {
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
 }
 
 .story.reverse .story-copy {
@@ -379,18 +412,24 @@ nav a:focus-visible,
   margin: 0;
 }
 
-/* Phone captures show the top of the screen at a phone's proportions. */
+/* Phone captures end inside a blank band of the capture: the channel list is
+   blank from 674 to 697 (between its Tasks and its buttons), the thread from
+   652 to 678 (between the last reply and the composer). */
 .story-media.phone {
   justify-self: center;
   width: min(100%, 320px);
 }
 
 .story-media.phone img {
-  aspect-ratio: 390 / 760;
+  aspect-ratio: 390 / 690;
   object-fit: cover;
   object-position: top;
   border-radius: 18px;
   box-shadow: var(--phone-shadow);
+}
+
+.story-media.phone.crop-thread img {
+  aspect-ratio: 390 / 666;
 }
 
 .section-heading {
@@ -552,11 +591,18 @@ nav a:focus-visible,
 }
 
 @media (max-width: 860px) {
-  .site-header,
-  footer {
+  .site-header {
     align-items: flex-start;
     flex-direction: column;
     gap: 12px;
+  }
+
+  footer span {
+    flex-basis: 100%;
+  }
+
+  .story.reverse {
+    grid-template-columns: 1fr;
   }
 
   .docs-layout,
@@ -600,6 +646,15 @@ nav a:focus-visible,
 
   .lede {
     font-size: 1.1rem;
+  }
+
+  nav .nav-wide {
+    display: none;
+  }
+
+  .story {
+    padding-top: 40px;
+    padding-bottom: 40px;
   }
 
   .hero-stage {
