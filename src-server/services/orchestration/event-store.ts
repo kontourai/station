@@ -10504,6 +10504,7 @@ export class EventStore {
     threadIds: readonly string[],
   ): Map<string, PersistedRuntimeEvent[]> {
     const uniqueThreadIds = [...new Set(threadIds)];
+    if (uniqueThreadIds.length === 0) return new Map();
     const marks = this.sessionProjectionCacheMarks(uniqueThreadIds);
     if (!marks) return this.foldSessionProjectionEvents(uniqueThreadIds);
     // #4992: the read model folds every readable thread on each list, and it
@@ -12228,6 +12229,7 @@ export class EventStore {
    */
   countEventsByThreads(threadIds: readonly string[]): Map<string, number> {
     const uniqueThreadIds = [...new Set(threadIds)];
+    if (uniqueThreadIds.length === 0) return new Map();
     const marks = this.sessionProjectionCacheMarks(uniqueThreadIds);
     if (!marks) return this.queryEventCountsByThreads(uniqueThreadIds);
     // #4992: a count only moves with the thread's mark, so only threads whose
