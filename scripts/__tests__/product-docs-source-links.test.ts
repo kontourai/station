@@ -311,6 +311,46 @@ describe('public product documentation source links', () => {
     }
   });
 
+  it('reserves each Pages picture variant at the size of the capture it loads', () => {
+    // A source without width/height borrows its <img>'s box. When that box
+    // differs from the capture the source loads, a lazy image above an anchor
+    // grows the page after a jump (#4801: a 390px jump to #self-host landed
+    // 548px short when the phone Task capture filled a 1440x900 box).
+    const baseline = JSON.parse(
+      readFileSync('tests/screenshots.baseline.json', 'utf8'),
+    ) as { screens: Array<{ name: string; width: number; height: number }> };
+    const size = new Map(
+      baseline.screens.map((screen) => [
+        screen.name,
+        `${screen.width}x${screen.height}`,
+      ]),
+    );
+    const index = readFileSync('docs/pages/index.html', 'utf8');
+    const attribute = (tag: string, name: string) =>
+      new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1];
+    const pictures = [...index.matchAll(/<picture\b[\s\S]*?<\/picture>/g)].map(
+      ([picture]) => picture,
+    );
+    expect(pictures.length).toBeGreaterThanOrEqual(5);
+    let variants = 0;
+    for (const picture of pictures) {
+      const img = /<img\b[^>]*>/.exec(picture)?.[0] ?? '';
+      const imgBox = `${attribute(img, 'width')}x${attribute(img, 'height')}`;
+      for (const tag of picture.match(/<(?:source|img)\b[^>]*>/g) ?? []) {
+        const file = attribute(tag, tag.startsWith('<img') ? 'src' : 'srcset');
+        const name = /^\.\/media\/([a-z0-9-]+)\.png$/.exec(file ?? '')?.[1];
+        expect(name, `picture variant ${file}`).toBeDefined();
+        const width = attribute(tag, 'width');
+        const height = attribute(tag, 'height');
+        const reserved = width && height ? `${width}x${height}` : imgBox;
+        expect(reserved, `reserved box for ${name}`).toBe(size.get(name!));
+        variants += 1;
+      }
+    }
+    // 12 captures: the hero pair, two phone figures and the Task figure.
+    expect(variants).toBe(12);
+  });
+
   it('links contributors to the repository and public documentation boundaries', () => {
     const readme = readFileSync('README.md', 'utf8');
     const contributing = readFileSync('CONTRIBUTING.md', 'utf8');

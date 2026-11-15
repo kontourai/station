@@ -158,9 +158,12 @@
         </div>
         <figure class="story-media">
           <picture>
-            <source media="(max-width: 640px) and (prefers-color-scheme: dark)" srcset="./media/task-capabilities-dark-mobile.png" />
-            <source media="(max-width: 640px)" srcset="./media/task-capabilities-light-mobile.png" />
-            <source media="(prefers-color-scheme: dark)" srcset="./media/task-capabilities-dark-desktop.png" />
+            <!-- Each source states its own size: the box is reserved from the
+                 capture that loads, so a phone capture can't grow the page
+                 under a jump to a later anchor. -->
+            <source media="(max-width: 640px) and (prefers-color-scheme: dark)" srcset="./media/task-capabilities-dark-mobile.png" width="390" height="844" />
+            <source media="(max-width: 640px)" srcset="./media/task-capabilities-light-mobile.png" width="390" height="844" />
+            <source media="(prefers-color-scheme: dark)" srcset="./media/task-capabilities-dark-desktop.png" width="1440" height="900" />
             <img
               src="./media/task-capabilities-light-desktop.png"
               width="1440"
