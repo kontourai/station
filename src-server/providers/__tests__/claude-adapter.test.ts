@@ -9569,6 +9569,16 @@ describe('ClaudeAdapter', () => {
     });
 
     test('startSession keeps the promptless SDK options shape apart from the required engine-spawn TMPDIR', async () => {
+      // A Claude config home with no settings.json, so the developer's own
+      // settings cannot change the AGENTS.md setting below.
+      const configHome = mkdtempSync(
+        join(tmpdir(), 'station-claude-options-shape-'),
+      );
+      vi.stubEnv('CLAUDE_CONFIG_DIR', configHome);
+      onTestFinished(() => {
+        vi.unstubAllEnvs();
+        rmSync(configHome, { recursive: true, force: true });
+      });
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
 
@@ -9610,7 +9620,14 @@ describe('ClaudeAdapter', () => {
         allowDangerouslySkipPermissions: undefined,
         thinking: undefined,
         effort: undefined,
-        settings: undefined,
+        // AGENTS.md beside CLAUDE.md (claude-instruction-files.ts).
+        settings: {
+          pluginConfigs: {
+            'agents-md@builtin': {
+              options: { instructionFiles: 'claude-md-and-agents-md' },
+            },
+          },
+        },
         // #4828: every session marks the conversation on a native web read;
         // with no Agent there is no PreToolUse policy.
         hooks: { PostToolUse: [{ hooks: [expect.any(Function)] }] },

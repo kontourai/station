@@ -401,6 +401,7 @@ function resultAtBaseline(host = HOST) {
     host: { ...host },
     metrics,
     request: { station: { claudeCodeVersion: '2.1.318' } },
+    repoRules: { claudeMd: true, agentsMd: true } as Record<string, unknown>,
   };
 }
 
@@ -639,6 +640,62 @@ describe('station-weight gate', () => {
       passed: false,
       comparedCount: 0,
     });
+  });
+
+  test('a repository instruction file missing from the first request fails the gate and refuses a baseline', () => {
+    const cases: Array<[string, Record<string, unknown> | undefined, string]> =
+      [
+        [
+          'AGENTS.md not reached',
+          { claudeMd: true, agentsMd: false },
+          'did not reach the first request: agentsMd',
+        ],
+        [
+          'AGENTS.md absent from the result',
+          { claudeMd: true },
+          'did not reach the first request: agentsMd',
+        ],
+        [
+          'neither reached',
+          { claudeMd: false, agentsMd: false },
+          'did not reach the first request: claudeMd, agentsMd',
+        ],
+        [
+          'not measured',
+          { status: 'not_measured', reason: 'Claude engine not ready' },
+          'repoRules not measured: Claude engine not ready',
+        ],
+        ['no repoRules at all', undefined, 'claudeMd, agentsMd'],
+      ];
+    for (const [label, repoRules, reason] of cases) {
+      const result = { ...resultAtBaseline(), repoRules };
+      const verdicts = evaluateBudgets(result, FIXTURE_BASELINE);
+      // Every budget passes: only the instruction files fail the run.
+      expect(
+        verdicts.map((entry) => entry.verdict),
+        label,
+      ).not.toContain('FAIL');
+      const gate = gateOutcome(result, verdicts);
+      expect(gate.passed, label).toBe(false);
+      expect(gate.reasons.join('\n'), label).toContain(reason);
+      // Report-only skips the baseline, not the measurement.
+      expect(
+        gateOutcome(
+          result,
+          evaluateBudgets(result, undefined, { reportOnly: true }),
+          { reportOnly: true },
+        ).passed,
+        label,
+      ).toBe(false);
+      expect(() => recordBaseline(result, FIXTURE_BASELINE), label).toThrow(
+        reason,
+      );
+    }
+    // Control: both reached, the same run passes.
+    const passing = resultAtBaseline();
+    expect(
+      gateOutcome(passing, evaluateBudgets(passing, FIXTURE_BASELINE)).passed,
+    ).toBe(true);
   });
 
   test('a run that did not complete fails even with nothing over budget', () => {

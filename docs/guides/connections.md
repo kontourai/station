@@ -994,6 +994,23 @@ installed on your machine and the Claude Code bundled with the Claude Agent SDK:
 The Engine's readiness detail names the executable Station will launch and whichever versions it
 was able to read.
 
+A Claude session loads the repository's `AGENTS.md` files as well as its `CLAUDE.md` files.
+On its own, Claude Code loads `AGENTS.md` only in a project that has no `CLAUDE.md`. For each
+session, Station sets Claude Code's `instructionFiles` option for its built-in `agents-md`
+plugin to `claude-md-and-agents-md`
+([source](../../src-server/providers/adapters/claude-instruction-files.ts)). Claude Code then
+loads each `AGENTS.md` wherever it would load a `CLAUDE.md`, at the root and in nested folders,
+in the same way. It does not load an `AGENTS.md` twice when a `CLAUDE.md` imports it
+(`@AGENTS.md`) or links to it. Station reads no instruction file itself.
+
+Station sets the option only for the session, as a `--settings` value, and never writes your
+settings. It leaves the option out when `settings.json` in the session's Claude configuration
+directory already sets `instructionFiles`, or its older name `projectInstructions`, under
+`pluginConfigs["agents-md@builtin"].options`. It also leaves it out when it cannot read that
+file as JSON of at most 1 MiB. In both cases Claude Code's own setting applies. Your
+organization's managed settings take precedence over the session's option. A Claude Code version
+without the option ignores it and loads `CLAUDE.md` alone.
+
 ### Engines from the public registry
 
 Below Station's own engines, **Add engine** lists the engines in the

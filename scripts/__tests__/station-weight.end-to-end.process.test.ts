@@ -165,7 +165,7 @@ describe.skipIf(!posix)('station-weight end to end', () => {
         `up to ${Math.ceil(result.metrics.idleCpuPercent.maxReadSpanMs)} ms`,
       );
 
-      expect(result.repoRules).toMatchObject({ claudeMd: true });
+      expect(result.repoRules).toEqual({ claudeMd: true, agentsMd: true });
       // Host-dependent budgets compare only against this host's own
       // fingerprint; request budgets are host-independent.
       const hostBaseline = BASELINE.hosts[result.host.fingerprint];

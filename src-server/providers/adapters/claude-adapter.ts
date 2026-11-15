@@ -245,6 +245,7 @@ import {
   claudeExitDetailWithStderr,
   createClaudeEngineProcess,
 } from './claude-code-spawn.js';
+import { claudeInstructionFilesSettings } from './claude-instruction-files.js';
 import {
   type ClaudeToolServerSkip,
   resolveClaudeMcpServers,
@@ -4511,6 +4512,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     artifactsEnv: ClaudeArtifactsSpawnEnv = claudeArtifactsSpawnEnv(false),
   ): Options {
     const modelOptions = claudeAppliedModelOptions(input.modelOptions);
+    // AGENTS.md beside CLAUDE.md, unless the user chose otherwise in the
+    // config home this spawn reads (claude-instruction-files.ts).
+    const instructionFiles = claudeInstructionFilesSettings(
+      claudeSpawnConfigHome(appHomeEnv, connectionEnv, augmentedEnv),
+    );
+    if (!instructionFiles.settings)
+      (this.options.logger ?? console).debug?.(
+        `[claude] AGENTS.md loading left to the engine's setting: ${instructionFiles.reason}`,
+      );
     // #2947: the approval guardian's allows, by the engine's tool-use id,
     // from the PreToolUse hook to `canUseTool`. The hook states no opinion,
     // so the guardian's verdict is carried here and answers the engine's
@@ -5165,7 +5175,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       effort: modelOptions.effort,
       settings:
         modelOptions.fastMode !== undefined ||
-        modelOptions.autoMode !== undefined
+        modelOptions.autoMode !== undefined ||
+        instructionFiles.settings
           ? {
               ...(modelOptions.fastMode !== undefined
                 ? { fastMode: modelOptions.fastMode }
@@ -5173,6 +5184,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
               ...(modelOptions.autoMode === false
                 ? { disableAutoMode: 'disable' as const }
                 : {}),
+              ...instructionFiles.settings,
             }
           : undefined,
     };
