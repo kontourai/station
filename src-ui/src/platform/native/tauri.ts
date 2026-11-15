@@ -370,7 +370,10 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
   if (
     typeof candidate.platform !== 'string' ||
     !COMPILE_TARGETS.has(candidate.platform) ||
-    !Array.isArray(candidate.capabilities)
+    !Array.isArray(candidate.capabilities) ||
+    (candidate.channel !== undefined &&
+      (typeof candidate.channel !== 'string' ||
+        !['stable', 'dev', 'nightly'].includes(candidate.channel)))
   ) {
     return null;
   }
@@ -758,6 +761,15 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     };
   }
 
+  private invalidateCapabilityReport(): void {
+    this.capabilityReportReadFailed = true;
+    this.reportedTarget = null;
+    // A failed refresh cannot leave an earlier report as effect availability.
+    for (const capability of Object.values(INITIAL_TAURI_CAPABILITIES)) {
+      this.capabilities[capability.id] = { ...capability };
+    }
+  }
+
   async getCapabilityReport(): Promise<
     NativeCommandResult<NativeCapabilityReport>
   > {
@@ -766,7 +778,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
         await this.bridge.invoke<unknown>('native_capability_report'),
       );
       if (!report) {
-        this.capabilityReportReadFailed = true;
+        this.invalidateCapabilityReport();
         return {
           status: 'error',
           command: 'capability-report',
@@ -789,7 +801,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
         value: report,
       };
     } catch (error) {
-      this.capabilityReportReadFailed = true;
+      this.invalidateCapabilityReport();
       return {
         status: 'error',
         command: 'capability-report',

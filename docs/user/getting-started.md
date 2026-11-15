@@ -410,7 +410,7 @@ Stable and Nightly are the supported distribution channels. The installer
 refuses the retired `STATION_CHANNEL=beta` and `STATION_CHANNEL=preview` values.
 An operator accepting a release candidate can pin `STATION_VERSION=vX.Y.Z-rc.N`;
 it installs with Stable identity and the base product version. Follow the
-[release-candidate procedure](../guides/release-rings.md#publish-a-release-candidate)
+[release-candidate procedure](https://github.com/kontourai/station/blob/main/docs/guides/release-rings.md#publish-a-release-candidate)
 for acceptance and manual candidate replacement.
 
 An operator can instead supply `STATION_INSTALL_PUBLIC_MANIFEST_URL` for a
@@ -1457,7 +1457,11 @@ and Sessions:
 STATION_CHANNEL=stable "${STATION_ROOT:-$HOME/.station}/installs/stable/current/install.sh" uninstall
 ```
 
-For Nightly, use that install's retained installer with `STATION_CHANNEL=nightly`.
+For Nightly, use that install's retained installer:
+
+```bash
+STATION_CHANNEL=nightly "${STATION_ROOT:-$HOME/.station}/installs/nightly/current/install.sh" uninstall
+```
 Add `--purge-data` only when you also intend to delete the selected channel's
 home (`~/.station/instances/stable` or `~/.station/instances/nightly`). The installer accepts purge only
 for a data root it created and marked; it preserves an unmarked pre-existing

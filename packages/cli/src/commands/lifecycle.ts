@@ -6381,7 +6381,7 @@ function delegatePackagedUpgradeIfPresent(
   const state = readSafePackagedInstallState(
     join(installRoot, '.station-release-state.json'),
   );
-  // The manifest's `channel` is the runtime channel (stable|beta|nightly); the
+  // The manifest's `channel` is the runtime channel (stable|nightly); the
   // persisted ring is a release channel, so compare releaseChannel to
   // releaseChannel.
   if (manifest.releaseChannel !== state.releaseChannel) {

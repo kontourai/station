@@ -310,7 +310,11 @@ Controlled component examples: [phone status summary](../learn/media/updates-aft
 [desktop status summary](../learn/media/updates-after-1440-light.png), and
 [release history](../learn/media/updates-history-after-390-dark.png). These
 illustrate the UI with fixture data; they do not qualify an installed app or
-a provider delivery.
+a provider delivery. The saved status summaries predate friendly Nightly labels
+and retain their historical raw version strings. Current summaries show the
+Nightly date/build label and keep the raw version in the code element title;
+[the release UI review](https://github.com/kontourai/station/blob/main/docs/reviews/release-candidates-20261115/README.md)
+contains inspected before/after layouts at 390/1440 pixels in both themes.
 
 **Previous versions and changelogs** opens a release picker in the same panel.
 It lists versioned releases from GitHub’s most recent 100 releases; **All

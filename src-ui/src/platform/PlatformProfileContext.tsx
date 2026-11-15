@@ -493,15 +493,21 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
   // render, and a stale tint would be a lie about which app is on screen.
   useEffect(() => {
     const root = document.documentElement;
-    root.dataset.appChannel = profile?.channel ?? 'stable';
+    if (profile?.channel) root.dataset.appChannel = profile.channel;
+    else delete root.dataset.appChannel;
     root.classList.toggle('is-dev-build', profile?.isDevBuild === true);
     // Remember which mark this install shows, so public/startup-theme.js can
     // put it on the next launch's splash before the host report arrives.
     if (profile) {
-      const mark = profile.isDevBuild ? 'dev' : (profile.channel ?? 'stable');
-      root.dataset.startupMark = mark;
+      const mark = profile.isDevBuild ? 'dev' : profile.channel;
       try {
-        localStorage.setItem('station-startup-mark', mark);
+        if (mark) {
+          root.dataset.startupMark = mark;
+          localStorage.setItem('station-startup-mark', mark);
+        } else {
+          delete root.dataset.startupMark;
+          localStorage.removeItem('station-startup-mark');
+        }
       } catch {
         // Storage can be unavailable in a WebView; the splash then shows
         // the stable mark until the report arrives, as on a first launch.

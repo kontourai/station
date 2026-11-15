@@ -310,7 +310,7 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 Dependency advisory scans are not part of PR, merge-queue or Nightly feature
 verification. The central scheduled scan retains one assigned actionable tracker;
-Preview/Stable publication runs a fresh exact-source audit using trusted policy.
+Stable RC/final publication runs a fresh exact-source audit using trusted policy.
 This does not remove secret scanning, dependency review, signatures, integrity or
 functional checks. See [dependency security](dependency-security.md#where-the-scan-runs).
 
@@ -899,7 +899,7 @@ slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
-exact-source full qualification receipt. Scheduled main qualification and tagged Preview/Stable use it: every canonical phase and Android viewport test must
+exact-source full qualification receipt. Scheduled main qualification and tagged Stable RC/final use it: every canonical phase and Android viewport test must
 succeed, with bounded exact-source reuse. A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 
 Nightly runs independently. Its hourly decision checks the default six-hour

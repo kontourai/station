@@ -46,7 +46,7 @@ export function internalTestFlightAuthorityRef({
   const fixedBuild = internalTestFlightBuild({ channel, version });
   if (fixedBuild !== null && bundleVersion !== fixedBuild) {
     fail(
-      `${channel} must use reserved internal build ${fixedBuild}; release slots 11101 through 11199 remain external authority`,
+      `${channel} must use reserved internal build ${fixedBuild}; tagged release build allocation remains separate authority`,
     );
   }
   return `${IOS_TESTFLIGHT_INTERNAL_TAG_PREFIX}${channel}/v${version}/${bundleVersion}`;

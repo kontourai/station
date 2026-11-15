@@ -6029,10 +6029,10 @@ describe('upgrade', () => {
       `${JSON.stringify({
         schemaVersion: 2,
         sha: 'd'.repeat(40),
-        ref: 'v1.2.3-preview.4',
+        ref: 'v1.2.3-nightly.4',
         createdAt: '2026-07-22T00:00:00.000Z',
-        channel: 'beta',
-        releaseChannel: 'preview',
+        channel: 'nightly',
+        releaseChannel: 'nightly',
         prerelease: true,
       })}\n`,
     );
@@ -10223,7 +10223,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
   });
 
   /**
-   * An install.sh archive install (v0.7.0-preview.3 active through `current`)
+   * An install.sh archive install (v0.7.0-nightly.3 active through `current`)
    * whose home holds one running service; `serviceFields` adjusts its
    * manifest, which otherwise names this install root's `current`.
    */
@@ -10233,7 +10233,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     ) => Record<string, unknown> = () => ({}),
   ) {
     const installRoot = join(TEST_ROOT, 'archive-install');
-    const version = join(installRoot, 'versions', '0.7.0-preview.3');
+    const version = join(installRoot, 'versions', '0.7.0-nightly.3');
     const stationHome = join(TEST_ROOT, 'home-archive');
     ensureDir(version);
     ensureDir(stationHome);
@@ -10246,10 +10246,10 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       `${JSON.stringify({
         schemaVersion: 2,
         sha: 'a'.repeat(40),
-        ref: 'v0.7.0-preview.3',
+        ref: 'v0.7.0-nightly.3',
         createdAt: '2026-09-26T00:00:00.000Z',
-        channel: 'beta',
-        releaseChannel: 'preview',
+        channel: 'nightly',
+        releaseChannel: 'nightly',
         prerelease: true,
       })}\n`,
     );
@@ -10260,13 +10260,13 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
-    const manifestUrl = 'https://example.test/station/preview.json';
+    const manifestUrl = 'https://example.test/station/nightly.json';
     writeFileSync(
       join(installRoot, '.station-release-state.json'),
       `${JSON.stringify({
         schemaVersion: 4,
-        channel: 'beta',
-        releaseChannel: 'preview',
+        channel: 'nightly',
+        releaseChannel: 'nightly',
         installRoot,
         stationRoot: join(TEST_ROOT, 'root-archive'),
         stationHome,
@@ -10320,7 +10320,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       expect.objectContaining({
         cwd: version,
         env: expect.objectContaining({
-          STATION_CHANNEL: 'beta',
+          STATION_CHANNEL: 'nightly',
           STATION_HOME: stationHome,
           STATION_INSTALL_ROOT: installRoot,
           STATION_INSTALL_PUBLIC_MANIFEST_URL: manifestUrl,
@@ -10403,7 +10403,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       expect.objectContaining({
         cwd: version,
         env: expect.objectContaining({
-          STATION_CHANNEL: 'beta',
+          STATION_CHANNEL: 'nightly',
           STATION_HOME: stationHome,
           STATION_INSTALL_ROOT: installRoot,
           STATION_INSTALL_PUBLIC_MANIFEST_URL: manifestUrl,

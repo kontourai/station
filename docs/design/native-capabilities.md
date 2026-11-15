@@ -30,6 +30,12 @@ desktop-tray remains `disabled` rather than being guessed from the JavaScript
 host. The adapter skips a capability id it does not know (a newer shell's),
 but rejects the whole report for a malformed entry, a repeated id or a
 missing required id; an id the shell omits stays at its initial state.
+An older host may omit `channel`; an explicit retired, unknown or malformed
+channel rejects the report. A rejected report leaves the profile without a
+supported channel or startup mark. A failed refresh clears the cached target
+and restores report-derived availability to its initial states; a fresh valid
+report may enable those features again. Native host command authorization
+remains separate from these availability states.
 
 | Capability | Web/PWA | Current Tauri host | Notes |
 | --- | --- | --- | --- |
