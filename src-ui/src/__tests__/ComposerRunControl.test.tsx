@@ -215,7 +215,11 @@ test('the open panel marks the choice that raised the trigger warning', () => {
     name: 'Permissions: Full access',
   });
   expect(risky.querySelector('.composer-choice__safety')?.textContent).toBe(
-    '⚠ ',
+    '⚠',
+  );
+  // The mark sits beside the value, never inside the visible label text.
+  expect(risky.querySelector('.composer-choice__value')?.textContent).toBe(
+    'Full access',
   );
   expect(
     screen

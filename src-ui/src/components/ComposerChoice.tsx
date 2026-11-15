@@ -54,16 +54,21 @@ export function ComposerChoice({
       <span className="chat-input__chip-stack" aria-hidden="true">
         {caption && <span className="chat-input__chip-caption">{caption}</span>}{' '}
         <span className={`composer-choice__value ${valueClassName ?? ''}`}>
-          {/* The same mark the closed Run setup trigger carries, so the
-              open panel shows which choice raised it. */}
-          {safetyLabel && (
-            <span className="composer-choice__safety" title={safetyLabel}>
-              ⚠{' '}
-            </span>
-          )}
           {value}
         </span>
       </span>
+      {/* The same mark the closed Run setup trigger carries, so the open
+          panel shows which choice raised it. Outside the value, so the
+          visible label (and its Label-in-Name match) stays the value alone. */}
+      {safetyLabel && (
+        <span
+          className="composer-choice__safety"
+          aria-hidden="true"
+          title={safetyLabel}
+        >
+          ⚠
+        </span>
+      )}
       <ArrowDownGlyph className="choice-caret" />
     </button>
   );
