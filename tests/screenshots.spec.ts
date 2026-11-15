@@ -4120,7 +4120,7 @@ function channelNavigationScreens(): Screen[] {
                   }
                 } else {
                   await expect(
-                    room.getByText('Both numbers are fixed in the draft now.'),
+                    room.getByText('Both fixes are in the branch now.'),
                   ).toBeVisible();
                   await expect(
                     room.getByRole('heading', { name: 'Thread' }),
