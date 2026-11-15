@@ -108,8 +108,8 @@ test('a replacement Project never receives cached review data for the same Task'
       expect(result.current.data?.projectId).toBe('project-A'),
     );
     rerender({ projectId: 'project-B' });
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
     expect(result.current.data).toBeUndefined();
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
     await act(async () => release(response('project-B')));
     await waitFor(() =>
       expect(result.current.data?.projectId).toBe('project-B'),
