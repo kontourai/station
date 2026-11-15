@@ -483,6 +483,9 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
       description: adapter.metadata.description,
       capabilities: [...adapter.metadata.capabilities],
       continuity: adapter.metadata.continuity,
+      ...(adapter.metadata.modelLaunch
+        ? { modelLaunch: adapter.metadata.modelLaunch }
+        : {}),
       config: {
         ...mergeRuntimeConfig(engineIdValue, appConfig, settings),
         provider: adapter.provider,

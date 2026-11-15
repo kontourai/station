@@ -3106,6 +3106,29 @@ function connectionModels(connection: AgentConnectionView): ModelOption[] {
 }
 
 /**
+ * #2266: whether an explicit model can be chosen for this target. For an
+ * engine connection that is the adapter's declared launch capability (a
+ * selector applied at start or per turn), never whether its catalog listed
+ * anything: Muse applies `--model` while its catalog can be empty. A
+ * connection with no declaration (an older host) and a Station-engine Agent
+ * still answer from the models listed.
+ */
+function targetModelSelection(
+  connection: AgentConnectionView | undefined,
+  models: ModelOption[],
+): boolean {
+  // Read from another Station's answer: only the exact booleans count.
+  const launch: unknown = connection?.modelLaunch;
+  if (launch && typeof launch === 'object') {
+    const declared = launch as Record<string, unknown>;
+    return (
+      declared.overrideAtStart === true || declared.overridePerTurn === true
+    );
+  }
+  return models.length > 0;
+}
+
+/**
  * List only stable, secret-free environment selection state. Unlike target
  * discovery, this never connects an SSH profile or returns its transport and
  * verified filesystem binding.
@@ -3334,7 +3357,7 @@ export async function discoverDelegationOptions(
             approvals: connection
               ? connection.capabilities.includes('approvals')
               : true,
-            modelSelection: models.length > 0,
+            modelSelection: targetModelSelection(connection, models),
           },
         },
       ];

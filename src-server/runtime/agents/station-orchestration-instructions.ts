@@ -208,7 +208,7 @@ function repliesSection(has: (...n: string[]) => boolean): Section | undefined {
   const lines: string[] = [];
   if (has('html_preview', 'html_render')) {
     lines.push(
-      'For a chart or visual the user should see here, check it with `html_preview`, then publish it with `html_render`. Do not start a server for it.',
+      'For a chart or visual the user should see here, reach for `html_preview` then `html_render` by default. If an Artifact tool refuses with an auth-token message, publish the same page with `html_render` instead of leaving a local file. Do not start a server for it.',
     );
   }
   if (has('schedule_wake_up')) {

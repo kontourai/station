@@ -54,6 +54,11 @@ describe('engine capability matrix', () => {
     expect(externalSessionContinuationSupport('station')).toMatchObject({
       state: 'unknown',
     });
+    // No source lists Muse sessions Station did not start.
+    expect(externalSessionContinuationSupport('muse')).toMatchObject({
+      state: 'unsupported',
+      reason: expect.stringMatching(/Muse sessions it did not start/),
+    });
   });
 
   test('sessionDeliveryChannels reproduces the shipped per-engine delivery truth (acp/claude/codex; bedrock/ollama undefined)', () => {

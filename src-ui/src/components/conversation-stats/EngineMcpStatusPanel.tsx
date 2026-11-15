@@ -15,6 +15,7 @@ const STATE_LABEL: Record<ChatEngineMcpServer['state'], string> = {
   failed: 'Failed',
   'needs-auth': 'Sign-in needed',
   disabled: 'Disabled',
+  configured: 'Configured',
 };
 
 const STATE_TONE: Record<ChatEngineMcpServer['state'], SemanticTone> = {
@@ -23,6 +24,7 @@ const STATE_TONE: Record<ChatEngineMcpServer['state'], SemanticTone> = {
   failed: 'negative',
   'needs-auth': 'caution',
   disabled: 'neutral',
+  configured: 'neutral',
 };
 
 interface EngineMcpStatusPanelProps {

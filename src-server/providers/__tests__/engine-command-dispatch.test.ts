@@ -3,8 +3,8 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   dispatchEngineCommand,
   type EngineCommandPort,
-  readSlashCommand,
-} from '../engine-command-dispatch.js';
+  readSlashCommandInvocation,
+} from '../adapters/engine-command-dispatch.js';
 
 /**
  * The route-kind table every adapter shares. ACP's use of it is pinned
@@ -49,7 +49,7 @@ function port(options: {
   return { value, calls, shown };
 }
 
-const rewind = readSlashCommand('/rewind 3')!;
+const rewind = readSlashCommandInvocation('/rewind 3')!;
 
 describe('dispatchEngineCommand', () => {
   test('an adapter action runs through the port and its answer is the turn', async () => {

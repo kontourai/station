@@ -1,0 +1,7 @@
+{
+  "revision": "eed803222d9aa398bbe40ce4ffc7c40bd6f3fd35",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Reviewed the added Nightly ledger paragraph against nightly.yml (nightly-cli no longer writes the ledger; record-cli-ledger runs after the cohort with always() and --if-absent), nightly-native-cohort.yml record-native-completion (npm row only after the receipt handoff and registry re-check), deploy-ledger-commit.mjs --record/--subject-run-id with its GENERATED_LEDGER_SUBJECT refusal, and qualification-health.mjs counting the fallback job as the CLI leg. The merge-group claim is stated as observed run history, not GitHub documentation. Executed by deploy-ledger-nightly-batch.test.ts against a fixture origin; not yet observed on a real Nightly.","inputs":["docs/guides/releasing.md",".github/workflows/nightly.yml","scripts/__tests__/native-release-promotion.test.ts","scripts/qualification-health.mjs"]}
+  ]
+}

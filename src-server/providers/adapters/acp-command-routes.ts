@@ -34,12 +34,12 @@ import {
   resolveAcpEngineVariant,
 } from '../../services/acp/acp-handshake-facts.js';
 import { errorMessage } from '../../utils/error-message.js';
-import {
-  type EngineCommandInvocation,
-  type EngineRequestRoute,
-  readSlashCommand,
-} from '../engine-command-dispatch.js';
 import { isAcpMethodNotFound } from './acp-steer.js';
+import {
+  type EngineRequestRoute,
+  readSlashCommandInvocation,
+  type SlashCommandInvocation,
+} from './engine-command-dispatch.js';
 
 interface AcpCommandRouteEntry {
   /** The slash command's name, without the slash. */
@@ -248,10 +248,10 @@ const UNDECLARED_COMMAND_ROUTES: readonly AcpCommandRouteEntry[] =
 
 const PROMPT_TEXT: EngineCommandRoute = { kind: 'prompt-text' };
 
-type AcpCommandInvocation = EngineCommandInvocation;
+export type AcpCommandInvocation = SlashCommandInvocation;
 
-/** The shared reader (`engine-command-dispatch.ts`), under its ACP name. */
-export const readAcpSlashCommand = readSlashCommand;
+/** A command a person typed, split into its name and argument text. */
+export const readAcpSlashCommand = readSlashCommandInvocation;
 
 function words(args: string): string[] {
   return args.split(/\s+/).filter(Boolean);

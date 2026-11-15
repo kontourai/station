@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import {
+  compareEngineVersions,
   hasUnsafeTextChar,
   installRecipeForPlatform,
+  readEngineVersion,
   validateACPEngineDescriptor,
 } from '../acp.js';
 
@@ -382,5 +384,63 @@ describe('managedRuntime', () => {
     expect(
       validateACPEngineDescriptor({ launchEnv: { KIRO_REGION: 'us-east-1' } }),
     ).toEqual(['launchEnv.KIRO_REGION: not an engine-scoped launch variable']);
+  });
+});
+
+describe('minimumVersion', () => {
+  const floor = {
+    versionCommand: ['agy', '--version'],
+    minimum: '1.5.0',
+    updateHint: 'Run agy update.',
+  };
+
+  test('accepts a command, a plain version and a hint', () => {
+    expect(validateACPEngineDescriptor({ minimumVersion: floor })).toEqual([]);
+  });
+
+  test.each([
+    [
+      'a pre-release minimum',
+      { ...floor, minimum: '1.5.0-beta' },
+      ['minimumVersion.minimum must be major.minor.patch'],
+    ],
+    [
+      'a two-part minimum',
+      { ...floor, minimum: '1.5' },
+      ['minimumVersion.minimum must be major.minor.patch'],
+    ],
+    [
+      'an empty command',
+      { ...floor, versionCommand: [] },
+      ['minimumVersion.versionCommand must be a list of 1-16 entries'],
+    ],
+    [
+      'a hint with a line break',
+      { ...floor, updateHint: 'Run\nthis' },
+      ['minimumVersion.updateHint is not valid'],
+    ],
+    [
+      'an unknown field',
+      { ...floor, autoUpdate: true },
+      ['minimumVersion: unknown field autoUpdate'],
+    ],
+  ])('refuses %s', (_label, minimumVersion, errors) => {
+    expect(
+      validateACPEngineDescriptor({ minimumVersion: minimumVersion as never }),
+    ).toEqual(errors);
+  });
+
+  test('reads the first plain version a command prints', () => {
+    // `agy --version` on Antigravity CLI 1.5.8 prints the bare version.
+    expect(readEngineVersion('1.5.8\n')).toBe('1.5.8');
+    expect(readEngineVersion('agy version 1.4.4 (build 12)')).toBe('1.4.4');
+    expect(readEngineVersion('no version here')).toBeUndefined();
+    expect(readEngineVersion('1.5')).toBeUndefined();
+  });
+
+  test('compares versions part by part, not as text', () => {
+    expect(compareEngineVersions('1.4.4', '1.5.0')).toBeLessThan(0);
+    expect(compareEngineVersions('1.10.0', '1.5.0')).toBeGreaterThan(0);
+    expect(compareEngineVersions('1.5.0', '1.5.0')).toBe(0);
   });
 });

@@ -1,9 +1,18 @@
+import type {
+  EngineCommandAdapterAction,
+  EngineCommandOutcome,
+  EngineCommandRoute,
+} from '@kontourai/station-contracts/engine-commands';
+
 /**
- * Runs a slash command a person typed, by the route the engine's adapter
- * resolved for it (`EngineCommandRoute`,
- * `packages/contracts/src/engine-commands.ts`). The route table is the
- * adapter's own (ACP: `acp-command-routes.ts`); what happens for each route
- * kind is decided here once, for every adapter:
+ * The engine-neutral half of running a slash command a person typed: reading
+ * the invocation, finding the route an adapter's own `getCommands` listing
+ * gave it, and the line a routed command's outcome shows on its turn. How a
+ * route reaches the engine stays with each adapter (ACP's extension methods,
+ * Muse's MSP requests, OpenCode's server routes).
+ *
+ * `dispatchEngineCommand` decides what each route kind does once, for the
+ * adapters that hand it a port (ACP and OpenCode):
  *
  * - a refusal: nothing reaches the engine, and the turn shows why;
  * - `prompt-text`: the command is sent as the turn's prompt;
@@ -14,26 +23,55 @@
  *   rewind, export), where the adapter's port offers one; otherwise prompt
  *   text, as before such routes existed.
  */
-import type {
-  EngineCommandAdapterAction,
-  EngineCommandOutcome,
-  EngineCommandRoute,
-} from '@kontourai/station-contracts/engine-commands';
 
 /** A command a person typed, split into its name and argument text. */
-export interface EngineCommandInvocation {
+export interface SlashCommandInvocation {
   readonly name: string;
   readonly args: string;
 }
 
-export function readSlashCommand(
+/** A whole message that is one slash command, or `undefined`. */
+export function readSlashCommandInvocation(
   text: string | undefined,
-): EngineCommandInvocation | undefined {
+): SlashCommandInvocation | undefined {
   const match = /^\/([A-Za-z0-9][\w.:-]*)(?:\s+([\s\S]*))?$/.exec(
     text?.trim() ?? '',
   );
   if (!match?.[1]) return undefined;
   return { name: match[1], args: match[2]?.trim() ?? '' };
+}
+
+/**
+ * The adapter action `invocation` runs, when the adapter's command listing
+ * routes that command name to one; otherwise `undefined` (prompt text or an
+ * engine request, which the adapter resolves itself).
+ */
+export function adapterActionFor(
+  commands: ReadonlyArray<{
+    readonly name: string;
+    readonly route?: EngineCommandRoute;
+  }>,
+  invocation: SlashCommandInvocation,
+): EngineCommandAdapterAction | undefined {
+  const command = commands.find((entry) => entry.name === invocation.name);
+  return command?.route?.kind === 'adapter-action'
+    ? command.route.action
+    : undefined;
+}
+
+/** The engine-attributed line a routed command's outcome shows on its turn. */
+export function engineCommandOutcomeText(
+  engine: string,
+  name: string,
+  outcome: EngineCommandOutcome,
+): string {
+  return outcome.kind === 'answered'
+    ? outcome.success === false
+      ? `${engine} could not run /${name}${outcome.text ? `: ${outcome.text}` : '.'}`
+      : outcome.text || `${engine} ran /${name}.`
+    : outcome.kind === 'failed'
+      ? `${engine} refused /${name}: ${outcome.message}`
+      : `${engine} did not run /${name}.`;
 }
 
 /** The route an adapter resolved for one invocation on one live session. */
@@ -67,30 +105,15 @@ export interface EngineCommandPort<R> {
   /** Absent: this adapter performs no action itself, and the command is prompt text. */
   adapterAction?(
     action: EngineCommandAdapterAction,
-    invocation: EngineCommandInvocation,
+    invocation: SlashCommandInvocation,
   ): Promise<EngineCommandOutcome>;
   /** Show `text` as the engine's output on this turn and end the turn. */
   answerTurn(text: string): R;
 }
 
-/** The line a routed command's outcome is shown as. */
-export function engineCommandOutcomeText(
-  engine: string,
-  name: string,
-  outcome: EngineCommandOutcome,
-): string {
-  return outcome.kind === 'answered'
-    ? outcome.success === false
-      ? `${engine} could not run /${name}${outcome.text ? `: ${outcome.text}` : '.'}`
-      : outcome.text || `${engine} ran /${name}.`
-    : outcome.kind === 'failed'
-      ? `${engine} refused /${name}: ${outcome.message}`
-      : `${engine} did not run /${name}.`;
-}
-
 export async function dispatchEngineCommand<R>(
   port: EngineCommandPort<R>,
-  invocation: EngineCommandInvocation,
+  invocation: SlashCommandInvocation,
   resolved: ResolvedEngineCommand,
 ): Promise<R> {
   if (resolved.refusal) return port.answerTurn(resolved.refusal);

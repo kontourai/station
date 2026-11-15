@@ -178,6 +178,7 @@ const ENGINE_MCP_SERVER_STATES: ReadonlySet<unknown> =
     'failed',
     'needs-auth',
     'disabled',
+    'configured',
   ]);
 
 function isEngineMcpServerState(value: unknown): value is EngineMcpServerState {

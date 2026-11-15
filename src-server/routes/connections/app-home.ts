@@ -1,8 +1,9 @@
 /**
  * App-home profile status + explicit import (archive#896,
  * `docs/design/agent-engine-unification.md` §6.1's overlay model, channel
- * 2). Wave 1 supported `claude` only; wave 2 adds `codex`
- * to the same table (`APP_HOME_ENGINES`) — any other connection id 404s.
+ * 2). Wave 1 supported `claude` only; wave 2 adds `codex`, and #1942 adds
+ * `muse`, to the same table (`APP_HOME_ENGINES`) — any other connection id
+ * 404s.
  * Mounted at `/api/connections` alongside (not merged into) `connections.ts`
  * so its `/agent/:id/app-home…` path never collides with that file's
  * `/agents` (plural, existing) or `/:id` (catch-all) routes.
@@ -26,11 +27,14 @@ import {
   appHomeProfileDir,
   claudeAppHomeEnv,
   clearAppHomeProfile,
+  codexAppHomeEnv,
   ensureAppHomeProfile,
   type ImportClaudeGlobalSnapshotResult,
   importClaudeGlobalSnapshot,
   importCodexGlobalSnapshot,
+  importMuseGlobalSnapshot,
   markAppHomeProfileImported,
+  museAppHomeEnv,
   readAppHomeProfileStatus,
   readAppHomeProfileUsage,
 } from '../../providers/app-home/app-home-profiles.js';
@@ -46,12 +50,19 @@ import {
   detectCodexAuthState,
 } from '../../providers/auth/codex-auth.js';
 import {
+  defaultMuseConfigRoot,
+  defaultMuseGlobalConfigDir,
+  museCredentialState,
+  withoutAmbientMuseApiKey,
+} from '../../providers/auth/muse-auth.js';
+import {
   managedEngineRefusalBody,
   managedEngineRefusalFor,
 } from '../../security/managed-engine-limits.js';
 import { browserCodeLoginManager } from '../../services/connections/browser-code-login.js';
 import {
   appHomeActive,
+  type ConnectionEnvEngine,
   connectionSpawnEnv,
 } from '../../services/connections/connection-env.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
@@ -92,9 +103,25 @@ import {
 } from '../schemas/schemas.js';
 
 interface AppHomeEngine {
-  provider: 'claude' | 'codex';
-  credentialProfileEngineId: 'claude' | 'codex';
+  provider: EnrolmentEngine;
+  credentialProfileEngineId: EnrolmentEngine;
+  /** The global config folder an import copies from. */
   globalDir: () => string;
+  /**
+   * The engine's config-home variable and its env for a home — the one
+   * definition sessions use too (`*AppHomeEnv`).
+   */
+  homeKey: string;
+  homeEnv: (dir: string) => Record<string, string>;
+  /**
+   * The value `homeKey` holds when nothing overrides it: the global home the
+   * default account reads. Differs from {@link globalDir} only where the
+   * home variable names a ROOT above the engine's own folder (Muse's
+   * `XDG_CONFIG_HOME`).
+   */
+  defaultHome: () => string;
+  /** The per-connection env layer, for engines that have one (#2072). */
+  connectionEnvEngine?: ConnectionEnvEngine;
   importSnapshot: (opts: {
     globalDir: string;
     profileDir: string;
@@ -116,6 +143,11 @@ const APP_HOME_ENGINES: Record<string, AppHomeEngine> = {
     credentialProfileEngineId: 'claude',
     globalDir: () =>
       defaultClaudeGlobalConfigDirs()[0] ?? join(homedir(), '.claude'),
+    homeKey: 'CLAUDE_CONFIG_DIR',
+    homeEnv: claudeAppHomeEnv,
+    defaultHome: () =>
+      defaultClaudeGlobalConfigDirs()[0] ?? join(homedir(), '.claude'),
+    connectionEnvEngine: 'claude',
     importSnapshot: importClaudeGlobalSnapshot,
     detectAuthState: (dir) =>
       detectClaudeAuthState({ ...process.env, CLAUDE_CONFIG_DIR: dir }),
@@ -128,11 +160,36 @@ const APP_HOME_ENGINES: Record<string, AppHomeEngine> = {
     provider: 'codex',
     credentialProfileEngineId: 'codex',
     globalDir: () => defaultCodexGlobalConfigDir(),
+    homeKey: 'CODEX_HOME',
+    homeEnv: codexAppHomeEnv,
+    defaultHome: () => defaultCodexGlobalConfigDir(),
+    connectionEnvEngine: 'codex',
     importSnapshot: importCodexGlobalSnapshot,
     detectAuthState: (dir) => detectCodexAuthState(dir),
     // Codex auth is `auth.json`-based only — no macOS Keychain analog
     // (Ambiguity D); a `cli_auth_credentials_store = "keychain"` user reads
     // as `unauthenticated` here, disclosed in docs.
+    keychainAuthPossible: false,
+  },
+  // #1942: Muse's home variable is `XDG_CONFIG_HOME`, a ROOT holding the
+  // engine's `muse/` folder (`museAppHomeEnv`). It has no connection env
+  // layer. Its credential is the `auth.json` file there (or META_API_KEY):
+  // with an empty XDG root `muse usage` answers "not logged in" on a host
+  // whose global home is signed in (live, Muse Code 1.4.18, macOS), so no
+  // Keychain stands behind it.
+  muse: {
+    provider: 'muse',
+    credentialProfileEngineId: 'muse',
+    globalDir: () => defaultMuseGlobalConfigDir(),
+    homeKey: 'XDG_CONFIG_HOME',
+    homeEnv: museAppHomeEnv,
+    defaultHome: () => defaultMuseConfigRoot(),
+    importSnapshot: importMuseGlobalSnapshot,
+    detectAuthState: async (dir) =>
+      museCredentialState(
+        withoutAmbientMuseApiKey({ ...process.env, XDG_CONFIG_HOME: dir }),
+        existsSync,
+      ),
     keychainAuthPossible: false,
   },
 };
@@ -310,20 +367,22 @@ export function createAppHomeRoutes(deps?: {
         ref,
       };
     }
-    const engine = context.engine.provider;
-    const homeKey = engine === 'claude' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME';
-    const env = {
-      ...connectionSpawnEnv(context.connection.config, engine),
+    const engine = context.engine;
+    const env: Record<string, string> = {
+      ...(engine.connectionEnvEngine
+        ? connectionSpawnEnv(
+            context.connection.config,
+            engine.connectionEnvEngine,
+          )
+        : {}),
       ...(appHomeActive(context.connection.config)
-        ? engine === 'claude'
-          ? claudeAppHomeEnv(appHomeProfileDir(id))
-          : { [homeKey]: appHomeProfileDir(id) }
+        ? engine.homeEnv(appHomeProfileDir(id))
         : {}),
     };
     return {
       ...context,
       engine: context.engine,
-      dir: env[homeKey]?.trim() || context.engine.globalDir(),
+      dir: env[engine.homeKey]?.trim() || engine.defaultHome(),
       env,
       ref: undefined,
     };

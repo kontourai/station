@@ -26,10 +26,16 @@ import type {
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import type {
   ApprovalStatus,
+  TokenUsageUpdatedEvent,
   TurnCompletedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import { isValidContextObservation } from '@kontourai/station-shared/usage-fold';
 import { extensionNotificationBinding } from '../../../src-shared/extension-notification-bindings.js';
+import {
+  type AcpHandshakeIdentity,
+  type AcpIdentityHandshake,
+  matchesAcpHandshakeIdentity,
+} from '../../services/acp/acp-handshake-facts.js';
 import {
   ACP_FETCH_TOOL_KIND,
   markNativeWebRead,
@@ -648,6 +654,87 @@ export function mapAcpStopReasonToTurnCompletion(
       ? reason.trim().slice(0, MAX_ACP_STOP_REASON_LENGTH)
       : '';
   return raw ? { finishReason, stopReason: raw } : { finishReason };
+}
+
+/**
+ * The token figures of one prompt answer's `usage` (ACP's unstable
+ * `PromptResponse.usage`), as `token-usage.updated` fields. That answer is
+ * the turn's: the schema calls it "Token usage for this turn", and a recorded
+ * engine's input figure falls between consecutive turns (Antigravity 1.5.8,
+ * `antigravity-1.5.8-session-frames.jsonl`), which a running total would not.
+ * The adapter publishes it only for an engine in
+ * {@link ACP_PER_TURN_PROMPT_USAGE_ENGINES}.
+ *
+ * Each figure is carried as reported, never derived: `totalTokens` stays the
+ * engine's own total (which may include cache reads), and no cost is read.
+ * A figure that is not a finite non-negative number is left out. Nothing
+ * when the answer carries no usable figure. The context pair stays with
+ * `usage_update`; these fields never touch it.
+ */
+/**
+ * Engines whose prompt answers carry per-turn `usage`. The ACP schema
+ * contradicts itself on the field's scope ("Token usage for this turn" on the
+ * answer, "across session" on `totalTokens`), and `usage-semantics.ts`
+ * declares the one `acp` provider `per-turn`, so a prompt answer's usage is
+ * published only for an engine recorded reporting per-turn figures. Keyed on
+ * what the live handshake says about itself, never on the launch command.
+ */
+const ACP_PER_TURN_PROMPT_USAGE_ENGINES: ReadonlyArray<{
+  identity: AcpHandshakeIdentity;
+  observed: string;
+}> = [
+  {
+    // Consecutive answers' input figures fall (10377, then 8610), and the
+    // answers of a handed-off steer are separate model calls (8191 in, then
+    // 4819 in with 12734 cache reads): no running total.
+    identity: { agentInfoName: 'Antigravity ACP Server' },
+    observed:
+      'Antigravity CLI 1.5.8 `agy acp` (antigravity-1.5.8-session-frames.jsonl)',
+  },
+];
+
+/** Whether this session's engine is recorded reporting per-turn prompt usage. */
+export function acpReportsPerTurnPromptUsage(
+  handshake: AcpIdentityHandshake | null | undefined,
+): boolean {
+  return (
+    !!handshake &&
+    ACP_PER_TURN_PROMPT_USAGE_ENGINES.some(({ identity }) =>
+      matchesAcpHandshakeIdentity(handshake, identity),
+    )
+  );
+}
+
+export function mapAcpPromptUsage(
+  usage: unknown,
+): Pick<
+  TokenUsageUpdatedEvent,
+  | 'promptTokens'
+  | 'completionTokens'
+  | 'totalTokens'
+  | 'cacheReadTokens'
+  | 'cacheWriteTokens'
+  | 'reasoningTokens'
+> | null {
+  if (!usage || typeof usage !== 'object') return null;
+  const read = (key: string): number | undefined => {
+    const value = (usage as Record<string, unknown>)[key];
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0
+      ? value
+      : undefined;
+  };
+  const figures = {
+    promptTokens: read('inputTokens'),
+    completionTokens: read('outputTokens'),
+    totalTokens: read('totalTokens'),
+    cacheReadTokens: read('cachedReadTokens'),
+    cacheWriteTokens: read('cachedWriteTokens'),
+    reasoningTokens: read('thoughtTokens'),
+  };
+  const reported = Object.fromEntries(
+    Object.entries(figures).filter(([, value]) => value !== undefined),
+  ) as ReturnType<typeof mapAcpPromptUsage>;
+  return reported && Object.keys(reported).length > 0 ? reported : null;
 }
 
 /**

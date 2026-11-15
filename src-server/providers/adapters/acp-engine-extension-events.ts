@@ -351,9 +351,10 @@ const GROK_COST_TICKS_PER_USD = 1e10;
  * turn's figure is their sum: the usage fold keeps the last turn-scope
  * figure per turn, so each publish states the whole turn so far.
  *
- * Grok's token counts are not published: usage scope is declared per
- * provider (`usage-semantics.ts`), and `acp` is context-occupancy-only for
- * every engine it runs.
+ * Grok's token counts are not published: ACP token totals come only from
+ * the prompt answer's `usage`, for engines recorded reporting per-turn
+ * figures there (`ACP_PER_TURN_PROMPT_USAGE_ENGINES`), and these counts
+ * have no recorded mapping to a turn's totals.
  */
 function publishGrokTurnCost(
   ctx: EngineExtensionContext,

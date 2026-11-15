@@ -1,6 +1,12 @@
 import type { ACPStatusValue } from '@kontourai/station-contracts/acp';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { describe, expect, test, vi } from 'vitest';
+import antigravityProfile from '../../../providers/__tests__/fixtures/acp-scripted-profiles/antigravity-1.5.8.json' with {
+  type: 'json',
+};
+import kiroV3Profile from '../../../providers/__tests__/fixtures/acp-scripted-profiles/kiro-v3.json' with {
+  type: 'json',
+};
 import { setProviderAdapterRegistrationProvenance } from '../../../providers/adapter-shape.js';
 import { AcpAdapter } from '../../../providers/adapters/acp-adapter.js';
 import { OpenCodeAdapter } from '../../../providers/adapters/opencode-adapter.js';
@@ -495,6 +501,64 @@ describe('ConnectionInspector Interface', () => {
         }),
       ],
     });
+  });
+
+  // An ACP engine's effort control is the reasoning-effort option it
+  // advertised: its exact values and names, on every catalog model, and
+  // nothing for an engine that advertises none.
+  test("offers an ACP connection's advertised thought_level values as each model's effort", async () => {
+    const catalogOf = async (configOptions: unknown) => {
+      const result = await createConnectionInspector({
+        adapters: () => [],
+        appConfig: () =>
+          ({ agentConnections: { acp: { enabled: true } } }) as any,
+        acpConnections: () =>
+          [{ id: 'engine', name: 'Engine', enabled: true }] as any,
+        acpStatus: () => ({
+          connections: [
+            {
+              id: 'engine',
+              status: 'available',
+              // The recorded engine's own shape, read as untyped wire data.
+              configOptions: configOptions as any,
+              handshakeObservedAt: '2026-11-13T00:00:00.000Z',
+            },
+          ],
+        }),
+        publicConnection: (runtimeId) => ({
+          id: engineConnectionId('engine'),
+          engineId: runtimeId,
+        }),
+        now: () => Date.now(),
+      }).inspect({ kind: 'runtime-capability-inventory' });
+      return (
+        result as {
+          connections: Array<{
+            runtimeCatalog: {
+              models: Array<{ id: string; capabilities?: unknown }>;
+            };
+          }>;
+        }
+      ).connections[0].runtimeCatalog.models;
+    };
+
+    // Antigravity 1.5.8 advertises `thought_level` low/medium/high.
+    const advertising = await catalogOf(
+      antigravityProfile.sessionNew.configOptions,
+    );
+    expect(advertising.length).toBeGreaterThan(1);
+    for (const model of advertising)
+      expect(model.capabilities).toEqual({
+        supportsEffort: true,
+        supportedEffortLevels: ['low', 'medium', 'high'],
+        effortLabels: { low: 'Low', medium: 'Medium', high: 'High' },
+      });
+
+    // kiro-cli 3.3 (v3) advertises no effort option.
+    const silent = await catalogOf(kiroV3Profile.sessionNew.configOptions);
+    expect(silent.length).toBeGreaterThan(0);
+    for (const model of silent)
+      expect(model).not.toHaveProperty('capabilities');
   });
 
   // The opencode-delegate-readiness live observation: the probe's initialize

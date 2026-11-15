@@ -75,11 +75,6 @@ import {
 } from '../adapter-shape.js';
 import { augmentedSpawnEnv, findCliBinaryAsync } from '../auth/cli-auth.js';
 import {
-  dispatchEngineCommand,
-  type EngineCommandPort,
-  readSlashCommand,
-} from '../engine-command-dispatch.js';
-import {
   AsyncEventQueue,
   type AsyncEventStreamOptions,
 } from '../sessions/async-event-queue.js';
@@ -105,6 +100,11 @@ import {
 } from './acp-approval-mode.js';
 import { requestedAcpSessionMode } from './acp-session-mode.js';
 import { assertExecutionOverrideDelivery } from './capability-delivery-metadata.js';
+import {
+  dispatchEngineCommand,
+  type EngineCommandPort,
+  readSlashCommandInvocation,
+} from './engine-command-dispatch.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 import { nativeResumeBindingKey } from './native-resume-binding.js';
 import { readString } from './opencode-native-events.js';
@@ -1332,7 +1332,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     const displayText = input.displayInput ?? input.input;
     // A turn with attachments is a prompt, never a command (as on ACP).
     const invocation =
-      files.length === 0 ? readSlashCommand(input.input) : undefined;
+      files.length === 0 ? readSlashCommandInvocation(input.input) : undefined;
     const result = {
       threadId: input.threadId,
       turnId,

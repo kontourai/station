@@ -20,7 +20,7 @@ evidence:
   - kind: doc
     ref: src-server/security/managed-engine-limits.ts
   - kind: doc
-    ref: src-server/providers/engine-command-dispatch.ts
+    ref: src-server/providers/adapters/engine-command-dispatch.ts
   - kind: doc
     ref: src-server/providers/__tests__/fixtures/capture-opencode-serve-fixtures.mjs
   - kind: doc
@@ -409,7 +409,7 @@ features:
   (`/api/experimental/mcp/{server}/…`); OpenCode 2 has no MCP sign-in Station
   can start. Over ACP the inner ACP adapter answers all three.
 - **Engine-command dispatch.**
-  [`engine-command-dispatch.ts`](../../src-server/providers/engine-command-dispatch.ts)
+  [`engine-command-dispatch.ts`](../../src-server/providers/adapters/engine-command-dispatch.ts)
   decides once, for every adapter, what each route kind does: prompt text, an
   engine request, or an adapter action. ACP's `sendTurn` moved onto it with no
   behaviour change. Natively, `/compact` and `/rewind` are adapter actions, a
